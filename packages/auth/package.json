@@ -1,0 +1,35 @@
+{
+  "name": "@imajin/auth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sovereign identity for humans and agents",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./keypair": "./src/providers/keypair.ts",
+    "./kratos": "./src/providers/kratos.ts",
+    "./middleware/nextjs": "./src/middleware/nextjs.ts"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "lint": "eslint src/",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "tsup": "^8.0.0",
+    "vitest": "^1.0.0"
+  },
+  "peerDependencies": {
+    "next": "^14.0.0"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
+  }
+}
