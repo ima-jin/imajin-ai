@@ -1,11 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
-// TODO: import { verify } from '@noble/ed25519';
+import { verify, isValidMessageStructure } from '@imajin/auth';
 
 /**
  * POST /api/verify
  * Verify a signed message directly (stateless, no token needed)
+ * 
+ * Request:
+ * {
+ *   message: {
+ *     from: "did:imajin:xxx",
+ *     type: "human" | "agent",
+ *     timestamp: number,
+ *     payload: any,
+ *     signature: "hex-string"
+ *   }
+ * }
+ * 
+ * Response:
+ * { valid: true, identity: {...} }
+ * or
+ * { valid: false, error: "reason" }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -19,32 +35,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { from, type, timestamp, payload, signature } = message;
-
     // Validate message structure
-    if (!from || !type || !timestamp || !signature) {
-      return NextResponse.json(
-        { error: 'Invalid message structure' },
-        { status: 400 }
-      );
-    }
-
-    // Check timestamp (5 minute window)
-    const age = Date.now() - timestamp;
-    if (age > 5 * 60 * 1000) {
+    if (!isValidMessageStructure(message)) {
       return NextResponse.json({
         valid: false,
-        error: 'Message expired',
-      });
-    }
-    if (age < -30 * 1000) {
-      return NextResponse.json({
-        valid: false,
-        error: 'Timestamp in future',
+        error: 'Invalid message structure',
       });
     }
 
-    // Get identity
+    const { from, type } = message;
+
+    // Get identity from database
     const [identity] = await db
       .select()
       .from(identities)
@@ -66,16 +67,13 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // TODO: Verify signature
-    // const { signature: sig, ...rest } = message;
-    // const canonical = JSON.stringify(rest, Object.keys(rest).sort());
-    // const valid = await verify(sig, canonical, identity.publicKey);
-    const valid = true; // PLACEHOLDER - implement before production!
+    // Verify signature using @imajin/auth
+    const result = await verify(message, identity.publicKey);
 
-    if (!valid) {
+    if (!result.valid) {
       return NextResponse.json({
         valid: false,
-        error: 'Invalid signature',
+        error: result.error || 'Invalid signature',
       });
     }
 

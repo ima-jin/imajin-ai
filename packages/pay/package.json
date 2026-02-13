@@ -1,0 +1,53 @@
+{
+  "name": "@imajin/pay",
+  "version": "0.0.1",
+  "description": "Unified payment infrastructure for Imajin ecosystem (Stripe + Solana)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./providers": {
+      "types": "./dist/providers/index.d.ts",
+      "import": "./dist/providers/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "lint": "eslint src/",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "stripe": "^17.0.0",
+    "@solana/web3.js": "^1.95.0",
+    "@solana/spl-token": "^0.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0",
+    "@types/node": "^22.0.0"
+  },
+  "peerDependencies": {
+    "@imajin/auth": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@imajin/auth": {
+      "optional": true
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/imajin-ai/imajin-ai.git",
+    "directory": "packages/pay"
+  }
+}

@@ -1,36 +1,87 @@
 /**
- * Verification utilities
+ * Message Verification
+ * 
+ * Verifies signed messages:
+ * 1. Signature is valid for the message content
+ * 2. Message isn't expired (optional timestamp check)
+ * 3. Structure is correct
  */
 
-import type { SignedMessage, VerificationResult } from './types';
-import { canonicalize } from './sign';
+import type { SignedMessage, VerificationResult } from './types.js';
+import * as crypto from './crypto.js';
+import { canonicalize } from './sign.js';
+
+/** Default max age for messages (5 minutes) */
+const DEFAULT_MAX_AGE_MS = 5 * 60 * 1000;
+
+/** Allow messages up to 30 seconds in the future (clock skew) */
+const MAX_FUTURE_MS = 30 * 1000;
+
+export interface VerifyOptions {
+  /** Max age in milliseconds (default: 5 minutes, 0 = no limit) */
+  maxAge?: number;
+  /** Allow future timestamps (default: 30 seconds) */
+  maxFuture?: number;
+  /** Skip timestamp validation entirely */
+  skipTimestampCheck?: boolean;
+}
 
 /**
  * Verify a signed message
+ * 
+ * @example
+ * const result = await verify(signedMessage, publicKey);
+ * if (result.valid) {
+ *   console.log('Message is authentic');
+ * } else {
+ *   console.log('Invalid:', result.error);
+ * }
  */
 export async function verify(
   message: SignedMessage,
-  publicKey: string
+  publicKey: string,
+  options: VerifyOptions = {}
 ): Promise<VerificationResult> {
   try {
-    // Check timestamp isn't too old (5 min window)
-    const age = Date.now() - message.timestamp;
-    if (age > 5 * 60 * 1000) {
-      return { valid: false, error: 'Message expired' };
+    // Validate structure first
+    if (!isValidMessageStructure(message)) {
+      return { valid: false, error: 'Invalid message structure' };
     }
     
-    // Check timestamp isn't in the future
-    if (age < -30 * 1000) {
-      return { valid: false, error: 'Timestamp in future' };
+    // Validate public key format
+    if (!crypto.isValidPublicKey(publicKey)) {
+      return { valid: false, error: 'Invalid public key format' };
     }
     
-    // Reconstruct the canonical form
+    // Validate signature format
+    if (!crypto.isValidSignature(message.signature)) {
+      return { valid: false, error: 'Invalid signature format' };
+    }
+    
+    // Check timestamp unless skipped
+    if (!options.skipTimestampCheck) {
+      const maxAge = options.maxAge ?? DEFAULT_MAX_AGE_MS;
+      const maxFuture = options.maxFuture ?? MAX_FUTURE_MS;
+      const now = Date.now();
+      const age = now - message.timestamp;
+      
+      // Check if too old
+      if (maxAge > 0 && age > maxAge) {
+        return { valid: false, error: 'Message expired' };
+      }
+      
+      // Check if too far in future
+      if (age < -maxFuture) {
+        return { valid: false, error: 'Timestamp in future' };
+      }
+    }
+    
+    // Reconstruct the canonical form (without signature)
     const { signature, ...rest } = message;
     const canonical = canonicalize(rest);
     
-    // TODO: Verify with @noble/ed25519
-    // const valid = await ed25519.verify(signature, canonical, publicKey);
-    const valid = false; // placeholder
+    // Verify signature
+    const valid = await crypto.verify(signature, canonical, publicKey);
     
     if (!valid) {
       return { valid: false, error: 'Invalid signature' };
@@ -43,6 +94,86 @@ export async function verify(
       error: error instanceof Error ? error.message : 'Verification failed' 
     };
   }
+}
+
+/**
+ * Synchronous version of verify
+ */
+export function verifySync(
+  message: SignedMessage,
+  publicKey: string,
+  options: VerifyOptions = {}
+): VerificationResult {
+  try {
+    if (!isValidMessageStructure(message)) {
+      return { valid: false, error: 'Invalid message structure' };
+    }
+    
+    if (!crypto.isValidPublicKey(publicKey)) {
+      return { valid: false, error: 'Invalid public key format' };
+    }
+    
+    if (!crypto.isValidSignature(message.signature)) {
+      return { valid: false, error: 'Invalid signature format' };
+    }
+    
+    if (!options.skipTimestampCheck) {
+      const maxAge = options.maxAge ?? DEFAULT_MAX_AGE_MS;
+      const maxFuture = options.maxFuture ?? MAX_FUTURE_MS;
+      const now = Date.now();
+      const age = now - message.timestamp;
+      
+      if (maxAge > 0 && age > maxAge) {
+        return { valid: false, error: 'Message expired' };
+      }
+      
+      if (age < -maxFuture) {
+        return { valid: false, error: 'Timestamp in future' };
+      }
+    }
+    
+    const { signature, ...rest } = message;
+    const canonical = canonicalize(rest);
+    const valid = crypto.verifySync(signature, canonical, publicKey);
+    
+    if (!valid) {
+      return { valid: false, error: 'Invalid signature' };
+    }
+    
+    return { valid: true };
+  } catch (error) {
+    return { 
+      valid: false, 
+      error: error instanceof Error ? error.message : 'Verification failed' 
+    };
+  }
+}
+
+/**
+ * Verify a challenge response
+ * 
+ * Used in challenge-response authentication:
+ * 1. Server sends challenge string
+ * 2. Client signs: { challenge: "xxx" }
+ * 3. Server verifies signature matches challenge
+ */
+export async function verifyChallenge(
+  signedChallenge: SignedMessage<{ challenge: string }>,
+  expectedChallenge: string,
+  publicKey: string
+): Promise<VerificationResult> {
+  // First verify the signature
+  const result = await verify(signedChallenge, publicKey);
+  if (!result.valid) {
+    return result;
+  }
+  
+  // Then verify the challenge matches
+  if (signedChallenge.payload.challenge !== expectedChallenge) {
+    return { valid: false, error: 'Challenge mismatch' };
+  }
+  
+  return { valid: true };
 }
 
 /**
@@ -61,4 +192,15 @@ export function isValidMessageStructure(message: unknown): message is SignedMess
     typeof m.signature === 'string' &&
     'payload' in m
   );
+}
+
+/**
+ * Verify just the signature without timestamp checks
+ * Useful for verifying stored/historical messages
+ */
+export async function verifySignatureOnly(
+  message: SignedMessage,
+  publicKey: string
+): Promise<VerificationResult> {
+  return verify(message, publicKey, { skipTimestampCheck: true });
 }
