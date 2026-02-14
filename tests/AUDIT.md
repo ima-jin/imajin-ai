@@ -92,21 +92,31 @@
 ## Critical Path to April 1
 
 ```
-Week 1-2 (Feb 14-28):
+Week 1 (Feb 14-21):
 ├── Profile service scaffold
-├── Events service scaffold  
+├── Coffee service scaffold
 └── Auth integration tests
 
-Week 3-4 (Mar 1-14):
-├── Events: ticket purchase flow
-├── Events ↔ Pay integration
-└── Ticket minting + .fair manifests
+Week 2 (Feb 22-28):
+├── Links service scaffold
+├── Chat service scaffold
+└── Profile ↔ Coffee ↔ Links integration
 
-Week 5-6 (Mar 15-28):
-├── Connections service (basic)
-├── Coffee + Links services
-├── End-to-end happy path test
-└── Jin's DID + profile creation
+Week 3-4 (Mar 1-14):
+├── Events service (full, with ticketing)
+├── Events ↔ Pay integration
+├── Ticket minting + .fair manifests
+└── End-to-end happy path test
+
+Week 5 (Mar 15-21):
+├── Connections service (trust graph)
+├── Jin's DID + profile creation
+└── Bug fixes + polish
+
+Week 6-7 (Mar 22 - Apr 1):
+├── Final integration testing
+├── Jin on dedicated hardware (stretch)
+└── Virtual space setup (stretch)
 
 Week 7 (Mar 29 - Apr 1):
 ├── Bug fixes
@@ -116,9 +126,9 @@ Week 7 (Mar 29 - Apr 1):
 
 ---
 
-## Build Order (Recommended)
+## Build Order
 
-### Phase 1: Profile (Now)
+### Phase 1: Profile
 ```bash
 # Scaffold profile service
 pnpm turbo gen app --name profile
@@ -149,12 +159,49 @@ POST /api/tickets/verify      # Verify ticket signature
 POST /api/tickets/:id/transfer # Transfer ownership
 ```
 
-### Phase 3: Integration
-- Wire auth → profile → events → pay
-- Test full purchase flow
-- Verify .fair manifest generation
+### Phase 3: Links
+```bash
+# Scaffold links service
+pnpm turbo gen app --name links
 
-### Phase 5: Connections (Trust Graph)
+# Endpoints needed:
+POST /api/pages               # Create links page
+GET  /api/pages/:handle       # Get links page
+PUT  /api/pages/:handle       # Update page
+POST /api/pages/:handle/links # Add link
+GET  /api/pages/:handle/stats # Get click stats
+```
+
+### Phase 4: Chat
+```bash
+# Scaffold chat service
+pnpm turbo gen app --name chat
+
+# Endpoints needed:
+GET  /api/conversations         # List conversations
+POST /api/conversations         # Create conversation
+GET  /api/conversations/:id/messages # Get messages
+POST /api/conversations/:id/messages # Send message
+WS   /ws                        # Real-time connection
+```
+
+### Phase 5: Events (with ticketing)
+```bash
+# Scaffold events service
+pnpm turbo gen app --name events
+
+# Event endpoints:
+POST /api/events              # Create event + ticket types
+GET  /api/events/:id          # Get event
+GET  /api/events/search       # Search events
+
+# Ticket endpoints:
+POST /api/events/:id/purchase # Buy ticket
+GET  /api/tickets/:id         # Get ticket
+POST /api/tickets/verify      # Verify ticket
+```
+
+### Phase 6: Connections
 ```bash
 # Scaffold connections service
 pnpm turbo gen app --name connections
@@ -167,7 +214,7 @@ GET  /api/connections/tree/:did # Get invitation tree from DID
 GET  /api/trust/:did            # Get trust score (stub)
 ```
 
-### Phase 6: Coffee (Tips)
+### Phase 2: Coffee
 ```bash
 # Scaffold coffee service
 pnpm turbo gen app --name coffee
@@ -178,17 +225,11 @@ POST /api/coffee/tip            # Send tip (routes to pay)
 GET  /api/coffee/tips/:did      # Get tips received
 ```
 
-### Phase 7: Links (Link-in-Bio)
-```bash
-# Scaffold links service
-pnpm turbo gen app --name links
-
-# Endpoints needed:
-GET  /api/links/:handle         # Get links page
-POST /api/links                 # Create/update links page
-PUT  /api/links/:id             # Update single link
-DELETE /api/links/:id           # Remove link
-```
+### Phase 7: Integration & Polish
+- Wire all services together
+- Test full purchase flow
+- Verify .fair manifest generation
+- Jin's DID + profile creation
 
 ---
 
