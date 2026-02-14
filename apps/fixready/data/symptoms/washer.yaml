@@ -1,0 +1,131 @@
+appliance_type: washer
+symptoms:
+  - id: not_draining
+    label: "Won't drain / water stays in drum"
+    clarifiers:
+      - id: error_code
+        question: "Is there an error code on the display?"
+        type: text
+        optional: true
+      - id: noise
+        question: "Do you hear any unusual noises?"
+        type: select
+        options:
+          - "Humming"
+          - "Grinding"
+          - "Clicking"
+          - "No unusual noise"
+      - id: frequency
+        question: "Does this happen every cycle?"
+        type: select
+        options:
+          - "Every time"
+          - "Sometimes"
+          - "Just started"
+    suggested_causes:
+      - "Clogged drain pump"
+      - "Blocked drain hose"
+      - "Faulty lid switch"
+    suggested_parts:
+      - name: "Drain pump"
+        confidence: high
+      - name: "Drain hose"
+        confidence: medium
+
+  - id: not_spinning
+    label: "Won't spin"
+    clarifiers:
+      - id: agitates
+        question: "Does the agitator move?"
+        type: select
+        options:
+          - "Yes, agitates but won't spin"
+          - "No movement at all"
+          - "Makes noise but doesn't move"
+    suggested_causes:
+      - "Worn drive belt"
+      - "Motor coupling failure"
+      - "Lid switch"
+    suggested_parts:
+      - name: "Drive belt"
+        confidence: high
+      - name: "Motor coupling"
+        confidence: medium
+
+  - id: leaking
+    label: "Leaking water"
+    clarifiers:
+      - id: location
+        question: "Where is the water coming from?"
+        type: select
+        options:
+          - "Front"
+          - "Back"
+          - "Underneath"
+          - "Not sure"
+      - id: when
+        question: "When does it leak?"
+        type: select
+        options:
+          - "During fill"
+          - "During wash"
+          - "During spin"
+          - "All the time"
+    suggested_causes:
+      - "Worn door seal"
+      - "Loose hose connection"
+      - "Cracked tub"
+    suggested_parts:
+      - name: "Door boot seal"
+        confidence: high
+      - name: "Inlet hose"
+        confidence: medium
+
+  - id: noisy
+    label: "Making unusual noises"
+    clarifiers:
+      - id: noise_type
+        question: "What kind of noise?"
+        type: select
+        options:
+          - "Banging/thumping"
+          - "Grinding"
+          - "Squealing"
+          - "Humming"
+    suggested_causes:
+      - "Unbalanced load"
+      - "Worn drum bearings"
+      - "Foreign object in drum"
+    suggested_parts:
+      - name: "Drum bearings"
+        confidence: medium
+      - name: "Shock absorbers"
+        confidence: medium
+
+  - id: wont_start
+    label: "Won't start at all"
+    clarifiers:
+      - id: power
+        question: "Do any lights come on?"
+        type: select
+        options:
+          - "Yes, lights on but won't start"
+          - "No lights, completely dead"
+    suggested_causes:
+      - "Door latch issue"
+      - "Control board failure"
+      - "Power supply"
+    suggested_parts:
+      - name: "Door latch assembly"
+        confidence: medium
+      - name: "Control board"
+        confidence: low
+
+  - id: other
+    label: "Something else"
+    clarifiers:
+      - id: description
+        question: "Please describe the problem"
+        type: textarea
+    suggested_causes: []
+    suggested_parts: []

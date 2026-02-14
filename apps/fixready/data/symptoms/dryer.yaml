@@ -1,0 +1,151 @@
+appliance_type: dryer
+symptoms:
+  - id: not_heating
+    label: "Not heating / clothes stay wet"
+    clarifiers:
+      - id: drum_spins
+        question: "Does the drum spin?"
+        type: select
+        options:
+          - "Yes, spins but no heat"
+          - "No, drum doesn't spin either"
+      - id: type
+        question: "What type of dryer?"
+        type: select
+        options:
+          - "Electric"
+          - "Gas"
+          - "Not sure"
+    suggested_causes:
+      - "Heating element failure (electric)"
+      - "Gas valve solenoid (gas)"
+      - "Thermal fuse blown"
+      - "Thermostat failure"
+    suggested_parts:
+      - name: "Heating element"
+        confidence: high
+      - name: "Thermal fuse"
+        confidence: high
+      - name: "Thermostat"
+        confidence: medium
+
+  - id: wont_start
+    label: "Won't start at all"
+    clarifiers:
+      - id: door_closes
+        question: "Does the door close properly?"
+        type: select
+        options:
+          - "Yes, door closes fine"
+          - "No, door won't latch"
+      - id: power
+        question: "Do any lights or sounds occur?"
+        type: select
+        options:
+          - "Yes, has power but won't start"
+          - "No lights or sounds at all"
+    suggested_causes:
+      - "Door switch failure"
+      - "Thermal fuse blown"
+      - "Start switch problem"
+      - "Drive motor failure"
+    suggested_parts:
+      - name: "Door switch"
+        confidence: high
+      - name: "Thermal fuse"
+        confidence: medium
+
+  - id: noisy
+    label: "Making loud noises"
+    clarifiers:
+      - id: noise_type
+        question: "What kind of noise?"
+        type: select
+        options:
+          - "Squealing/squeaking"
+          - "Thumping/banging"
+          - "Grinding/scraping"
+          - "Rattling"
+      - id: when
+        question: "When does the noise occur?"
+        type: select
+        options:
+          - "Throughout the cycle"
+          - "Only when starting"
+          - "Only when stopping"
+    suggested_causes:
+      - "Worn drum support rollers"
+      - "Worn drive belt"
+      - "Blower wheel obstruction"
+      - "Drum glides worn"
+    suggested_parts:
+      - name: "Drum support rollers"
+        confidence: high
+      - name: "Drive belt"
+        confidence: medium
+      - name: "Drum glides"
+        confidence: medium
+
+  - id: overheating
+    label: "Getting too hot / burning smell"
+    clarifiers:
+      - id: smell
+        question: "What kind of smell?"
+        type: select
+        options:
+          - "Burning rubber"
+          - "Burning electrical"
+          - "Just very hot"
+      - id: clothes_condition
+        question: "Are clothes damaged?"
+        type: select
+        options:
+          - "Yes, scorched or damaged"
+          - "No, just very hot"
+    suggested_causes:
+      - "Blocked exhaust vent"
+      - "Cycling thermostat failure"
+      - "Heating element stuck on"
+      - "Blower wheel blocked"
+    suggested_parts:
+      - name: "Cycling thermostat"
+        confidence: high
+      - name: "High-limit thermostat"
+        confidence: medium
+
+  - id: takes_too_long
+    label: "Takes forever to dry"
+    clarifiers:
+      - id: heat_present
+        question: "Does it produce heat?"
+        type: select
+        options:
+          - "Yes, has heat but slow"
+          - "No heat at all"
+      - id: vent_checked
+        question: "When was the vent last cleaned?"
+        type: select
+        options:
+          - "Within last 6 months"
+          - "6 months to 1 year"
+          - "Over a year"
+          - "Never / not sure"
+    suggested_causes:
+      - "Clogged vent system"
+      - "Weak heating element"
+      - "Moisture sensor dirty"
+      - "Blower wheel issue"
+    suggested_parts:
+      - name: "Vent cleaning service"
+        confidence: high
+      - name: "Moisture sensor"
+        confidence: medium
+
+  - id: other
+    label: "Something else"
+    clarifiers:
+      - id: description
+        question: "Please describe the problem"
+        type: textarea
+    suggested_causes: []
+    suggested_parts: []

@@ -1,0 +1,192 @@
+product: FixReady
+version: MVP-0.1
+generated: '2026-02-11'
+principles:
+- No homeowner app. Mobile web only.
+- No homeowner accounts required for MVP.
+- Integrate by exporting a job summary (email/CSV/webhook) into existing dispatch.
+- Minimize technician behavior change; improve what exists before dispatch.
+entities:
+  PartnerCompany:
+    fields:
+    - id
+    - name
+    - logo_url
+    - contact_phone
+    - contact_email
+    - response_window_copy
+  Appliance:
+    fields:
+    - id
+    - partner_id
+    - type
+    - brand
+    - model
+    - serial
+    - age_range
+    - address
+    - room
+    - contact
+    - created_at
+  ServiceRequest:
+    fields:
+    - id
+    - appliance_id
+    - symptom_category
+    - symptom_details
+    - media_urls
+    - confidence
+    - suggested_parts
+    - status
+    - created_at
+screens:
+- id: A1
+  name: Landing / Context
+  persona: Homeowner (mobile web)
+  route: /go/{token}
+  primary_cta: Get Started
+  elements:
+  - Partner logo/name
+  - 'Headline: Prepare this appliance so repairs are faster when you need them'
+  - 3 benefit bullets (faster repair, fewer visits, arrive prepared)
+  - 'Primary CTA: Get Started'
+  - 'Microcopy: No account. Takes ~2 minutes'
+  data_created: []
+- id: A2
+  name: Select Appliance Type
+  persona: Homeowner
+  route: /go/{token}/type
+  elements:
+  - Appliance type grid (Fridge, Dishwasher, Washer, Dryer, Oven/Range, HVAC, Other)
+  - Continue button
+  data_created:
+  - appliance_type
+- id: A3
+  name: Appliance Identity
+  persona: Homeowner
+  route: /go/{token}/identify
+  elements:
+  - Brand (typeahead)
+  - Model number (text)
+  - Serial number (optional)
+  - Approx. age range (<5, 5-10, 10+)
+  - 'Help link: where to find model/serial'
+  - Continue button
+  data_created:
+  - brand
+  - model
+  - serial(optional)
+  - age_range
+- id: A4
+  name: Location & Contact
+  persona: Homeowner
+  route: /go/{token}/location
+  elements:
+  - Address (autocomplete) + Unit (optional)
+  - Room/location (Kitchen, Laundry, Basement, Garage, Other)
+  - Preferred contact (Phone or Email)
+  - Save Appliance button
+  data_created:
+  - address
+  - unit(optional)
+  - room
+  - contact
+- id: A5
+  name: Registered / Success
+  persona: Homeowner
+  route: /go/{token}/done
+  elements:
+  - Success state + appliance summary card
+  - 'Instruction: leave magnet on appliance; scan again if it breaks'
+  - 'CTA: Done'
+  - 'Secondary CTA: Register another appliance'
+  data_created:
+  - appliance_id (system-generated)
+- id: B1
+  name: Appliance Recognized
+  persona: Homeowner (return scan)
+  route: /a/{appliance_id}
+  elements:
+  - Appliance summary + address confirmation
+  - 'CTA: What''s going wrong?'
+  data_created: []
+- id: B2
+  name: Symptom Category
+  persona: Homeowner
+  route: /a/{appliance_id}/symptoms
+  elements:
+  - Appliance-specific symptom list (5-7 options)
+  - Continue button
+  data_created:
+  - symptom_category
+- id: B3
+  name: Clarifiers + Media
+  persona: Homeowner
+  route: /a/{appliance_id}/details
+  elements:
+  - 2-4 dynamic clarifying questions
+  - 'Optional: error code'
+  - Optional media upload (photo/video)
+  - 'CTA: Request Repair'
+  data_created:
+  - symptom_details
+  - media(optional)
+- id: B4
+  name: Request Submitted
+  persona: Homeowner
+  route: /a/{appliance_id}/submitted
+  elements:
+  - Confirmation + reference ID
+  - Expected response window (company configurable)
+  - No scheduling in MVP
+  data_created:
+  - service_request_id
+- id: D1
+  name: Requests Queue
+  persona: Dispatcher/Ops (desktop)
+  route: /admin/requests
+  elements:
+  - 'Table: customer, appliance, issue, confidence, status'
+  - 'Filters: status, appliance type'
+  - Click through to detail
+  data_created: []
+- id: D2
+  name: Request Detail
+  persona: Dispatcher/Ops
+  route: /admin/requests/{id}
+  elements:
+  - Appliance profile
+  - Symptoms + answers + media
+  - Suggested causes + suggested parts kit (rules-based MVP)
+  - 'Actions: Assign tech, Export/Email summary'
+  data_created:
+  - assignment(optional)
+- id: T1
+  name: Tech Job Summary
+  persona: Technician (mobile link)
+  route: /job/{job_id}
+  elements:
+  - Appliance details + symptoms
+  - Parts checklist
+  - Address + access notes
+  - 'Optional: quick post-visit feedback'
+  data_created:
+  - post_visit_feedback(optional)
+integrations:
+  outbound_job_summary:
+    methods:
+    - email
+    - webhook(optional)
+    - csv_download(optional)
+    payload_fields:
+    - customer_name(optional)
+    - contact
+    - address
+    - appliance.type
+    - appliance.brand
+    - appliance.model
+    - appliance.serial
+    - symptoms
+    - media_urls
+    - suggested_parts
+    - confidence

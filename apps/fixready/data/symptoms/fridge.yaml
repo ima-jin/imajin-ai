@@ -1,0 +1,166 @@
+appliance_type: fridge
+symptoms:
+  - id: not_cooling
+    label: "Not cooling / too warm"
+    clarifiers:
+      - id: section
+        question: "Which section is too warm?"
+        type: select
+        options:
+          - "Fridge only"
+          - "Freezer only"
+          - "Both fridge and freezer"
+      - id: sounds
+        question: "Do you hear the compressor running?"
+        type: select
+        options:
+          - "Yes, running constantly"
+          - "Cycling on and off normally"
+          - "Not running at all"
+      - id: frost
+        question: "Do you see frost buildup?"
+        type: select
+        options:
+          - "Yes, lots of frost"
+          - "Some frost"
+          - "No frost"
+    suggested_causes:
+      - "Evaporator fan motor failure"
+      - "Condenser coils dirty"
+      - "Compressor failure"
+      - "Temperature control thermostat"
+      - "Defrost system issue"
+    suggested_parts:
+      - name: "Evaporator fan motor"
+        confidence: high
+      - name: "Temperature control thermostat"
+        confidence: medium
+      - name: "Defrost timer"
+        confidence: medium
+
+  - id: leaking_water
+    label: "Leaking water"
+    clarifiers:
+      - id: location
+        question: "Where is the water?"
+        type: select
+        options:
+          - "Inside the fridge"
+          - "Under the fridge"
+          - "Both inside and under"
+      - id: ice_maker
+        question: "Do you have an ice maker?"
+        type: select
+        options:
+          - "Yes, and it's connected"
+          - "Yes, but not connected"
+          - "No ice maker"
+    suggested_causes:
+      - "Clogged defrost drain"
+      - "Damaged water inlet valve"
+      - "Cracked drain pan"
+      - "Ice maker leak"
+    suggested_parts:
+      - name: "Defrost drain cleaning"
+        confidence: high
+      - name: "Water inlet valve"
+        confidence: medium
+      - name: "Drain pan"
+        confidence: low
+
+  - id: noisy
+    label: "Making loud or unusual noises"
+    clarifiers:
+      - id: noise_type
+        question: "What kind of noise?"
+        type: select
+        options:
+          - "Buzzing/humming"
+          - "Clicking"
+          - "Knocking/rattling"
+          - "Squealing"
+      - id: from_where
+        question: "Where does it seem to come from?"
+        type: select
+        options:
+          - "Bottom/back (compressor area)"
+          - "Inside the fridge"
+          - "Inside the freezer"
+          - "Not sure"
+    suggested_causes:
+      - "Condenser fan motor"
+      - "Evaporator fan motor"
+      - "Compressor issue"
+      - "Ice maker"
+    suggested_parts:
+      - name: "Condenser fan motor"
+        confidence: medium
+      - name: "Evaporator fan motor"
+        confidence: medium
+
+  - id: ice_maker_problem
+    label: "Ice maker not working"
+    clarifiers:
+      - id: issue_type
+        question: "What's the problem?"
+        type: select
+        options:
+          - "No ice at all"
+          - "Ice is too small"
+          - "Ice tastes bad"
+          - "Ice maker leaking"
+      - id: water_supply
+        question: "Is water reaching the fridge?"
+        type: select
+        options:
+          - "Yes, water dispenser works"
+          - "No, water dispenser also not working"
+          - "No water dispenser on this model"
+    suggested_causes:
+      - "Water inlet valve failure"
+      - "Ice maker assembly failure"
+      - "Water filter clogged"
+      - "Fill tube frozen"
+    suggested_parts:
+      - name: "Water inlet valve"
+        confidence: high
+      - name: "Ice maker assembly"
+        confidence: medium
+      - name: "Water filter"
+        confidence: medium
+
+  - id: too_cold_freezing
+    label: "Too cold / freezing food"
+    clarifiers:
+      - id: control_setting
+        question: "What's the temperature control set to?"
+        type: select
+        options:
+          - "Coldest setting"
+          - "Middle setting"
+          - "Warmest setting"
+      - id: what_freezing
+        question: "What's freezing?"
+        type: select
+        options:
+          - "Fresh food in fridge section"
+          - "Items near back wall"
+          - "Everything"
+    suggested_causes:
+      - "Temperature control thermostat stuck"
+      - "Damper control assembly issue"
+      - "Thermistor failure"
+    suggested_parts:
+      - name: "Temperature control thermostat"
+        confidence: high
+      - name: "Damper control assembly"
+        confidence: medium
+
+  - id: other
+    label: "Something else"
+    clarifiers:
+      - id: description
+        question: "Please describe the problem"
+        type: textarea
+    suggested_causes: []
+    suggested_parts: []

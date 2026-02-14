@@ -1,0 +1,195 @@
+appliance_type: dishwasher
+symptoms:
+  - id: not_cleaning
+    label: "Not cleaning dishes properly"
+    clarifiers:
+      - id: issue_type
+        question: "What's left on the dishes?"
+        type: select
+        options:
+          - "Food particles"
+          - "White film or spots"
+          - "Grease"
+          - "Everything - nothing cleaned"
+      - id: water_spray
+        question: "Do the spray arms spin?"
+        type: select
+        options:
+          - "Yes, they spin"
+          - "No, they don't spin"
+          - "Not sure"
+      - id: detergent
+        question: "Does the detergent dispenser open?"
+        type: select
+        options:
+          - "Yes"
+          - "No, detergent still in dispenser"
+          - "Not sure"
+    suggested_causes:
+      - "Spray arm clogged or damaged"
+      - "Water inlet valve issue"
+      - "Detergent dispenser failure"
+      - "Circulation pump weak"
+      - "Filter clogged"
+    suggested_parts:
+      - name: "Spray arm"
+        confidence: medium
+      - name: "Water inlet valve"
+        confidence: medium
+      - name: "Detergent dispenser"
+        confidence: low
+
+  - id: not_draining
+    label: "Not draining / water in bottom"
+    clarifiers:
+      - id: water_amount
+        question: "How much water is left?"
+        type: select
+        options:
+          - "Just a little puddle"
+          - "An inch or more"
+          - "Completely full"
+      - id: error_code
+        question: "Is there an error code?"
+        type: text
+        optional: true
+      - id: garbage_disposal
+        question: "Is dishwasher connected to garbage disposal?"
+        type: select
+        options:
+          - "Yes"
+          - "No"
+          - "Not sure"
+    suggested_causes:
+      - "Drain hose clogged or kinked"
+      - "Drain pump failure"
+      - "Air gap clogged"
+      - "Garbage disposal knockout not removed"
+      - "Filter clogged"
+    suggested_parts:
+      - name: "Drain pump"
+        confidence: high
+      - name: "Drain hose"
+        confidence: medium
+
+  - id: leaking
+    label: "Leaking water"
+    clarifiers:
+      - id: location
+        question: "Where is the water coming from?"
+        type: select
+        options:
+          - "Front door area"
+          - "Underneath"
+          - "Sides"
+          - "Not sure"
+      - id: when
+        question: "When does it leak?"
+        type: select
+        options:
+          - "During fill"
+          - "During wash"
+          - "All the time"
+          - "Only certain cycles"
+    suggested_causes:
+      - "Door gasket worn"
+      - "Door latch misaligned"
+      - "Pump seal leak"
+      - "Water inlet valve leak"
+      - "Tub crack"
+    suggested_parts:
+      - name: "Door gasket"
+        confidence: high
+      - name: "Pump seal"
+        confidence: medium
+
+  - id: not_filling
+    label: "Not filling with water"
+    clarifiers:
+      - id: sounds
+        question: "Do you hear any sounds?"
+        type: select
+        options:
+          - "Yes, normal sounds but no water"
+          - "Humming sound"
+          - "Completely silent"
+      - id: water_supply
+        question: "Is the water supply turned on?"
+        type: select
+        options:
+          - "Yes"
+          - "Not sure"
+    suggested_causes:
+      - "Water inlet valve failure"
+      - "Float switch stuck"
+      - "Water supply issue"
+      - "Electronic control board"
+    suggested_parts:
+      - name: "Water inlet valve"
+        confidence: high
+      - name: "Float switch"
+        confidence: medium
+
+  - id: noisy
+    label: "Making loud or unusual noises"
+    clarifiers:
+      - id: noise_type
+        question: "What kind of noise?"
+        type: select
+        options:
+          - "Grinding"
+          - "Buzzing/humming"
+          - "Knocking/banging"
+          - "Squealing"
+      - id: when
+        question: "When does it occur?"
+        type: select
+        options:
+          - "During wash cycle"
+          - "During drain"
+          - "Throughout entire cycle"
+    suggested_causes:
+      - "Wash pump bearing worn"
+      - "Spray arm hitting dishes"
+      - "Drain pump issue"
+      - "Circulation pump"
+    suggested_parts:
+      - name: "Wash pump"
+        confidence: medium
+      - name: "Drain pump"
+        confidence: medium
+
+  - id: wont_start
+    label: "Won't start at all"
+    clarifiers:
+      - id: door_latches
+        question: "Does the door latch properly?"
+        type: select
+        options:
+          - "Yes, latches fine"
+          - "No, door won't latch"
+      - id: lights
+        question: "Do any lights come on?"
+        type: select
+        options:
+          - "Yes, lights on but won't start"
+          - "No lights at all"
+    suggested_causes:
+      - "Door latch/switch failure"
+      - "Control board issue"
+      - "Thermal fuse blown"
+      - "Power supply problem"
+    suggested_parts:
+      - name: "Door latch assembly"
+        confidence: high
+      - name: "Thermal fuse"
+        confidence: medium
+
+  - id: other
+    label: "Something else"
+    clarifiers:
+      - id: description
+        question: "Please describe the problem"
+        type: textarea
+    suggested_causes: []
+    suggested_parts: []
