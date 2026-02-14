@@ -7,15 +7,16 @@
  * 3. Structure is correct
  */
 
-import type { SignedMessage, VerificationResult } from './types.js';
-import * as crypto from './crypto.js';
-import { canonicalize } from './sign.js';
+import type { SignedMessage, VerificationResult } from './types';
+import * as crypto from './crypto';
+import { canonicalize } from './sign';
+import { SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from './constants';
 
-/** Default max age for messages (5 minutes) */
-const DEFAULT_MAX_AGE_MS = 5 * 60 * 1000;
+/** Default max age for messages (from constants) */
+const DEFAULT_MAX_AGE_MS = SIGNED_MESSAGE_MAX_AGE;
 
 /** Allow messages up to 30 seconds in the future (clock skew) */
-const MAX_FUTURE_MS = 30 * 1000;
+const MAX_FUTURE_MS = FUTURE_TOLERANCE;
 
 export interface VerifyOptions {
   /** Max age in milliseconds (default: 5 minutes, 0 = no limit) */

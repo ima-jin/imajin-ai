@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, challenges } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
+import { CHALLENGE_TTL } from '@imajin/auth';
 
 /**
  * POST /api/challenge
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
     // Generate challenge
     const challengeId = `ch_${randomBytes(16).toString('hex')}`;
     const challenge = randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const expiresAt = new Date(Date.now() + CHALLENGE_TTL);
 
     // Store challenge
     await db.insert(challenges).values({

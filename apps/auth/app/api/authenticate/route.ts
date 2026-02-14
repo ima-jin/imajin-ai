@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, challenges, tokens } from '@/src/db';
 import { eq, and, isNull, gt } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
-import { verify as verifySignature, hexToBytes, stringToBytes } from '@imajin/auth';
+import { verify as verifySignature, hexToBytes, stringToBytes, TOKEN_TTL } from '@imajin/auth';
 
 /**
  * POST /api/authenticate
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
 
     // Generate token
     const tokenId = `imajin_tok_${randomBytes(24).toString('hex')}`;
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const expiresAt = new Date(Date.now() + TOKEN_TTL);
 
     await db.insert(tokens).values({
       id: tokenId,
@@ -153,14 +153,4 @@ async function verifyRawSignature(
   }
 }
 
-// Helper to convert hex to bytes (inline to avoid import issues)
-function hexToBytes(hex: string): Uint8Array {
-  if (hex.length % 2 !== 0) {
-    throw new Error('Invalid hex string');
-  }
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
-}
+// Note: hexToBytes is now imported from @imajin/auth

@@ -8,8 +8,8 @@
  * 4. That it wasn't tampered with (signature)
  */
 
-import type { SignedMessage, IdentityType, Keypair } from './types.js';
-import * as crypto from './crypto.js';
+import type { SignedMessage, IdentityType, Keypair } from './types';
+import * as crypto from './crypto';
 
 /**
  * Generate a new Ed25519 keypair

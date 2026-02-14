@@ -19,7 +19,11 @@
  */
 
 // Types
-export * from './types.js';
+export * from './types';
+export * from './types/node';
+
+// Constants (TTLs, rate limits)
+export * from './constants';
 
 // Core signing/verification
 export { 
@@ -29,7 +33,7 @@ export {
   getPublicKey, 
   canonicalize,
   createChallenge,
-} from './sign.js';
+} from './sign';
 
 export { 
   verify, 
@@ -38,7 +42,7 @@ export {
   verifySignatureOnly,
   isValidMessageStructure,
   type VerifyOptions,
-} from './verify.js';
+} from './verify';
 
 // Crypto utilities (for advanced use)
 export {
@@ -48,7 +52,7 @@ export {
   isValidPublicKey,
   isValidPrivateKey,
   isValidSignature,
-} from './crypto.js';
+} from './crypto';
 
 // Keypair provider (convenience functions)
 export {
@@ -64,4 +68,4 @@ export {
   listKeypairs,
   isValidDID,
   getPublicKeyPrefixFromDID,
-} from './providers/keypair.js';
+} from './providers/keypair';

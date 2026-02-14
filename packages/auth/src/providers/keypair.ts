@@ -7,10 +7,10 @@
  * This is the default provider for the Imajin identity system.
  */
 
-import type { Keypair, Identity, SignedMessage, IdentityType } from '../types.js';
-import * as crypto from '../crypto.js';
-import { sign, signSync, canonicalize, createChallenge } from '../sign.js';
-import { verify, verifySync, verifyChallenge } from '../verify.js';
+import type { Keypair, Identity, SignedMessage, IdentityType } from '../types';
+import * as crypto from '../crypto';
+import { sign, signSync, canonicalize, createChallenge } from '../sign';
+import { verify, verifySync, verifyChallenge } from '../verify';
 
 // Re-export for convenience
 export { sign, signSync, verify, verifySync, verifyChallenge, createChallenge };
