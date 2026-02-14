@@ -43,9 +43,9 @@ imajin-ai is the infrastructure layer. Open source. Self-hostable. No subscripti
 | [dykil](./apps/dykil) | dykil.imajin.ai | Community spending tracker | ✅ Scaffold |
 | [karaoke](./apps/karaoke) | karaoke.imajin.ai | Event queue manager | ✅ Working |
 | profile | profile.imajin.ai | Identity profiles | 🟡 Planning |
+| events | events.imajin.ai | Create events, sell tickets, verify attendance | 🟡 Planning |
 | shop | shop.imajin.ai | Local marketplace | 🟡 Planning |
 | coffee | coffee.imajin.ai | Tips / "buy me a coffee" — direct payments to Solana wallet or Stripe | 🟡 Planning |
-| tickets | tickets.imajin.ai | Events/ticketing | 🟡 Planning |
 | connections | connections.imajin.ai | Trust graph — who knows whom, invitation chains, network visualization | 🟡 Planning |
 | links | links.imajin.ai | Sovereign link-in-bio pages (Linktree alternative) | 🟡 Planning |
 | learn | learn.imajin.ai | AI training courses | 🟡 Planning |

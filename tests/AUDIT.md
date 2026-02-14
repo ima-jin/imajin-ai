@@ -23,8 +23,7 @@
 | App | Priority | Estimate | Dependency |
 |-----|----------|----------|------------|
 | **profile** | 🔴 Critical | 2-3 days | auth |
-| **events** | 🔴 Critical | 3-5 days | auth, profile |
-| **tickets** | 🔴 Critical | 3-5 days | auth, events, pay |
+| **events** | 🔴 Critical | 5-7 days | auth, profile, pay |
 | **connections** | 🟡 Important | 2-3 days | auth, profile |
 | **coffee** | 🟡 Important | 1-2 days | auth, pay |
 | **links** | 🟡 Important | 1-2 days | auth, profile |
@@ -56,14 +55,12 @@
 
 ### Events Layer 🔴
 - Event CRUD: **Missing**
-- Ticket configuration: **Missing**
-- Search/discovery: **Missing**
-
-### Tickets Layer 🔴
+- Ticket type configuration: **Missing**
 - Purchase flow: **Missing**
-- Ownership transfer: **Missing**
+- Ticket ownership + transfer: **Missing**
 - .fair manifest generation: **Missing**
 - Verification: **Missing**
+- Search/discovery: **Missing**
 
 ### Payments Layer ✅
 - Stripe checkout: **Done**
@@ -101,9 +98,9 @@ Week 1-2 (Feb 14-28):
 └── Auth integration tests
 
 Week 3-4 (Mar 1-14):
-├── Tickets service scaffold
-├── Pay ↔ Tickets integration
-└── Events ↔ Tickets integration
+├── Events: ticket purchase flow
+├── Events ↔ Pay integration
+└── Ticket minting + .fair manifests
 
 Week 5-6 (Mar 15-28):
 ├── Connections service (basic)
@@ -133,34 +130,27 @@ PUT  /api/profile/:did      # Update profile
 GET  /api/profile/search    # Search profiles
 ```
 
-### Phase 2: Events
+### Phase 2: Events (includes ticketing)
 ```bash
 # Scaffold events service
 pnpm turbo gen app --name events
 
-# Endpoints needed:
-POST /api/events            # Create event
-GET  /api/events/:id        # Get event
-GET  /api/events/search     # Search events
-PUT  /api/events/:id        # Update event
-GET  /api/events/:id/tickets # Get ticket config
+# Event endpoints:
+POST /api/events              # Create event + ticket types
+GET  /api/events/:id          # Get event
+GET  /api/events/search       # Search events
+PUT  /api/events/:id          # Update event
+
+# Ticket endpoints:
+POST /api/events/:id/purchase # Buy ticket (initiates pay flow)
+GET  /api/tickets/:id         # Get ticket details
+GET  /api/my/tickets          # List my tickets
+POST /api/tickets/verify      # Verify ticket signature
+POST /api/tickets/:id/transfer # Transfer ownership
 ```
 
-### Phase 3: Tickets
-```bash
-# Scaffold tickets service
-pnpm turbo gen app --name tickets
-
-# Endpoints needed:
-POST /api/tickets/purchase  # Buy ticket (initiates pay flow)
-GET  /api/tickets/:id       # Get ticket details
-GET  /api/tickets           # List tickets (by owner, event)
-POST /api/tickets/verify    # Verify ticket signature
-POST /api/tickets/transfer  # Transfer ownership
-```
-
-### Phase 4: Integration
-- Wire auth → profile → events → tickets → pay
+### Phase 3: Integration
+- Wire auth → profile → events → pay
 - Test full purchase flow
 - Verify .fair manifest generation
 
@@ -234,32 +224,10 @@ events (
 )
 ```
 
-### Ticket Types Table
+### Events + Tickets Tables
 ```sql
-ticket_types (
-  id            TEXT PRIMARY KEY,
-  event_id      TEXT REFERENCES events(id),
-  name          TEXT,  -- "virtual", "physical", "vip"
-  price         INTEGER,  -- cents
-  currency      TEXT,
-  quantity      INTEGER,  -- null = unlimited
-  sold          INTEGER DEFAULT 0,
-  created_at    TIMESTAMP
-)
-```
-
-### Tickets Table
-```sql
-tickets (
-  id            TEXT PRIMARY KEY,
-  ticket_type_id TEXT REFERENCES ticket_types(id),
-  owner_did     TEXT REFERENCES profiles(did),
-  purchased_at  TIMESTAMP,
-  payment_id    TEXT,  -- Stripe payment ID
-  fair_manifest JSONB,  -- .fair attribution
-  signature     TEXT,   -- Ed25519 signature
-  status        TEXT    -- valid, used, refunded, transferred
-)
+-- See apps/events/PROJECTS.md for full schema
+-- events, ticket_types, tickets, ticket_transfers
 ```
 
 ### Connections Table

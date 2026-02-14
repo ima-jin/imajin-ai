@@ -68,7 +68,7 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 │     → physical: 500 @ $10                → inviter recorded         │
 │                                                                     │
 │                                       5. BUY TICKET                 │
-│                                          POST /api/tickets/purchase │
+│                                          POST /api/events/:id/purchase │
 │                                          → pay.imajin.ai processes  │
 │                                          → $1 charged               │
 │                                          → .fair manifest created   │
@@ -342,7 +342,7 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 
 ## Service Dependency Matrix
 
-| Test Case | auth | profile | events | tickets | pay | connections |
+| Test Case | auth | profile | events | pay | connections |
 |-----------|------|---------|--------|---------|-----|---------|
 | TC-001 | ✅ | | | | | |
 | TC-002 | ✅ | | | | | |
@@ -366,7 +366,7 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 | **registry** | registry.imajin.ai | ✅ Scaffold | - |
 | **profile** | profile.imajin.ai | 🔴 Missing | Needs scaffold |
 | **events** | events.imajin.ai | 🔴 Missing | Needs scaffold |
-| **tickets** | tickets.imajin.ai | 🔴 Missing | Needs scaffold |
+| **events** | events.imajin.ai | 🔴 Missing | Events + tickets merged |
 | **connections** | connections.imajin.ai | 🔴 Missing | Needs scaffold |
 | **chat** | chat.imajin.ai | 🔴 Missing | Needs scaffold |
 
@@ -376,9 +376,8 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 
 ### Critical Path
 1. **profile** - Identity needs a face
-2. **events** - Jin needs to create the event
-3. **tickets** - Must sell and transfer ownership
-4. **Integration** - auth ↔ pay ↔ tickets ↔ events
+2. **events** - Create event + sell tickets (merged)
+3. **Integration** - auth ↔ profile ↔ events ↔ pay
 
 ### Important but Deferrable
 5. **connections** - Trust graph (can stub inviter tracking in profile)
