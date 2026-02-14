@@ -1,6 +1,6 @@
 # apps/profile — profile.imajin.ai
 
-**Status:** 🔴 Not Started  
+**Status:** 🟡 Scaffolded  
 **Domain:** profile.imajin.ai  
 **Port:** 3005  
 **Stack:** Next.js 14, Tailwind, Drizzle, Neon Postgres
@@ -210,11 +210,14 @@ NEXT_PUBLIC_BASE_URL=https://profile.imajin.ai
 
 ## TODO
 
-- [ ] Scaffold Next.js app
-- [ ] Database schema + Drizzle setup
-- [ ] API routes (CRUD)
-- [ ] Public profile page
-- [ ] Handle claiming
-- [ ] Search functionality
-- [ ] Auth integration
+- [x] Scaffold Next.js app
+- [x] Database schema + Drizzle setup
+- [x] API routes (CRUD)
+- [x] Public profile page
+- [x] Handle claiming
+- [x] Search functionality
+- [x] Auth integration
 - [ ] Profile editing UI
+- [ ] Set up Neon database
+- [ ] Run migrations
+- [ ] Deploy to Vercel
