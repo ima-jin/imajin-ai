@@ -1,6 +1,6 @@
 # apps/links — links.imajin.ai
 
-**Status:** 🔴 Not Started  
+**Status:** 🟡 Scaffolded  
 **Domain:** links.imajin.ai  
 **Port:** 3010  
 **Stack:** Next.js 14, Tailwind, Drizzle, Neon Postgres
@@ -322,14 +322,18 @@ NEXT_PUBLIC_BASE_URL=https://links.imajin.ai
 
 ## TODO
 
-- [ ] Scaffold Next.js app
-- [ ] Database schema + Drizzle setup
-- [ ] Page CRUD APIs
-- [ ] Link CRUD APIs
-- [ ] Click tracking
-- [ ] Public page renderer
-- [ ] Theme system
+- [x] Scaffold Next.js app
+- [x] Database schema + Drizzle setup (link_pages, links, link_clicks)
+- [x] Page CRUD APIs
+- [x] Link CRUD APIs  
+- [x] Click tracking (privacy-preserving)
+- [x] Public page renderer with themes
+- [x] Theme system with presets (dark, light, midnight, sunset, ocean)
+- [x] Stats endpoint with clicks by link, day, and referrer
+- [x] Auth integration
 - [ ] Page editor UI
-- [ ] Stats dashboard
-- [ ] Auth integration
+- [ ] Stats dashboard UI
 - [ ] Social link icons
+- [ ] Set up Neon database
+- [ ] Run migrations
+- [ ] Deploy to Vercel
