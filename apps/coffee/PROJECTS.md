@@ -1,6 +1,6 @@
 # apps/coffee — coffee.imajin.ai
 
-**Status:** 🔴 Not Started  
+**Status:** 🟡 Scaffolded  
 **Domain:** coffee.imajin.ai  
 **Port:** 3009  
 **Stack:** Next.js 14, Tailwind, Drizzle, Neon Postgres
@@ -331,13 +331,19 @@ NEXT_PUBLIC_BASE_URL=https://coffee.imajin.ai
 
 ## TODO
 
-- [ ] Scaffold Next.js app
-- [ ] Database schema + Drizzle setup
-- [ ] Page CRUD APIs
-- [ ] Tip submission flow
-- [ ] Stripe Connect integration
-- [ ] Solana wallet integration
-- [ ] Public tip page UI
+- [x] Scaffold Next.js app
+- [x] Database schema + Drizzle setup
+- [x] Page CRUD APIs
+- [x] Tip submission flow
+- [x] Stripe payment intent integration
+- [x] Solana address display
+- [x] Public tip page UI with presets
+- [x] Webhook handling for Stripe
+- [ ] Stripe Connect onboarding flow
+- [ ] Full Stripe Elements integration
+- [ ] Solana transaction building
 - [ ] Dashboard with tip history
 - [ ] QR code generation
-- [ ] Webhook handling for payment confirmations
+- [ ] Set up Neon database
+- [ ] Run migrations
+- [ ] Deploy to Vercel
