@@ -139,7 +139,7 @@ export default function ArticlePage() {
           The code: <a href="https://github.com/ima-jin/imajin-ai" target="_blank" rel="noopener noreferrer">github.com/ima-jin/imajin-ai</a>
         </p>
         <p>See you in the town square.</p>
-        <p className="text-gray-500">— bobby</p>
+        <p className="text-gray-500">— Ryan VETEZE aka b0bby</p>
 
         {/* CTA */}
         <div className="mt-16 pt-8 border-t border-gray-800 not-prose">
