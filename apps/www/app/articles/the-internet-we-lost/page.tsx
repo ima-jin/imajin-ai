@@ -92,12 +92,6 @@ export default function ArticlePage() {
         </p>
         <p>The model is collapsing under its own contradictions.</p>
 
-        <p>
-          And no — this isn't Mastodon. Mastodon decentralized the social network: same paradigm, 
-          distributed hosting. I'm building the identity and payment rails that social networks 
-          (and everything else) should have been built on from the start. The plumbing, not the app.
-        </p>
-
         <h2>What I'm Building</h2>
         <p>
           I'm building infrastructure. Sovereign infrastructure for identity, payments, and attribution.
