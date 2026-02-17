@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -45,8 +46,14 @@ export default function RegisterPage() {
         ← Back
       </Link>
 
-      {/* Orb */}
-      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 shadow-[0_0_40px_rgba(255,107,53,0.3)] mb-8" />
+      {/* Logo */}
+      <Image
+        src="/images/logo-kanji.svg"
+        alt="今人"
+        width={64}
+        height={64}
+        className="mb-8"
+      />
       
       {/* Title */}
       <h1 className="text-3xl md:text-4xl font-light tracking-tight mb-2">

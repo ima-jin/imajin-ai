@@ -1,18 +1,28 @@
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-6 py-16">
-      {/* Orb */}
-      <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 shadow-[0_0_60px_rgba(255,107,53,0.4)] mb-12" />
+      {/* Logo */}
+      <Image
+        src="/images/logo-kanji.svg"
+        alt="今人"
+        width={120}
+        height={120}
+        className="mb-8"
+        priority
+      />
       
-      {/* Title */}
-      <h1 className="text-5xl md:text-6xl font-light tracking-tight mb-4">
-        今人
-      </h1>
-      <p className="text-xl md:text-2xl text-gray-400 mb-12">
-        Imajin
-      </p>
+      {/* Wordmark */}
+      <Image
+        src="/images/logo.svg"
+        alt="Imajin"
+        width={280}
+        height={80}
+        className="mb-12"
+        priority
+      />
       
       {/* Core message */}
       <div className="max-w-2xl text-center space-y-6 mb-12">
