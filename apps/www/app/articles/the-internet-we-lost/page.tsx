@@ -92,6 +92,12 @@ export default function ArticlePage() {
         </p>
         <p>The model is collapsing under its own contradictions.</p>
 
+        <p>
+          And no — this isn't Mastodon. Mastodon decentralized the social network: same paradigm, 
+          distributed hosting. I'm building the identity and payment rails that social networks 
+          (and everything else) should have been built on from the start. The plumbing, not the app.
+        </p>
+
         <h2>What I'm Building</h2>
         <p>
           I'm building infrastructure. Sovereign infrastructure for identity, payments, and attribution.
@@ -99,10 +105,17 @@ export default function ArticlePage() {
         <ul>
           <li><strong>You own your identity.</strong> A decentralized identifier (DID) that no platform can revoke.</li>
           <li><strong>You own your data.</strong> It lives on your node, not in someone's cloud.</li>
+          <li><strong>You choose what to share.</strong> Spotify sees your music taste. LinkedIn sees your work history. Neither sees the other. You grant access selectively — and revoke it whenever you want.</li>
           <li><strong>Payments are plumbing.</strong> Built in, frictionless, direct. No platform taking 30%.</li>
           <li><strong>Attribution is protocol.</strong> Who made what. Who gets paid. No obfuscation.</li>
           <li><strong>Connections are intentional.</strong> One by one. No algorithmic suggestions.</li>
         </ul>
+        <p>
+          This is the inversion: platforms currently take everything by default, and you beg for 
+          privacy settings. Sovereign infrastructure means you own everything by default, and you 
+          selectively grant access. Prove you're over 18 without revealing your birthdate. Share 
+          your email with one service but not another. Your call, every time.
+        </p>
         <p>It's the BBS model, rebuilt for 2026. Slow. Intentional. Curated. Owned.</p>
 
         <h2>The Town Square Returns</h2>
