@@ -40,7 +40,7 @@ export default function ArticlePage() {
         <p>
           Every day, people would dial in. They'd check their favorite message channels for new posts. 
           They'd download the latest .MOD, .S3M and .XM files, 0-day demo scene drops and early MPEG 
-          and MP3 files. Sometimes they'd play a door game with another user who happened to be online 
+          video files. Sometimes they'd play a door game with another user who happened to be online 
           or they would join a group chat with b0b and whoever else happened to be on at that moment. 
           Then they'd log off, and someone else would dial in.
         </p>
@@ -316,6 +316,8 @@ export default function ArticlePage() {
         </p>
         <p>Thirty years of being right. Thirty years of pain. Thirty years of knowing.</p>
         <p>Now we build.</p>
+        <p>See you in the town square.</p>
+        <p className="text-gray-500">— Ryan VETEZE aka b0b</p>
 
         <hr className="my-12 border-gray-800" />
 
@@ -325,8 +327,6 @@ export default function ArticlePage() {
           <li>The network: <a href="https://imajin.ai">imajin.ai</a></li>
           <li>Jin's party: April 1st, 2026</li>
         </ul>
-        <p>See you in the town square.</p>
-        <p className="text-gray-500">— Ryan VETEZE aka b0b</p>
 
         {/* CTA */}
         <div className="mt-16 pt-8 border-t border-gray-800 not-prose">

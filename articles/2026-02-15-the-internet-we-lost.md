@@ -4,13 +4,13 @@
 
 For a brief moment in time, I had the perfect social media platform in the palm of my hand.
 
-Between 1990 and 1992, I ran a 3-node BBS called b0bby's World. It was a music distribution hub focused on the demoscene - first featuring music by a group called mazurka, and later, chill productions. Three phone lines. Three modems. Three people could be connected at once.
+Between 1990 and 1992, I ran a 3-node BBS called b0bby's World. It was a music distribution hub focused on the demoscene - first featuring music by a group called MAZURkA, and later, Chill Productions. Three phone lines. Three modems. Three people could be connected at once.
 
 Nearly 300 people found their way to those three nodes.
 
-Every day, people would dial in. They'd check their favorite message channels for new posts. They'd download the latest .MOD, .S3M and .XM files, 0-day demo scene drops and early MPEG and MP3 files. Sometimes they'd play a door game with another user who happened to be online or they would join a group chat with b0b and whoever else happened to be on at that moment. Then they'd log off, and someone else would dial in.
+Every day, people would dial in. They'd check their favorite message channels for new posts. They'd download the latest .MOD, .S3M and .XM files, 0-day demo scene drops and early MPEG video files. Sometimes they'd play a door game with another user who happened to be online or they would join a group chat with b0b and whoever else happened to be on at that moment. Then they'd log off, and someone else would dial in.
 
-It started local. But word spread through the demoscene networks. Soon people were calling from across the USA. Then international numbers started appearing in the logs. People from Europe. People who'd never meet in person, finding each other through shared love of tracker music and demo art.
+It started local. But word spread through the demoscene networks. Soon people were calling from places in the USA. Then international numbers started appearing in the logs. People from Europe. People who'd never meet in person, finding each other through shared love of tracker music and demo art.
 
 Some of them joined the music groups. They started creating together. Collaborating across phone lines and modems.
 
@@ -217,14 +217,13 @@ Thirty years of being right. Thirty years of pain. Thirty years of knowing.
 
 Now we build.
 
----
-
-**If you want to follow along:**
-- The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- The network: [imajin.ai](imajin.ai) (coming soon)
-- Jin's party: April 1st, 2026
-
 See you in the town square.
 
 *— Ryan VETEZE aka b0b*
 
+---
+
+**If you want to follow along:**
+- The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
+- The network: [imajin.ai](imajin.ai)
+- Jin's party: April 1st, 2026
