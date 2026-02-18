@@ -110,9 +110,41 @@ The pattern-matching approach I'd used since 1985 — copying magazine programs,
 
 ---
 
+## The Potato on the Keyboard
+
+One of my strongest pattern-matching skills: knowing where errors came from faster than anyone else.
+
+Not by tracing logs methodically. By feeling the shape of the problem — the speed, the location, the rhythm of the errors, data points I couldn't even consciously name.
+
+Here's an example. The booking platform started getting repeated trip uploads one night. Hundreds every minute. Same data, over and over. Nobody could figure out what was happening.
+
+I said: "I think someone left a potato on their numberpad."
+
+We traced the uploads to a single agent. Called her. Turned out she'd put a notebook on top of her numpad to raise her mouse up a little — she was developing carpal tunnel symptoms. The notebook was holding down a key.
+
+I didn't diagnose that through formal analysis. I felt the shape of it: one source, consistent pattern, mechanical repetition. My brain pattern-matched to "physical object stuck on key" before I could explain why.
+
+That's what pattern recognition looks like in practice. It's not magic. It's just a different way of processing information.
+
+---
+
+## Where Formal Training Still Wins
+
+I'm not saying formally-trained developers are obsolete. They're not.
+
+The scholastic devs are still essential for seeing when conventions are being broken. When a pattern-matcher is about to do something architecturally wrong, the person who understands *why* the conventions exist is the one who catches it.
+
+They're guardrails. They guide architecture decisions. They maintain coherence across systems that pattern-matchers might fragment through local optimization.
+
+The shift isn't that explanation becomes worthless. It's that explanation alone — without the ability to feel patterns and ship — is no longer enough. The hierarchy inverted, but both skills still matter.
+
+The question is which one is your primary mode, and whether you can develop the other.
+
+---
+
 ## The Unicorn
 
-The ultimate developer can do both: pattern-match by feel AND explain formally. Recognize what works AND articulate why.
+The ultimate developer can do both: pattern-match by feel AND explain formally. Recognize what works AND articulate why. Ship fast AND maintain architectural coherence.
 
 I'd argue those people are exceptionally rare.
 
@@ -120,7 +152,7 @@ Most of us are stronger on one axis than the other. The formally-trained develop
 
 For decades, the system rewarded explanation over execution.
 
-AI changes the equation. If you can pattern-match, AI can help you explain. If you can only explain, AI might actually make you less differentiated — because explaining is exactly what it's good at.
+AI changes the equation. If you can pattern-match, AI can help you explain. If you can only explain, AI might actually make you less differentiated — because explaining is exactly what it's good at. But if you can catch architectural drift and maintain conventions? That's still valuable. AI doesn't have taste yet.
 
 ---
 
