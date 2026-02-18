@@ -12,11 +12,13 @@ I never truly understood computer science.
 
 I couldn't diagram a red-black tree. I couldn't explain Big O notation without looking it up. I couldn't tell you why one design pattern was formally better than another — I could only tell you which one *felt* right when I looked at it.
 
-I learned to code by copying programs out of magazines. Line by line. Character by character. BASIC programs from Compute! and RUN magazine into my Commodore 64, not understanding what any of it did, just following the pattern on the page.
+We were poor. My dad was always finding old computers that people couldn't get working anymore — hauling them home, passing them to me. I would boot them up, fiddle around, get them going. No manuals. No formal training. Just pattern recognition: try something, see what happens, adjust.
 
-When it didn't work, I'd compare my version to the source until I found where I'd mistyped something. Fix it. Run it again.
+Sometimes I'd copy programs out of Compute! magazine into an Atari XT. Line by line. Not understanding what any of it did, just following the pattern on the page. When it didn't work, I'd compare my version to the source until I found where I'd gone wrong.
 
-I wasn't learning theory. I was learning pattern recognition.
+The neighbor kids had a Commodore 64. We'd write choose-your-own-adventure games together — not copying anything, just making it up as we went.
+
+I wasn't learning theory. I was learning to make things work by feel.
 
 That's been my entire career.
 
