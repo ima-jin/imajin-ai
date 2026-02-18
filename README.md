@@ -28,9 +28,9 @@ imajin-ai is the infrastructure layer. Open source. Self-hostable. No subscripti
 |-------|---------|---------|--------|
 | **Identity** | [@imajin/auth](./packages/auth) | [auth.imajin.ai](./apps/auth) | ✅ Ed25519 signing |
 | **Payments** | [@imajin/pay](./packages/pay) | [pay.imajin.ai](./apps/pay) | ✅ Stripe + Solana |
-| **Attribution** | [.fair](https://github.com/ima-jin/fair) | — | 📋 Spec |
-| **Presence** | [Unit](https://github.com/ima-jin/imajin-os) | — | ✅ Hardware |
-| **Orchestration** | [imajin-cli](https://github.com/ima-jin/imajin-cli) | — | ✅ Working |
+| **Attribution** | .fair | — | 📋 Spec |
+| **Presence** | Unit | — | ✅ Hardware |
+| **Orchestration** | imajin-cli | — | ✅ Working |
 
 ---
 
@@ -222,15 +222,6 @@ imajin-ai/
 ├── turbo.json
 └── pnpm-workspace.yaml
 ```
-
----
-
-## Related Projects
-
-- **[imajin-os](https://github.com/ima-jin/imajin-os)** — The Unit hardware + firmware
-- **[imajin-cli](https://github.com/ima-jin/imajin-cli)** — Agent orchestration layer
-- **[imajin-token](https://github.com/ima-jin/imajin-token)** — MJN Protocol specs
-- **[.fair](https://github.com/ima-jin/fair)** — Attribution standard
 
 ---
 

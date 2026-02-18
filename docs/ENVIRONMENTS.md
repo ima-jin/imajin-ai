@@ -4,23 +4,23 @@
 
 The platform uses Neon Postgres with branch-based environment isolation.
 
-| Environment | Neon Branch | Endpoint | Purpose |
-|-------------|-------------|----------|---------|
-| Production | production | ep-small-flower-aiy84lkh-pooler | Live site (imajin.ai) |
-| Staging | staging | ep-damp-scene-aik9j5ah | Vercel preview deployments |
-| Development | dev | ep-tiny-river-aivlleyx | Local development |
+| Environment | Neon Branch | Purpose |
+|-------------|-------------|---------|
+| Production | production | Live site (imajin.ai) |
+| Staging | staging | Vercel preview deployments |
+| Development | dev | Local development |
 
 ### Connection Strings
 
+Get connection strings from Neon dashboard or CLI:
+
+```bash
+neonctl connection-string BRANCH_NAME --project-id YOUR_PROJECT_ID
 ```
-# Production (Vercel production)
-DATABASE_URL="postgresql://neondb_owner:PASSWORD@ep-small-flower-aiy84lkh-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require"
 
-# Staging (Vercel preview)
-DATABASE_URL="postgresql://neondb_owner:PASSWORD@ep-damp-scene-aik9j5ah.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require"
-
-# Development (local)
-DATABASE_URL="postgresql://neondb_owner:PASSWORD@ep-tiny-river-aivlleyx.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require"
+Format:
+```
+DATABASE_URL="postgresql://USER:PASSWORD@ENDPOINT.neon.tech/neondb?sslmode=require"
 ```
 
 ## Vercel Configuration
@@ -82,22 +82,22 @@ DATABASE_URL="production-url" pnpm db:push
 To reset staging to match production:
 
 ```bash
-neonctl branches delete staging --project-id polished-meadow-93896384
-neonctl branches create --name staging --parent production --project-id polished-meadow-93896384
+neonctl branches delete staging --project-id $NEON_PROJECT_ID
+neonctl branches create --name staging --parent production --project-id $NEON_PROJECT_ID
 ```
 
 ## Neon CLI Commands
 
 ```bash
 # List branches
-neonctl branches list --project-id polished-meadow-93896384
+neonctl branches list --project-id $NEON_PROJECT_ID
 
 # Create branch
-neonctl branches create --name BRANCH_NAME --parent production --project-id polished-meadow-93896384
+neonctl branches create --name BRANCH_NAME --parent production --project-id $NEON_PROJECT_ID
 
 # Delete branch
-neonctl branches delete BRANCH_NAME --project-id polished-meadow-93896384
+neonctl branches delete BRANCH_NAME --project-id $NEON_PROJECT_ID
 
 # Get connection string
-neonctl connection-string BRANCH_NAME --project-id polished-meadow-93896384
+neonctl connection-string BRANCH_NAME --project-id $NEON_PROJECT_ID
 ```
