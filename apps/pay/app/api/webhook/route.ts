@@ -146,10 +146,9 @@ async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
     lastError: paymentIntent.last_payment_error?.message,
   });
   
-  // TODO:
-  // - Notify customer
-  // - Update order status
-  // - Maybe retry
+  // Payment failures from direct charges
+  // For checkout session failures, Stripe sends checkout.session.expired
+  // which we'd handle separately if needed
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
@@ -160,10 +159,57 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     metadata: session.metadata,
   });
   
-  // TODO:
-  // - Create order record
-  // - Send confirmation
-  // - Fulfill order
+  // Notify the originating service based on metadata
+  // Events service handles event tickets
+  if (session.metadata?.eventId) {
+    await notifyEventsService('checkout.completed', session);
+  }
+  
+  // Add other service callbacks here as needed
+  // e.g., if (session.metadata?.orderId) { await notifyShopService(...) }
+}
+
+/**
+ * Notify events service about payment completion
+ */
+async function notifyEventsService(
+  type: 'checkout.completed' | 'payment.failed',
+  session: Stripe.Checkout.Session
+) {
+  const eventsServiceUrl = process.env.EVENTS_SERVICE_URL || 'http://localhost:3007';
+  const webhookSecret = process.env.EVENTS_WEBHOOK_SECRET || 'dev-secret';
+  
+  try {
+    const response = await fetch(`${eventsServiceUrl}/api/webhook/payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${webhookSecret}`,
+      },
+      body: JSON.stringify({
+        type,
+        sessionId: session.id,
+        paymentId: typeof session.payment_intent === 'string' 
+          ? session.payment_intent 
+          : session.payment_intent?.id,
+        customerEmail: session.customer_email,
+        amountTotal: session.amount_total,
+        currency: session.currency,
+        metadata: session.metadata,
+      }),
+    });
+    
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Events service webhook failed:', error);
+    } else {
+      console.log('Events service notified successfully');
+    }
+  } catch (error) {
+    console.error('Failed to notify events service:', error);
+    // Don't throw - we don't want to fail the Stripe webhook
+    // The payment is still valid, we just need to handle the fulfillment separately
+  }
 }
 
 async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
