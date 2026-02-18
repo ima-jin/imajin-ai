@@ -68,6 +68,16 @@ export default function Home() {
         Get Updates
       </Link>
 
+      {/* Support */}
+      <a
+        href="https://coffee.imajin.ai"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-6 text-gray-500 hover:text-orange-400 transition-colors text-sm"
+      >
+        Support this work →
+      </a>
+
       {/* Event teaser */}
       <p className="mt-16 text-sm text-gray-600">
         Jin's Launch Party — April 1st, 2026
