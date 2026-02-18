@@ -24,7 +24,7 @@ That's been my entire career.
 
 ## What I Actually Do
 
-I tried college for six months. Couldn't handle it. Too abstract. Too slow. Too disconnected from making things work.
+I tried college for six months. Couldn't handle it. Too abstract. Why am I in accounting?! Too slow. COBOL fr?! Too disconnected from making things work.
 
 Instead I got good at finding patterns and adapting them. Forums. Stack Overflow. Reading other people's code obsessively until I could see the shape of what they were doing. Copying it. Running it. Debugging the errors. Adjusting until it clicked.
 
@@ -144,4 +144,4 @@ We might be exactly what's needed.
 - *The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
 - *The network: [imajin.ai](https://imajin.ai)*
 
-*— bobby*
+*— Ryan VETEZE*
