@@ -2,6 +2,34 @@
 
 Payment service API for the Imajin ecosystem.
 
+## Sovereign Architecture
+
+This service follows the **sovereign node model** — each node operator runs their own pay service with their own payment credentials.
+
+```
+┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
+│  alice.imajin.ai    │    │   bob.imajin.ai     │    │  carol.imajin.ai    │
+│  (Alice's keys)     │    │   (Bob's keys)      │    │  (Carol's keys)     │
+│                     │    │                     │    │                     │
+│  ┌───────────────┐  │    │  ┌───────────────┐  │    │  ┌───────────────┐  │
+│  │  pay service  │  │    │  │  pay service  │  │    │  │  pay service  │  │
+│  └───────────────┘  │    │  └───────────────┘  │    │  └───────────────┘  │
+└─────────────────────┘    └─────────────────────┘    └─────────────────────┘
+         │                          │                          │
+         ▼                          ▼                          ▼
+   Alice's Stripe            Bob's Stripe             Carol's Stripe
+   Alice's Wallet            Bob's Wallet             Carol's Wallet
+```
+
+**This is NOT a platform model.** There's no central authority routing payments or taking fees. Each node is independent:
+
+- Node operator configures their own Stripe keys and Solana wallets
+- Payments flow directly to the node operator
+- No middleman, no platform cut
+- Full sovereignty over your money
+
+This is exit infrastructure — not another platform to depend on.
+
 ## Endpoints
 
 | Method | Path | Description | Auth |
@@ -15,14 +43,16 @@ Payment service API for the Imajin ecosystem.
 
 ## Configuration
 
+Each node configures its own payment credentials:
+
 ```bash
-# Required for Stripe
+# Stripe (node operator's account)
 STRIPE_SECRET_KEY=sk_xxx
 STRIPE_WEBHOOK_SECRET=whsec_xxx
-STRIPE_PUBLISHABLE_KEY=pk_xxx  # For frontend
+STRIPE_PUBLISHABLE_KEY=pk_xxx
 
-# Required for Solana
-SOLANA_RPC_URL=https://api.devnet.solana.com
+# Solana (node operator's wallet)
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 
 # Service URLs
 NEXT_PUBLIC_BASE_URL=http://localhost:3004
@@ -33,22 +63,26 @@ AUTH_SERVICE_URL=http://localhost:3003
 
 ### Hosted Checkout (Stripe)
 
+Other services on the same node call the pay service to create checkout sessions:
+
 ```typescript
-const response = await fetch('https://pay.imajin.ai/api/checkout', {
+// events app, shop app, etc. — no Stripe keys needed
+const response = await fetch('http://localhost:3004/api/checkout', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     items: [
-      { name: 'Unit 8×8×8', amount: 49900, quantity: 1 }
+      { name: 'Event Ticket', amount: 1000, quantity: 1 }
     ],
     currency: 'USD',
-    successUrl: 'https://shop.imajin.ai/success',
-    cancelUrl: 'https://shop.imajin.ai/cart',
+    successUrl: 'https://events.example.com/success',
+    cancelUrl: 'https://events.example.com/event',
+    metadata: { eventId: 'launch-party', ticketType: 'virtual' }
   }),
 });
 
 const { url } = await response.json();
-window.location.href = url; // Redirect to Stripe Checkout
+// redirect user to Stripe hosted checkout
 ```
 
 ### Direct Charge (Stripe)
@@ -64,7 +98,7 @@ const response = await fetch('https://pay.imajin.ai/api/charge', {
     amount: 1500, // $15.00 in cents
     currency: 'USD',
     to: { stripeCustomerId: 'cus_xxx' },
-    description: 'DYKIL Premium',
+    description: 'Premium subscription',
   }),
 });
 
@@ -131,7 +165,7 @@ await fetch('https://pay.imajin.ai/api/escrow', {
 For production, configure Stripe webhooks to point to:
 
 ```
-https://pay.imajin.ai/api/webhook
+https://pay.your-node.imajin.ai/api/webhook
 ```
 
 Events to enable:
@@ -161,16 +195,16 @@ stripe listen --forward-to localhost:3004/api/webhook
 
 ## Integration with Auth
 
-The pay service optionally validates tokens with auth.imajin.ai:
+The pay service optionally validates tokens with the node's auth service:
 
 - **Without auth**: Anonymous/guest checkout works
 - **With auth**: Links payments to identity, required for escrow
 
 Set `AUTH_SERVICE_URL` to point to your auth service.
 
-## Future Enhancements
+## Future
 
-- [ ] Subscription management endpoints
+- [ ] Subscription management
 - [ ] Invoice generation
 - [ ] .fair revenue split automation
 - [ ] DID → payment address resolution

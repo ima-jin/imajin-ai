@@ -20,9 +20,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!type || (type !== 'human' && type !== 'agent')) {
+    // Valid identity types per docs/IDENTITY.md
+    const validTypes = ['human', 'agent', 'event', 'presence', 'org'];
+    if (!type || !validTypes.includes(type)) {
       return NextResponse.json(
-        { error: 'type required: "human" or "agent"' },
+        { error: `type required: ${validTypes.join(', ')}` },
         { status: 400 }
       );
     }
