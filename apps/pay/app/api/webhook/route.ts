@@ -14,13 +14,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2025-09-30.clover' as any,
-});
-
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+// Lazy Stripe initialization to avoid build-time errors in CI
+let _stripe: Stripe | null = null;
+function getStripe(): Stripe {
+  if (!_stripe) {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error('STRIPE_SECRET_KEY not configured');
+    }
+    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: '2025-09-30.clover' as Stripe.LatestApiVersion,
+    });
+  }
+  return _stripe;
+}
 
 export async function POST(request: NextRequest) {
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error('STRIPE_WEBHOOK_SECRET not configured');
     return NextResponse.json(
@@ -42,6 +51,7 @@ export async function POST(request: NextRequest) {
   let event: Stripe.Event;
   
   try {
+    const stripe = getStripe();
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     console.error('Webhook signature verification failed:', err);
