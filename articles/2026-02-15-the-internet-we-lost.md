@@ -4,7 +4,7 @@
 
 For a brief moment in time, I had the perfect social media platform in the palm of my hand.
 
-Between 1990 and 1992, I ran a 3-node BBS called b0bby's World. It was a music distribution hub focused on the demoscene - first featuring music by a group called MAZURkA, and later, Chill Productions. Three phone lines. Three modems. Three people could be connected at once.
+Between 1990 and 1992, I ran a 3-node BBS called b0bby's World. It was a music distribution hub focused on the demoscene - first featuring music by a group called MAZURkA, and later, Chill Productions. A 386 with a 40MB hard drive that felt like infinite storage. Three phone lines. Three modems. Three people could be connected at once.
 
 Nearly 300 people found their way to those three nodes.
 
