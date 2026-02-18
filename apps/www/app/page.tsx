@@ -40,10 +40,25 @@ export default function Home() {
       {/* The story link */}
       <Link
         href="/articles/the-internet-we-lost"
-        className="text-orange-400 hover:text-orange-300 transition-colors mb-12"
+        className="text-orange-400 hover:text-orange-300 transition-colors mb-8"
       >
         Read the story →
       </Link>
+      
+      {/* Discord - with self-awareness */}
+      <div className="text-center mb-12">
+        <a
+          href="https://discord.gg/6hkQW3uw4m"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gray-400 hover:text-gray-300 transition-colors"
+        >
+          Join the Discord
+        </a>
+        <p className="text-gray-600 text-xs mt-1">
+          We know. This is the exit.
+        </p>
+      </div>
       
       {/* CTA */}
       <Link
