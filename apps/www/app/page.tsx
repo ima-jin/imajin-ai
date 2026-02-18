@@ -8,8 +8,8 @@ export default function Home() {
       <Image
         src="/images/logo-kanji.svg"
         alt="今人"
-        width={120}
-        height={120}
+        width={180}
+        height={180}
         className="mb-8"
         priority
       />
@@ -18,8 +18,8 @@ export default function Home() {
       <Image
         src="/images/logo.svg"
         alt="Imajin"
-        width={280}
-        height={80}
+        width={420}
+        height={120}
         className="mb-12"
         priority
       />
