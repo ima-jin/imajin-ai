@@ -253,12 +253,6 @@ export default function ArticlePage() {
           Just: Mark posted a picture of his cat. Sarah shared an article that three people are discussing. 
           Leah's having a party in three days.
         </p>
-        <p>
-          This is the inversion: platforms currently take everything by default, and you beg for privacy 
-          settings. Sovereign infrastructure means you own everything by default, and you selectively 
-          grant access. Prove you're over 18 without revealing your birthdate. Share your email with 
-          one service but not another. Your call, every time.
-        </p>
         <p>It's the BBS model, rebuilt for 2026.</p>
         <p>Slow. Intentional. Curated. Owned.</p>
 
@@ -281,6 +275,12 @@ export default function ArticlePage() {
         </p>
         <p>This is what the internet could have been.</p>
         <p>This is what it still can be.</p>
+        <p>
+          The inversion: platforms currently take everything by default, and you beg for privacy settings.
+          Sovereign infrastructure means you own everything by default, and you selectively grant access.
+          Prove you're over 18 without revealing your birthdate. Share your email with one service but not another.
+          Your call, every time.
+        </p>
 
         <h2>April 1st, 2026</h2>
         <p>I'm launching with an April Fool's Day party.</p>

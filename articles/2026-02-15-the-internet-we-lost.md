@@ -183,6 +183,9 @@ This is what the internet could have been.
 
 This is what it still can be.
 
+The inversion: platforms currently take everything by default, and you beg for privacy settings. Sovereign infrastructure means you own everything by default, and you selectively 
+grant access. Prove you're over 18 without revealing your birthdate. Share your email with one service but not another. Your call, every time.
+
 ## April 1st, 2026
 
 I'm launching with an April Fool's Day party.

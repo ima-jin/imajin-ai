@@ -25,3 +25,6 @@ Thumbs.db
 .vercel
 .env*.local
 apps/www/.env.development
+
+# Personal
+*.raw.md
