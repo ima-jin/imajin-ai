@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create profile
-    const [profile] = await db.insert(profiles).values({
+    const result = await db.insert(profiles).values({
       did: identity.id,
       displayName,
       displayType,
@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
       metadata: metadata || {},
     }).returning();
 
+    const profile = Array.isArray(result) ? result[0] : result;
     return jsonResponse(profile, 201);
   } catch (error) {
     console.error('Failed to create profile:', error);

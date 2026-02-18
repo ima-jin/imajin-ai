@@ -10,7 +10,7 @@ export const profiles = pgTable('profiles', {
   displayType: text('display_type').notNull(),                // 'human' | 'agent' | 'presence'
   avatar: text('avatar'),                                     // URL or emoji
   bio: text('bio'),
-  invitedBy: text('invited_by').references(() => profiles.did),
+  invitedBy: text('invited_by'),                              // DID of inviter (no FK to avoid circular ref)
   metadata: jsonb('metadata').default({}),                    // location, website, etc.
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

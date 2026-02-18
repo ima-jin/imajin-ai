@@ -5,7 +5,22 @@ interface PageProps {
   params: { handle: string };
 }
 
-async function getProfile(handle: string) {
+interface Profile {
+  did: string;
+  handle?: string;
+  displayName: string;
+  displayType: 'human' | 'agent' | 'presence';
+  bio?: string;
+  avatar?: string;
+  invitedBy?: string;
+  createdAt: string;
+  metadata?: {
+    links?: string;
+    coffee?: string;
+  };
+}
+
+async function getProfile(handle: string): Promise<Profile | null> {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3005';
   
   try {
@@ -31,11 +46,12 @@ export default async function ProfilePage({ params }: PageProps) {
     notFound();
   }
 
-  const typeLabel = {
+  const typeLabels: Record<Profile['displayType'], string> = {
     human: '👤 Human',
     agent: '🤖 Agent',
     presence: '🟠 Presence',
-  }[profile.displayType] || profile.displayType;
+  };
+  const typeLabel = typeLabels[profile.displayType];
 
   return (
     <div className="max-w-lg mx-auto">

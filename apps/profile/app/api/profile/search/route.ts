@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db, profiles } from '@/db';
 import { jsonResponse, errorResponse } from '@/lib/utils';
-import { ilike, eq, or, sql } from 'drizzle-orm';
+import { ilike, eq, or, sql, type SQL } from 'drizzle-orm';
 
 /**
  * GET /api/profile/search - Search profiles
@@ -24,16 +24,15 @@ export async function GET(request: NextRequest) {
 
   try {
     // Build query conditions
-    const conditions = [];
+    const conditions: SQL[] = [];
 
     if (q) {
       // Simple search on displayName and bio
-      conditions.push(
-        or(
-          ilike(profiles.displayName, `%${q}%`),
-          ilike(profiles.bio, `%${q}%`)
-        )
+      const searchCondition = or(
+        ilike(profiles.displayName, `%${q}%`),
+        ilike(profiles.bio, `%${q}%`)
       );
+      if (searchCondition) conditions.push(searchCondition);
     }
 
     if (type) {

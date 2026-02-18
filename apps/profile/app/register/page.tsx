@@ -8,9 +8,10 @@ const PROFILE_URL = process.env.NEXT_PUBLIC_PROFILE_URL || 'http://localhost:300
 
 // Ed25519 signing using Web Crypto + noble
 async function generateKeypair() {
-  const { utils, getPublicKey } = await import('@noble/ed25519');
-  const privateKey = utils.randomPrivateKey();
-  const publicKey = await getPublicKey(privateKey);
+  const ed = await import('@noble/ed25519');
+  // v3 API: utils.randomSecretKey() (was randomPrivateKey in v2)
+  const privateKey = ed.utils.randomSecretKey();
+  const publicKey = await ed.getPublicKeyAsync(privateKey);
   return {
     privateKey: bytesToHex(privateKey),
     publicKey: bytesToHex(publicKey),
@@ -18,10 +19,10 @@ async function generateKeypair() {
 }
 
 async function signChallenge(challenge: string, privateKeyHex: string) {
-  const { sign } = await import('@noble/ed25519');
+  const ed = await import('@noble/ed25519');
   const privateKey = hexToBytes(privateKeyHex);
   const message = new TextEncoder().encode(challenge);
-  const signature = await sign(message, privateKey);
+  const signature = await ed.signAsync(message, privateKey);
   return bytesToHex(signature);
 }
 
