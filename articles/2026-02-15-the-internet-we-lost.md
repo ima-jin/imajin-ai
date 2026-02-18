@@ -147,7 +147,7 @@ I'm building a platform called imajin.ai.
 
 It's not a social network. It's not trying to compete with Twitter or Facebook or anything else.
 
-It's infrastructure. Sovereign infrastructure for identity, payments, and attribution.
+It's infrastructure. Sovereign infrastructure for identity, payments, attribution, and more.
 
 Here's how it works:
 
@@ -230,3 +230,5 @@ See you in the town square.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
+
+This article first appeared 

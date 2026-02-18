@@ -225,7 +225,7 @@ export default function ArticlePage() {
         <h2>What the BBS Would Have Become</h2>
         <p>I'm building a platform called imajin.ai.</p>
         <p>It's not a social network. It's not trying to compete with Twitter or Facebook or anything else.</p>
-        <p>It's infrastructure. Sovereign infrastructure for identity, payments, and attribution.</p>
+        <p>It's infrastructure. Sovereign infrastructure for identity, payments, attribution, and more.</p>
         <p>Here's how it works:</p>
         <p>
           <strong>You own your identity.</strong> Not Facebook. Not Google. You. Cryptographically. A 

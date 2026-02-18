@@ -27,7 +27,7 @@ export default function Home() {
       {/* Core message */}
       <div className="max-w-2xl text-center space-y-6 mb-12">
         <p className="text-xl md:text-2xl text-gray-200">
-          Sovereign infrastructure for identity, payments, and attribution.
+          Sovereign infrastructure for identity, payments, attribution, and more.
         </p>
         <p className="text-gray-400">
           Not a social network. Not a platform. Just plumbing — so the value you create stays yours.
