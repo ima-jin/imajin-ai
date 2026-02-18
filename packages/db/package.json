@@ -10,6 +10,9 @@
   "dependencies": {
     "@prisma/client": "^5.10.0"
   },
+  "scripts": {
+    "lint": "eslint src --ext .ts,.tsx"
+  },
   "devDependencies": {
     "prisma": "^5.10.0",
     "typescript": "^5"

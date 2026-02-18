@@ -19,7 +19,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest",
-    "lint": "echo 'lint not configured'",
+    "lint": "eslint src --ext .ts,.tsx",
     "clean": "rm -rf dist"
   },
   "dependencies": {

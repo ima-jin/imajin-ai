@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts",
-    "lint": "echo 'lint not configured'",
+    "lint": "eslint src --ext .ts,.tsx",
     "test": "vitest"
   },
   "dependencies": {
