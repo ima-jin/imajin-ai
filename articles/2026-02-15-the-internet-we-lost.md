@@ -214,7 +214,7 @@ I think they do. I think the exhaustion is real. I think people are tired.
 
 And I think the tooling has finally crossed the threshold where this becomes possible.
 
-A few months ago, building this was still a heavy lift. Last week I spun up a working karaoke app in two minutes. The tools finally match the vision.
+A few months ago, building this was still a heavy lift. Last week I spun up a working karaoke queue management app in two minutes. The tools finally match the vision.
 
 Thirty years of being right. Thirty years of pain. Thirty years of knowing.
 
