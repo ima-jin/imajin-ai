@@ -231,4 +231,4 @@ See you in the town square.
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
 
-This article first appeared 
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/the-internet-we-lost) on February 15, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
