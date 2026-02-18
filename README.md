@@ -1,208 +1,123 @@
 # imajin-ai
 
-**A sovereign transactional layer for your agent, bot, or device.**
+**Sovereign infrastructure for humans, agents, and events.**
 
 Identity. Payments. Attribution. No platform lock-in.  
 Every interaction signed, typed, and owned by you.
 
 ---
 
-## The Thesis
+## What This Is
 
-The platforms extract. Netflix, Uber, Stripe, Auth0 — they sit between you and value, taking a cut of everything. Your identity lives on their servers. Your transactions flow through their pipes. Your agent runs on their cloud.
+The core platform layer for the Imajin network. Everything that needs a DID (decentralized identifier) flows through here:
 
-**What if the substrate was yours?**
+- **Humans** register, authenticate, and own their identity
+- **Agents** get the same primitives as humans
+- **Events** are first-class entities that can sign tickets
+- **Profiles** give identities a public face
 
-- Your keys, your identity
-- Your transactions, your rules  
-- Your device, your presence
-- Humans and agents using the same primitives
-
-imajin-ai is the infrastructure layer. Open source. Self-hostable. No subscriptions.
+External apps (events, coffee, shop) consume these packages as dependencies.
 
 ---
 
-## The Stack
+## Core Apps
 
-| Layer | Package | Service | Status |
-|-------|---------|---------|--------|
-| **Identity** | [@imajin/auth](./packages/auth) | [auth.imajin.ai](./apps/auth) | ✅ Ed25519 signing |
-| **Payments** | [@imajin/pay](./packages/pay) | [pay.imajin.ai](./apps/pay) | ✅ Stripe + Solana |
-| **Attribution** | .fair | — | 📋 Spec |
-| **Presence** | Unit | — | ✅ Hardware |
-| **Orchestration** | imajin-cli | — | ✅ Working |
+Apps in this monorepo — the sovereign stack foundation:
+
+| App | Port | Domain | Purpose | Status |
+|-----|------|--------|---------|--------|
+| [www](./apps/www) | 3000 | imajin.ai | Landing page, articles | ✅ Live |
+| [auth](./apps/auth) | 3003 | auth.imajin.ai | Identity (register, challenge, authenticate) | ✅ Working |
+| [pay](./apps/pay) | 3004 | pay.imajin.ai | Payments (Stripe + Solana) | 🟡 Scaffold |
+| [profile](./apps/profile) | 3005 | profile.imajin.ai | Public profile pages | ✅ Working |
+| [registry](./apps/registry) | 3006 | registry.imajin.ai | Node registration for federated network | 🟡 Scaffold |
+| [connections](./apps/connections) | — | connections.imajin.ai | Trust graph | 📋 Spec |
 
 ---
 
-## Apps
+## External Apps
 
-| App | Domain | Purpose | Status |
-|-----|--------|---------|--------|
-| [auth](./apps/auth) | auth.imajin.ai | Identity service (register, challenge, authenticate) | ✅ Scaffold |
-| [pay](./apps/pay) | pay.imajin.ai | Payment service (checkout, charge, escrow) | ✅ Scaffold |
-| [dykil](./apps/dykil) | dykil.imajin.ai | Community spending tracker | ✅ Scaffold |
-| [karaoke](./apps/karaoke) | karaoke.imajin.ai | Event queue manager | ✅ Working |
-| profile | profile.imajin.ai | Identity profiles | 🟡 Planning |
-| events | events.imajin.ai | Create events, sell tickets, verify attendance | 🟡 Planning |
-| shop | shop.imajin.ai | Local marketplace | 🟡 Planning |
-| coffee | coffee.imajin.ai | Tips / "buy me a coffee" — direct payments to Solana wallet or Stripe | 🟡 Planning |
-| connections | connections.imajin.ai | Trust graph — who knows whom, invitation chains, network visualization | 🟡 Planning |
-| links | links.imajin.ai | Sovereign link-in-bio pages (Linktree alternative) | 🟡 Planning |
-| learn | learn.imajin.ai | AI training courses | 🟡 Planning |
+Separate repos that consume `@imajin/auth` and `@imajin/pay`:
+
+| App | Repo | Purpose | Status |
+|-----|------|---------|--------|
+| events | [imajin-events](https://github.com/ima-jin/imajin-events) | Create events, sell tickets | 🟡 Scaffold |
+| coffee | [imajin-coffee](https://github.com/ima-jin/imajin-coffee) | Tips / "buy me a coffee" | 📋 Planned |
+| dykil | [imajin-dykil](https://github.com/ima-jin/imajin-dykil) | Community spending tracker | 🟡 Extracted |
+| karaoke | [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke) | Event queue manager | ✅ Working |
+| links | [imajin-links](https://github.com/ima-jin/imajin-links) | Sovereign link-in-bio | 📋 Planned |
+| learn | [imajin-learn](https://github.com/ima-jin/imajin-learn) | AI training courses | 📋 Planned |
 
 ---
 
 ## Packages
 
-Shared infrastructure:
+Shared libraries (will be published to npm):
 
 | Package | Purpose | Status |
 |---------|---------|--------|
 | [@imajin/auth](./packages/auth) | Ed25519 signing, verification, DIDs | ✅ Working |
-| [@imajin/pay](./packages/pay) | Unified payments (Stripe + Solana) | ✅ Working |
-| [@imajin/ui](./packages/ui) | Shared UI components | 🟡 Planned |
-| [@imajin/db](./packages/db) | Database utilities | 🟡 Planned |
+| [@imajin/pay](./packages/pay) | Unified payments (Stripe + Solana) | 🟡 Scaffold |
 
 ---
 
-## How It Works
+## Identity Model
 
-### Identity (packages/auth)
+Everything that acts gets a DID. See [docs/IDENTITY.md](./docs/IDENTITY.md).
 
-Every human and agent gets a keypair. No passwords. No OAuth.
+| Type | Description | Example |
+|------|-------------|---------|
+| `human` | A person | Ryan, attendees |
+| `agent` | An AI/bot | Assistants, bots |
+| `presence` | Embodied AI | Jin |
+| `event` | A happening | Jin's Launch Party |
+| `org` | An organization | Imajin |
 
 ```typescript
 import { generateKeypair, createIdentity, sign, verify } from '@imajin/auth';
 
-// 1. Generate Ed25519 keypair
+// Generate keypair
 const keypair = generateKeypair();
-// { privateKey: "64-hex-chars", publicKey: "64-hex-chars" }
 
-// 2. Create identity
+// Create identity
 const identity = createIdentity(keypair.publicKey, 'human');
 // { id: "did:imajin:abc123...", type: "human", publicKey: "..." }
 
-// 3. Sign messages
+// Sign messages
 const signed = await sign({ action: 'purchase' }, keypair.privateKey, identity);
-// { from, type, timestamp, payload, signature }
 
-// 4. Verify anywhere
+// Verify anywhere
 const result = await verify(signed, keypair.publicKey);
-// { valid: true }
 ```
-
-### Payments (packages/pay)
-
-One interface, multiple rails:
-
-```typescript
-import { PaymentService } from '@imajin/pay';
-
-const pay = new PaymentService({
-  providers: {
-    stripe: { secretKey: process.env.STRIPE_SECRET_KEY },
-    solana: { rpcUrl: process.env.SOLANA_RPC_URL },
-  },
-});
-
-// Fiat (routes to Stripe)
-await pay.charge({ amount: 1500, currency: 'USD', to: { stripeCustomerId: 'cus_xxx' } });
-
-// Crypto (routes to Solana)
-await pay.charge({ amount: 100000000, currency: 'SOL', to: { solanaAddress: 'xxx' } });
-
-// Hosted checkout
-const { url } = await pay.checkout({
-  items: [{ name: 'Unit 8×8×8', amount: 49900, quantity: 1 }],
-  currency: 'USD',
-  successUrl: 'https://shop.imajin.ai/success',
-  cancelUrl: 'https://shop.imajin.ai/cart',
-});
-```
-
-### Signed Messages
-
-Every interaction in the system:
-
-```typescript
-{
-  from: "did:imajin:abc123",  // who
-  type: "agent",              // human or agent (always labeled)
-  timestamp: 1707850800000,
-  payload: { ... },           // the actual content
-  signature: "..."            // Ed25519 signature (128 hex chars)
-}
-```
-
-No impersonation. No confusion about who you're talking to.
 
 ---
 
-## API Endpoints
+## Auth Flow
 
-### auth.imajin.ai (port 3003)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | /api/register | Register public key → DID |
-| POST | /api/challenge | Get challenge to sign |
-| POST | /api/authenticate | Submit signed challenge → token |
-| POST | /api/validate | Validate token |
-| POST | /api/verify | Verify signed message directly |
-| GET | /api/lookup/:id | Lookup identity by DID |
-
-### pay.imajin.ai (port 3004)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | /api/health | Provider health check |
-| POST | /api/checkout | Create Stripe Checkout session |
-| POST | /api/charge | Direct payment (Stripe or Solana) |
-| POST | /api/escrow | Create escrow (hold funds) |
-| PUT | /api/escrow | Release or refund escrow |
-| POST | /api/webhook | Stripe webhook handler |
+```
+1. Client generates keypair
+2. POST /api/register { publicKey, type } → DID
+3. POST /api/challenge { id } → challenge string
+4. Client signs challenge
+5. POST /api/authenticate { id, challengeId, signature } → token
+6. Use token for authenticated requests
+```
 
 ---
 
-## Philosophy
-
-> "Don't you know I'm local?"
-
-A riff on "don't you know I'm loco?" — same defiant energy, but for community economics. Money should circulate locally, not flow to Silicon Valley.
-
-**DYKIL** tracks where community money leaks to platforms.  
-**The sovereign stack** is how you plug the leak.
-
----
-
-## Setup
+## Quick Start
 
 ```bash
 # Install dependencies
 pnpm install
 
-# Run apps
-pnpm --filter @imajin/auth-service dev  # port 3003
-pnpm --filter @imajin/pay-service dev   # port 3004
-pnpm --filter @imajin/dykil dev         # port 3001
+# Start dev servers
+pnpm --filter @imajin/auth-service dev    # localhost:3003
+pnpm --filter @imajin/profile-service dev # localhost:3005
 
-# Push database schema (auth)
-pnpm --filter @imajin/auth-service db:push
-```
-
-### Environment Variables
-
-**apps/auth/.env.local**
-```
-DATABASE_URL=postgres://...
-```
-
-**apps/pay/.env.local**
-```
-STRIPE_SECRET_KEY=sk_xxx
-STRIPE_WEBHOOK_SECRET=whsec_xxx
-SOLANA_RPC_URL=https://api.devnet.solana.com
-AUTH_SERVICE_URL=http://localhost:3003
+# Push database schemas
+cd apps/auth && DATABASE_URL="..." pnpm db:push
+cd apps/profile && DATABASE_URL="..." pnpm db:push
 ```
 
 ---
@@ -212,22 +127,27 @@ AUTH_SERVICE_URL=http://localhost:3003
 ```
 imajin-ai/
 ├── apps/
-│   ├── auth/          # Identity service (auth.imajin.ai)
-│   ├── pay/           # Payment service (pay.imajin.ai)
-│   ├── dykil/         # Community economics (dykil.imajin.ai)
-│   └── karaoke/       # Event queue (karaoke.imajin.ai)
+│   ├── www/           # imajin.ai landing
+│   ├── auth/          # Identity service
+│   ├── pay/           # Payment service
+│   ├── profile/       # Profile pages
+│   ├── registry/      # Node registry
+│   └── connections/   # Trust graph (spec only)
 ├── packages/
-│   ├── auth/          # @imajin/auth - Ed25519 identity
-│   └── pay/           # @imajin/pay - unified payments
-├── turbo.json
-└── pnpm-workspace.yaml
+│   ├── auth/          # @imajin/auth
+│   └── pay/           # @imajin/pay
+├── docs/
+│   ├── IDENTITY.md    # DID model
+│   └── ENVIRONMENTS.md
+└── scripts/
+    └── test-flow.ts   # End-to-end auth test
 ```
 
 ---
 
 ## License
 
-MIT — because sovereignty means you can fork it.
+MIT
 
 ---
 
