@@ -12,10 +12,10 @@ export default function ArticlePage() {
       {/* Back link */}
       <div className="max-w-3xl mx-auto mb-12">
         <Link 
-          href="/" 
+          href="/articles" 
           className="text-gray-500 hover:text-gray-300 transition-colors"
         >
-          ← Back
+          ← Articles
         </Link>
       </div>
 
