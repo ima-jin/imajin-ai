@@ -8,16 +8,28 @@ export const metadata: Metadata = {
 
 const articles = [
   {
-    slug: 'the-developers-who-couldnt-explain',
-    title: 'The Developers Who Couldn\'t Explain',
-    description: 'Pattern recognition, AI, and the inversion of developer hierarchy.',
+    slug: 'you-dont-need-ads',
+    title: 'You Don\'t Need Ads. You Need a Better Business Model.',
+    description: 'An open letter to Sam, Dario, Sundar, and Elon on why trust graphs beat ad models.',
+    date: 'February 20, 2026',
+  },
+  {
+    slug: 'the-trust-graph',
+    title: 'The Internet That Pays You Back',
+    description: 'Trust graphs, sovereign presence, and the architecture of connection.',
+    date: 'February 19, 2026',
+  },
+  {
+    slug: 'the-artificial-developer',
+    title: 'I\'ve Been an AI Since 1985',
+    description: 'Pattern recognition, iteration, and the tools that finally matched my brain.',
     date: 'February 18, 2026',
   },
   {
     slug: 'the-internet-we-lost',
     title: 'The Pain of Knowing',
     description: 'Why I\'m still fighting for the internet we lost. Three nodes. 300 users. Marriages. Lifelong friendships.',
-    date: 'February 15, 2026',
+    date: 'February 16, 2026',
   },
 ];
 

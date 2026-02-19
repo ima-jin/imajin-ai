@@ -2,8 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-html {
-  font-size: 150%;
+@media (min-width: 768px) {
+  html {
+    font-size: 150%;
+  }
 }
 
 body {
