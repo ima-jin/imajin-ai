@@ -297,7 +297,7 @@ export default function ArticlePage() {
           <li>The network: <a href="https://imajin.ai">imajin.ai</a></li>
         </ul>
 
-        <p className="text-gray-500">— Ryan VETEZE</p>
+        <p className="text-gray-500">— Ryan VETEZE, Founder, imajin.ai</p>
 
         {/* CTA */}
         <div className="mt-16 pt-8 border-t border-gray-800 not-prose">
