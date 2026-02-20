@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
 interface PageProps {
-  params: { handle: string };
+  params: Promise<{ handle: string }>;
 }
 
 interface Profile {
@@ -40,7 +40,8 @@ async function getProfile(handle: string): Promise<Profile | null> {
 }
 
 export default async function ProfilePage({ params }: PageProps) {
-  const profile = await getProfile(params.handle);
+  const { handle } = await params;
+  const profile = await getProfile(handle);
   
   if (!profile) {
     notFound();

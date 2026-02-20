@@ -1,18 +1,18 @@
 import { NextRequest } from 'next/server';
 import { db, profiles } from '@/db';
-import { requireAuth, extractToken, validateToken } from '@/lib/auth';
-import { jsonResponse, errorResponse, isValidHandle } from '@/lib/utils';
-import { eq, or } from 'drizzle-orm';
+import { requireAuth } from '@/lib/auth';
+import { jsonResponse, errorResponse } from '@/lib/utils';
+import { eq } from 'drizzle-orm';
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
  * GET /api/profile/:id - Get profile by DID or handle
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
-  const { id } = params;
+  const { id } = await params;
 
   try {
     // Look up by DID or handle
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * PUT /api/profile/:id - Update profile (owner only)
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
-  const { id } = params;
+  const { id } = await params;
 
   // Require authentication
   const authResult = await requireAuth(request);
@@ -99,7 +99,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
  * DELETE /api/profile/:id - Delete profile (owner only)
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
-  const { id } = params;
+  const { id } = await params;
 
   // Require authentication
   const authResult = await requireAuth(request);
