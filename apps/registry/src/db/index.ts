@@ -1,24 +1,27 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { neon, NeonQueryFunction } from '@neondatabase/serverless';
+import { drizzle, NeonHttpDatabase } from 'drizzle-orm/neon-http';
 import * as schema from './schema';
 
-// Lazy initialization to avoid build-time errors
-let _db: PostgresJsDatabase<typeof schema> | null = null;
-let _client: ReturnType<typeof postgres> | null = null;
+// Lazy initialization to avoid build-time errors when DATABASE_URL isn't set
+let _db: NeonHttpDatabase<typeof schema> | null = null;
+let _sql: NeonQueryFunction<false, false> | null = null;
 
-export const db = new Proxy({} as PostgresJsDatabase<typeof schema>, {
-  get(_, prop) {
-    if (!_db) {
-      if (!process.env.DATABASE_URL) {
-        throw new Error('DATABASE_URL environment variable is not set');
-      }
-      _client = postgres(process.env.DATABASE_URL);
-      _db = drizzle(_client, { schema });
+function getDb(): NeonHttpDatabase<typeof schema> {
+  if (!_db) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error('DATABASE_URL environment variable is not set');
     }
-    return (_db as any)[prop];
+    _sql = neon(process.env.DATABASE_URL);
+    _db = drizzle(_sql, { schema });
+  }
+  return _db;
+}
+
+// Export a proxy that lazily initializes the db on first access
+export const db = new Proxy({} as NeonHttpDatabase<typeof schema>, {
+  get(_, prop) {
+    return getDb()[prop as keyof NeonHttpDatabase<typeof schema>];
   },
 });
 
-// Re-export schema
 export * from './schema';
