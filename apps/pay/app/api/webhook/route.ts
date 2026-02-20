@@ -22,7 +22,7 @@ function getStripe(): Stripe {
       throw new Error('STRIPE_SECRET_KEY not configured');
     }
     _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2025-09-30.clover' as Stripe.LatestApiVersion,
+      apiVersion: '2024-11-20.acacia' as Stripe.LatestApiVersion,
     });
   }
   return _stripe;
