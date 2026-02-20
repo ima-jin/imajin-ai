@@ -2,8 +2,24 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Profile | Imajin',
-  description: 'Sovereign identity profiles on the Imajin network',
+  title: {
+    default: 'Imajin Profiles',
+    template: '%s | Imajin',
+  },
+  description: 'Sovereign identity profiles on the Imajin network. Own your identity, own your data.',
+  keywords: ['profile', 'identity', 'sovereign', 'DID', 'imajin'],
+  openGraph: {
+    type: 'website',
+    url: 'https://profile.imajin.ai',
+    siteName: 'Imajin Profiles',
+    title: 'Imajin Profiles',
+    description: 'Sovereign identity profiles on the Imajin network.',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Imajin Profiles',
+    description: 'Sovereign identity profiles on the Imajin network.',
+  },
 };
 
 export default function RootLayout({

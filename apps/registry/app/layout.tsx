@@ -2,8 +2,21 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Registry | Imajin',
-  description: 'The phone book for the sovereign network',
+  title: 'Imajin Registry',
+  description: 'The phone book for the sovereign network. Federated node discovery and registration.',
+  keywords: ['registry', 'nodes', 'federation', 'sovereign', 'imajin'],
+  openGraph: {
+    type: 'website',
+    url: 'https://registry.imajin.ai',
+    siteName: 'Imajin Registry',
+    title: 'Imajin Registry — Node Federation',
+    description: 'The phone book for the sovereign network. Register your node, discover others.',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Imajin Registry',
+    description: 'The phone book for the sovereign network.',
+  },
 };
 
 export default function RootLayout({
