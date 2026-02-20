@@ -1,90 +1,68 @@
 export default function Home() {
   return (
-    <main style={{ 
-      fontFamily: 'system-ui, sans-serif',
-      maxWidth: '800px',
-      margin: '0 auto',
-      padding: '2rem',
-    }}>
-      <h1>🌐 Imajin Registry</h1>
-      <p style={{ color: '#666', fontSize: '1.2rem' }}>
+    <div className="max-w-2xl mx-auto text-center">
+      <h1 className="text-4xl font-bold mb-4">
+        registry.imajin.ai
+      </h1>
+      
+      <p className="text-xl text-gray-600 dark:text-gray-400 mb-8">
         The phone book for the sovereign network.
+        <br />
+        Register your node, get a subdomain.
       </p>
 
-      <section style={{ marginTop: '2rem' }}>
-        <h2>API Endpoints</h2>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #eee', textAlign: 'left' }}>
-              <th style={{ padding: '0.5rem' }}>Method</th>
-              <th style={{ padding: '0.5rem' }}>Endpoint</th>
-              <th style={{ padding: '0.5rem' }}>Purpose</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr style={{ borderBottom: '1px solid #eee' }}>
-              <td style={{ padding: '0.5rem' }}><code>POST</code></td>
-              <td style={{ padding: '0.5rem' }}><code>/api/node/register</code></td>
-              <td style={{ padding: '0.5rem' }}>Register a new node</td>
-            </tr>
-            <tr style={{ borderBottom: '1px solid #eee' }}>
-              <td style={{ padding: '0.5rem' }}><code>POST</code></td>
-              <td style={{ padding: '0.5rem' }}><code>/api/node/heartbeat</code></td>
-              <td style={{ padding: '0.5rem' }}>Send liveness ping</td>
-            </tr>
-            <tr style={{ borderBottom: '1px solid #eee' }}>
-              <td style={{ padding: '0.5rem' }}><code>GET</code></td>
-              <td style={{ padding: '0.5rem' }}><code>/api/node/list</code></td>
-              <td style={{ padding: '0.5rem' }}>List all nodes</td>
-            </tr>
-            <tr style={{ borderBottom: '1px solid #eee' }}>
-              <td style={{ padding: '0.5rem' }}><code>GET</code></td>
-              <td style={{ padding: '0.5rem' }}><code>/api/node/lookup/:id</code></td>
-              <td style={{ padding: '0.5rem' }}>Find node by DID or hostname</td>
-            </tr>
-            <tr style={{ borderBottom: '1px solid #eee' }}>
-              <td style={{ padding: '0.5rem' }}><code>POST</code></td>
-              <td style={{ padding: '0.5rem' }}><code>/api/builds/verify</code></td>
-              <td style={{ padding: '0.5rem' }}>Check if build hash is approved</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 mb-8">
+        <h2 className="text-2xl font-semibold mb-4">API Endpoints</h2>
+        
+        <div className="text-left space-y-3 font-mono text-sm">
+          <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded">
+            <span className="text-green-600 font-bold">POST</span> /api/node/register
+            <span className="text-gray-500 ml-2">— Register a new node</span>
+          </div>
+          
+          <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded">
+            <span className="text-green-600 font-bold">POST</span> /api/node/heartbeat
+            <span className="text-gray-500 ml-2">— Send liveness ping</span>
+          </div>
+          
+          <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded">
+            <span className="text-blue-600 font-bold">GET</span> /api/node/list
+            <span className="text-gray-500 ml-2">— List all nodes</span>
+          </div>
+          
+          <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded">
+            <span className="text-blue-600 font-bold">GET</span> /api/node/lookup/:id
+            <span className="text-gray-500 ml-2">— Find node by DID or hostname</span>
+          </div>
+          
+          <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded">
+            <span className="text-green-600 font-bold">POST</span> /api/builds/verify
+            <span className="text-gray-500 ml-2">— Verify build hash</span>
+          </div>
+        </div>
+      </div>
 
-      <section style={{ marginTop: '2rem' }}>
-        <h2>How It Works</h2>
-        <ol style={{ lineHeight: '1.8' }}>
-          <li>Run a signed Imajin build (auth, pay, profile, etc.)</li>
-          <li>Your node generates a keypair and creates a DID</li>
-          <li>Node sends attestation to <code>/api/node/register</code></li>
-          <li>Registry verifies build hash against approved releases</li>
-          <li>If valid, provisions <code>your-hostname.imajin.ai</code></li>
-          <li>Node sends daily heartbeats to stay active</li>
-          <li>Registration renews every 30 days</li>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 mb-8">
+        <h2 className="text-2xl font-semibold mb-4">How It Works</h2>
+        
+        <ol className="text-left space-y-2 text-gray-600 dark:text-gray-400">
+          <li><span className="text-orange-500 font-bold">1.</span> Run a signed Imajin build</li>
+          <li><span className="text-orange-500 font-bold">2.</span> Node generates keypair and DID</li>
+          <li><span className="text-orange-500 font-bold">3.</span> Send attestation to /api/node/register</li>
+          <li><span className="text-orange-500 font-bold">4.</span> Registry verifies build hash</li>
+          <li><span className="text-orange-500 font-bold">5.</span> Get your-hostname.imajin.ai</li>
+          <li><span className="text-orange-500 font-bold">6.</span> Send daily heartbeats</li>
         </ol>
-      </section>
+      </div>
 
-      <section style={{ marginTop: '2rem' }}>
-        <h2>Federation Note</h2>
-        <p style={{ color: '#666' }}>
-          This registry is <strong>federated, not decentralized</strong>. 
-          It&apos;s a bootstrapping convenience. The path to full decentralization 
-          includes on-chain node registry (Solana) and mesh trust discovery 
-          (optical verification between devices).
-        </p>
-        <p style={{ color: '#666' }}>
-          The exit door is always open: this registry is open source, 
-          and nodes work locally even without a subdomain.
-        </p>
-      </section>
-
-      <footer style={{ marginTop: '3rem', paddingTop: '1rem', borderTop: '1px solid #eee', color: '#999' }}>
-        <p>
-          <a href="https://github.com/ima-jin/imajin-ai" style={{ color: '#0066cc' }}>GitHub</a>
+      <div className="text-gray-500 text-sm">
+        <p>Part of the <a href="https://imajin.ai" className="text-orange-500 hover:underline">Imajin</a> sovereign stack</p>
+        <p className="mt-2">
+          <a href="https://github.com/ima-jin/imajin-ai" className="hover:underline">GitHub</a>
           {' · '}
-          <a href="https://imajin.ai" style={{ color: '#0066cc' }}>imajin.ai</a>
+          <a href="https://docs.imajin.ai" className="hover:underline">Docs</a>
         </p>
-      </footer>
-    </main>
+      </div>
+    </div>
   );
 }
