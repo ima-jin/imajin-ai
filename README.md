@@ -50,7 +50,7 @@ The core platform layer for the Imajin network. Everything that acts gets a DID 
 |-----|------|--------|---------|--------|
 | [www](./apps/www) | 3000 | [imajin.ai](https://imajin.ai) | Landing page, articles | ✅ Live |
 | [auth](./apps/auth) | 3003 | [auth.imajin.ai](https://auth.imajin.ai) | Identity (register, challenge, authenticate) | ✅ Live |
-| [pay](./apps/pay) | 3004 | pay.imajin.ai | Payments (Stripe + Solana) | 🟡 Local |
+| [pay](./apps/pay) | 3004 | [pay.imajin.ai](https://pay.imajin.ai) | Payments (Stripe + Solana) | ✅ Live |
 | [profile](./apps/profile) | 3005 | [profile.imajin.ai](https://profile.imajin.ai) | Public profile pages | ✅ Live |
 | [registry](./apps/registry) | 3006 | [registry.imajin.ai](https://registry.imajin.ai) | Node federation | ✅ Live |
 | [connections](./apps/connections) | — | — | Trust graph | 📋 Planned |
