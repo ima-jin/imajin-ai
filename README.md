@@ -48,11 +48,11 @@ The core platform layer for the Imajin network. Everything that acts gets a DID 
 
 | App | Port | Domain | Purpose | Status |
 |-----|------|--------|---------|--------|
-| [www](./apps/www) | 3000 | imajin.ai | Landing page, articles | ✅ Live |
-| [auth](./apps/auth) | 3003 | auth.imajin.ai | Identity (register, challenge, authenticate) | ✅ Working |
-| [pay](./apps/pay) | 3004 | pay.imajin.ai | Payments (Stripe + Solana) | ✅ Working |
-| [profile](./apps/profile) | 3005 | profile.imajin.ai | Public profile pages | ✅ Working |
-| [registry](./apps/registry) | 3006 | registry.imajin.ai | Node federation | 🟡 Scaffold |
+| [www](./apps/www) | 3000 | [imajin.ai](https://imajin.ai) | Landing page, articles | ✅ Live |
+| [auth](./apps/auth) | 3003 | [auth.imajin.ai](https://auth.imajin.ai) | Identity (register, challenge, authenticate) | ✅ Live |
+| [pay](./apps/pay) | 3004 | pay.imajin.ai | Payments (Stripe + Solana) | 🟡 Local |
+| [profile](./apps/profile) | 3005 | [profile.imajin.ai](https://profile.imajin.ai) | Public profile pages | ✅ Live |
+| [registry](./apps/registry) | 3006 | [registry.imajin.ai](https://registry.imajin.ai) | Node federation | ✅ Live |
 | [connections](./apps/connections) | — | — | Trust graph | 📋 Planned |
 
 ---
@@ -61,14 +61,15 @@ The core platform layer for the Imajin network. Everything that acts gets a DID 
 
 Separate repos that consume `@imajin/auth` and `@imajin/pay` as platform consumers:
 
-| App | Repo | Purpose |
-|-----|------|---------|
-| events | [imajin-events](https://github.com/ima-jin/imajin-events) | Create events, sell tickets |
-| coffee | [imajin-coffee](https://github.com/ima-jin/imajin-coffee) | Tips / "buy me a coffee" |
-| dykil | [imajin-dykil](https://github.com/ima-jin/imajin-dykil) | Community spending tracker |
-| karaoke | [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke) | Event queue manager |
-| links | [imajin-links](https://github.com/ima-jin/imajin-links) | Sovereign link-in-bio |
-| learn | [imajin-learn](https://github.com/ima-jin/imajin-learn) | AI training courses |
+| App | Repo | Domain | Purpose | Status |
+|-----|------|--------|---------|--------|
+| events | [imajin-events](https://github.com/ima-jin/imajin-events) | [events.imajin.ai](https://events.imajin.ai) | Create events, sell tickets | ✅ Live |
+| chat | [imajin-chat](https://github.com/ima-jin/imajin-chat) | [chat.imajin.ai](https://chat.imajin.ai) | E2EE messaging, trust-bound | ✅ Live |
+| coffee | [imajin-coffee](https://github.com/ima-jin/imajin-coffee) | — | Tips / "buy me a coffee" | 📋 Planned |
+| dykil | [imajin-dykil](https://github.com/ima-jin/imajin-dykil) | — | Community spending tracker | 📋 Planned |
+| karaoke | [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke) | — | Event queue manager | 📋 Planned |
+| links | [imajin-links](https://github.com/ima-jin/imajin-links) | — | Sovereign link-in-bio | 📋 Planned |
+| learn | [imajin-learn](https://github.com/ima-jin/imajin-learn) | — | AI training courses | 📋 Planned |
 
 ---
 
