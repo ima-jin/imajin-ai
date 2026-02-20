@@ -7,7 +7,7 @@ import {
   NODE_REGISTRATION_TTL, 
   NODE_GRACE_PERIOD,
   type NodeAttestation,
-} from '@/lib/auth';
+} from '@imajin/auth';
 import { provisionSubdomain, isHostnameAvailable } from '@/lib/cloudflare';
 import { randomBytes } from 'crypto';
 

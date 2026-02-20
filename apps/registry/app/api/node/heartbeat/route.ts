@@ -8,7 +8,7 @@ import {
   NODE_UNREACHABLE_THRESHOLD,
   NODE_REGISTRATION_TTL,
   type NodeHeartbeat,
-} from '@/lib/auth';
+} from '@imajin/auth';
 import { randomBytes } from 'crypto';
 
 /**
