@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import type { Metadata } from 'next';
 
 interface PageProps {
   params: Promise<{ handle: string }>;
@@ -37,6 +38,51 @@ async function getProfile(handle: string): Promise<Profile | null> {
     console.error('Failed to fetch profile:', error);
     return null;
   }
+}
+
+// Generate dynamic metadata for OG/Twitter cards
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { handle } = await params;
+  const profile = await getProfile(handle);
+  
+  if (!profile) {
+    return {
+      title: 'Profile Not Found',
+    };
+  }
+  
+  const typeEmoji: Record<Profile['displayType'], string> = {
+    human: '👤',
+    agent: '🤖',
+    presence: '🟠',
+  };
+  
+  const displayHandle = profile.handle ? `@${profile.handle}` : handle;
+  const description = profile.bio 
+    ? profile.bio.slice(0, 200) + (profile.bio.length > 200 ? '...' : '')
+    : `${typeEmoji[profile.displayType]} ${profile.displayType} on the Imajin network`;
+  
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://profile.imajin.ai';
+  const url = `${baseUrl}/${handle}`;
+  
+  return {
+    title: `${profile.displayName} (${displayHandle})`,
+    description,
+    openGraph: {
+      title: `${profile.displayName} ${typeEmoji[profile.displayType]}`,
+      description,
+      url,
+      siteName: 'Imajin Profiles',
+      type: 'profile',
+      images: profile.avatar?.startsWith('http') ? [{ url: profile.avatar }] : undefined,
+    },
+    twitter: {
+      card: profile.avatar?.startsWith('http') ? 'summary_large_image' : 'summary',
+      title: `${profile.displayName} ${typeEmoji[profile.displayType]}`,
+      description,
+      images: profile.avatar?.startsWith('http') ? [profile.avatar] : undefined,
+    },
+  };
 }
 
 export default async function ProfilePage({ params }: PageProps) {
