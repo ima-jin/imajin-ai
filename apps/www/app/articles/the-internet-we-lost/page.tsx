@@ -2,8 +2,21 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'The Pain of Knowing — Imajin',
+  title: 'The Pain of Knowing',
   description: 'Why I\'m still fighting for the internet we lost. Three nodes. 300 users. Marriages. Lifelong friendships. A community that persists thirty years later.',
+  openGraph: {
+    title: 'The Pain of Knowing',
+    description: 'Why I\'m still fighting for the internet we lost. Three nodes. 300 users. Marriages. Lifelong friendships.',
+    url: 'https://imajin.ai/articles/the-internet-we-lost',
+    type: 'article',
+    publishedTime: '2026-02-20',
+    authors: ['Ryan Veteze'],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'The Pain of Knowing',
+    description: 'Why I\'m still fighting for the internet we lost.',
+  },
 };
 
 export default function ArticlePage() {
