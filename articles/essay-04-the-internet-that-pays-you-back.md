@@ -156,11 +156,13 @@ If you're tired of being the product — if you remember what the internet felt 
 
 The graph starts somewhere. It might as well start here.
 
-- *The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
-- *The network: [imajin.ai](https://imajin.ai)*
+*— Ryan VETEZE, Founder, imajin.ai aka b0b*
+
+---
+
+**If you want to follow along:**
+- The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
+- The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
 
-*— Ryan VETEZE, Founder, imajin.ai*
-
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/the-trust-graph) on February 19, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
-
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-04-the-internet-that-pays-you-back) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

@@ -222,7 +222,7 @@ Now we build.
 
 See you in the town square.
 
-*— Ryan VETEZE aka b0b*
+*— Ryan VETEZE, Founder, imajin.ai aka b0b*
 
 ---
 
@@ -231,4 +231,4 @@ See you in the town square.
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/the-internet-we-lost) on February 16, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-01-the-internet-we-lost) on February 16, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

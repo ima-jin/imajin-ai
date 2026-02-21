@@ -200,11 +200,13 @@ The graph starts somewhere.
 
 Come build on it.
 
+*— Ryan VETEZE, Founder, imajin.ai aka b0b*
+
 ---
-- *The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
-- *The network: [imajin.ai](https://imajin.ai)*
+
+**If you want to follow along:**
+- The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
+- The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
 
-*— Ryan VETEZE, Founder, imajin.ai*
-
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/you-dont-need-ads) on February 20, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-05-you-dont-need-ads) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

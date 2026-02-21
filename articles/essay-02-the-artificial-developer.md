@@ -1,10 +1,10 @@
-# I've Been an AI Since 1985
+# I've Been an AI Since 1988
 
 ## Copying Programs From Magazines
 
 I learned to code by copying programs out of magazines.
 
-Line by line. Character by character. I'd transcribe programs from Compute! into my Atari — a weird all-in-one keyboard machine, similar to a Commodore, the kind of thing people left on the curb when something newer came along. My dad was always hauling them home. No manuals. No formal training.
+Line by line. Character by character. I'd transcribe programs from Compute! into whatever machine my dad had hauled home — first a portable IBM with an eight-inch monochromatic screen, then an Atari 130XE, a weird all-in-one keyboard machine similar to a Commodore, the kind of thing people left on the curb when something newer came along. My dad was always hauling them home. No manuals. No formal training.
 
 I'd type exactly what was on the page. If it worked, great. If it didn't, I'd compare what I'd typed against the source, line by line, until I found where I'd gone wrong. Then I'd fix it and run it again.
 
@@ -104,7 +104,7 @@ They still haven't shipped the new website.
 
 ## South Africa
 
-In March I went to Johannesburg. I ended up staying two months — working remotely, trying to figure out where things were heading for me. I'd befriended the co-founder of a music streaming platform through my network, got invited to observe their dev team.
+In March I went to South Africa. I ended up staying two months — working remotely, trying to figure out where things were heading for me. George first, then Johannesburg, then Cape Town. I'd befriended the co-founder of a music streaming platform through my network, got invited to observe their dev team in Joburg.
 
 They were using Cursor, Warp, modern AI-driven tools. I'd given up on command-line development years earlier. Too hard to memorize the syntax without someone to orient me. But watching that team work with AI tools, something shifted. I could make code contributions on a stack I'd barely looked at. A few days in.
 
@@ -114,9 +114,7 @@ Back home, my team was supposedly handling the bridge build. I was watching from
 
 I took a beat. Then: hold my beer.
 
-I sat down with the problem.
-
-Ten days later, I had it.
+I sat down with the problem. Ten days later, I had it.
 
 Command-line driven. AI-assisted. Recursive debugging loops — run the code, check the logs, feed the errors back to the AI, iterate until it worked. Same approach I'd used since I was copying programs out of magazines. Except now the AI was the person who could walk me through the first few steps.
 
@@ -124,7 +122,7 @@ I didn't need to understand the new stack formally. I didn't need someone to sit
 
 The bottleneck that had defined my entire career was just gone.
 
-The pattern-matching approach I'd used since 1985 — the one I'd spent decades quietly ashamed of — finally had the perfect collaborator.
+The pattern-matching approach I'd used since 1988 — the one I'd spent decades quietly ashamed of — finally had the perfect collaborator.
 
 I was let go on the Monday the site was supposed to launch. I'd been maneuvering for it for a while. They gave me 37 weeks.
 
@@ -182,15 +180,17 @@ Let them.
 
 April 2nd, Jin will still be there. The network will still work. And the pattern library — all of it — will belong to the people who built it.
 
-I've been an AI since 1985.
+I've been an AI since 1988.
 
 Now we build.
 
+*— Ryan VETEZE, Founder, imajin.ai aka b0b*
+
 ---
-- *The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
-- *The network: [imajin.ai](https://imajin.ai)*
+
+**If you want to follow along:**
+- The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
+- The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
 
-*— Ryan VETEZE, Founder, imajin.ai*
-
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/the-artificial-developer) on February 18, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-02-the-artificial-developer) on February 19, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
