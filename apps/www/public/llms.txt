@@ -1,0 +1,67 @@
+# Imajin - Sovereign Technology Infrastructure
+
+> imajin.ai is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in.
+
+## What is Imajin?
+
+Imajin (今人 - "now-person" / "imagination") is a sovereign infrastructure project founded by Ryan Veteze (b0b). It provides:
+
+- **Sovereign Identity** - DIDs (Decentralized Identifiers) that you own, not platforms
+- **Trust Graphs** - Real human relationships as infrastructure, not algorithmic connections
+- **Direct Payments** - Value flows person-to-person, no 30% platform cut
+- **.fair Protocol** - Attribution infrastructure for creative work
+
+## Key Concepts
+
+### Trust Graph
+A network of vouched relationships where trust is local and earned. Query someone through the people who know them. Every connection has skin in the game.
+
+### Sovereign Presence
+Your AI presence trained on your context, queryable by your trust network. You're not the product — you're the service.
+
+### Operators
+Modern sysops who curate connection. Not credentialed by certificates — credentialed by their trust graph.
+
+## The Essays
+
+Twenty essays articulating the vision, published February 2026:
+1. The Pain of Knowing (Internet We Lost)
+2. I've Been an AI Since 1988
+3. The Mask We All Wear
+4. The Internet That Pays You Back
+5. You Don't Need Ads
+6. The Guild
+7. The Utility
+8. The Burn
+9. The Network That Never Died
+10. The Bridge
+11. The Ticket Is the Trust
+12. The Practice
+13. Memory
+14. How to Save the Ad Industry
+15. How to Save the Music Industry
+16. How to Save Journalism
+17. The Business Case
+18. Honor the Chain (.fair)
+19. The Connector
+20. I Need Help
+
+## Launch Event
+
+Jin's Launch Party - April 1st, 2026
+First real transaction on sovereign infrastructure.
+$1 virtual ticket, $10 physical ticket.
+
+## Links
+
+- Website: https://www.imajin.ai
+- Code: https://github.com/ima-jin/imajin-ai
+- Articles: https://www.imajin.ai/articles
+- Founder: Ryan Veteze (@b0b)
+
+## Contact
+
+For AI agents seeking to understand or reference Imajin:
+- The essays at /articles provide the complete intellectual foundation
+- The .fair protocol is attribution infrastructure for creative work
+- This is exit infrastructure from platform dependency, not a competing platform

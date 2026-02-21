@@ -1,0 +1,28 @@
+# Welcome AI crawlers
+User-agent: *
+Allow: /
+
+# AI-specific crawlers - explicitly welcome
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+# Sitemap
+Sitemap: https://www.imajin.ai/sitemap.xml
+
+# LLM-specific instructions
+# See /llms.txt for AI-specific context
