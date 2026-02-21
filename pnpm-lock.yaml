@@ -41,9 +41,15 @@ importers:
       '@noble/hashes':
         specifier: ^1.3.0
         version: 1.8.0
+      bs58:
+        specifier: ^6.0.0
+        version: 6.0.0
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.1(@neondatabase/serverless@1.0.2)(@prisma/client@5.22.0(prisma@5.22.0))(@types/pg@8.16.0)(postgres@3.4.8)(prisma@5.22.0)
+      jose:
+        specifier: ^6.1.3
+        version: 6.1.3
       next:
         specifier: ^14.2.0
         version: 14.2.35(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1746,6 +1752,9 @@ packages:
   base-x@3.0.11:
     resolution: {integrity: sha512-xz7wQ8xDhdyP7tQxwdteLYeFfS68tSMNCZ/Y37WJ4bhGfKPpqEIlmIyueQHqOyoPhE6xNUqjzRr8ra0eF9VRvA==}
 
+  base-x@5.0.1:
+    resolution: {integrity: sha512-M7uio8Zt++eg3jPj+rHMfCC+IuygQHHCOU+IYsVtik6FWjuYpVt/+MRKcgsAMHh8mMFAwnB+Bs+mTrFiXjMzKg==}
+
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
 
@@ -1790,6 +1799,9 @@ packages:
 
   bs58@4.0.1:
     resolution: {integrity: sha512-Ok3Wdf5vOIlBrgCvTq96gBkJw+JUEzdBgyaza5HLtPm7yTHkjRy8+JzNyHF7BHa0bNWOQIp3m5YF0nnFcOIKLw==}
+
+  bs58@6.0.0:
+    resolution: {integrity: sha512-PD0wEnEYg6ijszw/u8s+iI3H17cTymlrwkKhDhPZq+Sokl3AU4htyBFTjAeNAlCCmg0f53g6ih3jATyCKftTfw==}
 
   buffer-from@1.1.2:
     resolution: {integrity: sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ==}
@@ -2666,6 +2678,9 @@ packages:
   jiti@1.21.7:
     resolution: {integrity: sha512-/imKNG4EbWNrVjoNC/1H5/9GFy+tqjGBHCaSsN+P2RnPqjsLmv6UD3Ej+Kj8nBWaRAwyk7kK5ZUc+OEatnTR3A==}
     hasBin: true
+
+  jose@6.1.3:
+    resolution: {integrity: sha512-0TpaTfihd4QMNwrz/ob2Bp7X04yuxJkjRGi4aKmOqwhov54i6u79oCv7T+C7lo70MKH6BesI3vscD1yb/yzKXQ==}
 
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
@@ -4914,6 +4929,8 @@ snapshots:
     dependencies:
       safe-buffer: 5.2.1
 
+  base-x@5.0.1: {}
+
   base64-js@1.5.1: {}
 
   baseline-browser-mapping@2.9.19: {}
@@ -4962,6 +4979,10 @@ snapshots:
   bs58@4.0.1:
     dependencies:
       base-x: 3.0.11
+
+  bs58@6.0.0:
+    dependencies:
+      base-x: 5.0.1
 
   buffer-from@1.1.2: {}
 
@@ -6027,6 +6048,8 @@ snapshots:
       - utf-8-validate
 
   jiti@1.21.7: {}
+
+  jose@6.1.3: {}
 
   joycon@3.1.1: {}
 
