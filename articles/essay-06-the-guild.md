@@ -116,6 +116,8 @@ And you're accountable in a way that a platform is never accountable. Twitter do
 
 The extraction model works by removing human accountability from infrastructure. No one person is responsible for what the algorithm does to your attention, your relationships, your sense of reality. The operator role is the direct inversion. A human being who made a choice and can be held to it.
 
+The graph also produces signals. Operators will build tooling to read them — early indicators that something in a node is drifting before it becomes visible to the broader community. Not surveillance of content, but pattern recognition in the behavior of the graph itself: vouching quality, recommendation conversion, the texture of how trust is moving through the room. The sysop who ran a BBS knew when something felt wrong before they could articulate why. The operator will have instruments that make that instinct legible.
+
 ---
 
 ## AI Collapsed the Technical Barrier
