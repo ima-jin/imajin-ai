@@ -43,10 +43,11 @@ export default function ArticlePage() {
         <h2>Copying Programs From Magazines</h2>
         <p>I learned to code by copying programs out of magazines.</p>
         <p>
-          Line by line. Character by character. I'd transcribe programs from Compute! into my 
-          Atari — a weird all-in-one keyboard machine, similar to a Commodore, the kind of thing 
-          people left on the curb when something newer came along. My dad was always hauling them 
-          home. No manuals. No formal training.
+          Line by line. Character by character. I'd transcribe programs from Compute! into whatever 
+          machine my dad had hauled home — first a portable IBM with an eight-inch monochromatic 
+          screen, then an Atari 130XE, a weird all-in-one keyboard machine similar to a Commodore, 
+          the kind of thing people left on the curb when something newer came along. My dad was 
+          always hauling them home. No manuals. No formal training.
         </p>
         <p>
           I'd type exactly what was on the page. If it worked, great. If it didn't, I'd compare 
