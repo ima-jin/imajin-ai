@@ -2,10 +2,10 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: "I've Been an AI Since 1985",
+  title: "I've Been an AI Since 1988",
   description: 'I learned to code by copying programs out of magazines. Line by line. Character by character. I wasn\'t learning computer science. I was learning pattern recognition and iteration.',
   openGraph: {
-    title: "I've Been an AI Since 1985",
+    title: "I've Been an AI Since 1988",
     description: 'Pattern recognition, iteration, and the tools that finally matched my brain.',
     url: 'https://imajin.ai/articles/the-artificial-developer',
     type: 'article',
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary',
-    title: "I've Been an AI Since 1985",
+    title: "I've Been an AI Since 1988",
     description: 'Pattern recognition, iteration, and the tools that finally matched my brain.',
   },
 };
@@ -34,7 +34,7 @@ export default function ArticlePage() {
 
       <article className="max-w-3xl mx-auto prose prose-invert prose-lg prose-orange">
         <h1 className="text-4xl md:text-5xl font-light tracking-tight mb-4 !text-white">
-          I've Been an AI Since 1985
+          I've Been an AI Since 1988
         </h1>
         <p className="text-xl text-gray-400 mb-12 !mt-0">
           Pattern recognition, iteration, and the tools that finally matched my brain
@@ -230,7 +230,7 @@ export default function ArticlePage() {
         </p>
         <p>The bottleneck that had defined my entire career was just gone.</p>
         <p>
-          The pattern-matching approach I'd used since 1985 — the one I'd spent decades quietly 
+          The pattern-matching approach I'd used since 1988 — the one I'd spent decades quietly 
           ashamed of — finally had the perfect collaborator.
         </p>
         <p>
@@ -321,7 +321,7 @@ export default function ArticlePage() {
           April 2nd, Jin will still be there. The network will still work. And the pattern 
           library — all of it — will belong to the people who built it.
         </p>
-        <p>I've been an AI since 1985.</p>
+        <p>I've been an AI since 1988.</p>
         <p>Now we build.</p>
 
         <hr className="my-12 border-gray-800" />

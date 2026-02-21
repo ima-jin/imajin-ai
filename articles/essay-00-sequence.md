@@ -4,7 +4,7 @@
 `essay-01-the-internet-we-lost.md` — **POSTED**
 The origin story. b0bbys World. What real connection looked like. The extraction model and how every step since 1994 was wrong. imajin as the answer. Establishes who you are and what you know.
 
-**2. I've Been an AI Since 1985**
+**2. I've Been an AI Since 1988**
 `essay-02-the-artificial-developer.md` — **POSTED**
 The autobiography of how your brain works. Pattern recognition without formal comprehension. The Datex years. The career built on the same mechanism as LLMs. The bottleneck dissolved. Builds trust.
 
@@ -22,7 +22,7 @@ The direct address to power. Open letter to Sam, Dario, Sundar, Elon. The infere
 
 **6. The Guild**
 `essay-06-the-guild.md` — **REVIEW**
-The invitation to operators. The Homebrew Computer Club guys. Unit 8200 alumni in moral and professional vertigo. The credential was always the wrong filter — the right filter is: can you be trusted to run something people depend on? The sysop role made available to everyone. AI collapses the technical barrier without collapsing the intentionality barrier. *"You knew it was wrong in 1985. You built it anyway. I'm not here to relitigate that. I'm here to tell you the door is open again."*
+The invitation to operators. The Homebrew Computer Club guys. Unit 8200 alumni in moral and professional vertigo. The credential was always the wrong filter — the right filter is: can you be trusted to run something people depend on? The sysop role made available to everyone. AI collapses the technical barrier without collapsing the intentionality barrier. *"You knew it was wrong in 1988. You built it anyway. I'm not here to relitigate that. I'm here to tell you the door is open again."*
 
 **7. The Utility**
 `essay-07-utility.md` — **REVIEW**

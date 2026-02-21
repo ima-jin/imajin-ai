@@ -21,7 +21,7 @@ const articles = [
   },
   {
     slug: 'the-artificial-developer',
-    title: 'I\'ve Been an AI Since 1985',
+    title: 'I\'ve Been an AI Since 1988',
     description: 'Pattern recognition, iteration, and the tools that finally matched my brain.',
     date: 'February 18, 2026',
   },
