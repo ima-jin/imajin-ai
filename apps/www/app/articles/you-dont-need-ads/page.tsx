@@ -2,8 +2,21 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: "You Don't Need Ads. You Need a Better Business Model. — Imajin",
+  title: "You Don't Need Ads. You Need a Better Business Model.",
   description: "An open letter to Sam, Dario, Sundar, and Elon. You're all in the news this week for the same reason. Ads. And you don't have to be in this position at all.",
+  openGraph: {
+    title: "You Don't Need Ads. You Need a Better Business Model.",
+    description: "An open letter to Sam, Dario, Sundar, and Elon. You're all in the news this week for the same reason.",
+    url: 'https://imajin.ai/articles/you-dont-need-ads',
+    type: 'article',
+    publishedTime: '2026-02-20',
+    authors: ['Ryan Veteze'],
+  },
+  twitter: {
+    card: 'summary',
+    title: "You Don't Need Ads",
+    description: "An open letter to Sam, Dario, Sundar, and Elon. You don't have to be in this position at all.",
+  },
 };
 
 export default function ArticlePage() {

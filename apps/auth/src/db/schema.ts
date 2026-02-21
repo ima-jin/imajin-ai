@@ -7,12 +7,15 @@ export const identities = pgTable('auth_identities', {
   id: text('id').primaryKey(),                    // did:imajin:xxx
   type: text('type').notNull(),                   // 'human' | 'agent'
   publicKey: text('public_key').notNull().unique(),
-  name: text('name'),
+  handle: text('handle').unique(),                // @username (unique, optional)
+  name: text('name'),                             // Display name
   avatarUrl: text('avatar_url'),
   metadata: jsonb('metadata').default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+  handleIdx: index('idx_auth_identities_handle').on(table.handle),
+}));
 
 /**
  * Challenges - short-lived, for authentication flow

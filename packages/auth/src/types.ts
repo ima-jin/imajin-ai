@@ -2,7 +2,13 @@
  * Core types for Imajin Auth
  */
 
-export type IdentityType = 'human' | 'agent';
+export type IdentityType = 
+  | 'human'      // A person
+  | 'agent'      // AI or bot (always labeled)
+  | 'device'     // Hardware: Units, nodes, IoT
+  | 'org'        // Organization or group
+  | 'event'      // Time-bound gathering
+  | 'service';   // Backend service
 
 export interface Identity {
   /** Unique identifier (did:imajin:xxx or legacy ID) */

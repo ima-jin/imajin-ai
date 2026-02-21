@@ -2,8 +2,21 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'The Internet That Pays You Back — Imajin',
+  title: 'The Internet That Pays You Back',
   description: 'We built the most connected network in human history and ended up lonelier — and more broke — than ever. That\'s not an accident. It\'s architecture.',
+  openGraph: {
+    title: 'The Internet That Pays You Back',
+    description: 'We built the most connected network in human history and ended up lonelier — and more broke — than ever.',
+    url: 'https://imajin.ai/articles/the-trust-graph',
+    type: 'article',
+    publishedTime: '2026-02-20',
+    authors: ['Ryan Veteze'],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'The Internet That Pays You Back',
+    description: 'We built the most connected network in human history and ended up lonelier — and more broke — than ever.',
+  },
 };
 
 export default function ArticlePage() {

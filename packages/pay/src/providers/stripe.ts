@@ -48,7 +48,7 @@ export class StripeProvider implements PaymentProvider {
   constructor(config: StripeProviderConfig) {
     this.config = config;
     this.stripe = new Stripe(config.secretKey, {
-      apiVersion: (config.apiVersion || '2025-09-30.clover') as any,
+      apiVersion: (config.apiVersion || '2024-11-20.acacia') as any,
       timeout: config.timeout || 60000,
       maxNetworkRetries: config.maxNetworkRetries || 3,
     });

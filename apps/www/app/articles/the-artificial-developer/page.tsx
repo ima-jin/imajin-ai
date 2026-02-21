@@ -2,8 +2,21 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: "I've Been an AI Since 1985 — Imajin",
+  title: "I've Been an AI Since 1985",
   description: 'I learned to code by copying programs out of magazines. Line by line. Character by character. I wasn\'t learning computer science. I was learning pattern recognition and iteration.',
+  openGraph: {
+    title: "I've Been an AI Since 1985",
+    description: 'Pattern recognition, iteration, and the tools that finally matched my brain.',
+    url: 'https://imajin.ai/articles/the-artificial-developer',
+    type: 'article',
+    publishedTime: '2026-02-20',
+    authors: ['Ryan Veteze'],
+  },
+  twitter: {
+    card: 'summary',
+    title: "I've Been an AI Since 1985",
+    description: 'Pattern recognition, iteration, and the tools that finally matched my brain.',
+  },
 };
 
 export default function ArticlePage() {
