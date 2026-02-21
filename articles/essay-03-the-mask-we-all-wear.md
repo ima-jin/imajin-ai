@@ -182,7 +182,7 @@ The first was b0bbys World. 1991 to 1994. Three phone lines in my parents' basem
 
 I didn't know what I had until it was gone. The web came and it looked like more — more people, more reach, more everything. And every metric said it was better. And every metric was measuring the wrong thing.
 
-The second time was 2003. I sold my condo and traveled for ten months with my first wife Katherine. Months of being nobody in particular in places where nobody knew me. No title. No org chart. No performance review. No choreography to run. Just: here is a human, moving through the world, noticing things, being changed by them.
+The second time was in late 2003. I sold my condo and traveled for ten months through most of 2004 with my first wife Katherine. Months of being nobody in particular in places where nobody knew me. No title. No org chart. No performance review. No choreography to run. Just: here is a human, moving through the world, noticing things, being changed by them.
 
 I became someone different in that year. Not a better or worse someone. A truer one. The mask I'd been building since I entered the working world — the one that had been growing on me so gradually I'd stopped noticing the weight — I left most of it in whatever airport or hostel or market or mountain I was standing in when it finally fell off.
 
