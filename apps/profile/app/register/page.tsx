@@ -131,6 +131,27 @@ export default function RegisterPage() {
     }
   }
 
+  function downloadKeys() {
+    const keypair = localStorage.getItem('imajin_keypair');
+    const did = localStorage.getItem('imajin_did');
+    if (!keypair || !did) return;
+    
+    const backup = {
+      did,
+      keypair: JSON.parse(keypair),
+      exportedAt: new Date().toISOString(),
+      warning: 'Keep this file safe. Anyone with access can control your identity.',
+    };
+    
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `imajin-keys-${did.slice(-8)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (step === 'success' && profile) {
     return (
       <div className="max-w-md mx-auto text-center">
@@ -146,13 +167,22 @@ export default function RegisterPage() {
             <p className="font-mono text-xs break-all">{profile.did}</p>
           </div>
 
-          <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 mb-6 text-left">
-            <p className="text-sm font-semibold text-orange-800 dark:text-orange-200 mb-1">
-              ⚠️ Important: Save Your Keys
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6 text-left">
+            <p className="text-sm font-semibold text-red-800 dark:text-red-200 mb-2">
+              🔐 Back Up Your Keys Now
             </p>
-            <p className="text-xs text-orange-700 dark:text-orange-300">
-              Your private key is stored in this browser. If you clear your data, you'll lose access.
-              We'll add key export soon.
+            <p className="text-xs text-red-700 dark:text-red-300 mb-3">
+              Your private key is only stored in this browser. If you clear your data or lose this device, 
+              <strong> you will permanently lose access to your identity and all associated data.</strong>
+            </p>
+            <button
+              onClick={downloadKeys}
+              className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
+            >
+              ⬇️ Download Backup Keys
+            </button>
+            <p className="text-xs text-red-600 dark:text-red-400 mt-2 text-center">
+              Store this file somewhere safe. You are responsible for your keys.
             </p>
           </div>
 
