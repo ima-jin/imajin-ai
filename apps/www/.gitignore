@@ -23,4 +23,3 @@ next-env.d.ts
 # drizzle
 drizzle/
 .vercel
-apps/www/content/articles/

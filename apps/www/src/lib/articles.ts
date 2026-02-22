@@ -4,10 +4,8 @@ import matter from 'gray-matter';
 import { remark } from 'remark';
 import html from 'remark-html';
 
-// Articles directory - use content/articles if it exists (for Vercel), otherwise fall back to relative path
-const articlesDirectory = fs.existsSync(path.join(process.cwd(), 'content/articles'))
-  ? path.join(process.cwd(), 'content/articles')
-  : path.join(process.cwd(), '../../articles');
+// Articles directory - lives in apps/www/articles
+const articlesDirectory = path.join(process.cwd(), 'articles');
 
 export type ArticleStatus = 'POSTED' | 'REVIEW' | 'DRAFT';
 
