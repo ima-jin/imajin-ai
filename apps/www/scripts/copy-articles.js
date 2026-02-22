@@ -12,6 +12,7 @@ const possiblePaths = [
 
 console.log('CWD:', process.cwd());
 console.log('__dirname:', __dirname);
+console.log('Contents of CWD:', fs.readdirSync(process.cwd()));
 
 let articlesDir = null;
 for (const p of possiblePaths) {
