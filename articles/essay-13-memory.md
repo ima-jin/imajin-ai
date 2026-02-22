@@ -34,7 +34,7 @@ The platform never had the sleeping bag. It only ever had the receipt.
 
 ---
 
-## What Happened at b0bbys World
+## What Happened at b0bby's World
 
 Nearly 300 people found their way to those three nodes between 1991 and 1994.
 
@@ -106,7 +106,7 @@ When someone joins the network two years from now and traces the graph back, the
 
 The early nodes aren't just early adopters. They're the founding memory of the network.
 
-b0bbys World ended and the memory lived in the people. Which is why it persisted — because the people were real, the relationships were real, the thing that happened there was real enough to survive the infrastructure going dark.
+b0bby's World ended and the memory lived in the people. Which is why it persisted — because the people were real, the relationships were real, the thing that happened there was real enough to survive the infrastructure going dark.
 
 Now the infrastructure can hold it too.
 
@@ -128,5 +128,6 @@ A memory.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
+- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-13-memory.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-13-memory.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-13-memory) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

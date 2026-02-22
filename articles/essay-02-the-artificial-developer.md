@@ -148,7 +148,7 @@ This is also why I think people with brains like mine — pattern-focused, syste
 
 ## Why This Connects to Everything
 
-In the first essay I wrote about b0bbys World — what real connection looked like, what the extraction model destroyed, why I'm building imajin.
+In the first essay I wrote about b0bby's World — what real connection looked like, what the extraction model destroyed, why I'm building imajin.
 
 Here's the link I didn't make explicit there:
 
@@ -192,5 +192,6 @@ Now we build.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
+- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-02-the-artificial-developer.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-02-the-artificial-developer.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-02-the-artificial-developer) on February 19, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

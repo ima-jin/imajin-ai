@@ -2,7 +2,7 @@
 
 **1. The Pain of Knowing: Why I'm Still Fighting for the Internet We Lost**
 `essay-01-the-internet-we-lost.md` — **POSTED**
-The origin story. b0bbys World. What real connection looked like. The extraction model and how every step since 1994 was wrong. imajin as the answer. Establishes who you are and what you know.
+The origin story. b0bby's World. What real connection looked like. The extraction model and how every step since 1994 was wrong. imajin as the answer. Establishes who you are and what you know.
 
 **2. I've Been an AI Since 1988**
 `essay-02-the-artificial-developer.md` — **POSTED**
@@ -35,7 +35,7 @@ The post-severance detonation. Fired the Monday the site launched. Three weeks r
 
 **9. The Network That Never Died**
 `essay-09-the-network.md` — **REVIEW**
-Happy Boat. b0bbys World. Mayhem. Joel. James. Jeff. The thread that runs unbroken from 1991 to April 1st 2026. The operators who were always going to be operators. The trust graph that existed before the software. Personal. Not a manifesto. Just: here are the people.
+Happy Boat. b0bby's World. Mayhem. Joel. James. Jeff. The thread that runs unbroken from 1991 to April 1st 2026. The operators who were always going to be operators. The trust graph that existed before the software. Personal. Not a manifesto. Just: here are the people.
 
 **10. The Bridge**
 `essay-10-the-bridge.md` — **REVIEW**

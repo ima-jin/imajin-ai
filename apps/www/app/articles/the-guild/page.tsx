@@ -56,7 +56,7 @@ export default function ArticlePage() {
           were the people who wanted exactly that.
         </p>
         <p>
-          b0bbys World was a music hub. That was my decision. The demoscene. Tracker music. 
+          b0bby's World was a music hub. That was my decision. The demoscene. Tracker music. 
           MAZURkA first, then Chill Productions. I cared about that music and I built a place 
           for people who cared about it too. The scarcity — three nodes, three people at a 
           time — wasn't a limitation I was working around. It was part of what made the room 
@@ -352,7 +352,7 @@ export default function ArticlePage() {
         </p>
         <p>
           Five human operators will be in that room on April 1st. Joel from Happy Boat. 
-          Mayhem from b0bbys World. James, Jeff, and others — people whose trust graphs 
+          Mayhem from b0bby's World. James, Jeff, and others — people whose trust graphs 
           predate the software by decades.
         </p>
         <p>None of them needed a credential to be there.</p>

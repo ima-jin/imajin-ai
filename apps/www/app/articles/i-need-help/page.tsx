@@ -47,7 +47,7 @@ export default function ArticlePage() {
 
         <hr className="my-12 border-gray-800" />
 
-        <p>I am Ryan VETEZE, known as b0b. I have been building connective infrastructure since 1988. I ran b0bbys World. I have thirty years of pattern library and finally the tools to prove it.</p>
+        <p>I am Ryan VETEZE, known as b0b. I have been building connective infrastructure since 1988. I ran b0bby's World. I have thirty years of pattern library and finally the tools to prove it.</p>
 
         <p>And I can't do it alone.</p>
 

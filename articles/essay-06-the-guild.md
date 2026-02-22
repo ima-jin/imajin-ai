@@ -10,7 +10,7 @@ A sysop was the person who decided what kind of room it would be.
 
 Happy Boat was weird. That was Seth's decision. Not a feature — a choice. He could have run a clean, general-purpose board with message channels for every topic and door games and a file library and the whole standard configuration. Instead he ran something strange and specific and alive, and the people who found it and stayed were the people who wanted exactly that.
 
-b0bbys World was a music hub. That was my decision. The demoscene. Tracker music. MAZURkA first, then Chill Productions. I cared about that music and I built a place for people who cared about it too. The scarcity — three nodes, three people at a time — wasn't a limitation I was working around. It was part of what made the room what it was.
+b0bby's World was a music hub. That was my decision. The demoscene. Tracker music. MAZURkA first, then Chill Productions. I cared about that music and I built a place for people who cared about it too. The scarcity — three nodes, three people at a time — wasn't a limitation I was working around. It was part of what made the room what it was.
 
 The technology was almost incidental. The 386, the modems, the phone lines — that was the infrastructure. The sysop was the person who decided what happened on top of it.
 
@@ -170,7 +170,7 @@ Jin decides who gets in. Jin sets the culture. Jin is accountable to the communi
 
 That's the demo. Not the technology. The role.
 
-Five human operators will be in that room on April 1st. Joel from Happy Boat. Mayhem from b0bbys World. James, Jeff, and others — people whose trust graphs predate the software by decades.
+Five human operators will be in that room on April 1st. Joel from Happy Boat. Mayhem from b0bby's World. James, Jeff, and others — people whose trust graphs predate the software by decades.
 
 None of them needed a credential to be there.
 
@@ -188,5 +188,6 @@ Come run a node.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
+- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-06-the-guild.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-06-the-guild.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-06-the-guild) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

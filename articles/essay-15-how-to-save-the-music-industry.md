@@ -70,9 +70,9 @@ Until streaming.
 
 ---
 
-## b0bbys World Was a Music Distribution Platform
+## b0bby's World Was a Music Distribution Platform
 
-Between 1991 and 1994 I ran a BBS called b0bbys World out of my parents' basement in Toronto.
+Between 1991 and 1994 I ran a BBS called b0bby's World out of my parents' basement in Toronto.
 
 Three phone lines. Three modems. Three people could be connected at once. It was a distribution hub for the demoscene — tracker music, .MOD files, the bedroom producer culture that was quietly building something extraordinary before anyone had words for it. First featuring music by a group called MAZURkA, later Chill Productions.
 
@@ -246,5 +246,6 @@ Come bring your music.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
+- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-15-how-to-save-the-music-industry.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-15-how-to-save-the-music-industry.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-15-how-to-save-the-music-industry) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

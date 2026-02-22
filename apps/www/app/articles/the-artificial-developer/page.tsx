@@ -273,7 +273,7 @@ export default function ArticlePage() {
 
         <h2>Why This Connects to Everything</h2>
         <p>
-          In the first essay I wrote about b0bbys World — what real connection looked like, what 
+          In the first essay I wrote about b0bby's World — what real connection looked like, what 
           the extraction model destroyed, why I'm building imajin.
         </p>
         <p>Here's the link I didn't make explicit there:</p>

@@ -26,7 +26,7 @@ Seth and the Happy Boat crew are still in the network. Thirty-five years later. 
 
 ---
 
-## b0bbys World
+## b0bby's World
 
 1991. I was fifteen turning sixteen. A 386 with a 40mb hard drive. Three phone lines, three modems, three nodes. A music distribution hub for the demoscene — first featuring music by MAZURkA, later Chill Productions.
 
@@ -36,7 +36,7 @@ The scarcity created the intimacy. You might wait for someone to log off. You kn
 
 My sister — Hot Tamale — met her husband Anarchy Tech on the BBS. They were both fifteen. They have two adult children now. Still together.
 
-b0bbys World ran until early 1994. Then people switched to dial-up internet. IRC arrived. No reason to dial a BBS when you can be on the actual internet. Reasonable. I got on it too.
+b0bby's World ran until early 1994. Then people switched to dial-up internet. IRC arrived. No reason to dial a BBS when you can be on the actual internet. Reasonable. I got on it too.
 
 But the people stayed real. The connections persisted. That's what you find out, thirty years later — the architecture of real community doesn't dissolve just because the platform does. The platform was never the thing. The people were the thing.
 
@@ -60,7 +60,7 @@ That trust is the foundation of his node.
 
 ## Mayhem
 
-Mayhem was on b0bbys World.
+Mayhem was on b0bby's World.
 
 One of the people who became real through the connection — not just a handle but a person, with a way of thinking and a sense of humour and opinions about tracker music and an understanding of what we were building together even though none of us had words for it.
 
@@ -68,7 +68,7 @@ When I started writing these essays Mayhem was one of the first people who respo
 
 Mayhem is going to run a node on April 1st.
 
-The thread from b0bbys World to the sovereign network is unbroken. The community that formed on a 386 with a 40mb hard drive in 1991 is a load-bearing element of infrastructure being built in 2026.
+The thread from b0bby's World to the sovereign network is unbroken. The community that formed on a 386 with a 40mb hard drive in 1991 is a load-bearing element of infrastructure being built in 2026.
 
 That's not nostalgia. That's proof of concept. Those connections lasted because they were built on something real. The architecture of real community — slow, intentional, curated, around genuine shared passion — produces bonds that persist across decades.
 
@@ -84,7 +84,7 @@ I'm not sure there's a cleaner example of someone who has spent his entire caree
 
 He understands at a bone level what it costs when infrastructure doesn't serve the people it's supposed to serve.
 
-James co-founded the Consciousness Explorers Club with Jeff Warren — a community that has been doing the thing we're trying to encode in software for years. People in a room together. Low tech. High trust. No algorithm. No extraction. The kind of room that b0bbys World was, in a different decade, with different technology, for different reasons, arriving at the same thing.
+James co-founded the Consciousness Explorers Club with Jeff Warren — a community that has been doing the thing we're trying to encode in software for years. People in a room together. Low tech. High trust. No algorithm. No extraction. The kind of room that b0bby's World was, in a different decade, with different technology, for different reasons, arriving at the same thing.
 
 He's going to run a node on April 1st.
 
@@ -122,9 +122,9 @@ That's the whole demo.
 
 ## The Thread
 
-Happy Boat → b0bbys World → thirty years of corporate extraction → South Africa → AfrikaBurn → two continents → home → April 1st 2026.
+Happy Boat → b0bby's World → thirty years of corporate extraction → South Africa → AfrikaBurn → two continents → home → April 1st 2026.
 
-Joel from Happy Boat. Mayhem from b0bbys World. James from the emergency room and the rave and the meditation hall. Jeff from the tree he fell from and the practice he built for people who can't sit still. Me from my parents' basement and a jet black F150 and the night I drove to Markham to meet strangers from a BBS.
+Joel from Happy Boat. Mayhem from b0bby's World. James from the emergency room and the rave and the meditation hall. Jeff from the tree he fell from and the practice he built for people who can't sit still. Me from my parents' basement and a jet black F150 and the night I drove to Markham to meet strangers from a BBS.
 
 Five nodes. Five origin stories. One thread running through all of them.
 
@@ -142,5 +142,6 @@ April 1st. Jin's lights will sparkle. Come find your node.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
+- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-09-the-network.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-09-the-network.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-09-the-network) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

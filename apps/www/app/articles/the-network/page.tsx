@@ -77,7 +77,7 @@ export default function ArticlePage() {
 
         <hr className="my-12 border-gray-800" />
 
-        <h2>b0bbys World</h2>
+        <h2>b0bby's World</h2>
         <p>
           1991. I was fifteen turning sixteen. A 386 with a 40mb hard drive. Three phone lines, three 
           modems, three nodes. A music distribution hub for the demoscene — first featuring music by 
@@ -97,7 +97,7 @@ export default function ArticlePage() {
           They have two adult children now. Still together.
         </p>
         <p>
-          b0bbys World ran until early 1994. Then people switched to dial-up internet. IRC arrived. No 
+          b0bby's World ran until early 1994. Then people switched to dial-up internet. IRC arrived. No 
           reason to dial a BBS when you can be on the actual internet. Reasonable. I got on it too.
         </p>
         <p>
@@ -130,7 +130,7 @@ export default function ArticlePage() {
         <hr className="my-12 border-gray-800" />
 
         <h2>Mayhem</h2>
-        <p>Mayhem was on b0bbys World.</p>
+        <p>Mayhem was on b0bby's World.</p>
         <p>
           One of the people who became real through the connection — not just a handle but a person, 
           with a way of thinking and a sense of humour and opinions about tracker music and an 
@@ -144,7 +144,7 @@ export default function ArticlePage() {
         </p>
         <p>Mayhem is going to run a node on April 1st.</p>
         <p>
-          The thread from b0bbys World to the sovereign network is unbroken. The community that formed 
+          The thread from b0bby's World to the sovereign network is unbroken. The community that formed 
           on a 386 with a 40mb hard drive in 1991 is a load-bearing element of infrastructure being 
           built in 2026.
         </p>
@@ -176,7 +176,7 @@ export default function ArticlePage() {
         <p>
           James co-founded the Consciousness Explorers Club with Jeff Warren — a community that has 
           been doing the thing we're trying to encode in software for years. People in a room together. 
-          Low tech. High trust. No algorithm. No extraction. The kind of room that b0bbys World was, in 
+          Low tech. High trust. No algorithm. No extraction. The kind of room that b0bby's World was, in 
           a different decade, with different technology, for different reasons, arriving at the same thing.
         </p>
         <p>He's going to run a node on April 1st.</p>
@@ -233,11 +233,11 @@ export default function ArticlePage() {
 
         <h2>The Thread</h2>
         <p>
-          Happy Boat → b0bbys World → thirty years of corporate extraction → South Africa → AfrikaBurn 
+          Happy Boat → b0bby's World → thirty years of corporate extraction → South Africa → AfrikaBurn 
           → two continents → home → April 1st 2026.
         </p>
         <p>
-          Joel from Happy Boat. Mayhem from b0bbys World. James from the emergency room and the rave 
+          Joel from Happy Boat. Mayhem from b0bby's World. James from the emergency room and the rave 
           and the meditation hall. Jeff from the tree he fell from and the practice he built for people 
           who can't sit still. Me from my parents' basement and a jet black F150 and the night I drove 
           to Markham to meet strangers from a BBS.

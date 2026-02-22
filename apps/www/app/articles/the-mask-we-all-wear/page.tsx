@@ -396,7 +396,7 @@ export default function ArticlePage() {
         <h2>A Personal Cartography</h2>
         <p>I have been in the gap three times in my life before now. Maybe four.</p>
         <p>
-          The first was b0bbys World. 1991 to 1994. Three phone lines in my parents' basement. I was a 
+          The first was b0bby's World. 1991 to 1994. Three phone lines in my parents' basement. I was a 
           teenager who didn't know he was building anything — I was just making a place for people who 
           loved the same music I loved. And what emerged, without design, was community without extraction. 
           Real people finding each other around genuine shared passion. My sister meeting the man she's 
@@ -441,7 +441,7 @@ export default function ArticlePage() {
 
         <p>I know what it looks like without the mask. I've seen it.</p>
         <p>
-          Between 1991 and 1994 I ran a BBS called b0bbys World. Three phone lines. Three modems. Three 
+          Between 1991 and 1994 I ran a BBS called b0bby's World. Three phone lines. Three modems. Three 
           people could be connected at once. Nearly 300 people found their way to those nodes — local at 
           first, then from across the country, then international. People who'd never meet in person, 
           finding each other through shared love of tracker music and demo art.

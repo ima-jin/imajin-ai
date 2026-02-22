@@ -54,7 +54,7 @@ Not time-bounded. Not defined by biology. Defined by shared passion, shared prac
 
 The demoscene. A music scene. A meditation community. A neighborhood that wants to be a neighborhood again. A professional guild. A creative collective in a shipping container in Cape Town. Any gathering of people who keep showing up around something they care about.
 
-The community node is what b0bbys World was — a place people went with intention, a daily ritual of connection around shared passion, a room with a character that emerged from the curation of the person who ran it and the culture of the people who inhabited it.
+The community node is what b0bby's World was — a place people went with intention, a daily ritual of connection around shared passion, a room with a character that emerged from the curation of the person who ran it and the culture of the people who inhabited it.
 
 Running a community node is the full practice of the operator role. You're not just managing an event. You're responsible for a culture. You decide who gets vouched in. You hold the line on what the room is for. You notice when something shifts — when someone's making people uncomfortable, when the energy changes, when a new person is exactly the right fit — and you act on what you notice.
 
@@ -82,7 +82,7 @@ The staffing agency rented your credential. The guild gives you a practice. The 
 
 A skilled operator runs a portfolio.
 
-The sysop who ran Happy Boat and then b0bbys World — that's the pattern already. You learn the craft on one room and it transfers. The judgment you built running event nodes becomes the foundation for the community node. The community node teaches you what business clients actually need. The business node funds the community node you were always doing for love.
+The sysop who ran Happy Boat and then b0bby's World — that's the pattern already. You learn the craft on one room and it transfers. The judgment you built running event nodes becomes the foundation for the community node. The community node teaches you what business clients actually need. The business node funds the community node you were always doing for love.
 
 Different rooms. Different cultures. Different levels of intimacy and commitment. A business node for a client during the day. A community node for a music scene in the evenings. An event node for a friend's birthday on Saturday. The operator learns to hold multiple rooms simultaneously — to feel the difference between them, to give each one what it needs, to not let the business node's logic contaminate the community node's culture.
 
@@ -136,5 +136,6 @@ Come run a room.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
+- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-12-nodes-types-and-practice.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-12-nodes-types-and-practice.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-12-nodes-types-and-practice) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

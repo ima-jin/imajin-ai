@@ -187,9 +187,9 @@ export default function ArticlePage() {
 
         <hr className="my-12 border-gray-800" />
 
-        <h2>b0bbys World Was a Music Distribution Platform</h2>
+        <h2>b0bby's World Was a Music Distribution Platform</h2>
         <p>
-          Between 1991 and 1994 I ran a BBS called b0bbys World out of my parents' basement 
+          Between 1991 and 1994 I ran a BBS called b0bby's World out of my parents' basement 
           in Toronto.
         </p>
         <p>

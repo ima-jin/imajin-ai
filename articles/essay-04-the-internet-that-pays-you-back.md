@@ -192,5 +192,6 @@ The graph starts somewhere. It might as well start here.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
+- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-04-the-internet-that-pays-you-back.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-04-the-internet-that-pays-you-back.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-04-the-internet-that-pays-you-back) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

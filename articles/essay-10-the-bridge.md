@@ -126,7 +126,7 @@ The bridge between the human layer and the infrastructure layer, demonstrated in
 
 People will look for the platform. There isn't one. People will look for who to call when something goes wrong. The answer is: the operators. The guild members who maintain the bridge.
 
-Hilary's 400,000 followers. Toni's sensibility. The people from Happy Boat and b0bbys World and the Consciousness Explorers Club and the Cape Town shipping containers. The CS people who wanted a guild and got a staffing agency.
+Hilary's 400,000 followers. Toni's sensibility. The people from Happy Boat and b0bby's World and the Consciousness Explorers Club and the Cape Town shipping containers. The CS people who wanted a guild and got a staffing agency.
 
 All of them on the other side of the bridge.
 
@@ -142,5 +142,6 @@ April 1st. Come across.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
+- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-10-the-bridge.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-10-the-bridge.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-10-the-bridge) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

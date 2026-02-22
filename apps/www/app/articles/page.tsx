@@ -19,7 +19,7 @@ const articles: Article[] = [
   {
     slug: 'the-internet-we-lost',
     title: 'The Pain of Knowing: Why I\'m Still Fighting for the Internet We Lost',
-    description: 'The origin story. b0bbys World. What real connection looked like. The extraction model and how every step since 1994 was wrong.',
+    description: 'The origin story. b0bby's World. What real connection looked like. The extraction model and how every step since 1994 was wrong.',
     status: 'POSTED',
   },
   {
@@ -67,7 +67,7 @@ const articles: Article[] = [
   {
     slug: 'the-network',
     title: 'The Network That Never Died',
-    description: 'Happy Boat. b0bbys World. Mayhem. The thread that runs unbroken from 1991 to April 1st 2026. The trust graph that existed before the software.',
+    description: 'Happy Boat. b0bby's World. Mayhem. The thread that runs unbroken from 1991 to April 1st 2026. The trust graph that existed before the software.',
     status: 'REVIEW',
   },
   {

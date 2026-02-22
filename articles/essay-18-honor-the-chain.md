@@ -144,7 +144,7 @@ You can't have WeR1's distribution without the chain. You can't have fair AI lic
 
 Attribution is the foundation. Distribution, compensation, licensing, regulation — these are all consequences. You build the foundation first.
 
-b0bbys World paid nothing and created everything. WeR1 proved payment could work. The .fair manifest makes the chain permanent. imajin makes it sovereign.
+b0bby's World paid nothing and created everything. WeR1 proved payment could work. The .fair manifest makes the chain permanent. imajin makes it sovereign.
 
 That's the sequence. That's always been the sequence.
 
@@ -188,5 +188,6 @@ The infrastructure to honor it exists now.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](https://imajin.ai)
 - Jin's party: April 1st, 2026
+- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-18-honor-the-chain.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-18-honor-the-chain.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-18-honor-the-chain) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

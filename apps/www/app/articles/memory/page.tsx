@@ -102,7 +102,7 @@ export default function ArticlePage() {
 
         <hr className="my-12 border-gray-800" />
 
-        <h2>What Happened at b0bbys World</h2>
+        <h2>What Happened at b0bby's World</h2>
         <p>Nearly 300 people found their way to those three nodes between 1991 and 1994.</p>
         <p>
           The BBS is gone. The hardware is gone. The phone lines are disconnected. Whatever logs 
@@ -233,7 +233,7 @@ export default function ArticlePage() {
         </p>
         <p>The early nodes aren't just early adopters. They're the founding memory of the network.</p>
         <p>
-          b0bbys World ended and the memory lived in the people. Which is why it persisted — because 
+          b0bby's World ended and the memory lived in the people. Which is why it persisted — because 
           the people were real, the relationships were real, the thing that happened there was real 
           enough to survive the infrastructure going dark.
         </p>

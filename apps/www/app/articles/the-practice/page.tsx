@@ -135,7 +135,7 @@ export default function ArticlePage() {
           Cape Town. Any gathering of people who keep showing up around something they care about.
         </p>
         <p>
-          The community node is what b0bbys World was — a place people went with intention, a daily 
+          The community node is what b0bby's World was — a place people went with intention, a daily 
           ritual of connection around shared passion, a room with a character that emerged from the 
           curation of the person who ran it and the culture of the people who inhabited it.
         </p>
@@ -198,7 +198,7 @@ export default function ArticlePage() {
         <h2>Multiple Nodes</h2>
         <p>A skilled operator runs a portfolio.</p>
         <p>
-          The sysop who ran Happy Boat and then b0bbys World — that's the pattern already. You learn 
+          The sysop who ran Happy Boat and then b0bby's World — that's the pattern already. You learn 
           the craft on one room and it transfers. The judgment you built running event nodes becomes 
           the foundation for the community node. The community node teaches you what business clients 
           actually need. The business node funds the community node you were always doing for love.

@@ -60,7 +60,7 @@ I don't have that infrastructure yet. That's the thing I'm building. But I can m
 
 So here is the ask, signed, attributed, with a return address:
 
-I am Ryan VETEZE, known as b0b. I have been building connective infrastructure since 1988. I ran a BBS called b0bbys World. I have organized fourteen summers of a community called Summer Camp. I have thirty years of pattern library in my head and finally the tools to make it legible and the architecture to make it buildable. I spent three weeks burning out my brain writing imajin-cli on severance pay and five events on two continents making sure I understood what I was trying to build before I tried to build it.
+I am Ryan VETEZE, known as b0b. I have been building connective infrastructure since 1988. I ran a BBS called b0bby's World. I have organized fourteen summers of a community called Summer Camp. I have thirty years of pattern library in my head and finally the tools to make it legible and the architecture to make it buildable. I spent three weeks burning out my brain writing imajin-cli on severance pay and five events on two continents making sure I understood what I was trying to build before I tried to build it.
 
 I am not a first-time founder with a pitch deck.
 
@@ -79,6 +79,6 @@ Come in.
 *The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*  
 *The network: [imajin.ai](https://imajin.ai)*  
 *Jin's party: April 1st, 2026*  
-*To reach me directly: you know how.*
+*The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-20-i-need-help.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-20-i-need-help.md)*
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-20-i-need-help) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

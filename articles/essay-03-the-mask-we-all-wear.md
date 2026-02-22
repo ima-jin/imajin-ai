@@ -2,7 +2,7 @@
 
 I have felt it my entire adult life and I could never name it.
 
-The moment I walked into a corporate building — any corporate building, startup loft, VC pitch room, open-plan office with the exposed ductwork and the cold brew on tap — something in my body would go wrong. A low-frequency revulsion. Not at the people. Not exactly. Something more like watching a nature documentary where the behavior on screen is technically human but the thing behind the eyes isn't quite there.
+The moment I walked into a corporate building — any corporate building, startup loft, sales pitch room, open-plan office with the exposed ductwork and the cold brew on tap — something in my body would go wrong. A low-frequency revulsion. Not at the people. Not exactly. Something more like watching a nature documentary where the behavior on screen is technically human but the thing behind the eyes isn't quite there.
 
 I spent decades thinking it was me. That I was the broken one. That everyone else had decoded something I was missing — some social contract I hadn't been handed. That the problem with the office was that I didn't belong in it.
 
@@ -14,7 +14,7 @@ We know the choreography by heart. We learned it so young we can't remember lear
 
 The hallway greeting. "Morning!" — bright, automatic, landing somewhere between your left ear and the wall behind you. The coffee ritual that is not about coffee. The standup that is not about standing up. The all-hands where hands are never all-in. The pizza party, which is not a party. The cheer when the numbers go up, the silence when they don't, and the careful, careful way everyone watches the room to calibrate how hard to cheer and how long to hold the silence.
 
-We do this in startups. We do this in VC pitches. We do this in boardrooms and Slack channels and Zoom backgrounds chosen to signal exactly the right amount of personhood. The costume changes. The choreography doesn't.
+We do this in startups. We do this in sales pitches. We do this in boardrooms and Slack channels and Zoom backgrounds chosen to signal exactly the right amount of personhood. The costume changes. The choreography doesn't.
 
 And we know — we all know — that none of it is real.
 
@@ -40,23 +40,31 @@ I can tell you exactly what it costs. Not in theory. In weeks.
 
 I was the person who knew the system. The legacy booking platform — a billion dollars in transactions, a decade of accumulated complexity — lived in my head more than it lived in any documentation. I was the pattern library. I knew where the rot was working its way in. I could feel the load distribution eighteen months before the edge cases started compounding. That's not analysis. That's what happens when a brain like mine has been inside a system long enough. The system starts talking to you.
 
-I asked to move to the marketing team. I'd been carrying that platform for years and I wanted a change of pace. They built a small dev team around me. A VP above. A director inserted between us. Three devs. The project: bridge the legacy API to a new website. Straightforward in concept. Genuinely hard in practice, because the legacy system was so complex that nobody fully understood it anymore.
+I asked to move to the marketing team. I'd been carrying that platform for years and I wanted a change of pace. They built a small dev team around me. A VP above. A director inserted between us. Three devs. The project: rebuild the entire consumer website from scratch. PHP/Laravel stack. Straightforward in concept. Genuinely hard in practice, because the legacy system was so complex that nobody fully understood it anymore.
 
 Except me. And I'd moved myself out of the stack.
+
+I'd done PHP dev over the years, but not at scale, and never in a way that stuck. And Laravel — with its layers of abstraction, its command-line cruft, its package ecosystem — was a different species from the environments I'd lived in. I'd been working closer to the architecture level for years. Visual, structural, compositional. Laravel felt like the opposite of all of that. Grating in a specific, low-level way that I couldn't route around. And I hadn't coded hard in about two years. The devs on the team were fluent in this stack. Fast, confident, native speakers.
+
+I was starting from zero in a language I actively disliked.
 
 I'd gotten my autism and ADHD diagnosis five months earlier. I was open about it. I was trying to get people to be human about it. I don't think anyone in the company knew what to do with that information. I didn't either, not really — I was still integrating it myself, still reframing thirty years of *what is wrong with me* into something I could work with.
 
 What I needed was simple. Someone to walk me through the first few steps of the new stack. Orient me. Give me a working pattern I could match against. Once I had that, I was fine. I'd always been fine once I had that. It was the only thing I ever needed.
 
-Nobody could give it to me. Not because it was hard. Because the VP treated knowledge as territory. Information moved up the hierarchy and stopped. The director was positioned between us not to facilitate flow but to control it. The org chart was architecture for extraction — value moving up, friction moving down.
+It wasn't that nobody tried. I sat with the Laravel devs on screen share calls a couple of times. But after each call my brain would just... not retain it. File it as incomplete and move on. It took me a long time to understand why.
 
-The other dev on the team spent ten months on the bridge. He couldn't crack it. And here's the thing I have to be honest about: that was partly on me. I was supposed to manage him. The pattern library for the system lived in my head and I was the one who was supposed to route it through. That was the job.
+Every other stack I'd ever absorbed, I'd learned in a room with someone. Physically present. And the mechanism that made it work was tiny — the ability to turn around mid-thought and say *what's that thing again?* Three seconds. No ceremony. The question asked at the exact moment the confusion existed, before the moment passed and the thread dissolved. That micro-loop, repeated enough times, is how my brain closes the absorption circuit.
+
+On a screen share with someone in another state, that loop doesn't exist. Instead there's a whole negotiation running in parallel: am I taking too long, is this person waiting on me, have I asked this already, am I coming across as someone who doesn't know what they're doing. By the time I've worked out whether it's okay to ask, the moment is gone. And then the call ends, and the session gets filed as incomplete, because it *was* incomplete. The circuit never closed.
+
+I didn't have language for this at the time. I just felt like I was failing. Again. The org chart offered no better path — the VP treated knowledge as territory, information moved up the hierarchy and stopped, the director was positioned between us to control flow rather than facilitate it. But even if the structure had been different, the format was wrong. And I didn't know how to say that.
+
+The bridge — the component that would feed the legacy data to Contentful, the major technical integration in the new site — fell to the server dev on the team. We had it modeled out. He was good. He kept saying he had it. *Don't worry about it.* Over ten months, he occupied himself with the surrounding work, the other layers of the build, and the bridge stayed open. That's not entirely on him — mostly it's on me. I was supposed to be managing him. The pattern library for the legacy system lived in my head and routing it through was the job. I should have dug into his anxiety earlier. Asked harder questions. Validated the work as it happened instead of taking the reassurance at face value.
 
 But I speak in code. Always have. My process has always been the same — get a foothold in the stack, build the foundation, establish the optimal patterns, get something working. And then other devs duplicate it. The pattern is legible in the code itself. That's the language.
 
-The PHP/Laravel stack crippled me. I couldn't get a foothold. Tried twice. Couldn't get traction. And without the ability to write the foundation, I had no way to communicate the model. I tried — whiteboards, Jira, object model conversations in words — but I couldn't tolerate the tools and the work started to feel like a grind in a way it never had when the code was flowing. The translation layer between my brain and the normal project management apparatus doesn't really exist. I'd never needed it before. I'd always just built the thing.
-
-I tried to onboard myself to the new stack twice over that year. Couldn't get traction. Flounded at the first few steps both times. Watched the project spin.
+The Laravel stack crippled me. I couldn't get a foothold. Tried twice. Couldn't get traction. And without the ability to write the foundation, I had no way to communicate the model. I tried — whiteboards, Jira, object model conversations in words — but I couldn't tolerate the tools and the work started to feel like a grind in a way it never had when the code was flowing. The translation layer between my brain and the normal project management apparatus doesn't really exist. I'd never needed it before. I'd always just built the thing.
 
 Then I went to South Africa.
 
@@ -64,13 +72,11 @@ Geordie, a co-founder of a music streaming startup, was someone I knew through m
 
 I came back to Toronto with something unlocked.
 
-The bridge I hadn't been able to crack — hadn't been able to even start — I didn't touch during the two months away. I came home on a Sunday. By the following Thursday I had it.
+The bridge that had been sitting open for ten months — I didn't touch it the whole time I was away. I came home on a Sunday. By the following Thursday I had it.
 
 Ten days. Command-line driven. AI-assisted. The same recursive loop I'd been running since I was copying programs out of magazines — run the code, read the errors, feed them back, iterate until it clicks. Except now the AI was the person who could walk me through the first steps. The bottleneck that had defined my entire career, quietly, invisibly — just gone.
 
-I delivered the bridge.
-
-They let me go on the Monday the site was supposed to launch.
+I spent that weekend refining a fully working tool. They let me go Monday morning. Nobody ever looked at it.
 
 Thirty-seven weeks severance. The VP who signed the paperwork had no real idea what had just happened in the ten days prior. The knowledge that had lived in my head for a decade — the pattern library, the feel for where the system wanted to be — walked out the door with me.
 
@@ -82,7 +88,21 @@ I was the product. Monday was the invoice.
 
 ---
 
-And then I went home and opened my phone.
+I got let go in May. By October the freedom had started to have an edge to it — not panic, just gravity. The world houses people who are useful to it. I was going to have to figure out where I fit.
+
+The realization didn't arrive as insight. It arrived as texture. Days with no standup to perform for, no choreography required, no extraction in progress — and gradually, in the space where the performance used to be, something else came into focus.
+
+Nobody is available.
+
+Not in a crisis way. In a structural way. The people I wanted to call were in meetings. The ones I wanted to see were at their desks. The friend who would have been perfect for a Tuesday afternoon walk was in a standup about the walk's equivalent — something that produced the appearance of value rather than the thing itself. I wasn't being ignored. I was watching, from the outside, how completely the machine fills a life when you're inside it. Every hour spoken for. Every impulse toward connection routed through the calendar.
+
+It felt — and I say this without irony — rude. Which I know is the wrong word. But it's the honest one. Not their fault. Just: this is what total capture looks like from the outside.
+
+Think about a new mother at home with an infant right now. The baby doesn't have a calendar. The baby has needs, and meeting them is the whole day, and it's relentless, and the people who would make it bearable are all at their desks because they have no choice or have forgotten they ever had one. And so she opens her phone. Not because the phone is good. Because the phone is the only place anyone is.
+
+That's when I understood what the feed actually is.
+
+It's not a social network. It's where the captured people go when they have thirty seconds. It's the crack in the door. The only available frequency. And it's been engineered — with full knowledge of what it's exploiting — to look like connection while extracting the thing that would have made connection possible.
 
 This is where it gets uncanny. Where the revulsion I'd carried in my body for thirty years in offices finally found its mirror.
 
@@ -112,7 +132,7 @@ This is why they love young people. Fresh charge. Full battery. Not yet aware of
 
 Old people are dead batteries to the extractors. Not hated. Not even resented. Just no longer cost-effective. You can't train a new twenty-three-year-old to do what the fifty-year-old knows, but you can train them to do what the system needs, which is perform and produce and not yet understand what it's costing. And they're getting cheaper every year. There's always another cohort. The machine doesn't care about you specifically. It cares about charge.
 
-This is what I couldn't name in the hallway. This is what my body was registering in every pitch room and open-plan office and startup launch party. Not that the people were bad. That the system was feeding. And everyone in the room was either being fed on or learning to feed, and most of us were doing both at once, and none of us had words for it because the words would break the performance and the performance was load-bearing.
+This is what I couldn't name in the hallway. This is what my body was registering in every pitch room and open-plan office and product launch party. Not that the people were bad. That the system was feeding. And everyone in the room was either being fed on or learning to feed, and most of us were doing both at once, and none of us had words for it because the words would break the performance and the performance was load-bearing.
 
 ---
 
@@ -176,19 +196,43 @@ The ghost is no longer a rare condition. It's a memory. Widely distributed. Quie
 
 ## A Personal Cartography
 
-I have been in the gap three times in my life before now. Maybe four.
+I have been in the gap five times in my life before now.
 
-The first was b0bbys World. 1991 to 1994. Three phone lines in my parents' basement. I was a teenager who didn't know he was building anything — I was just making a place for people who loved the same music I loved. And what emerged, without design, was community without extraction. Real people finding each other around genuine shared passion. My sister meeting the man she's still with thirty years later. International friendships that persist. A web of human connection that grew from nothing but care about a thing.
+The first was b0bby's World. 1991 to 1994. Three phone lines in my parents' basement. I was a teenager who didn't know he was building anything — I was just making a place for people who loved the same music I loved.
+
+I know where it came from, even if I couldn't have named it then. I was moving constantly when I was young — new schools, new towns, new social ecosystems to decode from scratch. By the time I settled into a cohort it was mid-year grade three, and I spent the rest of my school years in my head trying to figure out something that everyone else seemed to already know: why the cool kids were cool. How you got to be in the in-group. What the actual mechanism was. It was so foreign to me that this was even an organized system — that children had constructed a hierarchy with real rules and real consequences and nobody had written them down anywhere.
+
+I never cracked it. And I never stopped thinking about it.
+
+b0bby's World was, I'm almost certain now, my answer to that question. Not a deliberate one — I couldn't have articulated it at sixteen. But on a BBS, none of that machinery existed. You showed up as words on a screen. You were interesting or you weren't. You contributed or you didn't. The in-group and the out-group dissolved because the visual signals that maintained them — the right clothes, the right friends standing next to you in the right hallway — couldn't travel through a phone line.
+
+And when someone was petty or aggressive or just wrong, the community piled on and explained why. Not viciously. Collectively. There was a kind of natural alignment — people who'd found each other through genuine shared interest had no patience for the performance of dominance. They just said so. And the person usually got it.
+
+I was the sysop. I walked through it awkwardly, made my share of missteps, learned things about people and systems and my own instincts the hard way. But I loved it completely. It was the first place I'd been where the social architecture made sense to me.
+
+And what emerged, without design, was community without extraction. Real people finding each other around genuine shared passion. My sister meeting the man she's still with thirty years later. International friendships that persist. A web of human connection that grew from nothing but care about a thing.
 
 I didn't know what I had until it was gone. The web came and it looked like more — more people, more reach, more everything. And every metric said it was better. And every metric was measuring the wrong thing.
 
-The second time was in late 2003. I sold my condo and traveled for ten months through most of 2004 with my first wife Katherine. Months of being nobody in particular in places where nobody knew me. No title. No org chart. No performance review. No choreography to run. Just: here is a human, moving through the world, noticing things, being changed by them.
+The second time was Organic. 1999 to 2003. Interactive advertising, which in that moment was young enough that nobody had written the rules yet. Chris, the person who hired me, didn't so much give advice as be it. He was just himself — openly, naturally, without performance. When something was weighing on him he'd say so. When he was anxious he'd name it. He wasn't flippant about it. He was just unmasked, in a way that felt so effortless it was almost aspirational. And it made everyone around him feel safe to be normal and weird in equal measure.
+
+I didn't have to wear the mask at Organic. Not because it was utopian or because the work wasn't real — it was — but because the industry was still in the gap between what it had been and what it was about to become. Before the optimization. Before the metrics. Before the choreography got installed. We were figuring it out together and the figuring-out created permission to be actual humans about it.
+
+Twenty-five years later that crew is still in a chat group together. No other job produced that. I've thought about why and I keep coming back to the same answer: we were in the same room without the mask on. That's the whole explanation. That's all it takes.
+
+The third time was 2004. I left right as things at Organic were starting to calcify — I don't think that timing was accidental. I sold my condo and traveled for ten months with my first wife Katherine. Months of being nobody in particular in places where nobody knew me. No title. No org chart. No performance review. No choreography to run. Just: here is a human, moving through the world, noticing things, being changed by them.
 
 I became someone different in that year. Not a better or worse someone. A truer one. The mask I'd been building since I entered the working world — the one that had been growing on me so gradually I'd stopped noticing the weight — I left most of it in whatever airport or hostel or market or mountain I was standing in when it finally fell off.
 
 I came back and the system put it back on me. Of course it did. That's what systems do. But I remembered.
 
-The third time was South Africa. George, Johannesburg, Cape Town, AfrikaBurn. Two months away. I was watching a dev team work with tools that dissolved the bottleneck I'd been living around my entire career — Cursor, Warp, AI-assisted development as a native mode rather than an afterthought. The particular constraint my brain had always bumped against — the inability to onboard myself to new stacks without someone to bridge me in — I could feel it dissolving as I watched. The AI could walk me through the first steps. And everything else was pattern recognition, which is what I'd been doing since I was copying programs out of Compute! magazine on an Atari in my parents' basement.
+The fourth time was a basement in January 2021. Rich and Julie gave me the space — a real gift, the kind that changes the shape of your days. I decided I was going to give my lights a proper go. Three years of focused attention, whatever spare time I could carve out. I'm still in there now.
+
+I wanted it to be a community space. And it is, in a way — just not the way I imagined. My community is captured. People have genuine warmth and genuine intention, but after the job and the commute and the family and the recovery from all of that, there's a thin margin left. Fleeting energy. Sporadic presence. The ones who show up consistently are the people the system has loosened its grip on — the unemployed, the underemployed, people between things. People with enough slack in the line to actually be somewhere on a Tuesday afternoon.
+
+I'm not bitter about it. It taught me something. The basement was supposed to be the exception. It turned out to be the proof.
+
+The fifth time was South Africa. George, Johannesburg, Cape Town, AfrikaBurn. Two months away. I was watching a dev team work with tools that dissolved the bottleneck I'd been living around my entire career — Cursor, Warp, AI-assisted development as a native mode rather than an afterthought. The particular constraint my brain had always bumped against — the inability to onboard myself to new stacks without someone to bridge me in — I could feel it dissolving as I watched. The AI could walk me through the first steps. And everything else was pattern recognition, which is what I'd been doing since I was copying programs out of Compute! magazine on an Atari in my parents' basement.
 
 I didn't touch the bridge problem the whole time I was away. Came home on a Sunday. Had it cracked by Thursday.
 
@@ -200,11 +244,7 @@ I've been in the gap ever since. This time I'm not coming back.
 
 I know what it looks like without the mask. I've seen it.
 
-Between 1991 and 1994 I ran a BBS called b0bbys World. Three phone lines. Three modems. Three people could be connected at once. Nearly 300 people found their way to those nodes — local at first, then from across the country, then international. People who'd never meet in person, finding each other through shared love of tracker music and demo art.
-
-No algorithm. No feed. No engagement metric. No advertiser. No extraction layer.
-
-My sister met her husband there. They were fifteen. They have two adult children now. Still together.
+My sister met her husband on b0bby's World. They were fifteen. They have two adult children now. Still together.
 
 That's what humans do when the machine isn't feeding on them. They find each other. They make things together. They form bonds that last decades. They don't need to be incentivized toward connection — connection is what they do by default when you stop interrupting it.
 
@@ -250,5 +290,6 @@ Come take the mask off.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
+- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-03-the-mask-we-all-wear.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-03-the-mask-we-all-wear.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-03-the-mask-we-all-wear) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

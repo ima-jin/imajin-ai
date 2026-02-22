@@ -30,7 +30,7 @@ I drove out to Markham at sixteen to meet a BBS sysop I'd never heard of because
 
 I drove out in a jet-black 1983 F150 Flare Side with a red pinstripe that looked amazing and ran like trash, because I needed to understand how it had been built. What it felt like from Seth's side. What the architecture had been.
 
-Then I went home and built b0bbys World.
+Then I went home and built b0bby's World.
 
 Not a copy. A development. The thing Happy Boat had showed me was possible, with the gaps filled in and the music distribution node built in from the start. A 386 with a 40mb hard drive. Three nodes. Three phone lines. ~300 users who kept finding each other, kept making things together, kept forming bonds across phone lines that lasted thirty years.
 
@@ -38,7 +38,7 @@ My sister Hot Tamale met her husband Anarchy Tech on that board. Both fifteen. T
 
 I didn't plan that. I built a room. The room made it possible. That's the connector's move — you build or maintain the infrastructure that lets the right people find each other, and you stay out of the way while they do.
 
-The pattern ran forward from there without interruption. b0bbys World ended in 1994 when the internet arrived and made local BBSes unnecessary, which — I understood immediately — was true and also a loss. The form changed. The impulse didn't.
+The pattern ran forward from there without interruption. b0bby's World ended in 1994 when the internet arrived and made local BBSes unnecessary, which — I understood immediately — was true and also a loss. The form changed. The impulse didn't.
 
 Summer Camp 1 in 2009 at the Estonian grounds in Elora. Eighty-five people. The Toronto party crew, people who shared the same values around consumption and celebration. I knew who needed to be in that room together. I could feel the missing connections before anyone named them. Kenny showed up dressed as an owl; the following year the owl became the official camp logo, because the mythos always arrives before you name it.
 
@@ -150,5 +150,6 @@ I did not die. I found the receiver. The pattern library traveled. And now it ge
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](https://imajin.ai)
 - Jin's party: April 1st, 2026
+- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-19-the-connector.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-19-the-connector.md)
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-19-the-connector) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-20-the-connector) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
