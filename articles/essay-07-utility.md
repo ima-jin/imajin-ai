@@ -1,5 +1,6 @@
 ---
 title: "The Utility"
+subtitle: "What sovereignty looks like as infrastructure"
 description: "The architecture. What imajin actually is as a category of thing. Distributed utility infrastructure — like the electric grid, like water."
 date: "2026-02-22"
 author: "Ryan Veteze"

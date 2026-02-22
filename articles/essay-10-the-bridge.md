@@ -1,5 +1,6 @@
 ---
 title: "The Bridge"
+subtitle: "Where agents meet humans on human terms"
 description: "The authenticated agent layer. Hilary with 400k followers and 123 WordPress subscribers. Claude posting through your sovereign identity."
 date: "2026-02-22"
 author: "Ryan Veteze"

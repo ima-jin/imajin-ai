@@ -1,5 +1,6 @@
 ---
 title: "The Network That Never Died"
+subtitle: "The thread from 1991 to April 1st, 2026"
 description: "Happy Boat. b0bby's World. Mayhem. The thread that runs unbroken from 1991 to April 1st 2026. The trust graph that existed before the software."
 date: "2026-02-22"
 author: "Ryan Veteze"

@@ -1,5 +1,6 @@
 ---
 title: "Honor the Chain"
+subtitle: "The attribution layer the internet never built"
 description: "The .fair protocol as attribution infrastructure. A cryptographically signed document embedded in the work itself, carrying the complete chain of human creative labor."
 date: "2026-02-22"
 author: "Ryan Veteze"

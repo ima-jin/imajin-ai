@@ -1,5 +1,6 @@
 ---
 title: "Memory"
+subtitle: "Who owns the record of what happened"
 description: "What memory actually is vs. what platforms do with it. Infrastructure for records that belong to the people who made them, not to an algorithm."
 date: "2026-02-22"
 author: "Ryan Veteze"

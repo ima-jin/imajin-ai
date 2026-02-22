@@ -1,5 +1,6 @@
 ---
 title: "The Burn"
+subtitle: "What it costs to build alone, and what it costs to stop"
 description: "The post-severance detonation. Fired the Monday the site launched. Six weeks, 14–16 hours a day. What sustainable actually feels like."
 date: "2026-02-22"
 author: "Ryan Veteze"

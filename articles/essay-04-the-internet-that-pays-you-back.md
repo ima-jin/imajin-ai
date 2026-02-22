@@ -1,5 +1,6 @@
 ---
 title: "The Internet That Pays You Back"
+subtitle: "How trust becomes infrastructure and value flows back to people"
 description: "The vision. Trust graph model in full — sovereign presence, vouching relationships, inference fees circulating through human networks."
 date: "2026-02-22"
 author: "Ryan Veteze"

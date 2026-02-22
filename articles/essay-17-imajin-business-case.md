@@ -1,5 +1,6 @@
 ---
 title: "The Business Case for Building on Human Trust"
+subtitle: "$800B flows through platforms. What if it flowed through people?"
 description: "The numbers for operators and builders. Three industries — advertising, music, journalism — representing ~$800B in annual revenue."
 date: "2026-02-22"
 author: "Ryan Veteze"

@@ -1,5 +1,6 @@
 ---
 title: "The Practice"
+subtitle: "How to run an event on the sovereign network"
 description: "The ground-level operator manual. How you actually start: not with a vision but with an occasion. A birthday party. A backyard show."
 date: "2026-02-22"
 author: "Ryan Veteze"

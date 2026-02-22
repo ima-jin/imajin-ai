@@ -1,5 +1,6 @@
 ---
 title: "The Press Isn't Free. It's Owned."
+subtitle: "An open letter to the journalists still fighting"
 description: "Open letter to journalists still fighting, billionaires who broke it, and communities who never got it. What a sovereign press node looks like."
 date: "2026-02-22"
 author: "Ryan Veteze"

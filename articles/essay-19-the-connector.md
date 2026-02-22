@@ -1,5 +1,6 @@
 ---
 title: "The Connector"
+subtitle: "For the ones who die with the pattern in their heads"
 description: "The essay for the person whose gift is holding relationships between things. The griot, the troubadour, the BBS sysop. Connection encoded is permanent."
 date: "2026-02-22"
 author: "Ryan Veteze"

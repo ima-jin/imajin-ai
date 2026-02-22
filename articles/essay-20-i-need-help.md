@@ -1,5 +1,6 @@
 ---
 title: "I Need Help"
+subtitle: "The thing founders aren't supposed to say"
 description: "The thing founders aren't supposed to say. Twenty essays of proof laid down, then the honest ask: financial backing, dev help, other brains, community."
 date: "2026-02-22"
 author: "Ryan Veteze"

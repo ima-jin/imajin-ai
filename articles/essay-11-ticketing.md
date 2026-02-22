@@ -1,5 +1,6 @@
 ---
 title: "The Ticket Is the Trust"
+subtitle: "Why we let middlemen sell us permission to be somewhere"
 description: "Ticketmaster as the clearest example of extraction. A ticket is a signed assertion that you belong in a room — problem solved without the 30% surcharge."
 date: "2026-02-22"
 author: "Ryan Veteze"

@@ -1,5 +1,6 @@
 ---
 title: "You Don't Need Streams. You Need the Relationship Back."
+subtitle: "An open letter to the people streaming artists into poverty"
 description: "Open letter to Daniel Ek, Lucian Grainge, and the artists they're both failing. What the direct relationship looks like when the trust graph replaces the platform."
 date: "2026-02-22"
 author: "Ryan Veteze"

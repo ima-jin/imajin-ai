@@ -1,5 +1,6 @@
 ---
 title: "You Don't Need Ads. You Need a Better Business Model."
+subtitle: "An open letter to Sam, Dario, Sundar, and Elon"
 description: "The direct address to power. Open letter to Sam, Dario, Sundar, Elon. The inference business vs. the attention business."
 date: "2026-02-22"
 author: "Ryan Veteze"
