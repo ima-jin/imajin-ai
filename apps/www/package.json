@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port ${PORT:-3000}",
-    "prebuild": "echo 'PWD:' && pwd && echo 'LS ../..:' && ls -la ../../ && echo 'LS ../../articles:' && ls -la ../../articles/ && rm -rf content/articles && mkdir -p content/articles && cp ../../articles/essay-*.md content/articles/",
+    "prebuild": "node scripts/copy-articles.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
