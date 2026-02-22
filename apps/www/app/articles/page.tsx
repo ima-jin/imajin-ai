@@ -32,7 +32,7 @@ const articles: Article[] = [
     slug: 'the-mask-we-all-wear',
     title: 'The Mask We All Wear',
     description: 'The psychological and emotional core. The office and the feed as one system. Exhaustion as the product. The most personal essay in the series.',
-    status: 'REVIEW',
+    status: 'POSTED',
   },
   {
     slug: 'the-internet-that-pays-you-back',
