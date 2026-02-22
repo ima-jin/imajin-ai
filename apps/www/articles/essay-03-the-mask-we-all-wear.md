@@ -4,7 +4,7 @@ subtitle: "On exhaustion, performance, and the gap we found when the world stopp
 description: "The psychological and emotional core. The office and the feed as one system. Exhaustion as the product. The most personal essay in the series."
 date: "2026-02-22"
 author: "Ryan Veteze"
-status: "REVIEW"
+status: "POSTED"
 ---
 
 I have felt it my entire adult life and I could never name it.
