@@ -7,8 +7,6 @@ author: "Ryan Veteze"
 status: "REVIEW"
 ---
 
-# Memory
-
 My memory of Friday the 13th is just the person being beat on the tree in their sleeping bag.
 
 It's horrible. And permanent. And it's mine. And I like them that way.
@@ -137,6 +135,6 @@ A memory.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
-- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-13-memory.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-13-memory.md)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-13-memory.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-13-memory.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-13-memory) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

@@ -7,8 +7,6 @@ author: "Ryan Veteze"
 status: "REVIEW"
 ---
 
-# The Practice
-
 ## The First Node You Run
 
 You don't start with a vision. You start with an occasion.
@@ -145,6 +143,6 @@ Come run a room.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
-- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-12-nodes-types-and-practice.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-12-nodes-types-and-practice.md)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-12-nodes-types-and-practice.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-12-nodes-types-and-practice.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-12-nodes-types-and-practice) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

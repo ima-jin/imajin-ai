@@ -7,8 +7,6 @@ author: "Ryan Veteze"
 status: "REVIEW"
 ---
 
-# I Need Help
-
 I have spent nineteen essays proving I know what I'm talking about.
 
 Now I need to say the thing founders aren't supposed to say.
@@ -88,6 +86,6 @@ Come in.
 *The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*  
 *The network: [imajin.ai](https://imajin.ai)*  
 *Jin's party: April 1st, 2026*  
-*The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-20-i-need-help.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-20-i-need-help.md)*
+*The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-20-i-need-help.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-20-i-need-help.md)*
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-20-i-need-help) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

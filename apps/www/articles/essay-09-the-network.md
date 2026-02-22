@@ -7,8 +7,6 @@ author: "Ryan Veteze"
 status: "REVIEW"
 ---
 
-# The Network That Never Died
-
 I have been building toward April 1st, 2026 for thirty-five years.
 
 I didn't know that until recently. It looked like a BBS. Then it looked like a career. Then it looked like a severance package and a continent to drive across. Now it looks like four live services and a party where Jin's lights will sparkle when people talk to each other.
@@ -151,6 +149,6 @@ April 1st. Jin's lights will sparkle. Come find your node.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
-- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-09-the-network.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-09-the-network.md)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-09-the-network.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-09-the-network.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-09-the-network) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

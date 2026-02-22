@@ -7,8 +7,6 @@ author: "Ryan Veteze"
 status: "REVIEW"
 ---
 
-# The Press Isn't Free. It's Owned.
-
 An open letter to the journalists still fighting, the billionaires who broke it, and the communities who never got it in the first place.
 
 ---
@@ -243,6 +241,6 @@ Come build it with us.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
-- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-16-how-to-save-journalism.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-16-how-to-save-journalism.md)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-16-how-to-save-journalism.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-16-how-to-save-journalism.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-16-how-to-save-journalism) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

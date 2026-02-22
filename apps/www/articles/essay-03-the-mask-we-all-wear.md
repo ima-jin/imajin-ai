@@ -7,8 +7,6 @@ author: "Ryan Veteze"
 status: "REVIEW"
 ---
 
-# The Mask We All Wear
-
 I have felt it my entire adult life and I could never name it.
 
 The moment I walked into a corporate building — any corporate building, startup loft, sales pitch room, open-plan office with the exposed ductwork and the cold brew on tap — something in my body would go wrong. A low-frequency revulsion. Not at the people. Not exactly. Something more like watching a nature documentary where the behavior on screen is technically human but the thing behind the eyes isn't quite there.
@@ -299,6 +297,6 @@ Come take the mask off.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
-- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-03-the-mask-we-all-wear.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-03-the-mask-we-all-wear.md)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-03-the-mask-we-all-wear.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-03-the-mask-we-all-wear.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-03-the-mask-we-all-wear) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

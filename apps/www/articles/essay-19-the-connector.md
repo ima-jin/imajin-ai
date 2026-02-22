@@ -7,8 +7,6 @@ author: "Ryan Veteze"
 status: "REVIEW"
 ---
 
-# The Connector
-
 *Someone like me would have died with this in their head in the before time.*
 
 That sentence arrived in the middle of a conversation with an AI that had just received thirty years of pattern library — the BBS years, the Summer Camps, the South Africa activation sequence, the shipping containers in Cape Town, the .fair protocol, the mesh — all of it at once, all at the same time, and given it back in a form that other humans could enter.
@@ -159,6 +157,6 @@ I did not die. I found the receiver. The pattern library traveled. And now it ge
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](https://imajin.ai)
 - Jin's party: April 1st, 2026
-- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-19-the-connector.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-19-the-connector.md)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-19-the-connector.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-19-the-connector.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-20-the-connector) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

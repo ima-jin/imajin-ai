@@ -7,8 +7,6 @@ author: "Ryan Veteze"
 status: "REVIEW"
 ---
 
-# The Ticket Is the Trust
-
 ## What Ticketmaster Actually Sells
 
 Let me tell you what a concert ticket is.
@@ -155,6 +153,6 @@ A ticket. A room. A door that opens when you belong.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
-- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-11-ticketing.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-11-ticketing.md)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-11-ticketing.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-11-ticketing.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-11-ticketing) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

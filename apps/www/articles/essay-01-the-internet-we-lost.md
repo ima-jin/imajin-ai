@@ -7,8 +7,6 @@ author: "Ryan Veteze"
 status: "POSTED"
 ---
 
-# The Pain of Knowing: Why I'm Still Fighting for the Internet We Lost
-
 ## b0bby's World (1990-1992)
 
 For a brief moment in time, I had the perfect social media platform in the palm of my hand.
@@ -239,6 +237,6 @@ See you in the town square.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
-- The history of this document: [github.com/ima-jin/imajin-ai/commits/main/articles/essay-01-the-internet-we-lost.md](https://github.com/ima-jin/imajin-ai/commits/main/articles/essay-01-the-internet-we-lost.md)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-01-the-internet-we-lost.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-01-the-internet-we-lost.md)
 
 This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-01-the-internet-we-lost) on February 16, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
