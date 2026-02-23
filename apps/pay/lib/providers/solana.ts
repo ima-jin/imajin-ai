@@ -12,7 +12,7 @@
  * The caller is responsible for signing with their wallet.
  */
 
-import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3';
+import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import type { PaymentProvider, HealthCheckResult, ProviderCapabilities } from './types';
 import type {
   SolanaProviderConfig,
