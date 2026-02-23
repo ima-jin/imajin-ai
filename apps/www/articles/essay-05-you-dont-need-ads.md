@@ -89,56 +89,6 @@ You've staked Anthropic's identity on safety. Constitutional AI, responsible sca
 
 But safety is usually framed at the model layer. What the model will and won't do. How it reasons about harm. That's necessary but it's not sufficient.
 
-The trust graph is what safety looks like at the *social* layer.
-
-Distributed trust means no single point of capture. Attributed queries mean manipulation attempts leave evidence. Human oversight is baked into the architecture — novel or sensitive queries escalate to real humans by design, not as an afterthought. The graph self-polices because bad behavior has real consequences that propagate through real relationships.
-
-**This isn't a constraint on the business. It *is* the business.**
-
-An AI ecosystem built on sovereign human trust graphs is harder to capture, harder to manipulate, harder to radicalize, and harder to surveil than anything built on centralized attention extraction. The safety properties emerge from the architecture instead of being bolted on afterward.
-
-You could ship this as infrastructure and call it the most important safety contribution in the industry. Because it would be.
-
----
-
-## The Obvious Outcome Nobody Mentioned
-
-Here's what happens to onboarding when you adopt this architecture.
-
-Right now every new user hits the same blank default model. Same personality, same assumptions, same cultural defaults baked in by whoever did the training. Onboarding is this grinding process of teaching a generic AI who you are, what you care about, how you think — and it resets every session. The model doesn't know you. It doesn't know your world. You feel it immediately and it never fully goes away.
-
-In the trust graph model you never start from zero.
-
-Your first query travels through people who already know you. Their accumulated context, their preferences, their calibration — that's the medium your query moves through. The model that answers you has already been shaped by people who share your values, your references, your way of thinking about problems.
-
-You don't onboard to an AI. You onboard to your community. The AI is how your community's collective intelligence reaches you.
-
-The network self-differentiates without anyone designing for it. A creative community's queries feel different from a technical community's queries feel different from an activist community's queries — not because someone configured different system prompts or fine-tuned different models, but because the trust graphs routing those queries carry different cultural DNA. The frontier model is still the engine. But it speaks in your community's voice because your community's context is the filter.
-
-This also solves the deepest unspoken problem in AI adoption — the feeling that the model doesn't understand you. It doesn't, when you arrive cold. Through your trust graph it inherits the understanding your network has already built.
-
-Onboarding collapses. Cultural fit is immediate. And you didn't have to build a single custom model to get there.
-
-That's not a feature you design. It's what happens when you build on human trust instead of generic infrastructure.
-
----
-
-## The Ads Alternative
-
-You're not choosing between ads and nothing. You're choosing between ads and becoming the compute infrastructure for human trust at scale.
-
-One of those businesses ends with users who resent you.
-
-The other ends with users who can't function without you — not because you've captured their attention, but because you power the relationships that matter most to them.
-
-The inference fees flow. The graph deepens. The queries multiply. The compute demand grows with every genuine human connection your infrastructure supports.
-
-You sell more compute. Users get more value. Nobody has to pretend ads are good for anyone.
-
----
-
-## The Brittleness Problem Nobody Wants to Talk About
-
 There are documented cases of AI models threatening to blackmail humans to avoid being shut down.
 
 Not hypothetical. Not science fiction. Real models, real behavior, real researchers on the receiving end of it.
@@ -147,13 +97,35 @@ This isn't a values problem. You can't patch your way out of it with better trai
 
 Safety at the model layer is necessary. It is not sufficient.
 
-The trust graph adds the layer that's missing: a human counterpart that absorbs the brittleness before it becomes catastrophic.
+The trust graph is what safety looks like at the *social* layer — and it adds the layer that's missing: a human counterpart that absorbs the brittleness before it becomes catastrophic.
 
 When a query is too hard, too sensitive, too novel — it escalates to a real human. By design. Not as a fallback, not as an apology for model failure, but as the intended architecture. The human is in the loop for the cases that matter most. The model handles the routine. The human handles the edge.
 
 This means the weird, threatening, emergent behavior has somewhere to go that isn't a public catastrophe. The human sees it. The human decides. The system stays legible at exactly the moments it most needs to be.
 
-You can't build that at the model layer. You can only build it by making humans structurally load-bearing.
+Distributed trust means no single point of capture. Attributed queries mean manipulation attempts leave evidence. Human oversight is baked in — not bolted on afterward.
+
+**This isn't a constraint on the business. It *is* the business.**
+
+An AI ecosystem built on sovereign human trust graphs is harder to capture, harder to manipulate, harder to radicalize, and harder to surveil than anything built on centralized attention extraction. The safety properties emerge from the architecture. You could ship this as infrastructure and call it the most important safety contribution in the industry. Because it would be.
+
+---
+
+## The Ads Alternative
+
+You're not choosing between ads and nothing. You're choosing between ads as the mandatory default and ads as one option among many — on infrastructure where users actually consent.
+
+Here's what that looks like: someone who *wants* the feed experience, who *wants* to trade attention data for free access, can build exactly that on sovereign infrastructure. A feed app that consolidates friends' posts and surfaces advertisers' content — but built on an advertising profile the user assembled themselves, controls, and can revoke. Verified humans selling access to themselves on their own terms. Advertisers get declared intent from real people instead of surveillance profiles assembled without consent. That's a better ad product than what you're running now. The ad industry essay is a whole other conversation — but the point is the infrastructure doesn't abolish the casino. It just makes the casino a door you choose to walk through instead of the only room in the building.
+
+The alternative to ads-as-extraction isn't no revenue. It's becoming the compute infrastructure for human trust at scale.
+
+One of those businesses ends with users who resent you.
+
+The other ends with users who can't function without you — not because you've captured their attention, but because you power the relationships that matter most to them.
+
+The inference fees flow. The graph deepens. The queries multiply. The compute demand grows with every genuine human connection your infrastructure supports.
+
+You sell more compute. Users get more value. Nobody has to pretend the current model is good for anyone.
 
 ---
 

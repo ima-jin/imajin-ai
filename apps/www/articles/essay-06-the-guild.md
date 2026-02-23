@@ -117,6 +117,8 @@ You decide who gets into your node. One by one. You vouch for people — which m
 
 You decide what kind of room it is. What's the purpose of this node? What community does it serve? What's the culture? That's not a configuration setting. That's a daily practice of curatorial decisions that add up, over time, to a place with a character.
 
+And those curatorial decisions compound into something beyond culture. They shape how intelligence reaches everyone in your node. The queries your community makes travel through the context you've built — their calibrations, their references, the accumulated way people in your room think about problems. The AI that answers your community speaks in your community's voice because you built the room that context lives in. A music node produces different intelligence than a family node produces different intelligence than a political organizing node — not because anyone configured different models, but because the human context in each room is genuinely different. The operator is the architect of that difference.
+
 You're the first line of support for your community's queries. When someone in your node has a problem, you're the human in the loop. The AI handles the routine. You handle the edge. That's not a burden — that's the role. The sysop was always the person you called when the board was down or something felt wrong. The operator is that person, for the sovereign network.
 
 And you're accountable in a way that a platform is never accountable. Twitter doesn't know your name. Doesn't care about your community. Can change the rules tomorrow and there's nothing you can do about it. The operator is a named person with a standing that can be damaged. That's not a disadvantage. That's what makes the role real.

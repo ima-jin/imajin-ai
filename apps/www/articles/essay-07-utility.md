@@ -65,6 +65,22 @@ These three things together are the public utility that identity and payments we
 
 ---
 
+## The Network That Knows Your Community
+
+Here's an emergent property of building on human trust that nobody designs for — it just happens.
+
+Every new user on a platform hits the same blank default model. Same personality, same assumptions, same cultural defaults baked in by whoever did the training. Onboarding is a grinding process of teaching a generic AI who you are, what you care about, how you think — and it resets every session. The model doesn't know you. You feel it immediately and it never fully goes away.
+
+In the trust graph model you never start from zero.
+
+Your first query travels through people who already know you. Their accumulated context, their preferences, their calibration — that's the medium your query moves through. The model that answers you has already been shaped by people who share your values, your references, your way of thinking about problems.
+
+The network self-differentiates without anyone designing for it. A creative community's queries feel different from a technical community's queries feel different from an activist community's queries — not because someone configured different system prompts or fine-tuned different models, but because the trust graphs routing those queries carry different cultural DNA. The frontier model is still the engine. But it speaks in each community's voice because each community's context is the filter.
+
+This isn't a feature you build. It's what the infrastructure produces when humans are structurally load-bearing. Onboarding collapses. Cultural fit is immediate. The AI inherits the understanding your network has already built.
+
+---
+
 ## What the Graph Does With Bad Actors
 
 Here's the question people always ask: what stops bad actors from corrupting the network?

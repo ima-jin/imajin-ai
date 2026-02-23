@@ -89,51 +89,31 @@ Both things were true at once: I could diagnose problems faster than anyone arou
 
 ## The Wall
 
-Near the end of my time at the last job, I asked to move from the booking platform — where I was the subject matter expert, the person who knew the system better than anyone alive — over to the marketing team. I wanted a change of pace. I'd been carrying that system for years.
+Near the end of my time at the last job, I moved from the booking platform over to the marketing team. I'd been carrying that system for years and wanted a change of pace. They built a small dev team around me. The project: rebuild the entire consumer website from scratch.
 
-They built a small dev team around me. A VP above. A director inserted between us. Three devs.
+The critical piece was bridging the legacy platform API to the new content schemas — and that one pointed squarely at me. The pattern library for that system lived in my head more than it lived in any documentation. Disseminating it to the team was supposed to be my job.
 
-The project: bridge the legacy platform API to a new website and its content schemas. The other dev on the team — a pattern-matcher like me, ADHD, good instincts — spent ten months trying to crack it.
+Except I couldn't get a foothold in the new stack. No one could scaffold me in the way my brain actually needed. Without that, I had no way to hand them the model in the language I'd always used: working code.
 
-He couldn't.
-
-And here's the thing: it wasn't his fault. The legacy system was so complex that nobody fully understood it anymore. The pattern library for that system lived in my head. But I'd moved myself out of the stack. And the corporate structure — the information hoarding, the compartmentalization, the VP who treated knowledge as territory — made it nearly impossible to get back in.
-
-I tried to onboard myself to the new stack twice over that year. Couldn't get traction. No one could scaffold me in. I'd gotten my autism and ADHD diagnosis five months earlier, in December, and I was pretty open about it with everyone. I was trying to get people to be human about it. I don't think anyone in the company knew what to do with that.
-
-I didn't either.
-
-So I had this strange situation: I was the only person who fully understood the legacy system, and I was completely unable to access what I needed to build the bridge. Not because I'd lost the knowledge. Because nobody could walk me through the first few steps.
-
-They still haven't shipped the new website.
+The other dev on the team was good. Pattern-matcher, good instincts. The bridge was one deliverable among many for him — not his whole job, just the piece that had to land for the site to ship. He kept saying he had it.
 
 ---
 
 ## South Africa
 
-In March I went to South Africa. I ended up staying two months — working remotely, trying to figure out where things were heading for me. George first, then Johannesburg, then Cape Town. I'd befriended the co-founder of a music streaming platform through my network, got invited to observe their dev team in Joburg.
+In March I went to South Africa. Two months — working remotely, days in Joburg, evenings catching up with Toronto. I'd befriended the co-founder of a music streaming platform through my network, got invited to observe their dev team.
 
-They were using Cursor, Warp, modern AI-driven tools. I'd given up on command-line development years earlier. Too hard to memorize the syntax without someone to orient me. But watching that team work with AI tools, something shifted. I could make code contributions on a stack I'd barely looked at. A few days in.
+They were using Cursor, Warp, modern AI-driven tools. Watching that team work, something shifted. I could make meaningful code contributions on a stack I'd barely looked at. A few days in.
 
-Back home, my team was supposedly handling the bridge build. I was watching from a distance, giving them room. Then the project manager pulled me aside.
+Near the end of the trip, the project manager pulled me aside. *"Dude. I don't think he's got this."*
 
-"Dude. I don't think he's got this."
+Hold my beer.
 
-I took a beat. Then: hold my beer.
-
-I sat down with the problem. Ten days later, I had it.
-
-Command-line driven. AI-assisted. Recursive debugging loops — run the code, check the logs, feed the errors back to the AI, iterate until it worked. Same approach I'd used since I was copying programs out of magazines. Except now the AI was the person who could walk me through the first few steps.
-
-I didn't need to understand the new stack formally. I didn't need someone to sit with me for days explaining the setup. The AI scaffolded the initial patterns. I recognized whether they fit. We iterated together.
+I sat down with the problem — now with these tools at the top of my workflow. Ten days later, I had it. Command-line driven. AI-assisted. Same recursive loop I'd used since I was copying programs out of magazines — run the code, read the errors, feed them back, iterate until it clicks. Except now the AI was the person who could walk me through the first steps.
 
 The bottleneck that had defined my entire career was just gone.
 
-The pattern-matching approach I'd used since 1988 — the one I'd spent decades quietly ashamed of — finally had the perfect collaborator.
-
-I was let go on the Monday the site was supposed to launch. I'd been maneuvering for it for a while. They gave me 37 weeks.
-
-The VP I was reporting to had no real idea what I'd just done.
+They let me go on the Monday the site was supposed to launch. The VP who signed the paperwork had no real idea what had just happened in the ten days prior. I'd probably sounded like a lunatic going on about what these tools were unlocking — and honestly, from where he was sitting, fair enough.
 
 ---
 
@@ -159,13 +139,9 @@ In the first essay I wrote about b0bby's World — what real connection looked l
 
 Here's the link I didn't make explicit there:
 
-Corporate structure hoards knowledge. Platforms hoard attention. Both of them extract value from the people who actually generate it.
+Corporate structure hoards knowledge. Platforms hoard attention. Both extract value from the people who actually generate it.
 
-I lived that at the end of my last job. The knowledge was in my head. The infrastructure around me — the VPs, the silos, the information territoriality — made it impossible for that knowledge to flow where it needed to go. The company paid for ten months of spinning wheels as a direct consequence.
-
-I knew exactly what the problem was. I couldn't get anyone to let me solve it the way my brain needed to solve it. And when I finally did, nobody with authority understood what had happened.
-
-That's the extraction model at the organizational level. Knowledge trapped. Value destroyed. The person who holds the pattern library — underpaid, misunderstood, eventually separated.
+That's not a metaphor — it's a mechanism. The same brain that can feel where a system wants to be before it can explain why is exactly the kind of brain those structures are worst at routing value back to. The pattern library walks out the door. The knowledge that took a decade to build disperses. The company pays for it in spinning wheels and missed launches, and nobody in the org chart has language for what was lost.
 
 Imajin is built on the opposite premise. Sovereign infrastructure for identity, payments, attribution. The knowledge flows back to the people who hold it. The pattern library lives with its owner. The value goes where it was actually created.
 
