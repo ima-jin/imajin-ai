@@ -1,6 +1,6 @@
 {
   "framework": null,
   "installCommand": "cd ../.. && pnpm install",
-  "buildCommand": "next build",
+  "buildCommand": "pnpm next build",
   "outputDirectory": ".next"
 }
