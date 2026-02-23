@@ -1,4 +1,5 @@
 {
   "framework": "nextjs",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "outputDirectory": ".next"
 }
