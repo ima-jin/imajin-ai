@@ -1,6 +1,6 @@
 {
   "framework": null,
-  "installCommand": "cd ../.. && pnpm install",
-  "buildCommand": "../../node_modules/.bin/next build",
+  "installCommand": "pnpm install --dir=../..",
+  "buildCommand": "node ../../node_modules/next/dist/bin/next build",
   "outputDirectory": ".next"
 }
