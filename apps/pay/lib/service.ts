@@ -20,10 +20,10 @@ import type {
   SubscriptionResult,
   isFiatCurrency,
   isCryptoCurrency,
-} from './types.js';
-import type { PaymentProvider, HealthCheckResult } from './providers/types.js';
-import { StripeProvider } from './providers/stripe.js';
-import { SolanaProvider } from './providers/solana.js';
+} from './types';
+import type { PaymentProvider, HealthCheckResult } from './providers/types';
+import { StripeProvider } from './providers/stripe';
+import { SolanaProvider } from './providers/solana';
 
 export class PaymentService {
   private providers: Map<string, PaymentProvider> = new Map();

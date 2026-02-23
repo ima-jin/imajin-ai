@@ -2,6 +2,6 @@
  * Payment Providers
  */
 
-export * from './types.js';
-export { StripeProvider } from './stripe.js';
-export { SolanaProvider } from './solana.js';
+export * from './types';
+export { StripeProvider } from './stripe';
+export { SolanaProvider } from './solana';

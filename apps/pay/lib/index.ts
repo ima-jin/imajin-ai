@@ -21,11 +21,11 @@
  */
 
 // Main service
-export { PaymentService } from './service.js';
+export { PaymentService } from './service';
 
 // Types
-export * from './types.js';
+export * from './types';
 
 // Providers (for direct access when needed)
-export { StripeProvider, SolanaProvider } from './providers/index.js';
-export type { PaymentProvider, HealthCheckResult, ProviderCapabilities } from './providers/types.js';
+export { StripeProvider, SolanaProvider } from './providers/index';
+export type { PaymentProvider, HealthCheckResult, ProviderCapabilities } from './providers/types';

@@ -12,8 +12,8 @@
  * The caller is responsible for signing with their wallet.
  */
 
-import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import type { PaymentProvider, HealthCheckResult, ProviderCapabilities } from './types.js';
+import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3';
+import type { PaymentProvider, HealthCheckResult, ProviderCapabilities } from './types';
 import type {
   SolanaProviderConfig,
   ChargeRequest,
@@ -21,7 +21,7 @@ import type {
   EscrowRequest,
   EscrowResult,
   Recipient,
-} from '../types.js';
+} from '../types';
 
 /** USDC mint address on mainnet */
 const USDC_MINT_MAINNET = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';

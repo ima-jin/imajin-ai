@@ -15,7 +15,7 @@ import type {
   RefundResult,
   SubscriptionRequest,
   SubscriptionResult,
-} from '../types.js';
+} from '../types';
 
 /** Health check result */
 export interface HealthCheckResult {

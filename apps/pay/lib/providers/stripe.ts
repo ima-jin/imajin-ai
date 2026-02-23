@@ -12,7 +12,7 @@
  */
 
 import Stripe from 'stripe';
-import type { PaymentProvider, HealthCheckResult, ProviderCapabilities } from './types.js';
+import type { PaymentProvider, HealthCheckResult, ProviderCapabilities } from './types';
 import type {
   StripeProviderConfig,
   ChargeRequest,
@@ -29,7 +29,7 @@ import type {
   Recipient,
   isStripeRecipient,
   isDIDRecipient,
-} from '../types.js';
+} from '../types';
 
 export class StripeProvider implements PaymentProvider {
   readonly name = 'stripe' as const;
