@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { displayName, displayType, avatar, bio, handle, invitedBy, metadata } = body;
+    const { displayName, displayType, avatar, bio, handle, metadata } = body;
 
     // Validate required fields
     if (!displayName) {
@@ -61,7 +61,6 @@ export async function POST(request: NextRequest) {
       avatar: avatar || null,
       bio: bio || null,
       handle: handle || null,
-      invitedBy: invitedBy || null,
       metadata: metadata || {},
     }).returning();
 
