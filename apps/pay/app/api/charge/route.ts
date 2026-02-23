@@ -31,7 +31,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/lib/pay';
 import { extractToken, validateToken } from '@/lib/auth';
-import type { ChargeRequest, Currency, Recipient } from '@imajin/pay';
+import type { ChargeRequest, Currency, Recipient } from '@/lib';
 
 interface ChargeBody {
   amount: number;
