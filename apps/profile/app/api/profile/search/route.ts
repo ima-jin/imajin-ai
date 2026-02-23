@@ -9,7 +9,6 @@ import { ilike, eq, or, sql, type SQL } from 'drizzle-orm';
  * Query params:
  * - q: search query (searches displayName and bio)
  * - type: filter by displayType (human, agent, presence)
- * - invitedBy: filter by inviter DID
  * - limit: max results (default 20, max 100)
  * - offset: pagination offset
  */
@@ -18,7 +17,6 @@ export async function GET(request: NextRequest) {
   
   const q = searchParams.get('q');
   const type = searchParams.get('type');
-  const invitedBy = searchParams.get('invitedBy');
   const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
   const offset = parseInt(searchParams.get('offset') || '0');
 
@@ -40,10 +38,6 @@ export async function GET(request: NextRequest) {
         return errorResponse('Invalid type filter');
       }
       conditions.push(eq(profiles.displayType, type));
-    }
-
-    if (invitedBy) {
-      conditions.push(eq(profiles.invitedBy, invitedBy));
     }
 
     // Execute query

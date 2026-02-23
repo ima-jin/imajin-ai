@@ -13,7 +13,6 @@ interface Profile {
   displayType: 'human' | 'agent' | 'presence';
   bio?: string;
   avatar?: string;
-  invitedBy?: string;
   createdAt: string;
   metadata?: {
     links?: string;
@@ -155,16 +154,6 @@ export default async function ProfilePage({ params }: PageProps) {
             </a>
           )}
         </div>
-
-        {/* Invited by */}
-        {profile.invitedBy && (
-          <p className="text-sm text-gray-500">
-            Invited by:{' '}
-            <Link href={`/${profile.invitedBy}`} className="text-orange-500 hover:underline">
-              {profile.invitedBy}
-            </Link>
-          </p>
-        )}
 
         {/* Member since */}
         <p className="text-xs text-gray-400 mt-4">
