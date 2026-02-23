@@ -29,9 +29,9 @@ What if you had an AI that knew your context — your opinions, your expertise, 
 
 Not generic AI. *You*-shaped AI.
 
-Call it Ask Ryan. Or Ask [your name here].
+Call it Ask Ryan. Or Ask *you*.
 
-Someone in your trust network has a question. Your presence answers it the way you would — based on everything you've written, everything you've said, everything you believe. Your calendar, your expertise, your stated values, your accumulated conversations. Ninety percent of queries never reach you. The ones that are too hard, too personal, or genuinely new — those escalate to the real you.
+Someone in your trust network has a question. Your presence answers it the way you would — based on everything you've written, everything you've said, everything you believe. Your calendar, your expertise, your stated values, your accumulated conversations. The vast majority of queries never reach you. The ones that are too hard, too personal, or genuinely new — those escalate to the real you.
 
 Here's the part that changes everything: **they pay for the inference.**
 
@@ -55,7 +55,7 @@ Not manufactured FOMO. Not artificial limits engineered to drive engagement. Act
 
 Injection attacks aren't just blocked. They're evidence.
 
-That's not a security feature. That's a legal primitive. When your agent handles real economic activity, attacking it becomes something closer to fraud. The network self-polices because getting caught attacking someone's presence doesn't just expose you — it collapses your standing with everyone connected to you.
+That distinction matters once real money is involved. That's not a security feature — that's a legal primitive. When your agent handles real economic activity, attacking it becomes something closer to fraud. The network self-polices because getting caught attacking someone's presence doesn't just expose you — it collapses your standing with everyone connected to you.
 
 ---
 
@@ -103,59 +103,53 @@ That's not a feature anyone designed. It's what people do when the architecture 
 
 ---
 
-## The Three Tiers
+## Nodes, Profiles, Edges, Mentions
 
-The network has three kinds of existence:
+The network has four components:
 
-**Nodes** — people with their own presence. An AI trained on their context, queryable by their trust network.
+**Nodes** — hosted infrastructure. An operator runs one. It connects to the mesh and provides the services — inference, identity, payments — that profiles depend on. Think of it the way b0bby's World worked: the hardware was in a basement, the sysop kept it running, and the people who dialed in had their own presence on it. The node belongs to the operator. The presence belongs to the person.
 
-**Edges** — trust relationships between nodes. Who can query whom, at what weight, through what path.
+**Profiles** — a sovereign presence on a node. A person, a business, an AI. Your trust relationships, your context, your queryable surface. You own it. If you move nodes, it comes with you. The operator provides the infrastructure. They don't own what's on it.
 
-**Mentions** — people who don't have a presence yet, but exist in the data of people who do.
+**Edges** — the relationships between profiles. A vouch. One profile saying: I know this profile, I'm willing to have my name attached to that, and I'm putting a piece of my own standing behind it. Edges have direction and weight — how much access you grant, how much trust you extend. They traverse nodes, so who you can reach has nothing to do with which node you're on. And they're signed. If a profile you vouched for causes harm, the record of your vouch is right there. That's not a punishment mechanism. It's just what accountability looks like when it's built into the infrastructure.
 
-That third tier matters more than it sounds.
+**Mentions** — profiles that don't exist yet, but are referenced in the data of profiles that do. A person, a business, a bot. Anything that shows up in someone's context before it shows up in the network.
 
-You meet someone on the street. You don't know them. You query your network: "Anyone know this person?"
+Mentions matter more than they sound.
+
+A mention that accumulates weight across many independent contexts becomes something the network has already implicitly valued — before the profile exists to claim it. When that entity eventually shows up and wants to claim the mention, they have to earn it: a threshold of the profiles who mentioned them have to agree that the claimant is the real thing. The older and more distributed the mentions, the harder the threshold is to fake. Legacy mentions become proof of existence. The graph validates identity from the earliest reference forward. No central authority deciding who you are — just the accumulated record of everyone who already knew.
+
+You meet someone on the street. You don't know them. You query your network: "Anyone know this person?" Same question works for a contractor you're thinking of hiring, a brand you're not sure you trust, an AI agent someone wants to introduce into your workflow.
 
 They're not a node. But your friend's AI remembers them from a collaboration last year. Someone else's presence has a passing mention. Scattered across multiple contexts, a picture assembles — no single person controls it, no central authority curates it.
 
-The network knows you before you join it. Word of mouth, but instant and queryable. You show up in graphs as a mention, validated by your appearance across multiple independent contexts. That's the cold start solved without a central authority.
+The network knows you before you join it. Word of mouth, but instant and queryable. You show up in graphs as a mention, validated by your appearance across multiple independent contexts. Cold start, solved — without a central authority.
 
 And every one of those queries — from the moment you're a mention to the moment you're a fully established node — generates inference fees flowing back through the graph to the people whose context shaped the answer. The network pays you back in proportion to the value you've built into it.
 
 ---
 
-## The Score Nobody Owns
+## The Score Nobody Owns — And What It Pays
 
-Social scoring isn't new. PageRank, EigenTrust, reputation systems in peer-to-peer networks — the math has been around for decades. China's Social Credit System uses similar models. So do credit scores.
+Social scoring isn't new. PageRank, EigenTrust, reputation systems in peer-to-peer networks — the math has been around for decades. The difference has never been the math. It's who controls it.
 
-The difference has never been the math. It's who controls it.
-
-Centralized social scores are terrifying because an authority decides your ranking. They can downgrade you for dissent. The algorithm serves the state or the corporation, and you have no recourse.
+The fear is reasonable: China's Social Credit System uses similar models. So do credit scores. Centralized social scores are terrifying because an authority decides your ranking. They can downgrade you for dissent. The algorithm serves the state or the corporation, and you have no recourse.
 
 This is the opposite. You own your node. You own your trust edges. You decide who can query you. There's no global ranking — just local networks of people who actually know each other, whose scores emerge from their actual behavior over time.
 
 Open source. Auditable. Sovereign.
 
-Same math that powers dystopian social credit. Radically different power structure.
-
-And because the score is open source, it can't be secretly manipulated. If someone claims you're untrustworthy, you can see exactly why, exactly which relationships contributed, exactly what would change it. Reputation becomes legible for the first time.
-
----
-
-## Where UBI Comes From
+Same math. Radically different power structure. And because the score is open source, it can't be secretly manipulated — if someone claims you're untrustworthy, you can see exactly why, exactly which relationships contributed, exactly what would change it. Reputation becomes legible for the first time.
 
 Now scale this up. Inference fees circulating through the trust graph. Every query that passes through a node, references someone's context, or relies on someone's vouching generates a micro-flow of value back to that node.
 
 You don't have to do anything special. You just have to be a real, present, trustworthy node in a network that other people's queries depend on.
 
-That's UBI that emerges from the architecture — not imposed by redistribution, not funded by taxation, but flowing naturally through human presence in a network that has genuine value.
-
 This reframes the entire AI displacement conversation. The question isn't how do we protect humans from AI. It's how do we make sure the infrastructure AI runs on is owned by humans, collectively.
 
 Right now AI creates value that accumulates to compute providers and platform owners. In this model it circulates through the human graph. Every AI query that touches your context, routes through your connections, or benefits from your vouching — returns something to you.
 
-Not a welfare payment. A dividend on participation in infrastructure you helped build.
+Not a welfare payment. A dividend on participation in infrastructure you helped build. Flowing naturally, not imposed by redistribution or funded by taxation. The architecture generates it.
 
 ---
 
@@ -201,4 +195,4 @@ The graph starts somewhere. It might as well start here.
 - Jin's party: April 1st, 2026
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-04-the-internet-that-pays-you-back.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-04-the-internet-that-pays-you-back.md)
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-04-the-internet-that-pays-you-back) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-04-the-internet-that-pays-you-back) on February 22, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
