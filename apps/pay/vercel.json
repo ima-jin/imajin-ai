@@ -1,5 +1,0 @@
-{
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
-  "buildCommand": "cd ../.. && pnpm --filter @imajin/pay-service build",
-  "framework": "nextjs"
-}
