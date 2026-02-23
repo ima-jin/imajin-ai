@@ -1,4 +1,10 @@
 {
-  "installCommand": "cd ../.. && pnpm install",
-  "buildCommand": "next build"
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "installCommand": "cd ../.. && pnpm install"
 }
