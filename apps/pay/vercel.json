@@ -1,1 +1,4 @@
-{ "installCommand": "pnpm install", "framework": "nextjs" }
+{
+  "installCommand": "cd ../.. && pnpm install",
+  "framework": "nextjs"
+}
