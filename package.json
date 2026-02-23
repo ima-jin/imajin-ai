@@ -2,19 +2,17 @@
   "name": "imajin-ai",
   "private": true,
   "scripts": {
-    "dev": "turbo dev",
-    "build": "turbo build",
-    "lint": "turbo lint",
-    "typecheck": "turbo typecheck",
-    "clean": "turbo clean"
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r clean"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7",
     "@typescript-eslint/parser": "^7",
     "eslint": "^8",
     "eslint-config-next": "14",
-    "next": "^14.2.0",
-    "turbo": "^2.4.0"
+    "next": "^14.2.0"
   },
   "packageManager": "pnpm@9.15.0"
 }

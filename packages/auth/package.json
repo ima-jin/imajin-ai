@@ -12,7 +12,6 @@
     "./middleware/nextjs": "./src/middleware/nextjs.ts"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts",
     "lint": "eslint src --ext .ts,.tsx",
     "test": "vitest"
   },
@@ -22,7 +21,6 @@
   },
   "devDependencies": {
     "typescript": "^5",
-    "tsup": "^8.0.0",
     "vitest": "^1.0.0"
   },
   "peerDependencies": {
