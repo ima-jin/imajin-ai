@@ -75,34 +75,6 @@ This keeps the network from calcifying into a hierarchy of early adopters. Late 
 
 ---
 
-## What the Graph Does With Bad Actors
-
-Here's the question people always ask: what stops bad actors from corrupting the network?
-
-The honest answer is: nothing has to. The architecture handles it without intervention.
-
-A bad actor node — a scam ring, a disinfo operation, a community built around harm — can only grow through real vouching relationships. The people who will genuinely vouch for them are people like them. So their subgraph closes in on itself. Not because anyone banned them. Not because a moderation team made a judgment call. Because the actual structure of their real social reality is what it is.
-
-This isn't quarantine. It's just the natural shape of human trust made visible.
-
-On a platform, bad actors are a contamination problem. They're in the same pool as everyone else, and the algorithm can amplify them across social contexts where they have no real relationships. Moderation becomes an arms race — and the platform, which has to make policy judgments about billions of interactions, becomes the arbiter of what's acceptable. That's a chokepoint. Chokepoints get captured.
-
-The mesh has no such chokepoint. No one is making judgment calls about acceptable nodes. The social physics do the work. Bad actor networks exist — the way they exist in the physical world, with their own gathering places and their own internal trust economies, separated from yours by the simple fact that you don't know those people and nobody you trust vouches for them.
-
-The more interesting question isn't bad actors. It's drift.
-
-A node doesn't have to be malicious to degrade. People change. Judgment slips. Someone who was a reliable cultural node for their community starts making worse recommendations, vouching carelessly, losing the quality that made them worth trusting. The extraction model has no mechanism for this — a follower count doesn't decline because your taste got worse. An algorithm doesn't notice that your judgment is off.
-
-The graph does.
-
-Degradation shows in the signal. Recommendations that don't convert. Vouching that produces friction rather than value. The slow drift is legible in the data before it becomes a rupture.
-
-But the correction mechanism isn't algorithmic. It's human. The people closest to you in the graph notice first — because they're in actual relationship with you, not just connected to your account. And in a healthy mesh, they come and talk to you. Ask what's going on. Not as enforcement. As community.
-
-That's not a feature anyone designed. It's what people do when the architecture doesn't interrupt it.
-
----
-
 ## Nodes, Profiles, Edges, Mentions
 
 The network has four components:
@@ -129,6 +101,30 @@ And every one of those queries — from the moment you're a mention to the momen
 
 ---
 
+## What the Graph Actually Pays For
+
+This isn't hypothetical. Here's what it looks like at the scale of a single person.
+
+Maria is renovating her kitchen. She queries her network: "Anyone know a good contractor in east Vancouver?" The query routes through her graph — two hops. Her friend Jen vouched for a contractor named Paulo last year. Jen's presence surfaces the mention. Paulo has a profile; his work history is in the graph, verified by the people he's actually worked for. The whole answer assembles in seconds.
+
+The query costs ten cents. That value is distributed from Maria's wallet to the nodes that shaped the answer — Jen's profile gets the largest share, because her relationship and vouching record were load-bearing. A small slice routes to the node operator for compute. Paulo didn't pay a lead-generation platform. Jen didn't even have to be online. The value she built into the network — by knowing good people and vouching carefully — paid her back.
+
+That's one query. Scale it across everything people actually ask their trusted friends.
+
+---
+
+**The home cook** who's spent fifteen years testing recipes. Not a food blogger. Not looking for followers. Just someone whose 200 annotated recipes — with notes on what she'd change, what actually works for a weeknight, what breaks under altitude — sit in her profile as context. Her trust network queries her presence constantly: dinner parties, dietary restrictions, what to do with a half-pound of chorizo. Every query she's not awake to answer, her presence handles. Every query that resolves distributes a micro-fee through her wallet. The value was always there. The infrastructure just never returned it.
+
+**The photographer** who's been shooting Pacific Northwest coastline for a decade. Properly tagged, contextualized, hers. Editorial teams, designers, small brands — anyone in her trust graph can query "moody coastal, dusk, something that feels lived-in." Her presence surfaces the right images. Usage fees flow directly to her wallet. Not through a stock photography middleman extracting seventy percent. The relationship between the person who made the image and the person who needs it, with the graph as the only intermediary.
+
+**The music curator** who's been digging for twenty years. Not an artist. Not a label. The person whose taste converts — people hear what she surfaces and go buy the record, see the show, follow the artist. Right now she gets nothing. Spotify captures the behavioral signal from her listening and sells it back upstream. In this model, her curation is her presence. Her vouched-for recommendations circulate inference fees. When a track she surfaced gets queried ten thousand times across the graph, her wallet sees it. The relationship between taste and compensation, finally honest.
+
+**The beat reporter** who's covered city hall for twelve years. Not famous. Her knowledge of local zoning decisions, school board politics, the real history of that intersection — encyclopedic. Anyone in her trust graph can query "what's actually going on with this development proposal?" Her presence answers from everything she's written, every source she's cultivated, every thread she's followed. That's not just a revenue model for her. That's local journalism, rebuilt from the bottom up, without a publisher who can be bought or a platform that can be killed.
+
+The value was always there. In the knowing. In the curating. In the years of careful vouching for people worth trusting. What was missing was infrastructure that could return it.
+
+---
+
 ## The Score Nobody Owns — And What It Pays
 
 Social scoring isn't new. PageRank, EigenTrust, reputation systems in peer-to-peer networks — the math has been around for decades. The difference has never been the math. It's who controls it.
@@ -149,7 +145,9 @@ This reframes the entire AI displacement conversation. The question isn't how do
 
 Right now AI creates value that accumulates to compute providers and platform owners. In this model it circulates through the human graph. Every AI query that touches your context, routes through your connections, or benefits from your vouching — returns something to you.
 
-Not a welfare payment. A dividend on participation in infrastructure you helped build. Flowing naturally, not imposed by redistribution or funded by taxation. The architecture generates it.
+Not a welfare payment. A dividend on participation in infrastructure you helped build. The architecture generates it. Not imposed by redistribution. Not funded by taxation. Not contingent on a platform's continued goodwill.
+
+Maria's ten cents to find a contractor she can trust. The home cook's micro-fees from a hundred dinner party queries she answered while asleep. The curator's long tail of taste, still paying out years after she made the recommendation. That's not a new business model. That's what the internet was supposed to be.
 
 ---
 

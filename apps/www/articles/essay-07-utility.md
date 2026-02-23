@@ -65,6 +65,34 @@ These three things together are the public utility that identity and payments we
 
 ---
 
+## What the Graph Does With Bad Actors
+
+Here's the question people always ask: what stops bad actors from corrupting the network?
+
+The honest answer is: nothing has to. The architecture handles it without intervention.
+
+A bad actor node — a scam ring, a disinfo operation, a community built around harm — can only grow through real vouching relationships. The people who will genuinely vouch for them are people like them. So their subgraph closes in on itself. Not because anyone banned them. Not because a moderation team made a judgment call. Because the actual structure of their real social reality is what it is.
+
+This isn't quarantine. It's just the natural shape of human trust made visible.
+
+On a platform, bad actors are a contamination problem. They're in the same pool as everyone else, and the algorithm can amplify them across social contexts where they have no real relationships. Moderation becomes an arms race — and the platform, which has to make policy judgments about billions of interactions, becomes the arbiter of what's acceptable. That's a chokepoint. Chokepoints get captured.
+
+The mesh has no such chokepoint. No one is making judgment calls about acceptable nodes. The social physics do the work. Bad actor networks exist — the way they exist in the physical world, with their own gathering places and their own internal trust economies, separated from yours by the simple fact that you don't know those people and nobody you trust vouches for them.
+
+The more interesting question isn't bad actors. It's drift.
+
+A node doesn't have to be malicious to degrade. People change. Judgment slips. Someone who was a reliable cultural node for their community starts making worse recommendations, vouching carelessly, losing the quality that made them worth trusting. The extraction model has no mechanism for this — a follower count doesn't decline because your taste got worse. An algorithm doesn't notice that your judgment is off.
+
+The graph does.
+
+Degradation shows in the signal. Recommendations that don't convert. Vouching that produces friction rather than value. The slow drift is legible in the data before it becomes a rupture.
+
+But the correction mechanism isn't algorithmic. It's human. The people closest to you in the graph notice first — because they're in actual relationship with you, not just connected to your account. And in a healthy mesh, they come and talk to you. Ask what's going on. Not as enforcement. As community.
+
+That's not a feature anyone designed. It's what people do when the architecture doesn't interrupt it.
+
+---
+
 ## Issue #11
 
 There's a GitHub issue in the imajin repo that describes the hosting architecture. Three tiers.
@@ -144,6 +172,8 @@ Sovereign identity should be boring. You are who you are, your DID proves it, do
 Payment rails should be boring. Value was exchanged, it moved, everyone got what they were owed, you don't think about it.
 
 The trust graph should be boring. You're in the network, you're vouched for, the people you trust are accessible, you don't think about it.
+
+This isn't an argument against feeds, or discovery algorithms, or even advertising. If someone wants to build a feed app on top of sovereign infrastructure — one that consolidates your friends' posts, surfaces content from advertisers you've chosen to let in, and runs on an attention model you explicitly opted into — they can. The infrastructure doesn't care. It just means the casino is a choice, not the only door.
 
 The excitement happens in what people build on top of boring infrastructure. The music. The art. The family connections. The community. The commerce. The culture.
 
