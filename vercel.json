@@ -1,6 +1,0 @@
-{
-  "buildCommand": "pnpm turbo build --filter=@imajin/auth-service",
-  "outputDirectory": "apps/auth/.next",
-  "framework": "nextjs",
-  "installCommand": "pnpm install"
-}
