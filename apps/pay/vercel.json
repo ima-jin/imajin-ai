@@ -1,6 +1,6 @@
 {
   "framework": null,
-  "installCommand": "ls -la && ls -la ../.. && pwd",
+  "installCommand": "pwd && ls -la && ls -la /vercel/path0 && ls -la /vercel/path0/.. 2>/dev/null || echo 'no parent'",
   "buildCommand": "echo done",
-  "outputDirectory": ".next"
+  "outputDirectory": "."
 }
