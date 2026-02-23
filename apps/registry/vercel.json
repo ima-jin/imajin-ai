@@ -1,6 +1,6 @@
 {
-  "buildCommand": "pnpm turbo build --filter=@imajin/registry-service",
+  "installCommand": "cd ../.. && pnpm install",
+  "buildCommand": "cd ../.. && pnpm turbo build --filter=@imajin/registry-service",
   "outputDirectory": ".next",
-  "framework": "nextjs",
-  "installCommand": "pnpm install"
+  "framework": "nextjs"
 }

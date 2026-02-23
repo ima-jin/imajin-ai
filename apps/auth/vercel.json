@@ -1,6 +1,6 @@
 {
   "installCommand": "cd ../.. && pnpm install",
-  "buildCommand": "cd ../.. && pnpm turbo build --filter=@imajin/profile",
+  "buildCommand": "cd ../.. && pnpm turbo build --filter=@imajin/auth-service",
   "outputDirectory": ".next",
   "framework": "nextjs"
 }
