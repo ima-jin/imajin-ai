@@ -47,6 +47,16 @@ So I'm asking.
 
 **Financial help.** Not venture capital with control strings attached. The 37 weeks of severance have funded a remarkable amount of thinking and building, but I am not independently wealthy and runway is finite. I need people who believe in what they've just read across nineteen essays to become patrons, angels, early backers — whatever shape makes sense for where they are. I'm not asking for millions. I'm asking for enough runway to get Jin's party running and the first real operator nodes live.
 
+But here's what's different about this ask: you're not donating to a company. You're entering the attribution chain as a micro-founder. Your financial contribution is logged the same way a code contribution is logged — weighted by when you arrived and what the network was worth at that moment. Early is riskier. Early is weighted accordingly. When the network starts generating value through inference fees and micro-transactions, the chain pays back through the same distribution contract logic the whole system runs on.
+
+And then it gets interesting. You decide where your returns flow. To causes you care about. To infrastructure. To your own pocket. The same sovereignty the network offers creators, it offers you — a signed, versioned, auditable declaration of your values, running automatically, every time value touches your node.
+
+The people showing up right now — before the network exists, before the returns are real — are the most altruistic contributors this system will ever see. They're not here for the yield. They're here because they believe the architecture is right. And the architecture gives them something no traditional investment ever has: the ability to watch their stake flow to the things they care about, in real time, permanently, on a ledger anyone can read.
+
+That's not a financial instrument. That's a values instrument.
+
+The RFC for how this works is live on GitHub: [RFC: Programmable Distribution Contracts](https://github.com/ima-jin/imajin-ai/discussions/16) — the full mechanic, the open questions, the bounty for building it. Read it. If it resonates, come in through [coffee.imajin.ai](https://coffee.imajin.ai). Both put you in the chain.
+
 **Dev help.** I am a strong developer. I am not a team. There are specific layers of this stack — the federation protocol, the DID implementation, the payment rail integration, the mobile presence layer — that need builders who are not me. Not just coders for hire. People who read The Utility and felt something click. People who have been trying to build something like this from a different angle and want to work on it together. If you are that person, I want to talk to you yesterday.
 
 **Other brains.** The trust graph argument, the .fair protocol, the operator network model, the economics of inference fees circulating through human infrastructure — I have been thinking about these things mostly alone, with an AI as my sounding board. That's been extraordinary and insufficient. I need people who can punch holes in the architecture. Who can see what I'm missing from their angle. Economists. Cryptographers. Protocol designers. Community builders who have been running nodes of their own and know where the problems actually live.
@@ -85,7 +95,9 @@ Come in.
 
 *The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*  
 *The network: [imajin.ai](https://imajin.ai)*  
+*Become a micro-founder: [coffee.imajin.ai](https://coffee.imajin.ai)*  
+*RFC: Distribution Contracts + Micro-Founder Attribution: [github.com/ima-jin/imajin-ai/discussions](https://github.com/ima-jin/imajin-ai/discussions)*  
 *Jin's party: April 1st, 2026*  
 *The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-20-i-need-help.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-20-i-need-help.md)*
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-20-i-need-help) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-20-i-need-help) on February 22, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

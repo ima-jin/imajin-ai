@@ -33,13 +33,11 @@ Call it Ask Ryan. Or Ask *you*.
 
 Someone in your trust network has a question. Your presence answers it the way you would — based on everything you've written, everything you've said, everything you believe. Your calendar, your expertise, your stated values, your accumulated conversations. The vast majority of queries never reach you. The ones that are too hard, too personal, or genuinely new — those escalate to the real you.
 
-Here's the part that changes everything: **they pay for the inference.**
+**They pay for the inference.**
 
 Not to a platform. Not to an advertiser. Directly to you.
 
 You're not the product anymore. You're the service.
-
-And here's what nobody mentions about this: onboarding collapses. New people in your network don't hit a blank generic model. They query through people who already know them. The community's culture, preferences, and accumulated context travel with every query. The AI speaks in your community's voice because your community's relationships are the filter. Cultural fit is immediate. Nobody has to teach the model who they are.
 
 ---
 
@@ -60,8 +58,6 @@ That distinction matters once real money is involved. That's not a security feat
 ---
 
 ## The Graph That Thinks Like a Village
-
-Here's where it gets interesting.
 
 Your presence connects to others. Trust relationships form a mesh. Alice is in your graph — you can query her directly. Bob isn't in your graph, but Alice trusts him. You can reach Bob through Alice, weighted accordingly. The path is visible: you → Alice → Bob. Two hops.
 
@@ -95,9 +91,7 @@ You meet someone on the street. You don't know them. You query your network: "An
 
 They're not a node. But your friend's AI remembers them from a collaboration last year. Someone else's presence has a passing mention. Scattered across multiple contexts, a picture assembles — no single person controls it, no central authority curates it.
 
-The network knows you before you join it. Word of mouth, but instant and queryable. You show up in graphs as a mention, validated by your appearance across multiple independent contexts. Cold start, solved — without a central authority.
-
-And every one of those queries — from the moment you're a mention to the moment you're a fully established node — generates inference fees flowing back through the graph to the people whose context shaped the answer. The network pays you back in proportion to the value you've built into it.
+The network knows you before you join it. Word of mouth, but instant and queryable. And every one of those queries — from the moment you're a mention to the moment you're a fully established node — generates inference fees flowing back through the graph to the people whose context shaped the answer. The network pays you back in proportion to the value you've built into it.
 
 ---
 
@@ -189,7 +183,7 @@ The graph starts somewhere. It might as well start here.
 
 **If you want to follow along:**
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- The network: [imajin.ai](imajin.ai)
+- The network: [imajin.ai](https://imajin.ai)
 - Jin's party: April 1st, 2026
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-04-the-internet-that-pays-you-back.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-04-the-internet-that-pays-you-back.md)
 
