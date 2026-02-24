@@ -1,5 +1,5 @@
 ---
-title: "The Pain of Knowing: Why I'm Still Fighting for the Internet We Lost"
+title: "The Pain of Knowing"
 subtitle: "Why I'm still fighting for the internet we lost"
 description: "The origin story. b0bby's World. What real connection looked like. The extraction model and how every step since 1994 was wrong."
 date: "2026-02-20"

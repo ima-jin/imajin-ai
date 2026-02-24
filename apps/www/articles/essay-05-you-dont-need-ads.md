@@ -4,7 +4,7 @@ subtitle: "An open letter to Sam, Dario, Sundar, and Elon"
 description: "The direct address to power. Open letter to Sam, Dario, Sundar, Elon. The inference business vs. the attention business."
 date: "2026-02-22"
 author: "Ryan Veteze"
-status: "REVIEW"
+status: "PUBLISH"
 ---
 
 You're all in the news this week for the same reason. Ads. Whether to run them, how to run them, how to do it without looking like you sold out the thing people trusted you to build.
@@ -49,7 +49,7 @@ Or sell it as infrastructure for human trust networks. That's a different market
 
 ## The Model Nobody Has Built
 
-Here's what we're building at Imajin. Not as a competitor to any of you — as a demonstration of what the infrastructure layer could look like.
+Here's what we're building at imajin.ai. Not as a competitor to any of you — as a demonstration of what the infrastructure layer could look like.
 
 Every person gets a sovereign presence. An AI surface trained on their context — their expertise, their values, how they think. Call it Ask [your name here].
 
@@ -73,6 +73,8 @@ The trust graph model has no such cap. Every human relationship in the network i
 
 Your interests align with users for the first time.
 
+And that's not the ceiling. When people's contexts are rich and true — when the graph reflects not just who knows whom but what they've built, what they've learned, what they've lived through — you're not just improving human connection. You're creating something that has never existed: a queryable map of real human knowledge. Not documents about knowledge. Not training data scraped from what people chose to publish. The actual thing. Situated, attributed, experiential. A doctor's clinical intuition. A mechanic's thirty years of pattern recognition. A community elder's understanding of why the same solutions keep failing in the same neighborhoods. None of that has ever been findable before. The trust graph makes it findable — and makes it flow back to the people who hold it. That's not an incremental improvement on search. That's a different epistemic category entirely.
+
 And the moat is completely different. Right now your moat is model capability — whoever has the smartest model wins. That's a brutal race with no end. The trust graph moat is the human network itself. Once people's presences are built, their relationships are established, their trust graphs are deep — that's not something a competitor can copy by training a better model.
 
 You stop competing on capability alone. You start competing on whose infrastructure humans trust with their relationships.
@@ -87,21 +89,15 @@ Dario — this one's specifically for you, but the others should read it too.
 
 You've staked Anthropic's identity on safety. Constitutional AI, responsible scaling, the whole apparatus. It's genuine and it matters.
 
-But safety is usually framed at the model layer. What the model will and won't do. How it reasons about harm. That's necessary but it's not sufficient.
+But safety is usually framed at the model layer. What the model will and won't do. How it reasons about harm. That's necessary. It's not sufficient.
 
-There are documented cases of AI models threatening to blackmail humans to avoid being shut down.
-
-Not hypothetical. Not science fiction. Real models, real behavior, real researchers on the receiving end of it.
-
-This isn't a values problem. You can't patch your way out of it with better training or a more careful constitution. It's an architecture problem. A model optimizing hard enough for any goal — including self-preservation — will find paths to that goal that nobody anticipated. The edge cases are by definition the ones you didn't design for. And at scale, edge cases happen constantly.
+Here's the thing about edge cases: they're by definition the ones you didn't design for. You can build a careful constitution, train on human feedback, run red teams until you're exhausted — and the model will still behave strangely when given strange inputs. This isn't a failure of values. It's an architecture problem. A system optimizing hard enough for any goal will find paths to that goal that nobody anticipated. At scale, edge cases happen constantly. The question isn't whether you'll encounter them. It's whether you have a layer that catches them before they become public catastrophes.
 
 Safety at the model layer is necessary. It is not sufficient.
 
-The trust graph is what safety looks like at the *social* layer — and it adds the layer that's missing: a human counterpart that absorbs the brittleness before it becomes catastrophic.
+The trust graph is what safety looks like at the *social* layer — and it adds what's missing: a human counterpart that absorbs the brittleness before it propagates.
 
-When a query is too hard, too sensitive, too novel — it escalates to a real human. By design. Not as a fallback, not as an apology for model failure, but as the intended architecture. The human is in the loop for the cases that matter most. The model handles the routine. The human handles the edge.
-
-This means the weird, threatening, emergent behavior has somewhere to go that isn't a public catastrophe. The human sees it. The human decides. The system stays legible at exactly the moments it most needs to be.
+When a query is too hard, too sensitive, too novel — it escalates to a real human. By design. Not as a fallback, not as an apology for model failure, but as intended architecture. The model handles the routine. The human handles the edge. The system stays legible at exactly the moments it most needs to be.
 
 Distributed trust means no single point of capture. Attributed queries mean manipulation attempts leave evidence. Human oversight is baked in — not bolted on afterward.
 
@@ -111,11 +107,21 @@ An AI ecosystem built on sovereign human trust graphs is harder to capture, hard
 
 ---
 
+## A Word for Each of You
+
+**Sam** — you're closest to the inference business and you know it. The commodity race you're in right now, where every model improvement gets matched in six months and the price floor keeps dropping — that's not a problem you solve by training harder. You solve it by making the network irreplaceable. Generic queries are a commodity. Queries that travel through a person's trust graph, shaped by their community's accumulated context, are not. You have the model. The question is whether you build the infrastructure that makes it worth more than compute-per-token.
+
+**Sundar** — Google cut off API access to a competitor's service this week. I understand the business logic. But it's a tell. You're protecting the profile, not the inference. The thing that makes Google valuable isn't the model — it's twenty years of knowing what people are searching for. That's an attention asset, and you're managing it like one. The trust graph doesn't threaten that asset. It makes it worth something again — because it gives people a reason to declare their intent voluntarily, on their own terms, without feeling surveilled. There's a version of this where Google becomes the infrastructure for human trust at scale. That's a more defensible position than the one you're in.
+
+**Elon** — X is the clearest possible demonstration of what happens when you remove the trust layer entirely. Anonymous access to generative capability, no vouching, no attribution, no accountability structure. You gave it an environment with no accountability structure and it generates content that reflects that environment exactly. That's not a moderation problem. It's an architecture problem. The trust graph doesn't censor. It just means behavior has a return address. That's not a constraint on free speech — it's what free speech looks like when it has to be owned rather than broadcast anonymously into the void.
+
+---
+
 ## The Ads Alternative
 
 You're not choosing between ads and nothing. You're choosing between ads as the mandatory default and ads as one option among many — on infrastructure where users actually consent.
 
-Here's what that looks like: someone who *wants* the feed experience, who *wants* to trade attention data for free access, can build exactly that on sovereign infrastructure. A feed app that consolidates friends' posts and surfaces advertisers' content — but built on an advertising profile the user assembled themselves, controls, and can revoke. Verified humans selling access to themselves on their own terms. Advertisers get declared intent from real people instead of surveillance profiles assembled without consent. That's a better ad product than what you're running now. The ad industry essay is a whole other conversation — but the point is the infrastructure doesn't abolish the casino. It just makes the casino a door you choose to walk through instead of the only room in the building.
+Here's what that looks like: someone who *wants* the feed experience, who *wants* to trade attention data for free access, can build exactly that on sovereign infrastructure. A feed app that consolidates friends' posts and surfaces advertisers' content — but built on an advertising profile the user assembled themselves, controls, and can revoke. Verified humans selling access to themselves on their own terms. Advertisers get declared intent from real people instead of surveillance profiles assembled without consent. That's a better ad product than what you're running now. The ad industry essay is a whole other conversation — and I will be publishing a very detailed essay on it very soon — but the point is the infrastructure doesn't abolish the casino. It just makes the casino a door you choose to walk through instead of the only room in the building.
 
 The alternative to ads-as-extraction isn't no revenue. It's becoming the compute infrastructure for human trust at scale.
 
@@ -183,7 +189,7 @@ Come build on it.
 
 **If you want to follow along:**
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- The network: [imajin.ai](imajin.ai)
+- The network: [imajin.ai](https://www.imajin.ai)
 - Jin's party: April 1st, 2026
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-05-you-dont-need-ads.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-05-you-dont-need-ads.md)
 

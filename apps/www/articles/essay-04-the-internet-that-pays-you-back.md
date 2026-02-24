@@ -31,11 +31,11 @@ Not generic AI. *You*-shaped AI.
 
 Call it Ask Ryan. Or Ask *you*.
 
-Someone in your trust network has a question. Your presence answers it the way you would — based on everything you've written, everything you've said, everything you believe. Your calendar, your expertise, your stated values, your accumulated conversations. The vast majority of queries never reach you. The ones that are too hard, too personal, or genuinely new — those escalate to the real you.
+Someone in your trust network has a question. Your presence answers it the way you would — based on everything you've written, everything you've said, everything you believe. Your calendar, your expertise, your stated values, your accumulated conversations. The vast majority of queries never reach you. Your presence handles them — while you sleep, while you work, while you're doing something else entirely. The ones that are too hard, too personal, or genuinely new escalate to the real you.
 
-**They pay for the inference.**
+And YOU get paid for the inference.
 
-Not to a platform. Not to an advertiser. Directly to you.
+Not to a platform. Not to an advertiser. Directly to you. You won't notice it happening — the fees are small, the transactions invisible, a number ticking somewhere in the background. You'll check your balance one day and think: huh.
 
 You're not the product anymore. You're the service.
 
