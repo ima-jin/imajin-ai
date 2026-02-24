@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import './globals.css';
+import { NavBar } from './components/NavBar';
 
 export const metadata: Metadata = {
   title: 'Imajin Pay',
@@ -25,7 +27,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black">
+        <NavBar currentService="Pay" />
+        <main className="container mx-auto px-4 py-8">
+          {children}
+        </main>
+      </body>
     </html>
   );
 }

@@ -1,11 +1,9 @@
 'use client';
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-
 const services = [
   { name: 'Home', href: 'https://imajin.ai', external: true },
   { name: 'Auth', href: 'https://auth.imajin.ai' },
+  { name: 'Pay', href: 'https://pay.imajin.ai' },
   { name: 'Profile', href: 'https://profile.imajin.ai' },
   { name: 'Events', href: 'https://events.imajin.ai' },
   { name: 'Chat', href: 'https://chat.imajin.ai' },
