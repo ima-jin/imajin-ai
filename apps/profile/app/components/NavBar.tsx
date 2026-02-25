@@ -4,14 +4,17 @@ import { useState, useEffect, useRef } from 'react';
 import { useIdentity } from '../context/IdentityContext';
 import { useRouter } from 'next/navigation';
 
+const BASE = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
+const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+
 const services = [
-  { name: 'Home', href: 'https://imajin.ai', external: true },
-  { name: 'Auth', href: 'https://auth.imajin.ai' },
-  { name: 'Pay', href: 'https://pay.imajin.ai' },
-  { name: 'Profile', href: 'https://profile.imajin.ai' },
-  { name: 'Events', href: 'https://events.imajin.ai' },
-  { name: 'Chat', href: 'https://chat.imajin.ai' },
-  { name: 'Registry', href: 'https://registry.imajin.ai' },
+  { name: 'Home', href: `${BASE}${DOMAIN}`, external: true },
+  { name: 'Auth', href: `${BASE}auth.${DOMAIN}` },
+  { name: 'Pay', href: `${BASE}pay.${DOMAIN}` },
+  { name: 'Profile', href: `${BASE}profile.${DOMAIN}` },
+  { name: 'Events', href: `${BASE}events.${DOMAIN}` },
+  { name: 'Chat', href: `${BASE}chat.${DOMAIN}` },
+  { name: 'Registry', href: `${BASE}registry.${DOMAIN}` },
 ];
 
 interface NavBarProps {
@@ -49,7 +52,7 @@ export function NavBar({ currentService = 'Auth' }: NavBarProps) {
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         {/* Logo */}
         <a
-          href="https://imajin.ai"
+          href={`${BASE}${DOMAIN}`}
           className="flex items-center gap-2 font-bold text-lg hover:opacity-80 transition"
         >
           <span className="text-2xl">🟠</span>

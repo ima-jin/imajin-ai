@@ -145,7 +145,7 @@ export default async function ProfilePage({ params }: PageProps) {
         <div className="flex justify-center gap-4 mb-6">
           {profile.metadata?.links && (
             <a
-              href={`https://links.imajin.ai/${profile.metadata.links}`}
+              href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}links.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/${profile.metadata.links}`}
               className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-white"
             >
               🔗 Links
@@ -153,7 +153,7 @@ export default async function ProfilePage({ params }: PageProps) {
           )}
           {profile.metadata?.coffee && (
             <a
-              href={`https://coffee.imajin.ai/${profile.metadata.coffee}`}
+              href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}coffee.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/${profile.metadata.coffee}`}
               className="px-4 py-2 bg-[#F59E0B]/10 border border-[#F59E0B]/30 text-[#F59E0B] rounded-lg hover:bg-[#F59E0B]/20 transition"
             >
               ☕ Tip Me
