@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { NavBar } from './components/NavBar';
+import { IdentityProvider } from './context/IdentityContext';
 
 export const metadata: Metadata = {
   title: {
@@ -31,10 +32,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-[#0a0a0a] text-white">
-        <NavBar currentService="Profile" />
-        <main className="container mx-auto px-4 py-8">
-          {children}
-        </main>
+        <IdentityProvider>
+          <NavBar currentService="Profile" />
+          <main className="container mx-auto px-4 py-8">
+            {children}
+          </main>
+        </IdentityProvider>
       </body>
     </html>
   );

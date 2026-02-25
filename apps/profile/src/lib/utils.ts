@@ -24,9 +24,9 @@ export function base58Encode(bytes: Uint8Array): string {
   let encoded = '';
 
   while (num > 0n) {
-    const remainder = Number(num % 61n);
+    const remainder = Number(num % 58n);
     encoded = BASE58_ALPHABET[remainder] + encoded;
-    num = num / 61n;
+    num = num / 58n;
   }
 
   // Add leading '1's for leading zero bytes

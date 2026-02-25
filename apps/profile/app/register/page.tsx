@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import * as ed from '@noble/ed25519';
+import { useIdentity } from '../context/IdentityContext';
 
 // Base58 encoding for DIDs
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -37,9 +38,11 @@ async function generateKeypair() {
 }
 
 type Step = 'form' | 'creating' | 'success' | 'error';
+type HandleCheckStatus = 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { isLoggedIn, handle: loggedInHandle, did, importKeys } = useIdentity();
   const [step, setStep] = useState<Step>('form');
   const [error, setError] = useState('');
   const [profile, setProfile] = useState<any>(null);
@@ -50,6 +53,62 @@ export default function RegisterPage() {
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState('👤');
   const [copied, setCopied] = useState(false);
+
+  // Handle availability checking
+  const [handleStatus, setHandleStatus] = useState<HandleCheckStatus>('idle');
+  const [handleMessage, setHandleMessage] = useState('');
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // Show redirect banner if already logged in
+  const [showBanner, setShowBanner] = useState(false);
+
+  useEffect(() => {
+    if (isLoggedIn && did) {
+      setShowBanner(true);
+    }
+  }, [isLoggedIn, did]);
+
+  // Debounced handle availability check
+  useEffect(() => {
+    if (!handle || handle.length < 3) {
+      setHandleStatus('idle');
+      setHandleMessage('');
+      return;
+    }
+
+    // Clear existing timer
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+
+    // Set checking status
+    setHandleStatus('checking');
+
+    // Debounce for 500ms
+    debounceTimer.current = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/handle-check?handle=${encodeURIComponent(handle)}`);
+        const data = await response.json();
+
+        if (data.available) {
+          setHandleStatus('available');
+          setHandleMessage('Available');
+        } else {
+          setHandleStatus(data.reason === 'invalid' ? 'invalid' : 'taken');
+          setHandleMessage(data.message || 'Not available');
+        }
+      } catch (error) {
+        console.error('Handle check failed:', error);
+        setHandleStatus('idle');
+      }
+    }, 500);
+
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
+  }, [handle]);
 
   function copyDid(did: string) {
     navigator.clipboard.writeText(did);
@@ -129,12 +188,15 @@ export default function RegisterPage() {
         throw new Error(data.error || 'Registration failed');
       }
 
-      // 3. Store keypair in localStorage
+      // 3. Store keypair in localStorage and update identity context
       localStorage.setItem('imajin_keypair', JSON.stringify({
         privateKey: keypair.privateKey,
         publicKey: keypair.publicKey,
       }));
       localStorage.setItem('imajin_did', did);
+
+      // Import keys into identity context to update navbar
+      await importKeys(keypair.privateKey);
 
       setProfile(data);
       setStep('success');
@@ -249,6 +311,31 @@ export default function RegisterPage() {
 
   return (
     <div className="max-w-md mx-auto">
+      {showBanner && (
+        <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg p-4 mb-4 flex items-center justify-between">
+          <div className="flex-1">
+            <p className="text-sm text-[#F59E0B] font-medium">
+              Already registered as {loggedInHandle ? `@${loggedInHandle}` : 'a user'}
+            </p>
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={() => router.push(`/${loggedInHandle || did}`)}
+                className="text-xs text-[#F59E0B] hover:underline"
+              >
+                Go to profile
+              </button>
+              <span className="text-gray-600">•</span>
+              <button
+                onClick={() => setShowBanner(false)}
+                className="text-xs text-gray-400 hover:underline"
+              >
+                Register new identity
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
         <h1 className="text-2xl font-bold mb-2 text-center text-white">Join Imajin</h1>
         <p className="text-gray-400 text-center mb-6">
@@ -281,7 +368,22 @@ export default function RegisterPage() {
                 className="flex-1 px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
               />
             </div>
-            <p className="text-xs text-gray-500 mt-1">3-30 chars, lowercase, alphanumeric + hyphens</p>
+            {handleStatus !== 'idle' && handle.length >= 3 && (
+              <p className={`text-xs mt-1 flex items-center gap-1 ${
+                handleStatus === 'checking' ? 'text-gray-400' :
+                handleStatus === 'available' ? 'text-green-400' :
+                'text-red-400'
+              }`}>
+                {handleStatus === 'checking' && '⏳ Checking...'}
+                {handleStatus === 'available' && '✅ Available'}
+                {handleStatus === 'taken' && '❌ Taken'}
+                {handleStatus === 'invalid' && `❌ ${handleMessage}`}
+                {(handleStatus === 'available' || handleStatus === 'taken') && ` - ${handleMessage}`}
+              </p>
+            )}
+            {(handleStatus === 'idle' || handle.length < 3) && (
+              <p className="text-xs text-gray-500 mt-1">3-30 chars, lowercase, alphanumeric + hyphens</p>
+            )}
           </div>
 
           <div>
