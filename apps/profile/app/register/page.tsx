@@ -49,6 +49,13 @@ export default function RegisterPage() {
   const [handle, setHandle] = useState('');
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState('👤');
+  const [copied, setCopied] = useState(false);
+
+  function copyDid(did: string) {
+    navigator.clipboard.writeText(did);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -128,10 +135,36 @@ export default function RegisterPage() {
             Your sovereign identity has been created.
           </p>
 
-          <div className="bg-black/50 rounded-lg p-4 mb-6 text-left border border-gray-800">
-            <p className="text-sm text-gray-500 mb-1">Your DID</p>
+          <div
+            onClick={() => copyDid(profile.did)}
+            className="bg-black/50 rounded-lg p-4 mb-6 text-left border border-gray-800 cursor-pointer hover:border-[#F59E0B]/50 transition"
+          >
+            <p className="text-sm text-gray-500 mb-1 flex justify-between">
+              Your DID
+              <span className="text-xs">{copied ? '✅ Copied!' : '📋 Click to copy'}</span>
+            </p>
             <p className="font-mono text-xs break-all text-gray-300">{profile.did}</p>
           </div>
+
+          {/* Trigger password manager "Save password?" prompt */}
+          <iframe name="imajin-pm-frame" style={{ display: 'none' }} />
+          <form
+            target="imajin-pm-frame"
+            method="POST"
+            action="/api/register"
+            className="hidden"
+            ref={(form) => {
+              if (form && profile?.did) {
+                // Small delay to ensure password manager picks it up
+                setTimeout(() => form.submit(), 500);
+              }
+            }}
+          >
+            <input type="text" autoComplete="username" defaultValue={profile.did} />
+            <input type="password" autoComplete="new-password" defaultValue={
+              JSON.parse(localStorage.getItem('imajin_keypair') || '{}').privateKey || ''
+            } />
+          </form>
 
           <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg p-4 mb-6 text-left">
             <p className="text-sm font-semibold text-[#F59E0B] mb-2">
