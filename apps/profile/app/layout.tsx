@@ -29,8 +29,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black">
+    <html lang="en" className="dark">
+      <body className="min-h-screen bg-[#0a0a0a] text-white">
         <NavBar currentService="Profile" />
         <main className="container mx-auto px-4 py-8">
           {children}
