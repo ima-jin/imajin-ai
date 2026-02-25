@@ -57,6 +57,7 @@ export default function RegisterPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  // TODO: Password manager integration (Phase 2 - passkeys)
   async function saveToPasswordManager() {
     const keypair = localStorage.getItem('imajin_keypair');
     const did = localStorage.getItem('imajin_did');
@@ -195,20 +196,12 @@ export default function RegisterPage() {
               Your private key is only stored in this browser. If you clear your data or lose this device,
               <strong> you will permanently lose access to your identity.</strong>
             </p>
-            <div className="flex gap-2">
-              <button
-                onClick={saveToPasswordManager}
-                className="flex-1 px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition text-sm font-medium"
-              >
-                🔑 Save to Password Manager
-              </button>
-              <button
-                onClick={downloadKeys}
-                className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition text-sm font-medium"
-              >
-                ⬇️ Download Backup
-              </button>
-            </div>
+            <button
+              onClick={downloadKeys}
+              className="w-full px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition text-sm font-medium"
+            >
+              ⬇️ Download Backup Keys
+            </button>
           </div>
 
           <button
