@@ -57,6 +57,47 @@ export default function RegisterPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  async function saveToPasswordManager() {
+    const keypair = localStorage.getItem('imajin_keypair');
+    const did = localStorage.getItem('imajin_did');
+    if (!keypair || !did) return;
+
+    const privateKey = JSON.parse(keypair).privateKey;
+
+    // Try Credential Management API first
+    if ('credentials' in navigator && 'PasswordCredential' in window) {
+      try {
+        const cred = new (window as any).PasswordCredential({
+          id: did,
+          password: privateKey,
+          name: profile?.handle ? `@${profile.handle}` : 'Imajin Identity',
+        });
+        await navigator.credentials.store(cred);
+        return;
+      } catch (e) {
+        console.log('Credential API failed, falling back');
+      }
+    }
+
+    // Fallback: open a small window with a real form that triggers password managers
+    const w = window.open('', '_blank', 'width=1,height=1');
+    if (w) {
+      w.document.write(`
+        <html><body>
+          <form id="f" action="javascript:void(0)">
+            <input type="text" name="username" autocomplete="username" value="${did}" />
+            <input type="password" name="password" autocomplete="current-password" value="${privateKey}" />
+            <button type="submit">Save</button>
+          </form>
+          <script>
+            document.getElementById('f').submit();
+            setTimeout(() => window.close(), 3000);
+          </script>
+        </body></html>
+      `);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setStep('creating');
@@ -146,26 +187,6 @@ export default function RegisterPage() {
             <p className="font-mono text-xs break-all text-gray-300">{profile.did}</p>
           </div>
 
-          {/* Trigger password manager "Save password?" prompt */}
-          <iframe name="imajin-pm-frame" style={{ display: 'none' }} />
-          <form
-            target="imajin-pm-frame"
-            method="POST"
-            action="/api/register"
-            className="hidden"
-            ref={(form) => {
-              if (form && profile?.did) {
-                // Small delay to ensure password manager picks it up
-                setTimeout(() => form.submit(), 500);
-              }
-            }}
-          >
-            <input type="text" autoComplete="username" defaultValue={profile.did} />
-            <input type="password" autoComplete="new-password" defaultValue={
-              JSON.parse(localStorage.getItem('imajin_keypair') || '{}').privateKey || ''
-            } />
-          </form>
-
           <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg p-4 mb-6 text-left">
             <p className="text-sm font-semibold text-[#F59E0B] mb-2">
               🔐 Back Up Your Keys Now
@@ -174,12 +195,20 @@ export default function RegisterPage() {
               Your private key is only stored in this browser. If you clear your data or lose this device,
               <strong> you will permanently lose access to your identity.</strong>
             </p>
-            <button
-              onClick={downloadKeys}
-              className="w-full px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition text-sm font-medium"
-            >
-              ⬇️ Download Backup Keys
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={saveToPasswordManager}
+                className="flex-1 px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition text-sm font-medium"
+              >
+                🔑 Save to Password Manager
+              </button>
+              <button
+                onClick={downloadKeys}
+                className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition text-sm font-medium"
+              >
+                ⬇️ Download Backup
+              </button>
+            </div>
           </div>
 
           <button
