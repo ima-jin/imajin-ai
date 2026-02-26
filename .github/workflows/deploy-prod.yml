@@ -17,7 +17,7 @@ jobs:
       - name: Pull latest tag
         run: |
           git fetch origin --tags
-          git checkout ${{ github.ref_name }}
+          git reset --hard ${{ github.ref_name }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

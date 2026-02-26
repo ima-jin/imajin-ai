@@ -15,7 +15,9 @@ jobs:
 
     steps:
       - name: Pull latest
-        run: git pull origin main
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
