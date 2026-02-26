@@ -1,52 +1,59 @@
 import * as jose from 'jose';
+import { webcrypto } from 'crypto';
 
 const JWT_ISSUER = 'auth.imajin.ai';
 const JWT_EXPIRY = '24h';
 
-// Get or generate the signing key
-// In production, this should be a persistent Ed25519 key stored in env
-async function getSigningKey(): Promise<CryptoKey> {
+interface KeyPair {
+  privateKey: CryptoKey;
+  publicKey: CryptoKey;
+}
+
+// Get or generate the key pair
+async function loadKeyPair(): Promise<KeyPair> {
   const privateKeyHex = process.env.AUTH_PRIVATE_KEY;
   
   if (privateKeyHex) {
-    // Import existing key from hex
+    // Import existing PKCS8 private key as extractable so we can derive public key
     const privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
-    return jose.importPKCS8(
-      `-----BEGIN PRIVATE KEY-----\n${privateKeyBytes.toString('base64')}\n-----END PRIVATE KEY-----`,
-      'EdDSA'
+    const pem = `-----BEGIN PRIVATE KEY-----\n${privateKeyBytes.toString('base64')}\n-----END PRIVATE KEY-----`;
+    
+    // Import as Web Crypto key with extractable=true
+    const privateKey = await webcrypto.subtle.importKey(
+      'pkcs8',
+      privateKeyBytes,
+      { name: 'Ed25519' },
+      true,
+      ['sign']
     );
+    
+    // Export as JWK, derive public key
+    const jwk = await webcrypto.subtle.exportKey('jwk', privateKey);
+    delete jwk.d; // Remove private component
+    const publicKey = await webcrypto.subtle.importKey(
+      'jwk',
+      jwk,
+      { name: 'Ed25519' },
+      true,
+      ['verify']
+    );
+    
+    return { privateKey, publicKey };
   }
   
-  // For development: generate ephemeral key (sessions won't persist across restarts)
-  const { privateKey } = await jose.generateKeyPair('EdDSA');
-  return privateKey;
+  // For development: generate ephemeral key pair
+  const { privateKey, publicKey } = await jose.generateKeyPair('EdDSA');
+  return { privateKey, publicKey };
 }
 
-// Get the verification (public) key from the private key
-async function getVerifyKey(): Promise<CryptoKey> {
-  const privateKey = await getKey();
-  const jwk = await jose.exportJWK(privateKey);
-  // Remove private key component, keep only public
-  delete jwk.d;
-  return jose.importJWK(jwk, 'EdDSA') as Promise<CryptoKey>;
-}
+// Cache the key pair
+let keyPairPromise: Promise<KeyPair> | null = null;
 
-// Cache the keys
-let signingKeyPromise: Promise<CryptoKey> | null = null;
-let verifyKeyPromise: Promise<CryptoKey> | null = null;
-
-function getKey(): Promise<CryptoKey> {
-  if (!signingKeyPromise) {
-    signingKeyPromise = getSigningKey();
+function getKeyPair(): Promise<KeyPair> {
+  if (!keyPairPromise) {
+    keyPairPromise = loadKeyPair();
   }
-  return signingKeyPromise;
-}
-
-function getPublicKey(): Promise<CryptoKey> {
-  if (!verifyKeyPromise) {
-    verifyKeyPromise = getVerifyKey();
-  }
-  return verifyKeyPromise;
+  return keyPairPromise;
 }
 
 export interface SessionPayload {
@@ -60,7 +67,7 @@ export interface SessionPayload {
  * Create a signed JWT for a session
  */
 export async function createSessionToken(payload: SessionPayload): Promise<string> {
-  const key = await getKey();
+  const { privateKey } = await getKeyPair();
   
   const jwt = await new jose.SignJWT({
     handle: payload.handle,
@@ -72,7 +79,7 @@ export async function createSessionToken(payload: SessionPayload): Promise<strin
     .setIssuer(JWT_ISSUER)
     .setIssuedAt()
     .setExpirationTime(JWT_EXPIRY)
-    .sign(key);
+    .sign(privateKey);
   
   return jwt;
 }
@@ -82,9 +89,9 @@ export async function createSessionToken(payload: SessionPayload): Promise<strin
  */
 export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
   try {
-    const key = await getPublicKey();
+    const { publicKey } = await getKeyPair();
     
-    const { payload } = await jose.jwtVerify(token, key, {
+    const { payload } = await jose.jwtVerify(token, publicKey, {
       issuer: JWT_ISSUER,
     });
     
