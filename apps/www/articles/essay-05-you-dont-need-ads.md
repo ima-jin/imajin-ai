@@ -4,7 +4,7 @@ subtitle: "An open letter to Sam, Dario, Sundar, and Elon"
 description: "The direct address to power. Open letter to Sam, Dario, Sundar, Elon. The inference business vs. the attention business."
 date: "2026-02-22"
 author: "Ryan Veteze"
-status: "PUBLISH"
+status: "POSTED"
 ---
 
 You're all in the news this week for the same reason. Ads. Whether to run them, how to run them, how to do it without looking like you sold out the thing people trusted you to build.
