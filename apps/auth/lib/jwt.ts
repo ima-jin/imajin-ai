@@ -28,7 +28,7 @@ async function getVerifyKey(): Promise<CryptoKey> {
   const jwk = await jose.exportJWK(privateKey);
   // Remove private key component, keep only public
   delete jwk.d;
-  return jose.importJWK(jwk, 'EdDSA');
+  return jose.importJWK(jwk, 'EdDSA') as Promise<CryptoKey>;
 }
 
 // Cache the keys
