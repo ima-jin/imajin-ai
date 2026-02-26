@@ -70,29 +70,30 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         setIsLoggedIn(true);
         return;
       }
+      // Auth returned 401/error — clear any stale localStorage
+      localStorage.removeItem('imajin_did');
+      localStorage.removeItem('imajin_keypair');
     } catch (error) {
       console.error('Failed to check auth session:', error);
-    }
+      // Network error — fall back to localStorage
+      const storedDid = localStorage.getItem('imajin_did');
+      const storedKeypair = localStorage.getItem('imajin_keypair');
 
-    // Fallback to localStorage (for backwards compatibility during migration)
-    const storedDid = localStorage.getItem('imajin_did');
-    const storedKeypair = localStorage.getItem('imajin_keypair');
+      if (storedDid && storedKeypair) {
+        setDid(storedDid);
+        setIsLoggedIn(true);
 
-    if (storedDid && storedKeypair) {
-      setDid(storedDid);
-      setIsLoggedIn(true);
-
-      // Fetch profile to get handle and avatar
-      try {
-        const response = await fetch(`/api/profile/${storedDid}`);
-        if (response.ok) {
-          const profile = await response.json();
-          setHandle(profile.handle || null);
-          setAvatar(profile.avatar || null);
-          setDisplayName(profile.displayName || null);
+        try {
+          const response = await fetch(`/api/profile/${storedDid}`);
+          if (response.ok) {
+            const profile = await response.json();
+            setHandle(profile.handle || null);
+            setAvatar(profile.avatar || null);
+            setDisplayName(profile.displayName || null);
+          }
+        } catch (e) {
+          console.error('Failed to fetch profile:', e);
         }
-      } catch (error) {
-        console.error('Failed to fetch profile:', error);
       }
     }
   }
