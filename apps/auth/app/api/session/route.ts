@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken, getSessionCookieOptions } from '@/lib/jwt';
-import { db } from '@/db';
-import { identities } from '@/db/schema';
+import { db } from '@/src/db';
+import { identities } from '@/src/db/schema';
 import { eq } from 'drizzle-orm';
 
 /**
