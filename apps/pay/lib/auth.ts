@@ -5,7 +5,7 @@
  * Optional - payments can work without auth for anonymous/guest checkout.
  */
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3003';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
 export interface AuthValidation {
   valid: boolean;

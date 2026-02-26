@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3003';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
 /**
  * GET /api/auth/session - Proxy to auth service session check

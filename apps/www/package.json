@@ -12,7 +12,6 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.2",
     "drizzle-orm": "^0.45.1",
     "gray-matter": "^4.0.3",
     "next": "^14.2.0",
@@ -20,7 +19,8 @@
     "react-dom": "^18.2.0",
     "remark": "^15.0.1",
     "remark-html": "^16.0.1",
-    "@imajin/ui": "workspace:^"
+    "@imajin/ui": "workspace:^",
+    "@imajin/db": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",
