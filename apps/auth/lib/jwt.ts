@@ -22,14 +22,29 @@ async function getSigningKey(): Promise<CryptoKey> {
   return privateKey;
 }
 
-// Cache the key
+// Get the verification (public) key from the private key
+async function getVerifyKey(): Promise<CryptoKey> {
+  const privateKey = await getKey();
+  const { x, crv } = await jose.exportJWK(privateKey);
+  return jose.importJWK({ kty: 'OKP', crv, x }, 'EdDSA');
+}
+
+// Cache the keys
 let signingKeyPromise: Promise<CryptoKey> | null = null;
+let verifyKeyPromise: Promise<CryptoKey> | null = null;
 
 function getKey(): Promise<CryptoKey> {
   if (!signingKeyPromise) {
     signingKeyPromise = getSigningKey();
   }
   return signingKeyPromise;
+}
+
+function getPublicKey(): Promise<CryptoKey> {
+  if (!verifyKeyPromise) {
+    verifyKeyPromise = getVerifyKey();
+  }
+  return verifyKeyPromise;
 }
 
 export interface SessionPayload {
@@ -65,7 +80,7 @@ export async function createSessionToken(payload: SessionPayload): Promise<strin
  */
 export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
   try {
-    const key = await getKey();
+    const key = await getPublicKey();
     
     const { payload } = await jose.jwtVerify(token, key, {
       issuer: JWT_ISSUER,
