@@ -23,7 +23,7 @@ jobs:
           git reset --hard origin/main
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build all apps
         run: pnpm build
