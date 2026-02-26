@@ -9,7 +9,7 @@ interface NavBarProps {
   currentService?: string;
 }
 
-export function NavBar({ currentService = 'Pay' }: NavBarProps) {
+export function NavBar({ currentService = 'Home' }: NavBarProps) {
   return (
     <BaseNavBar
       currentService={currentService}

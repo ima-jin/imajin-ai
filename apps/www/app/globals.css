@@ -2,13 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-@media (min-width: 768px) {
-  html {
-    font-size: 150%;
-  }
-}
-
 body {
   background-color: #0A0A0A;
   color: #FAFAFA;
+}
+
+@media (min-width: 768px) {
+  main {
+    font-size: 150%;
+  }
 }

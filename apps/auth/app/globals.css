@@ -2,20 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground: #171717;
-  --background: #ffffff;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground: #ededed;
-    --background: #0a0a0a;
-  }
-}
-
 body {
-  color: var(--foreground);
-  background: var(--background);
+  color: #ededed;
+  background: #0a0a0a;
   font-family: system-ui, -apple-system, sans-serif;
 }

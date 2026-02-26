@@ -27,8 +27,8 @@ export async function GET(request: NextRequest) {
     if (q) {
       // Simple search on displayName and bio
       const searchCondition = or(
+        ilike(profiles.handle, `%${q}%`),
         ilike(profiles.displayName, `%${q}%`),
-        ilike(profiles.bio, `%${q}%`)
       );
       if (searchCondition) conditions.push(searchCondition);
     }

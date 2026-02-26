@@ -36,7 +36,7 @@ interface IdentityContextType {
   did: string | null;
   handle: string | null;
   isLoggedIn: boolean;
-  logout: () => void;
+  logout: () => Promise<void>;
   importKeys: (privateKeyHex: string) => Promise<{ success: boolean; error?: string; did?: string; handle?: string }>;
   refreshProfile: () => Promise<void>;
 }
@@ -56,6 +56,21 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   async function loadIdentity() {
     if (typeof window === 'undefined') return;
 
+    // Check auth session first
+    try {
+      const authResponse = await fetch('/api/auth/session');
+      if (authResponse.ok) {
+        const authSession = await authResponse.json();
+        setDid(authSession.did);
+        setHandle(authSession.handle || null);
+        setIsLoggedIn(true);
+        return;
+      }
+    } catch (error) {
+      console.error('Failed to check auth session:', error);
+    }
+
+    // Fallback to localStorage (for backwards compatibility during migration)
     const storedDid = localStorage.getItem('imajin_did');
     const storedKeypair = localStorage.getItem('imajin_keypair');
 
@@ -76,10 +91,20 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function logout() {
+  async function logout() {
     if (typeof window === 'undefined') return;
+
+    // Clear auth session cookie
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to clear auth session:', error);
+    }
+
+    // Clear localStorage
     localStorage.removeItem('imajin_did');
     localStorage.removeItem('imajin_keypair');
+
     setDid(null);
     setHandle(null);
     setIsLoggedIn(false);
@@ -102,12 +127,40 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       const derivedDid = `did:imajin:${publicKeyBase58}`;
 
       // Check if profile exists
-      const response = await fetch(`/api/profile/${derivedDid}`);
-      if (!response.ok) {
+      const profileResponse = await fetch(`/api/profile/${derivedDid}`);
+      if (!profileResponse.ok) {
         return { success: false, error: 'No profile found for this key. Please register first.' };
       }
 
-      const profile = await response.json();
+      const profile = await profileResponse.json();
+
+      // Register/login with auth service (will return existing identity if already registered)
+      const payload = JSON.stringify({
+        publicKey: publicKeyHex,
+        handle: profile.handle || undefined,
+        name: profile.displayName,
+        type: 'human',
+      });
+      const msgBytes = new TextEncoder().encode(payload);
+      const signatureBytes = await ed.signAsync(msgBytes, privateKeyBytes);
+      const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      const authResponse = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          publicKey: publicKeyHex,
+          handle: profile.handle || undefined,
+          name: profile.displayName,
+          type: 'human',
+          signature,
+        }),
+      });
+
+      if (!authResponse.ok) {
+        const authError = await authResponse.json();
+        return { success: false, error: `Auth failed: ${authError.error || 'Unknown error'}` };
+      }
 
       // Store in localStorage
       localStorage.setItem('imajin_keypair', JSON.stringify({

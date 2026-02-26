@@ -5,7 +5,7 @@ const JWT_EXPIRY = '24h';
 
 // Get or generate the signing key
 // In production, this should be a persistent Ed25519 key stored in env
-async function getSigningKey(): Promise<jose.KeyLike> {
+async function getSigningKey(): Promise<CryptoKey> {
   const privateKeyHex = process.env.AUTH_PRIVATE_KEY;
   
   if (privateKeyHex) {
@@ -23,9 +23,9 @@ async function getSigningKey(): Promise<jose.KeyLike> {
 }
 
 // Cache the key
-let signingKeyPromise: Promise<jose.KeyLike> | null = null;
+let signingKeyPromise: Promise<CryptoKey> | null = null;
 
-function getKey(): Promise<jose.KeyLike> {
+function getKey(): Promise<CryptoKey> {
   if (!signingKeyPromise) {
     signingKeyPromise = getSigningKey();
   }
@@ -94,7 +94,7 @@ export function getSessionCookieOptions(isProduction: boolean) {
       secure: isProduction,
       sameSite: 'lax' as const,
       path: '/',
-      domain: isProduction ? '.imajin.ai' : undefined,
+      domain: '.imajin.ai',
       maxAge: 60 * 60 * 24, // 24 hours
     },
   };

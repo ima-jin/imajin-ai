@@ -169,8 +169,39 @@ export default function RegisterPage() {
       const publicKeyBase58 = base58Encode(keypair.publicKeyBytes);
       const did = `did:imajin:${publicKeyBase58}`;
 
-      // 2. Register profile
-      const response = await fetch('/api/register', {
+      // 2. Sign payload for auth service
+      const payload = JSON.stringify({
+        publicKey: keypair.publicKey,
+        handle: handle || undefined,
+        name: displayName,
+        type: 'human',
+      });
+      const msgBytes = new TextEncoder().encode(payload);
+      const privateKeyBytes = new Uint8Array(keypair.privateKey.match(/.{2}/g)!.map(byte => parseInt(byte, 16)));
+      const signatureBytes = await ed.signAsync(msgBytes, privateKeyBytes);
+      const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      // 3. Register with auth service (sets JWT cookie)
+      const authResponse = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          publicKey: keypair.publicKey,
+          handle: handle || undefined,
+          name: displayName,
+          type: 'human',
+          signature,
+        }),
+      });
+
+      const authData = await authResponse.json();
+
+      if (!authResponse.ok) {
+        throw new Error(authData.error || 'Auth registration failed');
+      }
+
+      // 4. Register profile
+      const profileResponse = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -182,13 +213,13 @@ export default function RegisterPage() {
         }),
       });
 
-      const data = await response.json();
+      const profileData = await profileResponse.json();
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Registration failed');
+      if (!profileResponse.ok) {
+        throw new Error(profileData.error || 'Profile registration failed');
       }
 
-      // 3. Store keypair in localStorage and update identity context
+      // 5. Store keypair in localStorage and update identity context
       localStorage.setItem('imajin_keypair', JSON.stringify({
         privateKey: keypair.privateKey,
         publicKey: keypair.publicKey,
@@ -198,7 +229,7 @@ export default function RegisterPage() {
       // Import keys into identity context to update navbar
       await importKeys(keypair.privateKey);
 
-      setProfile(data);
+      setProfile(profileData);
       setStep('success');
 
     } catch (err: any) {
