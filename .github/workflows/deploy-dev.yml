@@ -1,0 +1,40 @@
+name: Deploy to Dev
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, imajin]
+    defaults:
+      run:
+        working-directory: /home/jin/dev/imajin-ai
+    env:
+      PATH: /home/jin/.nvm/versions/node/v22.22.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+    steps:
+      - name: Pull latest
+        run: git pull origin main
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all apps
+        run: pnpm build
+
+      - name: Push schemas
+        run: |
+          for app in auth profile registry www; do
+            cd /home/jin/dev/imajin-ai/apps/$app
+            DATABASE_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2) npx drizzle-kit push --force 2>&1 | tail -2
+          done
+          for app in imajin-events imajin-chat; do
+            cd /home/jin/dev/$app
+            DATABASE_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2) npx drizzle-kit push --force 2>&1 | tail -2
+          done
+
+      - name: Restart dev services
+        run: |
+          pm2 restart www auth pay profile events chat registry 2>/dev/null || true
+          echo "Dev services restarted"

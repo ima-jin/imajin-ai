@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useIdentity } from '../context/IdentityContext';
+import { ImageUpload } from '../components/ImageUpload';
 
 interface Profile {
   did: string;
@@ -12,6 +13,8 @@ interface Profile {
   bio?: string;
   avatar?: string;
 }
+
+type AvatarMode = 'emoji' | 'image';
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -26,6 +29,7 @@ export default function EditProfilePage() {
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState('');
   const [handle, setHandle] = useState('');
+  const [avatarMode, setAvatarMode] = useState<AvatarMode>('emoji');
 
   useEffect(() => {
     if (!isLoggedIn || !did) {
@@ -50,6 +54,13 @@ export default function EditProfilePage() {
       setBio(profile.bio || '');
       setAvatar(profile.avatar || '');
       setHandle(profile.handle || '');
+
+      // Detect avatar mode based on current avatar
+      if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.startsWith('/'))) {
+        setAvatarMode('image');
+      } else {
+        setAvatarMode('emoji');
+      }
     } catch (err: any) {
       console.error('Failed to load profile:', err);
       setError('Failed to load profile');
@@ -161,23 +172,34 @@ export default function EditProfilePage() {
 
           {/* Avatar */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Avatar</label>
-            <input
-              type="text"
-              value={avatar}
-              onChange={(e) => setAvatar(e.target.value)}
-              placeholder="👤 or https://..."
-              className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
-            />
-            <p className="text-xs text-gray-500 mt-1">Emoji or image URL</p>
-            {avatar && (
-              <div className="mt-2 flex items-center gap-2 text-sm text-gray-400">
-                <span>Preview:</span>
-                {avatar.startsWith('http') ? (
-                  <img src={avatar} alt="Avatar preview" className="w-8 h-8 rounded-full object-cover" />
-                ) : (
-                  <span className="text-2xl">{avatar}</span>
-                )}
+            {avatarMode === 'image' ? (
+              <ImageUpload
+                did={did}
+                currentAvatar={avatar}
+                onUploadComplete={(url) => setAvatar(url)}
+                onToggleToEmoji={() => {
+                  setAvatarMode('emoji');
+                  setAvatar('👤');
+                }}
+                showEmojiToggle={true}
+              />
+            ) : (
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-300">Avatar (emoji)</label>
+                <input
+                  type="text"
+                  value={avatar}
+                  onChange={(e) => setAvatar(e.target.value)}
+                  placeholder="👤"
+                  className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                />
+                <button
+                  type="button"
+                  onClick={() => setAvatarMode('image')}
+                  className="mt-2 text-sm text-[#F59E0B] hover:underline"
+                >
+                  Or upload an image instead →
+                </button>
               </div>
             )}
           </div>

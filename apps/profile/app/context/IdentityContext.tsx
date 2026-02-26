@@ -35,6 +35,8 @@ function hexToBytes(hex: string): Uint8Array {
 interface IdentityContextType {
   did: string | null;
   handle: string | null;
+  avatar: string | null;
+  displayName: string | null;
   isLoggedIn: boolean;
   logout: () => Promise<void>;
   importKeys: (privateKeyHex: string) => Promise<{ success: boolean; error?: string; did?: string; handle?: string }>;
@@ -46,6 +48,8 @@ const IdentityContext = createContext<IdentityContextType | undefined>(undefined
 export function IdentityProvider({ children }: { children: ReactNode }) {
   const [did, setDid] = useState<string | null>(null);
   const [handle, setHandle] = useState<string | null>(null);
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   // Check localStorage on mount
@@ -78,12 +82,14 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       setDid(storedDid);
       setIsLoggedIn(true);
 
-      // Fetch profile to get handle
+      // Fetch profile to get handle and avatar
       try {
         const response = await fetch(`/api/profile/${storedDid}`);
         if (response.ok) {
           const profile = await response.json();
           setHandle(profile.handle || null);
+          setAvatar(profile.avatar || null);
+          setDisplayName(profile.displayName || null);
         }
       } catch (error) {
         console.error('Failed to fetch profile:', error);
@@ -107,6 +113,8 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 
     setDid(null);
     setHandle(null);
+    setAvatar(null);
+    setDisplayName(null);
     setIsLoggedIn(false);
   }
 
@@ -172,6 +180,8 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       // Update state
       setDid(derivedDid);
       setHandle(profile.handle || null);
+      setAvatar(profile.avatar || null);
+      setDisplayName(profile.displayName || null);
       setIsLoggedIn(true);
 
       return { success: true, did: derivedDid, handle: profile.handle };
@@ -189,6 +199,8 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const profile = await response.json();
         setHandle(profile.handle || null);
+        setAvatar(profile.avatar || null);
+        setDisplayName(profile.displayName || null);
       }
     } catch (error) {
       console.error('Failed to refresh profile:', error);
@@ -200,6 +212,8 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       value={{
         did,
         handle,
+        avatar,
+        displayName,
         isLoggedIn,
         logout,
         importKeys,

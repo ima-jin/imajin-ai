@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import { Avatar } from '../components/Avatar';
 
 interface PageProps {
   params: Promise<{ handle: string }>;
@@ -109,18 +110,8 @@ export default async function ProfilePage({ params }: PageProps) {
     <div className="max-w-lg mx-auto">
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
         {/* Avatar */}
-        <div className="mb-4">
-          {profile.avatar?.startsWith('http') ? (
-            <img
-              src={profile.avatar}
-              alt={profile.displayName}
-              className="w-24 h-24 rounded-full mx-auto object-cover border-2 border-[#F59E0B]"
-            />
-          ) : (
-            <div className="w-24 h-24 rounded-full mx-auto bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-4xl">
-              {profile.avatar || '👤'}
-            </div>
-          )}
+        <div className="mb-4 flex justify-center">
+          <Avatar avatar={profile.avatar} displayName={profile.displayName} size="lg" />
         </div>
 
         {/* Name & Handle */}

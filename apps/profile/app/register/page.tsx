@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import * as ed from '@noble/ed25519';
 import { useIdentity } from '../context/IdentityContext';
+import { ImageUpload } from '../components/ImageUpload';
 
 // Base58 encoding for DIDs
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -39,6 +40,7 @@ async function generateKeypair() {
 
 type Step = 'form' | 'creating' | 'success' | 'error';
 type HandleCheckStatus = 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
+type AvatarMode = 'emoji' | 'image';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -52,6 +54,8 @@ export default function RegisterPage() {
   const [handle, setHandle] = useState('');
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState('👤');
+  const [avatarMode, setAvatarMode] = useState<AvatarMode>('emoji');
+  const [tempDid, setTempDid] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   // Handle availability checking
@@ -238,6 +242,18 @@ export default function RegisterPage() {
       setStep('error');
     }
   }
+
+  // Generate temporary DID for image upload before registration
+  useEffect(() => {
+    async function generateTempDid() {
+      const keypair = await generateKeypair();
+      const publicKeyBase58 = base58Encode(keypair.publicKeyBytes);
+      setTempDid(`did:imajin:${publicKeyBase58}`);
+    }
+    if (avatarMode === 'image' && !tempDid) {
+      generateTempDid();
+    }
+  }, [avatarMode, tempDid]);
 
   function downloadKeys() {
     const keypair = localStorage.getItem('imajin_keypair');
@@ -429,15 +445,38 @@ export default function RegisterPage() {
             />
           </div>
 
+          {/* Avatar Selection */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Avatar (emoji or URL)</label>
-            <input
-              type="text"
-              value={avatar}
-              onChange={(e) => setAvatar(e.target.value)}
-              placeholder="👤 or https://..."
-              className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
-            />
+            {avatarMode === 'image' ? (
+              <ImageUpload
+                did={tempDid}
+                currentAvatar={avatar}
+                onUploadComplete={(url) => setAvatar(url)}
+                onToggleToEmoji={() => {
+                  setAvatarMode('emoji');
+                  setAvatar('👤');
+                }}
+                showEmojiToggle={true}
+              />
+            ) : (
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-300">Avatar (emoji)</label>
+                <input
+                  type="text"
+                  value={avatar}
+                  onChange={(e) => setAvatar(e.target.value)}
+                  placeholder="👤"
+                  className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                />
+                <button
+                  type="button"
+                  onClick={() => setAvatarMode('image')}
+                  className="mt-2 text-sm text-[#F59E0B] hover:underline"
+                >
+                  Or upload an image instead →
+                </button>
+              </div>
+            )}
           </div>
 
           <button
