@@ -1,5 +1,4 @@
 import * as jose from 'jose';
-import { webcrypto } from 'crypto';
 
 const JWT_ISSUER = 'auth.imajin.ai';
 const JWT_EXPIRY = '24h';
@@ -14,36 +13,25 @@ async function loadKeyPair(): Promise<KeyPair> {
   const privateKeyHex = process.env.AUTH_PRIVATE_KEY;
   
   if (privateKeyHex) {
-    // Import existing PKCS8 private key as extractable so we can derive public key
     const privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
     const pem = `-----BEGIN PRIVATE KEY-----\n${privateKeyBytes.toString('base64')}\n-----END PRIVATE KEY-----`;
     
-    // Import as Web Crypto key with extractable=true
-    const privateKey = await webcrypto.subtle.importKey(
-      'pkcs8',
-      privateKeyBytes,
-      { name: 'Ed25519' },
-      true,
-      ['sign']
-    );
+    // Import private key for signing
+    const privateKey = await jose.importPKCS8(pem, 'EdDSA');
     
-    // Export as JWK, derive public key
-    const jwk = await webcrypto.subtle.exportKey('jwk', privateKey);
-    delete jwk.d; // Remove private component
-    const publicKey = await webcrypto.subtle.importKey(
-      'jwk',
-      jwk,
-      { name: 'Ed25519' },
-      true,
-      ['verify']
-    );
+    // Ed25519 PKCS8 contains the public key in the last 32 bytes
+    // PKCS8 for Ed25519: 48 bytes total, public key is bytes 16-48
+    const publicKeyBytes = privateKeyBytes.slice(-32);
+    const spkiPrefix = Buffer.from('302a300506032b6570032100', 'hex'); // Ed25519 SPKI header
+    const spkiDer = Buffer.concat([spkiPrefix, publicKeyBytes]);
+    const publicPem = `-----BEGIN PUBLIC KEY-----\n${spkiDer.toString('base64')}\n-----END PUBLIC KEY-----`;
+    const publicKey = await jose.importSPKI(publicPem, 'EdDSA');
     
     return { privateKey, publicKey };
   }
   
   // For development: generate ephemeral key pair
-  const { privateKey, publicKey } = await jose.generateKeyPair('EdDSA');
-  return { privateKey, publicKey };
+  return jose.generateKeyPair('EdDSA');
 }
 
 // Cache the key pair
