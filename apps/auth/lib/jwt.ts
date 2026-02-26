@@ -25,8 +25,10 @@ async function getSigningKey(): Promise<CryptoKey> {
 // Get the verification (public) key from the private key
 async function getVerifyKey(): Promise<CryptoKey> {
   const privateKey = await getKey();
-  const { x, crv } = await jose.exportJWK(privateKey);
-  return jose.importJWK({ kty: 'OKP', crv, x }, 'EdDSA');
+  const jwk = await jose.exportJWK(privateKey);
+  // Remove private key component, keep only public
+  delete jwk.d;
+  return jose.importJWK(jwk, 'EdDSA');
 }
 
 // Cache the keys
