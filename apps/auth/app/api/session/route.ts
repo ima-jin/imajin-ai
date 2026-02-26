@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken, getSessionCookieOptions } from '@/lib/jwt';
+import { db } from '@/db';
+import { identities } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 /**
  * GET /api/session
@@ -34,11 +37,23 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Verify the identity actually exists in the database
+    const identity = await db.select().from(identities).where(eq(identities.id, session.sub)).limit(1);
+    if (identity.length === 0) {
+      // JWT is valid but identity was deleted/reset — clear the stale cookie
+      const response = NextResponse.json(
+        { error: 'Identity not found' },
+        { status: 401 }
+      );
+      response.cookies.delete(cookieConfig.name);
+      return response;
+    }
+
     return NextResponse.json({
       did: session.sub,
-      handle: session.handle,
-      type: session.type,
-      name: session.name,
+      handle: identity[0].handle || session.handle,
+      type: identity[0].type || session.type,
+      name: identity[0].name || session.name,
     });
 
   } catch (error) {
