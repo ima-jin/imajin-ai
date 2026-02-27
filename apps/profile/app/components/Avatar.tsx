@@ -25,8 +25,8 @@ const sizeMap: Record<AvatarSize, string> = {
 export function Avatar({ avatar, displayName, size = 'md', className = '' }: AvatarProps) {
   const sizeClasses = sizeMap[size];
 
-  // Check if avatar is an image URL
-  const isImageUrl = avatar && (avatar.startsWith('http') || avatar.startsWith('/'));
+  // Check if avatar is an image URL (including blob: for previews)
+  const isImageUrl = avatar && (avatar.startsWith('http') || avatar.startsWith('/') || avatar.startsWith('blob:'));
 
   if (isImageUrl) {
     return (
