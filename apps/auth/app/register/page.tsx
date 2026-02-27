@@ -149,12 +149,11 @@ function RegisterPage() {
         handle: data.handle,
       }));
 
-      // If there's a redirect (e.g. back to invite page), go there
-      if (redirectUrl) {
-        window.location.href = redirectUrl;
-      } else if (inviteCode) {
-        // Auto-accept was done server-side, go to connections
+      // Invite was auto-accepted server-side, go straight to connections
+      if (inviteCode) {
         window.location.href = CONNECTIONS_URL;
+      } else if (redirectUrl) {
+        window.location.href = redirectUrl;
       } else {
         router.push('/');
       }
