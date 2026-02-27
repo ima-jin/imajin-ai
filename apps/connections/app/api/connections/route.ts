@@ -4,6 +4,27 @@ import { eq, and, isNull, ne, sql } from 'drizzle-orm';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
+function withCors(response: NextResponse, request: NextRequest): NextResponse {
+  const origin = request.headers.get('origin') || '';
+  if (origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai') {
+    response.headers.set('Access-Control-Allow-Origin', origin);
+    response.headers.set('Access-Control-Allow-Credentials', 'true');
+  }
+  return response;
+}
+
+export async function OPTIONS(request: NextRequest) {
+  const res = new NextResponse(null, { status: 204 });
+  const origin = request.headers.get('origin') || '';
+  if (origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai') {
+    res.headers.set('Access-Control-Allow-Origin', origin);
+    res.headers.set('Access-Control-Allow-Credentials', 'true');
+    res.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.headers.set('Access-Control-Allow-Headers', 'Content-Type');
+  }
+  return res;
+}
+
 async function getSession(request: NextRequest) {
   try {
     const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
@@ -36,7 +57,7 @@ export async function GET(request: NextRequest) {
     .having(sql`count(*) = 2`);
 
   if (twoPersonPods.length === 0) {
-    return NextResponse.json({ connections: [] });
+    return withCors(NextResponse.json({ connections: [] }), request);
   }
 
   const podIds = twoPersonPods.map((p) => p.podId);
@@ -57,5 +78,5 @@ export async function GET(request: NextRequest) {
       sql`${podMembers.podId} IN (${sql.join(podIds.map(id => sql`${id}`), sql`, `)})`
     ));
 
-  return NextResponse.json({ connections });
+  return withCors(NextResponse.json({ connections }), request);
 }

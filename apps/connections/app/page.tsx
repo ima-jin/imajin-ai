@@ -188,6 +188,12 @@ export default function ConnectionsPage() {
                   Connected {new Date(conn.joinedAt).toLocaleDateString()}
                 </div>
               </div>
+              <a
+                href={`${SERVICE_PREFIX}chat.${DOMAIN}?start=${encodeURIComponent(conn.did)}`}
+                className="px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 text-white rounded-lg transition"
+              >
+                Message
+              </a>
             </div>
           ))}
         </div>
