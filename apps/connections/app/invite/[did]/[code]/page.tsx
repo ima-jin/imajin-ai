@@ -4,6 +4,7 @@ import { AcceptSection } from './AcceptSection';
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const AUTH_URL = `${SERVICE_PREFIX}auth.${DOMAIN}`;
+const PROFILE_URL = `${SERVICE_PREFIX}profile.${DOMAIN}`;
 
 async function getInvite(code: string) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3003}`;
@@ -66,7 +67,7 @@ export default async function InvitePage({
   const displayName = invite.fromHandle ? `@${invite.fromHandle}` : invite.fromDid.slice(0, 20) + '...';
   const connectionsUrl = `${SERVICE_PREFIX}connections.${DOMAIN}`;
   const acceptUrl = `/api/invites/${params.code}/accept`;
-  const loginUrl = `${AUTH_URL}/login?redirect=${encodeURIComponent(`${connectionsUrl}/invite/${params.did}/${params.code}`)}`;
+  const loginUrl = `${PROFILE_URL}/login?next=${encodeURIComponent(`${connectionsUrl}/invite/${params.did}/${params.code}`)}`;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">

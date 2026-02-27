@@ -6,6 +6,7 @@ import { useIdentity } from './context/IdentityContext';
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const AUTH_URL = `${SERVICE_PREFIX}auth.${DOMAIN}`;
+const PROFILE_URL = `${SERVICE_PREFIX}profile.${DOMAIN}`;
 
 interface Connection {
   podId: string;
@@ -111,7 +112,7 @@ export default function ConnectionsPage() {
         <h1 className="text-3xl font-bold mb-3">Imajin Connections</h1>
         <p className="text-gray-400 mb-8">Sign in to manage your trusted connections.</p>
         <a
-          href={`${AUTH_URL}/login?redirect=${encodeURIComponent(`${SERVICE_PREFIX}connections.${DOMAIN}`)}`}
+          href={`${PROFILE_URL}/login?next=${encodeURIComponent(`${SERVICE_PREFIX}connections.${DOMAIN}`)}`}
           className="inline-block px-8 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg transition"
         >
           Sign In

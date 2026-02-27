@@ -45,6 +45,7 @@ function useAutoIdentity(servicePrefix: string, domain: string): NavIdentity | n
 
     const authUrl = `${servicePrefix}auth.${domain}`;
     const profileUrl = `${servicePrefix}profile.${domain}`;
+    const profileUrl = `${servicePrefix}profile.${domain}`;
 
     async function checkSession() {
       try {
@@ -66,7 +67,7 @@ function useAutoIdentity(servicePrefix: string, domain: string): NavIdentity | n
               } catch {}
               setIdentity({
                 isLoggedIn: false,
-                onLogin: () => { window.location.href = `${authUrl}/login`; },
+                onLogin: () => { window.location.href = `${profileUrl}/login`; },
                 onRegister: () => { window.location.href = `${authUrl}/register`; },
               });
             },
@@ -76,13 +77,13 @@ function useAutoIdentity(servicePrefix: string, domain: string): NavIdentity | n
               ? () => { window.location.href = `${profileUrl}/${data.did}`; }
               : undefined,
             onEditProfile: () => { window.location.href = `${profileUrl}/edit`; },
-            onLogin: () => { window.location.href = `${authUrl}/login`; },
+            onLogin: () => { window.location.href = `${profileUrl}/login`; },
             onRegister: () => { window.location.href = `${authUrl}/register`; },
           });
         } else {
           setIdentity({
             isLoggedIn: false,
-            onLogin: () => { window.location.href = `${authUrl}/login`; },
+            onLogin: () => { window.location.href = `${profileUrl}/login`; },
             onRegister: () => { window.location.href = `${authUrl}/register`; },
           });
         }
