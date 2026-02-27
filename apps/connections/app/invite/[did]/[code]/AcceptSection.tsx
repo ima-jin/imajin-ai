@@ -90,7 +90,7 @@ export function AcceptSection({ loginUrl, code, connectionsUrl }: Props) {
     );
   }
 
-  const registerUrl = loginUrl.replace('/login?', '/register?').replace('redirect=', `invite=${code}&redirect=`);
+  const registerUrl = loginUrl.replace('/login?', `/register?invite=${code}&`);
 
   return (
     <div className="space-y-3">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import * as ed from '@noble/ed25519';
 import { useIdentity } from '../context/IdentityContext';
 import { ImageUpload } from '../components/ImageUpload';
@@ -44,6 +44,9 @@ type AvatarMode = 'emoji' | 'image';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const inviteCode = searchParams.get('invite');
+  const redirectUrl = searchParams.get('next');
   const { isLoggedIn, handle: loggedInHandle, did, importKeys } = useIdentity();
   const [step, setStep] = useState<Step>('form');
   const [error, setError] = useState('');
@@ -195,6 +198,7 @@ export default function RegisterPage() {
           name: displayName,
           type: 'human',
           signature,
+          inviteCode: inviteCode || undefined,
         }),
       });
 
@@ -313,12 +317,21 @@ export default function RegisterPage() {
             </button>
           </div>
 
-          <button
-            onClick={() => router.push(`/${profile.handle || profile.did}`)}
-            className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold"
-          >
-            View Your Profile →
-          </button>
+          {redirectUrl ? (
+            <a
+              href={redirectUrl}
+              className="block w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold text-center"
+            >
+              Continue →
+            </a>
+          ) : (
+            <button
+              onClick={() => router.push(`/${profile.handle || profile.did}`)}
+              className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold"
+            >
+              View Your Profile →
+            </button>
+          )}
         </div>
       </div>
     );
