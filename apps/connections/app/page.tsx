@@ -13,6 +13,7 @@ interface Connection {
   podName: string;
   did: string;
   handle?: string;
+  name?: string;
   joinedAt: string;
 }
 
