@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/src/db';
-import { trustPods, trustPodMembers } from '@imajin/trust-graph';
+import { db, pods, podMembers } from '../../../../src/db/index';
 import { eq, and } from 'drizzle-orm';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
@@ -39,10 +38,10 @@ export async function DELETE(
   const { podId } = await params;
 
   // Verify user is a member of this pod
-  const membership = await db.query.trustPodMembers.findFirst({
+  const membership = await db.query.podMembers.findFirst({
     where: and(
-      eq(trustPodMembers.podId, podId),
-      eq(trustPodMembers.did, did)
+      eq(podMembers.podId, podId),
+      eq(podMembers.did, did)
     ),
   });
 
@@ -51,20 +50,20 @@ export async function DELETE(
   }
 
   // Remove user from pod
-  await db.delete(trustPodMembers).where(
+  await db.delete(podMembers).where(
     and(
-      eq(trustPodMembers.podId, podId),
-      eq(trustPodMembers.did, did)
+      eq(podMembers.podId, podId),
+      eq(podMembers.did, did)
     )
   );
 
   // Check if pod is now empty — if so, delete it
-  const remaining = await db.query.trustPodMembers.findFirst({
-    where: eq(trustPodMembers.podId, podId),
+  const remaining = await db.query.podMembers.findFirst({
+    where: eq(podMembers.podId, podId),
   });
 
   if (!remaining) {
-    await db.delete(trustPods).where(eq(trustPods.id, podId));
+    await db.delete(pods).where(eq(pods.id, podId));
   }
 
   return NextResponse.json({ disconnected: true });
