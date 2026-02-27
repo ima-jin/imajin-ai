@@ -33,16 +33,85 @@ function buildServices(prefix: string, domain: string) {
   ];
 }
 
+/**
+ * Hook that auto-fetches identity from auth service when no identity prop is provided.
+ * Uses the cross-domain session cookie on .imajin.ai
+ */
+function useAutoIdentity(servicePrefix: string, domain: string): NavIdentity | null {
+  const [identity, setIdentity] = useState<NavIdentity | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const authUrl = `${servicePrefix}auth.${domain}`;
+    const profileUrl = `${servicePrefix}profile.${domain}`;
+
+    async function checkSession() {
+      try {
+        const res = await fetch(`${authUrl}/api/session`, {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setIdentity({
+            isLoggedIn: true,
+            handle: data.handle || null,
+            did: data.did || null,
+            onLogout: async () => {
+              try {
+                await fetch(`${authUrl}/api/logout`, {
+                  method: 'POST',
+                  credentials: 'include',
+                });
+              } catch {}
+              setIdentity({
+                isLoggedIn: false,
+                onLogin: () => { window.location.href = `${authUrl}/login`; },
+                onRegister: () => { window.location.href = `${authUrl}/register`; },
+              });
+            },
+            onViewProfile: data.handle
+              ? () => { window.location.href = `${profileUrl}/${data.handle}`; }
+              : data.did
+              ? () => { window.location.href = `${profileUrl}/${data.did}`; }
+              : undefined,
+            onEditProfile: () => { window.location.href = `${profileUrl}/edit`; },
+            onLogin: () => { window.location.href = `${authUrl}/login`; },
+            onRegister: () => { window.location.href = `${authUrl}/register`; },
+          });
+        } else {
+          setIdentity({
+            isLoggedIn: false,
+            onLogin: () => { window.location.href = `${authUrl}/login`; },
+            onRegister: () => { window.location.href = `${authUrl}/register`; },
+          });
+        }
+      } catch {
+        // Auth service unreachable — don't show identity section
+        setIdentity(null);
+      }
+    }
+
+    checkSession();
+  }, [servicePrefix, domain]);
+
+  return identity;
+}
+
 export function NavBar({ 
   currentService, 
   servicePrefix = 'https://', 
   domain = 'imajin.ai',
-  identity,
+  identity: identityProp,
 }: NavBarProps) {
   const services = buildServices(servicePrefix, domain);
   const isDev = servicePrefix.includes('dev-');
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Auto-fetch identity if no prop provided
+  const autoIdentity = useAutoIdentity(servicePrefix, domain);
+  const identity = identityProp ?? autoIdentity;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
