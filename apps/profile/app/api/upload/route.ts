@@ -54,8 +54,16 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes);
     await writeFile(filepath, buffer);
 
-    // Return public URL
-    const url = `/api/media/avatars/${filename}`;
+    // Clean up old avatars for this DID
+    try {
+      const { readdir, unlink } = await import('fs/promises');
+      const files = await readdir(UPLOAD_DIR);
+      const oldFiles = files.filter(f => f.startsWith(didShort) && f !== filename);
+      await Promise.all(oldFiles.map(f => unlink(path.join(UPLOAD_DIR, f)).catch(() => {})));
+    } catch {}
+
+    // Return public URL with cache-busting timestamp
+    const url = `/api/media/avatars/${filename}?v=${timestamp}`;
 
     return Response.json({ url }, { status: 200 });
   } catch (error) {
