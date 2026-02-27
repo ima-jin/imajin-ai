@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { AcceptSection } from './AcceptSection';
 
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
@@ -83,22 +84,6 @@ export default async function InvitePage({
 
         <AcceptSection loginUrl={loginUrl} code={params.code} connectionsUrl={connectionsUrl} />
       </div>
-    </div>
-  );
-}
-
-function AcceptSection({ loginUrl, code, connectionsUrl }: { loginUrl: string; code: string; connectionsUrl: string }) {
-  return (
-    <div className="space-y-3">
-      <a
-        href={loginUrl}
-        className="block w-full px-6 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg transition text-center"
-      >
-        Login &amp; Accept Invite
-      </a>
-      <p className="text-gray-500 text-xs">
-        You&apos;ll be redirected to sign in, then brought back to accept.
-      </p>
     </div>
   );
 }
