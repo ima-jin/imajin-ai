@@ -213,17 +213,9 @@ export function NavBar({
               {identity.onLogin && (
                 <button
                   onClick={identity.onLogin}
-                  className="px-3 py-1.5 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                >
-                  Login
-                </button>
-              )}
-              {identity.onRegister && (
-                <button
-                  onClick={identity.onRegister}
                   className="px-3 py-1.5 rounded-lg text-sm bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-medium"
                 >
-                  Register
+                  Login
                 </button>
               )}
             </>

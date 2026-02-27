@@ -90,16 +90,24 @@ export function AcceptSection({ loginUrl, code, connectionsUrl }: Props) {
     );
   }
 
+  const registerUrl = loginUrl.replace('/login?', '/register?').replace('redirect=', `invite=${code}&redirect=`);
+
   return (
     <div className="space-y-3">
       <a
-        href={loginUrl}
+        href={registerUrl}
         className="block w-full px-6 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg transition text-center"
       >
-        Login &amp; Accept Invite
+        Create Account &amp; Connect
+      </a>
+      <a
+        href={loginUrl}
+        className="block w-full px-6 py-3 bg-white/10 hover:bg-white/15 text-white font-medium rounded-lg transition text-center"
+      >
+        Already have an account? Login
       </a>
       <p className="text-gray-500 text-xs">
-        You&apos;ll be redirected to sign in, then brought back to accept.
+        Imajin is invite-only. This invite is your gateway in.
       </p>
     </div>
   );

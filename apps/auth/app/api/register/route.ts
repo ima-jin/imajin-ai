@@ -4,22 +4,26 @@ import { eq, or } from 'drizzle-orm';
 import { didFromPublicKey, verifySignature } from '@/lib/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/lib/jwt';
 
+const CONNECTIONS_SERVICE_URL = process.env.CONNECTIONS_SERVICE_URL!;
+
 /**
  * POST /api/register
- * Register a new identity with a public key
+ * Register a new identity with a public key.
+ * REQUIRES a valid invite code (invite-only platform).
  * 
  * Body: {
  *   publicKey: string (hex),
  *   handle?: string,
  *   name?: string,
  *   type: 'human' | 'agent' | 'presence' | 'org' | 'device' | 'service',
- *   signature: string (hex) - signs the payload
+ *   signature: string (hex) - signs the payload,
+ *   inviteCode?: string - required for new registrations
  * }
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { publicKey, handle, name, type, signature } = body;
+    const { publicKey, handle, name, type, signature, inviteCode } = body;
 
     // Validate required fields
     if (!publicKey || typeof publicKey !== 'string') {
@@ -123,6 +127,38 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Require invite code for new registrations
+    if (!inviteCode) {
+      return NextResponse.json(
+        { error: 'Imajin is invite-only. You need an invite code to register.' },
+        { status: 403 }
+      );
+    }
+
+    // Validate invite code against connections service
+    let inviteData: { fromDid: string; fromHandle?: string } | null = null;
+    try {
+      const inviteRes = await fetch(`${CONNECTIONS_SERVICE_URL}/api/invites/${inviteCode}`);
+      if (!inviteRes.ok) {
+        return NextResponse.json(
+          { error: 'Invalid or expired invite code' },
+          { status: 403 }
+        );
+      }
+      inviteData = await inviteRes.json();
+      if (!inviteData || (inviteData as any).used) {
+        return NextResponse.json(
+          { error: 'This invite has already been used' },
+          { status: 403 }
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { error: 'Unable to validate invite. Try again later.' },
+        { status: 503 }
+      );
+    }
+
     // Generate DID from public key
     const did = didFromPublicKey(publicKey);
 
@@ -146,17 +182,41 @@ export async function POST(request: NextRequest) {
       name: identity.name || undefined,
     });
 
-    // Set cookie and return
+    // Set cookie first so the accept call is authenticated
     const cookieConfig = getSessionCookieOptions(process.env.NODE_ENV === 'production');
     const response = NextResponse.json({
       did: identity.id,
       handle: identity.handle,
       type: identity.type,
       created: true,
+      inviteAccepted: false,
     }, { status: 201 });
 
     response.cookies.set(cookieConfig.name, token, cookieConfig.options);
-    return response;
+
+    // Auto-accept the invite (create the connection)
+    // We do this server-side so the new user lands with their first connection
+    try {
+      await fetch(`${CONNECTIONS_SERVICE_URL}/api/invites/${inviteCode}/accept`, {
+        method: 'POST',
+        headers: {
+          Cookie: `${cookieConfig.name}=${token}`,
+        },
+      });
+      // Update response to reflect accepted invite
+      const acceptedResponse = NextResponse.json({
+        did: identity.id,
+        handle: identity.handle,
+        type: identity.type,
+        created: true,
+        inviteAccepted: true,
+      }, { status: 201 });
+      acceptedResponse.cookies.set(cookieConfig.name, token, cookieConfig.options);
+      return acceptedResponse;
+    } catch {
+      // Registration succeeded but auto-accept failed — they can accept manually
+      return response;
+    }
 
   } catch (error) {
     console.error('Register error:', error);

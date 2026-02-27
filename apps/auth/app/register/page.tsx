@@ -1,17 +1,18 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+
+const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
+const CONNECTIONS_URL = `${SERVICE_PREFIX}connections.${DOMAIN}`;
 
 // Ed25519 utilities - using noble/ed25519 via script
 async function generateKeypair(): Promise<{ publicKey: string; privateKey: string }> {
-  // Use Web Crypto to generate random bytes
   const privateKeyBytes = new Uint8Array(32);
   crypto.getRandomValues(privateKeyBytes);
   
-  // For now, use a simple approach with noble/ed25519
-  // In production, bundle the library properly
   const ed = await import('@noble/ed25519');
   const { sha512 } = await import('@noble/hashes/sha512');
   ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
@@ -47,13 +48,52 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
+interface InviteInfo {
+  fromHandle?: string;
+  fromDid: string;
+  note?: string;
+}
+
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const inviteCode = searchParams.get('invite');
+  const redirectUrl = searchParams.get('redirect');
+
   const [handle, setHandle] = useState('');
   const [name, setDisplayName] = useState('');
   const [type, setType] = useState<'human' | 'agent'>('human');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
+  const [inviteValid, setInviteValid] = useState<boolean | null>(null);
+  const [checking, setChecking] = useState(true);
+
+  // Validate invite code on mount
+  useEffect(() => {
+    if (!inviteCode) {
+      setChecking(false);
+      setInviteValid(false);
+      return;
+    }
+
+    fetch(`${CONNECTIONS_URL}/api/invites/${inviteCode}`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && !data.used) {
+          setInviteValid(true);
+          setInviteInfo({
+            fromHandle: data.fromHandle,
+            fromDid: data.fromDid,
+            note: data.note,
+          });
+        } else {
+          setInviteValid(false);
+        }
+      })
+      .catch(() => setInviteValid(false))
+      .finally(() => setChecking(false));
+  }, [inviteCode]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,10 +101,8 @@ export default function RegisterPage() {
     setError('');
 
     try {
-      // Generate keypair
       const keypair = await generateKeypair();
       
-      // Create payload to sign
       const payload = {
         publicKey: keypair.publicKey,
         handle: handle.toLowerCase(),
@@ -72,16 +110,16 @@ export default function RegisterPage() {
         type,
       };
       
-      // Sign the payload
       const signature = await sign(JSON.stringify(payload), keypair.privateKey);
       
-      // Register
+      // Register with invite code
       const response = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...payload,
           signature,
+          inviteCode: inviteCode || undefined,
         }),
       });
       
@@ -98,9 +136,16 @@ export default function RegisterPage() {
         did: data.did,
         handle: data.handle,
       }));
-      
-      // Redirect to profile or home
-      router.push('/');
+
+      // If there's a redirect (e.g. back to invite page), go there
+      if (redirectUrl) {
+        window.location.href = redirectUrl;
+      } else if (inviteCode) {
+        // Auto-accept was done server-side, go to connections
+        window.location.href = CONNECTIONS_URL;
+      } else {
+        router.push('/');
+      }
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
@@ -109,13 +154,63 @@ export default function RegisterPage() {
     }
   }
 
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-900 dark:to-gray-800 p-4">
+        <p className="text-gray-500 dark:text-gray-400">Checking invite…</p>
+      </div>
+    );
+  }
+
+  // No invite code or invalid invite — show invite-only message
+  if (!inviteValid) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-900 dark:to-gray-800 p-4">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
+          <div className="text-6xl mb-6">🟠</div>
+          <h1 className="text-2xl font-bold mb-3">Imajin is invite-only</h1>
+          <p className="text-gray-500 dark:text-gray-400 mb-6">
+            You need an invite from an existing member to join the network.
+            Each connection is intentional.
+          </p>
+          {inviteCode && (
+            <p className="text-red-500 dark:text-red-400 text-sm mb-6">
+              This invite link is invalid or has already been used.
+            </p>
+          )}
+          <div className="space-y-3">
+            <Link
+              href="/login"
+              className="block w-full py-3 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition text-center"
+            >
+              Already have an account? Login
+            </Link>
+            <a
+              href={`${SERVICE_PREFIX}www.${DOMAIN}`}
+              className="block w-full py-3 bg-white/10 hover:bg-white/20 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition text-center"
+            >
+              Learn about Imajin
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const inviterDisplay = inviteInfo?.fromHandle ? `@${inviteInfo.fromHandle}` : inviteInfo?.fromDid.slice(0, 20) + '...';
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-900 dark:to-gray-800 p-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 w-full max-w-md">
         <h1 className="text-2xl font-bold mb-2 text-center">Create Identity</h1>
-        <p className="text-gray-500 dark:text-gray-400 text-center mb-6">
-          Join the Imajin network
+        <p className="text-gray-500 dark:text-gray-400 text-center mb-2">
+          You&apos;ve been invited by <span className="text-white font-medium">{inviterDisplay}</span>
         </p>
+        {inviteInfo?.note && (
+          <p className="text-gray-400 text-center text-sm mb-6 italic">
+            &ldquo;{inviteInfo.note}&rdquo;
+          </p>
+        )}
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -170,13 +265,16 @@ export default function RegisterPage() {
             disabled={loading}
             className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-medium rounded-lg transition"
           >
-            {loading ? 'Creating...' : 'Create Identity'}
+            {loading ? 'Creating...' : 'Create Identity & Connect'}
           </button>
         </form>
         
         <p className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
           Already have an identity?{' '}
-          <Link href="/login" className="text-orange-500 hover:underline">
+          <Link
+            href={`/login${inviteCode ? `?invite=${inviteCode}${redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : ''}` : ''}`}
+            className="text-orange-500 hover:underline"
+          >
             Sign in
           </Link>
         </p>
