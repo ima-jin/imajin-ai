@@ -78,5 +78,20 @@ export async function GET(request: NextRequest) {
       sql`${podMembers.podId} IN (${sql.join(podIds.map(id => sql`${id}`), sql`, `)})`
     ));
 
-  return withCors(NextResponse.json({ connections }), request);
+  // Resolve handles from auth service
+  const resolved = await Promise.all(
+    connections.map(async (conn) => {
+      try {
+        const lookupRes = await fetch(`${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(conn.did)}`);
+        if (lookupRes.ok) {
+          const data = await lookupRes.json();
+          const identity = data.identity || data;
+          return { ...conn, handle: identity.handle || null, name: identity.name || null };
+        }
+      } catch {}
+      return { ...conn, handle: null, name: null };
+    })
+  );
+
+  return withCors(NextResponse.json({ connections: resolved }), request);
 }

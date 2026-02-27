@@ -52,25 +52,7 @@ export default function ConnectionsPage() {
       const res = await fetch('/api/connections');
       if (res.ok) {
         const data = await res.json();
-        const conns = data.connections || [];
-
-        // Resolve handles from auth service
-        const resolved = await Promise.all(
-          conns.map(async (conn: Connection) => {
-            try {
-              const lookupRes = await fetch(
-                `${AUTH_URL}/api/lookup/${encodeURIComponent(conn.did)}`
-              );
-              if (lookupRes.ok) {
-                const profile = await lookupRes.json();
-                return { ...conn, handle: profile.handle, name: profile.name };
-              }
-            } catch {}
-            return conn;
-          })
-        );
-
-        setConnections(resolved);
+        setConnections(data.connections || []);
       }
     } catch {}
   }
