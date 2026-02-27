@@ -6,7 +6,7 @@ export const pods = pgTable('trust_pods', {
   description: text('description'),
   avatar: text('avatar'),
   ownerDid: text('owner_did').notNull(),
-  type: text('type', { enum: ['personal', 'shared'] }).notNull().default('personal'),
+  type: text('type', { enum: ['personal', 'shared', 'event'] }).notNull().default('personal'),
   visibility: text('visibility', { enum: ['private', 'trust-bound'] }).notNull().default('private'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
