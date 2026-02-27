@@ -12,7 +12,7 @@ interface Profile {
   did: string;
   handle?: string;
   displayName: string;
-  displayType: 'human' | 'agent' | 'device' | 'org' | 'event' | 'service';
+  displayType: 'human' | 'presence' | 'agent' | 'device' | 'org' | 'event' | 'service';
   bio?: string;
   avatar?: string;
   createdAt: string;
@@ -83,8 +83,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
   
-  const typeEmoji: Record<Profile['displayType'], string> = {
+  const typeEmoji: Record<string, string> = {
     human: '👤',
+    presence: '🟠',
     agent: '🤖',
     device: '📱',
     org: '🏢',
@@ -160,8 +161,9 @@ export default async function ProfilePage({ params }: PageProps) {
     );
   }
 
-  const typeLabels: Record<Profile['displayType'], string> = {
+  const typeLabels: Record<string, string> = {
     human: '👤 Human',
+    presence: '🟠 Presence',
     agent: '🤖 Agent',
     device: '📱 Device',
     org: '🏢 Organization',
