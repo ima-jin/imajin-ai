@@ -236,8 +236,47 @@ export default function EditProfilePage() {
           </div>
         </form>
 
-        {/* DID display */}
+        {/* Key Backup */}
         <div className="mt-6 pt-4 border-t border-gray-800">
+          <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg p-4">
+            <p className="text-sm font-semibold text-[#F59E0B] mb-2">
+              🔐 Identity Backup
+            </p>
+            <p className="text-xs text-gray-300 mb-3">
+              Your private key is only stored in this browser. Download a backup to log in from other devices or recover your account.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                const keypair = localStorage.getItem('imajin_keypair');
+                const storedDid = localStorage.getItem('imajin_did');
+                if (!keypair || !storedDid) {
+                  setError('No keys found in this browser. You may have logged in via key import — your backup file IS your key.');
+                  return;
+                }
+                const backup = {
+                  did: storedDid,
+                  keypair: JSON.parse(keypair),
+                  exportedAt: new Date().toISOString(),
+                  warning: 'Keep this file safe. Anyone with access can control your identity.',
+                };
+                const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `imajin-keys-${storedDid.slice(-8)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="w-full px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition text-sm font-medium"
+            >
+              ⬇️ Download Backup Keys
+            </button>
+          </div>
+        </div>
+
+        {/* DID display */}
+        <div className="mt-4 pt-4 border-t border-gray-800">
           <p className="text-xs text-gray-500 text-center font-mono break-all">
             {did}
           </p>
