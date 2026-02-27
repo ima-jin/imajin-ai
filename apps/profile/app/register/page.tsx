@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import * as ed from '@noble/ed25519';
 import { useIdentity } from '../context/IdentityContext';
@@ -42,7 +42,15 @@ type Step = 'form' | 'creating' | 'success' | 'error';
 type HandleCheckStatus = 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
 type AvatarMode = 'emoji' | 'image';
 
-export default function RegisterPage() {
+export default function RegisterPageWrapper() {
+  return (
+    <Suspense fallback={<div className="max-w-md mx-auto text-center py-12 text-gray-500">Loading...</div>}>
+      <RegisterPage />
+    </Suspense>
+  );
+}
+
+function RegisterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const inviteCode = searchParams.get('invite');
