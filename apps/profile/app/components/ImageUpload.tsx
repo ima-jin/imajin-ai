@@ -29,6 +29,42 @@ export function ImageUpload({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const resizeImage = useCallback(
+    (file: File, maxSize: number, quality: number): Promise<Blob> => {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let { width, height } = img;
+
+          // Scale down to fit within maxSize x maxSize
+          if (width > maxSize || height > maxSize) {
+            if (width > height) {
+              height = Math.round((height * maxSize) / width);
+              width = maxSize;
+            } else {
+              width = Math.round((width * maxSize) / height);
+              height = maxSize;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => (blob ? resolve(blob) : reject(new Error('Canvas toBlob failed'))),
+            'image/jpeg',
+            quality
+          );
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = URL.createObjectURL(file);
+      });
+    },
+    []
+  );
+
   const handleFile = useCallback(
     async (file: File) => {
       // Validate file type
@@ -48,13 +84,16 @@ export function ImageUpload({
       setIsUploading(true);
 
       try {
-        // Create preview
-        const objectUrl = URL.createObjectURL(file);
+        // Resize to 256x256 max and compress to 80% JPEG
+        const resized = await resizeImage(file, 256, 0.8);
+
+        // Create preview from resized blob
+        const objectUrl = URL.createObjectURL(resized);
         setPreviewUrl(objectUrl);
 
-        // Upload to server
+        // Upload resized image to server
         const formData = new FormData();
-        formData.append('image', file);
+        formData.append('image', resized, `avatar-${Date.now()}.jpg`);
         formData.append('did', did || '');
 
         const response = await fetch('/api/upload', {
