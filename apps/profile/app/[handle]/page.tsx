@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { cookies } from 'next/headers';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Avatar } from '../components/Avatar';
@@ -19,6 +20,37 @@ interface Profile {
     links?: string;
     coffee?: string;
   };
+}
+
+async function getViewerDid(): Promise<string | null> {
+  const authUrl = process.env.AUTH_SERVICE_URL;
+  if (!authUrl) return null;
+  try {
+    const cookieStore = await cookies();
+    const session = cookieStore.get('imajin_session');
+    if (!session?.value) return null;
+    const res = await fetch(`${authUrl}/api/session`, {
+      headers: { Cookie: `imajin_session=${session.value}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.did || data.identity?.did || null;
+  } catch { return null; }
+}
+
+async function isConnected(viewerDid: string, targetDid: string): Promise<boolean> {
+  const connectionsUrl = process.env.CONNECTIONS_SERVICE_URL;
+  if (!connectionsUrl) return false;
+  try {
+    const cookieStore = await cookies();
+    const session = cookieStore.get('imajin_session');
+    const res = await fetch(`${connectionsUrl}/api/connections`, {
+      headers: session?.value ? { Cookie: `imajin_session=${session.value}` } : {},
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return (data.connections || []).some((c: any) => c.did === targetDid);
+  } catch { return false; }
 }
 
 async function getProfile(handle: string): Promise<Profile | null> {
@@ -94,6 +126,38 @@ export default async function ProfilePage({ params }: PageProps) {
   
   if (!profile) {
     notFound();
+  }
+
+  // Trust gating: only show full profile to self or connections
+  const viewerDid = await getViewerDid();
+  const isSelf = viewerDid === profile.did;
+  const connected = viewerDid && !isSelf ? await isConnected(viewerDid, profile.did) : false;
+
+  if (!isSelf && !connected) {
+    return (
+      <div className="max-w-lg mx-auto text-center py-16">
+        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+          <div className="mb-4 flex justify-center">
+            <Avatar avatar={profile.avatar} displayName={profile.displayName} size="lg" />
+          </div>
+          <h1 className="text-2xl font-bold mb-1 text-white">{profile.displayName}</h1>
+          {profile.handle && <p className="text-gray-400 mb-4">@{profile.handle}</p>}
+          <div className="py-6 border-t border-gray-800 mt-4">
+            <p className="text-gray-500 text-sm">
+              🔒 This profile is only visible to connections.
+            </p>
+            {!viewerDid && (
+              <a
+                href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}profile.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/login`}
+                className="inline-block mt-4 px-6 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium text-sm"
+              >
+                Login to see more
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const typeLabels: Record<Profile['displayType'], string> = {
