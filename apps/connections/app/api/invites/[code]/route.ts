@@ -30,7 +30,7 @@ export async function GET(
     return NextResponse.json({ error: 'Invite not found' }, { status: 404 });
   }
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     id: invite.id,
     code: invite.code,
     fromDid: invite.fromDid,
@@ -39,6 +39,15 @@ export async function GET(
     used: invite.usedCount >= invite.maxUses,
     createdAt: invite.createdAt,
   });
+
+  // Allow cross-origin reads from *.imajin.ai (auth needs to validate invites client-side)
+  const origin = _request.headers.get('origin') || '';
+  if (origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai') {
+    response.headers.set('Access-Control-Allow-Origin', origin);
+    response.headers.set('Access-Control-Allow-Credentials', 'true');
+  }
+
+  return response;
 }
 
 export async function DELETE(
