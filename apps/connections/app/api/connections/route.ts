@@ -1,18 +1,32 @@
-import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
-import { db, podMembers, pods } from '@/db';
+import { NextRequest, NextResponse } from 'next/server';
+import { db, podMembers, pods } from '../../../src/db/index';
 import { eq, and, isNull, ne, sql } from 'drizzle-orm';
 
-export async function GET(request: Request) {
-  const auth = await requireAuth(request);
-  if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
-  // Find people who share a 2-person pod with me
-  // Step 1: Get pods I'm in that have exactly 2 active members
+async function getSession(request: NextRequest) {
+  try {
+    const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
+      headers: { Cookie: request.headers.get('cookie') || '' },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const session = await getSession(request);
+  if (!session?.did) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  // Find 2-person pods I'm in
   const myPodIds = db
     .select({ podId: podMembers.podId })
     .from(podMembers)
-    .where(and(eq(podMembers.did, auth.identity.id), isNull(podMembers.removedAt)));
+    .where(and(eq(podMembers.did, session.did), isNull(podMembers.removedAt)));
 
   const twoPersonPods = await db
     .select({ podId: podMembers.podId })
@@ -27,13 +41,19 @@ export async function GET(request: Request) {
 
   const podIds = twoPersonPods.map((p) => p.podId);
 
-  // Step 2: Get the other members from those pods
+  // Get other members + pod info
   const connections = await db
-    .select({ did: podMembers.did, podId: podMembers.podId })
+    .select({
+      did: podMembers.did,
+      podId: podMembers.podId,
+      joinedAt: podMembers.joinedAt,
+      podName: pods.name,
+    })
     .from(podMembers)
+    .innerJoin(pods, eq(pods.id, podMembers.podId))
     .where(and(
       isNull(podMembers.removedAt),
-      ne(podMembers.did, auth.identity.id),
+      ne(podMembers.did, session.did),
       sql`${podMembers.podId} IN (${sql.join(podIds.map(id => sql`${id}`), sql`, `)})`
     ));
 

@@ -28,6 +28,7 @@ function buildServices(prefix: string, domain: string) {
     { name: 'Events', href: `${prefix}events.${domain}` },
     { name: 'Chat', href: `${prefix}chat.${domain}` },
     { name: 'Pay', href: `${prefix}pay.${domain}` },
+    { name: 'Connections', href: `${prefix}connections.${domain}` },
     { name: 'Registry', href: `${prefix}registry.${domain}` },
   ];
 }

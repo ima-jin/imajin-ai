@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, index, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, index, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const pods = pgTable('trust_pods', {
   id: text('id').primaryKey(),
@@ -52,4 +52,22 @@ export const podMemberKeys = pgTable('trust_pod_member_keys', {
   encryptedPodKey: text('encrypted_pod_key').notNull(),
 }, (table) => ({
   pk: primaryKey({ columns: [table.podId, table.version, table.did] }),
+}));
+
+export const invites = pgTable('trust_invites', {
+  id: text('id').primaryKey(),
+  code: text('code').notNull().unique(),
+  fromDid: text('from_did').notNull(),
+  fromHandle: text('from_handle'),
+  toEmail: text('to_email'),
+  toPhone: text('to_phone'),
+  note: text('note'),
+  usedCount: integer('used_count').notNull().default(0),
+  maxUses: integer('max_uses').notNull().default(1),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  consumedBy: text('consumed_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  codeIdx: index('idx_trust_invites_code').on(table.code),
+  fromDidIdx: index('idx_trust_invites_from_did').on(table.fromDid),
 }));

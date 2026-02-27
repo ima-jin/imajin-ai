@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { NavBar } from '@imajin/ui';
+import { IdentityProvider } from './context/IdentityContext';
 import './globals.css';
 
 const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
@@ -15,9 +17,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-[#0a0a0a] text-white">
-        <main className="container mx-auto px-4 py-8">
-          {children}
-        </main>
+        <NavBar currentService="Connections" servicePrefix={prefix} domain={domain} />
+        <IdentityProvider>
+          <main className="container mx-auto px-4 py-8">
+            {children}
+          </main>
+        </IdentityProvider>
       </body>
     </html>
   );
