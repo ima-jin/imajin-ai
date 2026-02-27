@@ -45,7 +45,6 @@ function useAutoIdentity(servicePrefix: string, domain: string): NavIdentity | n
 
     const authUrl = `${servicePrefix}auth.${domain}`;
     const profileUrl = `${servicePrefix}profile.${domain}`;
-    const profileUrl = `${servicePrefix}profile.${domain}`;
 
     async function checkSession() {
       try {
