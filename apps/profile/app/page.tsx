@@ -1,76 +1,65 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useIdentity } from './context/IdentityContext';
 import Link from 'next/link';
 
 export default function Home() {
+  const { isLoggedIn, handle, did } = useIdentity();
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Give identity context a moment to hydrate
+    const timer = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!loading && isLoggedIn && (handle || did)) {
+      window.location.href = `/${handle || did}`;
+    }
+  }, [loading, isLoggedIn, handle, did]);
+
+  if (loading || isLoggedIn) {
+    return (
+      <div className="max-w-md mx-auto text-center py-12">
+        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#F59E0B] mb-4"></div>
+        <p className="text-gray-400">Loading...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-2xl mx-auto text-center">
-      <div className="mb-8">
-        <div className="text-6xl mb-4">🟠</div>
-        <h1 className="text-4xl font-bold mb-4 text-white">
-          profile.imajin.ai
-        </h1>
+    <div className="max-w-lg mx-auto text-center py-12">
+      <div className="text-6xl mb-4">🟠</div>
+      <h1 className="text-4xl font-bold mb-4 text-white">
+        Imajin Profiles
+      </h1>
 
-        <p className="text-xl text-gray-400 mb-8">
-          Sovereign identity profiles on the Imajin network.
-          <br />
-          Your identity, your data.
-        </p>
+      <p className="text-lg text-gray-400 mb-2">
+        Sovereign identity on the open network.
+      </p>
+      <p className="text-sm text-gray-500 mb-8">
+        No passwords. No email. You own your keys, you own your identity.
+      </p>
 
+      <div className="flex flex-col gap-3 max-w-xs mx-auto">
         <Link
-          href="/register"
-          className="inline-block px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold"
+          href="/login"
+          className="px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold text-center"
         >
-          Create Your Identity →
+          Login with Key File
         </Link>
-      </div>
-
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-xl p-8 mb-8">
-        <h2 className="text-2xl font-semibold mb-4 text-white">API Endpoints</h2>
-
-        <div className="text-left space-y-3 font-mono text-sm">
-          <div className="p-3 bg-black/50 border border-gray-800 rounded">
-            <span className="text-green-500 font-bold">POST</span> /api/register
-            <span className="text-gray-500 ml-2">— Register new identity</span>
-          </div>
-
-          <div className="p-3 bg-black/50 border border-gray-800 rounded">
-            <span className="text-green-500 font-bold">POST</span> /api/profile
-            <span className="text-gray-500 ml-2">— Create profile (auth)</span>
-          </div>
-
-          <div className="p-3 bg-black/50 border border-gray-800 rounded">
-            <span className="text-blue-500 font-bold">GET</span> /api/profile/:id
-            <span className="text-gray-500 ml-2">— Get by DID or handle</span>
-          </div>
-
-          <div className="p-3 bg-black/50 border border-gray-800 rounded">
-            <span className="text-yellow-500 font-bold">PUT</span> /api/profile/:id
-            <span className="text-gray-500 ml-2">— Update profile (auth)</span>
-          </div>
-
-          <div className="p-3 bg-black/50 border border-gray-800 rounded">
-            <span className="text-red-500 font-bold">DELETE</span> /api/profile/:id
-            <span className="text-gray-500 ml-2">— Delete profile (auth)</span>
-          </div>
-
-          <div className="p-3 bg-black/50 border border-gray-800 rounded">
-            <span className="text-blue-500 font-bold">GET</span> /api/profile/search
-            <span className="text-gray-500 ml-2">— Search profiles</span>
-          </div>
-
-          <div className="p-3 bg-black/50 border border-gray-800 rounded">
-            <span className="text-green-500 font-bold">POST</span> /api/profile/claim-handle
-            <span className="text-gray-500 ml-2">— Claim a handle (auth)</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="text-gray-500 text-sm">
-        <p>Part of the <a href="https://imajin.ai" className="text-[#F59E0B] hover:underline">Imajin</a> sovereign stack</p>
-        <p className="mt-2">
-          <a href="https://github.com/ima-jin/imajin-ai" className="hover:underline text-gray-400">GitHub</a>
-          {' · '}
-          <a href="https://docs.imajin.ai" className="hover:underline text-gray-400">Docs</a>
+        <p className="text-xs text-gray-500">
+          Have an invite?{' '}
+          <span className="text-gray-400">
+            Use the invite link to create your identity.
+          </span>
         </p>
+      </div>
+
+      <div className="mt-12 text-gray-500 text-sm">
+        <p>Part of the <a href="https://imajin.ai" className="text-[#F59E0B] hover:underline">Imajin</a> sovereign stack</p>
       </div>
     </div>
   );

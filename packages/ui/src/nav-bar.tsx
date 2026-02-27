@@ -23,14 +23,16 @@ export interface NavBarProps {
 function buildServices(prefix: string, domain: string) {
   return [
     { name: 'Home', href: `${prefix}www.${domain}` },
-    { name: 'Auth', href: `${prefix}auth.${domain}` },
-    { name: 'Profile', href: `${prefix}profile.${domain}` },
     { name: 'Events', href: `${prefix}events.${domain}` },
-    { name: 'Chat', href: `${prefix}chat.${domain}` },
-    { name: 'Pay', href: `${prefix}pay.${domain}` },
-    { name: 'Connections', href: `${prefix}connections.${domain}` },
-    { name: 'Registry', href: `${prefix}registry.${domain}` },
   ];
+}
+
+function buildUserLinks(prefix: string, domain: string) {
+  return {
+    connections: `${prefix}connections.${domain}`,
+    messages: `${prefix}chat.${domain}`,
+    profile: `${prefix}profile.${domain}`,
+  };
 }
 
 /**
@@ -105,8 +107,10 @@ export function NavBar({
   identity: identityProp,
 }: NavBarProps) {
   const services = buildServices(servicePrefix, domain);
+  const userLinks = buildUserLinks(servicePrefix, domain);
   const isDev = servicePrefix.includes('dev-');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Auto-fetch identity if no prop provided
@@ -142,8 +146,8 @@ export function NavBar({
           <span>Imajin</span>
         </a>
 
-        {/* Center - Service Links */}
-        <div className="flex items-center gap-1">
+        {/* Center - Nav Links (desktop) */}
+        <div className="hidden sm:flex items-center gap-1">
           {services.map((service) => {
             const isCurrent = service.name === currentService;
             return (
@@ -162,6 +166,14 @@ export function NavBar({
           })}
         </div>
 
+        {/* Mobile hamburger */}
+        <button
+          onClick={() => setShowMobileMenu(!showMobileMenu)}
+          className="sm:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+        >
+          <span className="text-xl">{showMobileMenu ? '✕' : '☰'}</span>
+        </button>
+
         {/* Right - Auth Section */}
         <div className="flex items-center gap-2">
           {identity?.isLoggedIn ? (
@@ -177,31 +189,44 @@ export function NavBar({
               </button>
 
               {showDropdown && (
-                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg py-1 z-50">
+                <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg py-1 z-50">
                   {identity.onViewProfile && (
                     <button
                       onClick={() => { identity.onViewProfile?.(); setShowDropdown(false); }}
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
                     >
-                      View Profile
+                      <span>👤</span> View Profile
                     </button>
                   )}
                   {identity.onEditProfile && (
                     <button
                       onClick={() => { identity.onEditProfile?.(); setShowDropdown(false); }}
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
                     >
-                      Edit Profile
+                      <span>✏️</span> Edit Profile
                     </button>
                   )}
+                  <hr className="my-1 border-gray-200 dark:border-gray-800" />
+                  <a
+                    href={userLinks.messages}
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                  >
+                    <span>💬</span> Messages
+                  </a>
+                  <a
+                    href={userLinks.connections}
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                  >
+                    <span>🤝</span> Connections
+                  </a>
                   {identity.onLogout && (
                     <>
                       <hr className="my-1 border-gray-200 dark:border-gray-800" />
                       <button
                         onClick={() => { identity.onLogout?.(); setShowDropdown(false); }}
-                        className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                        className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
                       >
-                        Logout
+                        <span>🚪</span> Logout
                       </button>
                     </>
                   )}
@@ -222,6 +247,35 @@ export function NavBar({
           ) : null}
         </div>
       </div>
+
+      {/* Mobile menu */}
+      {showMobileMenu && (
+        <div className="sm:hidden border-t border-gray-200 dark:border-gray-800 px-4 py-3 space-y-1">
+          {services.map((service) => {
+            const isCurrent = service.name === currentService;
+            return (
+              <a
+                key={service.name}
+                href={service.href}
+                className={`block px-3 py-2 rounded-lg text-sm transition ${
+                  isCurrent
+                    ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                {service.name}
+              </a>
+            );
+          })}
+          {identity?.isLoggedIn && (
+            <>
+              <hr className="my-2 border-gray-200 dark:border-gray-800" />
+              <a href={userLinks.messages} className="block px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 no-underline">💬 Messages</a>
+              <a href={userLinks.connections} className="block px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 no-underline">🤝 Connections</a>
+            </>
+          )}
+        </div>
+      )}
     </nav>
   );
 }

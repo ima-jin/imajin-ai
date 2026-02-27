@@ -85,6 +85,15 @@ export default function ConnectionsPage() {
     }
   }
 
+  async function disconnectFrom(podId: string) {
+    try {
+      const res = await fetch(`/api/connections/${podId}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchConnections();
+      }
+    } catch {}
+  }
+
   async function deleteInvite(code: string) {
     try {
       await fetch(`/api/invites/${code}`, { method: 'DELETE' });
@@ -177,7 +186,8 @@ export default function ConnectionsPage() {
           {connections.map((conn) => (
             <div
               key={conn.podId}
-              className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-lg"
+              onClick={() => window.location.href = `${PROFILE_URL}/${conn.handle || conn.did}`}
+              className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition"
             >
               <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-lg">
                 👤
@@ -198,12 +208,27 @@ export default function ConnectionsPage() {
                   </span>
                 </div>
               </div>
-              <a
-                href={`${SERVICE_PREFIX}chat.${DOMAIN}/start?did=${encodeURIComponent(conn.did)}`}
-                className="px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 text-white rounded-lg transition"
-              >
-                Message
-              </a>
+              <div className="flex items-center gap-2">
+                <a
+                  href={`${SERVICE_PREFIX}chat.${DOMAIN}/start?did=${encodeURIComponent(conn.did)}`}
+                  className="px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 text-white rounded-lg transition"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Message
+                </a>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm(`Disconnect from ${conn.name || conn.handle || 'this person'}? You'll need a new invite to reconnect.`)) {
+                      disconnectFrom(conn.podId);
+                    }
+                  }}
+                  className="px-3 py-1.5 text-sm bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded-lg transition"
+                  title="Disconnect"
+                >
+                  ⛓️‍💥
+                </button>
+              </div>
             </div>
           ))}
         </div>
