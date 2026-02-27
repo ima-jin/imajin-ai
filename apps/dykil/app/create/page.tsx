@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 type FieldType = 'text' | 'textarea' | 'select' | 'rating' | 'boolean' | 'number';
@@ -23,7 +23,7 @@ interface Survey {
   status: 'draft' | 'published' | 'closed';
 }
 
-export default function CreateSurveyPage() {
+function CreateSurveyContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get('id');
@@ -579,5 +579,13 @@ export default function CreateSurveyPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CreateSurveyPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-orange-500" /></div>}>
+      <CreateSurveyContent />
+    </Suspense>
   );
 }

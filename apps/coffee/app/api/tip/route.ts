@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, coffeePages, tips } from '@/db';
-import { extractToken, validateToken } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
 import Stripe from 'stripe';
 
@@ -76,12 +76,9 @@ export async function POST(request: NextRequest) {
 
     // Get sender identity if authenticated
     let fromDid: string | null = null;
-    const token = extractToken(request);
-    if (token) {
-      const authResult = await validateToken(token);
-      if (authResult.valid && authResult.identity) {
-        fromDid = authResult.identity.id;
-      }
+    const authResult = await requireAuth(request as any);
+    if ('identity' in authResult) {
+      fromDid = authResult.identity.id;
     }
 
     // Create tip record (pending)
