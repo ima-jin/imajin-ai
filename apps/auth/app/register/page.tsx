@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -54,7 +54,19 @@ interface InviteInfo {
   note?: string;
 }
 
-export default function RegisterPage() {
+export default function RegisterPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-900 dark:to-gray-800 p-4">
+        <p className="text-gray-500 dark:text-gray-400">Loading…</p>
+      </div>
+    }>
+      <RegisterPage />
+    </Suspense>
+  );
+}
+
+function RegisterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const inviteCode = searchParams.get('invite');
