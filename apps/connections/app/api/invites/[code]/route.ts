@@ -4,6 +4,23 @@ import { db, invites } from '../../../../src/db/index';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
+function corsHeaders(request: NextRequest): Record<string, string> {
+  const origin = request.headers.get('origin') || '';
+  if (origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai') {
+    return {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    };
+  }
+  return {};
+}
+
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
+}
+
 async function getSession(request: NextRequest) {
   try {
     const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
@@ -41,10 +58,9 @@ export async function GET(
   });
 
   // Allow cross-origin reads from *.imajin.ai (auth needs to validate invites client-side)
-  const origin = _request.headers.get('origin') || '';
-  if (origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai') {
-    response.headers.set('Access-Control-Allow-Origin', origin);
-    response.headers.set('Access-Control-Allow-Credentials', 'true');
+  const headers = corsHeaders(_request);
+  for (const [key, value] of Object.entries(headers)) {
+    response.headers.set(key, value);
   }
 
   return response;
