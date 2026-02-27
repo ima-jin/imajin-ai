@@ -9,14 +9,17 @@ interface ServiceCheck {
   error?: string;
 }
 
+const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
+const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+
 const SERVICES = [
-  { name: 'www', url: 'https://www.imajin.ai' },
-  { name: 'auth', url: 'https://auth.imajin.ai' },
-  { name: 'pay', url: 'https://pay.imajin.ai' },
-  { name: 'profile', url: 'https://profile.imajin.ai' },
-  { name: 'registry', url: 'https://registry.imajin.ai' },
-  { name: 'events', url: 'https://events.imajin.ai' },
-  { name: 'chat', url: 'https://chat.imajin.ai' },
+  { name: 'www', url: `${SERVICE_PREFIX}www.${DOMAIN}` },
+  { name: 'auth', url: `${SERVICE_PREFIX}auth.${DOMAIN}` },
+  { name: 'pay', url: `${SERVICE_PREFIX}pay.${DOMAIN}` },
+  { name: 'profile', url: `${SERVICE_PREFIX}profile.${DOMAIN}` },
+  { name: 'registry', url: `${SERVICE_PREFIX}registry.${DOMAIN}` },
+  { name: 'events', url: `${SERVICE_PREFIX}events.${DOMAIN}` },
+  { name: 'chat', url: `${SERVICE_PREFIX}chat.${DOMAIN}` },
 ];
 
 async function checkService(service: { name: string; url: string }): Promise<ServiceCheck> {
@@ -24,7 +27,7 @@ async function checkService(service: { name: string; url: string }): Promise<Ser
   
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    const timeout = setTimeout(() => controller.abort(), 10000);
     
     const response = await fetch(service.url, {
       method: 'HEAD',

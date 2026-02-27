@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 env:
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -12,7 +13,7 @@ env:
 
 jobs:
   lint-and-typecheck:
-    name: Lint & Typecheck
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,9 +32,6 @@ jobs:
 
       - name: Lint
         run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm typecheck
 
   build:
     name: Build

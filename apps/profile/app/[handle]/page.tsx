@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation';
+import { cookies } from 'next/headers';
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import { Avatar } from '../components/Avatar';
 
 interface PageProps {
   params: Promise<{ handle: string }>;
@@ -10,15 +12,45 @@ interface Profile {
   did: string;
   handle?: string;
   displayName: string;
-  displayType: 'human' | 'agent' | 'presence';
+  displayType: 'human' | 'agent' | 'device' | 'org' | 'event' | 'service';
   bio?: string;
   avatar?: string;
-  invitedBy?: string;
   createdAt: string;
   metadata?: {
     links?: string;
     coffee?: string;
   };
+}
+
+async function getViewerDid(): Promise<string | null> {
+  const authUrl = process.env.AUTH_SERVICE_URL;
+  if (!authUrl) return null;
+  try {
+    const cookieStore = await cookies();
+    const session = cookieStore.get('imajin_session');
+    if (!session?.value) return null;
+    const res = await fetch(`${authUrl}/api/session`, {
+      headers: { Cookie: `imajin_session=${session.value}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.did || data.identity?.did || null;
+  } catch { return null; }
+}
+
+async function isConnected(viewerDid: string, targetDid: string): Promise<boolean> {
+  const connectionsUrl = process.env.CONNECTIONS_SERVICE_URL;
+  if (!connectionsUrl) return false;
+  try {
+    const cookieStore = await cookies();
+    const session = cookieStore.get('imajin_session');
+    const res = await fetch(`${connectionsUrl}/api/connections`, {
+      headers: session?.value ? { Cookie: `imajin_session=${session.value}` } : {},
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return (data.connections || []).some((c: any) => c.did === targetDid);
+  } catch { return false; }
 }
 
 async function getProfile(handle: string): Promise<Profile | null> {
@@ -54,7 +86,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const typeEmoji: Record<Profile['displayType'], string> = {
     human: '👤',
     agent: '🤖',
-    presence: '🟠',
+    device: '📱',
+    org: '🏢',
+    event: '📅',
+    service: '⚙️',
   };
   
   const displayHandle = profile.handle ? `@${profile.handle}` : handle;
@@ -93,45 +128,70 @@ export default async function ProfilePage({ params }: PageProps) {
     notFound();
   }
 
+  // Trust gating: only show full profile to self or connections
+  const viewerDid = await getViewerDid();
+  const isSelf = viewerDid === profile.did;
+  const connected = viewerDid && !isSelf ? await isConnected(viewerDid, profile.did) : false;
+
+  if (!isSelf && !connected) {
+    return (
+      <div className="max-w-lg mx-auto text-center py-16">
+        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+          <div className="mb-4 flex justify-center">
+            <Avatar avatar={profile.avatar} displayName={profile.displayName} size="lg" />
+          </div>
+          <h1 className="text-2xl font-bold mb-1 text-white">{profile.displayName}</h1>
+          {profile.handle && <p className="text-gray-400 mb-4">@{profile.handle}</p>}
+          <div className="py-6 border-t border-gray-800 mt-4">
+            <p className="text-gray-500 text-sm">
+              🔒 This profile is only visible to connections.
+            </p>
+            {!viewerDid && (
+              <a
+                href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}profile.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/login`}
+                className="inline-block mt-4 px-6 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium text-sm"
+              >
+                Login to see more
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const typeLabels: Record<Profile['displayType'], string> = {
     human: '👤 Human',
     agent: '🤖 Agent',
-    presence: '🟠 Presence',
+    device: '📱 Device',
+    org: '🏢 Organization',
+    event: '📅 Event',
+    service: '⚙️ Service',
   };
   const typeLabel = typeLabels[profile.displayType];
 
   return (
     <div className="max-w-lg mx-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 text-center">
+      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
         {/* Avatar */}
-        <div className="mb-4">
-          {profile.avatar?.startsWith('http') ? (
-            <img 
-              src={profile.avatar} 
-              alt={profile.displayName}
-              className="w-24 h-24 rounded-full mx-auto object-cover"
-            />
-          ) : (
-            <div className="w-24 h-24 rounded-full mx-auto bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-4xl">
-              {profile.avatar || '👤'}
-            </div>
-          )}
+        <div className="mb-4 flex justify-center">
+          <Avatar avatar={profile.avatar} displayName={profile.displayName} size="lg" />
         </div>
 
         {/* Name & Handle */}
-        <h1 className="text-2xl font-bold mb-1">{profile.displayName}</h1>
+        <h1 className="text-2xl font-bold mb-1 text-white">{profile.displayName}</h1>
         {profile.handle && (
-          <p className="text-gray-500 mb-2">@{profile.handle}</p>
+          <p className="text-gray-400 mb-2">@{profile.handle}</p>
         )}
-        
+
         {/* Type badge */}
-        <span className="inline-block px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-sm mb-4">
+        <span className="inline-block px-3 py-1 bg-gray-900 border border-gray-800 rounded-full text-sm mb-4 text-gray-300">
           {typeLabel}
         </span>
 
         {/* Bio */}
         {profile.bio && (
-          <p className="text-gray-600 dark:text-gray-300 mb-6">
+          <p className="text-gray-300 mb-6">
             {profile.bio}
           </p>
         )}
@@ -139,44 +199,34 @@ export default async function ProfilePage({ params }: PageProps) {
         {/* Links */}
         <div className="flex justify-center gap-4 mb-6">
           {profile.metadata?.links && (
-            <a 
-              href={`https://links.imajin.ai/${profile.metadata.links}`}
-              className="px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+            <a
+              href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}links.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/${profile.metadata.links}`}
+              className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-white"
             >
               🔗 Links
             </a>
           )}
           {profile.metadata?.coffee && (
-            <a 
-              href={`https://coffee.imajin.ai/${profile.metadata.coffee}`}
-              className="px-4 py-2 bg-orange-100 dark:bg-orange-900 text-orange-600 dark:text-orange-300 rounded-lg hover:bg-orange-200 dark:hover:bg-orange-800 transition"
+            <a
+              href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}coffee.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/${profile.metadata.coffee}`}
+              className="px-4 py-2 bg-[#F59E0B]/10 border border-[#F59E0B]/30 text-[#F59E0B] rounded-lg hover:bg-[#F59E0B]/20 transition"
             >
               ☕ Tip Me
             </a>
           )}
         </div>
 
-        {/* Invited by */}
-        {profile.invitedBy && (
-          <p className="text-sm text-gray-500">
-            Invited by:{' '}
-            <Link href={`/${profile.invitedBy}`} className="text-orange-500 hover:underline">
-              {profile.invitedBy}
-            </Link>
-          </p>
-        )}
-
         {/* Member since */}
-        <p className="text-xs text-gray-400 mt-4">
-          Member since {new Date(profile.createdAt).toLocaleDateString('en-US', { 
-            month: 'long', 
-            year: 'numeric' 
+        <p className="text-xs text-gray-500 mt-4">
+          Member since {new Date(profile.createdAt).toLocaleDateString('en-US', {
+            month: 'long',
+            year: 'numeric'
           })}
         </p>
       </div>
 
       {/* DID */}
-      <p className="text-center text-xs text-gray-400 mt-4 font-mono break-all">
+      <p className="text-center text-xs text-gray-500 mt-4 font-mono break-all">
         {profile.did}
       </p>
     </div>

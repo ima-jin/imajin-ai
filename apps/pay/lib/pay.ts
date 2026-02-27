@@ -4,8 +4,8 @@
  * Configured from environment variables.
  */
 
-import { PaymentService } from '@imajin/pay';
-import type { PaymentServiceConfig } from '@imajin/pay';
+import { PaymentService } from '@/lib';
+import type { PaymentServiceConfig } from '@/lib';
 
 let paymentService: PaymentService | null = null;
 

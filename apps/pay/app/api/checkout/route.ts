@@ -25,7 +25,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/lib/pay';
 import { extractToken, validateToken } from '@/lib/auth';
-import type { CheckoutRequest, FiatCurrency } from '@imajin/pay';
+import type { CheckoutRequest, FiatCurrency } from '@/lib';
 
 interface CheckoutBody {
   items: Array<{

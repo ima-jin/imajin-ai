@@ -1,8 +1,8 @@
 import { generateKeypair, createDID } from '../packages/auth/src';
 import * as crypto from '../packages/auth/src/crypto';
 
-const AUTH_URL = 'http://localhost:3003';
-const PROFILE_URL = 'http://localhost:3005';
+const AUTH_URL = process.env.AUTH_SERVICE_URL!;
+const PROFILE_URL = process.env.PROFILE_SERVICE_URL!;
 
 async function createProfile(name: string, handle: string, type: string, bio: string, avatar: string) {
   const keypair = generateKeypair();

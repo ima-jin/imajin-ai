@@ -1,21 +1,13 @@
-/** @type {import('tailwindcss').Config} */
+/** @type {import("tailwindcss").Config} */
 module.exports = {
+  darkMode: "class",
   content: [
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
-    './src/**/*.{js,ts,jsx,tsx,mdx}',
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/**/*.{js,ts,jsx,tsx,mdx}",
+    "../../packages/ui/src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    extend: {
-      colors: {
-        imajin: {
-          orange: '#FF6B35',
-          dark: '#0A0A0A',
-          gray: '#1A1A1A',
-        },
-      },
-    },
+    extend: {},
   },
-  plugins: [
-    require('@tailwindcss/typography'),
-  ],
+  plugins: [require("@tailwindcss/typography")],
 };

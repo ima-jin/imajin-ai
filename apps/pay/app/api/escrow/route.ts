@@ -33,7 +33,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/lib/pay';
 import { extractToken, validateToken } from '@/lib/auth';
-import type { EscrowRequest, Currency } from '@imajin/pay';
+import type { EscrowRequest, Currency } from '@/lib';
 
 interface EscrowBody {
   amount: number;

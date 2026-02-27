@@ -1,20 +1,26 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import { NavBar } from './components/NavBar';
+
+const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
+const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+const isDev = prefix.includes('dev-');
+const envLabel = isDev ? ' [DEV]' : '';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Imajin — Sovereign Technology',
-    template: '%s | Imajin',
+    default: `Imajin — Sovereign Technology${envLabel}`,
+    template: `%s | Imajin${envLabel}`,
   },
   description: 'Own your data. Own your identity. Own your devices. Exit infrastructure for the sovereign individual.',
   keywords: ['sovereign', 'decentralized', 'identity', 'self-hosted', 'no-subscription', 'imajin'],
-  authors: [{ name: 'Imajin', url: 'https://imajin.ai' }],
+  authors: [{ name: 'Imajin', url: `${prefix}www.${domain}` }],
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: 'https://imajin.ai',
-    siteName: 'Imajin',
-    title: 'Imajin — Sovereign Technology',
+    url: `${prefix}www.${domain}`,
+    siteName: `Imajin${envLabel}`,
+    title: `Imajin — Sovereign Technology${envLabel}`,
     description: 'Own your data. Own your identity. Own your devices. No subscriptions. No cloud dependency. No surveillance capitalism.',
     images: [
       {
@@ -27,13 +33,13 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Imajin — Sovereign Technology',
+    title: `Imajin — Sovereign Technology${envLabel}`,
     description: 'Own your data. Own your identity. Own your devices.',
     images: ['/og-image.png'],
   },
   robots: {
-    index: true,
-    follow: true,
+    index: !isDev,
+    follow: !isDev,
   },
 };
 
@@ -43,8 +49,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen antialiased">{children}</body>
+    <html lang="en" className="dark">
+      <body className="min-h-screen antialiased bg-[#0a0a0a] text-white">
+        <NavBar currentService="Home" />
+        {children}
+      </body>
     </html>
   );
 }

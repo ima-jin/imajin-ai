@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, profiles, connections } from '@/src/db';
+import { db, profiles, connections } from '@/db';
 import { eq } from 'drizzle-orm';
 import { createHash } from 'crypto';
 

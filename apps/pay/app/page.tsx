@@ -1,75 +1,72 @@
-/**
- * pay.imajin.ai landing page
- */
-
 export default function Home() {
   return (
-    <main style={{ 
-      fontFamily: 'system-ui, sans-serif',
-      maxWidth: '800px',
-      margin: '0 auto',
-      padding: '2rem',
-    }}>
-      <h1>🟠 Imajin Pay</h1>
-      <p>Unified payment infrastructure for the sovereign stack.</p>
+    <div className="max-w-2xl mx-auto text-center">
+      <div className="text-6xl mb-4">💰</div>
+      <h1 className="text-4xl font-bold mb-4 text-white">
+        pay.imajin.ai
+      </h1>
       
-      <h2>API Endpoints</h2>
-      
-      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-        <thead>
-          <tr style={{ borderBottom: '2px solid #333' }}>
-            <th style={{ textAlign: 'left', padding: '0.5rem' }}>Method</th>
-            <th style={{ textAlign: 'left', padding: '0.5rem' }}>Endpoint</th>
-            <th style={{ textAlign: 'left', padding: '0.5rem' }}>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr style={{ borderBottom: '1px solid #ddd' }}>
-            <td style={{ padding: '0.5rem' }}><code>GET</code></td>
-            <td style={{ padding: '0.5rem' }}><code>/api/health</code></td>
-            <td style={{ padding: '0.5rem' }}>Health check for all providers</td>
-          </tr>
-          <tr style={{ borderBottom: '1px solid #ddd' }}>
-            <td style={{ padding: '0.5rem' }}><code>POST</code></td>
-            <td style={{ padding: '0.5rem' }}><code>/api/checkout</code></td>
-            <td style={{ padding: '0.5rem' }}>Create hosted Stripe Checkout</td>
-          </tr>
-          <tr style={{ borderBottom: '1px solid #ddd' }}>
-            <td style={{ padding: '0.5rem' }}><code>POST</code></td>
-            <td style={{ padding: '0.5rem' }}><code>/api/charge</code></td>
-            <td style={{ padding: '0.5rem' }}>Direct payment (Stripe or Solana)</td>
-          </tr>
-          <tr style={{ borderBottom: '1px solid #ddd' }}>
-            <td style={{ padding: '0.5rem' }}><code>POST</code></td>
-            <td style={{ padding: '0.5rem' }}><code>/api/escrow</code></td>
-            <td style={{ padding: '0.5rem' }}>Create escrow (hold funds)</td>
-          </tr>
-          <tr style={{ borderBottom: '1px solid #ddd' }}>
-            <td style={{ padding: '0.5rem' }}><code>PUT</code></td>
-            <td style={{ padding: '0.5rem' }}><code>/api/escrow</code></td>
-            <td style={{ padding: '0.5rem' }}>Release or refund escrow</td>
-          </tr>
-          <tr style={{ borderBottom: '1px solid #ddd' }}>
-            <td style={{ padding: '0.5rem' }}><code>POST</code></td>
-            <td style={{ padding: '0.5rem' }}><code>/api/webhook</code></td>
-            <td style={{ padding: '0.5rem' }}>Stripe webhook handler</td>
-          </tr>
-        </tbody>
-      </table>
-      
-      <h2>Providers</h2>
-      <ul>
-        <li><strong>Stripe</strong> — USD, CAD, EUR, GBP (fiat)</li>
-        <li><strong>Solana</strong> — SOL, USDC, MJN (crypto)</li>
-      </ul>
-      
-      <h2>Example: Create Checkout</h2>
-      <pre style={{ 
-        background: '#f5f5f5', 
-        padding: '1rem', 
-        borderRadius: '4px',
-        overflow: 'auto',
-      }}>
+      <p className="text-xl text-gray-400 mb-8">
+        Unified payment infrastructure for the sovereign stack.
+        <br />
+        Stripe + Solana. Your keys, your money.
+      </p>
+
+      <div className="bg-[#0a0a0a] border border-gray-800 rounded-xl p-8 mb-8">
+        <h2 className="text-2xl font-semibold mb-4 text-white">API Endpoints</h2>
+        
+        <div className="text-left space-y-3 font-mono text-sm">
+          <div className="p-3 bg-black/50 border border-gray-800 rounded">
+            <span className="text-blue-500 font-bold">GET</span> /api/health
+            <span className="text-gray-500 ml-2">— Health check for all providers</span>
+          </div>
+          
+          <div className="p-3 bg-black/50 border border-gray-800 rounded">
+            <span className="text-green-500 font-bold">POST</span> /api/checkout
+            <span className="text-gray-500 ml-2">— Create hosted Stripe Checkout</span>
+          </div>
+          
+          <div className="p-3 bg-black/50 border border-gray-800 rounded">
+            <span className="text-green-500 font-bold">POST</span> /api/charge
+            <span className="text-gray-500 ml-2">— Direct payment (Stripe or Solana)</span>
+          </div>
+          
+          <div className="p-3 bg-black/50 border border-gray-800 rounded">
+            <span className="text-green-500 font-bold">POST</span> /api/escrow
+            <span className="text-gray-500 ml-2">— Create escrow (hold funds)</span>
+          </div>
+          
+          <div className="p-3 bg-black/50 border border-gray-800 rounded">
+            <span className="text-yellow-500 font-bold">PUT</span> /api/escrow
+            <span className="text-gray-500 ml-2">— Release or refund escrow</span>
+          </div>
+          
+          <div className="p-3 bg-black/50 border border-gray-800 rounded">
+            <span className="text-green-500 font-bold">POST</span> /api/webhook
+            <span className="text-gray-500 ml-2">— Stripe webhook handler</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-[#0a0a0a] border border-gray-800 rounded-xl p-8 mb-8">
+        <h2 className="text-2xl font-semibold mb-4 text-white">Providers</h2>
+        
+        <div className="grid grid-cols-2 gap-4 text-left">
+          <div className="p-4 bg-gray-900 border border-gray-800 rounded">
+            <div className="text-lg font-semibold mb-2">💳 Stripe</div>
+            <p className="text-gray-500 text-sm">USD, CAD, EUR, GBP (fiat)</p>
+          </div>
+          <div className="p-4 bg-gray-900 border border-gray-800 rounded">
+            <div className="text-lg font-semibold mb-2">◎ Solana</div>
+            <p className="text-gray-500 text-sm">SOL, USDC, MJN (crypto)</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-[#0a0a0a] border border-gray-800 rounded-xl p-8 mb-8 text-left">
+        <h2 className="text-2xl font-semibold mb-4 text-center text-white">Example: Create Checkout</h2>
+        
+        <pre className="p-4 bg-black/50 border border-gray-800 rounded text-sm overflow-auto">
 {`POST /api/checkout
 Content-Type: application/json
 
@@ -83,15 +80,13 @@ Content-Type: application/json
 }
 
 → { "id": "cs_xxx", "url": "https://checkout.stripe.com/..." }`}
-      </pre>
-      
-      <h2>Example: Direct Charge</h2>
-      <pre style={{ 
-        background: '#f5f5f5', 
-        padding: '1rem', 
-        borderRadius: '4px',
-        overflow: 'auto',
-      }}>
+        </pre>
+      </div>
+
+      <div className="bg-[#0a0a0a] border border-gray-800 rounded-xl p-8 mb-8 text-left">
+        <h2 className="text-2xl font-semibold mb-4 text-center text-white">Example: Direct Charge</h2>
+        
+        <pre className="p-4 bg-black/50 border border-gray-800 rounded text-sm overflow-auto">
 {`POST /api/charge
 Content-Type: application/json
 
@@ -102,11 +97,17 @@ Content-Type: application/json
 }
 
 → { "id": "sol-pending-xxx", "status": "requires_action", ... }`}
-      </pre>
-      
-      <footer style={{ marginTop: '3rem', color: '#666', fontSize: '0.9rem' }}>
-        <p>Part of the <a href="https://imajin.ai">Imajin</a> sovereign stack.</p>
-      </footer>
-    </main>
+        </pre>
+      </div>
+
+      <div className="text-gray-500 text-sm">
+        <p>Part of the <a href="https://imajin.ai" className="text-[#F59E0B] hover:underline">Imajin</a> sovereign stack</p>
+        <p className="mt-2">
+          <a href="https://github.com/ima-jin/imajin-ai" className="hover:underline text-gray-400">GitHub</a>
+          {' · '}
+          <a href="https://docs.imajin.ai" className="hover:underline text-gray-400">Docs</a>
+        </p>
+      </div>
+    </div>
   );
 }

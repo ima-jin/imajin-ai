@@ -186,8 +186,8 @@ async function notifyEventsService(
   type: 'checkout.completed' | 'payment.failed',
   session: Stripe.Checkout.Session
 ) {
-  const eventsServiceUrl = process.env.EVENTS_SERVICE_URL || 'http://localhost:3007';
-  const webhookSecret = process.env.EVENTS_WEBHOOK_SECRET || 'dev-secret';
+  const eventsServiceUrl = process.env.EVENTS_SERVICE_URL!;
+  const webhookSecret = process.env.EVENTS_WEBHOOK_SECRET!;
   
   try {
     const response = await fetch(`${eventsServiceUrl}/api/webhook/payment`, {

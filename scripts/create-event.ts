@@ -8,14 +8,14 @@ async function main() {
   console.log('Organizer DID:', did);
   
   // Register
-  await fetch('http://localhost:3003/api/register', {
+  await fetch('${process.env.AUTH_SERVICE_URL}/api/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ publicKey: keypair.publicKey, type: 'human', name: 'Event Creator' }),
   });
   
   // Challenge
-  const cr = await fetch('http://localhost:3003/api/challenge', {
+  const cr = await fetch('${process.env.AUTH_SERVICE_URL}/api/challenge', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id: did }),
@@ -24,7 +24,7 @@ async function main() {
   
   // Sign & Auth
   const signature = crypto.signSync(challenge, keypair.privateKey);
-  const ar = await fetch('http://localhost:3003/api/authenticate', {
+  const ar = await fetch('${process.env.AUTH_SERVICE_URL}/api/authenticate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id: did, challengeId, signature }),
@@ -33,7 +33,7 @@ async function main() {
   console.log('Got token');
   
   // Create Jin's Launch Party
-  const er = await fetch('http://localhost:3007/api/events', {
+  const er = await fetch('${process.env.EVENTS_SERVICE_URL}/api/events', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({
