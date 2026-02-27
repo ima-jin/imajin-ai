@@ -51,7 +51,25 @@ export default function ConnectionsPage() {
       const res = await fetch('/api/connections');
       if (res.ok) {
         const data = await res.json();
-        setConnections(data.connections || []);
+        const conns = data.connections || [];
+
+        // Resolve handles from auth service
+        const resolved = await Promise.all(
+          conns.map(async (conn: Connection) => {
+            try {
+              const lookupRes = await fetch(
+                `${AUTH_URL}/api/lookup/${encodeURIComponent(conn.did)}`
+              );
+              if (lookupRes.ok) {
+                const profile = await lookupRes.json();
+                return { ...conn, handle: profile.handle, name: profile.name };
+              }
+            } catch {}
+            return conn;
+          })
+        );
+
+        setConnections(resolved);
       }
     } catch {}
   }
@@ -181,12 +199,20 @@ export default function ConnectionsPage() {
               <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-lg">
                 👤
               </div>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 group">
                 <div className="font-medium text-white truncate">
-                  {conn.handle ? `@${conn.handle}` : conn.did.slice(0, 24) + '...'}
+                  {conn.name || (conn.handle ? `@${conn.handle}` : conn.did.slice(0, 24) + '...')}
                 </div>
+                {conn.handle && conn.name && (
+                  <div className="text-gray-400 text-sm">@{conn.handle}</div>
+                )}
                 <div className="text-gray-500 text-xs">
-                  Connected {new Date(conn.joinedAt).toLocaleDateString()}
+                  <span className="group-hover:hidden">
+                    Connected {new Date(conn.joinedAt).toLocaleDateString()}
+                  </span>
+                  <span className="hidden group-hover:inline text-gray-600 font-mono text-[10px]">
+                    {conn.did}
+                  </span>
                 </div>
               </div>
               <a
