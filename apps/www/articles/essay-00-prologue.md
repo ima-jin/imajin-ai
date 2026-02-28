@@ -4,7 +4,7 @@ subtitle: "What comes next"
 description: "My name is Ryan. I've been online since 1988. I wrote twenty essays about what comes after the extraction, the AI panic, and the exhaustion. Here's why."
 date: "2026-02-24"
 author: "Ryan Veteze"
-status: "DRAFT"
+status: "POSTED"
 ---
 
 My name is Ryan. I've been online since 1988. I've watched this whole thing happen in real time — the wonder, the promise, the slow capture, the extraction, the exhaustion.
