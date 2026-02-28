@@ -1,13 +1,13 @@
 ---
 title: "Prologue"
-subtitle: "After the Extraction"
-description: "Twenty essays about the internet we lost, the infrastructure we need, and what comes next."
+subtitle: "It's Not as Dark as Everyone Thinks"
+description: "I've been online since 1991. I watched all of it happen. Here's what comes after."
 date: "2026-02-24"
 author: "Ryan Veteze"
 status: "DRAFT"
 ---
 
-My name is Ryan. I've been computing since 1988, online since 1991. I've watched this whole thing happen in real time — the wonder, the promise, the slow capture, the extraction, the exhaustion.
+My name is Ryan. I've been computing since 1988, online since 1991. I've watched the internet happen in real time — the wonder, the promise, the slow capture, the extraction, the exhaustion.
 
 ---
 
@@ -19,13 +19,13 @@ I know what that world feels like because I built a small version of it. In 1992
 
 But before that — before I built anything — I found Happy Boat.
 
-I'd dialed into maybe ten boards in my local calling area by then. They were all different, all fine. I'd seen the number listed in Toronto Computes! and liked the name. When I connected, the login screen hit me before I'd even created an account: a bunch of funny characters on a boat, all waving. Advanced goofy ASCII art. Completely committed to the bit. I remember thinking — these are people who understand.
+I'd dialed into maybe ten bulletin board systems — BBSes, the pre-internet way strangers found each other over phone lines — in my local calling area by then. They were all different, all fine. I'd seen the number listed in Toronto Computes! and liked the name. When I connected, the login screen hit me before I'd even created an account: a bunch of funny characters on a boat, all waving. Text art made entirely from keyboard characters, completely committed to the bit. I remember thinking — these are people who understand.
 
-I made an account and looked around for a few minutes. Then Seth, the sysop, broke into the chat. He wanted to know how I'd found the number. I told him the newspaper. He asked what I thought. I probably said something like "this place looks amazing." We talked for a few minutes and then he said: "You want to meet up?"
+I made an account and looked around for a few minutes. Then Seth, the guy who ran the board, broke into the chat. He wanted to know how I'd found the number. I told him the newspaper. He asked what I thought. I probably said something like "this place looks amazing." We talked for a few minutes and then he said: "You want to meet up?"
 
 It was 11pm. He was in Markham. I was in Rexdale. We picked a Country Style Donuts somewhere in the middle.
 
-I didn't drink coffee yet. I probably had a hot chocolate. I have no idea what we talked about. But I drove out to meet a stranger from a BBS at a donut shop at 11 o'clock at night because the ASCII art felt right and the sysop asked.
+I didn't drink coffee yet. I probably had a hot chocolate. I have no idea what we talked about. But I drove out to meet a stranger from a bulletin board at a donut shop at 11 o'clock at night because the text art felt right and the guy who ran it asked.
 
 That's what skin in the game looks like. That's the whole thing.
 

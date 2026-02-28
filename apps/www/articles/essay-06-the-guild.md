@@ -1,6 +1,6 @@
 ---
 title: "The Guild"
-subtitle: "For the operators who knew it was wrong and built it anyway"
+subtitle: "For the people who have figured out that the room was the point"
 description: "The invitation to operators. The Homebrew Computer Club guys. Unit 8200 alumni. The sysop role made available to everyone."
 date: "2026-02-22"
 author: "Ryan Veteze"
