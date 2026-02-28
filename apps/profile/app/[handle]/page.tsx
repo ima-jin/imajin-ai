@@ -15,6 +15,8 @@ interface Profile {
   displayType: 'human' | 'presence' | 'agent' | 'device' | 'org' | 'event' | 'service';
   bio?: string;
   avatar?: string;
+  email?: string;
+  phone?: string;
   createdAt: string;
   metadata?: {
     links?: string;
@@ -196,6 +198,29 @@ export default async function ProfilePage({ params }: PageProps) {
           <p className="text-gray-300 mb-6">
             {profile.bio}
           </p>
+        )}
+
+        {/* Contact Info (only visible to self/connections — API strips for others) */}
+        {(profile.email || profile.phone) && (
+          <div className="mb-6 bg-gray-900/50 border border-gray-800 rounded-lg p-4 text-left">
+            <p className="text-xs text-gray-500 mb-2 text-center">📇 Contact</p>
+            {profile.email && (
+              <p className="text-sm text-gray-300 mb-1">
+                <span className="text-gray-500">✉️</span>{' '}
+                <a href={`mailto:${profile.email}`} className="text-[#F59E0B] hover:underline">
+                  {profile.email}
+                </a>
+              </p>
+            )}
+            {profile.phone && (
+              <p className="text-sm text-gray-300">
+                <span className="text-gray-500">📱</span>{' '}
+                <a href={`tel:${profile.phone}`} className="text-[#F59E0B] hover:underline">
+                  {profile.phone}
+                </a>
+              </p>
+            )}
+          </div>
         )}
 
         {/* Links */}

@@ -12,6 +12,8 @@ interface Profile {
   displayType: string;
   bio?: string;
   avatar?: string;
+  email?: string;
+  phone?: string;
 }
 
 type AvatarMode = 'emoji' | 'image';
@@ -29,6 +31,8 @@ export default function EditProfilePage() {
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState('');
   const [handle, setHandle] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [avatarMode, setAvatarMode] = useState<AvatarMode>('emoji');
 
   useEffect(() => {
@@ -54,6 +58,8 @@ export default function EditProfilePage() {
       setBio(profile.bio || '');
       setAvatar(profile.avatar || '');
       setHandle(profile.handle || '');
+      setEmail(profile.email || '');
+      setPhone(profile.phone || '');
 
       // Detect avatar mode based on current avatar
       if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.startsWith('/'))) {
@@ -88,6 +94,8 @@ export default function EditProfilePage() {
           displayName,
           bio: bio || null,
           avatar: avatar || null,
+          email: email || null,
+          phone: phone || null,
         }),
       });
 
@@ -168,6 +176,33 @@ export default function EditProfilePage() {
               className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
             />
             <p className="text-xs text-gray-500 mt-1">{bio.length}/500 characters</p>
+          </div>
+
+          {/* Contact Info */}
+          <div className="pt-2 border-t border-gray-800">
+            <p className="text-xs text-gray-500 mb-3">🔒 Contact info is only visible to your connections</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-300">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-300">Phone</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+1 (555) 123-4567"
+                  className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Avatar */}

@@ -4,6 +4,38 @@ import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
+const CONNECTIONS_SERVICE_URL = process.env.CONNECTIONS_SERVICE_URL;
+
+/** Try to get viewer DID from session cookie (non-blocking) */
+async function getViewerDid(request: NextRequest): Promise<string | null> {
+  const authUrl = process.env.AUTH_SERVICE_URL;
+  if (!authUrl) return null;
+  const cookie = request.headers.get('cookie') || '';
+  const match = cookie.match(/imajin_session=([^;]+)/);
+  if (!match) return null;
+  try {
+    const res = await fetch(`${authUrl}/api/session`, {
+      headers: { Cookie: `imajin_session=${match[1]}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.did || data.identity?.did || null;
+  } catch { return null; }
+}
+
+/** Check if viewer is connected to target */
+async function checkConnected(viewerCookie: string, targetDid: string): Promise<boolean> {
+  if (!CONNECTIONS_SERVICE_URL) return false;
+  try {
+    const res = await fetch(`${CONNECTIONS_SERVICE_URL}/api/connections`, {
+      headers: { Cookie: viewerCookie },
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return (data.connections || []).some((c: any) => c.did === targetDid);
+  } catch { return false; }
+}
+
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
@@ -25,7 +57,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return errorResponse('Profile not found', 404);
     }
 
-    return jsonResponse(profile);
+    // Gate contact info: only visible to self or connections
+    const result: Record<string, any> = { ...profile };
+    if (profile.email || profile.phone) {
+      const viewerDid = await getViewerDid(request);
+      const isSelf = viewerDid === profile.did;
+      const cookie = request.headers.get('cookie') || '';
+      const connected = viewerDid && !isSelf ? await checkConnected(cookie, profile.did) : false;
+      if (!isSelf && !connected) {
+        delete result.email;
+        delete result.phone;
+      }
+    }
+
+    return jsonResponse(result);
   } catch (error) {
     console.error('Failed to fetch profile:', error);
     return errorResponse('Failed to fetch profile', 500);
@@ -63,7 +108,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { displayName, displayType, avatar, bio, metadata } = body;
+    const { displayName, displayType, avatar, bio, email, phone, metadata } = body;
 
     // Build update object
     const updates: Record<string, any> = {
@@ -79,6 +124,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
     if (avatar !== undefined) updates.avatar = avatar;
     if (bio !== undefined) updates.bio = bio;
+    if (email !== undefined) updates.email = email || null;
+    if (phone !== undefined) updates.phone = phone || null;
     if (metadata !== undefined) updates.metadata = metadata;
 
     // Update profile
