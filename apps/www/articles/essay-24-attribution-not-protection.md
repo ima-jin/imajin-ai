@@ -17,4 +17,9 @@ The arc:
 - You don't ban the behavior. You make the honest path more rewarding than the dishonest one.
 
 Follows 23 (professional shielding): the mechanism of responsible practice IS attribution preservation.
+
+Reference: Thaler v. Perlmutter — SCOTUS potentially taking up first AI authorship case (Feb 27, 2026).
+Question: "Can works outputted by an AI system without direct human authorial contribution be copyrighted?"
+This is the wrong question. Copyright asks "who owns the output?" — .fair asks "who's in the chain?"
+If SCOTUS rules AI output isn't copyrightable, it strengthens the attribution thesis: the legal system can't protect you, but the protocol can track you. The only way to establish provenance for AI-assisted work becomes attribution chains, not copyright claims.
 -->
