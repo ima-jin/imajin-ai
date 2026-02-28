@@ -38,7 +38,7 @@ async function generateKeypair() {
   };
 }
 
-type Step = 'form' | 'creating' | 'success' | 'error';
+type Step = 'form' | 'creating' | 'success' | 'error' | 'no-invite';
 type HandleCheckStatus = 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
 type AvatarMode = 'emoji' | 'image';
 
@@ -56,7 +56,7 @@ function RegisterPage() {
   const inviteCode = searchParams.get('invite');
   const redirectUrl = searchParams.get('next');
   const { isLoggedIn, handle: loggedInHandle, did, importKeys } = useIdentity();
-  const [step, setStep] = useState<Step>('form');
+  const [step, setStep] = useState<Step>(inviteCode ? 'form' : 'no-invite');
   const [error, setError] = useState('');
   const [profile, setProfile] = useState<any>(null);
 
@@ -286,6 +286,29 @@ function RegisterPage() {
     a.download = `imajin-keys-${did.slice(-8)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  if (step === 'no-invite') {
+    return (
+      <div className="max-w-md mx-auto text-center">
+        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+          <div className="text-6xl mb-4">🔒</div>
+          <h1 className="text-2xl font-bold mb-2 text-white">Invite Only</h1>
+          <p className="text-gray-400 mb-6">
+            Imajin is an invite-only network. You need an invite link from an existing member to create an account.
+          </p>
+          <p className="text-gray-500 text-sm mb-6">
+            Already have an account?
+          </p>
+          <a
+            href="/login"
+            className="inline-block px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold"
+          >
+            Login
+          </a>
+        </div>
+      </div>
+    );
   }
 
   if (step === 'success' && profile) {
