@@ -119,6 +119,7 @@ export function getAllArticles(): ArticleMeta[] {
         order: getOrderFromFilename(filename),
       };
     })
+    .filter((a) => a.status === 'POSTED')
     .sort((a, b) => a.order - b.order);
 
   return articles;
