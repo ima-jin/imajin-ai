@@ -1,8 +1,69 @@
 import { NextRequest } from 'next/server';
+import * as ed from '@noble/ed25519';
+import { sha512 } from '@noble/hashes/sha512';
 import { db, profiles } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
+
+// Configure ed25519 sha512 (required for @noble/ed25519 v2+)
+ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
+
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+function base58Decode(str: string): Uint8Array {
+  let num = 0n;
+  for (const char of str) {
+    const idx = BASE58_ALPHABET.indexOf(char);
+    if (idx === -1) throw new Error('Invalid base58 character');
+    num = num * 58n + BigInt(idx);
+  }
+  const hex = num.toString(16).padStart(64, '0');
+  return new Uint8Array(hex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+}
+
+/** Extract public key bytes from a did:imajin:xxx DID */
+function publicKeyFromDid(did: string): Uint8Array | null {
+  if (!did.startsWith('did:imajin:')) return null;
+  try {
+    return base58Decode(did.slice('did:imajin:'.length));
+  } catch {
+    return null;
+  }
+}
+
+/** Verify Ed25519 signed request headers */
+async function verifySignedRequest(request: NextRequest, body: string): Promise<{ valid: boolean; did?: string; error?: string }> {
+  const signature = request.headers.get('x-signature');
+  const timestamp = request.headers.get('x-timestamp');
+  const did = request.headers.get('x-did');
+
+  if (!signature || !timestamp || !did) {
+    return { valid: false, error: 'Missing signature headers' };
+  }
+
+  // Reject requests older than 5 minutes
+  const age = Date.now() - parseInt(timestamp, 10);
+  if (isNaN(age) || age > 5 * 60 * 1000 || age < -30_000) {
+    return { valid: false, error: 'Request timestamp out of range' };
+  }
+
+  const publicKey = publicKeyFromDid(did);
+  if (!publicKey) {
+    return { valid: false, error: 'Invalid DID format' };
+  }
+
+  const signable = `${timestamp}:${body}`;
+  const msgBytes = new TextEncoder().encode(signable);
+  const sigBytes = new Uint8Array(signature.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+
+  try {
+    const valid = ed.verify(sigBytes, msgBytes, publicKey);
+    return valid ? { valid: true, did } : { valid: false, error: 'Invalid signature' };
+  } catch {
+    return { valid: false, error: 'Signature verification failed' };
+  }
+}
 
 const CONNECTIONS_SERVICE_URL = process.env.CONNECTIONS_SERVICE_URL;
 
@@ -107,7 +168,23 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return errorResponse('Not authorized to update this profile', 403);
     }
 
-    const body = await request.json();
+    // Clone the request body for signature verification
+    const bodyText = await request.text();
+
+    // Verify Ed25519 signed request headers if present
+    const sigResult = await verifySignedRequest(request, bodyText);
+    if (request.headers.get('x-signature')) {
+      // Signature headers are present — enforce verification
+      if (!sigResult.valid) {
+        return errorResponse(`Signature verification failed: ${sigResult.error}`, 401);
+      }
+      // Ensure the signing DID matches the authenticated identity
+      if (sigResult.did !== identity.id) {
+        return errorResponse('Signature DID does not match authenticated identity', 403);
+      }
+    }
+
+    const body = JSON.parse(bodyText);
     const { displayName, displayType, avatar, bio, email, phone, metadata } = body;
 
     // Build update object

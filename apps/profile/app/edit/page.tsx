@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import * as ed from '@noble/ed25519';
 import { useIdentity } from '../context/IdentityContext';
 import { ImageUpload } from '../components/ImageUpload';
 
@@ -82,21 +83,37 @@ export default function EditProfilePage() {
     setSaving(true);
 
     try {
-      // For now, we'll just verify DID matches localStorage
-      // Proper signature verification will be added later
+      const payload = JSON.stringify({
+        displayName,
+        bio: bio || null,
+        avatar: avatar || null,
+        email: email || null,
+        phone: phone || null,
+      });
+
+      // Sign the request body with the user's Ed25519 private key
+      const signedHeaders: Record<string, string> = {};
+      const keypairJson = localStorage.getItem('imajin_keypair');
+      if (keypairJson) {
+        const keypair = JSON.parse(keypairJson);
+        const timestamp = Date.now().toString();
+        const signable = `${timestamp}:${payload}`;
+        const msgBytes = new TextEncoder().encode(signable);
+        const privBytes = new Uint8Array(keypair.privateKey.match(/.{2}/g)!.map((b: string) => parseInt(b, 16)));
+        const signatureBytes = await ed.signAsync(msgBytes, privBytes);
+        const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        signedHeaders['X-Signature'] = signature;
+        signedHeaders['X-Timestamp'] = timestamp;
+        signedHeaders['X-DID'] = did!;
+      }
+
       const response = await fetch(`/api/profile/${did}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          // TODO: Add proper signed request headers
+          ...signedHeaders,
         },
-        body: JSON.stringify({
-          displayName,
-          bio: bio || null,
-          avatar: avatar || null,
-          email: email || null,
-          phone: phone || null,
-        }),
+        body: payload,
       });
 
       if (!response.ok) {
