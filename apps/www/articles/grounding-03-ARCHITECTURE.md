@@ -18,7 +18,7 @@
 │                     APPLICATION LAYER                        │
 │                                                              │
 │   www        profile      events       chat       learn      │
-│   coffee     links        dykil        karaoke    fixready   │
+│   coffee     links        dykil                              │
 │                                                              │
 │   Any app that consumes the platform packages.               │
 │   Standalone repos. Pluggable. Replaceable.                  │
@@ -148,14 +148,7 @@ Consumer pays $10
 | **pay** | 3004 / 7004 | Payments — Stripe, settlement, receipts | @imajin/pay |
 | **profile** | 3005 / 7005 | Identity display — handle, bio, avatar | @imajin/auth |
 | **chat** | 3007 / 7007 | Messaging — signed, between DIDs | @imajin/auth |
-
-### Application Services (standalone repos)
-
-| Service | Port (dev/prod) | Repo | Purpose |
-|---------|----------------|------|---------|
 | **events** | 3006 / 7006 | imajin-events | Event creation, ticketing, attendance |
-| **fixready** | 3401 / 7401 | imajin-fixready | Home repair knowledge marketplace |
-| **karaoke** | 3402 / 7402 | imajin-karaoke | Music + performance |
 
 ### Planned Applications
 
@@ -287,8 +280,6 @@ All services share a Postgres instance on imajin-server (192.168.1.193:5432).
 |----------|---------|
 | imajin_prod | www, auth, registry, pay, profile, events, chat, connections |
 | imajin_dev | Same services (dev instances) |
-| fixready_prod / fixready_dev | fixready |
-| karaoke_prod / karaoke_dev | karaoke |
 
 ORM: Drizzle (`@imajin/db` package). Query monitoring: `pg_stat_statements`.
 
@@ -319,8 +310,6 @@ ORM: Drizzle (`@imajin/db` package). Query monitoring: `pg_stat_statements`.
 │    ├─→ :7005 profile                               │
 │    ├─→ :7006 events                                │
 │    ├─→ :7007 chat                                  │
-│    ├─→ :7401 fixready                              │
-│    └─→ :7402 karaoke                               │
 │                                                    │
 │  Postgres 5432                                     │
 │  pm2 (process management)                          │
