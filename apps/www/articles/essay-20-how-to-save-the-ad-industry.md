@@ -97,6 +97,84 @@ You're not the product anymore. You're the publisher.
 
 ---
 
+## The Other Side of the Equation
+
+Everything above describes what happens to creators. What about the other three billion people?
+
+Most people don't care about ads. Not enough to pay to avoid them. Not enough to install a blocker. Not enough to switch platforms. They want the free thing. They want to scroll. They want to see what their friends are doing and watch someone make pasta and argue about a TV show. They are not going to pay $8 a month for that. They never were.
+
+The ad industry knows this. The platforms know this. That's why the deal has always been: your attention in exchange for access. And most people took the deal. Not because they loved it. Because it was the only one on the table.
+
+Here's a different deal.
+
+Same behavior. Same scrolling. Same pasta videos. Same arguments about TV shows. Except now your presence in the network — the fact that you're a real human, in a real trust graph, with real purchasing behavior and genuine interests — generates value that flows to the creators whose content you actually consume. Not to the platform. To the people.
+
+You don't have to think about it. You don't have to manage it. You don't have to sign up for a new kind of account or learn what a trust graph is. You just use the thing the way you've always used the thing. The infrastructure does the rest.
+
+That's not a new pitch to consumers. That's the existing pitch, made honest.
+
+---
+
+## The Toggle
+
+But here's where it gets interesting.
+
+Some people do care about ads. Some people care about privacy. Some people have the means and the desire to not be part of the advertising economy at all. Right now, those people have two options: pay for a premium tier that still harvests their data, or leave.
+
+In this model, there's a toggle.
+
+Ads on: you use the network for free. Your presence generates value. That value routes through the trust graph to the creators you follow. You're compensating artists with your attention, same as you always have, except now the money actually reaches them.
+
+Ads off: you've removed yourself from the advertising economy entirely. You're private. Nobody queries your profile. No brand reaches you through the graph. But the creators you consume still need to eat. So you pay directly. And every dollar flows through the .fair chain to the people whose work you actually use, with full attribution, no intermediary taking 30%.
+
+Nobody is being asked to pay for something they currently get for free.
+
+They're being asked how they want to pay. Because they're already paying. Everyone knows this. The toggle just makes the choice explicit and honest.
+
+And the person who flips to private? They're not a "subscriber." They're a patron. They know where every dollar goes. The creator knows exactly who's supporting them. That's not a transaction. That's a relationship.
+
+---
+
+## The Receipt
+
+Here's the part that doesn't exist anywhere in the current system.
+
+You can see what your participation generates.
+
+Consumer, ads on: "Your presence in the network generated $4.30 this month. $1.80 went to the three creators you engage with most. $0.90 went to the curation chain that surfaced the content you liked. The rest distributed across the trust graph based on your interaction patterns. Here's the breakdown."
+
+Consumer, ads off: "You paid $6 this month. Here's every person who received a share, what they created that you consumed, and how the .fair chain allocated each dollar. Line items. Actual humans. Actual amounts."
+
+Creator: "Your node generated $340 this month. $180 from the advertising layer — 847 verified humans in your trust graph whose presence funded your work. $160 from direct payments — 34 patrons who chose private mode. Your highest-converting content was the audio equipment review. Your 200 engaged consumers generated more ad value than comparable nodes with 10,000 passive followers."
+
+Right now, Meta knows these numbers. Google knows these numbers. Spotify knows these numbers. You don't.
+
+They've never shown you the receipt because the receipt is the evidence. The moment you see what your attention is worth and where the money actually goes, you can't unsee it. The opacity isn't a bug in the current system. The opacity is the product.
+
+Showing the number is an act of structural honesty that makes the extractive model visibly absurd by comparison.
+
+Most people will glance at their receipt once and keep scrolling. That's fine. The point isn't that everyone obsesses over it. The point is that they can. The point is that the system has nothing to hide.
+
+---
+
+## Two Streams, One Graph
+
+The toggle creates two parallel value streams flowing through the same infrastructure. That's not a compromise. That's the thing that makes the whole system legible.
+
+The ad stream shows behavioral truth. Who people actually spend time with. What they actually engage with. Which creators hold attention and which ones don't. This is the signal that the current ad industry spends billions trying to infer through surveillance. In this model it's a direct measurement — verified humans in real trust relationships, generating real engagement data that they've consented to share.
+
+The direct payment stream shows economic truth. Who people value enough to pay for with actual money. Which creators are worth the explicit choice of opening a wallet. This is the signal that platforms like Patreon and Substack have been trying to capture, except here it's integrated into the same graph as everything else.
+
+When both streams tell the same story about a creator — when the people who watch for free and the people who pay directly are both deeply engaged — that's the strongest signal in the network. That creator isn't gaming metrics. They aren't inflating engagement. They have behavioral evidence and economic evidence pointing in the same direction.
+
+And for the settlement layer, both streams produce .fair entries. An advertiser payment that routes through a consumer's ad profile to a creator looks different from a direct patron payment, but both end up as settlement instructions on the same chain. The creator sees one dashboard. Two income lines. Full attribution on both.
+
+This also means creators at different scales have different dominant revenue streams, and both are legitimate. The creator with a massive following lives primarily on ad flow — thousands of people whose ambient presence funds the work. The niche expert with a small devoted audience lives primarily on direct payments — a hundred patrons who chose to pay because the work is that specific and that good. Neither model requires the other to justify itself. Both are sustainable. Both are transparent. Both route through the same infrastructure.
+
+The two streams aren't a feature. They're the proof that the model is real. Because any system that only works one way is a system that hasn't solved the problem — it's just picked a side.
+
+---
+
 ## The Price Is Self-Regulating
 
 This is the part that sounds like it could be gamed and isn't.
