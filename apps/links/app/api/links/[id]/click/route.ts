@@ -29,9 +29,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const referrer = request.headers.get('referer');
     const referrerDomain = extractDomain(referrer);
 
-    // Get country from header if provided by CDN (Vercel, Cloudflare)
-    const country = request.headers.get('x-vercel-ip-country') || 
-                    request.headers.get('cf-ipcountry') ||
+    // Get country from header if provided by reverse proxy / CDN
+    const country = request.headers.get('cf-ipcountry') ||
+                    request.headers.get('x-country') ||
                     null;
 
     // Record click (minimal data)

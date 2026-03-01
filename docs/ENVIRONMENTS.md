@@ -1,103 +1,74 @@
 # Environment Configuration
 
-## Database Branches (Neon)
+## Database (Local Postgres)
 
-The platform uses Neon Postgres with branch-based environment isolation.
+All environments run on the self-hosted server (`imajin-server`, 192.168.1.193).
 
-| Environment | Neon Branch | Purpose |
-|-------------|-------------|---------|
-| Production | production | Live site (imajin.ai) |
-| Staging | staging | Vercel preview deployments |
-| Development | dev | Local development |
+| Environment | Database | User | Port |
+|-------------|----------|------|------|
+| Production | `imajin_prod` | `imajin` | 5432 |
+| Development | `imajin_dev` | `imajin_dev` | 5432 |
 
-### Connection Strings
-
-Get connection strings from Neon dashboard or CLI:
-
-```bash
-neonctl connection-string BRANCH_NAME --project-id YOUR_PROJECT_ID
+Connection string format:
+```
+DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/DATABASE"
 ```
 
-Format:
-```
-DATABASE_URL="postgresql://USER:PASSWORD@ENDPOINT.neon.tech/neondb?sslmode=require"
-```
+Postgres is open to LAN (192.168.1.0/24). `pg_stat_statements` enabled for query performance tracking.
 
-## Vercel Configuration
+## Services
 
-### Environment Variables
+All services run via **pm2** on the server. **Caddy** handles reverse proxy with auto-SSL.
 
-Set these in Vercel project settings:
+### Port Convention
 
-**Production** (imajin.ai):
-- `DATABASE_URL`: Production connection string
+- `3xxx` = development
+- `7xxx` = production
+- `x000-x099` = core platform services
+- `x400+` = client applications
 
-**Preview** (PR deployments):
-- `DATABASE_URL`: Staging connection string
+### pm2 Naming
 
-### Deployment Triggers
+- **Bare names** = production (e.g., `www`, `auth`, `events`)
+- **`dev-*` prefix** = development (e.g., `dev-www`, `dev-auth`, `dev-events`)
 
-- **Production**: Push to `main` branch
-- **Preview**: Pull request opened/updated
+## Deployment
 
-## Local Development
+- **GitHub Actions self-hosted runner** on imajin-server (org-level, label: `imajin`)
+- Push to `main` → CI → auto-deploy to **dev**
+- Push `v*` tag → deploy to **prod**
 
-1. Copy `.env.example` to `.env.local`
-2. Use the dev branch connection string
-3. Run `pnpm dev`
+### Deploy Pipeline
 
-```bash
-# Apps run on different ports:
-# www:      http://localhost:3000
-# auth:     http://localhost:3003
-# pay:      http://localhost:3004
-# profile:  http://localhost:3005
-# registry: http://localhost:3006
-```
+1. Runner pulls latest to `~/dev/imajin-ai` (or `~/prod/imajin-ai`)
+2. `pnpm install && pnpm build`
+3. `drizzle-kit push` for schema changes
+4. `pm2 restart` affected services
 
 ## Database Migrations
 
-Run migrations against the appropriate branch:
-
 ```bash
-# Development
-cd apps/www && pnpm db:push
+# On server — dev
+cd ~/dev/imajin-ai/apps/SERVICE
+DATABASE_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2) npx drizzle-kit push --force
 
-# Staging (set DATABASE_URL first)
-DATABASE_URL="staging-url" pnpm db:push
-
-# Production (be careful!)
-DATABASE_URL="production-url" pnpm db:push
+# On server — prod (be careful!)
+cd ~/prod/imajin-ai/apps/SERVICE
+DATABASE_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2) npx drizzle-kit push --force
 ```
 
-### Branch Workflow
+## Local Development
 
-1. Create feature branch in git
-2. Work locally against `dev` Neon branch
-3. Open PR → Vercel deploys to preview with `staging` DB
-4. Merge to main → Vercel deploys to production with `production` DB
-
-### Resetting Branches
-
-To reset staging to match production:
-
+To develop locally against the server DB, SSH tunnel:
 ```bash
-neonctl branches delete staging --project-id $NEON_PROJECT_ID
-neonctl branches create --name staging --parent production --project-id $NEON_PROJECT_ID
+ssh -f -N -L 5432:127.0.0.1:5432 jin@192.168.1.193
 ```
 
-## Neon CLI Commands
+Then use `localhost:5432` in your `.env.local`.
 
-```bash
-# List branches
-neonctl branches list --project-id $NEON_PROJECT_ID
+## Config
 
-# Create branch
-neonctl branches create --name BRANCH_NAME --parent production --project-id $NEON_PROJECT_ID
-
-# Delete branch
-neonctl branches delete BRANCH_NAME --project-id $NEON_PROJECT_ID
-
-# Get connection string
-neonctl connection-string BRANCH_NAME --project-id $NEON_PROJECT_ID
-```
+- **Caddy:** `/etc/caddy/Caddyfile`
+- **pm2 prod:** `~/prod/ecosystem.config.js`
+- **pm2 dev:** `~/dev/ecosystem.config.js`
+- **Env files:** `.env.local` in each app directory
