@@ -31,22 +31,22 @@ b0bby's World. What real connection looked like before the extraction model capt
 The autobiography of pattern recognition without formal training. The Datex years. The career built on the same mechanism as LLMs. The bottleneck dissolved by AI tools. Builds trust through honesty about how the brain works.
 
 **3. The Mask We All Wear**
-`essay-03-the-mask-we-all-wear.md` — REVIEW
+`essay-03-the-mask-we-all-wear.md` — POSTED
 
 The office and the feed as one extraction system with two interfaces. Exhaustion as the product. COVID and the memory of the gap. The ghost section. The most personal essay in the series. Makes everything feel human rather than technical.
 
 **4. The Internet That Pays You Back**
-`essay-04-the-internet-that-pays-you-back.md` — REVIEW
+`essay-04-the-internet-that-pays-you-back.md` — POSTED
 
 The vision in full. Trust graph model — sovereign presence, vouching relationships, inference fees circulating through human networks. UBI that emerges from architecture rather than redistribution. The first time the reader sees the whole shape.
 
 **5. You Don't Need Ads. You Need a Better Business Model.**
-`essay-05-you-dont-need-ads.md` — REVIEW
+`essay-05-you-dont-need-ads.md` — POSTED
 
 Open letter to Sam, Dario, Sundar, Elon. The inference business vs. the attention business. Trust graph as compute infrastructure. Safety at the social layer. The authority to say this is earned by now.
 
 **6. The Guild**
-`essay-06-the-guild.md` — REVIEW
+`essay-06-the-guild.md` — POSTED
 
 The sysop reimagined as operator. AI collapsed the technical barrier without collapsing the intentionality barrier. The credential was always the wrong filter — the trust graph is the right one. The vocational argument. Come run a node.
 

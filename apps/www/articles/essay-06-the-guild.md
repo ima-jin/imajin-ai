@@ -4,7 +4,7 @@ subtitle: "For the operators who knew it was wrong and built it anyway"
 description: "The invitation to operators. The Homebrew Computer Club guys. Unit 8200 alumni. The sysop role made available to everyone."
 date: "2026-02-22"
 author: "Ryan Veteze"
-status: "REVIEW"
+status: "POSTED"
 ---
 
 ## What a Sysop Actually Was
