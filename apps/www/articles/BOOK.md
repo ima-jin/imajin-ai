@@ -86,7 +86,15 @@ The book follows the essay series with interstitial personal essays between chap
 
 ---
 
-## Epilogue: How to Save the World by Partying
+## Finale: How to Save the World by Partying
+
+*If you were wondering what so much AI has to do with partying and saving the planet — well, here it is.*
+
+The last essay. The last personal essay. The reason for everything.
+
+You've read it all. Now here's what you do with it. Go party.
+
+The ultimate industrial model. How capitalism has screwed up partying since the inception of the rave. How capitalism coopted the coolest culture we've ever known. The most welcoming. The most universal. The most culturally aligned movement in modern history — and what it looks like when you take it back.
 
 The only chapter that requires reading the full book first.
 
@@ -94,7 +102,7 @@ Dedications: To Debbie. Bush. Geordie for showing me the gift of AI. The Good Ti
 
 *If you see yourself in this, you're invited to our party in Guelph. Send me an email. ryan@imajin.ai.*
 
-Respondents are interviewed. The party is the credential. The trust graph starts with comprehension.
+Respondents are interviewed and tested on how they've absorbed the material. The party is the credential. The trust graph starts with comprehension.
 
 ---
 
