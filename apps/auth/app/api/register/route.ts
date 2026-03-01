@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Require invite code for new registrations (skip in dev with DISABLE_INVITE_GATE=true)
-    const inviteGateDisabled = process.env.DISABLE_INVITE_GATE === 'true';
+    const inviteGateDisabled = process.env.NEXT_PUBLIC_DISABLE_INVITE_GATE === 'true';
     let inviteData: { fromDid: string; fromHandle?: string } | null = null;
 
     if (!inviteGateDisabled) {

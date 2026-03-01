@@ -81,8 +81,16 @@ function RegisterPage() {
   const [inviteValid, setInviteValid] = useState<boolean | null>(null);
   const [checking, setChecking] = useState(true);
 
-  // Validate invite code on mount
+  // Validate invite code on mount (skip in dev with NEXT_PUBLIC_DISABLE_INVITE_GATE=true)
+  const inviteGateDisabled = process.env.NEXT_PUBLIC_DISABLE_INVITE_GATE === 'true';
+
   useEffect(() => {
+    if (inviteGateDisabled) {
+      setChecking(false);
+      setInviteValid(true);
+      return;
+    }
+
     if (!inviteCode) {
       setChecking(false);
       setInviteValid(false);
@@ -105,7 +113,7 @@ function RegisterPage() {
       })
       .catch(() => setInviteValid(false))
       .finally(() => setChecking(false));
-  }, [inviteCode]);
+  }, [inviteCode, inviteGateDisabled]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
