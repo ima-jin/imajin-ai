@@ -84,6 +84,7 @@ Opens on Friday the 13th — the sleeping bag image. Horrible. Permanent. His. I
 ---
 
 ### Interstitial: The Cult of the Vettese's
+`essay-11-interstitial-01-cult-of-vetteses.md`
 *Personal essay.*
 
 ---
@@ -93,7 +94,7 @@ Opens on Friday the 13th — the sleeping bag image. Horrible. Permanent. His. I
 *The tool. How to wield it.*
 
 **12. You Already Know Something**
-`essay-12-how-to-save-the-ad-industry` — DRAFT
+`essay-12-you-already-know-something.md` — DRAFT
 
 For the person who thinks this isn't for them. The parent, the caregiver, the bartender, the long-time local, the person who renovated their house, the person who managed a chronic illness. Domain knowledge you didn't know you had. Seven roles: consumer, curator, learner, local expert, operator, connector, patron. The widest-aperture piece — stops talking to builders and starts talking to everybody.
 
@@ -112,6 +113,7 @@ The .fair protocol as attribution infrastructure. Starts with WeR1 in Johannesbu
 ---
 
 ### Interstitial: The Cult of Good Times
+`essay-15-interstitial-02-cult-of-good-times.md`
 *Personal essay.*
 
 ---
@@ -155,6 +157,7 @@ The pipe between the listener and the artist is broken. Trace a dollar through S
 ---
 
 ### Interstitial: The Cult of Community
+`essay-22-interstitial-03-cult-of-community-preamble.md`
 *Personal essay. What community actually feels like before you systematize it.*
 
 ---
@@ -168,8 +171,8 @@ The pipe between the listener and the artist is broken. Trace a dollar through S
 
 Now covers six industries: advertising ($700B), music ($100B), media streaming ($150B), journalism ($150B), education ($6T credentialing), SaaS/platforms ($300B+). Plus pass-through transaction volume from every headless service settling through MJN. Revenue from transaction one — no critical mass required. Five revenue streams: settlement fees, ad layer routing, headless service settlement, education settlement, trust graph queries. Depth over reach. The economics that work at one transaction and compound from there.
 
-**24. The Connector**
-`essay-24-revenue-from-day-one.md` — REVIEW
+**24. Revenue from Day One**
+`essay-24-revenue-from-day-one.md` — DRAFT
 
 **25. The Connector**
 `essay-25-the-connector.md` — REVIEW
@@ -192,7 +195,7 @@ The firehose is broken. Creators blast everything everywhere because the infrast
 The most personal essay in the series, after the most vulnerable. Autistic pattern recognition — forty years of seeing the whole shape, unable to get it into language. AI as accessibility tool, not writing tool. The bridge between a mind that sees in patterns and a world that communicates in sequences. Twenty-three essays in a month from someone who couldn't write a paragraph. The proof of everything the series argues. "I hope you liked it. Now go create."
 
 **29. How Partying Can Save Us**
-`essay-29-how-to-save-the-world-by-partying` — DRAFT
+`essay-29-how-partying-can-save-us.md` — DRAFT
 
 ## Finale: 
 
