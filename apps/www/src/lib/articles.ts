@@ -27,6 +27,7 @@ export interface Article extends ArticleMeta {
 
 // Map essay numbers to URL slugs
 const slugMap: Record<string, string> = {
+  'essay-00-prologue': 'prologue',
   'essay-01-the-internet-we-lost': 'the-internet-we-lost',
   'essay-02-the-artificial-developer': 'the-artificial-developer',
   'essay-03-the-mask-we-all-wear': 'the-mask-we-all-wear',
@@ -66,7 +67,7 @@ function getOrderFromFilename(filename: string): number {
 export function getAllArticleSlugs(): string[] {
   const filenames = fs.readdirSync(articlesDirectory);
   return filenames
-    .filter((name) => name.startsWith('essay-') && name.endsWith('.md') && !name.startsWith('essay-00'))
+    .filter((name) => name.startsWith('essay-') && name.endsWith('.md'))
     .map((name) => {
       const baseName = name.replace('.md', '');
       return slugMap[baseName];
@@ -77,7 +78,7 @@ export function getAllArticleSlugs(): string[] {
 export function getAllArticles(): ArticleMeta[] {
   const filenames = fs.readdirSync(articlesDirectory);
   const articles = filenames
-    .filter((name) => name.startsWith('essay-') && name.endsWith('.md') && !name.startsWith('essay-00'))
+    .filter((name) => name.startsWith('essay-') && name.endsWith('.md'))
     .map((filename) => {
       const baseName = filename.replace('.md', '');
       const slug = slugMap[baseName] || baseName;
@@ -118,6 +119,7 @@ export function getAllArticles(): ArticleMeta[] {
         order: getOrderFromFilename(filename),
       };
     })
+    .filter((a) => a.status === 'POSTED')
     .sort((a, b) => a.order - b.order);
 
   return articles;

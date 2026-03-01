@@ -10,6 +10,8 @@ export const profiles = pgTable('profiles', {
   displayType: text('display_type').notNull(),                // 'human' | 'agent' | 'device' | 'org' | 'event' | 'service'
   avatar: text('avatar'),                                     // URL or emoji
   bio: text('bio'),
+  email: text('email'),                                       // contact email (plaintext for now)
+  phone: text('phone'),                                       // contact phone (plaintext for now)
   // invitedBy moved to connections service
   metadata: jsonb('metadata').default({}),                    // location, website, etc.
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),

@@ -61,12 +61,14 @@ export default function Home() {
       </div>
       
       {/* CTA */}
-      <Link
-        href="/register"
+      <a
+        href="https://discord.gg/6hkQW3uw4m"
+        target="_blank"
+        rel="noopener noreferrer"
         className="px-8 py-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors"
       >
-        Get Updates
-      </Link>
+        Join the Community
+      </a>
 
       {/* Support */}
       <a

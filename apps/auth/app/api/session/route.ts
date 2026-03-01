@@ -52,11 +52,13 @@ export async function GET(request: NextRequest) {
       return response;
     }
 
+    const metadata = identity[0].metadata as Record<string, unknown> || {};
     return NextResponse.json({
       did: session.sub,
       handle: identity[0].handle || session.handle,
       type: identity[0].type || session.type,
       name: identity[0].name || session.name,
+      role: metadata.role || 'member',
     }, { headers: cors });
 
   } catch (error) {
