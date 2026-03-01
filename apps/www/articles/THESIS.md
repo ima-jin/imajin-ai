@@ -19,6 +19,7 @@ The concepts build on each other. Each one requires the ones above it.
 7. **The Settlement Layer** — How money moves
 8. **MJN** — What the token does
 9. **The Consumer Model** — But how the fuck are we going to make money?
+10. **Redistribution** — Where the money goes after it flows
 
 ---
 
@@ -173,6 +174,25 @@ TODO: This is the piece that makes everything above economically real. The consu
 
 ---
 
+## 10. Redistribution
+
+*Where the money goes after it flows.*
+
+TODO: The knowledge economy will concentrate currency toward the top of the chain. That's not a bug — domain experts *should* earn outsized returns. The question is what happens next.
+
+On the current internet, concentration is invisible. You can't see where a creator's money goes after they earn it. On this network, every participant has a distribution chain — a visible, inspectable record of where their earnings flow. Who they support. What causes they fund. Which businesses they route through.
+
+- **Transparent chains** — When you query a knowledge leader, you're not just paying for their expertise. You're funding their entire distribution chain. If that chain supports environmental causes, local initiatives, and friends — your money compounds those values. If it's full of obfuscated business entities and offshore shells, that's a red flag you can actually *see*.
+- **Compounding values** — Consumers don't just choose who to pay. They choose whose *values* to amplify. Every query is a vote for an entire chain of downstream effects. This compounds. A knowledge leader who routes earnings into their community attracts more queries from people who share those values.
+- **Natural redistribution** — No taxation. No forced redistribution. Just transparency. When people can see where money flows after it reaches someone, they route toward chains that reflect their values. Redistribution becomes a market signal, not a policy debate.
+- **The accountability loop** — Concentration without transparency produces oligarchs. Concentration with transparency produces leaders. The distribution chain is what turns one into the other.
+
+**The principle:** It's not about preventing concentration. It's about making concentration accountable. When every dollar's downstream journey is visible, people vote with their queries. Redistribution stops being politics and starts being architecture.
+
+**Key essays:** 4 (The Internet That Pays You Back), 14 (Honor the Chain), 27 (Around, Not Up)
+
+---
+
 ## Concept Dependencies
 
 ```
@@ -185,11 +205,12 @@ The Problem
                             └── The Settlement Layer
                                     └── MJN
                                             └── The Consumer Model
+                                                    └── Redistribution
 ```
 
-Everything flows down. You can't understand the consumer model without the settlement layer. You can't understand settlement without .fair. You can't understand .fair without the trust graph. And none of it matters without sovereign identity.
+Everything flows down. You can't understand redistribution without the consumer model. You can't understand the consumer model without the settlement layer. You can't understand settlement without .fair. And none of it matters without sovereign identity.
 
-The consumer model is last because it's the *payoff*. It's the answer to "okay but how does this make money." And the answer is: the humans. The humans are the economy. They always were. We just stopped letting them participate on their own terms.
+The consumer model answers "how does this make money." Redistribution answers "where does the money go." And the answer is: wherever the chain says, visibly, inspectably, accountably. Concentration isn't the enemy. Opacity is.
 
 ---
 
