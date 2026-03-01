@@ -1,7 +1,5 @@
 packages:
   - 'apps/*'
   - 'packages/*'
-  - '../imajin-events'
-  - '../imajin-chat'
   - '../imajin-fixready'
   - '../imajin-karaoke'

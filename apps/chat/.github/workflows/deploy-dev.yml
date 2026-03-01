@@ -1,0 +1,36 @@
+name: Deploy to Dev
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    env:
+      PATH: /home/jin/.nvm/versions/node/v22.22.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+    steps:
+      - name: Pull latest
+        run: |
+          cd /home/jin/dev/imajin-chat
+          git fetch origin main
+          git reset --hard origin/main
+
+      - name: Install dependencies
+        run: |
+          cd /home/jin/dev/imajin-ai
+          pnpm install --no-frozen-lockfile
+
+      - name: Build
+        run: |
+          cd /home/jin/dev/imajin-chat
+          npm run build
+
+      - name: Push schema
+        run: |
+          cd /home/jin/dev/imajin-chat
+          DATABASE_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2) npx drizzle-kit push --force 2>&1 | tail -2
+
+      - name: Restart
+        run: pm2 restart chat
