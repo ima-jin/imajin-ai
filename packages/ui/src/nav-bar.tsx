@@ -15,26 +15,43 @@ export interface NavIdentity {
   onRegister?: () => void;
 }
 
+export interface ServiceUrls {
+  www?: string;
+  events?: string;
+  auth?: string;
+  connections?: string;
+  chat?: string;
+  profile?: string;
+  pay?: string;
+  registry?: string;
+}
+
 export interface NavBarProps {
   currentService?: string;
   servicePrefix?: string;
   domain?: string;
   identity?: NavIdentity;
   unreadMessages?: number;
+  serviceUrls?: ServiceUrls;
 }
 
-function buildServices(prefix: string, domain: string) {
+function buildUrl(service: string, prefix: string, domain: string, overrides?: ServiceUrls) {
+  const url = overrides?.[service as keyof ServiceUrls];
+  return url || `${prefix}${service}.${domain}`;
+}
+
+function buildServices(prefix: string, domain: string, overrides?: ServiceUrls) {
   return [
-    { name: 'Home', href: `${prefix}www.${domain}` },
-    { name: 'Events', href: `${prefix}events.${domain}` },
+    { name: 'Home', href: buildUrl('www', prefix, domain, overrides) },
+    { name: 'Events', href: buildUrl('events', prefix, domain, overrides) },
   ];
 }
 
-function buildUserLinks(prefix: string, domain: string) {
+function buildUserLinks(prefix: string, domain: string, overrides?: ServiceUrls) {
   return {
-    connections: `${prefix}connections.${domain}`,
-    messages: `${prefix}chat.${domain}`,
-    profile: `${prefix}profile.${domain}`,
+    connections: buildUrl('connections', prefix, domain, overrides),
+    messages: buildUrl('chat', prefix, domain, overrides),
+    profile: buildUrl('profile', prefix, domain, overrides),
   };
 }
 
@@ -42,14 +59,14 @@ function buildUserLinks(prefix: string, domain: string) {
  * Hook that auto-fetches identity from auth service when no identity prop is provided.
  * Uses the cross-domain session cookie on .imajin.ai
  */
-function useAutoIdentity(servicePrefix: string, domain: string): NavIdentity | null {
+function useAutoIdentity(servicePrefix: string, domain: string, overrides?: ServiceUrls): NavIdentity | null {
   const [identity, setIdentity] = useState<NavIdentity | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const authUrl = `${servicePrefix}auth.${domain}`;
-    const profileUrl = `${servicePrefix}profile.${domain}`;
+    const authUrl = buildUrl('auth', servicePrefix, domain, overrides);
+    const profileUrl = buildUrl('profile', servicePrefix, domain, overrides);
 
     async function checkSession() {
       try {
@@ -100,7 +117,7 @@ function useAutoIdentity(servicePrefix: string, domain: string): NavIdentity | n
     }
 
     checkSession();
-  }, [servicePrefix, domain]);
+  }, [servicePrefix, domain, overrides]);
 
   return identity;
 }
@@ -111,16 +128,17 @@ export function NavBar({
   domain = 'imajin.ai',
   identity: identityProp,
   unreadMessages = 0,
+  serviceUrls,
 }: NavBarProps) {
-  const services = buildServices(servicePrefix, domain);
-  const userLinks = buildUserLinks(servicePrefix, domain);
+  const services = buildServices(servicePrefix, domain, serviceUrls);
+  const userLinks = buildUserLinks(servicePrefix, domain, serviceUrls);
   const isDev = servicePrefix.includes('dev-');
   const [showDropdown, setShowDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Auto-fetch identity if no prop provided
-  const autoIdentity = useAutoIdentity(servicePrefix, domain);
+  const autoIdentity = useAutoIdentity(servicePrefix, domain, serviceUrls);
   const identity = identityProp ?? autoIdentity;
 
   useEffect(() => {
@@ -145,7 +163,7 @@ export function NavBar({
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         {/* Logo */}
         <a
-          href={`${servicePrefix}www.${domain}`}
+          href={buildUrl('www', servicePrefix, domain, serviceUrls)}
           className="flex items-center gap-2 font-bold text-lg hover:opacity-80 transition"
         >
           <span className="text-2xl">🟠</span>
