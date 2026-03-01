@@ -206,6 +206,12 @@ The pitch that breaks VC logic. Every platform in history: grow then monetize. T
 
 ---
 
+## File Numbering Note
+
+The essay file numbers in the repository no longer match the sequence order due to insertions. A renumbering pass is needed. The sequence in this document is authoritative.
+
+---
+
 ## Post-Launch Essays (not in main sequence)
 
 **Around, Not Up**
