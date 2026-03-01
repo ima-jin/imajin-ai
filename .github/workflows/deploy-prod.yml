@@ -27,12 +27,12 @@ jobs:
 
       - name: Push schemas
         run: |
-          for app in auth profile registry www; do
+          for app in auth profile registry www events chat; do
             cd /home/jin/prod/imajin-ai/apps/$app
             DATABASE_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2) npx drizzle-kit push --force 2>&1 | tail -2
           done
 
       - name: Restart prod services
         run: |
-          pm2 restart prod-www prod-auth prod-pay prod-profile prod-registry 2>/dev/null || true
+          pm2 restart www auth pay profile events chat registry connections 2>/dev/null || true
           echo "Prod services restarted"

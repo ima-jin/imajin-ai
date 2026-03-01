@@ -30,16 +30,12 @@ jobs:
 
       - name: Push schemas
         run: |
-          for app in auth profile registry www; do
+          for app in auth profile registry www events chat; do
             cd /home/jin/dev/imajin-ai/apps/$app
-            DATABASE_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2) npx drizzle-kit push --force 2>&1 | tail -2
-          done
-          for app in imajin-events imajin-chat; do
-            cd /home/jin/dev/$app
             DATABASE_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2) npx drizzle-kit push --force 2>&1 | tail -2
           done
 
       - name: Restart dev services
         run: |
-          pm2 restart www auth pay profile events chat registry 2>/dev/null || true
+          pm2 restart dev-www dev-auth dev-pay dev-profile dev-events dev-chat dev-registry dev-connections 2>/dev/null || true
           echo "Dev services restarted"
