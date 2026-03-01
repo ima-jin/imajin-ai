@@ -7,6 +7,10 @@ author: "Ryan Veteze"
 status: "DRAFT"
 ---
 
+*This is a follow-on to [The Business Case for Building on Human Trust](/articles/essay-23-imajin-business-case), which covers the market opportunity — $800B flowing through platforms that don't pay the people who create the value. This essay covers the part that follows: why the economics work before anyone else shows up.*
+
+---
+
 ## The Lie Everyone Believes
 
 Every platform pitch in history follows the same arc.
@@ -75,21 +79,13 @@ That's not a network effect in the conventional sense. That's a depth effect. An
 
 ---
 
-## The Five Revenue Streams
+## The Revenue Streams
 
-Let's be specific about where the money comes from.
+The previous essay laid out five specific streams: settlement fees, ad layer routing, headless service settlement, education settlement, and trust graph queries. None of them require critical mass. All of them produce revenue from the first transaction. All of them scale with transaction volume and compound as the trust graph deepens.
 
-**Settlement fees.** Every .fair transaction — every content purchase, every tip, every lesson sale, every inference query, every service interaction — settles through the protocol. Small fee on each. This is the base layer. The water flowing through the pipe.
+The one worth calling out again here: trust graph queries. When an AI system needs domain expertise it can't find in training data, it queries the trust graph. The query routes to the verified human with the relevant knowledge. The inference fee settles through .fair. This is the revenue stream that doesn't exist yet in any other model — the one that emerges when human knowledge becomes queryable infrastructure. It has no analog in the platform economy. It has no ceiling tied to ad rates or subscription churn. It grows with the density of verified expertise in the network.
 
-**Ad layer routing.** When consumers opt in to the ad economy, their presence generates value that flows through the trust graph to creators. The infrastructure that routes the ad payment — matching verified humans to advertiser queries, settling the consent-based transaction, attributing the conversion — takes a fee. This isn't imajin selling ads. It's imajin being the settlement layer for an ad economy run by verified humans.
-
-**Headless service settlement.** Every SaaS that goes headless and enters the chain settles its transactions through .fair. Every API call. Every computation. Every service interaction. The infrastructure fee on headless service settlement is where the pass-through cash flow lives — the thing that makes the total addressable market much larger than just content industries.
-
-**Education settlement.** Every course, every lesson, every accreditation interaction on learn.imajin.ai settles through the same protocol. Teachers setting their own prices. Students paying for knowledge that's verified through the trust graph. Infrastructure fee on each.
-
-**Trust graph queries.** When an AI system needs domain expertise it can't find in training data, it queries the trust graph. The query routes to the verified human with the relevant knowledge. The inference fee settles through .fair. Infrastructure fee on each. This is the revenue stream that doesn't exist yet in any other model — the one that emerges when human knowledge becomes queryable infrastructure.
-
-None of these require critical mass. All of them produce revenue from the first transaction. All of them scale with transaction volume. All of them compound as the trust graph deepens.
+That stream doesn't start at critical mass either. It starts when the first domain expert joins and the first AI query can't find the answer in training data.
 
 ---
 

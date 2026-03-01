@@ -55,11 +55,6 @@ The sysop reimagined as operator. AI collapsed the technical barrier without col
 
 What imajin actually is as a category of thing. Not a platform. Distributed utility infrastructure — like the electric grid, like water, like the phone network before deregulation. Standards any operator can meet. No single point of capture. The load-bearing essay.
 
-**8. The Burn**
-`draft-08-the-burn.md` — REVIEW
-
-Fired the Monday the site launched. Three weeks rewriting the CLI from scratch. South Africa. AfrikaBurn. The 45-hour drive. Nearly killed him. What sustainable actually feels like after the crash — the relaxed cadence. Honest about what this kind of building costs before you find the right rhythm.
-
 ---
 
 ### Interstitial: ?
@@ -71,33 +66,22 @@ Fired the Monday the site launched. Three weeks rewriting the CLI from scratch. 
 
 *What we're building and why it works.*
 
-**9. The Network That Never Died**
-`draft-09-the-network.md` — REVIEW
-
-Happy Boat. b0bby's World. Mayhem. Joel. James. Jeff. The thread that runs unbroken from 1991 to April 1st 2026. The trust graph that existed before the software. Personal, not a manifesto. Just: here are the people.
-
-**10. The Bridge**
-`draft-10-the-bridge.md` — REVIEW
-
-The authenticated agent layer. Hilary with 400k followers and 123 WordPress subscribers — the reel as door, the node as room. Claude posting through sovereign identity. The thing Elon can't describe because he'd have to give up the rails. April 1st as live proof.
-
-**11. The Ticket Is the Trust**
-`essay-11-ticketing.md` — REVIEW
+**8. The Ticket Is the Trust**
+`essay-08-ticketing.md` — REVIEW
 
 Ticketmaster as the clearest example of a trust middleman extracting rent from a relationship it doesn't own. A ticket is a signed assertion you belong in a room — on the imajin network that problem is already solved without the 30% surcharge. Everyone has a bad Ticketmaster story; this is where the architecture becomes obvious.
 
-**12. The Practice**
-`essay-12-nodes-types-and-practice.md` — REVIEW
+**9. The Practice**
+`essay-09-nodes-types-and-practice.md` — REVIEW
 
 The ground-level operator manual. Start with a birthday party. Run an event node. Family nodes. Community nodes. Business nodes. The operator emerges through practice, not theory. Where the abstract becomes operational.
 
-**13. Memory**
-`essay-13-memory.md` — REVIEW
+**10. Memory**
+`essay-10-memory.md` — REVIEW
 
 Opens on Friday the 13th — the sleeping bag image. Horrible. Permanent. His. Instagram Memories and Spotify Wrapped are receipts, not memory. The node as permanent signed record belonging to the people who made it, not the platform. The philosophical ground under the permanence of nodes.
 
 ---
-
 
 ### Interstitial: The Cult of the Vettese's
 *Personal essay.*
@@ -108,20 +92,20 @@ Opens on Friday the 13th — the sleeping bag image. Horrible. Permanent. His. I
 
 *The tool. How to wield it.*
 
-**14. You Already Know Something**
-`essay-14-how-to-save-the-ad-industry` — DRAFT
+**12. You Already Know Something**
+`essay-12-how-to-save-the-ad-industry` — DRAFT
 
 For the person who thinks this isn't for them. The parent, the caregiver, the bartender, the long-time local, the person who renovated their house, the person who managed a chronic illness. Domain knowledge you didn't know you had. Seven roles: consumer, curator, learner, local expert, operator, connector, patron. The widest-aperture piece — stops talking to builders and starts talking to everybody.
 
-**15. How to Use AI Properly**
-`essay-15-how-to-use-ai-properly.md` — DRAFT
+**13. How to Use AI Properly**
+`essay-13-how-to-use-ai-properly.md` — DRAFT
 
 The wrong conversation: "will AI take my job?" The real answer: if you don't know anything, yes. If you do, AI just made you the most valuable person in the room. The amplification effect. How most people use it wrong. The sovereign AI user — the model pays you instead of extracting from you. Hands the reader the weapon before the save series shows them what to aim it at.
 
 *Appendices follow sequentially after the Finale. See below.*
 
-**16. Honor the Chain**
-`essay-16-honor-the-chain.md` — REVIEW
+**14. Honor the Chain**
+`essay-14-honor-the-chain.md` — REVIEW
 
 The .fair protocol as attribution infrastructure. Starts with WeR1 in Johannesburg — a distribution algorithm that solved how money moves through a chain of contributors, revealing the deeper problem: you can't fix distribution without fixing attribution first. The .fair manifest — cryptographically signed, embedded in the work itself, carrying the complete chain of human creative labor. Immutable. Owned by nobody. Verifiable by anyone. The protocol that makes everything in Part IV executable.
 
@@ -136,35 +120,35 @@ The .fair protocol as attribution infrastructure. Starts with WeR1 in Johannesbu
 
 *Six industries. Same disease. Same cure.*
 
-**17. How to Save Education**
-`essay-17-how-to-save-education.md` — DRAFT
+**16. How to Save Education**
+`essay-16-how-to-save-education.md` — DRAFT
 
 The first in the save series because it's the most universal and introduces learn.imajin.ai. Domain knowledge is the last defensible asset on earth. The $6 trillion credential treadmill. Teach people how to teach. The teacher economy — knowledge that never stops earning, attribution that extends through every student. The apprenticeship the architecture produces naturally. Five services: profile, auth, registry, chat, learn. The guild's front door.
 
-**18. How to Save Journalism**
-`essay-18-how-to-save-journalism.md` — REVIEW
+**17. How to Save Journalism**
+`essay-17-how-to-save-journalism.md` — REVIEW
 
 Open letter to the journalists still fighting, the billionaires who broke it, and the communities who never got it. Journalism's crisis is not a revenue model problem — it's a capture problem. The sovereign press node. The reader relationship that doesn't depend on a platform that can be bought or killed.
 
-**19. How to Save the Music Industry**
-`essay-19-how-to-save-the-music-industry.md` — REVIEW
+**18. How to Save the Music Industry**
+`essay-18-how-to-save-the-music-industry.md` — REVIEW
 
 Open letter to Daniel Ek, Lucian Grainge, and the artists they're both failing. Distinct from the streaming essay — this is about the relationship, not the pipe. Music started as trust infrastructure — the griot, the troubadour, the talking drum. What the direct artist-listener relationship looks like when the trust graph replaces the platform as the distribution layer.
 
-**20. How to Save the Ad Industry**
-`essay-20-how-to-save-the-ad-industry.md` — REVIEW (+ new sections drafted)
+**19. How to Save the Ad Industry**
+`essay-19-how-to-save-the-ad-industry.md` — REVIEW (+ new sections drafted)
 
 The consent was stolen. Advertising was originally one person telling another person about something worth knowing — the vouch, not the eyeball. Verified humans selling access to themselves on their own terms, at their own price, through a trust graph that proves who they are without surveillance.
 
 *New sections to integrate:* The consumer toggle (ads on = free, ads off = pay direct), the receipt (full transparency on what your participation generates), two streams validating each other (behavioral truth from ad flow, economic truth from direct payment).
 
-**21. How to Save the Platforms**
-`essay-21-how-to-save-the-platforms.md` — DRAFT
+**20. How to Save the Platforms**
+`essay-20-how-to-save-the-platforms.md` — DRAFT
 
 Open letter to Mark, to Elon, to the engineers who built something real. The engineering was always good — Facebook's graph, Instagram's pipeline, Twitter's propagation. The extraction was the disease. Go headless. Enter the chain. Every platform is a bundle of services wrapped in an extraction layer — unbundle them, expose each as a headless service settling through .fair. The middleman isn't replaced by a different middleman. The middleman disappears. MJN as the rewards substrate. Incumbents make more money because the market for their actual computation is vastly larger than the market for their enclosed platform.
 
-**22. How to Save Media Streaming**
-`essay-22-how-to-save-media-streaming.md` — DRAFT
+**21. How to Save Media Streaming**
+`essay-21-how-to-save-media-streaming.md` — DRAFT
 
 The pipe between the listener and the artist is broken. Trace a dollar through Spotify's pool model — a million streams pays $4,000, the artist sees $800. Twitch takes 50%. YouTube takes 30%. Every vertical, same disease. Inspired by WeR1: their distribution algorithm proved the play can find the artist directly, in real time, with proportional attribution. The .fair manifest completes what WeR1 started — every play settles to every contributor in the chain. The back catalogue comes alive. The live stream becomes a permanent earning node. Podcasting needs the economic layer it was always missing.
 
@@ -185,27 +169,30 @@ The pipe between the listener and the artist is broken. Trace a dollar through S
 Now covers six industries: advertising ($700B), music ($100B), media streaming ($150B), journalism ($150B), education ($6T credentialing), SaaS/platforms ($300B+). Plus pass-through transaction volume from every headless service settling through MJN. Revenue from transaction one — no critical mass required. Five revenue streams: settlement fees, ad layer routing, headless service settlement, education settlement, trust graph queries. Depth over reach. The economics that work at one transaction and compound from there.
 
 **24. The Connector**
-`essay-24-the-connector.md` — REVIEW
+`essay-24-revenue-from-day-one.md` — REVIEW
+
+**25. The Connector**
+`essay-25-the-connector.md` — REVIEW
 
 For the person who dies with the pattern in their head. The griot, the troubadour, the BBS sysop — the connector across history, always running on personal energy, invisible to every compensation system. The mesh changes that. Connection encoded is permanent, queryable. Every introduction becomes infrastructure instead of memory. The emotional landing after the save series.
 
-**25. I Need Help**
-`essay-25-i-need-help.md` — REVIEW
+**26. I Need Help**
+`essay-26-i-need-help.md` — REVIEW
 
 The thing founders aren't supposed to say. Twenty-three essays of proof laid down, then the honest ask: financial backing, dev help, other brains, community. Not performed vulnerability — a genuine accounting of what it costs to be the node and the network simultaneously. Four specific asks, signed and attributed, with a return address. Models the behavior the whole infrastructure enables.
 
-**26. Around, Not Up**
-`essay-26-around-not-up.md` — DRAFT
+**27. Around, Not Up**
+`essay-27-around-not-up.md` — DRAFT
 
 The firehose is broken. Creators blast everything everywhere because the infrastructure doesn't support precision. There used to be concentric rings of taste — human curation operating through trust — and platforms collapsed them, made every signal equidistant. The trust graph restores those rings. Your work has to survive your inner circle before it earns distance. Curation becomes economically rational for the first time.
 
-**27. How AI Saved Me**
-`essay-27-how-ai-saved-me.md` — DRAFT
+**28. How AI Saved Me**
+`essay-28-how-ai-saved-me.md` — DRAFT
 
 The most personal essay in the series, after the most vulnerable. Autistic pattern recognition — forty years of seeing the whole shape, unable to get it into language. AI as accessibility tool, not writing tool. The bridge between a mind that sees in patterns and a world that communicates in sequences. Twenty-three essays in a month from someone who couldn't write a paragraph. The proof of everything the series argues. "I hope you liked it. Now go create."
 
-**28. How Partying Can Save Us**
-`essay-28-how-to-save-the-world-by-partying` — DRAFT
+**29. How Partying Can Save Us**
+`essay-29-how-to-save-the-world-by-partying` — DRAFT
 
 ## Finale: 
 
