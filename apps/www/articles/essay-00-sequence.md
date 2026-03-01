@@ -51,7 +51,7 @@ Open letter to Sam, Dario, Sundar, Elon. The inference business vs. the attentio
 The sysop reimagined as operator. AI collapsed the technical barrier without collapsing the intentionality barrier. The credential was always the wrong filter — the trust graph is the right one. The vocational argument. Come run a node.
 
 **7. The Utility**
-`essay-07-utility.md` — REVIEW
+`essay-07-utility.md` — POSTED
 
 What imajin actually is as a category of thing. Not a platform. Distributed utility infrastructure — like the electric grid, like water, like the phone network before deregulation. Standards any operator can meet. No single point of capture. The load-bearing essay.
 
@@ -62,8 +62,8 @@ Fired the Monday the site launched. Three weeks rewriting the CLI from scratch. 
 
 ---
 
-### Interstitial: The Cult of Community
-*Personal essay. What community actually feels like before you systematize it.*
+### Interstitial: ?
+*Personal essay.*
 
 ---
 
@@ -98,8 +98,9 @@ Opens on Friday the 13th — the sleeping bag image. Horrible. Permanent. His. I
 
 ---
 
-### Interstitial: The Good Times Gang
-*Personal essay. The crew. The people the platforms failed. The reason all of this exists.*
+
+### Interstitial: The Cult of the Vettese's
+*Personal essay.*
 
 ---
 
@@ -123,6 +124,11 @@ The wrong conversation: "will AI take my job?" The real answer: if you don't kno
 `essay-16-honor-the-chain.md` — REVIEW
 
 The .fair protocol as attribution infrastructure. Starts with WeR1 in Johannesburg — a distribution algorithm that solved how money moves through a chain of contributors, revealing the deeper problem: you can't fix distribution without fixing attribution first. The .fair manifest — cryptographically signed, embedded in the work itself, carrying the complete chain of human creative labor. Immutable. Owned by nobody. Verifiable by anyone. The protocol that makes everything in Part IV executable.
+
+---
+
+### Interstitial: The Cult of Good Times
+*Personal essay.*
 
 ---
 
@@ -164,6 +170,11 @@ The pipe between the listener and the artist is broken. Trace a dollar through S
 
 ---
 
+### Interstitial: The Cult of Community
+*Personal essay. What community actually feels like before you systematize it.*
+
+---
+
 ## Part V: The Close
 
 *The human. The protocol. The numbers. The ask. The reveal.*
@@ -193,7 +204,7 @@ The firehose is broken. Creators blast everything everywhere because the infrast
 
 The most personal essay in the series, after the most vulnerable. Autistic pattern recognition — forty years of seeing the whole shape, unable to get it into language. AI as accessibility tool, not writing tool. The bridge between a mind that sees in patterns and a world that communicates in sequences. Twenty-three essays in a month from someone who couldn't write a paragraph. The proof of everything the series argues. "I hope you liked it. Now go create."
 
-**27. How to Save the World by Partying**
+**28. How Partying Can Save Us**
 `essay-28-how-to-save-the-world-by-partying` — DRAFT
 
 ## Finale: 

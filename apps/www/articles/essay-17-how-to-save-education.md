@@ -27,6 +27,8 @@ The mixing engineer who hears the problem before the waveform shows it. The jour
 
 That's domain knowledge. The thing that lives in the body, in the hands, in thirty years of pattern recognition built through actually doing the work. No model has it. No model can have it. Because it was never in the training data. It was in the doing.
 
+The entire internet economy has been built on the premise that information is the product. It isn't. Never was. The product is judgment. The product is taste. The product is the thing the expert knows that they can't fully articulate, that took decades to accumulate, that only becomes visible when you watch them work.
+
 Domain knowledge is the last defensible asset on earth. And right now, the people who have the most of it are the people getting paid the least for it.
 
 ---
@@ -53,35 +55,13 @@ The treadmill is the business model.
 
 ---
 
-## What the Teacher Actually Has
+## What Accreditation Actually Means
 
-Here's what happens to the thirty-year expert in the current economy.
+Here's the trust graph version.
 
-They get hired. They get a salary. They transfer their knowledge to younger employees or students. Eventually they get expensive and get replaced. Their knowledge leaves with them — dispersed into the people they trained, who got the credit for applying it, who have no structural obligation to acknowledge the source.
+A teacher builds a course on their node. Not on Udemy, where the platform owns the distribution and the algorithm decides who sees it. On their own node. Through their own trust graph. Priced at what their knowledge is actually worth — determined by the teacher, validated by the market, not by a race to the bottom.
 
-The expert retires. The knowledge dies when they do. Or lives only in the memory of the people they touched. No record. No compensation. No chain.
-
-OR.
-
-They put their knowledge on a platform. YouTube. Skillshare. Udemy. MasterClass. The platform takes 30 to 50 percent. The algorithm decides who sees it. The expert competes with everyone else in their field for attention, in a marketplace that rewards marketing over competence and novelty over depth.
-
-The race to the bottom produces $12.99 courses competing with $9.99 courses, all of them stripped of the nuance that makes expertise valuable, all of them optimized for the platform's engagement metrics rather than the student's actual learning.
-
-The expert's thirty years gets compressed into a commodity and sold at a commodity price.
-
-Neither of these outcomes honors what the teacher actually has. Because what the teacher has is not information. Information is free. What the teacher has is the judgment that took thirty years to build. The ability to look at a situation and see what someone without the experience can't see. The pattern recognition that only comes from doing the work, over and over, for long enough that the deep structure becomes visible.
-
-That's worth everything. The current economy pays it almost nothing.
-
----
-
-## The Trust Graph Version
-
-A teacher builds a course on their node. Not on a platform. On sovereign infrastructure they control.
-
-The course is priced at what the knowledge is worth — determined by the teacher, validated by the market. Not by an algorithm. Not by a race to the bottom. By the people who need the knowledge and can see, from the teacher's trust weight and conversion history, that the knowledge is real.
-
-Students who complete the course are attested in the graph. Not by the institution. By the teacher. And the teacher's attestation costs them something — their standing in the network is attached to the quality of what they vouch for. If they accredit someone who turns out to be incompetent, their own trust weight diminishes. Not as punishment. As consequence. The same way a mentor's reputation suffers when they recommend someone who can't do the job.
+Students who complete the course are attested in the graph. Not by the institution. By the teacher. And the attestation costs them something: their standing in the network is attached to the quality of what they vouch for. If they accredit someone who turns out to be incompetent, their own trust weight diminishes. Not as punishment. As consequence. The same way a mentor's reputation suffers when they recommend someone who can't do the job.
 
 The student's accreditation isn't a document. It's a position in a trust graph. A web of verified humans who staked their own reputation on the claim that you know what you're talking about. It doesn't expire. It doesn't need to be renewed by paying another fee. It compounds — every time the student demonstrates the knowledge, every time someone acts on their expertise and it turns out to be right, the accreditation deepens.
 
@@ -91,21 +71,31 @@ The trust graph remembers every time you were right.
 
 ---
 
-## The Teacher's Knowledge Doesn't Stop Earning
+## The Teacher Economy
 
-Here's the part that changes everything for the teacher.
+Here's what happens to the thirty-year expert in the current economy.
 
-In the current model, the teacher gets paid while they teach. When they stop teaching, the payment stops. Their accumulated knowledge — the thirty years, the pattern library, the deep judgment — has no residual economic value. It's gone the moment they walk away.
+They get hired. They get a salary. They transfer their knowledge to younger employees or students. Eventually they get expensive and get replaced. Their knowledge leaves with them — dispersed into the people they trained, who got the credit for applying it, who have no structural obligation to acknowledge the source. The expert retires. The knowledge dies when they do. Or lives only in the memory of the people they touched. No record. No compensation. No chain.
 
-In the trust graph, the teacher's knowledge is a living asset.
+OR.
 
-Every time an AI system queries the trust graph for expertise in that domain, the teacher's accumulated knowledge is part of what makes the answer credible. The inference fee routes back to them through the .fair chain. Their thirty years of experience isn't a sunk cost — it's a node that generates revenue every time someone needs what they know.
+They put their knowledge on a platform. YouTube. Skillshare. Udemy. MasterClass. The platform takes 30 to 50 percent. The algorithm decides who sees it. The expert competes with everyone else in their field for attention, in a marketplace that rewards marketing over competence and novelty over depth. The race to the bottom produces $12.99 courses competing with $9.99 courses, all of them stripped of the nuance that makes expertise valuable, all of them optimized for the platform's engagement metrics rather than the student's actual learning.
 
-Asleep. Retired. Dead. The knowledge persists in the graph and the compensation persists with it, flowing through the .fair chain to their beneficiaries if they choose.
+The expert's thirty years gets compressed into a commodity and sold at a commodity price.
 
-And it compounds through their students. Every student who goes on to teach is a new node in the same lineage. The attribution chain extends forward through everyone they taught. The graph gets smarter. The teacher gets compensated. The students carry the lineage and extend it.
+Neither of these outcomes honors what the teacher actually has. Because what the teacher has is not information. Information is free. What the teacher has is the judgment that took thirty years to build. The pattern recognition that only comes from doing the work, over and over, for long enough that the deep structure becomes visible.
 
-The mixing engineer who taught fifty students over a decade — when those students produce work, when their expertise is queried, the chain runs backward to the teacher who gave them the knowledge. Not as charity. Not as a platform feature. As attribution. The same .fair protocol that tracks who sampled whose bass line tracks who taught whom what they know.
+That's worth everything. The current economy pays it almost nothing.
+
+Here's the part that changes everything.
+
+In the trust graph, the teacher's knowledge doesn't stop earning when the course is over.
+
+Every time an AI system queries the trust graph for expertise in that domain, the teacher's accumulated knowledge is part of what makes the answer credible. The inference fee routes back to them through the .fair chain. Their thirty years of experience isn't a sunk cost — it's a living asset that generates revenue every time someone needs what they know. Asleep. Retired. Dead. The knowledge persists in the graph and the compensation persists with it, flowing through the .fair chain to their beneficiaries if they choose.
+
+And it compounds through their students. Every student who goes on to teach is a new node in the same lineage. The mixing engineer who taught fifty students over a decade — when those students produce work, when their expertise is queried, the chain runs backward to the teacher who gave them the knowledge. Not as charity. Not as a platform feature. As attribution. The same .fair protocol that tracks who sampled whose bass line tracks who taught whom what they know.
+
+The teacher becomes the most valuable node type in the network. Because they're not just creating — they're multiplying.
 
 ---
 
@@ -117,11 +107,15 @@ The customer service rep who's spent eight years learning how to de-escalate —
 
 None of these people have credentials for what they know. All of them have knowledge that took years to accumulate and that no AI model can replicate because it was never in the training data.
 
-learn.imajin.ai is where they find it, articulate it, and get it accredited through the trust graph. Not everyone will. Not everyone needs to. But the path exists for anyone who wants to walk it.
+learn.imajin.ai is where they find it, articulate it, and get it accredited through the trust graph.
 
-The platform also teaches itself. How sovereign identity works. What a .fair chain is. How to operate a node. How to price yourself. How to build a trust graph that actually converts. That's the meta-layer — imajin teaching people how to use imajin — which is also domain knowledge, which also accrues in the graph.
+Three things happen there.
 
-The first students of the school become the first teachers of the school. The loop closes immediately.
+**Experts teach.** On their own node. Through their own trust graph. Priced at what the knowledge is actually worth. Every student who completes and goes on to demonstrate competence is a living attestation that the teaching was real. The teacher's trust weight compounds with every one of them.
+
+**Consumers discover they're creators.** Not everyone will. Not everyone needs to. But the path exists for anyone who wants to walk it — to surface what they know, articulate it, and get it attested by the people positioned to vouch for it.
+
+**The platform teaches itself.** How sovereign identity works. What a .fair chain is. How to operate a node. How to price yourself. How to build a trust graph that actually converts. That's the meta-layer — imajin teaching people how to use imajin — which is also domain knowledge, which also accrues in the graph. The first students of the school become the first teachers of the school. The loop closes immediately.
 
 ---
 
@@ -203,6 +197,6 @@ Walk in.
 
 **If you want to follow along:**
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- The network: [imajin.ai](imajin.ai)
+- The network: [imajin.ai](https://imajin.ai)
 - The school: [learn.imajin.ai](https://learn.imajin.ai)
 - Jin's party: April 1st, 2026
