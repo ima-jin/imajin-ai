@@ -112,15 +112,7 @@ Opens on Friday the 13th — the sleeping bag image. Horrible. Permanent. His. I
 
 The wrong conversation: "will AI take my job?" The real answer: if you don't know anything, yes. If you do, AI just made you the most valuable person in the room. The amplification effect. How most people use it wrong. The sovereign AI user — the model pays you instead of extracting from you. Hands the reader the weapon before the save series shows them what to aim it at.
 
-*Appendix 1: Prompt Patterns That Work* — Living document. Context dump, expert frame, interrogation loop, knowledge mapping, constraint push. Community-contributed, updated as patterns are tested.
-
-*Appendix 2: Model-Specific Notes* — Living document. Which models for which tasks. Reasoning vs. commodity work vs. code vs. creative. Context window management. Updated as models evolve.
-
-*Appendix 3: The New Rules* — AI becomes a regulated profession. Not by bureaucracy. By human trust. Governments and military barred from unsupervised use. The substrate argument taken to its logical conclusion. If we regulate who can wire a house, we regulate who can wire a civilization.
-
-*Appendix 4: How We Fix Voting* — The most contentious piece. Voting is a query against the trust graph. Secret ballots solved coercion and enabled unaccountability. Sovereign identity + zero-knowledge proofs = verifiable without revealing. Context-weighted participation: the graph reflects demonstrated involvement, not appointed authority. Not a replacement for democracy — an upgrade to the infrastructure it runs on.
-
-*Future appendices as needed: tool selection, AI-assisted node operation, domain-specific patterns.*
+*Appendices follow sequentially after the Finale. See below.*
 
 ---
 
@@ -214,6 +206,35 @@ Ends with the invitation:
 *If you see yourself in this, you're invited to our party in Guelph. Send me an email. ryan@imajin.ai.*
 
 Respondents are interviewed and tested on how they've absorbed the material. The party is the credential. The trust graph starts with comprehension.
+
+---
+
+## Appendices
+
+*Sequential after the Finale. Living documents — updated as the field evolves.*
+
+**Appendix 1: Prompt Patterns That Work**
+Living document. Context dump, expert frame, interrogation loop, knowledge mapping, constraint push. Community-contributed, updated as patterns are tested.
+
+**Appendix 2: Model-Specific Notes**
+Living document. Which models for which tasks. Reasoning vs. commodity work vs. code vs. creative. Context window management. Updated as models evolve.
+
+**Appendix 3: The New Rules**
+`appendix-3-the-new-rules.md` — DRAFT
+
+AI becomes a regulated profession. Not by bureaucracy. By human trust. Governments and military barred from unsupervised use. The substrate argument taken to its logical conclusion. If we regulate who can wire a house, we regulate who can wire a civilization.
+
+**Appendix 4: How We Fix Voting**
+`appendix-4-how-we-fix-voting.md` — DRAFT
+
+The most contentious piece. Voting is a query against the trust graph. Secret ballots solved coercion and enabled unaccountability. Sovereign identity + zero-knowledge proofs = verifiable without revealing. Context-weighted participation: the graph reflects demonstrated involvement, not appointed authority. Not a replacement for democracy — an upgrade to the infrastructure it runs on.
+
+**Appendix 5: AI Governs Itself**
+`appendix-5-ai-governs-itself.md` — DRAFT (stub)
+
+AI doesn't need a separate governance framework. It needs to be inside the same one humans use. Same graph, same attribution, same accountability. The graph doesn't care what you're made of. It cares whether you're accountable.
+
+*Future appendices as needed: tool selection, AI-assisted node operation, domain-specific patterns.*
 
 ---
 
