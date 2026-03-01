@@ -56,6 +56,11 @@ Fired the Monday the site launched. Three weeks rewriting the CLI from scratch. 
 
 ---
 
+### Interstitial: The Cult of Community
+*Personal essay. Placement: between Origin and Architecture.*
+
+---
+
 ## Part II: Architecture
 
 **9. The Network That Never Died**
@@ -82,6 +87,15 @@ The ground-level operator manual. Start with a birthday party. Run an event node
 `essay-13-memory.md` — REVIEW
 
 Opens on Friday the 13th — the sleeping bag image. Horrible. Permanent. His. Instagram Memories and Spotify Wrapped are receipts, not memory. The node as permanent signed record belonging to the people who made it, not the platform. The philosophical ground under the permanence of nodes.
+
+---
+
+### Interstitial: How to Save the World by Partying
+*Personal essay. Placement: between Architecture and the Hinge.*
+
+Dedications: To Debbie. Bush. Geordie for showing me the gift of AI. The Good Times Gang for the good times. Hermanne for demonstrating that everything is possible. Boom Festival for lighting the fuse.
+
+The only essay in the series that requires reading the full series first. Ends with an open invitation to a gathering in Guelph — "If you see yourself in this, you're invited to our party. Send me an email. ryan@imajin.ai." Respondents are interviewed and tested on how they've absorbed the material. The party is the credential. The trust graph starts with comprehension.
 
 ---
 
