@@ -110,6 +110,8 @@ The wrong conversation: "will AI take my job?" The real answer: if you don't kno
 
 *Appendix 2: Model-Specific Notes* — Living document. Which models for which tasks. Reasoning vs. commodity work vs. code vs. creative. Context window management. Updated as models evolve.
 
+*Appendix 3: The New Rules* — AI becomes a regulated profession. Governments and military not allowed to use it for anything. Goodbye nukes. The substrate argument taken to its logical conclusion: the institutions with the most destructive capacity and the least accountability are the last ones who should wield it unsupervised. If we regulate who can wire a house, we regulate who can wire a civilization.
+
 *Future appendices as needed: tool selection, AI-assisted node operation, domain-specific patterns.*
 
 ---
