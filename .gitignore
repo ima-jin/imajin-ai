@@ -28,3 +28,6 @@ apps/www/.env.development
 
 # Personal
 *.raw.md
+
+# Claude
+.claude/*.local.*
