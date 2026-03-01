@@ -6,8 +6,10 @@
         "Bash(head *)",
         "Bash(find *)",
         "Bash(grep *)",
-        "Bash(rg *)"
+        "Bash(rg *)",
+        "Bash(lsof *)",
+        "Bash(ps *)",
+        "Bash(sort *)"
       ]
     }
   }
-  
