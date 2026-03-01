@@ -44,43 +44,56 @@ The core platform layer for the Imajin network. Everything that acts gets a DID 
 
 ---
 
-## Core Apps
+## Apps
 
-| App | Port | Domain | Purpose | Status |
-|-----|------|--------|---------|--------|
-| [www](./apps/www) | 3000 | [imajin.ai](https://imajin.ai) | Landing page, articles | ✅ Live |
-| [auth](./apps/auth) | 3003 | [auth.imajin.ai](https://auth.imajin.ai) | Identity (register, challenge, authenticate) | ✅ Live |
-| [pay](./apps/pay) | 3004 | [pay.imajin.ai](https://pay.imajin.ai) | Payments (Stripe + Solana) | ✅ Live |
-| [profile](./apps/profile) | 3005 | [profile.imajin.ai](https://profile.imajin.ai) | Public profile pages | ✅ Live |
-| [registry](./apps/registry) | 3006 | [registry.imajin.ai](https://registry.imajin.ai) | Node federation | ✅ Live |
-| [connections](./apps/connections) | — | — | Trust graph | 📋 Planned |
+### Platform Services
 
----
+Core services that make up the sovereign stack.
 
-## External Apps
+| App | Dev Port | Prod Port | Domain | Purpose | Status |
+|-----|----------|-----------|--------|---------|--------|
+| [www](./apps/www) | 3000 | 7000 | [imajin.ai](https://imajin.ai) | Landing page, essays | ✅ Live |
+| [auth](./apps/auth) | 3001 | 7001 | [auth.imajin.ai](https://auth.imajin.ai) | Identity (keypair, DID, sign/verify) | ✅ Live |
+| [registry](./apps/registry) | 3002 | 7002 | [registry.imajin.ai](https://registry.imajin.ai) | Node discovery & federation | ✅ Live |
+| [connections](./apps/connections) | 3003 | 7003 | [connections.imajin.ai](https://connections.imajin.ai) | Trust graph | ✅ Live |
+| [pay](./apps/pay) | 3004 | 7004 | [pay.imajin.ai](https://pay.imajin.ai) | Payments (Stripe + Solana) | ✅ Live |
+| [profile](./apps/profile) | 3005 | 7005 | [profile.imajin.ai](https://profile.imajin.ai) | Public identity pages | ✅ Live |
+| [events](./apps/events) | 3006 | 7006 | [events.imajin.ai](https://events.imajin.ai) | Create events, sell tickets | ✅ Live |
+| [chat](./apps/chat) | 3007 | 7007 | [chat.imajin.ai](https://chat.imajin.ai) | E2EE messaging, trust-bound | ✅ Live |
 
-Separate repos that consume `@imajin/auth` and `@imajin/pay` as platform consumers:
+### Profile Extensions
+
+Account-based apps tied to a user's DID, accessible at `{service}.imajin.ai/{handle}`.
+
+| App | Dev Port | Prod Port | Purpose | Status |
+|-----|----------|-----------|---------|--------|
+| [coffee](./apps/coffee) | 3008 | 7008 | Tip jar / support page | 📋 Scaffolded |
+| [dykil](./apps/dykil) | 3009 | 7009 | Surveys & polls (event integration) | 📋 Scaffolded |
+| [links](./apps/links) | 3010 | 7010 | Curated link collection | 📋 Scaffolded |
+| learn | 3011 | 7011 | Lessons & courses | 📋 Planned |
+
+### Standalone Apps
+
+Separate repos — consume the platform but aren't part of it. Own databases.
 
 | App | Repo | Domain | Purpose | Status |
 |-----|------|--------|---------|--------|
-| events | [imajin-events](https://github.com/ima-jin/imajin-events) | [events.imajin.ai](https://events.imajin.ai) | Create events, sell tickets | ✅ Live |
-| chat | [imajin-chat](https://github.com/ima-jin/imajin-chat) | [chat.imajin.ai](https://chat.imajin.ai) | E2EE messaging, trust-bound | ✅ Live |
-| coffee | [imajin-coffee](https://github.com/ima-jin/imajin-coffee) | — | Tips / "buy me a coffee" | 📋 Planned |
-| dykil | [imajin-dykil](https://github.com/ima-jin/imajin-dykil) | — | Community spending tracker | 📋 Planned |
-| karaoke | [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke) | — | Event queue manager | 📋 Planned |
-| links | [imajin-links](https://github.com/ima-jin/imajin-links) | — | Sovereign link-in-bio | 📋 Planned |
-| learn | [imajin-learn](https://github.com/ima-jin/imajin-learn) | — | AI training courses | 📋 Planned |
+| fixready | [imajin-fixready](https://github.com/ima-jin/imajin-fixready) | [fixready.imajin.ai](https://fixready.imajin.ai) | Home repair knowledge marketplace | ✅ Live |
+| karaoke | [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke) | [karaoke.imajin.ai](https://karaoke.imajin.ai) | Music & performance | ✅ Live |
 
 ---
 
 ## Packages
 
-Shared libraries:
+Shared libraries used across all apps.
 
 | Package | Purpose |
 |---------|---------|
-| [@imajin/auth](./packages/auth) | Ed25519 signing, verification, DIDs |
+| [@imajin/auth](./packages/auth) | Ed25519 signing, verification, DID creation |
+| [@imajin/db](./packages/db) | Database layer (postgres-js + drizzle-orm) |
 | [@imajin/pay](./packages/pay) | Unified payments (Stripe + Solana) |
+| [@imajin/config](./packages/config) | Shared configuration |
+| [@imajin/ui](./packages/ui) | Shared UI components |
 
 ---
 
@@ -125,7 +138,7 @@ No passwords. No OAuth. No "Sign in with Google." Just cryptography.
 ## Payment Flow
 
 ```
-App (events, shop, etc.)
+App (events, coffee, etc.)
         │
         └── POST /api/checkout { items, successUrl, ... }
                     │
@@ -153,18 +166,18 @@ cd imajin-ai
 # Install
 pnpm install
 
-# Configure (copy and edit)
-cp apps/auth/.env.example apps/auth/.env.local
-cp apps/pay/.env.example apps/pay/.env.local
+# Configure (copy and edit .env.local for each app you want to run)
+# Each app needs at minimum: DATABASE_URL
 
-# Start services
-pnpm --filter @imajin/auth-service dev    # localhost:3003
-pnpm --filter @imajin/pay-service dev     # localhost:3004
-pnpm --filter @imajin/profile-service dev # localhost:3005
+# Start a service in dev mode
+pnpm --filter @imajin/auth dev       # localhost:3001
+pnpm --filter @imajin/events dev     # localhost:3006
+
+# Build
+pnpm --filter @imajin/www build
 
 # Push database schemas (requires DATABASE_URL)
 cd apps/auth && pnpm db:push
-cd apps/profile && pnpm db:push
 ```
 
 ---
@@ -174,22 +187,58 @@ cd apps/profile && pnpm db:push
 ```
 imajin-ai/
 ├── apps/
-│   ├── www/           # imajin.ai landing
+│   ├── www/           # imajin.ai — landing, essays
 │   ├── auth/          # Identity service
-│   ├── pay/           # Payment service  
-│   ├── profile/       # Profile pages
 │   ├── registry/      # Node federation
-│   └── connections/   # Trust graph
+│   ├── connections/   # Trust graph
+│   ├── pay/           # Payment service
+│   ├── profile/       # Profile pages
+│   ├── events/        # Events & ticketing
+│   ├── chat/          # E2EE messaging
+│   ├── coffee/        # Tip jar
+│   ├── dykil/         # Surveys & polls
+│   └── links/         # Link collection
 ├── packages/
-│   ├── auth/          # @imajin/auth library
-│   └── pay/           # @imajin/pay library
+│   ├── auth/          # @imajin/auth — signing, DIDs
+│   ├── db/            # @imajin/db — database layer
+│   ├── pay/           # @imajin/pay — payments
+│   ├── config/        # @imajin/config — shared config
+│   └── ui/            # @imajin/ui — shared components
+├── articles/          # Essays & reference docs
+│   ├── THESIS.md      # Canonical concept definitions
+│   ├── ARCHITECTURE.md # Technical architecture
+│   └── essay-*.md     # The essay series (29 essays)
 ├── docs/
 │   ├── IDENTITY.md    # DID model
-│   └── ENVIRONMENTS.md
-└── scripts/
-    ├── test-flow.ts   # Auth flow test
-    └── create-profiles.ts
+│   ├── ENVIRONMENTS.md # Database & deployment config
+│   └── mjn-whitepaper.md # MJN protocol spec
+└── tests/
+    ├── HAPPY_PATH.md  # End-to-end test cases
+    └── AUDIT.md       # Security audit checklist
 ```
+
+---
+
+## Deployment
+
+Self-hosted on HP ProLiant ML350p Gen8 (Ubuntu 24.04). Caddy for reverse proxy + auto-SSL. pm2 for process management. GitHub Actions self-hosted runner for CI/CD.
+
+**Port convention:** `3xxx` = dev, `7xxx` = prod (1:1 mapping). `x000-x099` = platform services, `x400+` = standalone client apps.
+
+**pm2 naming:** Bare names = prod (`www`, `auth`, `events`). Prefixed = dev (`dev-www`, `dev-auth`, `dev-events`).
+
+See [articles/ARCHITECTURE.md](./apps/www/articles/ARCHITECTURE.md) for full deployment topology.
+
+---
+
+## Grounding Documents
+
+| Document | Purpose |
+|----------|---------|
+| [THESIS.md](./apps/www/articles/THESIS.md) | Canonical concept definitions — what we mean |
+| [ARCHITECTURE.md](./apps/www/articles/ARCHITECTURE.md) | Technical architecture — how it works |
+| [essay-00-sequence.md](./apps/www/articles/essay-00-sequence.md) | Essay order & structure |
+| [essay-00-master-timeline.md](./apps/www/articles/essay-00-master-timeline.md) | Biographical chronology |
 
 ---
 
