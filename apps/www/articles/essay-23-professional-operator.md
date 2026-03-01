@@ -29,6 +29,34 @@ AI is not going to be for everyone. And it shouldn't be.
 
 ---
 
+## The $87,500 Prompt
+
+While the confessional posts circulate, the damage is already happening.
+
+In February 2026, a founder named Anton Karbanovich posted this on LinkedIn:
+
+> "My vibe-coded startup was exploited. I lost $2500 in stripe fees. 175 customers were charged $500 each, before I was able to rotate keys. I still don't blame Claude Code. I trusted it too much. One prompt could have fixed it."
+
+![Stripe dashboard showing 18 fraudulent $500 charges — all reversed, refunded, or failed. $87,500 in fraudulent transactions.](images/vibe-coding-stripe-exploit.jpg)
+
+Eighteen rows of $500 charges. Reversed. Refunded. Failed. Every one of them a real customer's credit card, charged because an API key was exposed in the frontend of a production application.
+
+His takeaway: "One prompt could have fixed it."
+
+That's the wrong lesson.
+
+The right lesson is: **you shouldn't have been the one deploying it.**
+
+Not because he's stupid — because he doesn't know what he doesn't know. He can't write the prompt to fix the security hole because he didn't know the security hole existed. You can't prompt your way out of ignorance. If you don't know how to set up a system, you have no business setting up a system right now.
+
+The person who knows how to secure Stripe keys in a production deployment exists. That person has a name, a reputation, years of experience that taught them where the wires are live. That person should have been between Anton and his customers. Not Claude Code. Not a prompt. A professional.
+
+That professional layer doesn't exist yet. Not as infrastructure. Not as something you can reach for the way you reach for a licensed electrician when you're wiring a house. Anton reached for the only thing available — the raw substrate — and it cost his customers $87,500 and him $2,500 in fees he'll never recover.
+
+This is not an edge case. This is Tuesday.
+
+---
+
 ## The Substrate
 
 A large language model is not a product.
