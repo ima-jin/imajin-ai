@@ -112,6 +112,8 @@ The wrong conversation: "will AI take my job?" The real answer: if you don't kno
 
 *Appendix 3: The New Rules* — AI becomes a regulated profession. Not by bureaucracy. By human trust. Governments and military barred from unsupervised use. The substrate argument taken to its logical conclusion. If we regulate who can wire a house, we regulate who can wire a civilization.
 
+*Appendix 4: How We Fix Voting* — The most contentious piece. Voting is a query against the trust graph. Secret ballots solved coercion and enabled unaccountability. Sovereign identity + zero-knowledge proofs = verifiable without revealing. Context-weighted participation: the graph reflects demonstrated involvement, not appointed authority. Not a replacement for democracy — an upgrade to the infrastructure it runs on.
+
 *Future appendices as needed: tool selection, AI-assisted node operation, domain-specific patterns.*
 
 ---
