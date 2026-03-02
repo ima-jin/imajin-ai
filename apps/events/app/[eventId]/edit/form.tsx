@@ -16,6 +16,7 @@ interface TicketTier {
   price: number;
   quantity: number | null;
   description: string;
+  perks?: string[];
   sold?: number;
 }
 
@@ -50,6 +51,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
       price: t.price / 100, // Convert cents to dollars
       quantity: t.quantity,
       description: t.description || '',
+      perks: Array.isArray(t.perks) ? t.perks.map(String) : [],
       sold: t.sold || 0,
     }))
   );
@@ -124,6 +126,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
               description: tier.description,
               price: Math.round(tier.price * 100), // Convert dollars to cents
               quantity: tier.quantity,
+              perks: tier.perks || [],
             }),
           });
           if (!tierRes.ok) {
@@ -141,6 +144,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
               description: tier.description,
               price: Math.round(tier.price * 100),
               quantity: tier.quantity,
+              perks: tier.perks || [],
             }),
           });
           if (!tierRes.ok) {
@@ -358,13 +362,24 @@ export default function EventEditForm({ event, existingTickets }: Props) {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Description</label>
-              <textarea
+              <input
+                type="text"
                 value={tier.description}
                 onChange={(e) => updateTier(index, 'description', e.target.value)}
-                placeholder="What's included in this tier?"
-                rows={3}
+                placeholder="Short description of this tier"
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Perks (one per line)</label>
+              <textarea
+                value={(tier.perks || []).join('\n')}
+                onChange={(e) => updateTier(index, 'perks', e.target.value.split('\n').filter(Boolean))}
+                rows={4}
+                placeholder={"Live stream access\nChat participation\nRecording access"}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">Perks can only be added, not removed (protects existing buyers)</p>
             </div>
             {!tier.id && tiers.length > 1 && (
               <button

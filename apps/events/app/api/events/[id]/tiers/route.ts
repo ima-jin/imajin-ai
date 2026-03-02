@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { db, events, ticketTypes, eventAdmins } from '@/src/db';
 import { requireAuth } from '@/src/lib/auth';
 import { eq, and } from 'drizzle-orm';
@@ -76,6 +77,7 @@ export async function POST(
       perks: perks || [],
     }).returning();
 
+    revalidatePath(`/${id}`);
     return NextResponse.json({ tier }, { status: 201 });
 
   } catch (error) {
@@ -181,6 +183,8 @@ export async function PUT(
       .set(updates)
       .where(eq(ticketTypes.id, tierId))
       .returning();
+
+    revalidatePath(`/${id}`);
 
     return NextResponse.json({
       tier: {

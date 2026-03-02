@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { db, events, ticketTypes, eventAdmins } from '@/src/db';
 import { requireAuth } from '@/src/lib/auth';
 import { eq, and } from 'drizzle-orm';
@@ -133,6 +134,9 @@ export async function PUT(
       .set(updates)
       .where(eq(events.id, id))
       .returning();
+
+    // Bust the cache for this event page
+    revalidatePath(`/${id}`);
 
     return NextResponse.json({ event: updated });
   } catch (error) {

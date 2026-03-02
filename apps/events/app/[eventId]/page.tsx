@@ -4,7 +4,7 @@ import { db, events, ticketTypes, tickets } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { TicketsSection } from './tickets-section';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 60; // revalidate every 60 seconds
 import { Countdown } from './countdown';
 import { EventLobbyAccordion } from './event-lobby-accordion';
 import { ShareButton } from './share-button';
