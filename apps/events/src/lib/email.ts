@@ -1,23 +1,15 @@
 /**
- * Email service using Proton Mail Bridge
+ * Email service using SendGrid API
  * 
  * Simple HTML templates - no fancy framework needed.
+ * 
+ * Required env vars:
+ *   SENDGRID_API_KEY - API key (starts with SG.)
+ *   SENDGRID_FROM    - Verified sender (e.g. "Jin <jin@imajin.ai>")
  */
 
-import nodemailer from 'nodemailer';
-
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || '127.0.0.1',
-  port: parseInt(process.env.SMTP_PORT || '1025'),
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER || 'jin@imajin.ai',
-    pass: process.env.SMTP_PASSWORD,
-  },
-  tls: {
-    rejectUnauthorized: false, // Proton Bridge uses self-signed cert
-  },
-});
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+const SENDGRID_FROM = process.env.SENDGRID_FROM || 'Jin <jin@imajin.ai>';
 
 interface SendEmailOptions {
   to: string;
@@ -27,23 +19,47 @@ interface SendEmailOptions {
 }
 
 export async function sendEmail(options: SendEmailOptions) {
-  const from = process.env.SMTP_FROM || 'Jin <jin@imajin.ai>';
-  
+  if (!SENDGRID_API_KEY) {
+    console.warn('SENDGRID_API_KEY not set — skipping email to', options.to);
+    return { success: false, error: 'No API key configured' };
+  }
+
   try {
-    const result = await transporter.sendMail({
-      from,
-      to: options.to,
-      subject: options.subject,
-      html: options.html,
-      text: options.text || stripHtml(options.html),
+    const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SENDGRID_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email: options.to }] }],
+        from: parseSender(SENDGRID_FROM),
+        subject: options.subject,
+        content: [
+          { type: 'text/plain', value: options.text || stripHtml(options.html) },
+          { type: 'text/html', value: options.html },
+        ],
+      }),
     });
-    
-    console.log('Email sent:', result.messageId);
-    return { success: true, messageId: result.messageId };
+
+    if (res.status === 202) {
+      console.log('Email sent via SendGrid to', options.to);
+      return { success: true, messageId: res.headers.get('x-message-id') };
+    } else {
+      const body = await res.text();
+      console.error('SendGrid error:', res.status, body);
+      return { success: false, error: `SendGrid ${res.status}: ${body}` };
+    }
   } catch (error) {
     console.error('Email send failed:', error);
     return { success: false, error };
   }
+}
+
+function parseSender(from: string): { email: string; name?: string } {
+  const match = from.match(/^(.+)\s*<(.+)>$/);
+  if (match) return { name: match[1].trim(), email: match[2].trim() };
+  return { email: from };
 }
 
 function stripHtml(html: string): string {
