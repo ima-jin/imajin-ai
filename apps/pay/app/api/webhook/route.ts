@@ -202,7 +202,7 @@ async function notifyEventsService(
         paymentId: typeof session.payment_intent === 'string'
           ? session.payment_intent
           : session.payment_intent?.id,
-        customerEmail: session.customer_email,
+        customerEmail: session.customer_email || session.customer_details?.email || null,
         customerName: session.customer_details?.name || null,
         amountTotal: session.amount_total,
         currency: session.currency,
