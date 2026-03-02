@@ -238,7 +238,17 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         addedBy: event.did,
         role: 'member',
       });
-      console.log(`Added ${ownerDid} to event pod ${eventPod.podId} and chat ${eventPod.conversationId}`);
+      // Also add to lobby conversation if it exists
+      if (eventPod.lobbyConversationId) {
+        await addEventParticipant({
+          podId: eventPod.podId,
+          conversationId: eventPod.lobbyConversationId,
+          participantDid: ownerDid,
+          addedBy: event.did,
+          role: 'member',
+        });
+      }
+      console.log(`Added ${ownerDid} to event pod ${eventPod.podId}, chat ${eventPod.conversationId}, lobby ${eventPod.lobbyConversationId}`);
     }
   }
   
