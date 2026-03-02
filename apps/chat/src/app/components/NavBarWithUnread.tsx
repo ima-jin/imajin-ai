@@ -37,5 +37,12 @@ export function NavBarWithUnread() {
     }
   }, [lastMessage, fetchUnreadCount]);
 
-  return <NavBar currentService="Chat" unreadMessages={unreadCount} />;
+  return (
+    <NavBar
+      currentService="Chat"
+      unreadMessages={unreadCount}
+      servicePrefix={process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}
+      domain={process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}
+    />
+  );
 }
