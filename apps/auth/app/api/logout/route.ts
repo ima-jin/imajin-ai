@@ -3,7 +3,9 @@ import { getSessionCookieOptions } from '@/lib/jwt';
 
 function corsHeaders(request: NextRequest) {
   const origin = request.headers.get('origin') || '';
-  const allowed = origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai';
+  const isImajin = origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai';
+  const isLocalhost = origin.startsWith('http://localhost:');
+  const allowed = isImajin || isLocalhost;
   return {
     'Access-Control-Allow-Origin': allowed ? origin : '',
     'Access-Control-Allow-Credentials': 'true',

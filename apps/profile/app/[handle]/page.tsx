@@ -34,6 +34,7 @@ async function getViewerDid(): Promise<string | null> {
     if (!session?.value) return null;
     const res = await fetch(`${authUrl}/api/session`, {
       headers: { Cookie: `imajin_session=${session.value}` },
+      cache: 'no-store',
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -152,7 +153,7 @@ export default async function ProfilePage({ params }: PageProps) {
             </p>
             {!viewerDid && (
               <a
-                href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}profile.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/login`}
+                href="/login"
                 className="inline-block mt-4 px-6 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium text-sm"
               >
                 Login to see more

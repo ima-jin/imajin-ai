@@ -51,8 +51,17 @@ export async function POST(request: NextRequest) {
     
     // Register event DID with auth service
     const eventKeypair = await generateEventKeypair();
-    const eventDid = `did:imajin:${eventKeypair.publicKey.slice(0, 16)}`;
-    
+
+    // Sign the registration payload
+    const ed = await import('@noble/ed25519');
+    const { sha512 } = await import('@noble/hashes/sha2.js');
+    ed.hashes.sha512 = sha512;
+    const regPayload = JSON.stringify({ publicKey: eventKeypair.publicKey, name: title, type: 'event' });
+    const msgBytes = new TextEncoder().encode(regPayload);
+    const privBytes = hexToBytes(eventKeypair.privateKey);
+    const sigBytes = await ed.signAsync(msgBytes, privBytes);
+    const signature = bytesToHex(sigBytes);
+
     const regRes = await fetch(`${AUTH_URL}/api/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -60,6 +69,7 @@ export async function POST(request: NextRequest) {
         publicKey: eventKeypair.publicKey,
         type: 'event',
         name: title,
+        signature,
       }),
     });
     
@@ -67,6 +77,9 @@ export async function POST(request: NextRequest) {
       const err = await regRes.json();
       return NextResponse.json({ error: `Failed to register event DID: ${err.error}` }, { status: 500 });
     }
+
+    const regData = await regRes.json();
+    const eventDid = regData.did;
 
     // Create trust pod and group chat for the event
     const { podId, conversationId, lobbyConversationId } = await createEventPod({
@@ -178,4 +191,12 @@ async function generateEventKeypair() {
 
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return bytes;
 }
