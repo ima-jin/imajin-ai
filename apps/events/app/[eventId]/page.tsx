@@ -133,6 +133,18 @@ export default async function EventPage({ params }: Props) {
   const tickets = await getTicketTypes(event.id);
   const session = await getSession();
   const isCreator = session?.id === event.creatorDid;
+
+  // Resolve organizer name
+  let organizerName = event.creatorDid.slice(0, 30) + '...';
+  try {
+    const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+    const res = await fetch(`${authUrl}/api/lookup/${encodeURIComponent(event.creatorDid)}`, { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      organizerName = data.name || (data.handle ? `@${data.handle}` : organizerName);
+    }
+  } catch {}
+
   const metadata = (event.metadata || {}) as EventMetadata;
   const theme = metadata.theme || {};
   const themeColor = theme.color || 'orange';
@@ -247,7 +259,7 @@ export default async function EventPage({ params }: Props) {
           {/* Organizer */}
           <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
             <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Organized by</div>
-            <div className="font-medium">{event.creatorDid.slice(0, 30)}...</div>
+            <div className="font-medium">{organizerName}</div>
           </div>
         </div>
 
