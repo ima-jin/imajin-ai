@@ -180,6 +180,10 @@ export default function MessageThreadPage() {
     try {
       const res = await fetch(`/api/conversations/${conversationId}/messages`);
       if (!res.ok) {
+        if (res.status === 401) {
+          window.location.href = '/conversations';
+          return;
+        }
         if (res.status === 404) {
           setError('Conversation not found');
           return;

@@ -59,6 +59,11 @@ export default function ConversationsPage() {
         fetch('/api/conversations/unread'),
       ]);
 
+      if (convsRes.status === 401) {
+        // Session expired — force reload to trigger login prompt
+        window.location.reload();
+        return;
+      }
       if (!convsRes.ok) throw new Error('Failed to load conversations');
 
       const convsData = await convsRes.json();
