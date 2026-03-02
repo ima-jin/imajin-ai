@@ -38,11 +38,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Get optional session (for authenticated responses)
     const session = await getSession();
 
-    // Validate answers against fields
-    const fields = survey.fields as any[];
+    // Validate answers against fields (support both legacy and SurveyJS formats)
+    const surveyFields = survey.fields as any;
+    const fields = surveyFields?.elements || (Array.isArray(surveyFields) ? surveyFields : []);
+
     for (const field of fields) {
-      if (field.required && !answers[field.id]) {
-        return errorResponse(`Field "${field.label}" is required`);
+      // Support both SurveyJS (name, title, isRequired) and legacy (id, label, required)
+      const fieldName = field.name || field.id;
+      const fieldLabel = field.title || field.label;
+      const isRequired = field.isRequired || field.required;
+
+      if (isRequired && !answers[fieldName]) {
+        return errorResponse(`Field "${fieldLabel}" is required`);
       }
     }
 

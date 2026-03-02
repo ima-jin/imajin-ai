@@ -1,4 +1,10 @@
+'use client';
+
+import { useRouter } from 'next/navigation';
+
 export default function Home() {
+  const router = useRouter();
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black">
       <div className="container mx-auto px-4 py-16">
@@ -15,6 +21,22 @@ export default function Home() {
             Your forms. Your data. No tracking.
           </p>
 
+          {/* CTA Buttons */}
+          <div className="flex gap-4 justify-center mb-12">
+            <button
+              onClick={() => router.push('/create')}
+              className="px-8 py-4 bg-orange-500 text-white rounded-lg font-semibold text-lg hover:bg-orange-600 transition shadow-lg"
+            >
+              Create a Survey
+            </button>
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="px-8 py-4 border border-gray-300 dark:border-gray-700 rounded-lg font-semibold text-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+            >
+              View Dashboard
+            </button>
+          </div>
+
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 mb-8 text-left">
             <h2 className="text-2xl font-semibold mb-4 text-center">Why Dykil?</h2>
 
@@ -22,8 +44,8 @@ export default function Home() {
               <div className="flex items-start gap-4">
                 <div className="text-2xl">📝</div>
                 <div>
-                  <h3 className="font-semibold">Generic form engine</h3>
-                  <p className="text-gray-500 text-sm">Build any kind of survey with multiple field types: text, select, rating, and more.</p>
+                  <h3 className="font-semibold">Powerful form builder</h3>
+                  <p className="text-gray-500 text-sm">Create surveys with text, multiple choice, ratings, and more. Live preview as you build.</p>
                 </div>
               </div>
 
@@ -39,7 +61,7 @@ export default function Home() {
                 <div className="text-2xl">📈</div>
                 <div>
                   <h3 className="font-semibold">Built-in analytics</h3>
-                  <p className="text-gray-500 text-sm">View response aggregation and insights for your surveys.</p>
+                  <p className="text-gray-500 text-sm">View response breakdowns, charts, and export to CSV.</p>
                 </div>
               </div>
 
@@ -47,7 +69,7 @@ export default function Home() {
                 <div className="text-2xl">🎯</div>
                 <div>
                   <h3 className="font-semibold">Event integration</h3>
-                  <p className="text-gray-500 text-sm">Link surveys to Imajin events for RSVPs, feedback, and more.</p>
+                  <p className="text-gray-500 text-sm">Link surveys to Imajin events for pre/post-event feedback.</p>
                 </div>
               </div>
             </div>

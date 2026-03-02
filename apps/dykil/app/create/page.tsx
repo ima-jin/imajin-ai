@@ -2,25 +2,18 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Model } from 'survey-core';
+import { Survey } from 'survey-react-ui';
+import 'survey-core/defaultV2.min.css';
+import type { SurveyJSElement, SurveyJSElementType } from '@/db/schema';
 
-type FieldType = 'text' | 'textarea' | 'select' | 'rating' | 'boolean' | 'number';
-
-interface FieldDefinition {
-  id: string;
-  type: FieldType;
-  label: string;
-  required?: boolean;
-  options?: string[];
-  min?: number;
-  max?: number;
-}
-
-interface Survey {
+interface SurveyData {
   id?: string;
   title: string;
   description: string;
-  fields: FieldDefinition[];
+  fields: { elements: SurveyJSElement[] };
   status: 'draft' | 'published' | 'closed';
+  type?: string;
 }
 
 function CreateSurveyContent() {
@@ -31,20 +24,21 @@ function CreateSurveyContent() {
   const [loading, setLoading] = useState(!!editId);
   const [saving, setSaving] = useState(false);
 
-  const [survey, setSurvey] = useState<Survey>({
+  const [survey, setSurvey] = useState<SurveyData>({
     title: '',
     description: '',
-    fields: [],
+    fields: { elements: [] },
     status: 'draft',
+    type: 'survey',
   });
 
   const [showFieldForm, setShowFieldForm] = useState(false);
   const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(null);
-  const [fieldForm, setFieldForm] = useState<FieldDefinition>({
-    id: '',
+  const [fieldForm, setFieldForm] = useState<SurveyJSElement>({
     type: 'text',
-    label: '',
-    required: false,
+    name: '',
+    title: '',
+    isRequired: false,
   });
 
   useEffect(() => {
@@ -62,7 +56,12 @@ function CreateSurveyContent() {
 
       if (res.ok) {
         const data = await res.json();
-        setSurvey(data);
+        setSurvey({
+          ...data,
+          fields: typeof data.fields === 'object' && 'elements' in data.fields
+            ? data.fields
+            : { elements: Array.isArray(data.fields) ? data.fields : [] }
+        });
       } else {
         alert('Failed to load survey');
         router.push('/dashboard');
@@ -75,72 +74,82 @@ function CreateSurveyContent() {
     }
   };
 
-  const generateFieldId = () => {
-    return `field_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const generateFieldName = () => {
+    return `q${Date.now()}`;
   };
 
-  const openFieldForm = (type: FieldType) => {
-    setFieldForm({
-      id: generateFieldId(),
+  const openFieldForm = (type: SurveyJSElementType) => {
+    const newField: SurveyJSElement = {
       type,
-      label: '',
-      required: false,
-      ...(type === 'select' && { options: [''] }),
-      ...(type === 'rating' && { min: 1, max: 5 }),
-      ...(type === 'number' && { min: undefined, max: undefined }),
-    });
+      name: generateFieldName(),
+      title: '',
+      isRequired: false,
+    };
+
+    // Add type-specific defaults
+    if (type === 'radiogroup' || type === 'checkbox' || type === 'dropdown') {
+      newField.choices = ['Option 1'];
+    } else if (type === 'rating') {
+      newField.rateMin = 1;
+      newField.rateMax = 5;
+    } else if (type === 'text') {
+      // Default to text input
+    }
+
+    setFieldForm(newField);
     setEditingFieldIndex(null);
     setShowFieldForm(true);
   };
 
   const editField = (index: number) => {
-    setFieldForm({ ...survey.fields[index] });
+    setFieldForm({ ...survey.fields.elements[index] });
     setEditingFieldIndex(index);
     setShowFieldForm(true);
   };
 
   const saveField = () => {
-    if (!fieldForm.label.trim()) {
-      alert('Field label is required');
+    if (!fieldForm.title.trim()) {
+      alert('Question title is required');
       return;
     }
 
-    if (fieldForm.type === 'select' && (!fieldForm.options || fieldForm.options.filter(o => o.trim()).length === 0)) {
-      alert('Select fields must have at least one option');
+    if ((fieldForm.type === 'radiogroup' || fieldForm.type === 'checkbox' || fieldForm.type === 'dropdown') &&
+        (!fieldForm.choices || fieldForm.choices.length === 0 || !fieldForm.choices.some(c => typeof c === 'string' ? c.trim() : c.text?.trim()))) {
+      alert('Multiple choice questions must have at least one option');
       return;
     }
 
-    const newFields = [...survey.fields];
+    const newElements = [...survey.fields.elements];
     if (editingFieldIndex !== null) {
-      newFields[editingFieldIndex] = fieldForm;
+      newElements[editingFieldIndex] = fieldForm;
     } else {
-      newFields.push(fieldForm);
+      newElements.push(fieldForm);
     }
 
-    setSurvey({ ...survey, fields: newFields });
+    setSurvey({ ...survey, fields: { elements: newElements } });
     setShowFieldForm(false);
     setFieldForm({
-      id: '',
       type: 'text',
-      label: '',
-      required: false,
+      name: '',
+      title: '',
+      isRequired: false,
     });
   };
 
   const deleteField = (index: number) => {
-    if (!confirm('Delete this field?')) return;
-    const newFields = survey.fields.filter((_, i) => i !== index);
-    setSurvey({ ...survey, fields: newFields });
+    if (!confirm('Delete this question?')) return;
+    const newElements = survey.fields.elements.filter((_, i) => i !== index);
+    setSurvey({ ...survey, fields: { elements: newElements } });
   };
 
   const moveField = (index: number, direction: 'up' | 'down') => {
-    const newFields = [...survey.fields];
+    const newElements = [...survey.fields.elements];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
 
-    if (targetIndex < 0 || targetIndex >= newFields.length) return;
+    if (targetIndex < 0 || targetIndex >= newElements.length) return;
 
-    [newFields[index], newFields[targetIndex]] = [newFields[targetIndex], newFields[index]];
-    setSurvey({ ...survey, fields: newFields });
+    [newElements[index], newElements[targetIndex]] = [newElements[targetIndex], newElements[index]];
+    setSurvey({ ...survey, fields: { elements: newElements } });
   };
 
   const saveSurvey = async (publish: boolean = false) => {
@@ -149,8 +158,8 @@ function CreateSurveyContent() {
       return;
     }
 
-    if (survey.fields.length === 0) {
-      alert('Survey must have at least one field');
+    if (survey.fields.elements.length === 0) {
+      alert('Survey must have at least one question');
       return;
     }
 
@@ -184,6 +193,25 @@ function CreateSurveyContent() {
       setSaving(false);
     }
   };
+
+  // Create SurveyJS model for preview
+  const previewModel = survey.fields.elements.length > 0
+    ? new Model({
+        elements: survey.fields.elements,
+        showQuestionNumbers: 'off',
+      })
+    : null;
+
+  // Apply orange theme
+  if (previewModel) {
+    previewModel.applyTheme({
+      cssVariables: {
+        '--sjs-primary-backcolor': '#f97316',
+        '--sjs-primary-backcolor-dark': '#ea580c',
+        '--sjs-primary-backcolor-light': '#fb923c',
+      }
+    });
+  }
 
   if (loading) {
     return (
@@ -241,7 +269,7 @@ function CreateSurveyContent() {
 
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold">Fields ({survey.fields.length})</h2>
+                <h2 className="text-xl font-semibold">Questions ({survey.fields.elements.length})</h2>
               </div>
 
               <div className="mb-4 flex flex-wrap gap-2">
@@ -252,16 +280,28 @@ function CreateSurveyContent() {
                   + Text
                 </button>
                 <button
-                  onClick={() => openFieldForm('textarea')}
+                  onClick={() => openFieldForm('comment')}
                   className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
                 >
-                  + Textarea
+                  + Comment
                 </button>
                 <button
-                  onClick={() => openFieldForm('select')}
+                  onClick={() => openFieldForm('radiogroup')}
                   className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
                 >
-                  + Select
+                  + Radio
+                </button>
+                <button
+                  onClick={() => openFieldForm('checkbox')}
+                  className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
+                >
+                  + Checkbox
+                </button>
+                <button
+                  onClick={() => openFieldForm('dropdown')}
+                  className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
+                >
+                  + Dropdown
                 </button>
                 <button
                   onClick={() => openFieldForm('rating')}
@@ -275,28 +315,22 @@ function CreateSurveyContent() {
                 >
                   + Yes/No
                 </button>
-                <button
-                  onClick={() => openFieldForm('number')}
-                  className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
-                >
-                  + Number
-                </button>
               </div>
 
               {showFieldForm && (
                 <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-300 dark:border-gray-700">
                   <h3 className="text-lg font-semibold mb-3">
-                    {editingFieldIndex !== null ? 'Edit Field' : `Add ${fieldForm.type} Field`}
+                    {editingFieldIndex !== null ? 'Edit Question' : `Add ${fieldForm.type} Question`}
                   </h3>
 
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-sm font-medium mb-1">Label *</label>
+                      <label className="block text-sm font-medium mb-1">Question Text *</label>
                       <input
                         type="text"
-                        value={fieldForm.label}
-                        onChange={(e) => setFieldForm({ ...fieldForm, label: e.target.value })}
-                        placeholder="Field label"
+                        value={fieldForm.title}
+                        onChange={(e) => setFieldForm({ ...fieldForm, title: e.target.value })}
+                        placeholder="What would you like to ask?"
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
                       />
                     </div>
@@ -304,74 +338,92 @@ function CreateSurveyContent() {
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        checked={fieldForm.required || false}
-                        onChange={(e) => setFieldForm({ ...fieldForm, required: e.target.checked })}
+                        checked={fieldForm.isRequired || false}
+                        onChange={(e) => setFieldForm({ ...fieldForm, isRequired: e.target.checked })}
                         id="required"
                         className="rounded"
                       />
-                      <label htmlFor="required" className="text-sm">Required field</label>
+                      <label htmlFor="required" className="text-sm">Required question</label>
                     </div>
 
-                    {fieldForm.type === 'select' && (
+                    {(fieldForm.type === 'radiogroup' || fieldForm.type === 'checkbox' || fieldForm.type === 'dropdown') && (
                       <div>
-                        <label className="block text-sm font-medium mb-1">Options</label>
-                        {(fieldForm.options || ['']).map((option, i) => (
-                          <div key={i} className="flex gap-2 mb-2">
-                            <input
-                              type="text"
-                              value={option}
-                              onChange={(e) => {
-                                const newOptions = [...(fieldForm.options || [])];
-                                newOptions[i] = e.target.value;
-                                setFieldForm({ ...fieldForm, options: newOptions });
-                              }}
-                              placeholder={`Option ${i + 1}`}
-                              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                            />
-                            {i > 0 && (
-                              <button
-                                onClick={() => {
-                                  const newOptions = (fieldForm.options || []).filter((_, idx) => idx !== i);
-                                  setFieldForm({ ...fieldForm, options: newOptions });
+                        <label className="block text-sm font-medium mb-1">Answer Choices</label>
+                        {(fieldForm.choices || []).map((choice, i) => {
+                          const choiceText = typeof choice === 'string' ? choice : choice.text || '';
+                          return (
+                            <div key={i} className="flex gap-2 mb-2">
+                              <input
+                                type="text"
+                                value={choiceText}
+                                onChange={(e) => {
+                                  const newChoices = [...(fieldForm.choices || [])];
+                                  newChoices[i] = e.target.value;
+                                  setFieldForm({ ...fieldForm, choices: newChoices });
                                 }}
-                                className="px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
-                              >
-                                ×
-                              </button>
-                            )}
-                          </div>
-                        ))}
+                                placeholder={`Choice ${i + 1}`}
+                                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                              />
+                              {i > 0 && (
+                                <button
+                                  onClick={() => {
+                                    const newChoices = (fieldForm.choices || []).filter((_, idx) => idx !== i);
+                                    setFieldForm({ ...fieldForm, choices: newChoices });
+                                  }}
+                                  className="px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
                         <button
                           onClick={() => {
-                            setFieldForm({ ...fieldForm, options: [...(fieldForm.options || []), ''] });
+                            setFieldForm({ ...fieldForm, choices: [...(fieldForm.choices || []), ''] });
                           }}
                           className="text-sm text-orange-500 hover:text-orange-600"
                         >
-                          + Add option
+                          + Add choice
                         </button>
                       </div>
                     )}
 
-                    {(fieldForm.type === 'rating' || fieldForm.type === 'number') && (
+                    {fieldForm.type === 'rating' && (
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-sm font-medium mb-1">Min</label>
+                          <label className="block text-sm font-medium mb-1">Min Value</label>
                           <input
                             type="number"
-                            value={fieldForm.min || ''}
-                            onChange={(e) => setFieldForm({ ...fieldForm, min: e.target.value ? Number(e.target.value) : undefined })}
+                            value={fieldForm.rateMin || 1}
+                            onChange={(e) => setFieldForm({ ...fieldForm, rateMin: Number(e.target.value) })}
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium mb-1">Max</label>
+                          <label className="block text-sm font-medium mb-1">Max Value</label>
                           <input
                             type="number"
-                            value={fieldForm.max || ''}
-                            onChange={(e) => setFieldForm({ ...fieldForm, max: e.target.value ? Number(e.target.value) : undefined })}
+                            value={fieldForm.rateMax || 5}
+                            onChange={(e) => setFieldForm({ ...fieldForm, rateMax: Number(e.target.value) })}
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
                           />
                         </div>
+                      </div>
+                    )}
+
+                    {fieldForm.type === 'text' && (
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Input Type</label>
+                        <select
+                          value={fieldForm.inputType || 'text'}
+                          onChange={(e) => setFieldForm({ ...fieldForm, inputType: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                        >
+                          <option value="text">Text</option>
+                          <option value="email">Email</option>
+                          <option value="number">Number</option>
+                        </select>
                       </div>
                     )}
 
@@ -380,7 +432,7 @@ function CreateSurveyContent() {
                         onClick={saveField}
                         className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
                       >
-                        {editingFieldIndex !== null ? 'Save Changes' : 'Add Field'}
+                        {editingFieldIndex !== null ? 'Save Changes' : 'Add Question'}
                       </button>
                       <button
                         onClick={() => {
@@ -397,25 +449,26 @@ function CreateSurveyContent() {
               )}
 
               <div className="space-y-2">
-                {survey.fields.length === 0 ? (
+                {survey.fields.elements.length === 0 ? (
                   <div className="text-center py-8 text-gray-500 text-sm">
-                    No fields yet. Add a field using the buttons above.
+                    No questions yet. Add a question using the buttons above.
                   </div>
                 ) : (
-                  survey.fields.map((field, index) => (
+                  survey.fields.elements.map((field, index) => (
                     <div
-                      key={field.id}
+                      key={field.name}
                       className="p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 flex items-center justify-between"
                     >
                       <div className="flex-1">
                         <div className="font-medium text-sm">
-                          {field.label}
-                          {field.required && <span className="text-red-500 ml-1">*</span>}
+                          {field.title}
+                          {field.isRequired && <span className="text-red-500 ml-1">*</span>}
                         </div>
                         <div className="text-xs text-gray-500">
                           {field.type}
-                          {field.type === 'select' && ` (${(field.options || []).length} options)`}
-                          {field.type === 'rating' && ` (${field.min || 1}-${field.max || 5})`}
+                          {(field.type === 'radiogroup' || field.type === 'checkbox' || field.type === 'dropdown') &&
+                            ` (${field.choices?.length || 0} choices)`}
+                          {field.type === 'rating' && ` (${field.rateMin || 1}-${field.rateMax || 5})`}
                         </div>
                       </div>
                       <div className="flex gap-1">
@@ -428,7 +481,7 @@ function CreateSurveyContent() {
                         </button>
                         <button
                           onClick={() => moveField(index, 'down')}
-                          disabled={index === survey.fields.length - 1}
+                          disabled={index === survey.fields.elements.length - 1}
                           className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs disabled:opacity-30"
                         >
                           ↓
@@ -485,95 +538,13 @@ function CreateSurveyContent() {
                   </p>
                 )}
 
-                {survey.fields.length === 0 ? (
+                {survey.fields.elements.length === 0 ? (
                   <div className="text-center py-12 text-gray-500 text-sm">
-                    Preview will appear here as you add fields
+                    Preview will appear here as you add questions
                   </div>
-                ) : (
-                  <div className="space-y-6">
-                    {survey.fields.map((field) => (
-                      <div key={field.id}>
-                        <label className="block text-sm font-medium mb-2">
-                          {field.label}
-                          {field.required && <span className="text-red-500 ml-1">*</span>}
-                        </label>
-
-                        {field.type === 'text' && (
-                          <input
-                            type="text"
-                            placeholder="Text input"
-                            disabled
-                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900"
-                          />
-                        )}
-
-                        {field.type === 'textarea' && (
-                          <textarea
-                            placeholder="Textarea input"
-                            rows={3}
-                            disabled
-                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900"
-                          />
-                        )}
-
-                        {field.type === 'select' && (
-                          <select
-                            disabled
-                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900"
-                          >
-                            <option>Select an option</option>
-                            {(field.options || []).map((option, i) => (
-                              <option key={i}>{option || `Option ${i + 1}`}</option>
-                            ))}
-                          </select>
-                        )}
-
-                        {field.type === 'rating' && (
-                          <div className="flex gap-2">
-                            {Array.from({ length: (field.max || 5) - (field.min || 1) + 1 }, (_, i) => (
-                              <button
-                                key={i}
-                                disabled
-                                className="w-10 h-10 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900"
-                              >
-                                {(field.min || 1) + i}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
-                        {field.type === 'boolean' && (
-                          <div className="flex gap-4">
-                            <label className="flex items-center gap-2">
-                              <input type="radio" disabled name={field.id} />
-                              <span>Yes</span>
-                            </label>
-                            <label className="flex items-center gap-2">
-                              <input type="radio" disabled name={field.id} />
-                              <span>No</span>
-                            </label>
-                          </div>
-                        )}
-
-                        {field.type === 'number' && (
-                          <input
-                            type="number"
-                            placeholder={`Number${field.min !== undefined || field.max !== undefined ? ` (${field.min || ''}${field.min !== undefined && field.max !== undefined ? '-' : ''}${field.max || ''})` : ''}`}
-                            disabled
-                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900"
-                          />
-                        )}
-                      </div>
-                    ))}
-
-                    <button
-                      disabled
-                      className="w-full px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold opacity-50"
-                    >
-                      Submit
-                    </button>
-                  </div>
-                )}
+                ) : previewModel ? (
+                  <Survey model={previewModel} />
+                ) : null}
               </div>
             </div>
           </div>

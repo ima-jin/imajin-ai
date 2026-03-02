@@ -6,16 +6,19 @@ import { pgTable, text, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
 export const surveys = pgTable('surveys', {
   id: text('id').primaryKey(),                                // survey_xxx
   did: text('did').notNull(),                                 // Owner DID
+  handle: text('handle'),                                     // Creator's handle for URL routing
   title: text('title').notNull(),
   description: text('description'),
-  fields: jsonb('fields').notNull(),                          // Form field definitions
+  fields: jsonb('fields').notNull(),                          // SurveyJS JSON schema (elements array)
   settings: jsonb('settings').default({}),                    // Survey settings
   eventId: text('event_id'),                                  // Optional event link
+  type: text('type').notNull().default('survey'),             // survey, pre-event, post-event, form
   status: text('status').notNull().default('draft'),          // draft, published, closed
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   didIdx: index('idx_surveys_did').on(table.did),
+  handleIdx: index('idx_surveys_handle').on(table.handle),
   statusIdx: index('idx_surveys_status').on(table.status),
   eventIdx: index('idx_surveys_event').on(table.eventId),
 }));
@@ -41,18 +44,44 @@ export type NewSurvey = typeof surveys.$inferInsert;
 export type SurveyResponse = typeof surveyResponses.$inferSelect;
 export type NewSurveyResponse = typeof surveyResponses.$inferInsert;
 
-// Field Types
-export type FieldType = 'text' | 'textarea' | 'select' | 'rating' | 'boolean' | 'number';
+// SurveyJS Types
+export type SurveyType = 'survey' | 'pre-event' | 'post-event' | 'form';
 
-export interface FieldDefinition {
-  id: string;
-  type: FieldType;
-  label: string;
-  required?: boolean;
-  options?: string[];           // For select fields
-  multiple?: boolean;           // For select fields
-  min?: number;                 // For rating/number fields
-  max?: number;                 // For rating/number fields
+// SurveyJS element types
+export type SurveyJSElementType =
+  | 'text'           // Single-line text input
+  | 'comment'        // Multi-line textarea
+  | 'radiogroup'     // Radio button group
+  | 'checkbox'       // Checkbox group
+  | 'dropdown'       // Dropdown select
+  | 'rating'         // Rating scale
+  | 'boolean'        // Yes/No toggle
+  | 'number'         // Number input
+  | 'email';         // Email input
+
+// SurveyJS element definition (compatible with survey-core)
+export interface SurveyJSElement {
+  type: SurveyJSElementType | string;
+  name: string;              // Unique field identifier
+  title: string;             // Display label
+  isRequired?: boolean;
+  choices?: Array<string | { value: string; text: string }>;  // For select types
+  rateMin?: number;          // For rating type
+  rateMax?: number;          // For rating type
+  min?: number;              // For number type
+  max?: number;              // For number type
+  inputType?: string;        // For text type: 'text', 'email', 'number'
+  [key: string]: any;        // Allow other SurveyJS properties
+}
+
+// SurveyJS JSON structure
+export interface SurveyJSSchema {
+  elements?: SurveyJSElement[];
+  pages?: Array<{
+    name: string;
+    elements: SurveyJSElement[];
+  }>;
+  [key: string]: any;  // Allow other SurveyJS properties
 }
 
 export interface SurveySettings {

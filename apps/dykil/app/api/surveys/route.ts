@@ -17,31 +17,46 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { title, description, fields, settings, eventId, status } = body;
+    const { title, description, fields, settings, eventId, status, type } = body;
 
     if (!title) {
       return errorResponse('title is required');
     }
 
-    if (!fields || !Array.isArray(fields) || fields.length === 0) {
-      return errorResponse('fields array is required');
-    }
-
-    // Validate fields
-    for (const field of fields) {
-      if (!field.id || !field.type || !field.label) {
-        return errorResponse('Each field must have id, type, and label');
+    // Accept both SurveyJS format { elements: [...] } and legacy array format
+    let surveyFields = fields;
+    if (fields && typeof fields === 'object' && 'elements' in fields) {
+      // Already in SurveyJS format
+      if (!fields.elements || !Array.isArray(fields.elements) || fields.elements.length === 0) {
+        return errorResponse('fields.elements array is required');
       }
+      // Validate SurveyJS elements
+      for (const element of fields.elements) {
+        if (!element.name || !element.type || !element.title) {
+          return errorResponse('Each field must have name, type, and title');
+        }
+      }
+    } else if (Array.isArray(fields)) {
+      // Legacy format - convert to SurveyJS
+      if (fields.length === 0) {
+        return errorResponse('fields array is required');
+      }
+      // Wrap in SurveyJS structure
+      surveyFields = { elements: fields };
+    } else {
+      return errorResponse('fields must be an array or SurveyJS schema');
     }
 
     const [survey] = await db.insert(surveys).values({
       id: generateId('survey'),
       did: identity.id,
+      handle: identity.handle || null,
       title,
       description: description || null,
-      fields,
+      fields: surveyFields,
       settings: settings || {},
       eventId: eventId || null,
+      type: type || 'survey',
       status: status || 'draft',
     }).returning();
 

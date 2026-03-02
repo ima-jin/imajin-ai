@@ -12,12 +12,14 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@imajin/db": "workspace:*",
+    "@imajin/ui": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "next": "^14.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@imajin/db": "workspace:*",
-    "@imajin/ui": "workspace:*"
+    "survey-core": "^2.5.13",
+    "survey-react-ui": "^2.5.13"
   },
   "devDependencies": {
     "@types/node": "^20",
