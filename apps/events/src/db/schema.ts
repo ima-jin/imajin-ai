@@ -36,6 +36,7 @@ export const events = pgTable('events', {
 
   // Trust pod integration
   podId: text('pod_id'),                                    // Links to trust_pods.id
+  lobbyConversationId: text('lobby_conversation_id'),       // Event lobby chat (open to ticket holders)
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
