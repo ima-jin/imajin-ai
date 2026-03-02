@@ -116,7 +116,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { content, replyTo } = body;
+    const { content, replyTo, mediaType, mediaPath, mediaMeta } = body;
 
     // Validate content
     if (!content || typeof content !== 'object') {
@@ -142,7 +142,7 @@ export async function POST(
 
     // Create message
     const messageId = generateId('msg');
-    
+
     await db.insert(messages).values({
       id: messageId,
       conversationId,
@@ -150,6 +150,9 @@ export async function POST(
       content,
       contentType,
       replyTo: replyTo || null,
+      mediaType: mediaType || null,
+      mediaPath: mediaPath || null,
+      mediaMeta: mediaMeta || null,
     });
 
     // Update conversation's lastMessageAt

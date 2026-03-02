@@ -64,14 +64,19 @@ export const messages = pgTable('chat_messages', {
   id: text('id').primaryKey(),                                  // msg_xxx
   conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
   fromDid: text('from_did').notNull(),
-  
+
   // Content (E2EE)
   content: jsonb('content').notNull(),                          // { encrypted, nonce } or { type: 'system', text }
   contentType: text('content_type').notNull().default('text'),  // 'text' | 'system' | 'invite' | 'trust-extended'
-  
+
+  // Media attachments
+  mediaType: text('media_type'),                                // 'image' | 'file' | null
+  mediaPath: text('media_path'),                                // Path to file in /mnt/media/chat/
+  mediaMeta: jsonb('media_meta'),                               // { width, height, size, originalName, mimeType, thumbnailPath }
+
   // Threading
   replyTo: text('reply_to'),                                    // Message ID
-  
+
   // Status
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   editedAt: timestamp('edited_at', { withTimezone: true }),

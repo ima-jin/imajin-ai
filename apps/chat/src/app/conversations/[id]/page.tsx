@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useIdentity, LoginPrompt } from '@/contexts/IdentityContext';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { FileUpload } from '@/app/components/FileUpload';
+import { MessageMedia } from '@/app/components/MessageMedia';
 
 interface Message {
   id: string;
@@ -15,6 +17,9 @@ interface Message {
   replyTo: string | null;
   createdAt: string;
   editedAt: string | null;
+  mediaType?: 'image' | 'file' | null;
+  mediaPath?: string | null;
+  mediaMeta?: any;
 }
 
 interface ConversationInfo {
@@ -60,8 +65,14 @@ export default function MessageThreadPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [handleMap, setHandleMap] = useState<Record<string, string>>({});
+  const [uploadedMedia, setUploadedMedia] = useState<{
+    mediaType: 'image' | 'file';
+    mediaPath: string;
+    mediaMeta: any;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageIdRef = useRef<string | null>(null);
+  const chatAreaRef = useRef<HTMLDivElement>(null);
   const { lastMessage: wsMessage, isConnected: wsConnected, subscribe: wsSubscribe } = useWebSocket();
 
   const conversationId = params.id;
@@ -171,9 +182,22 @@ export default function MessageThreadPage() {
     return () => clearInterval(interval);
   }, [identity, conversationId, fetchMessages, wsConnected]);
 
+  // Handle file upload completion
+  const handleUploadComplete = (data: {
+    mediaType: 'image' | 'file';
+    mediaPath: string;
+    mediaMeta: any;
+  }) => {
+    setUploadedMedia(data);
+  };
+
+  const handleUploadError = (errorMsg: string) => {
+    setError(errorMsg);
+  };
+
   // Send message
   const handleSend = async () => {
-    if (!message.trim() || sending) return;
+    if ((!message.trim() && !uploadedMedia) || sending) return;
 
     setSending(true);
     try {
@@ -181,7 +205,12 @@ export default function MessageThreadPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          content: { type: 'text', text: message.trim() },
+          content: { type: 'text', text: message.trim() || '' },
+          ...(uploadedMedia && {
+            mediaType: uploadedMedia.mediaType,
+            mediaPath: uploadedMedia.mediaPath,
+            mediaMeta: uploadedMedia.mediaMeta,
+          }),
         }),
       });
 
@@ -191,6 +220,7 @@ export default function MessageThreadPage() {
       }
 
       setMessage('');
+      setUploadedMedia(null);
       // Immediately fetch to show new message
       await fetchMessages();
     } catch (err) {
@@ -199,6 +229,79 @@ export default function MessageThreadPage() {
       setSending(false);
     }
   };
+
+  // Paste handler for images
+  const handlePaste = useCallback(async (e: ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          // Upload the file
+          const formData = new FormData();
+          formData.append('file', file);
+
+          try {
+            const res = await fetch(`/api/conversations/${conversationId}/upload`, {
+              method: 'POST',
+              body: formData,
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              handleUploadComplete(data);
+            }
+          } catch (err) {
+            handleUploadError('Failed to upload pasted image');
+          }
+        }
+      }
+    }
+  }, [conversationId]);
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const files = e.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        handleUploadComplete(data);
+      } else {
+        const data = await res.json();
+        handleUploadError(data.error || 'Upload failed');
+      }
+    } catch (err) {
+      handleUploadError('Failed to upload file');
+    }
+  }, [conversationId]);
+
+  // Attach paste handler
+  useEffect(() => {
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [handlePaste]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -244,7 +347,12 @@ export default function MessageThreadPage() {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-4 space-y-4">
+      <div
+        ref={chatAreaRef}
+        className="flex-1 overflow-y-auto py-4 space-y-4"
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
         {loadingMessages ? (
           <div className="text-center text-gray-500 mt-8">Loading messages...</div>
         ) : messages.length === 0 ? (
@@ -297,6 +405,13 @@ export default function MessageThreadPage() {
                         }`}
                       >
                         <p className="text-sm whitespace-pre-wrap">{text}</p>
+                        {msg.mediaType && msg.mediaPath && msg.mediaMeta && (
+                          <MessageMedia
+                            mediaType={msg.mediaType}
+                            mediaPath={msg.mediaPath}
+                            mediaMeta={msg.mediaMeta}
+                          />
+                        )}
                       </div>
 
                       <p className={`text-xs text-gray-400 mt-1 ${isOwn ? 'text-right mr-1' : 'ml-3'}`}>
@@ -314,7 +429,27 @@ export default function MessageThreadPage() {
 
       {/* Input */}
       <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+        {/* Uploaded media preview */}
+        {uploadedMedia && (
+          <div className="mb-2 flex items-center gap-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
+            <span className="text-sm text-gray-600 dark:text-gray-400">
+              {uploadedMedia.mediaType === 'image' ? '🖼️' : '📎'} {uploadedMedia.mediaMeta.originalName}
+            </span>
+            <button
+              onClick={() => setUploadedMedia(null)}
+              className="ml-auto text-gray-500 hover:text-red-500"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         <div className="flex items-end gap-2">
+          <FileUpload
+            conversationId={conversationId}
+            onUploadComplete={handleUploadComplete}
+            onUploadError={handleUploadError}
+          />
           <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
             <textarea
               value={message}
@@ -327,9 +462,9 @@ export default function MessageThreadPage() {
           </div>
           <button
             onClick={handleSend}
-            disabled={!message.trim() || sending}
+            disabled={(!message.trim() && !uploadedMedia) || sending}
             className={`p-3 rounded-full transition ${
-              message.trim() && !sending
+              (message.trim() || uploadedMedia) && !sending
                 ? 'bg-orange-500 text-white hover:bg-orange-600'
                 : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
             }`}
