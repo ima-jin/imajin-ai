@@ -142,6 +142,19 @@ export const readReceipts = pgTable('chat_read_receipts', {
   pk: primaryKey({ columns: [table.conversationId, table.did] }),
 }));
 
+/**
+ * Message reactions
+ */
+export const messageReactions = pgTable('chat_message_reactions', {
+  messageId: text('message_id').references(() => messages.id, { onDelete: 'cascade' }).notNull(),
+  did: text('did').notNull(),
+  emoji: text('emoji').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.messageId, table.did, table.emoji] }),
+  messageIdx: index('idx_chat_message_reactions_message').on(table.messageId),
+}));
+
 // Types
 export type Conversation = typeof conversations.$inferSelect;
 export type NewConversation = typeof conversations.$inferInsert;
@@ -149,3 +162,4 @@ export type Participant = typeof participants.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
 export type PublicKey = typeof publicKeys.$inferSelect;
+export type MessageReaction = typeof messageReactions.$inferSelect;
