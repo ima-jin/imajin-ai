@@ -16,6 +16,7 @@ export const profiles = pgTable('profiles', {
   identityTier: text('identity_tier').notNull().default('soft'), // 'soft' | 'hard'
   nextInviteAvailableAt: timestamp('next_invite_available_at', { withTimezone: true }), // NULL = can invite now
   metadata: jsonb('metadata').default({}),                    // location, website, etc.
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }), // Online presence tracking
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
