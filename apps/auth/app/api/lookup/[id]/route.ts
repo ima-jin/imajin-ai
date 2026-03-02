@@ -43,6 +43,7 @@ export async function GET(
       .select({
         id: identities.id,
         type: identities.type,
+        handle: identities.handle,
         name: identities.name,
         avatarUrl: identities.avatarUrl,
         metadata: identities.metadata,
@@ -59,7 +60,16 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ identity }, { headers: cors });
+    // Return identity fields at top level for backward compatibility
+    return NextResponse.json({
+      did: identity.id,
+      handle: identity.handle,
+      name: identity.name,
+      type: identity.type,
+      avatarUrl: identity.avatarUrl,
+      metadata: identity.metadata,
+      createdAt: identity.createdAt,
+    }, { headers: cors });
 
   } catch (error) {
     console.error('Lookup error:', error);
