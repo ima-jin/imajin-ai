@@ -9,7 +9,10 @@
         "Bash(rg *)",
         "Bash(lsof *)",
         "Bash(ps *)",
-        "Bash(sort *)"
+        "Bash(sort *)",
+        "Bash(curl *)",
+        "Bash(cat *)",
+        "Bash(python3 *)"
       ]
     }
   }
