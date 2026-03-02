@@ -33,16 +33,19 @@ export async function GET(
 
     const hasTicket = userTickets.length > 0;
     let conversationId: string | null = null;
+    let lobbyConversationId: string | null = null;
 
     if (hasTicket) {
       const pod = await getEventPod(eventId);
       conversationId = pod?.conversationId ?? null;
+      lobbyConversationId = pod?.lobbyConversationId ?? null;
     }
 
     return NextResponse.json({
       hasTicket,
       ticketId: userTickets[0]?.id || null,
       conversationId,
+      lobbyConversationId,
     });
   } catch (error) {
     console.error('Failed to check ticket ownership:', error);

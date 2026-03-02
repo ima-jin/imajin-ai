@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create trust pod and group chat for the event
-    const { podId, conversationId } = await createEventPod({
+    const { podId, conversationId, lobbyConversationId } = await createEventPod({
       eventId,
       eventDid,
       eventTitle: title,
@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
       tags: tags || [],
       status: 'draft',
       podId,
+      lobbyConversationId,
     }).returning();
 
     // Create ticket types if provided
@@ -124,6 +125,7 @@ export async function POST(request: NextRequest) {
       ticketTypes: createdTicketTypes,
       podId,
       conversationId,
+      lobbyConversationId,
       // Include keypair for ticket signing (creator responsibility to secure)
       eventKeypair: {
         publicKey: eventKeypair.publicKey,

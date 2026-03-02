@@ -19,6 +19,7 @@ export interface CreateEventPodParams {
 export interface CreateEventPodResult {
   podId: string;
   conversationId: string;
+  lobbyConversationId: string;
 }
 
 /**
@@ -29,6 +30,7 @@ export async function createEventPod(params: CreateEventPodParams): Promise<Crea
 
   const podId = `pod_${randomBytes(12).toString('hex')}`;
   const conversationId = `conv_${randomBytes(12).toString('hex')}`;
+  const lobbyConversationId = `conv_${randomBytes(12).toString('hex')}`;
 
   // Create trust pod
   await sql`
@@ -54,7 +56,28 @@ export async function createEventPod(params: CreateEventPodParams): Promise<Crea
     VALUES (${conversationId}, ${creatorDid}, 'owner', NOW())
   `;
 
-  return { podId, conversationId };
+  // Create event lobby conversation (open to all ticket holders)
+  await sql`
+    INSERT INTO chat_conversations (id, type, name, context, visibility, created_by, created_at, updated_at)
+    VALUES (
+      ${lobbyConversationId},
+      'event-lobby',
+      ${eventTitle + ' Lobby'},
+      ${JSON.stringify({ type: 'event', id: eventId })},
+      'private',
+      ${creatorDid},
+      NOW(),
+      NOW()
+    )
+  `;
+
+  // Add creator as lobby participant
+  await sql`
+    INSERT INTO chat_participants (conversation_id, did, role, joined_at)
+    VALUES (${lobbyConversationId}, ${creatorDid}, 'owner', NOW())
+  `;
+
+  return { podId, conversationId, lobbyConversationId };
 }
 
 export interface AddEventParticipantParams {
@@ -89,9 +112,9 @@ export async function addEventParticipant(params: AddEventParticipantParams): Pr
 /**
  * Gets the pod and conversation IDs for an event
  */
-export async function getEventPod(eventId: string): Promise<{ podId: string; conversationId: string } | null> {
+export async function getEventPod(eventId: string): Promise<{ podId: string; conversationId: string; lobbyConversationId?: string } | null> {
   const rows = await sql`
-    SELECT e.pod_id, c.id as conversation_id
+    SELECT e.pod_id, e.lobby_conversation_id, c.id as conversation_id
     FROM events e
     LEFT JOIN chat_conversations c ON c.pod_id = e.pod_id
     WHERE e.id = ${eventId}
@@ -105,5 +128,6 @@ export async function getEventPod(eventId: string): Promise<{ podId: string; con
   return {
     podId: rows[0].pod_id,
     conversationId: rows[0].conversation_id,
+    lobbyConversationId: rows[0].lobby_conversation_id || undefined,
   };
 }
