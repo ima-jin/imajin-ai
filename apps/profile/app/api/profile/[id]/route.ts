@@ -6,8 +6,8 @@ import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
-// Configure ed25519 sha512 (required for @noble/ed25519 v2+)
-ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
+// Configure ed25519 with sha512 (required for @noble/ed25519 v3)
+ed.hashes.sha512 = sha512;
 
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
