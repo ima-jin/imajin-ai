@@ -14,6 +14,7 @@ export const profiles = pgTable('profiles', {
   phone: text('phone'),                                       // contact phone (plaintext for now)
   // invitedBy moved to connections service
   identityTier: text('identity_tier').notNull().default('soft'), // 'soft' | 'hard'
+  nextInviteAvailableAt: timestamp('next_invite_available_at', { withTimezone: true }), // NULL = can invite now
   metadata: jsonb('metadata').default({}),                    // location, website, etc.
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

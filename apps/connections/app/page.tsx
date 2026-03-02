@@ -136,6 +136,14 @@ export default function ConnectionsPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
+      <div className="mb-4">
+        <a
+          href="/trust-invites"
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg transition"
+        >
+          🔐 Trust Graph Invites
+        </a>
+      </div>
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold">Your Connections</h1>
