@@ -4,7 +4,7 @@ import { db, conversations, participants, messages } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } from '@/lib/utils';
 
-const EVENTS_SERVICE_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:3005';
+const EVENTS_SERVICE_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:3006';
 
 /**
  * Verify ticket ownership for event lobby access

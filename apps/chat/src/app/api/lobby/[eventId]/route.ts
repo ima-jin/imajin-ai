@@ -4,7 +4,7 @@ import { db, conversations, participants } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
 
-const EVENTS_SERVICE_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:3005';
+const EVENTS_SERVICE_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:3006';
 
 /**
  * GET /api/lobby/:eventId - Get or create lobby conversation for an event
