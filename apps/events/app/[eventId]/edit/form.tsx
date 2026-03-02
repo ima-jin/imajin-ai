@@ -298,12 +298,19 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         </div>
       </div>
 
-      {/* Ticket Tiers - Read Only for now */}
+      {/* Ticket Tiers */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-semibold">Tickets</h2>
-          <span className="text-sm text-gray-500">Read-only after creation</span>
+          <button
+            type="button"
+            onClick={addTier}
+            className="text-sm text-orange-500 hover:text-orange-600 font-medium"
+          >
+            + Add Tier
+          </button>
         </div>
+        <p className="text-xs text-gray-500">Prices can only decrease. Quantity can&apos;t go below sold count.</p>
 
         {tiers.map((tier, index) => (
           <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
@@ -313,26 +320,30 @@ export default function EventEditForm({ event, existingTickets }: Props) {
                 <input
                   type="text"
                   value={tier.name}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm"
+                  onChange={(e) => updateTier(index, 'name', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Price (CAD)</label>
                 <input
-                  type="text"
-                  value={`$${tier.price.toFixed(2)}`}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={tier.price}
+                  onChange={(e) => updateTier(index, 'price', parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Quantity</label>
+                <label className="block text-sm font-medium mb-1">Quantity {tier.sold ? `(${tier.sold} sold)` : ''}</label>
                 <input
-                  type="text"
-                  value={tier.quantity === null ? 'Unlimited' : tier.quantity}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm"
+                  type="number"
+                  min={tier.sold || 0}
+                  value={tier.quantity === null ? '' : tier.quantity}
+                  onChange={(e) => updateTier(index, 'quantity', e.target.value === '' ? null : parseInt(e.target.value))}
+                  placeholder="Unlimited"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
                 />
               </div>
               <div>
@@ -345,11 +356,24 @@ export default function EventEditForm({ event, existingTickets }: Props) {
                 />
               </div>
             </div>
-            {tier.description && (
-              <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
-                <p className="text-sm text-gray-600 dark:text-gray-400">{tier.description}</p>
-              </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Description</label>
+              <input
+                type="text"
+                value={tier.description}
+                onChange={(e) => updateTier(index, 'description', e.target.value)}
+                placeholder="What's included in this tier?"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+            {!tier.id && tiers.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeTier(index)}
+                className="text-xs text-red-500 hover:text-red-600"
+              >
+                Remove tier
+              </button>
             )}
           </div>
         ))}
