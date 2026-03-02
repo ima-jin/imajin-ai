@@ -141,7 +141,8 @@ export default async function EventPage({ params }: Props) {
     const res = await fetch(`${authUrl}/api/lookup/${encodeURIComponent(event.creatorDid)}`, { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
-      organizerName = data.name || (data.handle ? `@${data.handle}` : organizerName);
+      const identity = data.identity || data;
+      organizerName = identity.name || (identity.handle ? `@${identity.handle}` : organizerName);
     }
   } catch {}
 
