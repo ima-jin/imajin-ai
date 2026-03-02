@@ -142,6 +142,18 @@ export const readReceipts = pgTable('chat_read_receipts', {
   pk: primaryKey({ columns: [table.conversationId, table.did] }),
 }));
 
+/**
+ * Conversation reads - tracks when each user last viewed a conversation
+ * Used for calculating unread message counts
+ */
+export const conversationReads = pgTable('conversation_reads', {
+  conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
+  did: text('did').notNull(),
+  lastReadAt: timestamp('last_read_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.conversationId, table.did] }),
+}));
+
 // Types
 export type Conversation = typeof conversations.$inferSelect;
 export type NewConversation = typeof conversations.$inferInsert;
@@ -149,3 +161,4 @@ export type Participant = typeof participants.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
 export type PublicKey = typeof publicKeys.$inferSelect;
+export type ConversationRead = typeof conversationReads.$inferSelect;

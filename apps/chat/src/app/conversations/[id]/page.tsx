@@ -66,7 +66,7 @@ export default function MessageThreadPage() {
 
   const conversationId = params.id;
 
-  // Fetch conversation info
+  // Fetch conversation info and mark as read
   useEffect(() => {
     if (!identity || !conversationId) return;
 
@@ -81,7 +81,27 @@ export default function MessageThreadPage() {
         // Conversation info is optional for display
       }
     }
+
+    async function markAsRead() {
+      try {
+        await fetch(`/api/conversations/${conversationId}/read`, {
+          method: 'POST',
+        });
+      } catch {
+        // Silently fail - not critical
+      }
+    }
+
     fetchConversation();
+    markAsRead();
+
+    // Mark as read whenever the window gains focus
+    const handleFocus = () => {
+      markAsRead();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, [identity, conversationId]);
 
   // Resolve handles for message senders

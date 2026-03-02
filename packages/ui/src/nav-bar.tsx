@@ -18,6 +18,7 @@ export interface NavBarProps {
   servicePrefix?: string;
   domain?: string;
   identity?: NavIdentity;
+  unreadMessages?: number;
 }
 
 function buildServices(prefix: string, domain: string) {
@@ -100,11 +101,12 @@ function useAutoIdentity(servicePrefix: string, domain: string): NavIdentity | n
   return identity;
 }
 
-export function NavBar({ 
-  currentService, 
-  servicePrefix = 'https://', 
+export function NavBar({
+  currentService,
+  servicePrefix = 'https://',
   domain = 'imajin.ai',
   identity: identityProp,
+  unreadMessages = 0,
 }: NavBarProps) {
   const services = buildServices(servicePrefix, domain);
   const userLinks = buildUserLinks(servicePrefix, domain);
@@ -212,6 +214,11 @@ export function NavBar({
                     className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
                   >
                     <span>💬</span> Messages
+                    {unreadMessages > 0 && (
+                      <span className="ml-auto bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
+                        {unreadMessages}
+                      </span>
+                    )}
                   </a>
                   <a
                     href={userLinks.connections}
@@ -270,7 +277,14 @@ export function NavBar({
           {identity?.isLoggedIn && (
             <>
               <hr className="my-2 border-gray-200 dark:border-gray-800" />
-              <a href={userLinks.messages} className="block px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 no-underline">💬 Messages</a>
+              <a href={userLinks.messages} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 no-underline">
+                <span>💬 Messages</span>
+                {unreadMessages > 0 && (
+                  <span className="bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
+                    {unreadMessages}
+                  </span>
+                )}
+              </a>
               <a href={userLinks.connections} className="block px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 no-underline">🤝 Connections</a>
             </>
           )}

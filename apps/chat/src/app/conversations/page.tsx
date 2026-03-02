@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useIdentity, LoginPrompt } from '@/contexts/IdentityContext';
 import { NewChatModal } from '@/app/components/NewChatModal';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 interface Conversation {
   id: string;
@@ -21,6 +22,7 @@ interface Conversation {
   podName?: string | null;
   eventName?: string | null;
   participantCount?: number;
+  unread?: number;
 }
 
 function formatTime(dateStr: string | null): string {
@@ -45,24 +47,65 @@ export default function ConversationsPage() {
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
+  const { lastMessage } = useWebSocket();
 
-  useEffect(() => {
+  const fetchConversations = useCallback(async () => {
     if (!identity) return;
 
-    async function fetchConversations() {
-      try {
-        const res = await fetch('/api/conversations');
-        if (!res.ok) throw new Error('Failed to load conversations');
-        const data = await res.json();
-        setConversations(data.conversations || []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load');
-      } finally {
-        setLoadingConvs(false);
+    try {
+      const [convsRes, unreadRes] = await Promise.all([
+        fetch('/api/conversations'),
+        fetch('/api/conversations/unread'),
+      ]);
+
+      if (!convsRes.ok) throw new Error('Failed to load conversations');
+
+      const convsData = await convsRes.json();
+      let convs = convsData.conversations || [];
+
+      // Add unread counts if available
+      if (unreadRes.ok) {
+        const unreadData = await unreadRes.json();
+        const unreadMap = new Map(
+          unreadData.conversations.map((c: { id: string; unread: number }) => [
+            c.id,
+            c.unread,
+          ])
+        );
+        convs = convs.map((conv: Conversation) => ({
+          ...conv,
+          unread: unreadMap.get(conv.id) || 0,
+        }));
+
+        // Sort unread conversations to the top
+        convs.sort((a: Conversation, b: Conversation) => {
+          if (a.unread && !b.unread) return -1;
+          if (!a.unread && b.unread) return 1;
+          // Both unread or both read - sort by last message time
+          const aTime = new Date(a.lastMessageAt || a.createdAt).getTime();
+          const bTime = new Date(b.lastMessageAt || b.createdAt).getTime();
+          return bTime - aTime;
+        });
       }
+
+      setConversations(convs);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load');
+    } finally {
+      setLoadingConvs(false);
     }
-    fetchConversations();
   }, [identity]);
+
+  useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations]);
+
+  // Refetch when new message arrives via WebSocket
+  useEffect(() => {
+    if (lastMessage?.type === 'new_message') {
+      fetchConversations();
+    }
+  }, [lastMessage, fetchConversations]);
 
   if (loading) {
     return (
@@ -127,11 +170,18 @@ export default function ConversationsPage() {
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium truncate text-gray-900 dark:text-white">
-                      {conv.name || (conv.type === 'direct' && conv.otherParticipant
-                        ? (conv.otherParticipant.name || (conv.otherParticipant.handle ? `@${conv.otherParticipant.handle}` : 'Direct Message'))
-                        : 'Direct Message')}
-                    </span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`truncate text-gray-900 dark:text-white ${conv.unread ? 'font-bold' : 'font-medium'}`}>
+                        {conv.name || (conv.type === 'direct' && conv.otherParticipant
+                          ? (conv.otherParticipant.name || (conv.otherParticipant.handle ? `@${conv.otherParticipant.handle}` : 'Direct Message'))
+                          : 'Direct Message')}
+                      </span>
+                      {conv.unread && conv.unread > 0 && (
+                        <span className="flex-shrink-0 bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
+                          {conv.unread}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
                       {formatTime(conv.lastMessageAt || conv.createdAt)}
                     </span>
