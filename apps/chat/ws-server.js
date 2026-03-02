@@ -4,6 +4,8 @@ const { WebSocketServer } = require('ws');
 const socketMeta = new Map();
 /** @type {Map<string, Set<import('ws').WebSocket>>} */
 const didSockets = new Map();
+/** @type {Map<string, Map<string, { did: string, name: string, timeout: NodeJS.Timeout }>>} */
+const typingStatus = new Map(); // conversationId -> Map<did, {did, name, timeout}>
 
 let wss;
 
@@ -37,6 +39,122 @@ async function authenticateRequest(req) {
   } catch (err) {
     console.error('[WS] Auth error:', err.message);
     return null;
+  }
+}
+
+/**
+ * Update last_seen_at for a user going offline
+ */
+async function updateLastSeen(did) {
+  try {
+    const profileUrl = process.env.PROFILE_SERVICE_URL || 'http://localhost:3004';
+    await fetch(`${profileUrl}/api/presence/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ did, lastSeenAt: new Date().toISOString() }),
+    });
+  } catch (err) {
+    console.error('[WS] Failed to update last_seen:', err.message);
+  }
+}
+
+/**
+ * Handle typing indicator
+ */
+function handleTyping(conversationId, did, name) {
+  if (!typingStatus.has(conversationId)) {
+    typingStatus.set(conversationId, new Map());
+  }
+  const conversationTyping = typingStatus.get(conversationId);
+
+  // Clear existing timeout if any
+  if (conversationTyping.has(did)) {
+    clearTimeout(conversationTyping.get(did).timeout);
+  }
+
+  // Set new timeout for auto-expiry (5 seconds)
+  const timeout = setTimeout(() => {
+    handleStopTyping(conversationId, did);
+  }, 5000);
+
+  conversationTyping.set(did, { did, name, timeout });
+
+  // Broadcast to conversation participants
+  broadcastToConversation(conversationId, {
+    type: 'user_typing',
+    conversationId,
+    did,
+    name,
+  }, did); // Exclude sender
+}
+
+/**
+ * Handle stop typing
+ */
+function handleStopTyping(conversationId, did) {
+  if (!typingStatus.has(conversationId)) return;
+
+  const conversationTyping = typingStatus.get(conversationId);
+  if (!conversationTyping.has(did)) return;
+
+  // Clear timeout
+  const entry = conversationTyping.get(did);
+  clearTimeout(entry.timeout);
+  conversationTyping.delete(did);
+
+  // Clean up empty map
+  if (conversationTyping.size === 0) {
+    typingStatus.delete(conversationId);
+  }
+
+  // Broadcast to conversation participants
+  broadcastToConversation(conversationId, {
+    type: 'user_stop_typing',
+    conversationId,
+    did,
+  }, did); // Exclude sender
+}
+
+/**
+ * Broadcast to all participants in a conversation
+ */
+function broadcastToConversation(conversationId, payload, excludeDid = null) {
+  if (!wss) return;
+  const payloadStr = JSON.stringify(payload);
+  for (const [ws, meta] of socketMeta) {
+    if (meta.subscriptions.has(conversationId) &&
+        ws.readyState === 1 &&
+        meta.did !== excludeDid) {
+      ws.send(payloadStr);
+    }
+  }
+}
+
+/**
+ * Broadcast presence change to relevant conversations
+ */
+async function broadcastPresenceChange(did, isOnline) {
+  // Get all conversations this user participates in
+  try {
+    const chatUrl = process.env.CHAT_SERVICE_URL || 'http://localhost:3002';
+    const res = await fetch(`${chatUrl}/api/participants/${encodeURIComponent(did)}/conversations`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const conversationIds = data.conversationIds || [];
+
+    const payload = {
+      type: 'user_presence',
+      did,
+      online: isOnline,
+      lastSeen: isOnline ? null : new Date().toISOString(),
+    };
+
+    // Broadcast to each conversation
+    conversationIds.forEach(convId => {
+      broadcastToConversation(convId, payload);
+    });
+  } catch (err) {
+    console.error('[WS] Failed to broadcast presence:', err.message);
   }
 }
 
@@ -74,22 +192,43 @@ function setupWebSocket(server) {
             ws.send(JSON.stringify({ type: 'pong' }));
           } else if (msg.type === 'subscribe' && msg.conversationId) {
             meta.subscriptions.add(msg.conversationId);
+          } else if (msg.type === 'typing' && msg.conversationId) {
+            handleTyping(msg.conversationId, did, msg.name || null);
+          } else if (msg.type === 'stop_typing' && msg.conversationId) {
+            handleStopTyping(msg.conversationId, did);
           }
         } catch {
           ws.send(JSON.stringify({ type: 'error', message: 'Invalid message' }));
         }
       });
 
-      ws.on('close', () => {
+      ws.on('close', async () => {
         socketMeta.delete(ws);
         const sockets = didSockets.get(did);
         if (sockets) {
           sockets.delete(ws);
-          if (sockets.size === 0) didSockets.delete(did);
+          if (sockets.size === 0) {
+            didSockets.delete(did);
+            // User went offline, update last_seen_at
+            await updateLastSeen(did);
+            // Clear any typing indicators for this user
+            for (const [convId, typingUsers] of typingStatus.entries()) {
+              if (typingUsers.has(did)) {
+                handleStopTyping(convId, did);
+              }
+            }
+            // Broadcast offline status to relevant conversations
+            broadcastPresenceChange(did, false);
+          }
         }
       });
 
       ws.send(JSON.stringify({ type: 'connected' }));
+
+      // If this is the first connection for this DID, broadcast online status
+      if (didSockets.get(did).size === 1) {
+        broadcastPresenceChange(did, true);
+      }
     });
   });
 }

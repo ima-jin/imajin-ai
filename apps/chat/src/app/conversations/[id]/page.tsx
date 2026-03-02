@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useIdentity, LoginPrompt } from '@/contexts/IdentityContext';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { TypingIndicator } from '@/app/components/TypingIndicator';
 
 interface Message {
   id: string;
@@ -60,9 +61,12 @@ export default function MessageThreadPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [handleMap, setHandleMap] = useState<Record<string, string>>({});
+  const [typingUsers, setTypingUsers] = useState<Array<{ did: string; name: string | null }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageIdRef = useRef<string | null>(null);
-  const { lastMessage: wsMessage, isConnected: wsConnected, subscribe: wsSubscribe } = useWebSocket();
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTypingSentRef = useRef<number>(0);
+  const { lastMessage: wsMessage, isConnected: wsConnected, subscribe: wsSubscribe, sendTyping, sendStopTyping } = useWebSocket();
 
   const conversationId = params.id;
 
@@ -151,18 +155,38 @@ export default function MessageThreadPage() {
 
   // Handle incoming WebSocket messages
   useEffect(() => {
-    if (!wsMessage || wsMessage.type !== 'new_message' || !wsMessage.message) return;
-    const msg = wsMessage.message as Message;
-    if (msg.conversationId !== conversationId) return;
+    if (!wsMessage) return;
 
-    setMessages(prev => {
-      // Deduplicate
-      if (prev.some(m => m.id === msg.id)) return prev;
-      const updated = [...prev, msg];
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-      return updated;
-    });
-  }, [wsMessage, conversationId]);
+    // Handle new messages
+    if (wsMessage.type === 'new_message' && wsMessage.message) {
+      const msg = wsMessage.message as Message;
+      if (msg.conversationId !== conversationId) return;
+
+      setMessages(prev => {
+        // Deduplicate
+        if (prev.some(m => m.id === msg.id)) return prev;
+        const updated = [...prev, msg];
+        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+        return updated;
+      });
+    }
+
+    // Handle typing indicators
+    if (wsMessage.type === 'user_typing' && wsMessage.conversationId === conversationId) {
+      setTypingUsers(prev => {
+        // Don't show own typing indicator
+        if (wsMessage.did === identity?.did) return prev;
+        // Deduplicate
+        if (prev.some(u => u.did === wsMessage.did)) return prev;
+        return [...prev, { did: wsMessage.did, name: wsMessage.name || null }];
+      });
+    }
+
+    // Handle stop typing
+    if (wsMessage.type === 'user_stop_typing' && wsMessage.conversationId === conversationId) {
+      setTypingUsers(prev => prev.filter(u => u.did !== wsMessage.did));
+    }
+  }, [wsMessage, conversationId, identity]);
 
   // Fall back to polling if WebSocket is disconnected
   useEffect(() => {
@@ -174,6 +198,15 @@ export default function MessageThreadPage() {
   // Send message
   const handleSend = async () => {
     if (!message.trim() || sending) return;
+
+    // Stop typing indicator
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    if (conversationId) {
+      sendStopTyping(conversationId);
+    }
 
     setSending(true);
     try {
@@ -200,12 +233,47 @@ export default function MessageThreadPage() {
     }
   };
 
+  // Handle typing indicator on input change
+  const handleMessageChange = (text: string) => {
+    setMessage(text);
+
+    if (!text.trim() || !conversationId) return;
+
+    // Debounced typing indicator (max 1 per 2s)
+    const now = Date.now();
+    if (now - lastTypingSentRef.current > 2000) {
+      sendTyping(conversationId, identity?.displayName || null);
+      lastTypingSentRef.current = now;
+    }
+
+    // Reset stop typing timer
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Send stop typing after 3s of no input
+    typingTimeoutRef.current = setTimeout(() => {
+      if (conversationId) {
+        sendStopTyping(conversationId);
+      }
+    }, 3000);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
+
+  // Clean up typing timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
 
   if (authLoading) {
     return <div className="max-w-2xl mx-auto mt-20 text-center text-gray-500">Loading...</div>;
@@ -314,11 +382,14 @@ export default function MessageThreadPage() {
 
       {/* Input */}
       <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+        {/* Typing Indicator */}
+        <TypingIndicator typingUsers={typingUsers} />
+
         <div className="flex items-end gap-2">
           <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
             <textarea
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={(e) => handleMessageChange(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Type a message..."
               className="w-full bg-transparent resize-none outline-none text-sm max-h-32"

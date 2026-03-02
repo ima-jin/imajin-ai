@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useIdentity, LoginPrompt } from '@/contexts/IdentityContext';
 import { NewChatModal } from '@/app/components/NewChatModal';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 interface Conversation {
   id: string;
@@ -45,6 +46,8 @@ export default function ConversationsPage() {
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
+  const [onlineStatus, setOnlineStatus] = useState<Record<string, boolean>>({});
+  const { lastMessage: wsMessage } = useWebSocket();
 
   useEffect(() => {
     if (!identity) return;
@@ -54,7 +57,30 @@ export default function ConversationsPage() {
         const res = await fetch('/api/conversations');
         if (!res.ok) throw new Error('Failed to load conversations');
         const data = await res.json();
-        setConversations(data.conversations || []);
+        const convs = data.conversations || [];
+        setConversations(convs);
+
+        // Fetch online status for all participants
+        const didsToCheck = new Set<string>();
+        convs.forEach((conv: Conversation) => {
+          if (conv.type === 'direct' && conv.otherParticipant?.did) {
+            didsToCheck.add(conv.otherParticipant.did);
+          }
+        });
+
+        // Fetch presence for each DID
+        const profileUrl = process.env.NEXT_PUBLIC_PROFILE_URL || 'http://localhost:3004';
+        for (const did of didsToCheck) {
+          try {
+            const presenceRes = await fetch(`${profileUrl}/api/presence/${encodeURIComponent(did)}`);
+            if (presenceRes.ok) {
+              const presenceData = await presenceRes.json();
+              setOnlineStatus(prev => ({ ...prev, [did]: presenceData.online }));
+            }
+          } catch {
+            // Ignore presence fetch errors
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load');
       } finally {
@@ -63,6 +89,15 @@ export default function ConversationsPage() {
     }
     fetchConversations();
   }, [identity]);
+
+  // Handle presence updates from WebSocket
+  useEffect(() => {
+    if (!wsMessage || wsMessage.type !== 'user_presence') return;
+    setOnlineStatus(prev => ({
+      ...prev,
+      [wsMessage.did]: wsMessage.online,
+    }));
+  }, [wsMessage]);
 
   if (loading) {
     return (
@@ -114,14 +149,20 @@ export default function ConversationsPage() {
                 className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
               >
                 {/* Avatar */}
-                <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold ${
-                    conv.type === 'group'
-                      ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
-                  }`}
-                >
-                  {conv.type === 'group' ? '👥' : '💬'}
+                <div className="relative">
+                  <div
+                    className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold ${
+                      conv.type === 'group'
+                        ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    {conv.type === 'group' ? '👥' : '💬'}
+                  </div>
+                  {/* Online indicator for direct messages */}
+                  {conv.type === 'direct' && conv.otherParticipant?.did && onlineStatus[conv.otherParticipant.did] && (
+                    <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800" />
+                  )}
                 </div>
 
                 {/* Content */}
