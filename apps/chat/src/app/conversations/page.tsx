@@ -75,7 +75,7 @@ export default function ConversationsPage() {
         );
         convs = convs.map((conv: Conversation) => ({
           ...conv,
-          unread: unreadMap.get(conv.id) || 0,
+          unread: unreadMap.get(conv.id) ?? undefined,
         }));
 
         // Sort unread conversations to the top
