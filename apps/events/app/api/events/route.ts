@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes } from '@/src/db';
-import { requireAuth } from '@/src/lib/auth';
+import { requireHardDID } from '@/src/lib/auth';
 import { desc, eq } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { createEventPod } from '@/src/lib/pods';
@@ -9,10 +9,11 @@ const AUTH_URL = process.env.AUTH_SERVICE_URL!;
 
 /**
  * POST /api/events - Create a new event
+ * Requires hard DID (keypair-based identity)
  */
 export async function POST(request: NextRequest) {
-  // Require authentication
-  const authResult = await requireAuth(request);
+  // Require hard DID authentication
+  const authResult = await requireHardDID(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
