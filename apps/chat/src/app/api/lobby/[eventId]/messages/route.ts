@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { eq, and, desc, lt, isNull } from 'drizzle-orm';
 import { db, conversations, participants, messages } from '@/db';
 import { requireAuth } from '@/lib/auth';
-import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
+import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } from '@/lib/utils';
 
 const EVENTS_SERVICE_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:3005';
 
@@ -37,15 +37,23 @@ async function verifyTicketOwnership(
 }
 
 /**
+ * OPTIONS /api/lobby/:eventId/messages - CORS preflight
+ */
+export async function OPTIONS(request: NextRequest) {
+  return corsOptions(request);
+}
+
+/**
  * GET /api/lobby/:eventId/messages - Get paginated messages from event lobby
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ eventId: string }> }
 ) {
+  const cors = corsHeaders(request);
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
+    return errorResponse(authResult.error, authResult.status, cors);
   }
 
   const { identity } = authResult;
@@ -65,7 +73,7 @@ export async function GET(
     );
 
     if (!hasTicket || !lobbyConversationId) {
-      return errorResponse('You need a ticket to access the event lobby', 403);
+      return errorResponse('You need a ticket to access the event lobby', 403, cors);
     }
 
     // Check if user is a participant
@@ -125,10 +133,10 @@ export async function GET(
     return jsonResponse({
       messages: result.reverse(), // Return in chronological order
       hasMore: result.length === limit,
-    });
+    }, 200, cors);
   } catch (error) {
     console.error('Failed to get lobby messages:', error);
-    return errorResponse('Failed to get lobby messages', 500);
+    return errorResponse('Failed to get lobby messages', 500, cors);
   }
 }
 
@@ -139,9 +147,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ eventId: string }> }
 ) {
+  const cors = corsHeaders(request);
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
+    return errorResponse(authResult.error, authResult.status, cors);
   }
 
   const { identity } = authResult;
@@ -156,7 +165,7 @@ export async function POST(
     );
 
     if (!hasTicket || !lobbyConversationId) {
-      return errorResponse('You need a ticket to post in the event lobby', 403);
+      return errorResponse('You need a ticket to post in the event lobby', 403, cors);
     }
 
     // Check if user is a participant
@@ -182,12 +191,12 @@ export async function POST(
 
     // Validate content - for event lobby, messages are plaintext (no E2EE)
     if (!content || typeof content !== 'object') {
-      return errorResponse('content is required and must be an object');
+      return errorResponse('content is required and must be an object', 400, cors);
     }
 
     // Event lobby messages should have { text: string }
     if (!content.text || typeof content.text !== 'string') {
-      return errorResponse('content.text is required for lobby messages');
+      return errorResponse('content.text is required for lobby messages', 400, cors);
     }
 
     // If replying, verify the message exists in this conversation
@@ -199,7 +208,7 @@ export async function POST(
         ),
       });
       if (!replyMessage) {
-        return errorResponse('Reply message not found', 404);
+        return errorResponse('Reply message not found', 404, cors);
       }
     }
 
@@ -238,9 +247,9 @@ export async function POST(
       }).catch(() => {});
     }
 
-    return jsonResponse({ message }, 201);
+    return jsonResponse({ message }, 201, cors);
   } catch (error) {
     console.error('Failed to send lobby message:', error);
-    return errorResponse('Failed to send lobby message', 500);
+    return errorResponse('Failed to send lobby message', 500, cors);
   }
 }
