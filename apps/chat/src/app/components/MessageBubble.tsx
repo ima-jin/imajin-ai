@@ -83,7 +83,7 @@ export function MessageBubble({
       ? message.content.text
       : typeof message.content === 'string'
       ? message.content
-      : JSON.stringify(message.content);
+      : '';
 
   const replyToText =
     replyToMessage && typeof replyToMessage.content === 'object' && replyToMessage.content?.text
@@ -92,11 +92,29 @@ export function MessageBubble({
       ? replyToMessage.content
       : '';
 
-  // Handle context menu
+  // Handle context menu (right-click still works)
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
     setShowContextMenu(true);
+  };
+
+  // Handle hover with delay (400ms) for desktop
+  const hoverTimer = useRef<NodeJS.Timeout | null>(null);
+  const handleMouseEnter = () => {
+    hoverTimer.current = setTimeout(() => {
+      if (bubbleRef.current) {
+        const rect = bubbleRef.current.getBoundingClientRect();
+        setContextMenuPosition({ x: rect.right - 40, y: rect.top });
+        setShowContextMenu(true);
+      }
+    }, 400);
+  };
+  const handleMouseLeave = () => {
+    if (hoverTimer.current) {
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
   };
 
   // Handle long press for mobile
@@ -114,13 +132,17 @@ export function MessageBubble({
     }
   };
 
-  // Close context menu on click outside
+  // Close context menu on click outside or scroll
   useEffect(() => {
     if (!showContextMenu) return;
 
-    const handleClick = () => setShowContextMenu(false);
-    document.addEventListener('click', handleClick);
-    return () => document.removeEventListener('click', handleClick);
+    const dismiss = () => setShowContextMenu(false);
+    document.addEventListener('click', dismiss);
+    document.addEventListener('scroll', dismiss, true);
+    return () => {
+      document.removeEventListener('click', dismiss);
+      document.removeEventListener('scroll', dismiss, true);
+    };
   }, [showContextMenu]);
 
   // Handle delete confirmation
@@ -158,6 +180,8 @@ export function MessageBubble({
         <div
           ref={bubbleRef}
           onContextMenu={handleContextMenu}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
           className="relative"
@@ -184,7 +208,7 @@ export function MessageBubble({
                 : 'bg-gray-100 dark:bg-gray-800 rounded-bl-md'
             }`}
           >
-            <p className="text-sm whitespace-pre-wrap">{text}</p>
+            {text && <p className="text-sm whitespace-pre-wrap">{text}</p>}
 
             {/* Media attachments */}
             {message.mediaType && message.mediaPath && message.mediaMeta && (
