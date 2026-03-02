@@ -12,7 +12,8 @@
         "Bash(sort *)",
         "Bash(curl *)",
         "Bash(cat *)",
-        "Bash(python3 *)"
+        "Bash(python3 *)",
+        "Bash(pnpm *)"
       ]
     }
   }
