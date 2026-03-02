@@ -135,10 +135,13 @@ export async function PUT(
     if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
 
-    // Price - can only decrease (or stay same)
+    // Price - freely editable if no tickets sold, can only decrease after sales
     if (price !== undefined) {
-      if (price > tier.price) {
-        violations.push(`price can only decrease (current: ${tier.price}, requested: ${price})`);
+      const sold = tier.sold || 0;
+      if (sold === 0) {
+        updates.price = price;
+      } else if (price > tier.price) {
+        violations.push(`price can only decrease after tickets are sold (current: ${tier.price}, requested: ${price})`);
       } else {
         updates.price = price;
       }
@@ -154,16 +157,23 @@ export async function PUT(
       }
     }
 
-    // Perks - can only add, not remove
+    // Perks - freely editable if no tickets sold, append-only after sales
     if (perks !== undefined) {
-      const currentPerks = (tier.perks as string[]) || [];
-      const newPerks = perks as string[];
-      const removedPerks = currentPerks.filter(p => !newPerks.includes(p));
-      
-      if (removedPerks.length > 0) {
-        violations.push(`cannot remove perks: ${removedPerks.join(', ')}`);
+      const sold = tier.sold || 0;
+      if (sold === 0) {
+        // No tickets sold — free to edit
+        updates.perks = perks;
       } else {
-        updates.perks = newPerks;
+        // Tickets sold — can only add, not remove
+        const currentPerks = (tier.perks as string[]) || [];
+        const newPerks = perks as string[];
+        const removedPerks = currentPerks.filter(p => !newPerks.includes(p));
+        
+        if (removedPerks.length > 0) {
+          violations.push(`cannot remove perks after tickets are sold: ${removedPerks.join(', ')}`);
+        } else {
+          updates.perks = newPerks;
+        }
       }
     }
 
