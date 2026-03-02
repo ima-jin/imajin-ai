@@ -7,6 +7,7 @@ import { TicketsSection } from './tickets-section';
 export const revalidate = 60; // revalidate every 60 seconds
 import { Countdown } from './countdown';
 import { EventLobbyAccordion } from './event-lobby-accordion';
+import { EventSurveyAccordion } from './event-survey-accordion';
 import { ShareButton } from './share-button';
 import { getSession } from '@/src/lib/auth';
 import type { Metadata } from 'next';
@@ -186,9 +187,31 @@ export default async function EventPage({ params }: Props) {
   const themeColor = theme.color || 'orange';
   const themeEmoji = theme.emoji || '🎉';
   const gradient = theme.gradient || colorGradients[themeColor] || colorGradients.orange;
-  
+
   const eventDate = new Date(event.startsAt);
-  const isUpcoming = eventDate > new Date();
+  const eventEndDate = event.endsAt ? new Date(event.endsAt) : null;
+  const now = new Date();
+  const isUpcoming = eventDate > now;
+  const isOngoing = eventDate <= now && (!eventEndDate || eventEndDate > now);
+  const isCompleted = eventEndDate ? eventEndDate < now : false;
+
+  // Fetch surveys for this event
+  const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
+  let eventSurveys: any[] = [];
+  try {
+    const surveysRes = await fetch(`${DYKIL_URL}/api/surveys/event/${event.id}`, {
+      cache: 'no-store',
+    });
+    if (surveysRes.ok) {
+      const surveysData = await surveysRes.json();
+      eventSurveys = surveysData.surveys || [];
+    }
+  } catch (err) {
+    console.error('Failed to fetch event surveys:', err);
+  }
+
+  const preEventSurvey = eventSurveys.find(s => s.type === 'pre-event');
+  const postEventSurvey = eventSurveys.find(s => s.type === 'post-event');
   const formattedDate = eventDate.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -303,6 +326,30 @@ export default async function EventPage({ params }: Props) {
         <div className="mb-6">
           <EventLobbyAccordion eventId={event.id} />
         </div>
+
+        {/* Pre-Event Survey */}
+        {preEventSurvey && (isUpcoming || isOngoing) && (
+          <div className="mb-6">
+            <EventSurveyAccordion
+              eventId={event.id}
+              surveyId={preEventSurvey.id}
+              surveyTitle={preEventSurvey.title}
+              surveyType="pre-event"
+            />
+          </div>
+        )}
+
+        {/* Post-Event Survey */}
+        {postEventSurvey && (isOngoing || isCompleted) && (
+          <div className="mb-6">
+            <EventSurveyAccordion
+              eventId={event.id}
+              surveyId={postEventSurvey.id}
+              surveyTitle={postEventSurvey.title}
+              surveyType="post-event"
+            />
+          </div>
+        )}
 
         {/* Tickets Section */}
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8" id="tickets">
