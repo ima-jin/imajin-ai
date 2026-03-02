@@ -9,6 +9,7 @@ export interface Identity {
   type: 'human' | 'agent' | 'presence';
   name?: string;
   handle?: string;
+  tier?: 'soft' | 'hard';
 }
 
 /**
@@ -33,6 +34,7 @@ export async function requireAuth(request: Request): Promise<{ identity: Identit
           type: data.type || data.identity?.type || 'human',
           name: data.name || data.identity?.name,
           handle: data.handle || data.identity?.handle,
+          tier: data.tier || data.identity?.tier || 'hard',
         };
         if (identity.id) return { identity };
       }

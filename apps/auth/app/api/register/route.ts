@@ -105,6 +105,7 @@ export async function POST(request: NextRequest) {
           handle: existing[0].handle || undefined,
           type: existing[0].type,
           name: existing[0].name || undefined,
+          tier: 'hard', // registrations with public keys are hard DIDs
         });
 
         const cookieConfig = getSessionCookieOptions(process.env.NODE_ENV === 'production');
@@ -180,6 +181,7 @@ export async function POST(request: NextRequest) {
       handle: identity.handle || undefined,
       type: identity.type,
       name: identity.name || undefined,
+      tier: 'hard', // registrations with public keys are hard DIDs
     });
 
     // Set cookie first so the accept call is authenticated

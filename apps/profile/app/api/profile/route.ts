@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
       did: identity.id,
       displayName,
       displayType,
+      identityTier: identity.tier || 'hard', // use tier from authenticated identity
       avatar: avatar || null,
       bio: bio || null,
       handle: handle || null,

@@ -17,6 +17,7 @@ interface Profile {
   avatar?: string;
   email?: string;
   phone?: string;
+  identityTier?: 'soft' | 'hard';
   createdAt: string;
   metadata?: {
     links?: string;
@@ -174,6 +175,8 @@ export default async function ProfilePage({ params }: PageProps) {
   };
   const typeLabel = typeLabels[profile.displayType];
 
+  const isSoftDID = profile.identityTier === 'soft' || profile.did.startsWith('did:email:');
+
   return (
     <div className="max-w-lg mx-auto">
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
@@ -188,16 +191,41 @@ export default async function ProfilePage({ params }: PageProps) {
           <p className="text-gray-400 mb-2">@{profile.handle}</p>
         )}
 
-        {/* Type badge */}
-        <span className="inline-block px-3 py-1 bg-gray-900 border border-gray-800 rounded-full text-sm mb-4 text-gray-300">
-          {typeLabel}
-        </span>
+        {/* Type badge & Identity Tier */}
+        <div className="flex gap-2 justify-center mb-4">
+          <span className="inline-block px-3 py-1 bg-gray-900 border border-gray-800 rounded-full text-sm text-gray-300">
+            {typeLabel}
+          </span>
+          {isSoftDID && (
+            <span className="inline-block px-3 py-1 bg-amber-900/30 border border-amber-700/50 rounded-full text-sm text-amber-400">
+              ⚡ Quick Profile
+            </span>
+          )}
+        </div>
 
         {/* Bio */}
         {profile.bio && (
           <p className="text-gray-300 mb-6">
             {profile.bio}
           </p>
+        )}
+
+        {/* Upgrade CTA for soft DID users viewing their own profile */}
+        {isSoftDID && isSelf && (
+          <div className="mb-6 bg-gradient-to-r from-amber-900/20 to-orange-900/20 border border-amber-700/50 rounded-lg p-4">
+            <p className="text-sm text-amber-200 mb-3">
+              <strong>🔐 Upgrade to Full Profile</strong>
+            </p>
+            <p className="text-xs text-gray-400 mb-3">
+              Get a permanent identity with cryptographic keys, claim a custom handle, and unlock all Imajin features.
+            </p>
+            <a
+              href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}profile.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/register`}
+              className="inline-block px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium text-sm"
+            >
+              Upgrade Now
+            </a>
+          </div>
         )}
 
         {/* Contact Info (only visible to self/connections — API strips for others) */}
