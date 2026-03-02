@@ -141,8 +141,13 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
-  const { metadata, customerEmail, customerName, amountTotal, currency, sessionId, paymentId } = payload;
+  const { metadata, customerName, amountTotal, currency, sessionId, paymentId } = payload;
+  const customerEmail = payload.customerEmail || null;
   const quantity = parseInt(metadata.quantity) || 1;
+
+  if (!customerEmail) {
+    throw new Error('Customer email is required for ticket creation');
+  }
 
   // Get event and ticket type
   const [event] = await db
