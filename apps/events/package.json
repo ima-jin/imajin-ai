@@ -10,19 +10,17 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@imajin/db": "workspace:*",
+    "@imajin/ui": "workspace:*",
     "@noble/ed25519": "^3.0.0",
     "@noble/hashes": "^2.0.1",
     "drizzle-orm": "^0.45.1",
     "next": "14.2.35",
-    "nodemailer": "^8.0.1",
     "react": "^18",
-    "react-dom": "^18",
-    "@imajin/db": "workspace:*",
-    "@imajin/ui": "workspace:*"
+    "react-dom": "^18"
   },
   "devDependencies": {
     "@types/node": "^20",
-    "@types/nodemailer": "^7.0.10",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.4.24",
