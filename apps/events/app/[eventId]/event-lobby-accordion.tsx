@@ -15,6 +15,8 @@ interface Profile {
   did: string;
   handle?: string;
   name?: string;
+  type?: string;
+  metadata?: Record<string, unknown>;
 }
 
 function formatMessageTime(dateStr: string): string {
@@ -180,9 +182,11 @@ export function EventLobbyAccordion({ eventId }: EventLobbyAccordionProps) {
           setProfiles(prev => ({
             ...prev,
             [did]: {
-              did,
+              did: data.did || did,
               handle: data.handle,
               name: data.name,
+              type: data.type,
+              metadata: data.metadata,
             },
           }));
         } else {
@@ -234,8 +238,13 @@ export function EventLobbyAccordion({ eventId }: EventLobbyAccordionProps) {
   const getDisplayName = (did: string): string => {
     const profile = profiles[did];
     if (!profile) return did.slice(0, 16) + '...';
-    if (profile.handle) return `@${profile.handle}`;
-    if (profile.name) return profile.name;
+
+    // Check if it's a soft DID (has tier: 'soft' in metadata or did starts with 'did:email:')
+    const isSoftDid = did.startsWith('did:email:') || (profile.metadata as any)?.tier === 'soft';
+    const prefix = isSoftDid ? '⚡ ' : '';
+
+    if (profile.handle) return `${prefix}@${profile.handle}`;
+    if (profile.name) return `${prefix}${profile.name}`;
     return did.slice(0, 16) + '...';
   };
 

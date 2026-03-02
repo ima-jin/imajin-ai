@@ -6,6 +6,8 @@ export interface NavIdentity {
   isLoggedIn: boolean;
   handle?: string | null;
   did?: string | null;
+  name?: string | null;
+  tier?: string | null;
   onLogout?: () => void;
   onViewProfile?: () => void;
   onEditProfile?: () => void;
@@ -60,6 +62,8 @@ function useAutoIdentity(servicePrefix: string, domain: string): NavIdentity | n
             isLoggedIn: true,
             handle: data.handle || null,
             did: data.did || null,
+            name: data.name || null,
+            tier: data.tier || null,
             onLogout: async () => {
               try {
                 await fetch(`${authUrl}/api/logout`, {
@@ -186,7 +190,12 @@ export function NavBar({
               >
                 <span className="text-xl">👤</span>
                 <span className="text-sm font-medium">
-                  {identity.handle ? `@${identity.handle}` : identity.did?.slice(0, 12) + '...'}
+                  {identity.tier === 'soft' && '⚡ '}
+                  {identity.handle
+                    ? `@${identity.handle}`
+                    : identity.name
+                    ? identity.name
+                    : identity.did?.slice(0, 12) + '...'}
                 </span>
               </button>
 
