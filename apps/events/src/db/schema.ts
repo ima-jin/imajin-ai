@@ -112,7 +112,10 @@ export const tickets = pgTable('tickets', {
   
   // Signature (event signs ticket issuance)
   signature: text('signature'),
-  
+
+  // Magic link authentication
+  magicToken: text('magic_token').unique(),
+
   metadata: jsonb('metadata').default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -120,6 +123,7 @@ export const tickets = pgTable('tickets', {
   ownerIdx: index('idx_tickets_owner').on(table.ownerDid),
   statusIdx: index('idx_tickets_status').on(table.status),
   heldByIdx: index('idx_tickets_held_by').on(table.heldBy),
+  magicTokenIdx: index('idx_tickets_magic_token').on(table.magicToken),
 }));
 
 /**

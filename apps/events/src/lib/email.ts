@@ -63,6 +63,7 @@ interface TicketConfirmationData {
   isVirtual: boolean;
   venue?: string;
   price: string;
+  magicLink: string;
 }
 
 export function ticketConfirmationEmail(data: TicketConfirmationData): string {
@@ -122,8 +123,14 @@ export function ticketConfirmationEmail(data: TicketConfirmationData): string {
       Ticket ID: ${data.ticketId}
     </div>
   </div>
-  
-  <p>We'll send you a reminder and any joining links closer to the event date.</p>
+
+  <p style="text-align: center;">
+    <a href="${data.magicLink}" class="button">Access Event & Chat</a>
+  </p>
+
+  <p style="font-size: 14px; color: #6b7280;">
+    Use the button above to access the event lobby and chat with other ticket holders. This link is unique to your ticket and will log you in automatically.
+  </p>
   
   <div class="footer">
     <p>Questions? Reply to this email.</p>

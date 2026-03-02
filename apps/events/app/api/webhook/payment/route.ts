@@ -13,6 +13,7 @@ import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js';
 import { getEventPod, addEventParticipant } from '@/src/lib/pods';
+import { randomBytes } from 'crypto';
 
 // Configure ed25519 with sha512
 ed.hashes.sha512 = sha512;
@@ -177,10 +178,13 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
 
   // Create ticket(s)
   const createdTickets = [];
-  
+
   for (let i = 0; i < quantity; i++) {
     const ticketId = `tkt_${Date.now().toString(36)}_${i}`;
-    
+
+    // Generate magic token for authentication
+    const magicToken = randomBytes(32).toString('hex');
+
     // Sign ticket with event's Ed25519 private key
     const signatureData = `${ticketId}:${event.did}:${customerEmail}:${Date.now()}`;
     const msgBytes = new TextEncoder().encode(signatureData);
@@ -193,7 +197,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       console.warn(`Event ${event.id} has no privateKey — using base64 fallback signature`);
       signature = Buffer.from(signatureData).toString('base64');
     }
-    
+
     const [ticket] = await db.insert(tickets).values({
       id: ticketId,
       eventId: event.id,
@@ -205,12 +209,13 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       paymentId: paymentId || sessionId,
       status: 'valid',
       signature,
+      magicToken,
       metadata: {
         stripeSessionId: sessionId,
         purchaseEmail: customerEmail,
       },
     }).returning();
-    
+
     createdTickets.push(ticket);
   }
   
@@ -237,9 +242,11 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     }
   }
   
-  // Send confirmation email
+  // Send confirmation email with magic link
   const eventDate = new Date(event.startsAt);
-  
+  const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
+  const magicLink = `${AUTH_URL}/api/magic?token=${createdTickets[0].magicToken}`;
+
   await sendEmail({
     to: customerEmail,
     subject: `🎉 You're in! Ticket for ${event.title}`,
@@ -264,6 +271,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         style: 'currency',
         currency: currency.toUpperCase(),
       }).format(amountTotal / 100),
+      magicLink,
     }),
   });
 }
