@@ -13,6 +13,8 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@imajin/db": "workspace:*",
+    "@imajin/ui": "workspace:*",
     "@noble/ciphers": "^1.2.1",
     "@noble/curves": "^1.8.1",
     "@noble/hashes": "^1.7.1",
@@ -20,16 +22,15 @@
     "next": "^14.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "unfurl.js": "^6.4.0",
     "ws": "^8.18.0",
-    "zod": "^3.22.0",
-    "@imajin/db": "workspace:*",
-    "@imajin/ui": "workspace:*"
+    "zod": "^3.22.0"
   },
   "devDependencies": {
-    "@types/ws": "^8.5.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/ws": "^8.5.0",
     "autoprefixer": "^10",
     "drizzle-kit": "^0.31.0",
     "eslint": "^8",

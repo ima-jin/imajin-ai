@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes } from '@/src/db';
-import { requireAuth } from '@/src/lib/auth';
+import { requireHardDID } from '@/src/lib/auth';
 import { desc, eq } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { createEventPod } from '@/src/lib/pods';
@@ -9,10 +9,11 @@ const AUTH_URL = process.env.AUTH_SERVICE_URL!;
 
 /**
  * POST /api/events - Create a new event
+ * Requires hard DID (keypair-based identity)
  */
 export async function POST(request: NextRequest) {
-  // Require authentication
-  const authResult = await requireAuth(request);
+  // Require hard DID authentication
+  const authResult = await requireHardDID(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create trust pod and group chat for the event
-    const { podId, conversationId } = await createEventPod({
+    const { podId, conversationId, lobbyConversationId } = await createEventPod({
       eventId,
       eventDid,
       eventTitle: title,
@@ -96,6 +97,7 @@ export async function POST(request: NextRequest) {
       tags: tags || [],
       status: 'draft',
       podId,
+      lobbyConversationId,
     }).returning();
 
     // Create ticket types if provided
@@ -124,6 +126,7 @@ export async function POST(request: NextRequest) {
       ticketTypes: createdTicketTypes,
       podId,
       conversationId,
+      lobbyConversationId,
       // Include keypair for ticket signing (creator responsibility to secure)
       eventKeypair: {
         publicKey: eventKeypair.publicKey,

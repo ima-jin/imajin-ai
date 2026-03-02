@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireGraphMember } from '@/lib/auth';
 import { generateId } from '@/lib/id';
 import { db, pods, podMembers } from '@/db';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireAuth(request);
+  const auth = await requireGraphMember(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await request.json();

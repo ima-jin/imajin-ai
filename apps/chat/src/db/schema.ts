@@ -64,14 +64,22 @@ export const messages = pgTable('chat_messages', {
   id: text('id').primaryKey(),                                  // msg_xxx
   conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
   fromDid: text('from_did').notNull(),
-  
+
   // Content (E2EE)
   content: jsonb('content').notNull(),                          // { encrypted, nonce } or { type: 'system', text }
   contentType: text('content_type').notNull().default('text'),  // 'text' | 'system' | 'invite' | 'trust-extended'
-  
+
+  // Media attachments
+  mediaType: text('media_type'),                                // 'image' | 'file' | null
+  mediaPath: text('media_path'),                                // Path to file in /mnt/media/chat/
+  mediaMeta: jsonb('media_meta'),                               // { width, height, size, originalName, mimeType, thumbnailPath }
+
   // Threading
   replyTo: text('reply_to'),                                    // Message ID
-  
+
+  // Link previews
+  linkPreviews: jsonb('link_previews'),                         // [{ url, title, description, image, favicon, siteName }]
+
   // Status
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   editedAt: timestamp('edited_at', { withTimezone: true }),
@@ -142,6 +150,31 @@ export const readReceipts = pgTable('chat_read_receipts', {
   pk: primaryKey({ columns: [table.conversationId, table.did] }),
 }));
 
+/**
+ * Conversation reads - tracks when each user last viewed a conversation
+ * Used for calculating unread message counts
+ */
+export const conversationReads = pgTable('conversation_reads', {
+  conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
+  did: text('did').notNull(),
+  lastReadAt: timestamp('last_read_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.conversationId, table.did] }),
+}));
+
+/**
+ * Message reactions
+ */
+export const messageReactions = pgTable('chat_message_reactions', {
+  messageId: text('message_id').references(() => messages.id, { onDelete: 'cascade' }).notNull(),
+  did: text('did').notNull(),
+  emoji: text('emoji').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.messageId, table.did, table.emoji] }),
+  messageIdx: index('idx_chat_message_reactions_message').on(table.messageId),
+}));
+
 // Types
 export type Conversation = typeof conversations.$inferSelect;
 export type NewConversation = typeof conversations.$inferInsert;
@@ -149,3 +182,5 @@ export type Participant = typeof participants.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
 export type PublicKey = typeof publicKeys.$inferSelect;
+export type ConversationRead = typeof conversationReads.$inferSelect;
+export type MessageReaction = typeof messageReactions.$inferSelect;

@@ -68,6 +68,7 @@ export interface SessionPayload {
   handle?: string;  // @username
   type: string;     // identity type
   name?: string;
+  tier?: 'soft' | 'hard'; // identity tier
 }
 
 /**
@@ -75,11 +76,12 @@ export interface SessionPayload {
  */
 export async function createSessionToken(payload: SessionPayload): Promise<string> {
   const { privateKey } = await getKeyPair();
-  
+
   const jwt = await new jose.SignJWT({
     handle: payload.handle,
     type: payload.type,
     name: payload.name,
+    tier: payload.tier || 'hard', // default to 'hard' for existing sessions
   })
     .setProtectedHeader({ alg: 'EdDSA' })
     .setSubject(payload.sub)
@@ -87,7 +89,7 @@ export async function createSessionToken(payload: SessionPayload): Promise<strin
     .setIssuedAt()
     .setExpirationTime(JWT_EXPIRY)
     .sign(privateKey);
-  
+
   return jwt;
 }
 
@@ -97,16 +99,17 @@ export async function createSessionToken(payload: SessionPayload): Promise<strin
 export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
   try {
     const { publicKey } = await getKeyPair();
-    
+
     const { payload } = await jose.jwtVerify(token, publicKey, {
       issuer: JWT_ISSUER,
     });
-    
+
     return {
       sub: payload.sub as string,
       handle: payload.handle as string | undefined,
       type: payload.type as string,
       name: payload.name as string | undefined,
+      tier: (payload.tier as 'soft' | 'hard') || 'hard', // default to 'hard' for existing tokens
     };
   } catch (error) {
     console.error('JWT verification failed:', error);

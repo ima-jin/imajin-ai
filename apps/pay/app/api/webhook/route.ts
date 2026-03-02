@@ -199,10 +199,11 @@ async function notifyEventsService(
       body: JSON.stringify({
         type,
         sessionId: session.id,
-        paymentId: typeof session.payment_intent === 'string' 
-          ? session.payment_intent 
+        paymentId: typeof session.payment_intent === 'string'
+          ? session.payment_intent
           : session.payment_intent?.id,
         customerEmail: session.customer_email,
+        customerName: session.customer_details?.name || null,
         amountTotal: session.amount_total,
         currency: session.currency,
         metadata: session.metadata,

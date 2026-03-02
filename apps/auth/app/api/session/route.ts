@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
       type: identity[0].type || session.type,
       name: identity[0].name || session.name,
       role: metadata.role || 'member',
+      tier: session.tier || 'hard', // include tier from session
     }, { headers: cors });
 
   } catch (error) {

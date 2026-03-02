@@ -21,6 +21,7 @@ ed.hashes.sha512 = sha512;
 // In production, use proper service-to-service auth
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET!;
 const PROFILE_URL = process.env.PROFILE_URL!;
+const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3003';
 
 /**
  * Create or get a guest DID from the profile service.
@@ -54,11 +55,52 @@ async function getOrCreateGuestDid(email: string, eventId: string, eventDid: str
   }
 }
 
+/**
+ * Create soft DID session via auth service.
+ * This creates/updates the identity profile with tier='soft' and returns session token.
+ */
+async function createSoftDidSession(email: string, name?: string): Promise<{ did: string; sessionToken?: string } | null> {
+  try {
+    const response = await fetch(`${AUTH_URL}/api/session/soft`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: email.toLowerCase().trim(),
+        name: name?.trim(),
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Soft session creation failed:', response.status, await response.text());
+      return null;
+    }
+
+    const data = await response.json();
+
+    // Extract session token from Set-Cookie header if present
+    const setCookie = response.headers.get('set-cookie');
+    let sessionToken: string | undefined;
+    if (setCookie) {
+      const tokenMatch = setCookie.match(/session=([^;]+)/);
+      if (tokenMatch) {
+        sessionToken = tokenMatch[1];
+      }
+    }
+
+    console.log(`Soft DID session created for ${email}: ${data.did}${sessionToken ? ' (with session token)' : ''}`);
+    return { did: data.did, sessionToken };
+  } catch (error) {
+    console.error('Soft session creation error:', error);
+    return null;
+  }
+}
+
 interface PaymentWebhookPayload {
   type: 'checkout.completed' | 'payment.failed';
   sessionId: string;
   paymentId?: string;
   customerEmail: string;
+  customerName?: string | null;
   amountTotal: number;
   currency: string;
   metadata: {
@@ -99,30 +141,35 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
-  const { metadata, customerEmail, amountTotal, currency, sessionId, paymentId } = payload;
+  const { metadata, customerEmail, customerName, amountTotal, currency, sessionId, paymentId } = payload;
   const quantity = parseInt(metadata.quantity) || 1;
-  
+
   // Get event and ticket type
   const [event] = await db
     .select()
     .from(events)
     .where(eq(events.id, metadata.eventId))
     .limit(1);
-  
+
   if (!event) {
     throw new Error(`Event not found: ${metadata.eventId}`);
   }
-  
+
   const [ticketType] = await db
     .select()
     .from(ticketTypes)
     .where(eq(ticketTypes.id, metadata.ticketTypeId))
     .limit(1);
-  
+
   if (!ticketType) {
     throw new Error(`Ticket type not found: ${metadata.ticketTypeId}`);
   }
-  
+
+  // Create soft DID session via auth service
+  // This will create/update the identity profile with tier='soft'
+  const softSession = await createSoftDidSession(customerEmail, customerName || undefined);
+  const ownerDid = softSession?.did || `did:email:${customerEmail.replace('@', '_at_')}`;
+
   // Create ticket(s)
   const createdTickets = [];
   
@@ -141,9 +188,6 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       console.warn(`Event ${event.id} has no privateKey — using base64 fallback signature`);
       signature = Buffer.from(signatureData).toString('base64');
     }
-    
-    // Soft-register with profile service to create/get guest DID
-    const ownerDid = await getOrCreateGuestDid(customerEmail, event.id, event.did);
     
     const [ticket] = await db.insert(tickets).values({
       id: ticketId,
@@ -174,7 +218,6 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   console.log(`Created ${createdTickets.length} ticket(s) for ${customerEmail}`);
 
   // Add buyer to event pod and group chat
-  const ownerDid = createdTickets[0].ownerDid;
   if (ownerDid) {
     const eventPod = await getEventPod(event.id);
     if (eventPod) {
