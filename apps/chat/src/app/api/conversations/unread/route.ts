@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { conversationReads, messages, participants } from '@/db/schema';
 import { and, eq, gt, sql } from 'drizzle-orm';
+import { corsHeaders, corsOptions } from '@/lib/utils';
 
 async function getSessionDid(req: NextRequest): Promise<string | null> {
   const cookie = req.cookies.get('imajin_session');
@@ -20,15 +21,20 @@ async function getSessionDid(req: NextRequest): Promise<string | null> {
   }
 }
 
+export async function OPTIONS(req: NextRequest) {
+  return corsOptions(req);
+}
+
 /**
  * GET /api/conversations/unread
  * Returns total unread count and per-conversation unread counts
  */
 export async function GET(req: NextRequest) {
+  const cors = corsHeaders(req);
   try {
     const did = await getSessionDid(req);
     if (!did) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
     }
 
     // Get all conversations the user is a participant in
@@ -40,7 +46,7 @@ export async function GET(req: NextRequest) {
     const conversationIds = userConversations.map((p) => p.conversationId);
 
     if (conversationIds.length === 0) {
-      return NextResponse.json({ total: 0, conversations: [] });
+      return NextResponse.json({ total: 0, conversations: [] }, { headers: cors });
     }
 
     // For each conversation, count messages created after last_read_at
@@ -102,12 +108,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       total,
       conversations: conversationsWithUnread,
-    });
+    }, { headers: cors });
   } catch (error) {
     console.error('Error fetching unread counts:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      { status: 500, headers: cors }
     );
   }
 }
