@@ -9,7 +9,7 @@
 
 import type { Keypair, Identity, SignedMessage, IdentityType } from '../types';
 import * as crypto from '../crypto';
-import { sign, signSync, canonicalize, createChallenge } from '../sign';
+import { sign, signSync, createChallenge } from '../sign';
 import { verify, verifySync, verifyChallenge } from '../verify';
 
 // Re-export for convenience

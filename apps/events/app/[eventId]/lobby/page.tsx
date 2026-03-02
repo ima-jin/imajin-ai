@@ -166,6 +166,7 @@ export default function EventLobbyPage({ params }: { params: Promise<{ eventId: 
         setProfiles(prev => ({ ...prev, [did]: { did } }));
       }
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, AUTH_SERVICE_URL]);
 
   // Send message

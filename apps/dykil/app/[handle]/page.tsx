@@ -20,6 +20,7 @@ export default function UserSurveysPage() {
 
   useEffect(() => {
     fetchSurveys();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handle]);
 
   const fetchSurveys = async () => {

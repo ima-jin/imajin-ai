@@ -27,8 +27,8 @@ import type {
   SubscriptionResult,
   PaymentStatus,
   Recipient,
-  isStripeRecipient,
-  isDIDRecipient,
+  Currency,
+  SubscriptionStatus,
 } from '../types.js';
 
 export class StripeProvider implements PaymentProvider {
@@ -48,7 +48,7 @@ export class StripeProvider implements PaymentProvider {
   constructor(config: StripeProviderConfig) {
     this.config = config;
     this.stripe = new Stripe(config.secretKey, {
-      apiVersion: (config.apiVersion || '2024-11-20.acacia') as any,
+      apiVersion: '2025-02-24.acacia',
       timeout: config.timeout || 60000,
       maxNetworkRetries: config.maxNetworkRetries || 3,
     });
@@ -186,7 +186,7 @@ export class StripeProvider implements PaymentProvider {
       provider: 'stripe',
       status: 'released',
       amount: paymentIntent.amount,
-      currency: paymentIntent.currency.toUpperCase() as any,
+      currency: paymentIntent.currency.toUpperCase() as Currency,
       from: paymentIntent.metadata.from_did || '',
       to: paymentIntent.metadata.to_did || '',
       createdAt: new Date(paymentIntent.created * 1000),
@@ -201,7 +201,7 @@ export class StripeProvider implements PaymentProvider {
       provider: 'stripe',
       status: 'refunded',
       amount: paymentIntent.amount,
-      currency: paymentIntent.currency.toUpperCase() as any,
+      currency: paymentIntent.currency.toUpperCase() as Currency,
       from: paymentIntent.metadata.from_did || '',
       to: paymentIntent.metadata.to_did || '',
       createdAt: new Date(paymentIntent.created * 1000),
@@ -294,9 +294,9 @@ export class StripeProvider implements PaymentProvider {
   private mapSubscription(sub: Stripe.Subscription): SubscriptionResult {
     return {
       id: sub.id,
-      status: sub.status as any,
-      currentPeriodStart: new Date((sub as any).current_period_start * 1000),
-      currentPeriodEnd: new Date((sub as any).current_period_end * 1000),
+      status: sub.status as SubscriptionStatus,
+      currentPeriodStart: new Date(sub.current_period_start * 1000),
+      currentPeriodEnd: new Date(sub.current_period_end * 1000),
     };
   }
 }
