@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { db, events, ticketTypes, tickets } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { TicketsSection } from './tickets-section';
+
+export const dynamic = 'force-dynamic';
 import { Countdown } from './countdown';
 import { EventLobbyAccordion } from './event-lobby-accordion';
 import { ShareButton } from './share-button';
@@ -48,7 +50,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const priceText = lowestPrice !== null
     ? lowestPrice === 0 
       ? 'Free' 
-      : `From $${(lowestPrice / 100).toFixed(0)}`
+      : `From $${(lowestPrice / 100).toFixed(2)}`
     : '';
   
   const description = event.description
@@ -202,7 +204,7 @@ export default async function EventPage({ params }: Props) {
   // Calculate lowest price for sticky bar
   const lowestPrice = ticketTypesList.length > 0 ? Math.min(...ticketTypesList.map(t => t.price)) : null;
   const lowestPriceText = lowestPrice !== null
-    ? lowestPrice === 0 ? 'Free' : `From $${(lowestPrice / 100).toFixed(0)}`
+    ? lowestPrice === 0 ? 'Free' : `From $${(lowestPrice / 100).toFixed(2)}`
     : '';
 
   return (
