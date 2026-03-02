@@ -110,8 +110,45 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         throw new Error(data.error || 'Failed to update event');
       }
 
-      // TODO: Update ticket types separately if needed
-      // For now, ticket types are read-only after creation
+      // Update ticket tiers
+      for (const tier of tiers) {
+        if (tier.id) {
+          // Update existing tier
+          const tierRes = await fetch(`/api/events/${event.id}/tiers`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              tierId: tier.id,
+              name: tier.name,
+              description: tier.description,
+              price: Math.round(tier.price * 100), // Convert dollars to cents
+              quantity: tier.quantity,
+            }),
+          });
+          if (!tierRes.ok) {
+            const tierData = await tierRes.json();
+            throw new Error(tierData.error || tierData.violations?.join(', ') || `Failed to update tier "${tier.name}"`);
+          }
+        } else {
+          // Create new tier
+          const tierRes = await fetch(`/api/events/${event.id}/tiers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              name: tier.name,
+              description: tier.description,
+              price: Math.round(tier.price * 100),
+              quantity: tier.quantity,
+            }),
+          });
+          if (!tierRes.ok) {
+            const tierData = await tierRes.json();
+            throw new Error(tierData.error || `Failed to create tier "${tier.name}"`);
+          }
+        }
+      }
 
       router.push(`/${event.id}`);
     } catch (err) {
