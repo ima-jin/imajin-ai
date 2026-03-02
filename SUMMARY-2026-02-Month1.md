@@ -125,7 +125,7 @@ This isn't a demo. It's a running platform with real users buying real tickets.
 
 - **Ryan Veteze** — Architecture, product, essays, everything
 - **Jin** — AI partner (OpenClaw/Claude), code, deployment, coordination
-- **Josh Allen** — First external contributor, staff developer at Slack
+- **Josh Allen** — First external contributor, Staff Software Engineer at Slack
 
 ---
 
