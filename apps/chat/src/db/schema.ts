@@ -71,7 +71,10 @@ export const messages = pgTable('chat_messages', {
   
   // Threading
   replyTo: text('reply_to'),                                    // Message ID
-  
+
+  // Link previews
+  linkPreviews: jsonb('link_previews'),                         // [{ url, title, description, image, favicon, siteName }]
+
   // Status
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   editedAt: timestamp('edited_at', { withTimezone: true }),

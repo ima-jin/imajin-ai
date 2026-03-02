@@ -5,6 +5,16 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useIdentity, LoginPrompt } from '@/contexts/IdentityContext';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { LinkPreviewCard } from '@/app/components/LinkPreviewCard';
+
+interface LinkPreview {
+  url: string;
+  title?: string;
+  description?: string;
+  image?: string;
+  favicon?: string;
+  siteName?: string;
+}
 
 interface Message {
   id: string;
@@ -13,6 +23,7 @@ interface Message {
   content: { type: string; text: string };
   contentType: string;
   replyTo: string | null;
+  linkPreviews?: LinkPreview[] | null;
   createdAt: string;
   editedAt: string | null;
 }
@@ -317,6 +328,15 @@ export default function MessageThreadPage() {
                         }`}
                       >
                         <p className="text-sm whitespace-pre-wrap">{text}</p>
+
+                        {/* Link previews */}
+                        {msg.linkPreviews && msg.linkPreviews.length > 0 && (
+                          <div className="space-y-2">
+                            {msg.linkPreviews.map((preview, idx) => (
+                              <LinkPreviewCard key={`${msg.id}-preview-${idx}`} {...preview} />
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       <p className={`text-xs text-gray-400 mt-1 ${isOwn ? 'text-right mr-1' : 'ml-3'}`}>
