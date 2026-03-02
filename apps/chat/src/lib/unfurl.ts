@@ -24,7 +24,7 @@ export async function unfurlLinks(content: string): Promise<LinkPreview[]> {
     urls.map(url => unfurl(url, { timeout: 5000 }))
   );
 
-  return previews
+  const results: (LinkPreview | null)[] = previews
     .map((result, i) => {
       if (result.status === 'rejected') {
         return null;
@@ -39,6 +39,7 @@ export async function unfurlLinks(content: string): Promise<LinkPreview[]> {
         favicon: metadata.favicon,
         siteName: metadata.open_graph?.site_name,
       };
-    })
-    .filter((preview): preview is LinkPreview => preview !== null);
+    });
+
+  return results.filter((preview): preview is LinkPreview => preview !== null);
 }

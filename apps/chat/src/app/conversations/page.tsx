@@ -101,7 +101,7 @@ export default function ConversationsPage() {
 
       // Fetch presence for each DID
       const profileUrl = process.env.NEXT_PUBLIC_PROFILE_URL || 'http://localhost:3004';
-      for (const did of didsToCheck) {
+      for (const did of Array.from(didsToCheck)) {
         try {
           const presenceRes = await fetch(`${profileUrl}/api/presence/${encodeURIComponent(did)}`);
           if (presenceRes.ok) {

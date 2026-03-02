@@ -440,7 +440,7 @@ export default function MessageThreadPage() {
     // Debounced typing indicator (max 1 per 2s)
     const now = Date.now();
     if (now - lastTypingSentRef.current > 2000) {
-      sendTyping(conversationId, identity?.displayName || null);
+      sendTyping(conversationId, identity?.name || null);
       lastTypingSentRef.current = now;
     }
 
