@@ -118,8 +118,12 @@ export function EventLobbyAccordion({ eventId }: EventLobbyAccordionProps) {
       const data = await res.json();
       setMessages(data.messages || []);
 
-      // Scroll to bottom on new messages
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      // Scroll to bottom within chat container only (not the page)
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+        }
+      }, 100);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load messages');
     }

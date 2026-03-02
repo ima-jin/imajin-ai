@@ -118,8 +118,12 @@ export default function EventLobbyPage({ params }: { params: Promise<{ eventId: 
       setMessages(data.messages || []);
       setLoading(false);
 
-      // Scroll to bottom on new messages
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      // Scroll to bottom within chat container only (not the page)
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+        }
+      }, 100);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load messages');
       setLoading(false);
