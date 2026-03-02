@@ -1,8 +1,8 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { db, events, ticketTypes } from '@/src/db';
-import { eq } from 'drizzle-orm';
-import { TicketPurchase } from './ticket-purchase';
+import { db, events, ticketTypes, tickets } from '@/src/db';
+import { eq, and } from 'drizzle-orm';
+import { TicketsSection } from './tickets-section';
 import { Countdown } from './countdown';
 import { EventLobbyAccordion } from './event-lobby-accordion';
 import { ShareButton } from './share-button';
@@ -36,13 +36,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     year: 'numeric',
   });
   
-  const tickets = await db
+  const ticketsList = await db
     .select()
     .from(ticketTypes)
     .where(eq(ticketTypes.eventId, eventId));
-  
-  const lowestPrice = tickets.length > 0
-    ? Math.min(...tickets.map(t => t.price))
+
+  const lowestPrice = ticketsList.length > 0
+    ? Math.min(...ticketsList.map(t => t.price))
     : null;
   
   const priceText = lowestPrice !== null
@@ -122,6 +122,35 @@ async function getTicketTypes(eventId: string) {
     .where(eq(ticketTypes.eventId, eventId));
 }
 
+async function getUserTickets(eventId: string, userDid: string) {
+  const userTickets = await db
+    .select({
+      ticket: tickets,
+      ticketType: ticketTypes,
+    })
+    .from(tickets)
+    .leftJoin(ticketTypes, eq(tickets.ticketTypeId, ticketTypes.id))
+    .where(
+      and(
+        eq(tickets.eventId, eventId),
+        eq(tickets.ownerDid, userDid)
+      )
+    );
+
+  return userTickets.map(({ ticket, ticketType }) => ({
+    id: ticket.id,
+    status: ticket.status,
+    purchasedAt: ticket.purchasedAt?.toISOString() || null,
+    pricePaid: ticket.pricePaid,
+    currency: ticket.currency,
+    ticketType: ticketType ? {
+      name: ticketType.name,
+      description: ticketType.description,
+      perks: ticketType.perks,
+    } : null,
+  }));
+}
+
 export default async function EventPage({ params }: Props) {
   const { eventId } = await params;
   const event = await getEvent(eventId);
@@ -130,9 +159,13 @@ export default async function EventPage({ params }: Props) {
     notFound();
   }
 
-  const tickets = await getTicketTypes(event.id);
+  const ticketTypesList = await getTicketTypes(event.id);
   const session = await getSession();
   const isCreator = session?.id === event.creatorDid;
+
+  // Fetch user's tickets if logged in
+  const userTickets = session?.id ? await getUserTickets(event.id, session.id) : [];
+  const hasTicket = userTickets.length > 0;
 
   // Resolve organizer name
   let organizerName = event.creatorDid.slice(0, 30) + '...';
@@ -167,7 +200,7 @@ export default async function EventPage({ params }: Props) {
   });
   
   // Calculate lowest price for sticky bar
-  const lowestPrice = tickets.length > 0 ? Math.min(...tickets.map(t => t.price)) : null;
+  const lowestPrice = ticketTypesList.length > 0 ? Math.min(...ticketTypesList.map(t => t.price)) : null;
   const lowestPriceText = lowestPrice !== null
     ? lowestPrice === 0 ? 'Free' : `From $${(lowestPrice / 100).toFixed(0)}`
     : '';
@@ -273,86 +306,18 @@ export default async function EventPage({ params }: Props) {
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8" id="tickets">
           <h2 className="text-2xl md:text-3xl font-bold mb-6">Tickets</h2>
 
-          {tickets.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-5xl mb-4">🎫</div>
-              <p className="text-gray-500 dark:text-gray-400 text-lg">No tickets available yet</p>
-            </div>
-          ) : (
-            <div className="space-y-3 md:space-y-4">
-              {tickets.map((ticket) => {
-                const available = ticket.quantity === null
-                  ? null
-                  : ticket.quantity - (ticket.sold ?? 0);
-                const soldOut = ticket.quantity !== null && (ticket.sold ?? 0) >= ticket.quantity;
-                const lowStock = available !== null && available > 0 && available <= 10;
-
-                return (
-                  <div
-                    key={ticket.id}
-                    className="group border-2 border-gray-200 dark:border-gray-700 rounded-xl p-4 md:p-6 hover:border-orange-500 dark:hover:border-orange-500 transition-all"
-                  >
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-start gap-3 mb-2">
-                          <h3 className="font-bold text-xl flex-1">{ticket.name}</h3>
-                          {soldOut && (
-                            <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 text-xs font-semibold rounded-full">
-                              SOLD OUT
-                            </span>
-                          )}
-                          {lowStock && !soldOut && (
-                            <span className="px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-xs font-semibold rounded-full">
-                              {available} LEFT
-                            </span>
-                          )}
-                        </div>
-
-                        {ticket.description && (
-                          <p className="text-gray-600 dark:text-gray-400 mb-3">
-                            {ticket.description}
-                          </p>
-                        )}
-
-                        {Array.isArray(ticket.perks) && ticket.perks.length > 0 && (
-                          <ul className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                            {ticket.perks.map((perk, i) => (
-                              <li key={i} className="flex items-start gap-2">
-                                <span className="text-orange-500 mt-0.5">✓</span>
-                                <span>{String(perk)}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-
-                      <div className="flex md:flex-col items-center md:items-end gap-4 md:gap-3">
-                        <div className="flex-1 md:flex-none text-left md:text-right">
-                          <div className="text-3xl md:text-4xl font-bold">
-                            {ticket.price === 0 ? 'Free' : `$${(ticket.price / 100).toFixed(0)}`}
-                          </div>
-                          {ticket.price > 0 && (
-                            <div className="text-sm text-gray-500">{ticket.currency}</div>
-                          )}
-                        </div>
-
-                        <TicketPurchase
-                          eventId={event.id}
-                          eventTitle={event.title}
-                          ticket={ticket}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <TicketsSection
+            eventId={event.id}
+            eventTitle={event.title}
+            tickets={ticketTypesList}
+            userTickets={userTickets}
+            hasTicket={hasTicket}
+          />
         </div>
       </div>
 
       {/* Mobile Sticky Bottom Bar */}
-      {tickets.length > 0 && (
+      {ticketTypesList.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 px-4 py-3 shadow-lg z-50">
           <div className="flex items-center justify-between gap-4">
             <div>
