@@ -1,10 +1,12 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { db, events, ticketTypes } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { TicketPurchase } from './ticket-purchase';
 import { Countdown } from './countdown';
 import { EventChatButton } from './event-chat-button';
 import { ShareButton } from './share-button';
+import { getSession } from '@/src/lib/auth';
 import type { Metadata } from 'next';
 
 interface Props {
@@ -123,12 +125,14 @@ async function getTicketTypes(eventId: string) {
 export default async function EventPage({ params }: Props) {
   const { eventId } = await params;
   const event = await getEvent(eventId);
-  
+
   if (!event) {
     notFound();
   }
-  
+
   const tickets = await getTicketTypes(event.id);
+  const session = await getSession();
+  const isCreator = session?.id === event.creatorDid;
   const metadata = (event.metadata || {}) as EventMetadata;
   const theme = metadata.theme || {};
   const themeColor = theme.color || 'orange';
@@ -185,7 +189,18 @@ export default async function EventPage({ params }: Props) {
           {/* Title and Share */}
           <div className="flex justify-between items-start gap-4 mb-6">
             <h1 className="text-3xl md:text-5xl font-bold leading-tight flex-1">{event.title}</h1>
-            <ShareButton />
+            <div className="flex items-center gap-2">
+              {isCreator && (
+                <Link
+                  href={`/${event.id}/edit`}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+                  title="Edit event"
+                >
+                  ✏️ Edit
+                </Link>
+              )}
+              <ShareButton />
+            </div>
           </div>
 
           {/* Date/Time/Location Grid */}
