@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Valid identity types
-    const validTypes = ['human', 'agent', 'presence', 'org', 'device', 'service'];
+    const validTypes = ['human', 'agent', 'presence', 'org', 'device', 'service', 'event'];
     if (!type || !validTypes.includes(type)) {
       return NextResponse.json(
         { error: `type required: ${validTypes.join(', ')}` },

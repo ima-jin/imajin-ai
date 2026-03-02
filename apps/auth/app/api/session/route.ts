@@ -38,10 +38,12 @@ export async function GET(request: NextRequest) {
 
     const session = await verifySessionToken(token);
     if (!session) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Invalid or expired session' },
         { status: 401, headers: cors }
       );
+      response.cookies.delete(cookieConfig.name);
+      return response;
     }
 
     const identity = await db.select().from(identities).where(eq(identities.id, session.sub)).limit(1);
