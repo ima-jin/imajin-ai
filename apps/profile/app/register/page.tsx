@@ -56,7 +56,8 @@ function RegisterPage() {
   const inviteCode = searchParams.get('invite');
   const redirectUrl = searchParams.get('next');
   const { isLoggedIn, handle: loggedInHandle, did, importKeys } = useIdentity();
-  const [step, setStep] = useState<Step>(inviteCode ? 'form' : 'no-invite');
+  const inviteGateDisabled = process.env.NEXT_PUBLIC_DISABLE_INVITE_GATE === 'true';
+  const [step, setStep] = useState<Step>((inviteCode || inviteGateDisabled) ? 'form' : 'no-invite');
   const [error, setError] = useState('');
   const [profile, setProfile] = useState<any>(null);
 
