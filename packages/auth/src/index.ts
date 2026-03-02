@@ -69,3 +69,23 @@ export {
   isValidDID,
   getPublicKeyPrefixFromDID,
 } from './providers/keypair';
+
+// Permission system
+export {
+  canDo,
+  requiredTier,
+  hasTier,
+  type Action,
+  type Tier,
+} from './permissions';
+
+// Middleware (Next.js)
+export {
+  requireAuth as requireAuthMiddleware,
+  requireHardDID as requireHardDIDMiddleware,
+  requireGraphMember as requireGraphMemberMiddleware,
+  errorResponse,
+  type AuthSession,
+  type AuthResult,
+  type AuthError,
+} from './middleware/nextjs';
