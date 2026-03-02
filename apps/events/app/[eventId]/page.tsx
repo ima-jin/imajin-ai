@@ -4,7 +4,7 @@ import { db, events, ticketTypes } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { TicketPurchase } from './ticket-purchase';
 import { Countdown } from './countdown';
-import { EventChatButton } from './event-chat-button';
+import { EventLobbyAccordion } from './event-lobby-accordion';
 import { ShareButton } from './share-button';
 import { getSession } from '@/src/lib/auth';
 import type { Metadata } from 'next';
@@ -251,9 +251,9 @@ export default async function EventPage({ params }: Props) {
           </div>
         </div>
 
-        {/* Event Chat Button */}
+        {/* Event Lobby Accordion */}
         <div className="mb-6">
-          <EventChatButton eventId={event.id} />
+          <EventLobbyAccordion eventId={event.id} />
         </div>
 
         {/* Tickets Section */}
