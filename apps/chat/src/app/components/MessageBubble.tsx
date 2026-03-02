@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ReactionPicker } from './ReactionPicker';
 import { LinkPreviewCard } from './LinkPreviewCard';
+import { MessageMedia } from './MessageMedia';
 
 interface LinkPreview {
   url: string;
@@ -24,6 +25,9 @@ interface Message {
   createdAt: string;
   editedAt: string | null;
   deletedAt: string | null;
+  mediaType?: 'image' | 'file' | null;
+  mediaPath?: string | null;
+  mediaMeta?: any;
 }
 
 interface Reaction {
@@ -181,6 +185,17 @@ export function MessageBubble({
             }`}
           >
             <p className="text-sm whitespace-pre-wrap">{text}</p>
+
+            {/* Media attachments */}
+            {message.mediaType && message.mediaPath && message.mediaMeta && (
+              <div className="mt-2">
+                <MessageMedia
+                  mediaType={message.mediaType}
+                  mediaPath={message.mediaPath}
+                  mediaMeta={message.mediaMeta}
+                />
+              </div>
+            )}
 
             {/* Link previews */}
             {message.linkPreviews && message.linkPreviews.length > 0 && (

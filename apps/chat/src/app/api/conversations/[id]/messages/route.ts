@@ -117,7 +117,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { content, replyTo } = body;
+    const { content, replyTo, mediaType, mediaPath, mediaMeta } = body;
 
     // Validate content
     if (!content || typeof content !== 'object') {
@@ -164,6 +164,9 @@ export async function POST(
       contentType,
       replyTo: replyTo || null,
       linkPreviews,
+      mediaType: mediaType || null,
+      mediaPath: mediaPath || null,
+      mediaMeta: mediaMeta || null,
     });
 
     // Update conversation's lastMessageAt
