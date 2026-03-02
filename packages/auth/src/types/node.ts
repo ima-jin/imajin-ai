@@ -5,8 +5,6 @@
  * a signed Imajin build can register for a subdomain.
  */
 
-import type { IdentityType } from '../types.js';
-
 // =============================================================================
 // NODE IDENTITY
 // =============================================================================

@@ -51,6 +51,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchPage = async () => {

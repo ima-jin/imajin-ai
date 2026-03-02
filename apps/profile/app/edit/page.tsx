@@ -43,6 +43,7 @@ export default function EditProfilePage() {
     }
 
     loadProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn, did]);
 
   async function loadProfile() {

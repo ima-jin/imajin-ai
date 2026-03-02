@@ -53,6 +53,7 @@ export default function ResultsPage() {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [surveyId]);
 
   const fetchData = async () => {

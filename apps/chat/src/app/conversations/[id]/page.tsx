@@ -153,6 +153,7 @@ export default function MessageThreadPage() {
         setHandleMap(prev => ({ ...prev, [did]: did.slice(0, 16) + '...' }));
       }
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
   // Fetch reactions for all messages
@@ -207,6 +208,7 @@ export default function MessageThreadPage() {
     } finally {
       setLoadingMessages(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identity, conversationId]);
 
   // Initial fetch

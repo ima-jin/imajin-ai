@@ -18,8 +18,6 @@ import type {
   RefundResult,
   SubscriptionRequest,
   SubscriptionResult,
-  isFiatCurrency,
-  isCryptoCurrency,
 } from './types.js';
 import type { PaymentProvider, HealthCheckResult } from './providers/types.js';
 import { StripeProvider } from './providers/stripe.js';

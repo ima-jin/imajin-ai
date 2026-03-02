@@ -51,6 +51,7 @@ function CreateSurveyContent() {
     if (editId) {
       fetchSurvey();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
 
   const fetchSurvey = async () => {

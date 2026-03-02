@@ -721,7 +721,7 @@ importers:
         specifier: ^1.95.0
         version: 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
       stripe:
-        specifier: ^17.0.0
+        specifier: ^17.7.0
         version: 17.7.0
     devDependencies:
       '@types/node':
@@ -1806,6 +1806,12 @@ packages:
 
   '@types/node@22.19.11':
     resolution: {integrity: sha512-BH7YwL6rA93ReqeQS1c4bsPpcfOmJasG+Fkr6Y59q83f9M1WcBRHR2vM+P9eOisYRcN3ujQoiZY8uk5W+1WL8w==}
+
+  '@types/node@22.19.13':
+    resolution: {integrity: sha512-akNQMv0wW5uyRpD2v2IEyRSZiR+BeGuoB6L310EgGObO44HSMNT8z1xzio28V8qOrgYaopIDNA18YgdXd+qTiw==}
+
+  '@types/node@25.3.3':
+    resolution: {integrity: sha512-DpzbrH7wIcBaJibpKo9nnSQL0MTRdnWttGyE5haGwK86xgMOkFLp7vEyfQPGLOJh5wNYiJ3V9PmUMDhV9u8kkQ==}
 
   '@types/nodemailer@7.0.11':
     resolution: {integrity: sha512-E+U4RzR2dKrx+u3N4DlsmLaDC6mMZOM/TPROxA0UAPiTgI0y4CEFBmZE+coGWTjakDriRsXG368lNk1u9Q0a2g==}
@@ -3564,8 +3570,8 @@ packages:
     resolution: {integrity: sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw==}
     engines: {node: '>=4.0.0'}
 
-  pg-protocol@1.11.0:
-    resolution: {integrity: sha512-pfsxk2M9M3BuGgDOfuy37VNRRX3jmKgMjcvAcWqNDpZSf4cUmv8HSOl5ViRQFsfARFn0KuUQTgLxVMbNq5NW3g==}
+  pg-protocol@1.12.0:
+    resolution: {integrity: sha512-uOANXNRACNdElMXJ0tPz6RBM0XQ61nONGAwlt8da5zs/iUOOCLBQOHSXnrC6fMsvtjxbOJrZZl5IScGv+7mpbg==}
 
   pg-types@2.2.0:
     resolution: {integrity: sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==}
@@ -4123,6 +4129,9 @@ packages:
 
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+
+  undici-types@7.18.2:
+    resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
 
   unfurl.js@6.4.0:
     resolution: {integrity: sha512-DogJFWPkOWMcu2xPdpmbcsL+diOOJInD3/jXOv6saX1upnWmMK8ndAtDWUfJkuInqNI9yzADud4ID9T+9UeWCw==}
@@ -4769,7 +4778,7 @@ snapshots:
 
   '@neondatabase/serverless@1.0.2':
     dependencies:
-      '@types/node': 22.19.11
+      '@types/node': 22.19.13
       '@types/pg': 8.16.0
     optional: true
 
@@ -5143,14 +5152,24 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/node@22.19.13':
+    dependencies:
+      undici-types: 6.21.0
+    optional: true
+
+  '@types/node@25.3.3':
+    dependencies:
+      undici-types: 7.18.2
+    optional: true
+
   '@types/nodemailer@7.0.11':
     dependencies:
       '@types/node': 22.19.11
 
   '@types/pg@8.16.0':
     dependencies:
-      '@types/node': 22.19.11
-      pg-protocol: 1.11.0
+      '@types/node': 25.3.3
+      pg-protocol: 1.12.0
       pg-types: 2.2.0
     optional: true
 
@@ -7181,7 +7200,7 @@ snapshots:
   pg-int8@1.0.1:
     optional: true
 
-  pg-protocol@1.11.0:
+  pg-protocol@1.12.0:
     optional: true
 
   pg-types@2.2.0:
@@ -7871,6 +7890,9 @@ snapshots:
       which-boxed-primitive: 1.1.1
 
   undici-types@6.21.0: {}
+
+  undici-types@7.18.2:
+    optional: true
 
   unfurl.js@6.4.0:
     dependencies:
