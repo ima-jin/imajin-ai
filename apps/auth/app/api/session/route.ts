@@ -6,8 +6,10 @@ import { eq } from 'drizzle-orm';
 
 function corsHeaders(request: NextRequest) {
   const origin = request.headers.get('origin') || '';
-  // Allow any *.imajin.ai subdomain
-  const allowed = origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai';
+  // Allow any *.imajin.ai subdomain + localhost in dev
+  const isImajin = origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai';
+  const isLocalhost = origin.startsWith('http://localhost:');
+  const allowed = isImajin || isLocalhost;
   return {
     'Access-Control-Allow-Origin': allowed ? origin : '',
     'Access-Control-Allow-Credentials': 'true',
