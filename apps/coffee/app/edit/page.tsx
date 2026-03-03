@@ -3,6 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+interface FundDirection {
+  id: string;
+  label: string;
+  description: string;
+}
+
 interface CoffeePage {
   id: string;
   handle: string;
@@ -14,6 +20,7 @@ interface CoffeePage {
     backgroundColor?: string;
   };
   presets?: number[];
+  fundDirections?: FundDirection[];
   allowCustomAmount?: boolean;
   allowMessages?: boolean;
   isPublic?: boolean;
@@ -38,6 +45,7 @@ export default function EditPage() {
   const [allowCustomAmount, setAllowCustomAmount] = useState(true);
   const [allowMessages, setAllowMessages] = useState(true);
   const [isPublic, setIsPublic] = useState(true);
+  const [fundDirections, setFundDirections] = useState<FundDirection[]>([]);
 
   const commonEmojis = ['☕', '💰', '🎨', '💻', '📚', '🎵', '🎮', '🏋️', '🍕', '🚀', '🌟', '💡', '🔥', '❤️', '👋', '🎯'];
 
@@ -61,6 +69,7 @@ export default function EditPage() {
           setAllowCustomAmount(page.allowCustomAmount !== false);
           setAllowMessages(page.allowMessages !== false);
           setIsPublic(page.isPublic !== false);
+          setFundDirections(page.fundDirections || []);
         } else if (res.status !== 404) {
           // 404 means no page exists yet, which is fine
           setError('Failed to load coffee page');
@@ -110,6 +119,7 @@ export default function EditPage() {
           },
         },
         presets: presetArray,
+        fundDirections: fundDirections.filter(d => d.label.trim()),
         allowCustomAmount,
         allowMessages,
         isPublic,
@@ -300,6 +310,65 @@ export default function EditPage() {
             <p className="text-xs text-gray-500 mt-1">
               Example: 500,1000,2000 = $5, $10, $20
             </p>
+          </div>
+
+          {/* Fund Directions */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-medium">Fund Directions</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Let supporters choose where their money goes. Trust graph verifiable.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFundDirections([...fundDirections, { id: `fd_${Date.now()}`, label: '', description: '' }])}
+                className="px-3 py-1.5 rounded-lg bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-sm font-medium hover:bg-orange-200 dark:hover:bg-orange-900/50 transition"
+              >
+                + Add Direction
+              </button>
+            </div>
+            {fundDirections.length === 0 && (
+              <p className="text-sm text-gray-400 italic">
+                No fund directions yet. Add some to let supporters choose — e.g. "Living expenses", "Platform development", "Medical costs"
+              </p>
+            )}
+            {fundDirections.map((fd, idx) => (
+              <div key={fd.id} className="flex gap-3 items-start bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
+                <div className="flex-1 space-y-2">
+                  <input
+                    type="text"
+                    value={fd.label}
+                    onChange={(e) => {
+                      const updated = [...fundDirections];
+                      updated[idx] = { ...fd, label: e.target.value };
+                      setFundDirections(updated);
+                    }}
+                    className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-sm"
+                    placeholder="Label — e.g. Living expenses"
+                  />
+                  <input
+                    type="text"
+                    value={fd.description}
+                    onChange={(e) => {
+                      const updated = [...fundDirections];
+                      updated[idx] = { ...fd, description: e.target.value };
+                      setFundDirections(updated);
+                    }}
+                    className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-sm"
+                    placeholder="Description — e.g. Help me keep the lights on"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFundDirections(fundDirections.filter((_, i) => i !== idx))}
+                  className="text-red-500 hover:text-red-700 text-sm p-1"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
           </div>
 
           {/* Options */}

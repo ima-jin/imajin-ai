@@ -13,6 +13,7 @@ export const coffeePages = pgTable('coffee_pages', {
   theme: jsonb('theme').default({}),                          // { primaryColor, backgroundColor }
   paymentMethods: jsonb('payment_methods').notNull(),         // { stripe: {...}, solana: {...} }
   presets: integer('presets').array().default([100, 500, 1000]), // cents: $1, $5, $10
+  fundDirections: jsonb('fund_directions').default([]),       // [{ id, label, description }] — configurable by page owner
   allowCustomAmount: boolean('allow_custom_amount').default(true),
   allowMessages: boolean('allow_messages').default(true),
   isPublic: boolean('is_public').default(true),
@@ -34,6 +35,7 @@ export const tips = pgTable('tips', {
   amount: integer('amount').notNull(),                        // cents (USD) or lamports (SOL)
   currency: text('currency').notNull().default('USD'),        // USD, SOL, etc.
   message: text('message'),                                   // Optional message
+  fundDirection: text('fund_direction'),                      // Which fund direction the supporter chose
   paymentMethod: text('payment_method').notNull(),            // 'stripe' | 'solana'
   paymentId: text('payment_id').notNull(),                    // Stripe charge ID or Solana tx
   status: text('status').notNull().default('pending'),        // pending, completed, failed

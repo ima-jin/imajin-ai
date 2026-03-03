@@ -2,10 +2,17 @@
 
 import { useState } from 'react';
 
+interface FundDirection {
+  id: string;
+  label: string;
+  description: string;
+}
+
 interface TipFormProps {
   page: {
     handle: string;
     presets: number[];
+    fundDirections?: FundDirection[];
     allowCustomAmount: boolean;
     allowMessages: boolean;
     paymentMethods: {
@@ -24,8 +31,11 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
   const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'solana'>(
     page.paymentMethods.stripe?.enabled ? 'stripe' : 'solana'
   );
+  const [fundDirection, setFundDirection] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const fundDirections = page.fundDirections || [];
 
   const presets = page.presets || [100, 500, 1000];
   const hasStripe = page.paymentMethods.stripe?.enabled;
@@ -65,6 +75,7 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
           paymentMethod,
           message: page.allowMessages ? message : undefined,
           fromName: fromName || undefined,
+          fundDirection: fundDirection || undefined,
         }),
       });
 
@@ -135,6 +146,36 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
               className="w-full pl-8 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white/50"
             />
           </div>
+        </div>
+      )}
+
+      {/* Fund Direction */}
+      {fundDirections.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm text-gray-600 text-center">Where should this go?</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {fundDirections.map((fd) => (
+              <button
+                key={fd.id}
+                type="button"
+                onClick={() => setFundDirection(fundDirection === fd.id ? '' : fd.id)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                  fundDirection === fd.id
+                    ? 'text-white shadow-md scale-105'
+                    : 'bg-white/50 hover:bg-white/80 text-gray-700'
+                }`}
+                style={fundDirection === fd.id ? { backgroundColor: primaryColor } : {}}
+                title={fd.description}
+              >
+                {fd.label}
+              </button>
+            ))}
+          </div>
+          {fundDirection && fundDirections.find(d => d.id === fundDirection)?.description && (
+            <p className="text-xs text-gray-500 text-center italic">
+              {fundDirections.find(d => d.id === fundDirection)?.description}
+            </p>
+          )}
         </div>
       )}
 
