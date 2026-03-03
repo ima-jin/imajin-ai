@@ -46,6 +46,7 @@ function buildServices(prefix: string, domain: string, overrides?: ServiceUrls) 
     { name: 'Events', href: buildUrl('events', prefix, domain, overrides) },
     { name: 'Surveys', href: buildUrl('dykil', prefix, domain, overrides) },
     { name: 'Links', href: buildUrl('links', prefix, domain, overrides) },
+    { name: 'Coffee', href: buildUrl('coffee', prefix, domain, overrides) },
   ];
 }
 
