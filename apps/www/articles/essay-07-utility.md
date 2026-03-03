@@ -2,7 +2,7 @@
 title: "The Utility"
 subtitle: "What sovereignty looks like as infrastructure"
 description: "The architecture. What imajin actually is as a category of thing. Distributed utility infrastructure — like the electric grid, like water."
-date: "2026-02-22"
+date: "2026-03-01"
 author: "Ryan Veteze"
 status: "POSTED"
 ---
@@ -228,9 +228,8 @@ You don't notice the electrical grid at the party. You notice the music.
 ---
 
 **If you want to follow along:**
+- The network: [imajin.ai](https://www.imajin.ai)
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- The network: [imajin.ai](imajin.ai)
-- Jin's party: April 1st, 2026
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-07-utility.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-07-utility.md)
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-07-utility) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-07-utility) on March 1, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

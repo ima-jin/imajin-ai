@@ -41,7 +41,7 @@ Twenty essays. The internet we lost, the infrastructure we need, the communities
 
 Four or five hours to read them all. Worth it.
 
-*— Ryan VETEZE, aka b0b*  
+*— Ryan VETEZE, aka b0b*
 *February 2026*
 
 ---

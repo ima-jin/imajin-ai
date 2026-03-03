@@ -2,7 +2,7 @@
 title: "You Don't Need Ads. You Need a Better Business Model."
 subtitle: "An open letter to Sam, Dario, Sundar, and Elon"
 description: "The direct address to power. Open letter to Sam, Dario, Sundar, Elon. The inference business vs. the attention business."
-date: "2026-02-22"
+date: "2026-02-27"
 author: "Ryan Veteze"
 status: "POSTED"
 ---
@@ -188,9 +188,8 @@ Come build on it.
 ---
 
 **If you want to follow along:**
-- The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](https://www.imajin.ai)
-- Jin's party: April 1st, 2026
+- The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-05-you-dont-need-ads.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-05-you-dont-need-ads.md)
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-05-you-dont-need-ads) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-05-you-dont-need-ads) on February 27, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
