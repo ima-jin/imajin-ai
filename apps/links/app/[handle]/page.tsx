@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { getSession } from '@/lib/auth';
 import LinkButton from './link-button';
 
 interface PageProps {
@@ -12,6 +13,7 @@ interface Link {
   icon?: string;
   thumbnail?: string;
   clicks: number;
+  visibility?: string;
 }
 
 interface Theme {
@@ -43,10 +45,22 @@ async function getLinksPage(handle: string) {
 
 export default async function LinksPage({ params }: PageProps) {
   const page = await getLinksPage(params.handle);
-  
+
   if (!page) {
     notFound();
   }
+
+  // Get session to determine which links to show
+  const session = await getSession();
+  const isAuthenticated = !!session;
+
+  // Filter links based on visibility
+  const visibleLinks = page.links?.filter((link: Link) => {
+    if (link.visibility === 'authenticated') {
+      return isAuthenticated;
+    }
+    return true; // public links are always visible
+  }) || [];
 
   const theme: Theme = page.theme || {};
   const bgColor = theme.backgroundColor || '#1a1a1a';
@@ -98,7 +112,7 @@ export default async function LinksPage({ params }: PageProps) {
 
         {/* Links */}
         <div className="space-y-3">
-          {page.links?.map((link: Link) => (
+          {visibleLinks.map((link: Link) => (
             <LinkButton
               key={link.id}
               link={link}

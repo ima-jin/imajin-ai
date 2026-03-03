@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL!;
 
 /**
  * GET /api/session - Get current session from cookie
- * Reads DID from imajin_session cookie, fetches profile
+ * Verifies JWT via auth service, then fetches profile
  */
 export async function GET(request: NextRequest) {
   const sessionCookie = request.cookies.get('imajin_session')?.value;
@@ -13,31 +14,43 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const did = sessionCookie;
-
   try {
+    // Verify JWT with auth service
+    const authRes = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
+      headers: { Cookie: `imajin_session=${sessionCookie}` },
+    });
+
+    if (!authRes.ok) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+    }
+
+    const authData = await authRes.json();
+    const did = authData.identity?.did || authData.identity?.id || authData.did || authData.sub;
+
+    if (!did) {
+      return NextResponse.json({ error: 'No DID in session' }, { status: 401 });
+    }
+
     // Fetch profile to get handle/display info
-    const response = await fetch(`${PROFILE_SERVICE_URL}/api/profile/${encodeURIComponent(did)}`);
+    const profileRes = await fetch(`${PROFILE_SERVICE_URL}/api/profile/${encodeURIComponent(did)}`);
     
-    if (!response.ok) {
+    if (!profileRes.ok) {
       return NextResponse.json({ 
-        identity: { id: did, type: 'human' }
+        identity: { id: did, type: authData.identity?.type || 'human' }
       });
     }
 
-    const profile = await response.json();
+    const profile = await profileRes.json();
     return NextResponse.json({
       identity: {
         id: did,
-        handle: profile.handle,
-        name: profile.name,
-        type: profile.type || 'human',
+        handle: profile.handle || authData.identity?.handle,
+        name: profile.name || authData.identity?.name,
+        type: profile.type || authData.identity?.type || 'human',
       }
     });
   } catch (error) {
-    // Even if profile fetch fails, the cookie DID is valid
-    return NextResponse.json({ 
-      identity: { id: did, type: 'human' }
-    });
+    console.error('Session check error:', error);
+    return NextResponse.json({ error: 'Session check failed' }, { status: 500 });
   }
 }

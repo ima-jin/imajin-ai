@@ -8,5 +8,5 @@ export default defineConfig({
     url: process.env.DATABASE_URL!,
   },
   // Only manage profiles table
-  tablesFilter: ['profiles', 'connections', 'connection_requests'],
+  tablesFilter: ['profiles', 'connections', 'connection_requests', 'did_migrations'],
 });

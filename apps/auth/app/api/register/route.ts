@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Valid identity types
-    const validTypes = ['human', 'agent', 'presence', 'org', 'device', 'service'];
+    const validTypes = ['human', 'agent', 'presence', 'org', 'device', 'service', 'event'];
     if (!type || !validTypes.includes(type)) {
       return NextResponse.json(
         { error: `type required: ${validTypes.join(', ')}` },
@@ -105,6 +105,7 @@ export async function POST(request: NextRequest) {
           handle: existing[0].handle || undefined,
           type: existing[0].type,
           name: existing[0].name || undefined,
+          tier: 'hard', // registrations with public keys are hard DIDs
         });
 
         const cookieConfig = getSessionCookieOptions(process.env.NODE_ENV === 'production');
@@ -127,36 +128,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Require invite code for new registrations
-    if (!inviteCode) {
-      return NextResponse.json(
-        { error: 'Imajin is invite-only. You need an invite code to register.' },
-        { status: 403 }
-      );
-    }
-
-    // Validate invite code against connections service
+    // Require invite code for new registrations (skip in dev with DISABLE_INVITE_GATE=true)
+    const inviteGateDisabled = process.env.NEXT_PUBLIC_DISABLE_INVITE_GATE === 'true';
     let inviteData: { fromDid: string; fromHandle?: string } | null = null;
-    try {
-      const inviteRes = await fetch(`${CONNECTIONS_SERVICE_URL}/api/invites/${inviteCode}`);
-      if (!inviteRes.ok) {
+
+    if (!inviteGateDisabled) {
+      if (!inviteCode) {
         return NextResponse.json(
-          { error: 'Invalid or expired invite code' },
+          { error: 'Imajin is invite-only. You need an invite code to register.' },
           { status: 403 }
         );
       }
-      inviteData = await inviteRes.json();
-      if (!inviteData || (inviteData as any).used) {
+
+      // Validate invite code against connections service
+      try {
+        const inviteRes = await fetch(`${CONNECTIONS_SERVICE_URL}/api/invites/${inviteCode}`);
+        if (!inviteRes.ok) {
+          return NextResponse.json(
+            { error: 'Invalid or expired invite code' },
+            { status: 403 }
+          );
+        }
+        inviteData = await inviteRes.json();
+        if (!inviteData || (inviteData as any).used) {
+          return NextResponse.json(
+            { error: 'This invite has already been used' },
+            { status: 403 }
+          );
+        }
+      } catch {
         return NextResponse.json(
-          { error: 'This invite has already been used' },
-          { status: 403 }
+          { error: 'Unable to validate invite. Try again later.' },
+          { status: 503 }
         );
       }
-    } catch {
-      return NextResponse.json(
-        { error: 'Unable to validate invite. Try again later.' },
-        { status: 503 }
-      );
     }
 
     // Generate DID from public key
@@ -180,6 +185,7 @@ export async function POST(request: NextRequest) {
       handle: identity.handle || undefined,
       type: identity.type,
       name: identity.name || undefined,
+      tier: 'hard', // registrations with public keys are hard DIDs
     });
 
     // Set cookie first so the accept call is authenticated

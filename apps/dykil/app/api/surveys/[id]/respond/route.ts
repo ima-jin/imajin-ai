@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db, surveys, surveyResponses } from '@/db';
 import { getSession } from '@/lib/auth';
-import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
+import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
 interface RouteParams {
@@ -9,9 +9,17 @@ interface RouteParams {
 }
 
 /**
+ * OPTIONS /api/surveys/:id/respond - CORS preflight
+ */
+export async function OPTIONS(request: NextRequest) {
+  return corsOptions(request);
+}
+
+/**
  * POST /api/surveys/:id/respond - Submit a response to a survey
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  const cors = corsHeaders(request);
   const { id } = params;
 
   try {
@@ -21,28 +29,35 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     });
 
     if (!survey) {
-      return errorResponse('Survey not found', 404);
+      return errorResponse('Survey not found', 404, cors);
     }
 
     if (survey.status !== 'published') {
-      return errorResponse('This survey is not currently accepting responses', 403);
+      return errorResponse('This survey is not currently accepting responses', 403, cors);
     }
 
     const body = await request.json();
     const { answers } = body;
 
     if (!answers || typeof answers !== 'object') {
-      return errorResponse('answers object is required');
+      return errorResponse('answers object is required', 400, cors);
     }
 
     // Get optional session (for authenticated responses)
     const session = await getSession();
 
-    // Validate answers against fields
-    const fields = survey.fields as any[];
+    // Validate answers against fields (support both legacy and SurveyJS formats)
+    const surveyFields = survey.fields as any;
+    const fields = surveyFields?.elements || (Array.isArray(surveyFields) ? surveyFields : []);
+
     for (const field of fields) {
-      if (field.required && !answers[field.id]) {
-        return errorResponse(`Field "${field.label}" is required`);
+      // Support both SurveyJS (name, title, isRequired) and legacy (id, label, required)
+      const fieldName = field.name || field.id;
+      const fieldLabel = field.title || field.label;
+      const isRequired = field.isRequired || field.required;
+
+      if (isRequired && !answers[fieldName]) {
+        return errorResponse(`Field "${fieldLabel}" is required`, 400, cors);
       }
     }
 
@@ -54,9 +69,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       answers,
     }).returning();
 
-    return jsonResponse({ message: 'Response submitted successfully', response }, 201);
+    return jsonResponse({ message: 'Response submitted successfully', response }, 201, cors);
   } catch (error) {
     console.error('Failed to submit response:', error);
-    return errorResponse('Failed to submit response', 500);
+    return errorResponse('Failed to submit response', 500, cors);
   }
 }

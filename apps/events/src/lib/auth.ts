@@ -10,6 +10,7 @@ export interface Identity {
   type: string;
   name?: string;
   handle?: string;
+  tier?: 'soft' | 'hard';
 }
 
 /**
@@ -42,6 +43,7 @@ export async function getSessionFromCookie(cookieHeader: string | null): Promise
       type: session.type,
       name: session.name,
       handle: session.handle,
+      tier: session.tier || 'hard',
     };
   } catch (error) {
     console.error('Session validation failed:', error);
@@ -111,4 +113,27 @@ export async function getSession(): Promise<Identity | null> {
 
   const cookieHeader = `${COOKIE_NAME}=${sessionCookie.value}`;
   return getSessionFromCookie(cookieHeader);
+}
+
+/**
+ * Require hard DID authentication (keypair-based identity)
+ */
+export async function requireHardDID(request: Request): Promise<{ identity: Identity } | { error: string; status: number }> {
+  const authResult = await requireAuth(request);
+
+  if ('error' in authResult) {
+    return authResult;
+  }
+
+  const { identity } = authResult;
+
+  // Check if this is a hard DID
+  if (identity.tier === 'soft') {
+    return {
+      error: 'This action requires a full identity (hard DID)',
+      status: 403,
+    };
+  }
+
+  return { identity };
 }

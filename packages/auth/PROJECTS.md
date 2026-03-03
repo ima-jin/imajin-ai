@@ -259,18 +259,12 @@ Existing imajin-web Kratos users:
 ```bash
 # Build
 pnpm --filter @imajin/auth build
-
-# Publish (if going to npm)
-pnpm --filter @imajin/auth publish
 ```
 
 ### App
-```bash
-# Deploy to Vercel
-vercel --prod
-
-# Or via git push with Vercel integration
-```
+Deployed via GitHub Actions to imajin-server (self-hosted).
+- Push to `main` → auto-deploy to dev (`dev-auth`, port 3001)
+- Push `v*` tag → deploy to prod (`auth`, port 7001)
 
 Domain: `auth.imajin.ai`
 
@@ -296,7 +290,7 @@ Domain: `auth.imajin.ai`
 {
   "@noble/ed25519": "^2.0.0",  // Ed25519 signing
   "drizzle-orm": "^0.45.1",    // Database
-  "@neondatabase/serverless": "^1.0.2"
+  "postgres": "^3.4.0"         // postgres-js driver
 }
 ```
 

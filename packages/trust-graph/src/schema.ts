@@ -71,3 +71,22 @@ export const invites = pgTable('trust_invites', {
   codeIdx: index('idx_trust_invites_code').on(table.code),
   fromDidIdx: index('idx_trust_invites_from_did').on(table.fromDid),
 }));
+
+/**
+ * Trust graph invites - controlled invite system with cooldown
+ */
+export const trustGraphInvites = pgTable('trust_graph_invites', {
+  id: text('id').primaryKey(),
+  inviterDid: text('inviter_did').notNull(),
+  inviteeEmail: text('invitee_email'),
+  inviteeDid: text('invitee_did'),
+  status: text('status', { enum: ['pending', 'accepted', 'expired', 'revoked'] }).notNull().default('pending'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (table) => ({
+  inviterIdx: index('idx_trust_graph_invites_inviter').on(table.inviterDid),
+  inviteeEmailIdx: index('idx_trust_graph_invites_email').on(table.inviteeEmail),
+  inviteeDidIdx: index('idx_trust_graph_invites_did').on(table.inviteeDid),
+  statusIdx: index('idx_trust_graph_invites_status').on(table.status),
+}));

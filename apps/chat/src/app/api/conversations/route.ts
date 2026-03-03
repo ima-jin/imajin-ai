@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { eq, desc, and, or } from 'drizzle-orm';
 import { db, conversations, participants, messages } from '@/db';
 import { getClient } from '@imajin/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireGraphMember } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId, isValidDid } from '@/lib/utils';
 
 const sql = getClient();
@@ -102,15 +102,9 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/conversations - Create a new conversation
+ * Direct messages require graph membership (hard DID + connections)
  */
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
-  }
-
-  const { identity } = authResult;
-
   try {
     const body = await request.json();
     const { type, name, description, participantDids, visibility = 'private' } = body;
@@ -119,6 +113,20 @@ export async function POST(request: NextRequest) {
     if (!type || !['direct', 'group'].includes(type)) {
       return errorResponse('type must be "direct" or "group"');
     }
+
+    // For direct messages, require graph membership
+    let authResult;
+    if (type === 'direct') {
+      authResult = await requireGraphMember(request);
+    } else {
+      authResult = await requireAuth(request);
+    }
+
+    if ('error' in authResult) {
+      return errorResponse(authResult.error, authResult.status);
+    }
+
+    const { identity } = authResult;
 
     // Validate participants
     if (!participantDids || !Array.isArray(participantDids) || participantDids.length === 0) {

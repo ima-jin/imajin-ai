@@ -1,11 +1,29 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-export function jsonResponse(data: any, status = 200) {
-  return NextResponse.json(data, { status });
+/**
+ * CORS headers for cross-origin requests from *.imajin.ai
+ */
+export function corsHeaders(request: NextRequest) {
+  const origin = request.headers.get('origin') || '';
+  const allowed = origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai';
+  return {
+    'Access-Control-Allow-Origin': allowed ? origin : '',
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
 }
 
-export function errorResponse(message: string, status = 400) {
-  return NextResponse.json({ error: message }, { status });
+export function corsOptions(request: NextRequest) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
+}
+
+export function jsonResponse(data: any, status = 200, headers?: Record<string, string>) {
+  return NextResponse.json(data, { status, headers });
+}
+
+export function errorResponse(message: string, status = 400, headers?: Record<string, string>) {
+  return NextResponse.json({ error: message }, { status, headers });
 }
 
 export function generateId(prefix: string): string {

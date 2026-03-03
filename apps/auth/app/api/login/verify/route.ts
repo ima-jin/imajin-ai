@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
       handle: identity.handle || undefined,
       type: identity.type,
       name: identity.name || undefined,
+      tier: 'hard', // challenge-response auth is hard DID
     });
 
     // Set cookie and return

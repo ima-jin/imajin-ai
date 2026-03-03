@@ -3,6 +3,7 @@ import { eq, and, desc, lt, isNull } from 'drizzle-orm';
 import { db, conversations, participants, messages } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
+import { unfurlLinks } from '@/lib/unfurl';
 
 /**
  * GET /api/conversations/:id/messages - Get messages in a conversation
@@ -116,7 +117,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { content, replyTo } = body;
+    const { content, replyTo, mediaType, mediaPath, mediaMeta } = body;
 
     // Validate content
     if (!content || typeof content !== 'object') {
@@ -140,9 +141,21 @@ export async function POST(
       }
     }
 
+    // Unfurl links from message content
+    let linkPreviews = null;
+    if (contentType === 'text' && content.text) {
+      // For plain text messages, unfurl from the text field
+      const previews = await unfurlLinks(content.text);
+      linkPreviews = previews.length > 0 ? previews : null;
+    } else if (contentType === 'system' && content.text) {
+      // For system messages, unfurl from the text field
+      const previews = await unfurlLinks(content.text);
+      linkPreviews = previews.length > 0 ? previews : null;
+    }
+
     // Create message
     const messageId = generateId('msg');
-    
+
     await db.insert(messages).values({
       id: messageId,
       conversationId,
@@ -150,6 +163,10 @@ export async function POST(
       content,
       contentType,
       replyTo: replyTo || null,
+      linkPreviews,
+      mediaType: mediaType || null,
+      mediaPath: mediaPath || null,
+      mediaMeta: mediaMeta || null,
     });
 
     // Update conversation's lastMessageAt

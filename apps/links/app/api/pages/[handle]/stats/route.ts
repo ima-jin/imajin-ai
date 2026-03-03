@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     // Fetch page
     const page = await db.query.linkPages.findFirst({
-      where: (pages, { eq }) => eq(pages.handle, handle),
+      where: eq(linkPages.handle, handle),
     });
 
     if (!page) {
@@ -38,19 +38,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get links with click counts
-    const pageLinks = await db.query.links.findMany({
-      where: (links, { eq }) => eq(links.pageId, page.id),
-      orderBy: (links, { desc }) => [desc(links.clicks)],
-    });
+    const pageLinks = await db
+      .select()
+      .from(links)
+      .where(eq(links.pageId, page.id))
+      .orderBy(desc(links.clicks));
 
     // Calculate total clicks
-    const totalClicks = pageLinks.reduce((sum, link) => sum + link.clicks, 0);
+    const totalClicks = pageLinks.reduce((sum: number, link: any) => sum + link.clicks, 0);
 
     // Get clicks by day (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const linkIds = pageLinks.map(l => l.id);
+    const linkIds = pageLinks.map((l: any) => l.id);
     
     let clicksByDay: { date: string; clicks: number }[] = [];
     
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         .groupBy(sql`date_trunc('day', ${linkClicks.clickedAt})::date`)
         .orderBy(desc(sql`date_trunc('day', ${linkClicks.clickedAt})::date`));
 
-      clicksByDay = dailyClicks.map(d => ({
+      clicksByDay = dailyClicks.map((d: any) => ({
         date: d.date,
         clicks: Number(d.clicks),
       }));
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         .orderBy(desc(sql`count(*)`))
         .limit(10);
 
-      topReferrers = referrers.map(r => ({
+      topReferrers = referrers.map((r: any) => ({
         referrer: r.referrer || 'Direct',
         clicks: Number(r.clicks),
       }));
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse({
       totalClicks,
-      clicksByLink: pageLinks.map(l => ({
+      clicksByLink: pageLinks.map((l: any) => ({
         id: l.id,
         title: l.title,
         url: l.url,

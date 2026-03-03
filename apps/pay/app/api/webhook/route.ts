@@ -13,6 +13,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { db, transactions } from '@/src/db';
+import { eq } from 'drizzle-orm';
+import { genId } from '@/src/lib/id';
 
 // Lazy Stripe initialization to avoid build-time errors in CI
 let _stripe: Stripe | null = null;
@@ -134,7 +137,7 @@ async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     // TODO: Notify parties, update escrow record
     return;
   }
-  
+
   // Regular payment
   console.log('Payment completed:', {
     id: paymentIntent.id,
@@ -142,11 +145,14 @@ async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     currency: paymentIntent.currency,
     metadata: paymentIntent.metadata,
   });
-  
-  // TODO: 
-  // - Update order/transaction record
-  // - Send confirmation email
-  // - Trigger fulfillment
+
+  // Update transaction status to completed
+  const updated = await db
+    .update(transactions)
+    .set({ status: 'completed' })
+    .where(eq(transactions.stripeId, paymentIntent.id));
+
+  console.log('Transaction updated:', { stripeId: paymentIntent.id, updated });
 }
 
 async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
@@ -155,10 +161,12 @@ async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
     amount: paymentIntent.amount,
     lastError: paymentIntent.last_payment_error?.message,
   });
-  
-  // Payment failures from direct charges
-  // For checkout session failures, Stripe sends checkout.session.expired
-  // which we'd handle separately if needed
+
+  // Update transaction status to failed
+  await db
+    .update(transactions)
+    .set({ status: 'failed' })
+    .where(eq(transactions.stripeId, paymentIntent.id));
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
@@ -168,13 +176,19 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     amountTotal: session.amount_total,
     metadata: session.metadata,
   });
-  
+
+  // Update transaction status to completed
+  await db
+    .update(transactions)
+    .set({ status: 'completed' })
+    .where(eq(transactions.stripeId, session.id));
+
   // Notify the originating service based on metadata
   // Events service handles event tickets
   if (session.metadata?.eventId) {
     await notifyEventsService('checkout.completed', session);
   }
-  
+
   // Add other service callbacks here as needed
   // e.g., if (session.metadata?.orderId) { await notifyShopService(...) }
 }
@@ -199,10 +213,11 @@ async function notifyEventsService(
       body: JSON.stringify({
         type,
         sessionId: session.id,
-        paymentId: typeof session.payment_intent === 'string' 
-          ? session.payment_intent 
+        paymentId: typeof session.payment_intent === 'string'
+          ? session.payment_intent
           : session.payment_intent?.id,
-        customerEmail: session.customer_email,
+        customerEmail: session.customer_email || session.customer_details?.email || null,
+        customerName: session.customer_details?.name || null,
         amountTotal: session.amount_total,
         currency: session.currency,
         metadata: session.metadata,
@@ -228,10 +243,23 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
     customerId: subscription.customer,
     status: subscription.status,
   });
-  
-  // TODO:
-  // - Provision access/features
-  // - Send welcome email
+
+  // Create a new transaction for the subscription
+  const amount = subscription.items.data[0]?.price.unit_amount || 0;
+  const txId = genId('tx');
+
+  await db.insert(transactions).values({
+    id: txId,
+    service: subscription.metadata?.service || 'subscription',
+    type: 'subscription',
+    fromDid: subscription.metadata?.from_did || null,
+    toDid: subscription.metadata?.to_did || 'platform',
+    amount: (amount / 100).toString(),
+    currency: (subscription.currency || 'usd').toUpperCase(),
+    status: 'completed',
+    stripeId: subscription.id,
+    metadata: subscription.metadata,
+  });
 }
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {

@@ -8,6 +8,7 @@ export interface Identity {
   id: string;
   type: 'human' | 'agent';
   name?: string;
+  tier?: 'soft' | 'hard';
 }
 
 export interface ValidateResult {
@@ -57,4 +58,60 @@ export async function requireAuth(request: Request): Promise<{ identity: Identit
   }
 
   return { identity: result.identity };
+}
+
+/**
+ * Check if a DID is in the trust graph (has at least one connection)
+ */
+async function isInGraph(did: string): Promise<boolean> {
+  const { db, podMembers } = await import('../db/index');
+  const { eq, and, isNull, sql } = await import('drizzle-orm');
+
+  // Find all pods this user is in
+  const userPodIds = db
+    .select({ podId: podMembers.podId })
+    .from(podMembers)
+    .where(and(eq(podMembers.did, did), isNull(podMembers.removedAt)));
+
+  // Find 2-person pods (connections)
+  const twoPersonPods = await db
+    .select({ podId: podMembers.podId })
+    .from(podMembers)
+    .where(and(isNull(podMembers.removedAt), sql`${podMembers.podId} IN (${userPodIds})`))
+    .groupBy(podMembers.podId)
+    .having(sql`count(*) = 2`);
+
+  return twoPersonPods.length > 0;
+}
+
+/**
+ * Require graph membership (hard DID + at least one connection)
+ */
+export async function requireGraphMember(request: Request): Promise<{ identity: Identity } | { error: string; status: number }> {
+  const authResult = await requireAuth(request);
+
+  if ('error' in authResult) {
+    return authResult;
+  }
+
+  const { identity } = authResult;
+
+  // Must be hard DID
+  if (identity.tier === 'soft') {
+    return {
+      error: 'This action requires a full identity (hard DID)',
+      status: 403,
+    };
+  }
+
+  // Must have at least one connection
+  const inGraph = await isInGraph(identity.id);
+  if (!inGraph) {
+    return {
+      error: 'This action requires at least one connection in the trust graph',
+      status: 403,
+    };
+  }
+
+  return { identity };
 }

@@ -2,24 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import type { SurveyJSElement } from '@/db/schema';
 
-type FieldType = 'text' | 'textarea' | 'select' | 'rating' | 'boolean' | 'number';
-
-interface FieldDefinition {
-  id: string;
-  type: FieldType;
-  label: string;
-  required?: boolean;
-  options?: string[];
-  min?: number;
-  max?: number;
-}
-
-interface Survey {
+interface SurveyData {
   id: string;
   title: string;
   description?: string;
-  fields: FieldDefinition[];
+  fields: { elements: SurveyJSElement[] };
   status: string;
   createdAt: string;
 }
@@ -32,8 +21,8 @@ interface Response {
 }
 
 interface Aggregation {
-  [fieldId: string]: {
-    field: FieldDefinition;
+  [fieldName: string]: {
+    field: SurveyJSElement;
     values: Record<string, number>;
     textResponses?: string[];
     average?: number;
@@ -47,12 +36,13 @@ export default function ResultsPage() {
   const surveyId = params.id as string;
 
   const [loading, setLoading] = useState(true);
-  const [survey, setSurvey] = useState<Survey | null>(null);
+  const [survey, setSurvey] = useState<SurveyData | null>(null);
   const [responses, setResponses] = useState<Response[]>([]);
   const [aggregation, setAggregation] = useState<Aggregation>({});
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [surveyId]);
 
   const fetchData = async () => {
@@ -66,11 +56,19 @@ export default function ResultsPage() {
         const surveyData = await surveyRes.json();
         const responsesData = await responsesRes.json();
 
-        setSurvey(surveyData);
+        // Normalize survey fields structure
+        const normalizedSurvey = {
+          ...surveyData,
+          fields: typeof surveyData.fields === 'object' && 'elements' in surveyData.fields
+            ? surveyData.fields
+            : { elements: Array.isArray(surveyData.fields) ? surveyData.fields : [] }
+        };
+
+        setSurvey(normalizedSurvey);
         setResponses(responsesData.responses || []);
 
         // Aggregate responses
-        const agg = aggregateResponses(surveyData.fields, responsesData.responses || []);
+        const agg = aggregateResponses(normalizedSurvey.fields.elements, responsesData.responses || []);
         setAggregation(agg);
       } else {
         alert('Failed to load survey results');
@@ -84,11 +82,11 @@ export default function ResultsPage() {
     }
   };
 
-  const aggregateResponses = (fields: FieldDefinition[], responses: Response[]): Aggregation => {
+  const aggregateResponses = (fields: SurveyJSElement[], responses: Response[]): Aggregation => {
     const agg: Aggregation = {};
 
     fields.forEach((field) => {
-      agg[field.id] = {
+      agg[field.name] = {
         field,
         values: {},
         textResponses: [],
@@ -96,31 +94,39 @@ export default function ResultsPage() {
       };
 
       responses.forEach((response) => {
-        const answer = response.answers[field.id];
+        const answer = response.answers[field.name];
 
         if (answer !== undefined && answer !== null && answer !== '') {
-          agg[field.id].total++;
+          agg[field.name].total++;
 
-          if (field.type === 'text' || field.type === 'textarea') {
-            agg[field.id].textResponses?.push(String(answer));
-          } else if (field.type === 'select' || field.type === 'boolean') {
+          // Handle different field types
+          if (field.type === 'text' || field.type === 'comment' || field.inputType === 'email') {
+            agg[field.name].textResponses?.push(String(answer));
+          } else if (field.type === 'radiogroup' || field.type === 'dropdown' || field.type === 'boolean') {
             const key = String(answer);
-            agg[field.id].values[key] = (agg[field.id].values[key] || 0) + 1;
-          } else if (field.type === 'rating' || field.type === 'number') {
+            agg[field.name].values[key] = (agg[field.name].values[key] || 0) + 1;
+          } else if (field.type === 'checkbox') {
+            // Checkbox can be array or single value
+            const values = Array.isArray(answer) ? answer : [answer];
+            values.forEach(val => {
+              const key = String(val);
+              agg[field.name].values[key] = (agg[field.name].values[key] || 0) + 1;
+            });
+          } else if (field.type === 'rating') {
             const value = Number(answer);
             const key = String(value);
-            agg[field.id].values[key] = (agg[field.id].values[key] || 0) + 1;
+            agg[field.name].values[key] = (agg[field.name].values[key] || 0) + 1;
           }
         }
       });
 
-      // Calculate average for rating and number fields
-      if (field.type === 'rating' || field.type === 'number') {
-        const values = Object.entries(agg[field.id].values).map(([key, count]) =>
+      // Calculate average for rating fields
+      if (field.type === 'rating') {
+        const values = Object.entries(agg[field.name].values).map(([key, count]) =>
           Number(key) * count
         );
         const sum = values.reduce((a, b) => a + b, 0);
-        agg[field.id].average = agg[field.id].total > 0 ? sum / agg[field.id].total : 0;
+        agg[field.name].average = agg[field.name].total > 0 ? sum / agg[field.name].total : 0;
       }
     });
 
@@ -130,14 +136,15 @@ export default function ResultsPage() {
   const exportToCSV = () => {
     if (!survey || responses.length === 0) return;
 
-    const headers = ['Response ID', 'Submitted At', ...survey.fields.map(f => f.label)];
+    const headers = ['Response ID', 'Submitted At', ...survey.fields.elements.map(f => f.title)];
     const rows = responses.map(response => {
       return [
         response.id,
         new Date(response.createdAt).toLocaleString(),
-        ...survey.fields.map(field => {
-          const answer = response.answers[field.id];
+        ...survey.fields.elements.map(field => {
+          const answer = response.answers[field.name];
           if (answer === undefined || answer === null) return '';
+          if (Array.isArray(answer)) return answer.join('; ');
           return String(answer);
         }),
       ];
@@ -160,7 +167,7 @@ export default function ResultsPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-orange-500"></div>
       </div>
     );
   }
@@ -206,31 +213,93 @@ export default function ResultsPage() {
           </div>
         ) : (
           <div className="space-y-8">
-            {survey.fields.map((field) => {
-              const agg = aggregation[field.id];
+            {survey.fields.elements.map((field) => {
+              const agg = aggregation[field.name];
               if (!agg) return null;
 
               return (
                 <div
-                  key={field.id}
+                  key={field.name}
                   className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6"
                 >
-                  <h3 className="text-xl font-semibold mb-4">{field.label}</h3>
+                  <h3 className="text-xl font-semibold mb-4">{field.title}</h3>
                   <div className="text-sm text-gray-500 dark:text-gray-500 mb-4">
                     {agg.total} response{agg.total !== 1 ? 's' : ''}
                   </div>
 
-                  {(field.type === 'select' || field.type === 'boolean' || field.type === 'rating' || field.type === 'number') && (
+                  {/* Choice-based fields (radiogroup, dropdown, checkbox) */}
+                  {(field.type === 'radiogroup' || field.type === 'dropdown' || field.type === 'checkbox') && (
+                    <div className="space-y-3">
+                      {Object.entries(agg.values)
+                        .sort(([, a], [, b]) => b - a)
+                        .map(([key, count]) => {
+                          const percentage = agg.total > 0 ? (count / agg.total) * 100 : 0;
+                          return (
+                            <div key={key}>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-medium">{key}</span>
+                                <span className="text-sm text-gray-500">
+                                  {count} ({percentage.toFixed(1)}%)
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                                <div
+                                  className="bg-orange-500 h-3 rounded-full transition-all"
+                                  style={{ width: `${percentage}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+
+                  {/* Boolean fields */}
+                  {field.type === 'boolean' && (
+                    <div className="space-y-3">
+                      {['true', 'false'].map((key) => {
+                        const count = agg.values[key] || 0;
+                        const percentage = agg.total > 0 ? (count / agg.total) * 100 : 0;
+                        return (
+                          <div key={key}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-medium">{key === 'true' ? 'Yes' : 'No'}</span>
+                              <span className="text-sm text-gray-500">
+                                {count} ({percentage.toFixed(1)}%)
+                              </span>
+                            </div>
+                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                              <div
+                                className="bg-orange-500 h-3 rounded-full transition-all"
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Rating fields */}
+                  {field.type === 'rating' && (
                     <div>
-                      {field.type === 'boolean' && (
-                        <div className="space-y-3">
-                          {['true', 'false'].map((key) => {
-                            const count = agg.values[key] || 0;
+                      <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                        <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                          Average Rating
+                        </div>
+                        <div className="text-3xl font-bold text-orange-500">
+                          {agg.average?.toFixed(2)} / {field.rateMax || 5}
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        {Object.entries(agg.values)
+                          .sort(([a], [b]) => Number(a) - Number(b))
+                          .map(([key, count]) => {
                             const percentage = agg.total > 0 ? (count / agg.total) * 100 : 0;
                             return (
                               <div key={key}>
                                 <div className="flex items-center justify-between mb-1">
-                                  <span className="font-medium">{key === 'true' ? 'Yes' : 'No'}</span>
+                                  <span className="font-medium">{key}</span>
                                   <span className="text-sm text-gray-500">
                                     {count} ({percentage.toFixed(1)}%)
                                   </span>
@@ -244,74 +313,12 @@ export default function ResultsPage() {
                               </div>
                             );
                           })}
-                        </div>
-                      )}
-
-                      {field.type === 'select' && (
-                        <div className="space-y-3">
-                          {Object.entries(agg.values)
-                            .sort(([, a], [, b]) => b - a)
-                            .map(([key, count]) => {
-                              const percentage = agg.total > 0 ? (count / agg.total) * 100 : 0;
-                              return (
-                                <div key={key}>
-                                  <div className="flex items-center justify-between mb-1">
-                                    <span className="font-medium">{key}</span>
-                                    <span className="text-sm text-gray-500">
-                                      {count} ({percentage.toFixed(1)}%)
-                                    </span>
-                                  </div>
-                                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-                                    <div
-                                      className="bg-orange-500 h-3 rounded-full transition-all"
-                                      style={{ width: `${percentage}%` }}
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      )}
-
-                      {(field.type === 'rating' || field.type === 'number') && (
-                        <div>
-                          <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
-                            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                              Average
-                            </div>
-                            <div className="text-3xl font-bold text-orange-500">
-                              {agg.average?.toFixed(2)}
-                            </div>
-                          </div>
-                          <div className="space-y-3">
-                            {Object.entries(agg.values)
-                              .sort(([a], [b]) => Number(a) - Number(b))
-                              .map(([key, count]) => {
-                                const percentage = agg.total > 0 ? (count / agg.total) * 100 : 0;
-                                return (
-                                  <div key={key}>
-                                    <div className="flex items-center justify-between mb-1">
-                                      <span className="font-medium">{key}</span>
-                                      <span className="text-sm text-gray-500">
-                                        {count} ({percentage.toFixed(1)}%)
-                                      </span>
-                                    </div>
-                                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-                                      <div
-                                        className="bg-orange-500 h-3 rounded-full transition-all"
-                                        style={{ width: `${percentage}%` }}
-                                      />
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        </div>
-                      )}
+                      </div>
                     </div>
                   )}
 
-                  {(field.type === 'text' || field.type === 'textarea') && (
+                  {/* Text-based fields */}
+                  {(field.type === 'text' || field.type === 'comment') && (
                     <div className="space-y-3">
                       {(agg.textResponses || []).length === 0 ? (
                         <div className="text-gray-500 text-sm">No responses</div>
@@ -346,18 +353,20 @@ export default function ResultsPage() {
                     Response #{responses.length - index} - {new Date(response.createdAt).toLocaleString()}
                   </summary>
                   <div className="mt-4 space-y-3 pl-4">
-                    {survey.fields.map((field) => {
-                      const answer = response.answers[field.id];
+                    {survey.fields.elements.map((field) => {
+                      const answer = response.answers[field.name];
                       return (
-                        <div key={field.id}>
+                        <div key={field.name}>
                           <div className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                            {field.label}
+                            {field.title}
                           </div>
                           <div className="mt-1">
                             {answer === undefined || answer === null || answer === '' ? (
                               <span className="text-gray-400 text-sm italic">No answer</span>
                             ) : field.type === 'boolean' ? (
                               <span>{answer ? 'Yes' : 'No'}</span>
+                            ) : Array.isArray(answer) ? (
+                              <span>{answer.join(', ')}</span>
                             ) : (
                               <span>{String(answer)}</span>
                             )}

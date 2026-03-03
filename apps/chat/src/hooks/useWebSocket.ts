@@ -91,5 +91,19 @@ export function useWebSocket() {
     }
   }, []);
 
-  return { lastMessage, isConnected, subscribe };
+  const sendTyping = useCallback((conversationId: string, name?: string | null) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'typing', conversationId, name }));
+    }
+  }, []);
+
+  const sendStopTyping = useCallback((conversationId: string) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'stop_typing', conversationId }));
+    }
+  }, []);
+
+  return { lastMessage, isConnected, subscribe, sendTyping, sendStopTyping };
 }

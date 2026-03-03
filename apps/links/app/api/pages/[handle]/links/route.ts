@@ -25,7 +25,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     // Fetch page
     const page = await db.query.linkPages.findFirst({
-      where: (pages, { eq }) => eq(pages.handle, handle),
+      where: eq(linkPages.handle, handle),
     });
 
     if (!page) {
@@ -71,6 +71,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         thumbnail: link.thumbnail || null,
         position: link.position !== undefined ? link.position : currentPos++,
         isActive: link.isActive !== false,
+        visibility: link.visibility || 'public',
       });
     }
 

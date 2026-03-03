@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const page = await db.query.linkPages.findFirst({
-      where: (pages, { eq }) => eq(pages.did, identity.id),
+      where: eq(linkPages.did, identity.id),
     });
 
     if (!page) {
@@ -25,10 +25,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Get links for this page
-    const pageLinks = await db.query.links.findMany({
-      where: (links, { eq }) => eq(links.pageId, page.id),
-      orderBy: (links, { asc }) => [asc(links.position)],
-    });
+    const pageLinks = await db
+      .select()
+      .from(links)
+      .where(eq(links.pageId, page.id))
+      .orderBy(asc(links.position));
 
     return jsonResponse({
       ...page,

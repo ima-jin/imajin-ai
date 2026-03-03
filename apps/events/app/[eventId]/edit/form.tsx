@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ImageUpload } from '@/app/components/ImageUpload';
 import type { Event, TicketType } from '@/src/db/schema';
@@ -16,7 +16,14 @@ interface TicketTier {
   price: number;
   quantity: number | null;
   description: string;
+  perks?: string[];
   sold?: number;
+}
+
+interface Survey {
+  id: string;
+  title: string;
+  responseCount?: number;
 }
 
 export default function EventEditForm({ event, existingTickets }: Props) {
@@ -42,6 +49,37 @@ export default function EventEditForm({ event, existingTickets }: Props) {
   const [imageUrl, setImageUrl] = useState(event.imageUrl || '');
   const [status, setStatus] = useState(event.status);
 
+  // Dykil integration
+  const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
+  const [surveys, setSurveys] = useState<Survey[]>([]);
+  const [loadingSurveys, setLoadingSurveys] = useState(true);
+  const [preEventSurveyId, setPreEventSurveyId] = useState<string>(
+    (event.metadata as any)?.preEventSurveyId || ''
+  );
+  const [postEventSurveyId, setPostEventSurveyId] = useState<string>(
+    (event.metadata as any)?.postEventSurveyId || ''
+  );
+
+  // Fetch user's surveys
+  useEffect(() => {
+    async function fetchSurveys() {
+      try {
+        const res = await fetch(`${DYKIL_URL}/api/surveys/mine`, {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setSurveys(data.surveys || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch surveys:', err);
+      } finally {
+        setLoadingSurveys(false);
+      }
+    }
+    fetchSurveys();
+  }, [DYKIL_URL]);
+
   // Pre-fill ticket tiers
   const [tiers, setTiers] = useState<TicketTier[]>(
     existingTickets.map(t => ({
@@ -50,6 +88,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
       price: t.price / 100, // Convert cents to dollars
       quantity: t.quantity,
       description: t.description || '',
+      perks: Array.isArray(t.perks) ? t.perks.map(String) : [],
       sold: t.sold || 0,
     }))
   );
@@ -102,6 +141,11 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           country: !isVirtual ? country : null,
           imageUrl: imageUrl || null,
           status,
+          metadata: {
+            ...(event.metadata as any || {}),
+            preEventSurveyId: preEventSurveyId || null,
+            postEventSurveyId: postEventSurveyId || null,
+          },
         }),
       });
 
@@ -110,8 +154,71 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         throw new Error(data.error || 'Failed to update event');
       }
 
-      // TODO: Update ticket types separately if needed
-      // For now, ticket types are read-only after creation
+      // Update survey event_id and type
+      if (preEventSurveyId) {
+        await fetch(`${DYKIL_URL}/api/surveys/${preEventSurveyId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            eventId: event.id,
+            type: 'pre-event',
+          }),
+        });
+      }
+      if (postEventSurveyId) {
+        await fetch(`${DYKIL_URL}/api/surveys/${postEventSurveyId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            eventId: event.id,
+            type: 'post-event',
+          }),
+        });
+      }
+
+      // Update ticket tiers
+      for (const tier of tiers) {
+        if (tier.id) {
+          // Update existing tier
+          const tierRes = await fetch(`/api/events/${event.id}/tiers`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              tierId: tier.id,
+              name: tier.name,
+              description: tier.description,
+              price: Math.round(tier.price * 100), // Convert dollars to cents
+              quantity: tier.quantity,
+              perks: tier.perks || [],
+            }),
+          });
+          if (!tierRes.ok) {
+            const tierData = await tierRes.json();
+            throw new Error(tierData.error || tierData.violations?.join(', ') || `Failed to update tier "${tier.name}"`);
+          }
+        } else {
+          // Create new tier
+          const tierRes = await fetch(`/api/events/${event.id}/tiers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              name: tier.name,
+              description: tier.description,
+              price: Math.round(tier.price * 100),
+              quantity: tier.quantity,
+              perks: tier.perks || [],
+            }),
+          });
+          if (!tierRes.ok) {
+            const tierData = await tierRes.json();
+            throw new Error(tierData.error || `Failed to create tier "${tier.name}"`);
+          }
+        }
+      }
 
       router.push(`/${event.id}`);
     } catch (err) {
@@ -261,12 +368,19 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         </div>
       </div>
 
-      {/* Ticket Tiers - Read Only for now */}
+      {/* Ticket Tiers */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-semibold">Tickets</h2>
-          <span className="text-sm text-gray-500">Read-only after creation</span>
+          <button
+            type="button"
+            onClick={addTier}
+            className="text-sm text-orange-500 hover:text-orange-600 font-medium"
+          >
+            + Add Tier
+          </button>
         </div>
+        <p className="text-xs text-gray-500">Prices can only decrease. Quantity can&apos;t go below sold count.</p>
 
         {tiers.map((tier, index) => (
           <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
@@ -276,26 +390,30 @@ export default function EventEditForm({ event, existingTickets }: Props) {
                 <input
                   type="text"
                   value={tier.name}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm"
+                  onChange={(e) => updateTier(index, 'name', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Price (CAD)</label>
                 <input
-                  type="text"
-                  value={`$${tier.price.toFixed(2)}`}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={tier.price}
+                  onChange={(e) => updateTier(index, 'price', parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Quantity</label>
+                <label className="block text-sm font-medium mb-1">Quantity {tier.sold ? `(${tier.sold} sold)` : ''}</label>
                 <input
-                  type="text"
-                  value={tier.quantity === null ? 'Unlimited' : tier.quantity}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm"
+                  type="number"
+                  min={tier.sold || 0}
+                  value={tier.quantity === null ? '' : tier.quantity}
+                  onChange={(e) => updateTier(index, 'quantity', e.target.value === '' ? null : parseInt(e.target.value))}
+                  placeholder="Unlimited"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
                 />
               </div>
               <div>
@@ -308,14 +426,100 @@ export default function EventEditForm({ event, existingTickets }: Props) {
                 />
               </div>
             </div>
-            {tier.description && (
-              <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
-                <p className="text-sm text-gray-600 dark:text-gray-400">{tier.description}</p>
-              </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Description</label>
+              <input
+                type="text"
+                value={tier.description}
+                onChange={(e) => updateTier(index, 'description', e.target.value)}
+                placeholder="Short description of this tier"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Perks (one per line)</label>
+              <textarea
+                value={(tier.perks || []).join('\n')}
+                onChange={(e) => updateTier(index, 'perks', e.target.value.split('\n').filter(Boolean))}
+                rows={4}
+                placeholder={"Live stream access\nChat participation\nRecording access"}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">Perks can only be added, not removed (protects existing buyers)</p>
+            </div>
+            {!tier.id && tiers.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeTier(index)}
+                className="text-xs text-red-500 hover:text-red-600"
+              >
+                Remove tier
+              </button>
             )}
           </div>
         ))}
+      </div>
+
+      {/* Surveys */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-semibold">Surveys</h2>
+          <a
+            href={`${DYKIL_URL}/create`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-orange-500 hover:text-orange-600 font-medium"
+          >
+            + Create New Survey
+          </a>
+        </div>
+        <p className="text-xs text-gray-500">
+          Link surveys to your event. Attendees will see them on the event page.
+        </p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium mb-1">Pre-Event Survey</label>
+            <select
+              value={preEventSurveyId}
+              onChange={(e) => setPreEventSurveyId(e.target.value)}
+              disabled={loadingSurveys}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="">None</option>
+              {surveys.map((survey) => (
+                <option key={survey.id} value={survey.id}>
+                  {survey.title}
+                  {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Shown before the event starts
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Post-Event Survey</label>
+            <select
+              value={postEventSurveyId}
+              onChange={(e) => setPostEventSurveyId(e.target.value)}
+              disabled={loadingSurveys}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="">None</option>
+              {surveys.map((survey) => (
+                <option key={survey.id} value={survey.id}>
+                  {survey.title}
+                  {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Shown after the event ends
+            </p>
+          </div>
+        </div>
       </div>
 
       {error && (

@@ -17,9 +17,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   try {
     // Verify link exists
-    const link = await db.query.links.findFirst({
-      where: (links, { eq }) => eq(links.id, id),
-    });
+    const [link] = await db
+      .select()
+      .from(links)
+      .where(eq(links.id, id))
+      .limit(1);
 
     if (!link) {
       return errorResponse('Link not found', 404);
@@ -29,9 +31,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const referrer = request.headers.get('referer');
     const referrerDomain = extractDomain(referrer);
 
-    // Get country from header if provided by CDN (Vercel, Cloudflare)
-    const country = request.headers.get('x-vercel-ip-country') || 
-                    request.headers.get('cf-ipcountry') ||
+    // Get country from header if provided by reverse proxy / CDN
+    const country = request.headers.get('cf-ipcountry') ||
+                    request.headers.get('x-country') ||
                     null;
 
     // Record click (minimal data)

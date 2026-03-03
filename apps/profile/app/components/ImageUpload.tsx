@@ -116,6 +116,7 @@ export function ImageUpload({
         setIsUploading(false);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [did, onUploadComplete]
   );
 

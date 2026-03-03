@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { db, linkPages, links } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, and } from 'drizzle-orm';
 
 interface RouteParams {
   params: { handle: string };
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   try {
     const page = await db.query.linkPages.findFirst({
-      where: (pages, { eq }) => eq(pages.handle, handle),
+      where: eq(linkPages.handle, handle),
     });
 
     if (!page) {
@@ -28,13 +28,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get links for this page
-    const pageLinks = await db.query.links.findMany({
-      where: (links, { eq, and }) => and(
+    const pageLinks = await db
+      .select()
+      .from(links)
+      .where(and(
         eq(links.pageId, page.id),
         eq(links.isActive, true)
-      ),
-      orderBy: (links, { asc }) => [asc(links.position)],
-    });
+      ))
+      .orderBy(asc(links.position));
 
     return jsonResponse({
       ...page,
@@ -63,7 +64,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     // Fetch existing page
     const existing = await db.query.linkPages.findFirst({
-      where: (pages, { eq }) => eq(pages.handle, handle),
+      where: eq(linkPages.handle, handle),
     });
 
     if (!existing) {
@@ -121,7 +122,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     // Fetch existing page
     const existing = await db.query.linkPages.findFirst({
-      where: (pages, { eq }) => eq(pages.handle, handle),
+      where: eq(linkPages.handle, handle),
     });
 
     if (!existing) {

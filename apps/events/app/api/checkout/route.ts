@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
+import { getSessionFromCookie } from '@/src/lib/auth';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL!;
@@ -59,6 +60,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ticket type not found' }, { status: 404 });
     }
     
+    // Check if buyer is logged in (hard DID)
+    const cookieHeader = request.headers.get('cookie');
+    const session = await getSessionFromCookie(cookieHeader);
+    const buyerDid = session?.tier === 'hard' ? session.id : undefined;
+
     // Check availability
     if (ticketType.quantity !== null) {
       const available = ticketType.quantity - (ticketType.sold ?? 0);
@@ -83,13 +89,14 @@ export async function POST(request: NextRequest) {
         }],
         currency: ticketType.currency,
         customerEmail: body.email,
-        successUrl: `${EVENTS_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        successUrl: `${EVENTS_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}&event=${event.id}`,
         cancelUrl: `${EVENTS_URL}/${event.id}`,
         metadata: {
           eventId: event.id,
           eventDid: event.did,
           ticketTypeId: ticketType.id,
           quantity: String(quantity),
+          ...(buyerDid && { buyerDid }),
         },
       }),
     });

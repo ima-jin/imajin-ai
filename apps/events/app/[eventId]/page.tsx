@@ -1,10 +1,15 @@
 import { notFound } from 'next/navigation';
-import { db, events, ticketTypes } from '@/src/db';
-import { eq } from 'drizzle-orm';
-import { TicketPurchase } from './ticket-purchase';
+import Link from 'next/link';
+import { db, events, ticketTypes, tickets } from '@/src/db';
+import { eq, and } from 'drizzle-orm';
+import { TicketsSection } from './tickets-section';
+
+export const revalidate = 60; // revalidate every 60 seconds
 import { Countdown } from './countdown';
-import { EventChatButton } from './event-chat-button';
+import { EventLobbyAccordion } from './event-lobby-accordion';
+import { EventSurveyAccordion } from './event-survey-accordion';
 import { ShareButton } from './share-button';
+import { getSession } from '@/src/lib/auth';
 import type { Metadata } from 'next';
 
 interface Props {
@@ -34,19 +39,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     year: 'numeric',
   });
   
-  const tickets = await db
+  const ticketsList = await db
     .select()
     .from(ticketTypes)
     .where(eq(ticketTypes.eventId, eventId));
-  
-  const lowestPrice = tickets.length > 0
-    ? Math.min(...tickets.map(t => t.price))
+
+  const lowestPrice = ticketsList.length > 0
+    ? Math.min(...ticketsList.map(t => t.price))
     : null;
   
   const priceText = lowestPrice !== null
     ? lowestPrice === 0 
       ? 'Free' 
-      : `From $${(lowestPrice / 100).toFixed(0)}`
+      : `From $${(lowestPrice / 100).toFixed(2)}`
     : '';
   
   const description = event.description
@@ -120,23 +125,93 @@ async function getTicketTypes(eventId: string) {
     .where(eq(ticketTypes.eventId, eventId));
 }
 
+async function getUserTickets(eventId: string, userDid: string) {
+  const userTickets = await db
+    .select({
+      ticket: tickets,
+      ticketType: ticketTypes,
+    })
+    .from(tickets)
+    .leftJoin(ticketTypes, eq(tickets.ticketTypeId, ticketTypes.id))
+    .where(
+      and(
+        eq(tickets.eventId, eventId),
+        eq(tickets.ownerDid, userDid)
+      )
+    );
+
+  return userTickets.map(({ ticket, ticketType }) => ({
+    id: ticket.id,
+    status: ticket.status,
+    purchasedAt: (ticket.purchasedAt || ticket.createdAt)?.toISOString() || null,
+    pricePaid: ticket.pricePaid,
+    currency: ticket.currency,
+    ticketType: ticketType ? {
+      name: ticketType.name,
+      description: ticketType.description,
+      perks: ticketType.perks,
+    } : null,
+  }));
+}
+
 export default async function EventPage({ params }: Props) {
   const { eventId } = await params;
   const event = await getEvent(eventId);
-  
+
   if (!event) {
     notFound();
   }
-  
-  const tickets = await getTicketTypes(event.id);
+
+  const ticketTypesList = await getTicketTypes(event.id);
+  const session = await getSession();
+  const isCreator = session?.id === event.creatorDid;
+
+  // Fetch user's tickets if logged in
+  const userTickets = session?.id ? await getUserTickets(event.id, session.id) : [];
+  const hasTicket = userTickets.length > 0;
+
+  // Resolve organizer name
+  let organizerName = event.creatorDid.slice(0, 30) + '...';
+  try {
+    const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+    const res = await fetch(`${authUrl}/api/lookup/${encodeURIComponent(event.creatorDid)}`, { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      const identity = data.identity || data;
+      organizerName = identity.name || (identity.handle ? `@${identity.handle}` : organizerName);
+    }
+  } catch {}
+
   const metadata = (event.metadata || {}) as EventMetadata;
   const theme = metadata.theme || {};
   const themeColor = theme.color || 'orange';
   const themeEmoji = theme.emoji || '🎉';
   const gradient = theme.gradient || colorGradients[themeColor] || colorGradients.orange;
-  
+
   const eventDate = new Date(event.startsAt);
-  const isUpcoming = eventDate > new Date();
+  const eventEndDate = event.endsAt ? new Date(event.endsAt) : null;
+  const now = new Date();
+  const isUpcoming = eventDate > now;
+  const isOngoing = eventDate <= now && (!eventEndDate || eventEndDate > now);
+  const isCompleted = eventEndDate ? eventEndDate < now : false;
+
+  // Fetch surveys for this event
+  const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
+  let eventSurveys: any[] = [];
+  try {
+    const surveysRes = await fetch(`${DYKIL_URL}/api/surveys/event/${event.id}`, {
+      cache: 'no-store',
+    });
+    if (surveysRes.ok) {
+      const surveysData = await surveysRes.json();
+      eventSurveys = surveysData.surveys || [];
+    }
+  } catch (err) {
+    console.error('Failed to fetch event surveys:', err);
+  }
+
+  const preEventSurvey = eventSurveys.find(s => s.type === 'pre-event');
+  const postEventSurvey = eventSurveys.find(s => s.type === 'post-event');
   const formattedDate = eventDate.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -150,9 +225,9 @@ export default async function EventPage({ params }: Props) {
   });
   
   // Calculate lowest price for sticky bar
-  const lowestPrice = tickets.length > 0 ? Math.min(...tickets.map(t => t.price)) : null;
+  const lowestPrice = ticketTypesList.length > 0 ? Math.min(...ticketTypesList.map(t => t.price)) : null;
   const lowestPriceText = lowestPrice !== null
-    ? lowestPrice === 0 ? 'Free' : `From $${(lowestPrice / 100).toFixed(0)}`
+    ? lowestPrice === 0 ? 'Free' : `From $${(lowestPrice / 100).toFixed(2)}`
     : '';
 
   return (
@@ -185,7 +260,18 @@ export default async function EventPage({ params }: Props) {
           {/* Title and Share */}
           <div className="flex justify-between items-start gap-4 mb-6">
             <h1 className="text-3xl md:text-5xl font-bold leading-tight flex-1">{event.title}</h1>
-            <ShareButton />
+            <div className="flex items-center gap-2">
+              {isCreator && (
+                <Link
+                  href={`/${event.id}/edit`}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+                  title="Edit event"
+                >
+                  ✏️ Edit
+                </Link>
+              )}
+              <ShareButton />
+            </div>
           </div>
 
           {/* Date/Time/Location Grid */}
@@ -232,99 +318,55 @@ export default async function EventPage({ params }: Props) {
           {/* Organizer */}
           <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
             <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Organized by</div>
-            <div className="font-medium">{event.creatorDid.slice(0, 30)}...</div>
+            <div className="font-medium">{organizerName}</div>
           </div>
         </div>
 
-        {/* Event Chat Button */}
+        {/* Event Lobby Accordion */}
         <div className="mb-6">
-          <EventChatButton eventId={event.id} />
+          <EventLobbyAccordion eventId={event.id} />
         </div>
+
+        {/* Pre-Event Survey */}
+        {preEventSurvey && (isUpcoming || isOngoing) && (
+          <div className="mb-6">
+            <EventSurveyAccordion
+              eventId={event.id}
+              surveyId={preEventSurvey.id}
+              surveyTitle={preEventSurvey.title}
+              surveyType="pre-event"
+            />
+          </div>
+        )}
+
+        {/* Post-Event Survey */}
+        {postEventSurvey && (isOngoing || isCompleted) && (
+          <div className="mb-6">
+            <EventSurveyAccordion
+              eventId={event.id}
+              surveyId={postEventSurvey.id}
+              surveyTitle={postEventSurvey.title}
+              surveyType="post-event"
+            />
+          </div>
+        )}
 
         {/* Tickets Section */}
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8" id="tickets">
           <h2 className="text-2xl md:text-3xl font-bold mb-6">Tickets</h2>
 
-          {tickets.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-5xl mb-4">🎫</div>
-              <p className="text-gray-500 dark:text-gray-400 text-lg">No tickets available yet</p>
-            </div>
-          ) : (
-            <div className="space-y-3 md:space-y-4">
-              {tickets.map((ticket) => {
-                const available = ticket.quantity === null
-                  ? null
-                  : ticket.quantity - (ticket.sold ?? 0);
-                const soldOut = ticket.quantity !== null && (ticket.sold ?? 0) >= ticket.quantity;
-                const lowStock = available !== null && available > 0 && available <= 10;
-
-                return (
-                  <div
-                    key={ticket.id}
-                    className="group border-2 border-gray-200 dark:border-gray-700 rounded-xl p-4 md:p-6 hover:border-orange-500 dark:hover:border-orange-500 transition-all"
-                  >
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-start gap-3 mb-2">
-                          <h3 className="font-bold text-xl flex-1">{ticket.name}</h3>
-                          {soldOut && (
-                            <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 text-xs font-semibold rounded-full">
-                              SOLD OUT
-                            </span>
-                          )}
-                          {lowStock && !soldOut && (
-                            <span className="px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-xs font-semibold rounded-full">
-                              {available} LEFT
-                            </span>
-                          )}
-                        </div>
-
-                        {ticket.description && (
-                          <p className="text-gray-600 dark:text-gray-400 mb-3">
-                            {ticket.description}
-                          </p>
-                        )}
-
-                        {Array.isArray(ticket.perks) && ticket.perks.length > 0 && (
-                          <ul className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                            {ticket.perks.map((perk, i) => (
-                              <li key={i} className="flex items-start gap-2">
-                                <span className="text-orange-500 mt-0.5">✓</span>
-                                <span>{String(perk)}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-
-                      <div className="flex md:flex-col items-center md:items-end gap-4 md:gap-3">
-                        <div className="flex-1 md:flex-none text-left md:text-right">
-                          <div className="text-3xl md:text-4xl font-bold">
-                            {ticket.price === 0 ? 'Free' : `$${(ticket.price / 100).toFixed(0)}`}
-                          </div>
-                          {ticket.price > 0 && (
-                            <div className="text-sm text-gray-500">{ticket.currency}</div>
-                          )}
-                        </div>
-
-                        <TicketPurchase
-                          eventId={event.id}
-                          eventTitle={event.title}
-                          ticket={ticket}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <TicketsSection
+            eventId={event.id}
+            eventTitle={event.title}
+            tickets={ticketTypesList}
+            userTickets={userTickets}
+            hasTicket={hasTicket}
+          />
         </div>
       </div>
 
       {/* Mobile Sticky Bottom Bar */}
-      {tickets.length > 0 && (
+      {ticketTypesList.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 px-4 py-3 shadow-lg z-50">
           <div className="flex items-center justify-between gap-4">
             <div>

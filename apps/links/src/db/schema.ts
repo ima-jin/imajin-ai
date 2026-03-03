@@ -32,6 +32,7 @@ export const links = pgTable('links', {
   thumbnail: text('thumbnail'),                               // Image URL
   position: integer('position').notNull().default(0),
   isActive: boolean('is_active').default(true),
+  visibility: text('visibility').notNull().default('public'), // 'public' | 'authenticated'
   clicks: integer('clicks').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

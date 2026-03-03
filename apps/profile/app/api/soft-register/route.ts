@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
       did,
       displayName,
       displayType: 'human',
+      identityTier: 'soft',
       metadata: {
         isGuest: true,
         email: email || undefined,

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db, surveys } from '@/db';
 import { requireAuth } from '@/lib/auth';
-import { jsonResponse, errorResponse } from '@/lib/utils';
+import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
 interface RouteParams {
@@ -9,9 +9,17 @@ interface RouteParams {
 }
 
 /**
+ * OPTIONS /api/surveys/:id - CORS preflight
+ */
+export async function OPTIONS(request: NextRequest) {
+  return corsOptions(request);
+}
+
+/**
  * GET /api/surveys/:id - Get survey with fields
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
+  const cors = corsHeaders(request);
   const { id } = params;
 
   try {
@@ -20,7 +28,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
 
     if (!survey) {
-      return errorResponse('Survey not found', 404);
+      return errorResponse('Survey not found', 404, cors);
     }
 
     // Only return published surveys to non-owners
@@ -28,13 +36,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const isOwner = !('error' in authResult) && authResult.identity.id === survey.did;
 
     if (!isOwner && survey.status !== 'published') {
-      return errorResponse('Survey not found', 404);
+      return errorResponse('Survey not found', 404, cors);
     }
 
-    return jsonResponse(survey);
+    return jsonResponse(survey, 200, cors);
   } catch (error) {
     console.error('Failed to fetch survey:', error);
-    return errorResponse('Failed to fetch survey', 500);
+    return errorResponse('Failed to fetch survey', 500, cors);
   }
 }
 
@@ -42,11 +50,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * PUT /api/surveys/:id - Update survey (owner only)
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
+  const cors = corsHeaders(request);
   const { id } = params;
 
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
+    return errorResponse(authResult.error, authResult.status, cors);
   }
 
   const { identity } = authResult;
@@ -57,15 +66,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     });
 
     if (!existing) {
-      return errorResponse('Survey not found', 404);
+      return errorResponse('Survey not found', 404, cors);
     }
 
     if (existing.did !== identity.id) {
-      return errorResponse('Not authorized to update this survey', 403);
+      return errorResponse('Not authorized to update this survey', 403, cors);
     }
 
     const body = await request.json();
-    const { title, description, fields, settings, eventId, status } = body;
+    const { title, description, fields, settings, eventId, type, status } = body;
 
     const updates: Record<string, any> = {
       updatedAt: new Date(),
@@ -76,6 +85,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (fields !== undefined) updates.fields = fields;
     if (settings !== undefined) updates.settings = settings;
     if (eventId !== undefined) updates.eventId = eventId;
+    if (type !== undefined) updates.type = type;
     if (status !== undefined) updates.status = status;
 
     const [updated] = await db
@@ -84,10 +94,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       .where(eq(surveys.id, id))
       .returning();
 
-    return jsonResponse(updated);
+    return jsonResponse(updated, 200, cors);
   } catch (error) {
     console.error('Failed to update survey:', error);
-    return errorResponse('Failed to update survey', 500);
+    return errorResponse('Failed to update survey', 500, cors);
   }
 }
 
@@ -95,11 +105,12 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
  * DELETE /api/surveys/:id - Delete survey (owner only)
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const cors = corsHeaders(request);
   const { id } = params;
 
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
+    return errorResponse(authResult.error, authResult.status, cors);
   }
 
   const { identity } = authResult;
@@ -110,18 +121,18 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     });
 
     if (!existing) {
-      return errorResponse('Survey not found', 404);
+      return errorResponse('Survey not found', 404, cors);
     }
 
     if (existing.did !== identity.id) {
-      return errorResponse('Not authorized to delete this survey', 403);
+      return errorResponse('Not authorized to delete this survey', 403, cors);
     }
 
     await db.delete(surveys).where(eq(surveys.id, id));
 
-    return jsonResponse({ deleted: true });
+    return jsonResponse({ deleted: true }, 200, cors);
   } catch (error) {
     console.error('Failed to delete survey:', error);
-    return errorResponse('Failed to delete survey', 500);
+    return errorResponse('Failed to delete survey', 500, cors);
   }
 }

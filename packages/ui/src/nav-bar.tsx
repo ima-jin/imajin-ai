@@ -6,6 +6,8 @@ export interface NavIdentity {
   isLoggedIn: boolean;
   handle?: string | null;
   did?: string | null;
+  name?: string | null;
+  tier?: string | null;
   onLogout?: () => void;
   onViewProfile?: () => void;
   onEditProfile?: () => void;
@@ -13,25 +15,46 @@ export interface NavIdentity {
   onRegister?: () => void;
 }
 
+export interface ServiceUrls {
+  www?: string;
+  events?: string;
+  auth?: string;
+  connections?: string;
+  chat?: string;
+  profile?: string;
+  pay?: string;
+  registry?: string;
+}
+
 export interface NavBarProps {
   currentService?: string;
   servicePrefix?: string;
   domain?: string;
   identity?: NavIdentity;
+  unreadMessages?: number;
+  serviceUrls?: ServiceUrls;
 }
 
-function buildServices(prefix: string, domain: string) {
+function buildUrl(service: string, prefix: string, domain: string, overrides?: ServiceUrls) {
+  const url = overrides?.[service as keyof ServiceUrls];
+  return url || `${prefix}${service}.${domain}`;
+}
+
+function buildServices(prefix: string, domain: string, overrides?: ServiceUrls) {
   return [
-    { name: 'Home', href: `${prefix}www.${domain}` },
-    { name: 'Events', href: `${prefix}events.${domain}` },
+    { name: 'Home', href: buildUrl('www', prefix, domain, overrides) },
+    { name: 'Events', href: buildUrl('events', prefix, domain, overrides) },
+    { name: 'Surveys', href: buildUrl('dykil', prefix, domain, overrides) },
+    { name: 'Links', href: buildUrl('links', prefix, domain, overrides) },
+    { name: 'Coffee', href: buildUrl('coffee', prefix, domain, overrides) },
   ];
 }
 
-function buildUserLinks(prefix: string, domain: string) {
+function buildUserLinks(prefix: string, domain: string, overrides?: ServiceUrls) {
   return {
-    connections: `${prefix}connections.${domain}`,
-    messages: `${prefix}chat.${domain}`,
-    profile: `${prefix}profile.${domain}`,
+    connections: buildUrl('connections', prefix, domain, overrides),
+    messages: buildUrl('chat', prefix, domain, overrides),
+    profile: buildUrl('profile', prefix, domain, overrides),
   };
 }
 
@@ -39,14 +62,14 @@ function buildUserLinks(prefix: string, domain: string) {
  * Hook that auto-fetches identity from auth service when no identity prop is provided.
  * Uses the cross-domain session cookie on .imajin.ai
  */
-function useAutoIdentity(servicePrefix: string, domain: string): NavIdentity | null {
+function useAutoIdentity(servicePrefix: string, domain: string, overrides?: ServiceUrls): NavIdentity | null {
   const [identity, setIdentity] = useState<NavIdentity | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const authUrl = `${servicePrefix}auth.${domain}`;
-    const profileUrl = `${servicePrefix}profile.${domain}`;
+    const authUrl = buildUrl('auth', servicePrefix, domain, overrides);
+    const profileUrl = buildUrl('profile', servicePrefix, domain, overrides);
 
     async function checkSession() {
       try {
@@ -59,6 +82,8 @@ function useAutoIdentity(servicePrefix: string, domain: string): NavIdentity | n
             isLoggedIn: true,
             handle: data.handle || null,
             did: data.did || null,
+            name: data.name || null,
+            tier: data.tier || null,
             onLogout: async () => {
               try {
                 await fetch(`${authUrl}/api/logout`, {
@@ -95,27 +120,40 @@ function useAutoIdentity(servicePrefix: string, domain: string): NavIdentity | n
     }
 
     checkSession();
-  }, [servicePrefix, domain]);
+  }, [servicePrefix, domain, overrides]);
 
   return identity;
 }
 
-export function NavBar({ 
-  currentService, 
-  servicePrefix = 'https://', 
+export function NavBar({
+  currentService,
+  servicePrefix = 'https://',
   domain = 'imajin.ai',
   identity: identityProp,
+  unreadMessages = 0,
+  serviceUrls,
 }: NavBarProps) {
-  const services = buildServices(servicePrefix, domain);
-  const userLinks = buildUserLinks(servicePrefix, domain);
+  const services = buildServices(servicePrefix, domain, serviceUrls);
+  const userLinks = buildUserLinks(servicePrefix, domain, serviceUrls);
   const isDev = servicePrefix.includes('dev-');
   const [showDropdown, setShowDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Auto-fetch identity if no prop provided
-  const autoIdentity = useAutoIdentity(servicePrefix, domain);
+  const autoIdentity = useAutoIdentity(servicePrefix, domain, serviceUrls);
   const identity = identityProp ?? autoIdentity;
+
+  // Fetch balance from pay service
+  const [balance, setBalance] = useState<number | null>(null);
+  useEffect(() => {
+    if (!identity?.isLoggedIn || !identity?.did) { setBalance(null); return; }
+    const payUrl = buildUrl('pay', servicePrefix, domain, serviceUrls);
+    fetch(`${payUrl}/api/balance/${encodeURIComponent(identity.did)}`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.amount) setBalance(parseFloat(data.amount)); })
+      .catch(() => {});
+  }, [identity?.isLoggedIn, identity?.did, servicePrefix, domain, serviceUrls]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -130,7 +168,7 @@ export function NavBar({
   }, [showDropdown]);
 
   return (
-    <nav className="w-full border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm">
+    <nav className="w-full border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm relative z-50">
       {isDev && (
         <div className="w-full bg-amber-500/90 text-black text-xs font-bold text-center py-1 tracking-wide">
           ⚠ DEVELOPMENT ENVIRONMENT
@@ -139,7 +177,7 @@ export function NavBar({
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         {/* Logo */}
         <a
-          href={`${servicePrefix}www.${domain}`}
+          href={buildUrl('www', servicePrefix, domain, serviceUrls)}
           className="flex items-center gap-2 font-bold text-lg hover:opacity-80 transition"
         >
           <span className="text-2xl">🟠</span>
@@ -177,6 +215,12 @@ export function NavBar({
         {/* Right - Auth Section */}
         <div className="flex items-center gap-2">
           {identity?.isLoggedIn ? (
+            <div className="flex items-center gap-2">
+              {balance !== null && balance > 0 && (
+                <span className="text-sm font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full">
+                  ${balance.toFixed(2)}
+                </span>
+              )}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowDropdown(!showDropdown)}
@@ -184,7 +228,12 @@ export function NavBar({
               >
                 <span className="text-xl">👤</span>
                 <span className="text-sm font-medium">
-                  {identity.handle ? `@${identity.handle}` : identity.did?.slice(0, 12) + '...'}
+                  {identity.tier === 'soft' && '⚡ '}
+                  {identity.handle
+                    ? `@${identity.handle}`
+                    : identity.name
+                    ? identity.name
+                    : identity.did?.slice(0, 12) + '...'}
                 </span>
               </button>
 
@@ -212,6 +261,11 @@ export function NavBar({
                     className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
                   >
                     <span>💬</span> Messages
+                    {unreadMessages > 0 && (
+                      <span className="ml-auto bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
+                        {unreadMessages}
+                      </span>
+                    )}
                   </a>
                   <a
                     href={userLinks.connections}
@@ -232,6 +286,7 @@ export function NavBar({
                   )}
                 </div>
               )}
+            </div>
             </div>
           ) : identity ? (
             <>
@@ -270,7 +325,14 @@ export function NavBar({
           {identity?.isLoggedIn && (
             <>
               <hr className="my-2 border-gray-200 dark:border-gray-800" />
-              <a href={userLinks.messages} className="block px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 no-underline">💬 Messages</a>
+              <a href={userLinks.messages} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 no-underline">
+                <span>💬 Messages</span>
+                {unreadMessages > 0 && (
+                  <span className="bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
+                    {unreadMessages}
+                  </span>
+                )}
+              </a>
               <a href={userLinks.connections} className="block px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 no-underline">🤝 Connections</a>
             </>
           )}

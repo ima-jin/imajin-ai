@@ -8,6 +8,7 @@ export interface Identity {
   type: 'human' | 'agent' | 'presence';
   name?: string;
   handle?: string;
+  tier?: 'soft' | 'hard';
 }
 
 export interface AuthResult {
@@ -90,6 +91,7 @@ async function validateSessionCookie(jwt: string): Promise<AuthResult | AuthErro
         type: data.type,
         name: data.name,
         handle: data.handle,
+        tier: data.tier || 'hard',
       },
     };
   } catch (error) {
@@ -105,4 +107,56 @@ export async function optionalAuth(request: NextRequest): Promise<Identity | nul
   const result = await requireAuth(request);
   if ('error' in result) return null;
   return result.identity;
+}
+
+/**
+ * Check if a DID is in the trust graph (has at least one connection)
+ */
+async function isInGraph(did: string): Promise<boolean> {
+  const connectionsUrl = process.env.CONNECTIONS_SERVICE_URL || 'https://connections.imajin.ai';
+
+  try {
+    const response = await fetch(`${connectionsUrl}/api/connections/status/${encodeURIComponent(did)}`);
+    if (!response.ok) {
+      return false;
+    }
+
+    const data = await response.json();
+    return data.inGraph === true;
+  } catch (error) {
+    console.error('Failed to check graph membership:', error);
+    return false;
+  }
+}
+
+/**
+ * Require graph membership (hard DID + at least one connection)
+ */
+export async function requireGraphMember(request: NextRequest): Promise<AuthResult | AuthError> {
+  const authResult = await requireAuth(request);
+
+  if ('error' in authResult) {
+    return authResult;
+  }
+
+  const { identity } = authResult;
+
+  // Must be hard DID
+  if (identity.tier === 'soft') {
+    return {
+      error: 'This action requires a full identity (hard DID)',
+      status: 403,
+    };
+  }
+
+  // Must have at least one connection
+  const inGraph = await isInGraph(identity.id);
+  if (!inGraph) {
+    return {
+      error: 'This action requires at least one connection in the trust graph',
+      status: 403,
+    };
+  }
+
+  return { identity };
 }

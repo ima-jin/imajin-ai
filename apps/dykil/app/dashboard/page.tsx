@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 interface Survey {
   id: string;
+  handle?: string;
   title: string;
   description?: string;
   status: 'draft' | 'published' | 'closed';
@@ -171,8 +172,8 @@ export default function DashboardPage() {
                     {survey.status === 'published' && (
                       <button
                         onClick={() => {
-                          // Copy link to clipboard
-                          const url = `${window.location.origin}/s/${survey.id}`;
+                          const handle = survey.handle || 'survey';
+                          const url = `${window.location.origin}/${handle}/${survey.id}`;
                           navigator.clipboard.writeText(url);
                           alert('Survey link copied to clipboard!');
                         }}

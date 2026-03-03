@@ -13,6 +13,7 @@ import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js';
 import { getEventPod, addEventParticipant } from '@/src/lib/pods';
+import { randomBytes } from 'crypto';
 
 // Configure ed25519 with sha512
 ed.hashes.sha512 = sha512;
@@ -21,6 +22,7 @@ ed.hashes.sha512 = sha512;
 // In production, use proper service-to-service auth
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET!;
 const PROFILE_URL = process.env.PROFILE_URL!;
+const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3003';
 
 /**
  * Create or get a guest DID from the profile service.
@@ -54,11 +56,131 @@ async function getOrCreateGuestDid(email: string, eventId: string, eventDid: str
   }
 }
 
+/**
+ * Create soft DID session via auth service.
+ * This creates/updates the identity profile with tier='soft' and returns session token.
+ */
+async function createSoftDidSession(email: string, name?: string): Promise<{ did: string; sessionToken?: string } | null> {
+  try {
+    const response = await fetch(`${AUTH_URL}/api/session/soft`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: email.toLowerCase().trim(),
+        name: name?.trim(),
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Soft session creation failed:', response.status, await response.text());
+      return null;
+    }
+
+    const data = await response.json();
+
+    // Extract session token from Set-Cookie header if present
+    const setCookie = response.headers.get('set-cookie');
+    let sessionToken: string | undefined;
+    if (setCookie) {
+      const tokenMatch = setCookie.match(/session=([^;]+)/);
+      if (tokenMatch) {
+        sessionToken = tokenMatch[1];
+      }
+    }
+
+    console.log(`Soft DID session created for ${email}: ${data.did}${sessionToken ? ' (with session token)' : ''}`);
+    return { did: data.did, sessionToken };
+  } catch (error) {
+    console.error('Soft session creation error:', error);
+    return null;
+  }
+}
+
+/**
+ * Attach email to an existing hard DID profile (if not already set).
+ * Direct DB update — events and profile share the same Postgres database.
+ */
+async function attachEmailToProfile(did: string, email: string): Promise<void> {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    const result = await db.execute(
+      sql`UPDATE profiles SET email = ${normalizedEmail} WHERE did = ${did} AND (email IS NULL OR email = '')`
+    );
+    const rowCount = (result as any)?.rowCount ?? (result as any)?.count ?? 0;
+    if (rowCount > 0) {
+      console.log(`Attached email ${normalizedEmail} to hard DID ${did}`);
+    } else {
+      console.log(`Hard DID ${did} already has an email — skipped`);
+    }
+  } catch (error) {
+    console.error('attachEmailToProfile error:', error);
+  }
+}
+
+/**
+ * Migrate tickets and chat participation from soft DIDs to a hard DID.
+ * Looks up tickets by purchaseEmail in metadata (since soft DIDs are did:imajin:* not did:email:*).
+ * Only migrates tickets not already owned by the hard DID.
+ */
+async function migrateSoftDidToHard(email: string, hardDid: string, eventId: string): Promise<void> {
+  try {
+    // Find tickets for this event purchased with this email but owned by a different DID
+    const softTickets = await db
+      .select({ id: tickets.id, ownerDid: tickets.ownerDid })
+      .from(tickets)
+      .where(
+        and(
+          eq(tickets.eventId, eventId),
+          sql`${tickets.metadata}->>'purchaseEmail' = ${email.toLowerCase().trim()}`,
+          sql`${tickets.ownerDid} != ${hardDid}`
+        )
+      );
+
+    if (softTickets.length === 0) return;
+
+    const softDids = Array.from(new Set(softTickets.map(t => t.ownerDid)));
+
+    // Migrate tickets to hard DID
+    await db
+      .update(tickets)
+      .set({ ownerDid: hardDid })
+      .where(
+        and(
+          eq(tickets.eventId, eventId),
+          sql`${tickets.metadata}->>'purchaseEmail' = ${email.toLowerCase().trim()}`,
+          sql`${tickets.ownerDid} != ${hardDid}`
+        )
+      );
+
+    console.log(`Migrated ${softTickets.length} ticket(s) from [${softDids.join(', ')}] to ${hardDid}`);
+
+    // Migrate chat participation for each soft DID
+    const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
+    if (CHAT_URL) {
+      for (const softDid of softDids) {
+        try {
+          await fetch(`${CHAT_URL}/api/participants/migrate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fromDid: softDid, toDid: hardDid }),
+          });
+          console.log(`Migrated chat participation from ${softDid} to ${hardDid}`);
+        } catch (chatError) {
+          console.warn(`Chat migration failed for ${softDid} (non-fatal):`, chatError);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('migrateSoftDidToHard error:', error);
+  }
+}
+
 interface PaymentWebhookPayload {
   type: 'checkout.completed' | 'payment.failed';
   sessionId: string;
   paymentId?: string;
   customerEmail: string;
+  customerName?: string | null;
   amountTotal: number;
   currency: string;
   metadata: {
@@ -66,6 +188,7 @@ interface PaymentWebhookPayload {
     eventDid: string;
     ticketTypeId: string;
     quantity: string;
+    buyerDid?: string;
   };
 }
 
@@ -99,36 +222,63 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
-  const { metadata, customerEmail, amountTotal, currency, sessionId, paymentId } = payload;
+  const { metadata, customerName, amountTotal, currency, sessionId, paymentId } = payload;
+  const customerEmail = payload.customerEmail || null;
   const quantity = parseInt(metadata.quantity) || 1;
-  
+
+  if (!customerEmail) {
+    throw new Error('Customer email is required for ticket creation');
+  }
+
   // Get event and ticket type
   const [event] = await db
     .select()
     .from(events)
     .where(eq(events.id, metadata.eventId))
     .limit(1);
-  
+
   if (!event) {
     throw new Error(`Event not found: ${metadata.eventId}`);
   }
-  
+
   const [ticketType] = await db
     .select()
     .from(ticketTypes)
     .where(eq(ticketTypes.id, metadata.ticketTypeId))
     .limit(1);
-  
+
   if (!ticketType) {
     throw new Error(`Ticket type not found: ${metadata.ticketTypeId}`);
   }
-  
+
+  // Resolve owner DID: use hard DID if buyer was logged in, otherwise create soft DID
+  let ownerDid: string;
+
+  if (metadata.buyerDid) {
+    // Buyer was logged in with a hard DID
+    ownerDid = metadata.buyerDid;
+    console.log(`Buyer authenticated with hard DID: ${ownerDid}`);
+
+    // Attach email to their profile if not already set
+    await attachEmailToProfile(ownerDid, customerEmail);
+
+    // Migrate any existing soft DID tickets/chat for this email
+    await migrateSoftDidToHard(customerEmail, ownerDid, event.id);
+  } else {
+    // Guest buyer — create soft DID session
+    const softSession = await createSoftDidSession(customerEmail, customerName || undefined);
+    ownerDid = softSession?.did || `did:email:${customerEmail.replace('@', '_at_')}`;
+  }
+
   // Create ticket(s)
   const createdTickets = [];
-  
+
   for (let i = 0; i < quantity; i++) {
     const ticketId = `tkt_${Date.now().toString(36)}_${i}`;
-    
+
+    // Generate magic token for authentication
+    const magicToken = randomBytes(32).toString('hex');
+
     // Sign ticket with event's Ed25519 private key
     const signatureData = `${ticketId}:${event.did}:${customerEmail}:${Date.now()}`;
     const msgBytes = new TextEncoder().encode(signatureData);
@@ -141,10 +291,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       console.warn(`Event ${event.id} has no privateKey — using base64 fallback signature`);
       signature = Buffer.from(signatureData).toString('base64');
     }
-    
-    // Soft-register with profile service to create/get guest DID
-    const ownerDid = await getOrCreateGuestDid(customerEmail, event.id, event.did);
-    
+
     const [ticket] = await db.insert(tickets).values({
       id: ticketId,
       eventId: event.id,
@@ -155,13 +302,15 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       currency: currency.toUpperCase(),
       paymentId: paymentId || sessionId,
       status: 'valid',
+      purchasedAt: new Date(),
       signature,
+      magicToken,
       metadata: {
         stripeSessionId: sessionId,
         purchaseEmail: customerEmail,
       },
     }).returning();
-    
+
     createdTickets.push(ticket);
   }
   
@@ -174,7 +323,6 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   console.log(`Created ${createdTickets.length} ticket(s) for ${customerEmail}`);
 
   // Add buyer to event pod and group chat
-  const ownerDid = createdTickets[0].ownerDid;
   if (ownerDid) {
     const eventPod = await getEventPod(event.id);
     if (eventPod) {
@@ -185,13 +333,25 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         addedBy: event.did,
         role: 'member',
       });
-      console.log(`Added ${ownerDid} to event pod ${eventPod.podId} and chat ${eventPod.conversationId}`);
+      // Also add to lobby conversation if it exists
+      if (eventPod.lobbyConversationId) {
+        await addEventParticipant({
+          podId: eventPod.podId,
+          conversationId: eventPod.lobbyConversationId,
+          participantDid: ownerDid,
+          addedBy: event.did,
+          role: 'member',
+        });
+      }
+      console.log(`Added ${ownerDid} to event pod ${eventPod.podId}, chat ${eventPod.conversationId}, lobby ${eventPod.lobbyConversationId}`);
     }
   }
   
-  // Send confirmation email
+  // Send confirmation email with magic link
   const eventDate = new Date(event.startsAt);
-  
+  const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
+  const magicLink = `${AUTH_URL}/api/magic?token=${createdTickets[0].magicToken}`;
+
   await sendEmail({
     to: customerEmail,
     subject: `🎉 You're in! Ticket for ${event.title}`,
@@ -216,6 +376,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         style: 'currency',
         currency: currency.toUpperCase(),
       }).format(amountTotal / 100),
+      magicLink,
     }),
   });
 }

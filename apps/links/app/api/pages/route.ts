@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { db, linkPages } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, isValidHandle, generateId, themePresets } from '@/lib/utils';
+import { eq } from 'drizzle-orm';
 
 /**
  * POST /api/pages - Create a new links page
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     // Check if page already exists for this DID
     const existingDid = await db.query.linkPages.findFirst({
-      where: (pages, { eq }) => eq(pages.did, identity.id),
+      where: eq(linkPages.did, identity.id),
     });
 
     if (existingDid) {
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
 
     // Check handle uniqueness
     const existingHandle = await db.query.linkPages.findFirst({
-      where: (pages, { eq }) => eq(pages.handle, handle),
+      where: eq(linkPages.handle, handle),
     });
 
     if (existingHandle) {
