@@ -44,9 +44,9 @@ export async function GET(request: NextRequest) {
   // Group by conversation and find one with both DIDs
   const convCounts: Record<string, Set<string>> = {};
   for (const row of allParticipations) {
-    const convId = row.chat_conversations.id;
+    const convId = row.conversations.id;
     if (!convCounts[convId]) convCounts[convId] = new Set();
-    convCounts[convId].add(row.chat_participants.did);
+    convCounts[convId].add(row.participants.did);
   }
 
   for (const [convId, dids] of Object.entries(convCounts)) {
