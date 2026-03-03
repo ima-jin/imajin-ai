@@ -143,7 +143,7 @@ async function getUserTickets(eventId: string, userDid: string) {
   return userTickets.map(({ ticket, ticketType }) => ({
     id: ticket.id,
     status: ticket.status,
-    purchasedAt: ticket.purchasedAt?.toISOString() || null,
+    purchasedAt: (ticket.purchasedAt || ticket.createdAt)?.toISOString() || null,
     pricePaid: ticket.pricePaid,
     currency: ticket.currency,
     ticketType: ticketType ? {

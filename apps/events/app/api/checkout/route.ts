@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         }],
         currency: ticketType.currency,
         customerEmail: body.email,
-        successUrl: `${EVENTS_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        successUrl: `${EVENTS_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}&event=${event.id}`,
         cancelUrl: `${EVENTS_URL}/${event.id}`,
         metadata: {
           eventId: event.id,

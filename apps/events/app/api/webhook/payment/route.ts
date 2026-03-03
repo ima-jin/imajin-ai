@@ -208,6 +208,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       currency: currency.toUpperCase(),
       paymentId: paymentId || sessionId,
       status: 'valid',
+      purchasedAt: new Date(),
       signature,
       magicToken,
       metadata: {
