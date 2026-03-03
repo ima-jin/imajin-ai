@@ -92,8 +92,8 @@ export default function EventCreateForm({ organizerDid }: Props) {
         throw new Error(data.error || 'Failed to create event');
       }
 
-      const event = await response.json();
-      router.push(`/${event.id}`);
+      const data = await response.json();
+      router.push(`/${data.event.id}`);
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create event');
