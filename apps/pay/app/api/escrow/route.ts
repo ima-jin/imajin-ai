@@ -34,6 +34,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/lib/pay';
 import { extractToken, validateToken } from '@/lib/auth';
 import type { EscrowRequest, Currency } from '@/lib';
+import { corsHeaders } from '@/src/lib/cors';
 
 interface EscrowBody {
   amount: number;
@@ -48,7 +49,12 @@ interface EscrowBody {
   metadata?: Record<string, string>;
 }
 
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
+}
+
 export async function POST(request: NextRequest) {
+  const cors = corsHeaders(request);
   try {
     const body: EscrowBody = await request.json();
     
@@ -56,39 +62,39 @@ export async function POST(request: NextRequest) {
     if (typeof body.amount !== 'number' || body.amount <= 0) {
       return NextResponse.json(
         { error: 'amount must be a positive number' },
-        { status: 400 }
+        { status: 400, headers: cors }
       );
     }
-    
+
     if (!body.from || !body.to) {
       return NextResponse.json(
         { error: 'from and to DIDs are required' },
-        { status: 400 }
+        { status: 400, headers: cors }
       );
     }
-    
+
     // Require authentication for escrow
     const token = extractToken(request.headers.get('authorization'));
     if (!token) {
       return NextResponse.json(
         { error: 'Authentication required for escrow' },
-        { status: 401 }
+        { status: 401, headers: cors }
       );
     }
-    
+
     const validation = await validateToken(token);
     if (!validation.valid) {
       return NextResponse.json(
         { error: 'Invalid token' },
-        { status: 401 }
+        { status: 401, headers: cors }
       );
     }
-    
+
     // Verify the authenticated user is the depositor
     if (validation.identity?.id !== body.from) {
       return NextResponse.json(
         { error: 'Authenticated identity must match depositor (from)' },
-        { status: 403 }
+        { status: 403, headers: cors }
       );
     }
     
@@ -121,11 +127,12 @@ export async function POST(request: NextRequest) {
       to: result.to,
       createdAt: result.createdAt.toISOString(),
       expiresAt: result.expiresAt?.toISOString(),
-    });
+    }, { headers: cors });
   } catch (error) {
     console.error('Escrow error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Escrow creation failed' },
+      { status: 500, headers: cors }
       { status: 500 }
     );
   }

@@ -32,6 +32,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/lib/pay';
 import { extractToken, validateToken } from '@/lib/auth';
 import type { ChargeRequest, Currency, Recipient } from '@/lib';
+import { corsHeaders } from '@/src/lib/cors';
 
 interface ChargeBody {
   amount: number;
@@ -42,7 +43,12 @@ interface ChargeBody {
   idempotencyKey?: string;
 }
 
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
+}
+
 export async function POST(request: NextRequest) {
+  const cors = corsHeaders(request);
   try {
     const body: ChargeBody = await request.json();
     
@@ -50,21 +56,21 @@ export async function POST(request: NextRequest) {
     if (typeof body.amount !== 'number' || body.amount <= 0) {
       return NextResponse.json(
         { error: 'amount must be a positive number' },
-        { status: 400 }
+        { status: 400, headers: cors }
       );
     }
-    
+
     if (!body.currency) {
       return NextResponse.json(
         { error: 'currency is required' },
-        { status: 400 }
+        { status: 400, headers: cors }
       );
     }
-    
+
     if (!body.to) {
       return NextResponse.json(
         { error: 'to (recipient) is required' },
-        { status: 400 }
+        { status: 400, headers: cors }
       );
     }
     
@@ -103,12 +109,12 @@ export async function POST(request: NextRequest) {
       signature: result.signature,
       createdAt: result.createdAt.toISOString(),
       metadata: result.metadata,
-    });
+    }, { headers: cors });
   } catch (error) {
     console.error('Charge error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Charge failed' },
-      { status: 500 }
+      { status: 500, headers: cors }
     );
   }
 }

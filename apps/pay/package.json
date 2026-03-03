@@ -6,13 +6,18 @@
     "dev": "next dev --port ${PORT:-3004}",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@imajin/db": "workspace:^",
     "@imajin/ui": "workspace:^",
     "@solana/spl-token": "^0.4.0",
     "@solana/web3.js": "^1.95.0",
+    "drizzle-orm": "^0.45.1",
     "next": "^14.2.0",
+    "postgres": "^3.4.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "stripe": "^17.0.0"
@@ -22,6 +27,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10",
+    "drizzle-kit": "^0.31.9",
     "postcss": "^8",
     "tailwindcss": "^3.4.0",
     "typescript": "^5"
