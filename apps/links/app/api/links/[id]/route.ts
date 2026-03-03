@@ -24,9 +24,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
   try {
     // Fetch link with page
-    const link = await db.query.links.findFirst({
-      where: (links, { eq }) => eq(links.id, id),
-    });
+    const [link] = await db
+      .select()
+      .from(links)
+      .where(eq(links.id, id))
+      .limit(1);
 
     if (!link) {
       return errorResponse('Link not found', 404);
@@ -34,7 +36,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     // Fetch page to check ownership
     const page = await db.query.linkPages.findFirst({
-      where: (pages, { eq }) => eq(pages.id, link.pageId),
+      where: eq(linkPages.id, link.pageId),
     });
 
     if (!page || page.did !== identity.id) {
@@ -42,7 +44,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { title, url, icon, thumbnail, position, isActive } = body;
+    const { title, url, icon, thumbnail, position, isActive, visibility } = body;
 
     // Validate URL if provided
     if (url && !isValidUrl(url)) {
@@ -60,6 +62,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (thumbnail !== undefined) updates.thumbnail = thumbnail;
     if (position !== undefined) updates.position = position;
     if (isActive !== undefined) updates.isActive = isActive;
+    if (visibility !== undefined) updates.visibility = visibility;
 
     // Update link
     const [updated] = await db
@@ -91,9 +94,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
   try {
     // Fetch link with page
-    const link = await db.query.links.findFirst({
-      where: (links, { eq }) => eq(links.id, id),
-    });
+    const [link] = await db
+      .select()
+      .from(links)
+      .where(eq(links.id, id))
+      .limit(1);
 
     if (!link) {
       return errorResponse('Link not found', 404);
@@ -101,7 +106,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     // Fetch page to check ownership
     const page = await db.query.linkPages.findFirst({
-      where: (pages, { eq }) => eq(pages.id, link.pageId),
+      where: eq(linkPages.id, link.pageId),
     });
 
     if (!page || page.did !== identity.id) {

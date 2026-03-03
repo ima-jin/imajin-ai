@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { db, linkPages } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId, themePresets } from '@/lib/utils';
+import { eq } from 'drizzle-orm';
 
 /**
  * POST /api/pages/auto-create - Auto-create a links page from profile data
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
   try {
     // Check if page already exists
     const existing = await db.query.linkPages.findFirst({
-      where: (pages, { eq }) => eq(pages.did, identity.id),
+      where: eq(linkPages.did, identity.id),
     });
 
     if (existing) {

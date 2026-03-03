@@ -17,9 +17,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   try {
     // Verify link exists
-    const link = await db.query.links.findFirst({
-      where: (links, { eq }) => eq(links.id, id),
-    });
+    const [link] = await db
+      .select()
+      .from(links)
+      .where(eq(links.id, id))
+      .limit(1);
 
     if (!link) {
       return errorResponse('Link not found', 404);

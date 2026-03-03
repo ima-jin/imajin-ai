@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { NavBar } from '@imajin/ui';
+import { LayoutWrapper } from '@/components/LayoutWrapper';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -23,7 +24,9 @@ export default function RootLayout({
           servicePrefix={servicePrefix}
           domain={domain}
         />
-        {children}
+        <LayoutWrapper>
+          {children}
+        </LayoutWrapper>
       </body>
     </html>
   );

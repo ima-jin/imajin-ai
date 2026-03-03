@@ -1,5 +1,7 @@
 'use client';
 
+import { getSocialPlatform, SocialIcon } from './social-icons';
+
 interface Link {
   id: string;
   title: string;
@@ -15,17 +17,20 @@ interface LinkButtonProps {
   borderRadius: string;
 }
 
-export default function LinkButton({ 
-  link, 
-  buttonColor, 
-  buttonTextColor, 
-  borderRadius 
+export default function LinkButton({
+  link,
+  buttonColor,
+  buttonTextColor,
+  borderRadius
 }: LinkButtonProps) {
-  
+
   const handleClick = async () => {
     // Record click (fire and forget)
     fetch(`/api/links/${link.id}/click`, { method: 'POST' }).catch(() => {});
   };
+
+  const socialPlatform = getSocialPlatform(link.url);
+  const showIcon = link.icon || socialPlatform || link.thumbnail;
 
   return (
     <a
@@ -41,13 +46,20 @@ export default function LinkButton({
       }}
     >
       <span className="flex items-center justify-center gap-2">
-        {link.icon && <span>{link.icon}</span>}
-        {link.thumbnail && (
-          <img 
-            src={link.thumbnail} 
-            alt="" 
-            className="w-6 h-6 rounded object-cover"
-          />
+        {showIcon && (
+          <>
+            {link.thumbnail && (
+              <img
+                src={link.thumbnail}
+                alt=""
+                className="w-6 h-6 rounded object-cover"
+              />
+            )}
+            {!link.thumbnail && link.icon && <span>{link.icon}</span>}
+            {!link.thumbnail && !link.icon && socialPlatform && (
+              <SocialIcon platform={socialPlatform} className="w-5 h-5" />
+            )}
+          </>
         )}
         <span>{link.title}</span>
       </span>
