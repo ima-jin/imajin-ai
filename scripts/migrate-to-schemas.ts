@@ -150,8 +150,53 @@ async function main() {
     }
   }
 
+  // Step 3: Rename tables to drop prefixes (auth.auth_identities → auth.identities)
+  console.log('\n📝 Renaming tables (dropping prefixes)...');
+  const TABLE_RENAMES: Record<string, Record<string, string>> = {
+    auth: { auth_identities: 'identities', auth_challenges: 'challenges', auth_tokens: 'tokens' },
+    chat: {
+      chat_conversations: 'conversations', chat_participants: 'participants',
+      chat_messages: 'messages', chat_invites: 'invites', chat_public_keys: 'public_keys',
+      chat_pre_keys: 'pre_keys', chat_read_receipts: 'read_receipts',
+      chat_message_reactions: 'message_reactions',
+    },
+    coffee: { coffee_pages: 'pages' },
+    connections: {
+      trust_pods: 'pods', trust_pod_members: 'pod_members', trust_pod_links: 'pod_links',
+      trust_pod_keys: 'pod_keys', trust_pod_member_keys: 'pod_member_keys',
+      trust_invites: 'invites', trust_graph_invites: 'graph_invites',
+    },
+    registry: {
+      registry_nodes: 'nodes', registry_approved_builds: 'approved_builds',
+      registry_heartbeats: 'heartbeats', registry_trust: 'trust',
+    },
+    www: { www_contacts: 'contacts', www_mailing_lists: 'mailing_lists', www_subscriptions: 'subscriptions' },
+  };
+
+  let renamed = 0;
+  for (const [schema, renames] of Object.entries(TABLE_RENAMES)) {
+    for (const [oldName, newName] of Object.entries(renames)) {
+      try {
+        const exists = await sql`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables
+            WHERE table_schema = ${schema} AND table_name = ${oldName}
+          );
+        `;
+        if (exists[0].exists) {
+          await sql.unsafe(`ALTER TABLE ${schema}.${oldName} RENAME TO ${newName}`);
+          console.log(`  ✅ ${schema}.${oldName} → ${schema}.${newName}`);
+          renamed++;
+        }
+      } catch (error) {
+        console.error(`  ❌ Failed to rename ${schema}.${oldName}:`, error);
+      }
+    }
+  }
+
   console.log('\n📊 Migration Summary:');
   console.log(`  ✅ Migrated: ${migrated}`);
+  console.log(`  📝 Renamed: ${renamed}`);
   console.log(`  ⏭️  Skipped: ${skipped}`);
   console.log(`  ❌ Errors: ${errors}`);
 
