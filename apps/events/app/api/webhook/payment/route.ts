@@ -138,7 +138,7 @@ async function migrateSoftDidToHard(email: string, hardDid: string, eventId: str
 
     if (softTickets.length === 0) return;
 
-    const softDids = [...new Set(softTickets.map(t => t.ownerDid))];
+    const softDids = Array.from(new Set(softTickets.map(t => t.ownerDid)));
 
     // Migrate tickets to hard DID
     await db
