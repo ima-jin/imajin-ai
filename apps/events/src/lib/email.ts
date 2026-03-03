@@ -152,8 +152,8 @@ export function ticketConfirmationEmail(data: TicketConfirmationData): string {
     <p>Questions? Reply to this email.</p>
     <p>— Jin 🟠</p>
     <p style="font-size: 12px; margin-top: 20px;">
-      This is the first transaction on the sovereign network.<br>
-      Thank you for being part of this moment.
+      You just transacted on the sovereign network.<br>
+      Thank you for being a part of the movement.
     </p>
   </div>
 </body>
