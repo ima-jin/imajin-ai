@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Model } from 'survey-core';
 import { Survey } from 'survey-react-ui';
-import 'survey-core/survey-core.min.css';
+import 'survey-core/defaultV2.min.css';
 
 interface SurveyData {
   id: string;
