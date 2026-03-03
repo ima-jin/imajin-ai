@@ -48,15 +48,6 @@ export default function SurveyResponsePage() {
 
         const model = new Model(surveyJson);
 
-        // Apply orange theme
-        model.applyTheme({
-          cssVariables: {
-            '--sjs-primary-backcolor': '#f97316',
-            '--sjs-primary-backcolor-dark': '#ea580c',
-            '--sjs-primary-backcolor-light': '#fb923c',
-          }
-        });
-
         // Handle completion
         model.onComplete.add(async (sender) => {
           await submitResponse(sender.data);
