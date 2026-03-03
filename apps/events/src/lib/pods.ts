@@ -34,31 +34,31 @@ export async function createEventPod(params: CreateEventPodParams): Promise<Crea
 
   // Create trust pod
   await sql`
-    INSERT INTO trust_pods (id, name, type, owner_did, visibility, created_at, updated_at)
+    INSERT INTO connections.pods (id, name, type, owner_did, visibility, created_at, updated_at)
     VALUES (${podId}, ${eventTitle}, 'event', ${eventDid}, 'private', NOW(), NOW())
   `;
 
   // Add creator as pod member with owner role
   await sql`
-    INSERT INTO trust_pod_members (pod_id, did, role, added_by, joined_at)
+    INSERT INTO connections.pod_members (pod_id, did, role, added_by, joined_at)
     VALUES (${podId}, ${creatorDid}, 'owner', ${eventDid}, NOW())
   `;
 
   // Create group chat conversation linked to the pod
   await sql`
-    INSERT INTO chat_conversations (id, type, name, pod_id, visibility, created_by, created_at, updated_at)
+    INSERT INTO chat.conversations (id, type, name, pod_id, visibility, created_by, created_at, updated_at)
     VALUES (${conversationId}, 'group', ${eventTitle + ' Chat'}, ${podId}, 'private', ${creatorDid}, NOW(), NOW())
   `;
 
   // Add creator as conversation participant
   await sql`
-    INSERT INTO chat_participants (conversation_id, did, role, joined_at)
+    INSERT INTO chat.participants (conversation_id, did, role, joined_at)
     VALUES (${conversationId}, ${creatorDid}, 'owner', NOW())
   `;
 
   // Create event lobby conversation (open to all ticket holders)
   await sql`
-    INSERT INTO chat_conversations (id, type, name, context, visibility, created_by, created_at, updated_at)
+    INSERT INTO chat.conversations (id, type, name, context, visibility, created_by, created_at, updated_at)
     VALUES (
       ${lobbyConversationId},
       'event-lobby',
@@ -73,7 +73,7 @@ export async function createEventPod(params: CreateEventPodParams): Promise<Crea
 
   // Add creator as lobby participant
   await sql`
-    INSERT INTO chat_participants (conversation_id, did, role, joined_at)
+    INSERT INTO chat.participants (conversation_id, did, role, joined_at)
     VALUES (${lobbyConversationId}, ${creatorDid}, 'owner', NOW())
   `;
 
@@ -96,14 +96,14 @@ export async function addEventParticipant(params: AddEventParticipantParams): Pr
 
   // Add to pod members (skip if already there)
   await sql`
-    INSERT INTO trust_pod_members (pod_id, did, role, added_by, joined_at)
+    INSERT INTO connections.pod_members (pod_id, did, role, added_by, joined_at)
     VALUES (${podId}, ${participantDid}, ${role}, ${addedBy}, NOW())
     ON CONFLICT (pod_id, did) DO NOTHING
   `;
 
   // Add to chat participants (skip if already there)
   await sql`
-    INSERT INTO chat_participants (conversation_id, did, role, joined_at, invited_by)
+    INSERT INTO chat.participants (conversation_id, did, role, joined_at, invited_by)
     VALUES (${conversationId}, ${participantDid}, ${role}, NOW(), ${addedBy})
     ON CONFLICT (conversation_id, did) DO NOTHING
   `;
@@ -116,7 +116,7 @@ export async function getEventPod(eventId: string): Promise<{ podId: string; con
   const rows = await sql`
     SELECT e.pod_id, e.lobby_conversation_id, c.id as conversation_id
     FROM events e
-    LEFT JOIN chat_conversations c ON c.pod_id = e.pod_id
+    LEFT JOIN chat.conversations c ON c.pod_id = e.pod_id
     WHERE e.id = ${eventId}
     LIMIT 1
   `;
