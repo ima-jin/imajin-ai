@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { ImajinFooter } from '@imajin/ui';
 
 export default function Home() {
   const router = useRouter();
@@ -75,9 +76,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="text-gray-500 text-sm">
-            <p>Part of the <a href="https://imajin.ai" className="text-blue-500 hover:underline">Imajin</a> sovereign stack</p>
-          </div>
+          <ImajinFooter className="mt-8" />
         </div>
       </div>
     </div>
