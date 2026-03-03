@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Model } from 'survey-core';
 import { Survey } from 'survey-react-ui';
-import 'survey-core/defaultV2.min.css';
+import 'survey-core/survey-core.min.css';
 import type { SurveyJSElement, SurveyJSElementType } from '@/db/schema';
 
 interface SurveyData {
