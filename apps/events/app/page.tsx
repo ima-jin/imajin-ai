@@ -1,14 +1,38 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { db, events } from '@/src/db';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, or, and } from 'drizzle-orm';
 
-async function getUpcomingEvents() {
+async function getViewerDid(): Promise<string | null> {
+  const authUrl = process.env.AUTH_SERVICE_URL;
+  if (!authUrl) return null;
   try {
+    const cookieStore = await cookies();
+    const session = cookieStore.get('imajin_session');
+    if (!session?.value) return null;
+    const res = await fetch(`${authUrl}/api/session`, {
+      headers: { Cookie: `imajin_session=${session.value}` },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.did || null;
+  } catch { return null; }
+}
+
+async function getEvents(viewerDid: string | null) {
+  try {
+    const conditions = viewerDid
+      ? or(
+          eq(events.status, 'published'),
+          and(eq(events.status, 'draft'), eq(events.creatorDid, viewerDid))
+        )
+      : eq(events.status, 'published');
+
     return await db
       .select()
       .from(events)
-      .where(eq(events.status, 'published'))
+      .where(conditions)
       .orderBy(desc(events.startsAt))
       .limit(20);
   } catch {
@@ -16,23 +40,10 @@ async function getUpcomingEvents() {
   }
 }
 
-async function isLoggedIn(): Promise<boolean> {
-  const authUrl = process.env.AUTH_SERVICE_URL;
-  if (!authUrl) return false;
-  try {
-    const cookieStore = await cookies();
-    const session = cookieStore.get('imajin_session');
-    if (!session?.value) return false;
-    const res = await fetch(`${authUrl}/api/session`, {
-      headers: { Cookie: `imajin_session=${session.value}` },
-    });
-    return res.ok;
-  } catch { return false; }
-}
-
 export default async function HomePage() {
-  const eventList = await getUpcomingEvents();
-  const loggedIn = await isLoggedIn();
+  const viewerDid = await getViewerDid();
+  const loggedIn = !!viewerDid;
+  const eventList = await getEvents(viewerDid);
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -86,7 +97,14 @@ export default async function HomePage() {
                   />
                 )}
                 <div className="flex-1">
-                  <h2 className="text-xl font-bold mb-2 text-white">{event.title}</h2>
+                  <div className="flex items-center gap-2 mb-2">
+                    <h2 className="text-xl font-bold text-white">{event.title}</h2>
+                    {event.status === 'draft' && (
+                      <span className="px-2 py-0.5 text-xs font-medium bg-yellow-900/50 text-yellow-400 border border-yellow-700 rounded">
+                        Draft
+                      </span>
+                    )}
+                  </div>
                   <p className="text-gray-400 mb-3 line-clamp-2">
                     {event.description}
                   </p>
