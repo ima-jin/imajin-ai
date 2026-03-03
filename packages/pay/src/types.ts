@@ -84,8 +84,11 @@ export type SubscriptionStatus =
   | 'active'
   | 'past_due'
   | 'canceled'
+  | 'incomplete'
+  | 'incomplete_expired'
   | 'trialing'
-  | 'paused';
+  | 'paused'
+  | 'unpaid';
 
 export type RefundStatus =
   | 'pending'

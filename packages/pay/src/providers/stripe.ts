@@ -28,7 +28,6 @@ import type {
   PaymentStatus,
   Recipient,
   Currency,
-  SubscriptionStatus,
 } from '../types.js';
 
 export class StripeProvider implements PaymentProvider {
@@ -48,7 +47,7 @@ export class StripeProvider implements PaymentProvider {
   constructor(config: StripeProviderConfig) {
     this.config = config;
     this.stripe = new Stripe(config.secretKey, {
-      apiVersion: '2025-02-24.acacia',
+      apiVersion: (config.apiVersion as Stripe.LatestApiVersion) || undefined,
       timeout: config.timeout || 60000,
       maxNetworkRetries: config.maxNetworkRetries || 3,
     });
@@ -294,7 +293,7 @@ export class StripeProvider implements PaymentProvider {
   private mapSubscription(sub: Stripe.Subscription): SubscriptionResult {
     return {
       id: sub.id,
-      status: sub.status as SubscriptionStatus,
+      status: sub.status,
       currentPeriodStart: new Date(sub.current_period_start * 1000),
       currentPeriodEnd: new Date(sub.current_period_end * 1000),
     };
