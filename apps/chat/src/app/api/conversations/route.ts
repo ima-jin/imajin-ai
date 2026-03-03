@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
             }
           } else {
             const podRows = await sql`
-              SELECT name FROM trust_pods WHERE id = ${conv.podId} LIMIT 1
+              SELECT name FROM connections.pods WHERE id = ${conv.podId} LIMIT 1
             `;
             if (podRows.length > 0) {
               conv.podName = podRows[0].name;
@@ -164,10 +164,10 @@ export async function POST(request: NextRequest) {
       // Group by conversation and check if both users are in the same one
       const convCounts: Record<string, Set<string>> = {};
       for (const row of existing) {
-        if (!convCounts[row.chat_conversations.id]) {
-          convCounts[row.chat_conversations.id] = new Set();
+        if (!convCounts[row.conversations.id]) {
+          convCounts[row.conversations.id] = new Set();
         }
-        convCounts[row.chat_conversations.id].add(row.chat_participants.did);
+        convCounts[row.conversations.id].add(row.participants.did);
       }
       
       for (const [convId, dids] of Object.entries(convCounts)) {
