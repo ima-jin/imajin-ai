@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 
 const PRESETS = [
   { amount: 500, label: '$5' },
@@ -18,6 +19,26 @@ export default function CoffeePage() {
   const [joinMailingList, setJoinMailingList] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  // Check if user is logged in
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const authUrl = process.env.NEXT_PUBLIC_SERVICE_PREFIX + 'auth.' + process.env.NEXT_PUBLIC_DOMAIN;
+        const res = await fetch(`${authUrl}/api/session`, {
+          credentials: 'include',
+        });
+        setIsLoggedIn(res.ok);
+      } catch {
+        setIsLoggedIn(false);
+      } finally {
+        setCheckingAuth(false);
+      }
+    }
+    checkAuth();
+  }, []);
 
   const getAmount = () => {
     if (customAmount) {
@@ -69,16 +90,32 @@ export default function CoffeePage() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4">
       <div className="max-w-2xl mx-auto">
+        {/* CTA for logged-in users */}
+        {!checkingAuth && isLoggedIn && (
+          <div className="mb-6 bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-6 text-white shadow-lg">
+            <h3 className="text-xl font-bold mb-2">Create Your Own Support Page</h3>
+            <p className="mb-4 text-orange-50">
+              Start receiving tips and build your own sovereign support page in minutes
+            </p>
+            <Link
+              href="/edit"
+              className="inline-block px-6 py-3 bg-white text-orange-600 rounded-xl font-semibold hover:bg-orange-50 transition"
+            >
+              Get Started →
+            </Link>
+          </div>
+        )}
+
         {/* Header */}
         <div className="text-center mb-8">
-          <img 
-            src="/images/logo-kanji.svg" 
-            alt="今人" 
+          <img
+            src="/images/logo-kanji.svg"
+            alt="今人"
             className="w-24 h-24 mx-auto mb-4"
           />
-          <img 
-            src="/images/logo.svg" 
-            alt="Imajin" 
+          <img
+            src="/images/logo.svg"
+            alt="Imajin"
             className="h-10 mx-auto mb-4"
           />
           <p className="text-gray-500">Sovereign infrastructure. Built in public. Funded by you.</p>
