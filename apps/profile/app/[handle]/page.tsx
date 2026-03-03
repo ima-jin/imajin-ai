@@ -211,22 +211,11 @@ export default async function ProfilePage({ params }: PageProps) {
           </p>
         )}
 
-        {/* Upgrade CTA for soft DID users viewing their own profile */}
+        {/* Info note for invited members viewing their own profile */}
         {isSoftDID && isSelf && (
-          <div className="mb-6 bg-gradient-to-r from-amber-900/20 to-orange-900/20 border border-amber-700/50 rounded-lg p-4">
-            <p className="text-sm text-amber-200 mb-3">
-              <strong>🔐 Upgrade to Full Profile</strong>
-            </p>
-            <p className="text-xs text-gray-400 mb-3">
-              Get a permanent identity with cryptographic keys, claim a custom handle, and unlock all Imajin features.
-            </p>
-            <a
-              href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}profile.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/register`}
-              className="inline-block px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium text-sm"
-            >
-              Upgrade Now
-            </a>
-          </div>
+          <p className="mb-6 text-xs text-gray-500 border border-gray-800 rounded-lg px-4 py-3">
+            Invited members can claim a handle and download backup keys
+          </p>
         )}
 
         {/* Contact Info (only visible to self/connections — API strips for others) */}
