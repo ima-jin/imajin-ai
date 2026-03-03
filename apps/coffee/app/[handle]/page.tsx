@@ -85,6 +85,22 @@ export default async function CoffeePage({ params }: PageProps) {
         />
       </div>
 
+      {/* A thought */}
+      <div className="mt-6 bg-orange-100 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 rounded-2xl p-6">
+        <h2 className="text-lg font-bold mb-3 text-orange-800 dark:text-orange-200">A thought on where your money goes</h2>
+        <div className="text-orange-900 dark:text-orange-100 space-y-3 text-sm">
+          <p>
+            You probably spend $20/month on subscriptions you barely touch — feeding platforms 
+            that turn your attention into their product.
+          </p>
+          <p>
+            What if that money went to open source projects building the alternative? Infrastructure 
+            owned by people, not shareholders. Tools that undo the mess instead of profiting from it.
+          </p>
+          <p className="font-semibold">This is that.</p>
+        </div>
+      </div>
+
       {/* Footer */}
       <p className="text-center text-xs text-gray-400 mt-4">
         Powered by <a href="https://imajin.ai" className="hover:underline">Imajin</a>

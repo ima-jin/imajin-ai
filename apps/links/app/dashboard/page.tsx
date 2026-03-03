@@ -64,7 +64,8 @@ export default function DashboardPage() {
           setStats(data);
         }
       } else if (pageRes.status === 401) {
-        window.location.href = 'https://auth.imajin.ai';
+        const AUTH_URL = (process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://') + 'auth.' + (process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai');
+        window.location.href = `${AUTH_URL}?redirect=${encodeURIComponent(window.location.origin + '/dashboard')}`;
       }
     } catch (error) {
       console.error('Failed to fetch stats:', error);
@@ -107,18 +108,43 @@ export default function DashboardPage() {
     <div className="min-h-screen py-12 px-4 bg-gray-50 dark:bg-gray-900">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Stats Dashboard</h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Analytics for{' '}
+        <div className="flex items-start justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">My Links Page</h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              <a
+                href={`/${handle}`}
+                target="_blank"
+                className="text-orange-500 hover:underline"
+              >
+                links.imajin.ai/{handle}
+              </a>
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(`${window.location.origin}/${handle}`);
+                alert('Link copied!');
+              }}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+            >
+              📋 Copy Link
+            </button>
+            <button
+              onClick={() => router.push('/edit')}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+            >
+              ✏️ Edit Page
+            </button>
             <a
               href={`/${handle}`}
               target="_blank"
-              className="text-orange-500 hover:underline"
+              className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition"
             >
-              links.imajin.ai/{handle}
+              👁️ View Page
             </a>
-          </p>
+          </div>
         </div>
 
         {/* Total Clicks Card */}
