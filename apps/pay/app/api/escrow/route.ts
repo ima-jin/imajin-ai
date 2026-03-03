@@ -133,7 +133,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Escrow creation failed' },
       { status: 500, headers: cors }
-      { status: 500 }
     );
   }
 }
