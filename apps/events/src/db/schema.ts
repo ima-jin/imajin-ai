@@ -1,9 +1,11 @@
-import { pgTable, text, timestamp, jsonb, integer, boolean, index, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, integer, boolean, index, primaryKey, pgSchema } from 'drizzle-orm/pg-core';
+
+export const eventsSchema = pgSchema('events');
 
 /**
  * Events - happenings on the network
  */
-export const events = pgTable('events', {
+export const events = eventsSchema.table('events', {
   id: text('id').primaryKey(),                              // evt_xxx
   did: text('did').notNull().unique(),                      // did:imajin:xxx (event's own DID)
   publicKey: text('public_key').notNull(),                  // Ed25519 public key for signing tickets
@@ -50,7 +52,7 @@ export const events = pgTable('events', {
 /**
  * Ticket Types - different tiers for an event
  */
-export const ticketTypes = pgTable('ticket_types', {
+export const ticketTypes = eventsSchema.table('ticket_types', {
   id: text('id').primaryKey(),                              // tkt_type_xxx
   eventId: text('event_id').references(() => events.id).notNull(),
   name: text('name').notNull(),                             // "Virtual", "Physical", "VIP"
@@ -72,7 +74,7 @@ export const ticketTypes = pgTable('ticket_types', {
 /**
  * Event Admins - co-hosts with management permissions
  */
-export const eventAdmins = pgTable('event_admins', {
+export const eventAdmins = eventsSchema.table('event_admins', {
   eventId: text('event_id').references(() => events.id, { onDelete: 'cascade' }).notNull(),
   did: text('did').notNull(),
   role: text('role').notNull().default('admin'),            // owner | admin
@@ -87,7 +89,7 @@ export const eventAdmins = pgTable('event_admins', {
 /**
  * Tickets - purchased tickets owned by DIDs
  */
-export const tickets = pgTable('tickets', {
+export const tickets = eventsSchema.table('tickets', {
   id: text('id').primaryKey(),                              // tkt_xxx
   eventId: text('event_id').references(() => events.id).notNull(),
   ticketTypeId: text('ticket_type_id').references(() => ticketTypes.id).notNull(),
@@ -129,7 +131,7 @@ export const tickets = pgTable('tickets', {
 /**
  * Ticket Transfers - transparent chain of custody
  */
-export const ticketTransfers = pgTable('ticket_transfers', {
+export const ticketTransfers = eventsSchema.table('ticket_transfers', {
   id: text('id').primaryKey(),                              // xfer_xxx
   ticketId: text('ticket_id').references(() => tickets.id).notNull(),
   fromDid: text('from_did').notNull(),
@@ -145,7 +147,7 @@ export const ticketTransfers = pgTable('ticket_transfers', {
 /**
  * Ticket Queue - waiting list for high-demand events
  */
-export const ticketQueue = pgTable('ticket_queue', {
+export const ticketQueue = eventsSchema.table('ticket_queue', {
   id: text('id').primaryKey(),                              // q_xxx
   ticketTypeId: text('ticket_type_id').references(() => ticketTypes.id).notNull(),
   did: text('did').notNull(),

@@ -1,9 +1,11 @@
-import { pgTable, text, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, index, pgSchema } from 'drizzle-orm/pg-core';
+
+export const dykil_schema = pgSchema('dykil');
 
 /**
  * Surveys - form definitions
  */
-export const surveys = pgTable('surveys', {
+export const surveys = dykil_schema.table('surveys', {
   id: text('id').primaryKey(),                                // survey_xxx
   did: text('did').notNull(),                                 // Owner DID
   handle: text('handle'),                                     // Creator's handle for URL routing
@@ -26,7 +28,7 @@ export const surveys = pgTable('surveys', {
 /**
  * Survey Responses - submitted answers
  */
-export const surveyResponses = pgTable('survey_responses', {
+export const surveyResponses = dykil_schema.table('survey_responses', {
   id: text('id').primaryKey(),                                // response_xxx
   surveyId: text('survey_id').references(() => surveys.id, { onDelete: 'cascade' }).notNull(),
   respondentDid: text('respondent_did'),                      // null for anonymous

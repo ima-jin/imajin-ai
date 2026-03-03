@@ -1,12 +1,14 @@
-import { pgTable, uuid, text, timestamp, boolean, index, unique } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, boolean, index, unique, pgSchema } from 'drizzle-orm/pg-core';
+
+export const wwwSchema = pgSchema('www');
 
 /**
  * Contacts - email addresses for updates/notifications
- * 
+ *
  * Can exist without an account. For early interest signup
  * before full profile registration is available.
  */
-export const contacts = pgTable('www_contacts', {
+export const contacts = wwwSchema.table('contacts', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull(),
   source: text('source').notNull().default('register'),  // 'register' | 'article' | 'manual'
@@ -22,7 +24,7 @@ export const contacts = pgTable('www_contacts', {
 /**
  * Mailing Lists - different notification streams
  */
-export const mailingLists = pgTable('www_mailing_lists', {
+export const mailingLists = wwwSchema.table('mailing_lists', {
   id: uuid('id').primaryKey().defaultRandom(),
   slug: text('slug').notNull(),
   name: text('name').notNull(),
@@ -37,7 +39,7 @@ export const mailingLists = pgTable('www_mailing_lists', {
 /**
  * Subscriptions - link contacts to lists
  */
-export const subscriptions = pgTable('www_subscriptions', {
+export const subscriptions = wwwSchema.table('subscriptions', {
   id: uuid('id').primaryKey().defaultRandom(),
   contactId: uuid('contact_id').notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   mailingListId: uuid('mailing_list_id').notNull().references(() => mailingLists.id, { onDelete: 'cascade' }),

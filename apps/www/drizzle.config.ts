@@ -8,5 +8,5 @@ export default defineConfig({
   dbCredentials: {
     url: process.env.DATABASE_URL!,
   },
-  tablesFilter: ['www_*'],  // Only manage www_ tables
+  schemaFilter: ['www'],
 });

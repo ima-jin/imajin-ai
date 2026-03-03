@@ -1,9 +1,11 @@
-import { pgTable, text, timestamp, jsonb, index, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, index, boolean, pgSchema } from 'drizzle-orm/pg-core';
+
+export const registrySchema = pgSchema('registry');
 
 /**
  * Registered nodes in the network
  */
-export const nodes = pgTable('registry_nodes', {
+export const nodes = registrySchema.table('nodes', {
   // Identity
   id: text('id').primaryKey(),                        // did:imajin:xxx
   publicKey: text('public_key').notNull().unique(),   // Ed25519 hex
@@ -43,7 +45,7 @@ export const nodes = pgTable('registry_nodes', {
 /**
  * Approved build hashes for each version
  */
-export const approvedBuilds = pgTable('registry_approved_builds', {
+export const approvedBuilds = registrySchema.table('approved_builds', {
   id: text('id').primaryKey(),                        // uuid
   version: text('version').notNull(),                 // "0.1.0"
   buildHash: text('build_hash').notNull().unique(),   // SHA256
@@ -60,7 +62,7 @@ export const approvedBuilds = pgTable('registry_approved_builds', {
 /**
  * Heartbeat history (optional, for analytics)
  */
-export const heartbeats = pgTable('registry_heartbeats', {
+export const heartbeats = registrySchema.table('heartbeats', {
   id: text('id').primaryKey(),                        // uuid
   nodeId: text('node_id').references(() => nodes.id).notNull(),
   timestamp: timestamp('timestamp', { withTimezone: true }).defaultNow(),
@@ -76,7 +78,7 @@ export const heartbeats = pgTable('registry_heartbeats', {
 /**
  * Mesh trust relationships (synced from nodes)
  */
-export const trustRelationships = pgTable('registry_trust', {
+export const trustRelationships = registrySchema.table('trust', {
   id: text('id').primaryKey(),                        // uuid
   fromNode: text('from_node').references(() => nodes.id).notNull(),
   toNode: text('to_node').references(() => nodes.id).notNull(),

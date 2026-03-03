@@ -1,9 +1,11 @@
-import { pgTable, text, timestamp, jsonb, boolean, index, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, boolean, index, primaryKey, pgSchema } from 'drizzle-orm/pg-core';
+
+export const chatSchema = pgSchema('chat');
 
 /**
  * Conversations - both direct messages and groups
  */
-export const conversations = pgTable('chat_conversations', {
+export const conversations = chatSchema.table('conversations', {
   id: text('id').primaryKey(),                                  // conv_xxx
   type: text('type').notNull(),                                 // 'direct' | 'group'
   name: text('name'),                                           // For groups
@@ -36,7 +38,7 @@ export const conversations = pgTable('chat_conversations', {
 /**
  * Participants in conversations
  */
-export const participants = pgTable('chat_participants', {
+export const participants = chatSchema.table('participants', {
   conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
   did: text('did').notNull(),
   
@@ -60,7 +62,7 @@ export const participants = pgTable('chat_participants', {
 /**
  * Messages
  */
-export const messages = pgTable('chat_messages', {
+export const messages = chatSchema.table('messages', {
   id: text('id').primaryKey(),                                  // msg_xxx
   conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
   fromDid: text('from_did').notNull(),
@@ -93,7 +95,7 @@ export const messages = pgTable('chat_messages', {
 /**
  * Invites - for joining groups
  */
-export const invites = pgTable('chat_invites', {
+export const invites = chatSchema.table('invites', {
   id: text('id').primaryKey(),                                  // inv_xxx
   conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
   
@@ -117,7 +119,7 @@ export const invites = pgTable('chat_invites', {
 /**
  * Public keys for E2EE
  */
-export const publicKeys = pgTable('chat_public_keys', {
+export const publicKeys = chatSchema.table('public_keys', {
   did: text('did').primaryKey(),
   identityKey: text('identity_key').notNull(),                  // Long-term X25519 public key
   signedPreKey: text('signed_pre_key').notNull(),               // Signed pre-key
@@ -128,7 +130,7 @@ export const publicKeys = pgTable('chat_public_keys', {
 /**
  * One-time pre-keys for forward secrecy
  */
-export const preKeys = pgTable('chat_pre_keys', {
+export const preKeys = chatSchema.table('pre_keys', {
   id: text('id').primaryKey(),
   did: text('did').references(() => publicKeys.did, { onDelete: 'cascade' }).notNull(),
   key: text('key').notNull(),
@@ -141,7 +143,7 @@ export const preKeys = pgTable('chat_pre_keys', {
 /**
  * Read receipts (separate for performance)
  */
-export const readReceipts = pgTable('chat_read_receipts', {
+export const readReceipts = chatSchema.table('read_receipts', {
   conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
   did: text('did').notNull(),
   lastReadMessageId: text('last_read_message_id').references(() => messages.id),
@@ -154,7 +156,7 @@ export const readReceipts = pgTable('chat_read_receipts', {
  * Conversation reads - tracks when each user last viewed a conversation
  * Used for calculating unread message counts
  */
-export const conversationReads = pgTable('conversation_reads', {
+export const conversationReads = chatSchema.table('conversation_reads', {
   conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
   did: text('did').notNull(),
   lastReadAt: timestamp('last_read_at', { withTimezone: true }).notNull().defaultNow(),
@@ -165,7 +167,7 @@ export const conversationReads = pgTable('conversation_reads', {
 /**
  * Message reactions
  */
-export const messageReactions = pgTable('chat_message_reactions', {
+export const messageReactions = chatSchema.table('message_reactions', {
   messageId: text('message_id').references(() => messages.id, { onDelete: 'cascade' }).notNull(),
   did: text('did').notNull(),
   emoji: text('emoji').notNull(),

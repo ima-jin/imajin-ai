@@ -1,9 +1,11 @@
-import { pgTable, text, timestamp, jsonb, integer, boolean, index } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, integer, boolean, index, pgSchema } from 'drizzle-orm/pg-core';
+
+export const coffeeSchema = pgSchema('coffee');
 
 /**
  * Coffee Pages - tip pages linked to DIDs
  */
-export const coffeePages = pgTable('coffee_pages', {
+export const coffeePages = coffeeSchema.table('pages', {
   id: text('id').primaryKey(),                                // page_xxx
   did: text('did').notNull().unique(),                        // Owner DID
   handle: text('handle').notNull().unique(),                  // URL slug
@@ -27,7 +29,7 @@ export const coffeePages = pgTable('coffee_pages', {
 /**
  * Tips - individual tip transactions
  */
-export const tips = pgTable('tips', {
+export const tips = coffeeSchema.table('tips', {
   id: text('id').primaryKey(),                                // tip_xxx
   pageId: text('page_id').references(() => coffeePages.id).notNull(),
   fromDid: text('from_did'),                                  // null for anonymous
