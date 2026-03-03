@@ -1,10 +1,23 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import { ImajinFooter } from '@imajin/ui';
 
 export default function Home() {
-  const router = useRouter();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const AUTH_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX + 'auth.' + process.env.NEXT_PUBLIC_DOMAIN;
+
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const res = await fetch(`${AUTH_URL}/api/session`, { credentials: 'include' });
+        setIsLoggedIn(res.ok);
+      } catch { setIsLoggedIn(false); }
+      finally { setCheckingAuth(false); }
+    }
+    checkAuth();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black">
@@ -22,20 +35,19 @@ export default function Home() {
             Your forms. Your data. No tracking.
           </p>
 
-          {/* CTA Buttons */}
-          <div className="flex gap-4 justify-center mb-12">
-            <button
-              onClick={() => router.push('/create')}
-              className="px-8 py-4 bg-orange-500 text-white rounded-lg font-semibold text-lg hover:bg-orange-600 transition shadow-lg"
-            >
-              Create a Survey
-            </button>
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="px-8 py-4 border border-gray-300 dark:border-gray-700 rounded-lg font-semibold text-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-            >
-              View Dashboard
-            </button>
+          {/* CTA */}
+          <div className="flex justify-center mb-12">
+            {!checkingAuth && (
+              isLoggedIn ? (
+                <a href="/dashboard" className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
+                  Go to Dashboard →
+                </a>
+              ) : (
+                <a href={`${AUTH_URL}?redirect=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin + '/dashboard' : '/dashboard')}`} className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
+                  Sign In to Get Started
+                </a>
+              )
+            )}
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 mb-8 text-left">

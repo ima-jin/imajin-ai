@@ -1,6 +1,24 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import { ImajinFooter } from '@imajin/ui';
 
 export default function Home() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const AUTH_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX + 'auth.' + process.env.NEXT_PUBLIC_DOMAIN;
+
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const res = await fetch(`${AUTH_URL}/api/session`, { credentials: 'include' });
+        setIsLoggedIn(res.ok);
+      } catch { setIsLoggedIn(false); }
+      finally { setCheckingAuth(false); }
+    }
+    checkAuth();
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black">
       <div className="container mx-auto px-4 py-16">
@@ -53,6 +71,21 @@ export default function Home() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* CTA */}
+          <div className="mb-8">
+            {!checkingAuth && (
+              isLoggedIn ? (
+                <a href="/dashboard" className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
+                  Go to Dashboard →
+                </a>
+              ) : (
+                <a href={`${AUTH_URL}?redirect=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin + '/dashboard' : '/dashboard')}`} className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
+                  Sign In to Get Started
+                </a>
+              )
+            )}
           </div>
 
           <ImajinFooter className="mt-8" />

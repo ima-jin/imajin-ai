@@ -7,20 +7,15 @@ import { ImajinFooter } from '@imajin/ui';
 export default function CoffeePage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const AUTH_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX + 'auth.' + process.env.NEXT_PUBLIC_DOMAIN;
 
   useEffect(() => {
     async function checkAuth() {
       try {
-        const authUrl = process.env.NEXT_PUBLIC_SERVICE_PREFIX + 'auth.' + process.env.NEXT_PUBLIC_DOMAIN;
-        const res = await fetch(`${authUrl}/api/session`, {
-          credentials: 'include',
-        });
+        const res = await fetch(`${AUTH_URL}/api/session`, { credentials: 'include' });
         setIsLoggedIn(res.ok);
-      } catch {
-        setIsLoggedIn(false);
-      } finally {
-        setCheckingAuth(false);
-      }
+      } catch { setIsLoggedIn(false); }
+      finally { setCheckingAuth(false); }
     }
     checkAuth();
   }, []);
@@ -99,28 +94,18 @@ export default function CoffeePage() {
 
         {/* CTA */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-6 text-center">
-          {!checkingAuth && isLoggedIn ? (
-            <>
-              <h3 className="text-xl font-bold mb-2">Set up your support page</h3>
-              <p className="text-gray-500 mb-4">You're signed in. Configure your page in minutes.</p>
-              <Link
-                href="/edit"
-                className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition shadow-lg"
-              >
-                Get Started →
-              </Link>
-            </>
-          ) : (
-            <>
-              <h3 className="text-xl font-bold mb-2">Ready to get started?</h3>
-              <p className="text-gray-500 mb-4">Sign in with your Imajin identity to create your support page.</p>
-              <a
-                href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}auth.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`}
-                className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition shadow-lg"
-              >
-                Sign In →
+          <h3 className="text-xl font-bold mb-2">Ready to get started?</h3>
+          <p className="text-gray-500 mb-4">Create your sovereign support page in minutes.</p>
+          {!checkingAuth && (
+            isLoggedIn ? (
+              <a href="/dashboard" className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
+                Go to Dashboard →
               </a>
-            </>
+            ) : (
+              <a href={`${AUTH_URL}?redirect=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin + '/dashboard' : '/dashboard')}`} className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
+                Sign In to Get Started
+              </a>
+            )
           )}
         </div>
 
