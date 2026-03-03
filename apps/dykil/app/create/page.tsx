@@ -56,11 +56,21 @@ function CreateSurveyContent() {
 
       if (res.ok) {
         const data = await res.json();
+        // Flatten multi-page surveys into elements for the editor
+        let elements: SurveyJSElement[] = [];
+        if (typeof data.fields === 'object') {
+          if ('pages' in data.fields && Array.isArray(data.fields.pages)) {
+            // Multi-page format — flatten all page elements into one list
+            elements = data.fields.pages.flatMap((p: any) => p.elements || []);
+          } else if ('elements' in data.fields) {
+            elements = data.fields.elements;
+          } else if (Array.isArray(data.fields)) {
+            elements = data.fields;
+          }
+        }
         setSurvey({
           ...data,
-          fields: typeof data.fields === 'object' && 'elements' in data.fields || 'pages' in data.fields
-            ? data.fields
-            : { elements: Array.isArray(data.fields) ? data.fields : [] }
+          fields: { elements }
         });
       } else {
         alert('Failed to load survey');
@@ -201,17 +211,6 @@ function CreateSurveyContent() {
         showQuestionNumbers: 'off',
       })
     : null;
-
-  // Apply orange theme
-  if (previewModel) {
-    previewModel.applyTheme({
-      cssVariables: {
-        '--sjs-primary-backcolor': '#f97316',
-        '--sjs-primary-backcolor-dark': '#ea580c',
-        '--sjs-primary-backcolor-light': '#fb923c',
-      }
-    });
-  }
 
   if (loading) {
     return (
