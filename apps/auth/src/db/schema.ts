@@ -1,9 +1,11 @@
-import { pgTable, text, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, index, pgSchema } from 'drizzle-orm/pg-core';
+
+export const authSchema = pgSchema('auth');
 
 /**
  * Identities - humans and agents with public keys
  */
-export const identities = pgTable('auth_identities', {
+export const identities = authSchema.table('identities', {
   id: text('id').primaryKey(),                    // did:imajin:xxx
   type: text('type').notNull(),                   // 'human' | 'agent'
   publicKey: text('public_key').notNull().unique(),
@@ -20,7 +22,7 @@ export const identities = pgTable('auth_identities', {
 /**
  * Challenges - short-lived, for authentication flow
  */
-export const challenges = pgTable('auth_challenges', {
+export const challenges = authSchema.table('challenges', {
   id: text('id').primaryKey(),
   identityId: text('identity_id').references(() => identities.id),
   challenge: text('challenge').notNull(),
@@ -34,7 +36,7 @@ export const challenges = pgTable('auth_challenges', {
 /**
  * Tokens - issued after successful authentication
  */
-export const tokens = pgTable('auth_tokens', {
+export const tokens = authSchema.table('tokens', {
   id: text('id').primaryKey(),                    // imajin_tok_xxx
   identityId: text('identity_id').references(() => identities.id).notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),

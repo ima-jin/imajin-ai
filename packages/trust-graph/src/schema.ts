@@ -1,6 +1,8 @@
-import { pgTable, text, timestamp, integer, index, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, index, primaryKey, uniqueIndex, pgSchema } from 'drizzle-orm/pg-core';
 
-export const pods = pgTable('trust_pods', {
+export const connectionsSchema = pgSchema('connections');
+
+export const pods = connectionsSchema.table('pods', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   description: text('description'),
@@ -14,7 +16,7 @@ export const pods = pgTable('trust_pods', {
   ownerIdx: index('trust_pods_owner_idx').on(table.ownerDid),
 }));
 
-export const podMembers = pgTable('trust_pod_members', {
+export const podMembers = connectionsSchema.table('pod_members', {
   podId: text('pod_id').notNull().references(() => pods.id, { onDelete: 'cascade' }),
   did: text('did').notNull(),
   role: text('role', { enum: ['owner', 'admin', 'member'] }).notNull().default('member'),
@@ -26,7 +28,7 @@ export const podMembers = pgTable('trust_pod_members', {
   didIdx: index('trust_pod_members_did_idx').on(table.did),
 }));
 
-export const podLinks = pgTable('trust_pod_links', {
+export const podLinks = connectionsSchema.table('pod_links', {
   parentPodId: text('parent_pod_id').notNull().references(() => pods.id, { onDelete: 'cascade' }),
   childPodId: text('child_pod_id').notNull().references(() => pods.id, { onDelete: 'cascade' }),
   linkedBy: text('linked_by'),
@@ -36,7 +38,7 @@ export const podLinks = pgTable('trust_pod_links', {
   pk: primaryKey({ columns: [table.parentPodId, table.childPodId] }),
 }));
 
-export const podKeys = pgTable('trust_pod_keys', {
+export const podKeys = connectionsSchema.table('pod_keys', {
   podId: text('pod_id').notNull().references(() => pods.id, { onDelete: 'cascade' }),
   version: integer('version').notNull(),
   rotatedAt: timestamp('rotated_at').defaultNow().notNull(),
@@ -45,7 +47,7 @@ export const podKeys = pgTable('trust_pod_keys', {
   pk: primaryKey({ columns: [table.podId, table.version] }),
 }));
 
-export const podMemberKeys = pgTable('trust_pod_member_keys', {
+export const podMemberKeys = connectionsSchema.table('pod_member_keys', {
   podId: text('pod_id').notNull(),
   version: integer('version').notNull(),
   did: text('did').notNull(),
@@ -54,7 +56,7 @@ export const podMemberKeys = pgTable('trust_pod_member_keys', {
   pk: primaryKey({ columns: [table.podId, table.version, table.did] }),
 }));
 
-export const invites = pgTable('trust_invites', {
+export const invites = connectionsSchema.table('invites', {
   id: text('id').primaryKey(),
   code: text('code').notNull().unique(),
   fromDid: text('from_did').notNull(),
@@ -75,7 +77,7 @@ export const invites = pgTable('trust_invites', {
 /**
  * Trust graph invites - controlled invite system with cooldown
  */
-export const trustGraphInvites = pgTable('trust_graph_invites', {
+export const trustGraphInvites = connectionsSchema.table('graph_invites', {
   id: text('id').primaryKey(),
   inviterDid: text('inviter_did').notNull(),
   inviteeEmail: text('invitee_email'),

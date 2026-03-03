@@ -1,9 +1,11 @@
-import { pgTable, text, timestamp, jsonb, integer, boolean, index } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, integer, boolean, index, pgSchema } from 'drizzle-orm/pg-core';
+
+export const linksSchema = pgSchema('links');
 
 /**
  * Link Pages - bio link pages linked to DIDs
  */
-export const linkPages = pgTable('link_pages', {
+export const linkPages = linksSchema.table('pages', {
   id: text('id').primaryKey(),                                // page_xxx
   did: text('did').notNull().unique(),                        // Owner DID
   handle: text('handle').notNull().unique(),                  // URL slug
@@ -23,7 +25,7 @@ export const linkPages = pgTable('link_pages', {
 /**
  * Links - individual links on a page
  */
-export const links = pgTable('links', {
+export const links = linksSchema.table('links', {
   id: text('id').primaryKey(),                                // link_xxx
   pageId: text('page_id').references(() => linkPages.id, { onDelete: 'cascade' }).notNull(),
   title: text('title').notNull(),
@@ -44,7 +46,7 @@ export const links = pgTable('links', {
 /**
  * Link Clicks - minimal click tracking (no PII)
  */
-export const linkClicks = pgTable('link_clicks', {
+export const linkClicks = linksSchema.table('clicks', {
   id: text('id').primaryKey(),
   linkId: text('link_id').references(() => links.id, { onDelete: 'cascade' }).notNull(),
   clickedAt: timestamp('clicked_at', { withTimezone: true }).defaultNow(),

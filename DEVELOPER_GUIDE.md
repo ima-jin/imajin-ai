@@ -133,21 +133,62 @@ AUTH_SERVICE_URL=http://localhost:3003
 pnpm install --frozen-lockfile
 ```
 
-## 7. Sync Database Schema
+## 7. Setup Database Schema
 
-Push all Drizzle schemas to the database. Each app with a `drizzle.config.ts` needs to be pushed:
+The database uses **Postgres schema isolation** — each service has its own schema (namespace) to prevent table name conflicts.
+
+### Fresh Setup (New Database)
+
+Reset the database and create all schemas:
 
 ```bash
-for app in auth profile events connections coffee www links chat registry dykil; do
-  dir="apps/$app"
-  if [ -f "$dir/drizzle.config.ts" ]; then
-    echo "Pushing $app..."
-    cd "$dir" && DATABASE_URL=postgres://localhost:5432/imajin npx drizzle-kit push && cd ../..
-  fi
-done
+pnpm db:reset
 ```
 
-Some apps may prompt you interactively when creating new tables. Select `+ <table_name>  create table` for each prompt (the first option).
+This will:
+1. Drop all service schemas
+2. Recreate them
+3. Push each service's schema via drizzle-kit
+4. Seed essential data (Jin profile)
+
+### Adding Demo Data (Optional)
+
+Create `scripts/launch-local.ts` from the example template:
+
+```bash
+cp scripts/launch-local.example.ts scripts/launch-local.ts
+```
+
+Edit it to add your own test data, then run:
+
+```bash
+tsx scripts/launch-local.ts
+```
+
+### Migrating Existing Data
+
+If you have an existing database with tables in the `public` schema, migrate them:
+
+```bash
+pnpm db:migrate
+```
+
+This moves tables from `public` to their service-specific schemas (e.g., `auth_identities` → `auth.identities`).
+
+### Manual Schema Push
+
+To push a single service's schema:
+
+```bash
+cd apps/auth
+DATABASE_URL=postgres://localhost:5432/imajin pnpm drizzle-kit push
+```
+
+### Available Scripts
+
+- `pnpm db:reset` — Drop all schemas, recreate, and seed
+- `pnpm db:migrate` — Migrate tables from public schema to service schemas (one-time)
+- `pnpm db:seed` — Seed essential data (Jin profile)
 
 ## 8. Run the Dev Server
 

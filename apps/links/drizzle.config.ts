@@ -7,5 +7,5 @@ export default defineConfig({
   dbCredentials: {
     url: process.env.DATABASE_URL!,
   },
-  tablesFilter: ['link_pages', 'links', 'link_clicks'],
+  schemaFilter: ['links'],
 });
