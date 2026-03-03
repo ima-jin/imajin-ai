@@ -144,6 +144,17 @@ export function NavBar({
   const autoIdentity = useAutoIdentity(servicePrefix, domain, serviceUrls);
   const identity = identityProp ?? autoIdentity;
 
+  // Fetch balance from pay service
+  const [balance, setBalance] = useState<number | null>(null);
+  useEffect(() => {
+    if (!identity?.isLoggedIn || !identity?.did) { setBalance(null); return; }
+    const payUrl = buildUrl('pay', servicePrefix, domain, serviceUrls);
+    fetch(`${payUrl}/api/balance/${encodeURIComponent(identity.did)}`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.amount) setBalance(parseFloat(data.amount)); })
+      .catch(() => {});
+  }, [identity?.isLoggedIn, identity?.did, servicePrefix, domain, serviceUrls]);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -204,6 +215,12 @@ export function NavBar({
         {/* Right - Auth Section */}
         <div className="flex items-center gap-2">
           {identity?.isLoggedIn ? (
+            <div className="flex items-center gap-2">
+              {balance !== null && balance > 0 && (
+                <span className="text-sm font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full">
+                  ${balance.toFixed(2)}
+                </span>
+              )}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowDropdown(!showDropdown)}
@@ -269,6 +286,7 @@ export function NavBar({
                   )}
                 </div>
               )}
+            </div>
             </div>
           ) : identity ? (
             <>
