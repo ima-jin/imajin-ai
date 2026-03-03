@@ -67,7 +67,7 @@ export default function SurveyEmbedPage() {
         setSurveyData(data);
 
         // Create SurveyJS model
-        const surveyJson = typeof data.fields === 'object' && 'elements' in data.fields
+        const surveyJson = typeof data.fields === 'object' && 'elements' in data.fields || 'pages' in data.fields
           ? data.fields
           : { elements: Array.isArray(data.fields) ? data.fields : [] };
 

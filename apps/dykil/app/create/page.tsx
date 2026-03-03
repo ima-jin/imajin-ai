@@ -58,7 +58,7 @@ function CreateSurveyContent() {
         const data = await res.json();
         setSurvey({
           ...data,
-          fields: typeof data.fields === 'object' && 'elements' in data.fields
+          fields: typeof data.fields === 'object' && 'elements' in data.fields || 'pages' in data.fields
             ? data.fields
             : { elements: Array.isArray(data.fields) ? data.fields : [] }
         });

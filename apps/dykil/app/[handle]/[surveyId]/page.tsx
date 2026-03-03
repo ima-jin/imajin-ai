@@ -40,8 +40,9 @@ export default function SurveyResponsePage() {
         const data = await res.json();
         setSurveyData(data);
 
-        // Create SurveyJS model
-        const surveyJson = typeof data.fields === 'object' && 'elements' in data.fields
+        // Create SurveyJS model — fields can be { elements: [...] } or { pages: [...] }
+        // SurveyJS Model accepts both formats natively
+        const surveyJson = typeof data.fields === 'object' && ('elements' in data.fields || 'pages' in data.fields)
           ? data.fields
           : { elements: Array.isArray(data.fields) ? data.fields : [] };
 
