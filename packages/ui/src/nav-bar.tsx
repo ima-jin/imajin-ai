@@ -40,10 +40,17 @@ function buildUrl(service: string, prefix: string, domain: string, overrides?: S
   return url || `${prefix}${service}.${domain}`;
 }
 
-function buildServices(prefix: string, domain: string, overrides?: ServiceUrls) {
+// Primary nav items (always visible in top bar)
+function buildPrimaryServices(prefix: string, domain: string, overrides?: ServiceUrls) {
   return [
     { name: 'Home', href: buildUrl('www', prefix, domain, overrides) },
     { name: 'Events', href: buildUrl('events', prefix, domain, overrides) },
+  ];
+}
+
+// Secondary nav items (in hamburger dropdown)
+function buildSecondaryServices(prefix: string, domain: string, overrides?: ServiceUrls) {
+  return [
     { name: 'Surveys', href: buildUrl('dykil', prefix, domain, overrides) },
     { name: 'Links', href: buildUrl('links', prefix, domain, overrides) },
     { name: 'Coffee', href: buildUrl('coffee', prefix, domain, overrides) },
@@ -60,7 +67,6 @@ function buildUserLinks(prefix: string, domain: string, overrides?: ServiceUrls)
 
 /**
  * Hook that auto-fetches identity from auth service when no identity prop is provided.
- * Uses the cross-domain session cookie on .imajin.ai
  */
 function useAutoIdentity(servicePrefix: string, domain: string, overrides?: ServiceUrls): NavIdentity | null {
   const [identity, setIdentity] = useState<NavIdentity | null>(null);
@@ -114,7 +120,6 @@ function useAutoIdentity(servicePrefix: string, domain: string, overrides?: Serv
           });
         }
       } catch {
-        // Auth service unreachable — don't show identity section
         setIdentity(null);
       }
     }
@@ -133,12 +138,16 @@ export function NavBar({
   unreadMessages = 0,
   serviceUrls,
 }: NavBarProps) {
-  const services = buildServices(servicePrefix, domain, serviceUrls);
+  const primaryServices = buildPrimaryServices(servicePrefix, domain, serviceUrls);
+  const secondaryServices = buildSecondaryServices(servicePrefix, domain, serviceUrls);
+  const allServices = [...primaryServices, ...secondaryServices];
   const userLinks = buildUserLinks(servicePrefix, domain, serviceUrls);
   const isDev = servicePrefix.includes('dev-');
   const [showDropdown, setShowDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showAppsMenu, setShowAppsMenu] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const appsRef = useRef<HTMLDivElement>(null);
 
   // Auto-fetch identity if no prop provided
   const autoIdentity = useAutoIdentity(servicePrefix, domain, serviceUrls);
@@ -160,12 +169,18 @@ export function NavBar({
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowDropdown(false);
       }
+      if (appsRef.current && !appsRef.current.contains(event.target as Node)) {
+        setShowAppsMenu(false);
+      }
     }
-    if (showDropdown) {
+    if (showDropdown || showAppsMenu) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [showDropdown]);
+  }, [showDropdown, showAppsMenu]);
+
+  // Check if current service is in the secondary list
+  const currentInSecondary = secondaryServices.some(s => s.name === currentService);
 
   return (
     <nav className="w-full border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm relative z-50">
@@ -186,7 +201,7 @@ export function NavBar({
 
         {/* Center - Nav Links (desktop) */}
         <div className="hidden sm:flex items-center gap-1">
-          {services.map((service) => {
+          {primaryServices.map((service) => {
             const isCurrent = service.name === currentService;
             return (
               <a
@@ -202,6 +217,41 @@ export function NavBar({
               </a>
             );
           })}
+
+          {/* Apps dropdown */}
+          <div className="relative" ref={appsRef}>
+            <button
+              onClick={() => setShowAppsMenu(!showAppsMenu)}
+              className={`px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-1 ${
+                currentInSecondary
+                  ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              Apps
+              <span className="text-xs">{showAppsMenu ? '▲' : '▼'}</span>
+            </button>
+            {showAppsMenu && (
+              <div className="absolute left-0 mt-2 w-40 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg py-1 z-50">
+                {secondaryServices.map((service) => {
+                  const isCurrent = service.name === currentService;
+                  return (
+                    <a
+                      key={service.name}
+                      href={service.href}
+                      className={`block px-4 py-2 text-sm transition no-underline ${
+                        isCurrent
+                          ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium'
+                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                      }`}
+                    >
+                      {service.name}
+                    </a>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Mobile hamburger */}
@@ -306,7 +356,7 @@ export function NavBar({
       {/* Mobile menu */}
       {showMobileMenu && (
         <div className="sm:hidden border-t border-gray-200 dark:border-gray-800 px-4 py-3 space-y-1">
-          {services.map((service) => {
+          {allServices.map((service) => {
             const isCurrent = service.name === currentService;
             return (
               <a
