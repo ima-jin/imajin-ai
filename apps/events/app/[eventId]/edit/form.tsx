@@ -34,11 +34,16 @@ export default function EventEditForm({ event, existingTickets }: Props) {
   // Pre-fill form with existing data
   const [title, setTitle] = useState(event.title);
   const [description, setDescription] = useState(event.description || '');
+  // Format as local datetime for datetime-local input (avoid UTC conversion drift)
+  const toLocalDateTimeString = (date: Date) => {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
   const [dateTime, setDateTime] = useState(
-    event.startsAt ? new Date(event.startsAt).toISOString().slice(0, 16) : ''
+    event.startsAt ? toLocalDateTimeString(new Date(event.startsAt)) : ''
   );
   const [endDateTime, setEndDateTime] = useState(
-    event.endsAt ? new Date(event.endsAt).toISOString().slice(0, 16) : ''
+    event.endsAt ? toLocalDateTimeString(new Date(event.endsAt)) : ''
   );
   const [isVirtual, setIsVirtual] = useState(event.isVirtual || false);
   const [virtualUrl, setVirtualUrl] = useState(event.virtualUrl || '');
@@ -470,47 +475,54 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         </p>
 
         <div className="space-y-3">
-          {linkedSurveyIds.map((id, index) => (
-            <div key={id} className="flex items-center gap-2">
-              <select
-                value={id}
-                onChange={(e) => {
-                  const updated = [...linkedSurveyIds];
-                  updated[index] = e.target.value;
-                  setLinkedSurveyIds(updated);
-                }}
-                disabled={loadingSurveys}
-                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
-              >
-                {surveys.map((survey) => (
-                  <option key={survey.id} value={survey.id}>
-                    {survey.title}
-                    {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setLinkedSurveyIds(linkedSurveyIds.filter((_, i) => i !== index))}
-                className="px-3 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
-                title="Remove survey"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+          {loadingSurveys ? (
+            <p className="text-sm text-gray-500">Loading surveys...</p>
+          ) : surveys.length === 0 ? (
+            <p className="text-sm text-gray-500">No surveys found. Create one first.</p>
+          ) : (
+            <>
+              {linkedSurveyIds.map((id, index) => (
+                <div key={`${id}-${index}`} className="flex items-center gap-2">
+                  <select
+                    value={id}
+                    onChange={(e) => {
+                      const updated = [...linkedSurveyIds];
+                      updated[index] = e.target.value;
+                      setLinkedSurveyIds(updated);
+                    }}
+                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+                  >
+                    {surveys.map((survey) => (
+                      <option key={survey.id} value={survey.id}>
+                        {survey.title}
+                        {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setLinkedSurveyIds(linkedSurveyIds.filter((_, i) => i !== index))}
+                    className="px-3 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+                    title="Remove survey"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
 
-          {surveys.filter(s => !linkedSurveyIds.includes(s.id)).length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                const available = surveys.find(s => !linkedSurveyIds.includes(s.id));
-                if (available) setLinkedSurveyIds([...linkedSurveyIds, available.id]);
-              }}
-              className="text-sm text-orange-500 hover:text-orange-600 font-medium"
-            >
-              + Add Survey
-            </button>
+              {surveys.filter(s => !linkedSurveyIds.includes(s.id)).length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const available = surveys.find(s => !linkedSurveyIds.includes(s.id));
+                    if (available) setLinkedSurveyIds([...linkedSurveyIds, available.id]);
+                  }}
+                  className="text-sm text-orange-500 hover:text-orange-600 font-medium"
+                >
+                  + Add Survey
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
