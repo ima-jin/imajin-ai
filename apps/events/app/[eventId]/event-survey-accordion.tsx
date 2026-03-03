@@ -6,7 +6,7 @@ interface EventSurveyAccordionProps {
   eventId: string;
   surveyId: string;
   surveyTitle: string;
-  surveyType: 'pre-event' | 'post-event';
+  surveyType?: 'pre-event' | 'post-event' | 'survey' | 'form';
 }
 
 export function EventSurveyAccordion({
@@ -40,8 +40,7 @@ export function EventSurveyAccordion({
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  const icon = surveyType === 'pre-event' ? '📋' : '📝';
-  const label = surveyType === 'pre-event' ? 'Pre-Event Survey' : 'Post-Event Survey';
+  const icon = '📋';
 
   return (
     <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg overflow-hidden">
@@ -53,8 +52,7 @@ export function EventSurveyAccordion({
         <div className="flex items-center gap-3">
           <span className="text-2xl">{icon}</span>
           <div className="text-left">
-            <span className="font-semibold text-lg block">{label}</span>
-            <span className="text-sm text-gray-500 dark:text-gray-400">{surveyTitle}</span>
+            <span className="font-semibold text-lg block">{surveyTitle}</span>
           </div>
         </div>
         <div className="flex items-center gap-3">

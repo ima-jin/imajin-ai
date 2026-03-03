@@ -53,11 +53,13 @@ export default function EventEditForm({ event, existingTickets }: Props) {
   const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loadingSurveys, setLoadingSurveys] = useState(true);
-  const [preEventSurveyId, setPreEventSurveyId] = useState<string>(
-    (event.metadata as any)?.preEventSurveyId || ''
-  );
-  const [postEventSurveyId, setPostEventSurveyId] = useState<string>(
-    (event.metadata as any)?.postEventSurveyId || ''
+  const [linkedSurveyIds, setLinkedSurveyIds] = useState<string[]>(
+    (event.metadata as any)?.linkedSurveyIds || 
+    // Migrate from old pre/post format
+    [
+      (event.metadata as any)?.preEventSurveyId,
+      (event.metadata as any)?.postEventSurveyId,
+    ].filter(Boolean)
   );
 
   // Fetch user's surveys
@@ -143,8 +145,10 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           status,
           metadata: {
             ...(event.metadata as any || {}),
-            preEventSurveyId: preEventSurveyId || null,
-            postEventSurveyId: postEventSurveyId || null,
+            linkedSurveyIds,
+            // Keep legacy fields for backwards compat
+            preEventSurveyId: null,
+            postEventSurveyId: null,
           },
         }),
       });
@@ -154,26 +158,14 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         throw new Error(data.error || 'Failed to update event');
       }
 
-      // Update survey event_id and type
-      if (preEventSurveyId) {
-        await fetch(`${DYKIL_URL}/api/surveys/${preEventSurveyId}`, {
+      // Update survey event_id for all linked surveys
+      for (const surveyId of linkedSurveyIds) {
+        await fetch(`${DYKIL_URL}/api/surveys/${surveyId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
             eventId: event.id,
-            type: 'pre-event',
-          }),
-        });
-      }
-      if (postEventSurveyId) {
-        await fetch(`${DYKIL_URL}/api/surveys/${postEventSurveyId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            eventId: event.id,
-            type: 'post-event',
           }),
         });
       }
@@ -478,47 +470,48 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         </p>
 
         <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">Pre-Event Survey</label>
-            <select
-              value={preEventSurveyId}
-              onChange={(e) => setPreEventSurveyId(e.target.value)}
-              disabled={loadingSurveys}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
-            >
-              <option value="">None</option>
-              {surveys.map((survey) => (
-                <option key={survey.id} value={survey.id}>
-                  {survey.title}
-                  {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Shown before the event starts
-            </p>
-          </div>
+          {linkedSurveyIds.map((id, index) => (
+            <div key={id} className="flex items-center gap-2">
+              <select
+                value={id}
+                onChange={(e) => {
+                  const updated = [...linkedSurveyIds];
+                  updated[index] = e.target.value;
+                  setLinkedSurveyIds(updated);
+                }}
+                disabled={loadingSurveys}
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+              >
+                {surveys.map((survey) => (
+                  <option key={survey.id} value={survey.id}>
+                    {survey.title}
+                    {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setLinkedSurveyIds(linkedSurveyIds.filter((_, i) => i !== index))}
+                className="px-3 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+                title="Remove survey"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Post-Event Survey</label>
-            <select
-              value={postEventSurveyId}
-              onChange={(e) => setPostEventSurveyId(e.target.value)}
-              disabled={loadingSurveys}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+          {surveys.filter(s => !linkedSurveyIds.includes(s.id)).length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                const available = surveys.find(s => !linkedSurveyIds.includes(s.id));
+                if (available) setLinkedSurveyIds([...linkedSurveyIds, available.id]);
+              }}
+              className="text-sm text-orange-500 hover:text-orange-600 font-medium"
             >
-              <option value="">None</option>
-              {surveys.map((survey) => (
-                <option key={survey.id} value={survey.id}>
-                  {survey.title}
-                  {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Shown after the event ends
-            </p>
-          </div>
+              + Add Survey
+            </button>
+          )}
         </div>
       </div>
 

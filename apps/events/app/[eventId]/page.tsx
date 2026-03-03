@@ -210,8 +210,7 @@ export default async function EventPage({ params }: Props) {
     console.error('Failed to fetch event surveys:', err);
   }
 
-  const preEventSurvey = eventSurveys.find(s => s.type === 'pre-event');
-  const postEventSurvey = eventSurveys.find(s => s.type === 'post-event');
+  // No longer filter by type — show all attached surveys
   const formattedDate = eventDate.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -327,29 +326,17 @@ export default async function EventPage({ params }: Props) {
           <EventLobbyAccordion eventId={event.id} />
         </div>
 
-        {/* Pre-Event Survey */}
-        {preEventSurvey && (isUpcoming || isOngoing) && (
-          <div className="mb-6">
+        {/* Event Surveys */}
+        {eventSurveys.map((survey: any) => (
+          <div key={survey.id} className="mb-6">
             <EventSurveyAccordion
               eventId={event.id}
-              surveyId={preEventSurvey.id}
-              surveyTitle={preEventSurvey.title}
-              surveyType="pre-event"
+              surveyId={survey.id}
+              surveyTitle={survey.title}
+              surveyType={survey.type}
             />
           </div>
-        )}
-
-        {/* Post-Event Survey */}
-        {postEventSurvey && (isOngoing || isCompleted) && (
-          <div className="mb-6">
-            <EventSurveyAccordion
-              eventId={event.id}
-              surveyId={postEventSurvey.id}
-              surveyTitle={postEventSurvey.title}
-              surveyType="post-event"
-            />
-          </div>
-        )}
+        ))}
 
         {/* Tickets Section */}
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8" id="tickets">
