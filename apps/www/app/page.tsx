@@ -1,93 +1,119 @@
 import Link from 'next/link';
 import Image from 'next/image';
+import { ImajinFooter } from '@imajin/ui';
+import { getClient } from '@imajin/db';
 
-export default function Home() {
+const MAX_PRESENCES = 1;
+const MAX_HUMANS = 5_000;
+const MAX_BUSINESSES = 200;
+
+const PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
+const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+
+async function getNetworkStats() {
+  try {
+    const sql = getClient();
+    
+    const [presences] = await sql`
+      SELECT COUNT(*)::int as count 
+      FROM registry.nodes 
+      WHERE status = 'active'
+    `;
+    
+    const [humans] = await sql`
+      SELECT COUNT(*)::int as count 
+      FROM auth.identities 
+      WHERE type = 'human'
+    `;
+    
+    const [businesses] = await sql`
+      SELECT COUNT(*)::int as count 
+      FROM auth.identities 
+      WHERE type = 'business'
+    `;
+    
+    return {
+      presences: presences?.count ?? 0,
+      humans: humans?.count ?? 0,
+      businesses: businesses?.count ?? 0,
+    };
+  } catch {
+    return { presences: 0, humans: 0, businesses: 0 };
+  }
+}
+
+function StatCard({ emoji, count, max, label }: { emoji: string; count: number; max: number; label: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <span className="text-3xl">{emoji}</span>
+      <p className="text-xl font-medium text-gray-200">
+        {count.toLocaleString()} <span className="text-gray-500">/ {max.toLocaleString()}</span>
+      </p>
+      <p className="text-sm text-gray-500">{label}</p>
+    </div>
+  );
+}
+
+export default async function Home() {
+  const stats = await getNetworkStats();
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-6 py-16">
-      {/* Logo */}
-      <Image
-        src="/images/logo-kanji.svg"
-        alt="今人"
-        width={180}
-        height={180}
-        className="mb-8"
-        priority
-      />
-      
       {/* Wordmark */}
       <Image
         src="/images/logo.svg"
         alt="Imajin"
-        width={420}
-        height={120}
-        className="mb-12"
+        width={360}
+        height={100}
+        className="mb-10"
         priority
       />
-      
-      {/* Core message */}
-      <div className="max-w-2xl text-center space-y-6 mb-12">
-        <p className="text-xl md:text-2xl text-gray-200">
-          Sovereign infrastructure for identity, payments, attribution, and more.
-        </p>
-        <p className="text-gray-400">
-          Not a social network. Not a platform. Just plumbing — so the value you create stays yours.
-        </p>
-        <p className="text-gray-500 text-sm">
-          Own your identity. Own your data. Own your devices.
-        </p>
+
+      {/* Tagline */}
+      <h1 className="text-2xl md:text-4xl font-light text-gray-200 text-center mb-16">
+        The internet that pays you back.
+      </h1>
+
+      {/* Network stats grid */}
+      <div className="grid grid-cols-3 gap-8 md:gap-16 mb-16">
+        <StatCard emoji="🟠" count={stats.presences} max={MAX_PRESENCES} label="Presences" />
+        <StatCard emoji="🧑" count={stats.humans} max={MAX_HUMANS} label="Humans" />
+        <StatCard emoji="🏢" count={stats.businesses} max={MAX_BUSINESSES} label="Businesses" />
       </div>
 
-      {/* The story link */}
-      <Link
-        href="/articles/the-internet-we-lost"
-        className="text-orange-400 hover:text-orange-300 transition-colors mb-8"
-      >
-        Read the story →
-      </Link>
-      
-      {/* Discord - with self-awareness */}
-      <div className="text-center mb-12">
+      {/* Links */}
+      <div className="flex flex-col items-center gap-4">
+        <Link
+          href="/articles"
+          className="text-orange-400 hover:text-orange-300 transition-colors"
+        >
+          Read the articles →
+        </Link>
         <a
           href="https://discord.gg/6hkQW3uw4m"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-gray-400 hover:text-gray-300 transition-colors"
+          className="text-orange-400 hover:text-orange-300 transition-colors"
         >
-          Join the Discord
+          Find us on Discord →
         </a>
-        <p className="text-gray-600 text-xs mt-1">
-          We know. This is the exit.
-        </p>
+        <a
+          href={`${PREFIX}coffee.${DOMAIN}/veteze`}
+          className="text-orange-400 hover:text-orange-300 transition-colors"
+        >
+          Support this effort →
+        </a>
+        <a
+          href={`${PREFIX}events.${DOMAIN}/jins-launch-party`}
+          className="text-orange-400 hover:text-orange-300 transition-colors"
+        >
+          Jin's Launch Party →
+        </a>
       </div>
-      
-      {/* CTA */}
-      <a
-        href="https://discord.gg/6hkQW3uw4m"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="px-8 py-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors"
-      >
-        Join the Community
-      </a>
 
-      {/* Support */}
-      <a
-        href="https://coffee.imajin.ai"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-6 text-gray-500 hover:text-orange-400 transition-colors text-sm"
-      >
-        Support this work →
-      </a>
-
-      {/* Event teaser */}
-      <p className="mt-16 text-sm text-gray-600">
-        Jin's Launch Party — April 1st, 2026
-      </p>
-      
-      {/* Footer */}
-      <footer className="absolute bottom-8 text-sm text-gray-600">
-        Toronto, Canada
+      {/* Shared footer */}
+      <footer className="mt-auto pt-16 pb-8">
+        <ImajinFooter />
       </footer>
     </main>
   );
