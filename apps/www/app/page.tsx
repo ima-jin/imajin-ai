@@ -17,7 +17,7 @@ async function getNetworkStats() {
     const [presences] = await sql`
       SELECT COUNT(*)::int as count 
       FROM profile.profiles 
-      WHERE display_type IN ('agent', 'device', 'service')
+      WHERE display_type IN ('presence', 'agent', 'device', 'service')
     `;
     
     const [humans] = await sql`
@@ -78,8 +78,8 @@ export default async function Home() {
       />
 
       {/* Tagline */}
-      <h1 className="text-2xl md:text-4xl font-light text-gray-200 text-center mb-16">
-        The internet that pays you back.
+      <h1 className="text-2xl md:text-4xl font-bold text-gray-200 text-center mb-16">
+        The internet that pays you back
       </h1>
 
       {/* Network stats grid */}
