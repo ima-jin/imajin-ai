@@ -210,7 +210,23 @@ export default async function EventPage({ params }: Props) {
     console.error('Failed to fetch event surveys:', err);
   }
 
-  // No longer filter by type — show all attached surveys
+  // Get survey visibility settings from event metadata
+  const linkedSurveySettings: Record<string, { visibility: string; paywall: boolean }> = {};
+  const linkedSurveysMeta = (event.metadata as any)?.linkedSurveys || [];
+  for (const ls of linkedSurveysMeta) {
+    linkedSurveySettings[ls.id] = { visibility: ls.visibility || 'always', paywall: ls.paywall || false };
+  }
+
+  // Filter surveys based on visibility settings and event state
+  const visibleSurveys = eventSurveys.filter((survey: any) => {
+    const settings = linkedSurveySettings[survey.id];
+    if (!settings) return true; // No settings = show always
+    
+    if (settings.visibility === 'pre-event' && !isUpcoming && !isOngoing) return false;
+    if (settings.visibility === 'post-event' && !isOngoing && !isCompleted) return false;
+    // paywall filtering would happen client-side based on ticket ownership
+    return true;
+  });
   const formattedDate = eventDate.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -327,16 +343,20 @@ export default async function EventPage({ params }: Props) {
         </div>
 
         {/* Event Surveys */}
-        {eventSurveys.map((survey: any) => (
-          <div key={survey.id} className="mb-6">
-            <EventSurveyAccordion
-              eventId={event.id}
-              surveyId={survey.id}
-              surveyTitle={survey.title}
-              surveyType={survey.type}
-            />
-          </div>
-        ))}
+        {visibleSurveys.map((survey: any) => {
+          const settings = linkedSurveySettings[survey.id];
+          return (
+            <div key={survey.id} className="mb-6">
+              <EventSurveyAccordion
+                eventId={event.id}
+                surveyId={survey.id}
+                surveyTitle={survey.title}
+                surveyType={survey.type}
+                requiresTicket={settings?.paywall || false}
+              />
+            </div>
+          );
+        })}
 
         {/* Tickets Section */}
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8" id="tickets">

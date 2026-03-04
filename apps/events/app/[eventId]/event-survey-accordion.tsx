@@ -7,6 +7,7 @@ interface EventSurveyAccordionProps {
   surveyId: string;
   surveyTitle: string;
   surveyType?: 'pre-event' | 'post-event' | 'survey' | 'form';
+  requiresTicket?: boolean;
 }
 
 export function EventSurveyAccordion({
@@ -14,6 +15,7 @@ export function EventSurveyAccordion({
   surveyId,
   surveyTitle,
   surveyType,
+  requiresTicket = false,
 }: EventSurveyAccordionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [iframeHeight, setIframeHeight] = useState(600);
@@ -70,7 +72,15 @@ export function EventSurveyAccordion({
       {/* Expanded Survey */}
       {isExpanded && (
         <div className="border-t border-gray-200 dark:border-gray-700">
-          {isCompleted ? (
+          {requiresTicket ? (
+            <div className="p-8 text-center">
+              <div className="text-4xl mb-4">🎟️</div>
+              <h3 className="text-xl font-bold mb-2">Ticket Required</h3>
+              <p className="text-gray-600 dark:text-gray-400">
+                Purchase a ticket to access this survey.
+              </p>
+            </div>
+          ) : isCompleted ? (
             <div className="p-8 text-center">
               <div className="text-6xl mb-4">✓</div>
               <h3 className="text-2xl font-bold mb-2">Thank you!</h3>

@@ -58,13 +58,18 @@ export default function EventEditForm({ event, existingTickets }: Props) {
   const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loadingSurveys, setLoadingSurveys] = useState(true);
-  const [linkedSurveyIds, setLinkedSurveyIds] = useState<string[]>(
-    (event.metadata as any)?.linkedSurveyIds || 
-    // Migrate from old pre/post format
-    [
+  interface LinkedSurvey {
+    id: string;
+    visibility: 'always' | 'pre-event' | 'post-event';
+    paywall: boolean;
+  }
+  const [linkedSurveys, setLinkedSurveys] = useState<LinkedSurvey[]>(
+    (event.metadata as any)?.linkedSurveys || 
+    // Migrate from old formats
+    ((event.metadata as any)?.linkedSurveyIds || [
       (event.metadata as any)?.preEventSurveyId,
       (event.metadata as any)?.postEventSurveyId,
-    ].filter(Boolean)
+    ].filter(Boolean)).map((id: string) => ({ id, visibility: 'always' as const, paywall: false }))
   );
 
   // Fetch user's surveys
@@ -150,8 +155,9 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           status,
           metadata: {
             ...(event.metadata as any || {}),
-            linkedSurveyIds,
+            linkedSurveys,
             // Keep legacy fields for backwards compat
+            linkedSurveyIds: null,
             preEventSurveyId: null,
             postEventSurveyId: null,
           },
@@ -164,8 +170,8 @@ export default function EventEditForm({ event, existingTickets }: Props) {
       }
 
       // Update survey event_id for all linked surveys
-      for (const surveyId of linkedSurveyIds) {
-        await fetch(`${DYKIL_URL}/api/surveys/${surveyId}`, {
+      for (const survey of linkedSurveys) {
+        await fetch(`${DYKIL_URL}/api/surveys/${survey.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -474,48 +480,83 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           Link surveys to your event. Attendees will see them on the event page.
         </p>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           {loadingSurveys ? (
             <p className="text-sm text-gray-500">Loading surveys...</p>
           ) : surveys.length === 0 ? (
             <p className="text-sm text-gray-500">No surveys found. Create one first.</p>
           ) : (
             <>
-              {linkedSurveyIds.map((id, index) => (
-                <div key={`${id}-${index}`} className="flex items-center gap-2">
-                  <select
-                    value={id}
-                    onChange={(e) => {
-                      const updated = [...linkedSurveyIds];
-                      updated[index] = e.target.value;
-                      setLinkedSurveyIds(updated);
-                    }}
-                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
-                  >
-                    {surveys.map((survey) => (
-                      <option key={survey.id} value={survey.id}>
-                        {survey.title}
-                        {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setLinkedSurveyIds(linkedSurveyIds.filter((_, i) => i !== index))}
-                    className="px-3 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
-                    title="Remove survey"
-                  >
-                    ✕
-                  </button>
+              {linkedSurveys.map((linked, index) => (
+                <div key={`${linked.id}-${index}`} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={linked.id}
+                      onChange={(e) => {
+                        const updated = [...linkedSurveys];
+                        updated[index] = { ...updated[index], id: e.target.value };
+                        setLinkedSurveys(updated);
+                      }}
+                      className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+                    >
+                      {surveys.map((survey) => (
+                        <option key={survey.id} value={survey.id}>
+                          {survey.title}
+                          {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setLinkedSurveys(linkedSurveys.filter((_, i) => i !== index))}
+                      className="px-3 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+                      title="Remove survey"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-gray-600 dark:text-gray-400">Show:</label>
+                      <select
+                        value={linked.visibility}
+                        onChange={(e) => {
+                          const updated = [...linkedSurveys];
+                          updated[index] = { ...updated[index], visibility: e.target.value as LinkedSurvey['visibility'] };
+                          setLinkedSurveys(updated);
+                        }}
+                        className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+                      >
+                        <option value="always">Always</option>
+                        <option value="pre-event">Pre-event only</option>
+                        <option value="post-event">Post-event only</option>
+                      </select>
+                    </div>
+
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={linked.paywall}
+                        onChange={(e) => {
+                          const updated = [...linkedSurveys];
+                          updated[index] = { ...updated[index], paywall: e.target.checked };
+                          setLinkedSurveys(updated);
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                      />
+                      <span className="text-gray-600 dark:text-gray-400">Requires ticket</span>
+                    </label>
+                  </div>
                 </div>
               ))}
 
-              {surveys.filter(s => !linkedSurveyIds.includes(s.id)).length > 0 && (
+              {surveys.filter(s => !linkedSurveys.some(ls => ls.id === s.id)).length > 0 && (
                 <button
                   type="button"
                   onClick={() => {
-                    const available = surveys.find(s => !linkedSurveyIds.includes(s.id));
-                    if (available) setLinkedSurveyIds([...linkedSurveyIds, available.id]);
+                    const available = surveys.find(s => !linkedSurveys.some(ls => ls.id === s.id));
+                    if (available) setLinkedSurveys([...linkedSurveys, { id: available.id, visibility: 'always', paywall: false }]);
                   }}
                   className="text-sm text-orange-500 hover:text-orange-600 font-medium"
                 >
