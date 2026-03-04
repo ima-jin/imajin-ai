@@ -35,6 +35,21 @@ export default function Home() {
             Your links. Your data. No tracking.
           </p>
 
+          {/* CTA */}
+          <div className="flex justify-center mb-12">
+            {!checkingAuth && (
+              isLoggedIn ? (
+                <a href="/dashboard" className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
+                  Go to Dashboard →
+                </a>
+              ) : (
+                <a href={`${AUTH_URL}?redirect=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin + '/dashboard' : '/dashboard')}`} className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
+                  Sign In to Get Started
+                </a>
+              )
+            )}
+          </div>
+
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 mb-8 text-left">
             <h2 className="text-2xl font-semibold mb-4 text-center">Why Links?</h2>
 
@@ -71,21 +86,6 @@ export default function Home() {
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* CTA */}
-          <div className="mb-8">
-            {!checkingAuth && (
-              isLoggedIn ? (
-                <a href="/dashboard" className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
-                  Go to Dashboard →
-                </a>
-              ) : (
-                <a href={`${AUTH_URL}?redirect=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin + '/dashboard' : '/dashboard')}`} className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
-                  Sign In to Get Started
-                </a>
-              )
-            )}
           </div>
 
           <ImajinFooter className="mt-8" />
