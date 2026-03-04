@@ -39,6 +39,7 @@ interface CheckoutBody {
     image?: string;
   }>;
   currency: FiatCurrency;
+  mode?: 'payment' | 'subscription';
   customerEmail?: string;
   successUrl: string;
   cancelUrl: string;
@@ -84,6 +85,7 @@ export async function POST(request: NextRequest) {
     const checkoutRequest: CheckoutRequest = {
       items: body.items,
       currency: body.currency || 'USD',
+      mode: body.mode,
       customerEmail: body.customerEmail,
       successUrl: body.successUrl,
       cancelUrl: body.cancelUrl,

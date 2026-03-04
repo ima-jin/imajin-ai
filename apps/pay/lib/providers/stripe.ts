@@ -118,8 +118,11 @@ export class StripeProvider implements PaymentProvider {
   // ===========================================================================
   
   async checkout(request: CheckoutRequest): Promise<CheckoutResult> {
+    const mode = request.mode || 'payment';
+    const isSubscription = mode === 'subscription';
+
     const session = await this.stripe.checkout.sessions.create({
-      mode: 'payment',
+      mode,
       payment_method_types: ['card', 'link'],
       line_items: request.items.map(item => ({
         price_data: {
@@ -130,6 +133,7 @@ export class StripeProvider implements PaymentProvider {
             images: item.image ? [item.image] : undefined,
           },
           unit_amount: item.amount,
+          ...(isSubscription && { recurring: { interval: 'month' } }),
         },
         quantity: item.quantity,
       })),
@@ -137,9 +141,11 @@ export class StripeProvider implements PaymentProvider {
       success_url: request.successUrl,
       cancel_url: request.cancelUrl,
       metadata: request.metadata,
-      expires_at: Math.floor(Date.now() / 1000) + 3600 * 24, // 24 hours
+      // expires_at is not supported for subscription mode
+      ...(!isSubscription && { expires_at: Math.floor(Date.now() / 1000) + 3600 * 24 }),
+      ...(isSubscription && { subscription_data: { metadata: request.metadata } }),
     });
-    
+
     return {
       id: session.id,
       url: session.url!,

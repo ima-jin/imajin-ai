@@ -153,6 +153,11 @@ async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     .where(eq(transactions.stripeId, paymentIntent.id));
 
   console.log('Transaction updated:', { stripeId: paymentIntent.id, updated });
+
+  // Notify originating service
+  if (paymentIntent.metadata.service === 'coffee') {
+    await notifyCoffeeService('payment.succeeded', paymentIntent);
+  }
 }
 
 async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
@@ -167,6 +172,11 @@ async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
     .update(transactions)
     .set({ status: 'failed' })
     .where(eq(transactions.stripeId, paymentIntent.id));
+
+  // Notify originating service
+  if (paymentIntent.metadata.service === 'coffee') {
+    await notifyCoffeeService('payment.failed', paymentIntent);
+  }
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
@@ -234,6 +244,45 @@ async function notifyEventsService(
     console.error('Failed to notify events service:', error);
     // Don't throw - we don't want to fail the Stripe webhook
     // The payment is still valid, we just need to handle the fulfillment separately
+  }
+}
+
+/**
+ * Notify coffee service about payment completion or failure
+ */
+async function notifyCoffeeService(
+  type: 'payment.succeeded' | 'payment.failed',
+  paymentIntent: Stripe.PaymentIntent
+) {
+  const coffeeServiceUrl = process.env.COFFEE_SERVICE_URL!;
+  const webhookSecret = process.env.COFFEE_WEBHOOK_SECRET!;
+
+  try {
+    const response = await fetch(`${coffeeServiceUrl}/api/webhook/payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${webhookSecret}`,
+      },
+      body: JSON.stringify({
+        type,
+        tipId: paymentIntent.metadata.tipId,
+        pageId: paymentIntent.metadata.pageId,
+        amount: paymentIntent.amount,
+        paymentId: paymentIntent.id,
+        status: type === 'payment.succeeded' ? 'completed' : 'failed',
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Coffee service webhook failed:', error);
+    } else {
+      console.log('Coffee service notified successfully');
+    }
+  } catch (error) {
+    console.error('Failed to notify coffee service:', error);
+    // Don't throw - we don't want to fail the Stripe webhook
   }
 }
 

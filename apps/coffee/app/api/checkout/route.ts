@@ -1,27 +1,13 @@
 /**
  * POST /api/checkout
- * 
- * Creates a Stripe Checkout session for one-time or recurring support.
+ *
+ * Creates a Checkout session for one-time or recurring support via pay service.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import Stripe from 'stripe';
-
-// Lazy Stripe init to avoid build-time errors
-let _stripe: Stripe | null = null;
-function getStripe(): Stripe {
-  if (!_stripe) {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error('STRIPE_SECRET_KEY not configured');
-    }
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2023-10-16' as any,
-    });
-  }
-  return _stripe;
-}
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3009';
+const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,63 +21,39 @@ export async function POST(request: NextRequest) {
     }
 
     const metadata: Record<string, string> = {
+      service: 'coffee',
+      type: recurring ? 'subscription' : 'checkout',
       joinMailingList: joinMailingList ? 'true' : 'false',
     };
 
-    if (recurring) {
-      // Create subscription checkout
-      const session = await getStripe().checkout.sessions.create({
-        mode: 'subscription',
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: 'Support Imajin (Monthly)',
-              description: 'Monthly support for sovereign infrastructure development',
-            },
-            unit_amount: amount,
-            recurring: {
-              interval: 'month',
-            },
-          },
+    const payRes = await fetch(`${PAY_SERVICE_URL}/api/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: recurring ? 'subscription' : 'payment',
+        items: [{
+          name: recurring ? 'Support Imajin (Monthly)' : 'Support Imajin',
+          description: recurring
+            ? 'Monthly support for sovereign infrastructure development'
+            : 'One-time support for sovereign infrastructure development',
+          amount,
           quantity: 1,
         }],
-        subscription_data: {
-          metadata,
-        },
-        metadata, // Also on session for webhook access
-        success_url: `${BASE_URL}/success?type=subscription`,
-        cancel_url: BASE_URL,
-      });
+        currency: 'USD',
+        successUrl: `${BASE_URL}/success?type=${recurring ? 'subscription' : 'onetime'}`,
+        cancelUrl: BASE_URL,
+        metadata,
+      }),
+    });
 
-      return NextResponse.json({ url: session.url });
-    } else {
-      // One-time payment
-      const session = await getStripe().checkout.sessions.create({
-        mode: 'payment',
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: 'Support Imajin',
-              description: 'One-time support for sovereign infrastructure development',
-            },
-            unit_amount: amount,
-          },
-          quantity: 1,
-        }],
-        payment_intent_data: {
-          metadata,
-        },
-        metadata, // Also on session for webhook access
-        success_url: `${BASE_URL}/success?type=onetime`,
-        cancel_url: BASE_URL,
-      });
-
-      return NextResponse.json({ url: session.url });
+    if (!payRes.ok) {
+      const err = await payRes.text();
+      console.error('Pay service checkout failed:', err);
+      return NextResponse.json({ error: 'Failed to create checkout' }, { status: 500 });
     }
+
+    const payData = await payRes.json();
+    return NextResponse.json({ url: payData.url });
   } catch (error) {
     console.error('Checkout error:', error);
     return NextResponse.json(
