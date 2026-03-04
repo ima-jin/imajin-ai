@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, index, real, pgSchema } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, index, real, pgSchema, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const profileSchema = pgSchema('profile');
 
@@ -70,6 +70,20 @@ export const connectionRequests = profileSchema.table('connection_requests', {
 }));
 
 /**
+ * Follows - lightweight follow relationships (not trust-gated)
+ */
+export const follows = profileSchema.table('follows', {
+  id: text('id').primaryKey(),                                // follow_xxx
+  followerDid: text('follower_did').notNull(),                // who is following
+  followedDid: text('followed_did').notNull(),                // who is being followed
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  followerDidIdx: index('idx_follows_follower').on(table.followerDid),
+  followedDidIdx: index('idx_follows_followed').on(table.followedDid),
+  uniqueFollowIdx: uniqueIndex('idx_follows_unique').on(table.followerDid, table.followedDid),
+}));
+
+/**
  * DID migrations - track when soft DIDs upgrade to hard DIDs
  */
 export const didMigrations = profileSchema.table('did_migrations', {
@@ -91,3 +105,5 @@ export type ConnectionRequest = typeof connectionRequests.$inferSelect;
 export type NewConnectionRequest = typeof connectionRequests.$inferInsert;
 export type DidMigration = typeof didMigrations.$inferSelect;
 export type NewDidMigration = typeof didMigrations.$inferInsert;
+export type Follow = typeof follows.$inferSelect;
+export type NewFollow = typeof follows.$inferInsert;
