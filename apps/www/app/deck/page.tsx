@@ -390,8 +390,8 @@ export default function DeckPage() {
         setTouchStartY(null);
       }}
     >
-      {/* Slide content — scrollable area */}
-      <div className="absolute inset-0 bottom-14 top-0 overflow-y-auto px-8 md:px-16 py-12 md:py-16">
+      {/* Slide content — scrollable area, extends behind nav */}
+      <div className="absolute inset-0 bottom-0 top-0 overflow-y-auto px-8 md:px-16 py-12 md:py-16 pb-20">
         <div className="min-h-full flex items-center">
           <div className="w-full" key={current}>
             {slides[current].content}
@@ -399,23 +399,23 @@ export default function DeckPage() {
         </div>
       </div>
 
-      {/* Navigation — fixed at bottom */}
-      <div className="absolute bottom-0 left-0 right-0 h-14 flex items-center justify-between text-white/20 text-sm px-8 md:px-16 bg-[#0a0a0a]">
+      {/* Navigation — fixed at bottom, content scrolls under */}
+      <div className="absolute bottom-0 left-0 right-0 h-14 flex items-center justify-between text-white/50 text-sm px-8 md:px-16 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a] to-transparent z-10">
         <button
           onClick={prev}
           disabled={current === 0}
-          className="hover:text-white/60 disabled:opacity-0 transition-colors px-4 py-2"
+          className="hover:text-white disabled:opacity-0 transition-colors px-4 py-2"
         >
           ←
         </button>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           {slides.map((_, i) => (
             <button
               key={i}
               onClick={() => goTo(i)}
               className={`w-2 h-2 rounded-full transition-colors ${
-                i === current ? 'bg-white/60' : 'bg-white/10 hover:bg-white/30'
+                i === current ? 'bg-white/80' : 'bg-white/25 hover:bg-white/50'
               }`}
             />
           ))}
@@ -424,19 +424,19 @@ export default function DeckPage() {
         <button
           onClick={next}
           disabled={current === slides.length - 1}
-          className="hover:text-white/60 disabled:opacity-0 transition-colors px-4 py-2"
+          className="hover:text-white disabled:opacity-0 transition-colors px-4 py-2"
         >
           →
         </button>
       </div>
 
       {/* Slide counter */}
-      <div className="fixed top-6 right-8 text-white/20 text-sm font-mono">
+      <div className="fixed top-6 right-8 text-white/40 text-sm font-mono z-10">
         {current + 1} / {slides.length}
       </div>
 
       {/* imajin.ai watermark */}
-      <div className="fixed top-6 left-8 text-white/20 text-sm tracking-wider">
+      <div className="fixed top-6 left-8 text-white/40 text-sm tracking-wider z-10">
         IMAJIN
       </div>
     </div>
