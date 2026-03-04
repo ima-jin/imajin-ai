@@ -42,7 +42,7 @@ export default function SuccessPage({ searchParams }: Props) {
             </Link>
             
             <Link
-              href="https://discord.gg/6hkQW3uw4m"
+              href="https://discord.gg/kWGHUY8wbe"
               className="block w-full py-3 px-6 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 font-semibold rounded-xl transition"
             >
               Join the Discord

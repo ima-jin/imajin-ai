@@ -259,7 +259,7 @@ Built with this stack. Tickets signed by the event's DID.
 
 This is early. The architecture is stabilizing but APIs will change.
 
-If you want to run your own node or build on the stack, open an issue or find us on [Discord](https://discord.gg/6hkQW3uw4m).
+If you want to run your own node or build on the stack, open an issue or find us on [Discord](https://discord.gg/kWGHUY8wbe).
 
 ---
 
