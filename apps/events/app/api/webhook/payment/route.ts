@@ -350,11 +350,17 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   // Send confirmation email with magic link
   const eventDate = new Date(event.startsAt);
   const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
+  const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
   const magicLink = `${AUTH_URL}/api/magic?token=${createdTickets[0].magicToken}`;
+
+  // Build absolute event image URL
+  const eventImageUrl = event.imageUrl
+    ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
+    : undefined;
 
   await sendEmail({
     to: customerEmail,
-    subject: `🎉 You're in! Ticket for ${event.title}`,
+    subject: `You're in — ${event.title}`,
     html: ticketConfirmationEmail({
       eventTitle: event.title,
       ticketType: ticketType.name,
@@ -377,6 +383,8 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         currency: currency.toUpperCase(),
       }).format(amountTotal / 100),
       magicLink,
+      eventImageUrl,
+      eventUrl: `${EVENTS_URL}/${event.id}`,
     }),
   });
 }
