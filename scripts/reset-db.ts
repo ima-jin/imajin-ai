@@ -55,18 +55,30 @@ async function main() {
 
   // Push migrations for each service
   console.log('\n🚀 Pushing migrations...');
-  const apps = ['auth', 'chat', 'coffee', 'connections', 'dykil', 'events', 'links', 'pay', 'profile', 'registry', 'www'];
+  const apps = [
+    { dir: 'auth', pkg: '@imajin/auth-service' },
+    { dir: 'chat', pkg: '@imajin/chat' },
+    { dir: 'coffee', pkg: '@imajin/coffee-service' },
+    { dir: 'connections', pkg: '@imajin/connections-service' },
+    { dir: 'dykil', pkg: '@imajin/dykil-service' },
+    { dir: 'events', pkg: '@imajin/events' },
+    { dir: 'links', pkg: '@imajin/links-service' },
+    { dir: 'pay', pkg: '@imajin/pay-service' },
+    { dir: 'profile', pkg: '@imajin/profile-service' },
+    { dir: 'registry', pkg: '@imajin/registry-service' },
+    { dir: 'www', pkg: '@imajin/www' },
+  ];
 
   for (const app of apps) {
     try {
-      console.log(`  📝 ${app}...`);
-      execSync(`pnpm --filter @imajin/${app} db:push`, {
+      console.log(`  📝 ${app.dir}...`);
+      execSync(`pnpm --filter ${app.pkg} db:push`, {
         stdio: 'inherit',
         env: { ...process.env, DATABASE_URL },
       });
-      console.log(`  ✅ ${app} schema pushed`);
+      console.log(`  ✅ ${app.dir} schema pushed`);
     } catch (error) {
-      console.error(`  ❌ Failed to push ${app} schema`);
+      console.error(`  ❌ Failed to push ${app.dir} schema`);
     }
   }
 
