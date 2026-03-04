@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 interface Link {
   id: string;
@@ -71,20 +70,15 @@ const THEME_PRESETS = {
 };
 
 export default function EditPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState<LinkPage | null>(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [autoCreateError, setAutoCreateError] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [editingLink, setEditingLink] = useState<Link | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
-    handle: '',
-    title: '',
-    bio: '',
-    avatar: '',
     theme: 'dark',
   });
 
@@ -133,7 +127,6 @@ export default function EditPage() {
       });
 
       if (res.ok) {
-        const newPage = await res.json();
         // Fetch the full page with links
         const fullPageRes = await fetch('/api/pages/mine', {
           credentials: 'include',
@@ -142,38 +135,12 @@ export default function EditPage() {
           const data = await fullPageRes.json();
           setPage(data.id ? data : null);
         }
+      } else {
+        setAutoCreateError(true);
       }
     } catch (error) {
       console.error('Failed to auto-create page:', error);
-      setPage(null);
-    }
-  };
-
-  const createPage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const theme = THEME_PRESETS[formData.theme as keyof typeof THEME_PRESETS];
-      const res = await fetch('/api/pages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          ...formData,
-          theme,
-        }),
-      });
-
-      if (res.ok) {
-        await fetchPage();
-        setShowCreateForm(false);
-        setFormData({ handle: '', title: '', bio: '', avatar: '', theme: 'dark' });
-      } else {
-        const error = await res.json();
-        alert(error.error || 'Failed to create page');
-      }
-    } catch (error) {
-      console.error('Failed to create page:', error);
-      alert('Failed to create page');
+      setAutoCreateError(true);
     }
   };
 
@@ -187,12 +154,7 @@ export default function EditPage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          title: formData.title,
-          bio: formData.bio,
-          avatar: formData.avatar,
-          theme,
-        }),
+        body: JSON.stringify({ theme }),
       });
 
       if (res.ok) {
@@ -337,115 +299,26 @@ export default function EditPage() {
     );
   }
 
-  if (!page && !showCreateForm) {
-    return (
-      <div className="min-h-screen py-12 px-4 bg-gray-50 dark:bg-gray-900">
-        <div className="max-w-2xl mx-auto text-center">
-          <div className="text-6xl mb-4">🔗</div>
-          <h1 className="text-3xl font-bold mb-4">Create Your Links Page</h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-8">
-            Set up your sovereign link-in-bio page on Imajin
-          </p>
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition"
-          >
-            Create Links Page
-          </button>
+  if (!page) {
+    if (autoCreateError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+          <div className="text-center">
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Failed to set up your links page. Please try refreshing.
+            </p>
+            <button
+              onClick={() => { setAutoCreateError(false); setLoading(true); fetchPage(); }}
+              className="px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition"
+            >
+              Retry
+            </button>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
+    return null;
   }
-
-  if (showCreateForm && !page) {
-    return (
-      <div className="min-h-screen py-12 px-4 bg-gray-50 dark:bg-gray-900">
-        <div className="max-w-lg mx-auto">
-          <h1 className="text-2xl font-bold mb-6">Create Links Page</h1>
-          <form onSubmit={createPage} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Handle *</label>
-              <input
-                type="text"
-                value={formData.handle}
-                onChange={(e) => setFormData({ ...formData, handle: e.target.value })}
-                placeholder="yourhandle"
-                required
-                pattern="[a-z0-9_]{3,30}"
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
-              />
-              <p className="text-xs text-gray-500 mt-1">3-30 characters, lowercase letters, numbers, and underscores only</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Title *</label>
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="Your Name"
-                required
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Bio</label>
-              <textarea
-                value={formData.bio}
-                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                placeholder="A short description"
-                rows={3}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Avatar (emoji)</label>
-              <input
-                type="text"
-                value={formData.avatar}
-                onChange={(e) => setFormData({ ...formData, avatar: e.target.value })}
-                placeholder="🔗"
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Theme</label>
-              <select
-                value={formData.theme}
-                onChange={(e) => setFormData({ ...formData, theme: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
-              >
-                {Object.entries(THEME_PRESETS).map(([key, preset]) => (
-                  <option key={key} value={key}>{preset.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                className="flex-1 px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition"
-              >
-                Create Page
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowCreateForm(false)}
-                className="px-6 py-3 border border-gray-300 dark:border-gray-700 rounded-lg font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  if (!page) return null;
 
   return (
     <div className="min-h-screen py-12 px-4 bg-gray-50 dark:bg-gray-900">
@@ -466,13 +339,7 @@ export default function EditPage() {
           </div>
           <button
             onClick={() => {
-              setFormData({
-                handle: page.handle,
-                title: page.title,
-                bio: page.bio || '',
-                avatar: page.avatar || '',
-                theme: 'dark',
-              });
+              setFormData({ theme: 'dark' });
               setShowEditForm(true);
             }}
             className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
@@ -486,38 +353,6 @@ export default function EditPage() {
           <div className="mb-8 p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
             <h2 className="text-xl font-semibold mb-4">Edit Page</h2>
             <form onSubmit={updatePage} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Title *</label>
-                <input
-                  type="text"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  required
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Bio</label>
-                <textarea
-                  value={formData.bio}
-                  onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                  rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Avatar (emoji)</label>
-                <input
-                  type="text"
-                  value={formData.avatar}
-                  onChange={(e) => setFormData({ ...formData, avatar: e.target.value })}
-                  placeholder="🔗"
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
-                />
-              </div>
-
               <div>
                 <label className="block text-sm font-medium mb-2">Theme</label>
                 <select
