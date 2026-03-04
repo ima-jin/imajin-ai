@@ -83,7 +83,8 @@ export default async function Home() {
       </h1>
 
       {/* Network stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12 mb-16">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-8 md:gap-10 mb-16">
+        <StatCard emoji="🖥️" count={1} max={1} label="Servers" />
         <StatCard emoji="🟠" count={stats.presences} max={MAX_PRESENCES} label="Presences" />
         <StatCard emoji="🧑" count={stats.humans} max={MAX_HUMANS} label="Humans" />
         <StatCard emoji="🏢" count={stats.businesses} max={MAX_BUSINESSES} label="Businesses" />
