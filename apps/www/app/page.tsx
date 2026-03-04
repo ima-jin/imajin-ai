@@ -16,38 +16,45 @@ async function getNetworkStats() {
     
     const [presences] = await sql`
       SELECT COUNT(*)::int as count 
-      FROM registry.nodes 
-      WHERE status = 'active'
+      FROM profile.profiles 
+      WHERE display_type IN ('agent', 'device', 'service')
     `;
     
     const [humans] = await sql`
       SELECT COUNT(*)::int as count 
-      FROM auth.identities 
-      WHERE type = 'human'
+      FROM profile.profiles 
+      WHERE display_type = 'human'
     `;
     
     const [businesses] = await sql`
       SELECT COUNT(*)::int as count 
-      FROM auth.identities 
-      WHERE type = 'business'
+      FROM profile.profiles 
+      WHERE display_type = 'org'
+    `;
+    
+    const [lightningProfiles] = await sql`
+      SELECT COUNT(*)::int as count 
+      FROM profile.profiles 
+      WHERE identity_tier = 'soft'
     `;
     
     return {
       presences: presences?.count ?? 0,
       humans: humans?.count ?? 0,
       businesses: businesses?.count ?? 0,
+      lightning: lightningProfiles?.count ?? 0,
     };
   } catch {
-    return { presences: 0, humans: 0, businesses: 0 };
+    return { presences: 0, humans: 0, businesses: 0, lightning: 0 };
   }
 }
 
-function StatCard({ emoji, count, max, label }: { emoji: string; count: number; max: number; label: string }) {
+function StatCard({ emoji, count, max, label }: { emoji: string; count: number; max?: number; label: string }) {
   return (
     <div className="flex flex-col items-center gap-2">
       <span className="text-3xl">{emoji}</span>
       <p className="text-xl font-medium text-gray-200">
-        {count.toLocaleString()} <span className="text-gray-500">/ {max.toLocaleString()}</span>
+        {count.toLocaleString()}{max != null && <span className="text-gray-500"> / {max.toLocaleString()}</span>}
       </p>
       <p className="text-sm text-gray-500">{label}</p>
     </div>
@@ -75,10 +82,11 @@ export default async function Home() {
       </h1>
 
       {/* Network stats grid */}
-      <div className="grid grid-cols-3 gap-8 md:gap-16 mb-16">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12 mb-16">
         <StatCard emoji="🟠" count={stats.presences} max={MAX_PRESENCES} label="Presences" />
         <StatCard emoji="🧑" count={stats.humans} max={MAX_HUMANS} label="Humans" />
         <StatCard emoji="🏢" count={stats.businesses} max={MAX_BUSINESSES} label="Businesses" />
+        <StatCard emoji="⚡" count={stats.lightning} label="Lightning" />
       </div>
 
       {/* Links */}
