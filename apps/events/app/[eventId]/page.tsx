@@ -4,7 +4,7 @@ import { db, events, ticketTypes, tickets } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { TicketsSection } from './tickets-section';
 
-export const revalidate = 60; // revalidate every 60 seconds
+export const revalidate = 0; // always fresh — event data changes frequently during editing
 import { Countdown } from './countdown';
 import { EventLobbyAccordion } from './event-lobby-accordion';
 import { EventSurveyAccordion } from './event-survey-accordion';

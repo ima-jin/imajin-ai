@@ -4,6 +4,8 @@ import { db, events, ticketTypes } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import EventEditForm from './form';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: Promise<{ eventId: string }>;
 }
