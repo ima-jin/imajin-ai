@@ -390,8 +390,8 @@ export default function DeckPage() {
         setTouchStartY(null);
       }}
     >
-      {/* Slide content — scrollable area, extends behind nav */}
-      <div className="absolute inset-0 bottom-0 top-0 overflow-y-auto px-8 md:px-16 py-12 md:py-16 pb-20">
+      {/* Slide content — scrollable area, under top bar, extends behind bottom nav */}
+      <div className="absolute inset-0 top-14 bottom-0 overflow-y-auto px-8 md:px-16 py-8 md:py-12 pb-20">
         <div className="min-h-full flex items-center">
           <div className="w-full" key={current}>
             {slides[current].content}
@@ -430,14 +430,14 @@ export default function DeckPage() {
         </button>
       </div>
 
-      {/* Slide counter */}
-      <div className="fixed top-6 right-8 text-white/40 text-sm font-mono z-10">
-        {current + 1} / {slides.length}
-      </div>
-
-      {/* imajin.ai watermark */}
-      <div className="fixed top-6 left-8 text-white/40 text-sm tracking-wider z-10">
-        IMAJIN
+      {/* Top bar — solid black, content scrolls under */}
+      <div className="absolute top-0 left-0 right-0 h-14 flex items-center justify-between px-8 md:px-16 bg-[#0a0a0a] z-10">
+        <div className="text-white/40 text-sm tracking-wider">
+          IMAJIN
+        </div>
+        <div className="text-white/40 text-sm font-mono">
+          {current + 1} / {slides.length}
+        </div>
       </div>
     </div>
   );
