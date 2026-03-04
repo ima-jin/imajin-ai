@@ -273,7 +273,7 @@ const slides: Slide[] = [
         <p className="text-xl md:text-2xl text-white/50 mb-12">Part manifesto. Part technical documentation. Part founding story.</p>
         <p className="text-2xl md:text-4xl font-medium leading-relaxed">"The internet that pays you back."</p>
         <a
-          href={`${PREFIX}${DOMAIN}/articles`}
+          href="/articles"
           className="mt-12 text-white/40 hover:text-white transition-colors text-lg"
         >
           imajin.ai/articles →
