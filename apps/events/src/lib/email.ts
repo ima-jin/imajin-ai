@@ -1,3 +1,5 @@
+import QRCode from 'qrcode';
+
 /**
  * Email service using SendGrid API
  * 
@@ -56,6 +58,26 @@ export async function sendEmail(options: SendEmailOptions) {
   }
 }
 
+/**
+ * Generate a QR code as a base64 data URI.
+ * Returns the full data:image/png;base64,... string for embedding in HTML.
+ */
+export async function generateQRCode(data: string): Promise<string> {
+  try {
+    return await QRCode.toDataURL(data, {
+      width: 200,
+      margin: 1,
+      color: {
+        dark: '#ffffff',
+        light: '#1a1a1a',
+      },
+    });
+  } catch (error) {
+    console.error('QR code generation failed:', error);
+    return '';
+  }
+}
+
 function parseSender(from: string): { email: string; name?: string } {
   const match = from.match(/^(.+)\s*<(.+)>$/);
   if (match) return { name: match[1].trim(), email: match[2].trim() };
@@ -82,6 +104,7 @@ interface TicketConfirmationData {
   magicLink: string;
   eventImageUrl?: string;
   eventUrl?: string;
+  qrCodeDataUri?: string;
 }
 
 export function ticketConfirmationEmail(data: TicketConfirmationData): string {
@@ -154,9 +177,12 @@ export function ticketConfirmationEmail(data: TicketConfirmationData): string {
                       </tr>
                     </table>
 
-                    <!-- Ticket ID -->
-                    <div style="margin-top:16px;padding:10px;background:#0a0a0a;border:1px dashed #333;border-radius:6px;text-align:center;font-family:'SF Mono',Monaco,Consolas,monospace;font-size:13px;color:#71717a;">
-                      ${data.ticketId}
+                    <!-- QR Code + Ticket ID -->
+                    <div style="margin-top:16px;padding:16px;background:#0a0a0a;border:1px solid #262626;border-radius:6px;text-align:center;">
+                      ${data.qrCodeDataUri ? `<img src="${data.qrCodeDataUri}" alt="Ticket QR Code" width="160" height="160" style="display:block;margin:0 auto 12px;" />` : ''}
+                      <div style="font-family:'SF Mono',Monaco,Consolas,monospace;font-size:13px;color:#71717a;">
+                        ${data.ticketId}
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -176,8 +202,7 @@ export function ticketConfirmationEmail(data: TicketConfirmationData): string {
           <tr>
             <td style="background-color:#111111;padding:0 32px 32px;border-radius:0 0 8px 8px;">
               <div style="border-top:1px solid #262626;padding-top:20px;text-align:center;">
-                <p style="margin:0 0 4px;font-size:13px;color:#52525b;">You just transacted on the sovereign network.</p>
-                <p style="margin:0;font-size:13px;color:#3f3f46;">No platform. No middleman. Yours.</p>
+                <p style="margin:0;font-size:13px;color:#52525b;">Part of the Imajin sovereign network</p>
               </div>
             </td>
           </tr>
@@ -185,8 +210,8 @@ export function ticketConfirmationEmail(data: TicketConfirmationData): string {
           <!-- Footer -->
           <tr>
             <td style="padding:24px 32px;text-align:center;">
-              <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#ffffff;letter-spacing:1px;">IMAJIN</p>
-              <p style="margin:0;font-size:12px;color:#3f3f46;">今人 — The internet that pays you back</p>
+              <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#ffffff;letter-spacing:2px;">IMAJIN</p>
+              <p style="margin:0;font-size:12px;color:#52525b;">The internet that pays you back</p>
               ${data.eventUrl ? `<p style="margin:8px 0 0;"><a href="${data.eventUrl}" style="font-size:12px;color:#52525b;text-decoration:underline;">View event</a></p>` : ''}
             </td>
           </tr>
@@ -236,8 +261,8 @@ export function paymentFailedEmail(data: PaymentFailedData): string {
           </tr>
           <tr>
             <td style="padding:24px 32px;text-align:center;">
-              <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#ffffff;letter-spacing:1px;">IMAJIN</p>
-              <p style="margin:0;font-size:12px;color:#3f3f46;">今人 — The internet that pays you back</p>
+              <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#ffffff;letter-spacing:2px;">IMAJIN</p>
+              <p style="margin:0;font-size:12px;color:#52525b;">The internet that pays you back</p>
             </td>
           </tr>
         </table>
