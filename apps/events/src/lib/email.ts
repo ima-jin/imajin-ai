@@ -198,21 +198,26 @@ export function ticketConfirmationEmail(data: TicketConfirmationData): string {
             </td>
           </tr>
 
-          <!-- Sovereign message -->
+          <!-- Footer -->
           <tr>
             <td style="background-color:#111111;padding:0 32px 32px;border-radius:0 0 8px 8px;">
               <div style="border-top:1px solid #262626;padding-top:20px;text-align:center;">
-                <p style="margin:0;font-size:13px;color:#52525b;">Part of the Imajin sovereign network</p>
               </div>
             </td>
           </tr>
 
-          <!-- Footer -->
+          <!-- Brand -->
           <tr>
             <td style="padding:24px 32px;text-align:center;">
               <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#ffffff;letter-spacing:2px;">IMAJIN</p>
-              <p style="margin:0;font-size:12px;color:#52525b;">The internet that pays you back</p>
-              ${data.eventUrl ? `<p style="margin:8px 0 0;"><a href="${data.eventUrl}" style="font-size:12px;color:#52525b;text-decoration:underline;">View event</a></p>` : ''}
+              <p style="margin:0 0 16px;font-size:12px;color:#52525b;">The internet that pays you back</p>
+              <p style="margin:0;font-size:12px;color:#3f3f46;">
+                Part of the <a href="https://imajin.ai" style="color:#52525b;text-decoration:underline;">Imajin</a> sovereign network
+                &nbsp;·&nbsp;
+                <a href="https://discord.gg/kWGHUY8wbe" style="color:#3f3f46;text-decoration:underline;">Discord</a>
+                &nbsp;·&nbsp;
+                <a href="https://github.com/ima-jin/imajin-ai" style="color:#3f3f46;text-decoration:underline;">GitHub</a>
+              </p>
             </td>
           </tr>
 
