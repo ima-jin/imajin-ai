@@ -99,14 +99,6 @@ export default async function Home() {
           Read the articles →
         </Link>
         <a
-          href="https://discord.gg/6hkQW3uw4m"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-orange-400 hover:text-orange-300 transition-colors"
-        >
-          Find us on Discord →
-        </a>
-        <a
           href={`${PREFIX}coffee.${DOMAIN}/veteze`}
           className="text-orange-400 hover:text-orange-300 transition-colors"
         >
