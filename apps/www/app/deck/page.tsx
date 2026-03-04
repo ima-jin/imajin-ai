@@ -185,7 +185,22 @@ const slides: Slide[] = [
     ),
   },
 
-  // Slide 9: Landscape
+  // Slide 9: Open Source / Decentralized
+  {
+    content: (
+      <div className="flex flex-col justify-center h-full max-w-3xl mx-auto">
+        <h2 className="text-4xl md:text-6xl font-bold tracking-tight mb-12">Open source. Decentralized. Unstoppable.</h2>
+        <div className="space-y-6 text-lg md:text-xl text-white/70 leading-relaxed">
+          <p>Every line of code is open source. Every service is self-hostable. Anyone can run a node.</p>
+          <p><span className="text-white">Infrastructure is provided by local hosts all over the world.</span> Not our servers — a federated network of sovereign nodes, each owned by the person running it.</p>
+          <p>The protocol takes a percentage on every transaction. That's the business model. The infrastructure is distributed. The value flows to the people running it.</p>
+          <p className="text-white/40 mt-4">Nobody can shut it down because there's nothing central to shut down. No kill switch. No terms of service change. No rug pull. If we disappeared tomorrow, the network keeps running.</p>
+        </div>
+      </div>
+    ),
+  },
+
+  // Slide 10: Landscape
   {
     content: (
       <div className="flex flex-col justify-center h-full max-w-3xl mx-auto">
@@ -209,7 +224,7 @@ const slides: Slide[] = [
     ),
   },
 
-  // Slide 10: Market
+  // Slide 11: Market
   {
     content: (
       <div className="flex flex-col justify-center h-full max-w-3xl mx-auto">
@@ -227,7 +242,7 @@ const slides: Slide[] = [
     ),
   },
 
-  // Slide 11: Go-to-Market
+  // Slide 12: Go-to-Market
   {
     content: (
       <div className="flex flex-col justify-center h-full max-w-3xl mx-auto">
@@ -250,7 +265,7 @@ const slides: Slide[] = [
     ),
   },
 
-  // Slide 12: The Essays
+  // Slide 13: The Essays
   {
     content: (
       <div className="flex flex-col justify-center h-full max-w-3xl mx-auto text-center">
@@ -267,7 +282,7 @@ const slides: Slide[] = [
     ),
   },
 
-  // Slide 13: The Ask
+  // Slide 14: The Ask
   {
     content: (
       <div className="flex flex-col justify-center h-full max-w-3xl mx-auto">
@@ -288,7 +303,7 @@ const slides: Slide[] = [
     ),
   },
 
-  // Slide 14: The Vision
+  // Slide 15: The Vision
   {
     content: (
       <div className="flex flex-col justify-center items-center h-full max-w-3xl mx-auto text-center">
