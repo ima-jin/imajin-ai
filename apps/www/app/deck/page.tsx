@@ -362,32 +362,37 @@ export default function DeckPage() {
   useEffect(() => {
     const nav = document.querySelector('nav');
     if (nav) nav.style.display = 'none';
-    document.body.style.overflow = 'hidden';
     return () => {
       if (nav) nav.style.display = '';
-      document.body.style.overflow = '';
     };
   }, []);
 
   // Touch support
   const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
 
   return (
     <div
-      className="fixed inset-0 bg-[#0a0a0a] text-white overflow-hidden select-none"
-      onTouchStart={(e) => setTouchStart(e.touches[0].clientX)}
+      className="fixed inset-0 bg-[#0a0a0a] text-white select-none"
+      onTouchStart={(e) => {
+        setTouchStart(e.touches[0].clientX);
+        setTouchStartY(e.touches[0].clientY);
+      }}
       onTouchEnd={(e) => {
         if (touchStart === null) return;
-        const diff = e.changedTouches[0].clientX - touchStart;
-        if (Math.abs(diff) > 50) {
-          diff > 0 ? prev() : next();
+        const diffX = e.changedTouches[0].clientX - touchStart;
+        const diffY = e.changedTouches[0].clientY - (touchStartY ?? 0);
+        // Only navigate if horizontal swipe is dominant
+        if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY) * 1.5) {
+          diffX > 0 ? prev() : next();
         }
         setTouchStart(null);
+        setTouchStartY(null);
       }}
     >
       {/* Slide content */}
-      <div className="h-full px-8 md:px-16 py-12 md:py-16 flex flex-col">
-        <div className="flex-1 flex items-center">
+      <div className="h-full px-8 md:px-16 py-12 md:py-16 flex flex-col overflow-y-auto">
+        <div className="flex-1 flex items-center min-h-0">
           <div className="w-full" key={current}>
             {slides[current].content}
           </div>
