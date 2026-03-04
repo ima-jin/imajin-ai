@@ -35,7 +35,7 @@ const slides: Slide[] = [
   {
     content: (
       <div className="flex flex-col justify-center h-full max-w-3xl mx-auto">
-        <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-8">Ryan Veteze</h1>
+        <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-8">Ryan Veteze <span className="text-white/30 text-3xl md:text-4xl font-normal">(he/they)</span></h1>
         <div className="space-y-6 text-lg md:text-xl text-white/70 leading-relaxed">
           <p>Online since 1988. Ran a BBS at fifteen — three phone lines, three hundred people finding each other before the web existed.</p>
           <p>30 years building systems. Director-level, led 8 teams. Built a dance music network still running after 25 years.</p>
