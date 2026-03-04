@@ -358,6 +358,17 @@ export default function DeckPage() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [next, prev, goTo]);
 
+  // Hide the root layout NavBar when deck is mounted
+  useEffect(() => {
+    const nav = document.querySelector('nav');
+    if (nav) nav.style.display = 'none';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      if (nav) nav.style.display = '';
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   // Touch support
   const [touchStart, setTouchStart] = useState<number | null>(null);
 
