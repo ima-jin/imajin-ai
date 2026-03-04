@@ -64,7 +64,7 @@ export default function EditProfilePage() {
       setHandle(profile.handle || '');
       setEmail(profile.email || '');
       setPhone(profile.phone || '');
-      setVisibility(profile.visibility || 'public');
+      setVisibility((profile.visibility as 'public' | 'incognito') || 'public');
 
       // Detect avatar mode based on current avatar
       if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.startsWith('/'))) {
