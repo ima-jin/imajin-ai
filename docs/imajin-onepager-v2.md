@@ -53,6 +53,10 @@ All open source. All self-hostable. All consuming the same identity, payment, an
 
 **First transactions completed early March 2026.** Reputation is building. The stack works.
 
+## THE PHILOSOPHY
+
+Every line of code is open source. Every service is self-hostable. Infrastructure is provided by local hosts all over the world — a federated network of sovereign nodes, each owned by the person running it. The protocol takes a percentage on every transaction. That's the business model. There's nothing central to shut down.
+
 ## THE GO-TO-MARKET
 
 **For local businesses:** A QR code on the window. Customers scan, join with an email, and every transaction after that builds verified reputation for both sides. Fees drop from 3% per transaction to a one-time on-ramp cost — once money is in the network, peer-to-peer settlement is a ledger entry, not a card swipe.
