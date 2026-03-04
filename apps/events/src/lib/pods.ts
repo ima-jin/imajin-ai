@@ -115,7 +115,7 @@ export async function addEventParticipant(params: AddEventParticipantParams): Pr
 export async function getEventPod(eventId: string): Promise<{ podId: string; conversationId: string; lobbyConversationId?: string } | null> {
   const rows = await sql`
     SELECT e.pod_id, e.lobby_conversation_id, c.id as conversation_id
-    FROM events e
+    FROM events.events e
     LEFT JOIN chat.conversations c ON c.pod_id = e.pod_id
     WHERE e.id = ${eventId}
     LIMIT 1

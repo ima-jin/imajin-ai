@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
         successUrl: `${EVENTS_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}&event=${event.id}`,
         cancelUrl: `${EVENTS_URL}/${event.id}`,
         metadata: {
+          service: 'events',
           eventId: event.id,
           eventDid: event.did,
           ticketTypeId: ticketType.id,
