@@ -49,12 +49,13 @@ async function getNetworkStats() {
   }
 }
 
-function StatCard({ emoji, count, max, label }: { emoji: string; count: number; max?: number; label: string }) {
+function StatCard({ emoji, count, max, label }: { emoji: string; count: number; max?: number | '∞'; label: string }) {
+  const maxDisplay = max === '∞' ? '∞' : max?.toLocaleString();
   return (
     <div className="flex flex-col items-center gap-2">
       <span className="text-3xl">{emoji}</span>
       <p className="text-xl font-medium text-gray-200">
-        {count.toLocaleString()}{max != null && <span className="text-gray-500"> / {max.toLocaleString()}</span>}
+        {count.toLocaleString()}{maxDisplay != null && <span className="text-gray-500"> / {maxDisplay}</span>}
       </p>
       <p className="text-sm text-gray-500">{label}</p>
     </div>
@@ -86,7 +87,7 @@ export default async function Home() {
         <StatCard emoji="🟠" count={stats.presences} max={MAX_PRESENCES} label="Presences" />
         <StatCard emoji="🧑" count={stats.humans} max={MAX_HUMANS} label="Humans" />
         <StatCard emoji="🏢" count={stats.businesses} max={MAX_BUSINESSES} label="Businesses" />
-        <StatCard emoji="⚡" count={stats.lightning} label="Lightning" />
+        <StatCard emoji="⚡" count={stats.lightning} max="∞" label="Lightning" />
       </div>
 
       {/* Links */}
