@@ -185,7 +185,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = JSON.parse(bodyText);
-    const { displayName, displayType, avatar, bio, email, phone, metadata } = body;
+    const { displayName, displayType, avatar, bio, email, phone, metadata, visibility } = body;
 
     // Build update object
     const updates: Record<string, any> = {
@@ -204,6 +204,12 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (email !== undefined) updates.email = email || null;
     if (phone !== undefined) updates.phone = phone || null;
     if (metadata !== undefined) updates.metadata = metadata;
+    if (visibility !== undefined) {
+      if (!['public', 'incognito'].includes(visibility)) {
+        return errorResponse('visibility must be public or incognito');
+      }
+      updates.visibility = visibility;
+    }
 
     // Update profile
     const [updated] = await db

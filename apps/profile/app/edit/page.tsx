@@ -34,6 +34,7 @@ export default function EditProfilePage() {
   const [handle, setHandle] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [visibility, setVisibility] = useState<'public' | 'incognito'>('public');
   const [avatarMode, setAvatarMode] = useState<AvatarMode>('emoji');
 
   useEffect(() => {
@@ -62,6 +63,7 @@ export default function EditProfilePage() {
       setHandle(profile.handle || '');
       setEmail(profile.email || '');
       setPhone(profile.phone || '');
+      setVisibility(profile.visibility || 'public');
 
       // Detect avatar mode based on current avatar
       if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.startsWith('/'))) {
@@ -90,6 +92,7 @@ export default function EditProfilePage() {
         avatar: avatar || null,
         email: email || null,
         phone: phone || null,
+        visibility,
       });
 
       // Sign the request body with the user's Ed25519 private key
@@ -221,6 +224,42 @@ export default function EditProfilePage() {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Visibility */}
+          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-medium text-white flex items-center gap-2">
+                  👻 Incognito Mode
+                </h3>
+                <p className="text-sm text-gray-400 mt-1">
+                  Only visible to your direct connections. Further down the trust tree, 
+                  you appear as an anonymous ghost — or just a number.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVisibility(visibility === 'public' ? 'incognito' : 'public')}
+                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                  visibility === 'incognito' ? 'bg-orange-500' : 'bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                    visibility === 'incognito' ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+            {visibility === 'incognito' && (
+              <div className="mt-3 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+                <p className="text-xs text-orange-300">
+                  🔒 Your profile is hidden from public listings and search. 
+                  People who aren&apos;t directly connected to you will see &quot;👻 1 ghost&quot; instead of your name.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Avatar */}
