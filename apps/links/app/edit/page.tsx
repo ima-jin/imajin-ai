@@ -326,7 +326,7 @@ export default function EditPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold">Edit Your Page</h1>
+            <h1 className="text-3xl font-bold">My Links</h1>
             <p className="text-gray-600 dark:text-gray-400 mt-1">
               <a
                 href={`/${page.handle}`}
@@ -337,15 +337,23 @@ export default function EditPage() {
               </a>
             </p>
           </div>
-          <button
-            onClick={() => {
-              setFormData({ theme: 'dark' });
-              setShowEditForm(true);
-            }}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-          >
-            Edit Page Info
-          </button>
+          <div className="flex gap-3">
+            <a
+              href="/dashboard"
+              className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+            >
+              Go to Stats
+            </a>
+            <button
+              onClick={() => {
+                setFormData({ theme: 'dark' });
+                setShowEditForm(true);
+              }}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+            >
+              Edit Theme
+            </button>
+          </div>
         </div>
 
         {/* Edit Page Form */}
