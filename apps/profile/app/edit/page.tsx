@@ -15,6 +15,7 @@ interface Profile {
   avatar?: string;
   email?: string;
   phone?: string;
+  visibility?: string;
 }
 
 type AvatarMode = 'emoji' | 'image';
