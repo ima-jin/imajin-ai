@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
-import { db, follows, connections, profiles } from '@/db';
+import { db, follows, profiles } from '@/db';
+import { getClient } from '@imajin/db';
 import { jsonResponse, errorResponse } from '@/lib/utils';
-import { eq, or, count } from 'drizzle-orm';
+import { eq, count } from 'drizzle-orm';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -33,20 +34,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .from(follows)
       .where(eq(follows.followerDid, profile.did));
 
-    const [connectionsResult] = await db
-      .select({ count: count() })
-      .from(connections)
-      .where(
-        or(
-          eq(connections.fromDid, profile.did),
-          eq(connections.toDid, profile.did),
-        )
-      );
+    // Query connections from connections schema (pod-based model)
+    // A connection = being in the same pod as someone else
+    const sql = getClient();
+    const [connectionsResult] = await sql`
+      SELECT COUNT(DISTINCT pm2.did)::int as count
+      FROM connections.pod_members pm1
+      JOIN connections.pod_members pm2 ON pm1.pod_id = pm2.pod_id AND pm1.did != pm2.did
+      WHERE pm1.did = ${profile.did}
+        AND pm1.removed_at IS NULL
+        AND pm2.removed_at IS NULL
+    `;
 
     return jsonResponse({
       followers: Number(followersResult.count),
       following: Number(followingResult.count),
-      connections: Number(connectionsResult.count),
+      connections: connectionsResult?.count ?? 0,
     });
   } catch (error) {
     console.error('Failed to fetch profile counts:', error);
