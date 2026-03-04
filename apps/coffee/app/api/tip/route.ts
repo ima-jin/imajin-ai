@@ -2,25 +2,12 @@ import { NextRequest } from 'next/server';
 import { db, coffeePages, tips } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
-import Stripe from 'stripe';
 
-// Lazy Stripe init to avoid build-time errors
-let _stripe: Stripe | null = null;
-function getStripe(): Stripe {
-  if (!_stripe) {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error('STRIPE_SECRET_KEY not configured');
-    }
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2023-10-16',
-    });
-  }
-  return _stripe;
-}
+const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
 
 /**
  * POST /api/tip - Send a tip
- * 
+ *
  * Body:
  * - pageHandle: string (required)
  * - amount: number in cents (required)
@@ -85,26 +72,37 @@ export async function POST(request: NextRequest) {
     const tipId = generateId('tip');
 
     if (paymentMethod === 'stripe') {
-      // Create Stripe Payment Intent
       const stripeAccountId = methods.stripe.accountId;
-      
-      const paymentIntent = await getStripe().paymentIntents.create({
-        amount,
-        currency: currency.toLowerCase(),
-        automatic_payment_methods: { enabled: true },
-        metadata: {
-          tipId,
-          pageId: page.id,
-          pageHandle: page.handle,
-          fromDid: fromDid || 'anonymous',
-          fromName: fromName || 'Anonymous',
-          message: message || '',
-        },
-        // Transfer to connected account (minus platform fee if any)
-        transfer_data: stripeAccountId ? {
-          destination: stripeAccountId,
-        } : undefined,
+
+      // Call pay service to create PaymentIntent
+      const payRes = await fetch(`${PAY_SERVICE_URL}/api/charge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount,
+          currency: currency.toUpperCase(),
+          to: stripeAccountId ? { stripeAccountId } : { did: page.did },
+          metadata: {
+            service: 'coffee',
+            type: 'tip',
+            tipId,
+            pageId: page.id,
+            pageHandle: page.handle,
+            to_did: page.did,
+            fromDid: fromDid || 'anonymous',
+            fromName: fromName || 'Anonymous',
+            message: message || '',
+          },
+        }),
       });
+
+      if (!payRes.ok) {
+        const err = await payRes.text();
+        console.error('Pay service charge failed:', err);
+        return errorResponse('Failed to create payment', 500);
+      }
+
+      const payData = await payRes.json();
 
       // Insert pending tip
       await db.insert(tips).values({
@@ -116,17 +114,17 @@ export async function POST(request: NextRequest) {
         currency,
         message: message || null,
         paymentMethod: 'stripe',
-        paymentId: paymentIntent.id,
+        paymentId: payData.id,
         status: 'pending',
       });
 
       return jsonResponse({
         tipId,
-        clientSecret: paymentIntent.client_secret,
+        clientSecret: payData.clientSecret,
         paymentMethod: 'stripe',
       });
-    } 
-    
+    }
+
     if (paymentMethod === 'solana') {
       // For Solana, return the destination address
       // Client will build and sign the transaction

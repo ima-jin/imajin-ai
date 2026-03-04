@@ -1,14 +1,16 @@
 /**
  * POST /api/webhook
- * 
+ *
  * Stripe webhook handler for async payment events.
- * 
+ *
  * Events handled:
  * - payment_intent.succeeded
  * - payment_intent.payment_failed
  * - checkout.session.completed
  * - customer.subscription.created
+ * - customer.subscription.updated
  * - customer.subscription.deleted
+ * - invoice.paid
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -99,14 +101,27 @@ export async function POST(request: NextRequest) {
         break;
       }
       
+      case 'customer.subscription.updated': {
+        const subscription = event.data.object as Stripe.Subscription;
+        console.log('Subscription updated:', subscription.id);
+        await handleSubscriptionUpdated(subscription);
+        break;
+      }
+
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
         console.log('Subscription canceled:', subscription.id);
-        // TODO: Revoke access
         await handleSubscriptionDeleted(subscription);
         break;
       }
-      
+
+      case 'invoice.paid': {
+        const invoice = event.data.object as Stripe.Invoice;
+        console.log('Invoice paid:', invoice.id);
+        await handleInvoicePaid(invoice);
+        break;
+      }
+
       default:
         console.log('Unhandled event type:', event.type);
     }
@@ -153,6 +168,11 @@ async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     .where(eq(transactions.stripeId, paymentIntent.id));
 
   console.log('Transaction updated:', { stripeId: paymentIntent.id, updated });
+
+  // Notify originating service
+  if (paymentIntent.metadata.service === 'coffee') {
+    await notifyCoffeeService('payment.succeeded', paymentIntent);
+  }
 }
 
 async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
@@ -167,6 +187,11 @@ async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
     .update(transactions)
     .set({ status: 'failed' })
     .where(eq(transactions.stripeId, paymentIntent.id));
+
+  // Notify originating service
+  if (paymentIntent.metadata.service === 'coffee') {
+    await notifyCoffeeService('payment.failed', paymentIntent);
+  }
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
@@ -237,6 +262,45 @@ async function notifyEventsService(
   }
 }
 
+/**
+ * Notify coffee service about payment completion or failure
+ */
+async function notifyCoffeeService(
+  type: 'payment.succeeded' | 'payment.failed',
+  paymentIntent: Stripe.PaymentIntent
+) {
+  const coffeeServiceUrl = process.env.COFFEE_SERVICE_URL!;
+  const webhookSecret = process.env.COFFEE_WEBHOOK_SECRET!;
+
+  try {
+    const response = await fetch(`${coffeeServiceUrl}/api/webhook/payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${webhookSecret}`,
+      },
+      body: JSON.stringify({
+        type,
+        tipId: paymentIntent.metadata.tipId,
+        pageId: paymentIntent.metadata.pageId,
+        amount: paymentIntent.amount,
+        paymentId: paymentIntent.id,
+        status: type === 'payment.succeeded' ? 'completed' : 'failed',
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Coffee service webhook failed:', error);
+    } else {
+      console.log('Coffee service notified successfully');
+    }
+  } catch (error) {
+    console.error('Failed to notify coffee service:', error);
+    // Don't throw - we don't want to fail the Stripe webhook
+  }
+}
+
 async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
   console.log('Subscription created:', {
     id: subscription.id,
@@ -262,13 +326,119 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
   });
 }
 
+async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+  console.log('Subscription updated:', {
+    id: subscription.id,
+    customerId: subscription.customer,
+    status: subscription.status,
+  });
+
+  // Log the status change as a transaction metadata update
+  // (no new transaction row — status changes are informational)
+  if (subscription.metadata?.service === 'coffee') {
+    await notifyCoffeeServiceSubscription('subscription.updated', subscription);
+  }
+}
+
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   console.log('Subscription canceled:', {
     id: subscription.id,
     customerId: subscription.customer,
   });
-  
-  // TODO:
-  // - Revoke access
-  // - Send offboarding email
+
+  // Notify originating service about cancellation
+  if (subscription.metadata?.service === 'coffee') {
+    await notifyCoffeeServiceSubscription('subscription.canceled', subscription);
+  }
+}
+
+async function handleInvoicePaid(invoice: Stripe.Invoice) {
+  console.log('Invoice paid:', {
+    id: invoice.id,
+    amount: invoice.amount_paid,
+    currency: invoice.currency,
+    subscriptionId: invoice.subscription,
+  });
+
+  // Only process subscription renewals (invoices linked to a subscription)
+  if (!invoice.subscription) {
+    return;
+  }
+
+  // Extract metadata from the subscription object on the invoice
+  const subscriptionMetadata = (invoice.subscription_details?.metadata || {}) as Record<string, string>;
+
+  const txId = genId('tx');
+  await db.insert(transactions).values({
+    id: txId,
+    service: subscriptionMetadata.service || 'subscription',
+    type: 'subscription',
+    fromDid: subscriptionMetadata.from_did || null,
+    toDid: subscriptionMetadata.to_did || 'platform',
+    amount: (invoice.amount_paid / 100).toString(),
+    currency: (invoice.currency || 'usd').toUpperCase(),
+    status: 'completed',
+    stripeId: invoice.id,
+    metadata: {
+      ...subscriptionMetadata,
+      subscription_id: typeof invoice.subscription === 'string'
+        ? invoice.subscription
+        : invoice.subscription?.id || '',
+      invoice_number: invoice.number || '',
+    },
+  });
+
+  console.log('Subscription renewal transaction created:', txId);
+
+  // Notify originating service
+  if (subscriptionMetadata.service === 'coffee') {
+    await notifyCoffeeServiceSubscription('subscription.renewed', null, invoice, subscriptionMetadata);
+  }
+}
+
+/**
+ * Notify coffee service about subscription events
+ */
+async function notifyCoffeeServiceSubscription(
+  type: 'subscription.updated' | 'subscription.canceled' | 'subscription.renewed',
+  subscription: Stripe.Subscription | null,
+  invoice?: Stripe.Invoice,
+  metadata?: Record<string, string>
+) {
+  const coffeeServiceUrl = process.env.COFFEE_SERVICE_URL!;
+  const webhookSecret = process.env.COFFEE_WEBHOOK_SECRET!;
+
+  if (!coffeeServiceUrl || !webhookSecret) {
+    console.warn('Coffee service URL or webhook secret not configured');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${coffeeServiceUrl}/api/webhook/payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${webhookSecret}`,
+      },
+      body: JSON.stringify({
+        type,
+        subscriptionId: subscription?.id || (invoice?.subscription
+          ? (typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id)
+          : undefined),
+        invoiceId: invoice?.id,
+        amount: invoice?.amount_paid,
+        status: type === 'subscription.canceled' ? 'canceled' : 'active',
+        metadata: metadata || subscription?.metadata,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Coffee service subscription webhook failed:', error);
+    } else {
+      console.log('Coffee service notified of subscription event:', type);
+    }
+  } catch (error) {
+    console.error('Failed to notify coffee service of subscription event:', error);
+  }
 }

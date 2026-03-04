@@ -14,6 +14,7 @@ export const transactions = paySchema.table('transactions', {
   amount: numeric('amount', { precision: 20, scale: 8 }).notNull(),
   currency: text('currency').notNull().default('USD'),
   status: text('status').notNull().default('pending'),   // pending | completed | failed | refunded
+  source: text('source').notNull().default('fiat'),      // 'fiat' | 'credit' | 'mixed'
   stripeId: text('stripe_id'),                           // payment intent / invoice / checkout session
   metadata: jsonb('metadata').default({}),
   fairManifest: jsonb('fair_manifest'),                  // .fair attribution chain
@@ -33,7 +34,8 @@ export const transactions = paySchema.table('transactions', {
  */
 export const balances = paySchema.table('balances', {
   did: text('did').primaryKey(),
-  amount: numeric('amount', { precision: 20, scale: 8 }).notNull().default('0'),
+  cashAmount: numeric('cash_amount', { precision: 20, scale: 8 }).notNull().default('0'),
+  creditAmount: numeric('credit_amount', { precision: 20, scale: 8 }).notNull().default('0'),
   currency: text('currency').notNull().default('USD'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

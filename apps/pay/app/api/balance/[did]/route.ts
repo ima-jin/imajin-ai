@@ -47,10 +47,15 @@ export async function GET(
       .where(eq(balances.did, decoded))
       .limit(1);
 
+    const cashAmount = row ? parseFloat(row.cashAmount) : 0;
+    const creditAmount = row ? parseFloat(row.creditAmount) : 0;
+
     return NextResponse.json(
       {
         did: decoded,
-        amount: row ? parseFloat(row.amount) : 0,
+        cashAmount,
+        creditAmount,
+        total: cashAmount + creditAmount,
         currency: row?.currency || 'USD',
         updatedAt: row?.updatedAt?.toISOString() || new Date().toISOString(),
       },
