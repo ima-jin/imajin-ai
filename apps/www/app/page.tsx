@@ -3,8 +3,8 @@ import Image from 'next/image';
 import { ImajinFooter } from '@imajin/ui';
 import { getClient } from '@imajin/db';
 
-// Revalidate stats every 5 minutes (ISR)
-export const revalidate = 300;
+// Revalidate stats every 15 minutes (ISR)
+export const revalidate = 900;
 
 const MAX_PRESENCES = 1;
 const MAX_HUMANS = 5_000;
