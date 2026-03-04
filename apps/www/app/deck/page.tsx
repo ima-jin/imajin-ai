@@ -390,44 +390,44 @@ export default function DeckPage() {
         setTouchStartY(null);
       }}
     >
-      {/* Slide content */}
-      <div className="h-full px-8 md:px-16 py-12 md:py-16 flex flex-col overflow-y-auto">
-        <div className="flex-1 flex items-center min-h-0">
+      {/* Slide content — scrollable area */}
+      <div className="absolute inset-0 bottom-14 top-0 overflow-y-auto px-8 md:px-16 py-12 md:py-16">
+        <div className="min-h-full flex items-center">
           <div className="w-full" key={current}>
             {slides[current].content}
           </div>
         </div>
+      </div>
 
-        {/* Navigation */}
-        <div className="flex items-center justify-between text-white/20 text-sm">
-          <button
-            onClick={prev}
-            disabled={current === 0}
-            className="hover:text-white/60 disabled:opacity-0 transition-colors px-4 py-2"
-          >
-            ←
-          </button>
+      {/* Navigation — fixed at bottom */}
+      <div className="absolute bottom-0 left-0 right-0 h-14 flex items-center justify-between text-white/20 text-sm px-8 md:px-16 bg-[#0a0a0a]">
+        <button
+          onClick={prev}
+          disabled={current === 0}
+          className="hover:text-white/60 disabled:opacity-0 transition-colors px-4 py-2"
+        >
+          ←
+        </button>
 
-          <div className="flex items-center gap-1">
-            {slides.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => goTo(i)}
-                className={`w-2 h-2 rounded-full transition-colors ${
-                  i === current ? 'bg-white/60' : 'bg-white/10 hover:bg-white/30'
-                }`}
-              />
-            ))}
-          </div>
-
-          <button
-            onClick={next}
-            disabled={current === slides.length - 1}
-            className="hover:text-white/60 disabled:opacity-0 transition-colors px-4 py-2"
-          >
-            →
-          </button>
+        <div className="flex items-center gap-1">
+          {slides.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => goTo(i)}
+              className={`w-2 h-2 rounded-full transition-colors ${
+                i === current ? 'bg-white/60' : 'bg-white/10 hover:bg-white/30'
+              }`}
+            />
+          ))}
         </div>
+
+        <button
+          onClick={next}
+          disabled={current === slides.length - 1}
+          className="hover:text-white/60 disabled:opacity-0 transition-colors px-4 py-2"
+        >
+          →
+        </button>
       </div>
 
       {/* Slide counter */}
