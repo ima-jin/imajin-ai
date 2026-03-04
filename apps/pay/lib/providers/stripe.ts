@@ -96,7 +96,11 @@ export class StripeProvider implements PaymentProvider {
     if (recipientInfo.customerId) {
       params.customer = recipientInfo.customerId;
     }
-    
+
+    if (recipientInfo.accountId) {
+      params.transfer_data = { destination: recipientInfo.accountId };
+    }
+
     const paymentIntent = await this.stripe.paymentIntents.create(params, {
       idempotencyKey: request.idempotencyKey,
     });
@@ -144,6 +148,12 @@ export class StripeProvider implements PaymentProvider {
       // expires_at is not supported for subscription mode
       ...(!isSubscription && { expires_at: Math.floor(Date.now() / 1000) + 3600 * 24 }),
       ...(isSubscription && { subscription_data: { metadata: request.metadata } }),
+      // Route funds to connected account if provided
+      ...(request.connectedAccountId && !isSubscription && {
+        payment_intent_data: {
+          transfer_data: { destination: request.connectedAccountId },
+        },
+      }),
     });
 
     return {

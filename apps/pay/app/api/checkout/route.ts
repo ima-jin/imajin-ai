@@ -44,6 +44,7 @@ interface CheckoutBody {
   successUrl: string;
   cancelUrl: string;
   metadata?: Record<string, string>;
+  connectedAccountId?: string;
 }
 
 export async function OPTIONS(request: NextRequest) {
@@ -94,6 +95,7 @@ export async function POST(request: NextRequest) {
         // Add identity if authenticated
         ...(identity && { identity_id: identity.id }),
       },
+      connectedAccountId: body.connectedAccountId,
     };
     
     const result = await pay.checkout(checkoutRequest);

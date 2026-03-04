@@ -172,6 +172,8 @@ export interface CheckoutRequest {
   cancelUrl: string;
   /** Arbitrary metadata */
   metadata?: Record<string, string>;
+  /** Stripe Connect account ID to route funds to */
+  connectedAccountId?: string;
 }
 
 /** Result of checkout creation */
