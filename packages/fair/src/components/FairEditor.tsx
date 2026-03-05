@@ -16,7 +16,7 @@ const ROLE_OPTIONS = [
   'platform', 'venue', 'distributor', 'label', 'other',
 ];
 
-const SECTION_DEFAULTS: FairEditorProps['sections'] = ['attribution', 'access', 'transfer', 'integrity'];
+const SECTION_DEFAULTS: NonNullable<FairEditorProps['sections']> = ['attribution', 'access', 'transfer', 'integrity'];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
