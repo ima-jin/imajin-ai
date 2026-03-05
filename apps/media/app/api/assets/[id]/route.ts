@@ -153,5 +153,5 @@ export async function GET(
     );
   }
 
-  return new NextResponse(outputBuffer, { status: 200, headers });
+  return new NextResponse(new Uint8Array(outputBuffer), { status: 200, headers });
 }
