@@ -112,7 +112,7 @@ export async function optionalAuth(request: NextRequest): Promise<Identity | nul
 /**
  * Check if a DID is in the trust graph (has at least one connection)
  */
-async function isInGraph(did: string): Promise<boolean> {
+export async function isInGraph(did: string): Promise<boolean> {
   const connectionsUrl = process.env.CONNECTIONS_SERVICE_URL || 'https://connections.imajin.ai';
 
   try {

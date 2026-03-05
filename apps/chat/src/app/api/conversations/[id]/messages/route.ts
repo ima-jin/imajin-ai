@@ -4,6 +4,7 @@ import { db, conversations, participants, messages } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
 import { unfurlLinks } from '@/lib/unfurl';
+import { hasCapability, requiredCapability, CAPABILITY_MESSAGES } from '@/lib/capabilities';
 
 /**
  * GET /api/conversations/:id/messages - Get messages in a conversation
@@ -117,6 +118,17 @@ export async function POST(
     }
 
     const body = await request.json();
+
+    // Determine contentType early for capability check
+    const earlyContentType = body.contentType || body.content?.type || 'text';
+    const required = requiredCapability(earlyContentType);
+    const tier = identity.tier ?? 'hard';
+    if (!hasCapability({ tier }, required)) {
+      return Response.json(
+        { error: CAPABILITY_MESSAGES[required], code: 'CAPABILITY_DENIED', required },
+        { status: 403 }
+      );
+    }
     const { content, replyTo, mediaType, mediaPath, mediaMeta } = body;
 
     // Validate content

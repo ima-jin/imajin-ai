@@ -91,6 +91,7 @@ export default function MessageThreadPage() {
   } | null>(null);
   const [voiceActive, setVoiceActive] = useState(false);
   const [voiceSending, setVoiceSending] = useState(false);
+  const [capabilities, setCapabilities] = useState<Set<string>>(new Set(['send:text']));
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageIdRef = useRef<string | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -99,6 +100,23 @@ export default function MessageThreadPage() {
   const { lastMessage: wsMessage, isConnected: wsConnected, subscribe: wsSubscribe, sendTyping, sendStopTyping } = useWebSocket();
 
   const conversationId = params.id;
+
+  // Fetch capabilities on mount
+  useEffect(() => {
+    if (!identity) return;
+    async function fetchCapabilities() {
+      try {
+        const res = await fetch('/api/capabilities');
+        if (res.ok) {
+          const data = await res.json();
+          setCapabilities(new Set(data.capabilities));
+        }
+      } catch {
+        // Silently fail - default to text-only
+      }
+    }
+    fetchCapabilities();
+  }, [identity]);
 
   // Fetch conversation info and mark as read
   useEffect(() => {
@@ -768,11 +786,20 @@ export default function MessageThreadPage() {
             </>
           ) : (
             <>
-              <FileUpload
-                conversationId={conversationId}
-                onUploadComplete={handleUploadComplete}
-                onUploadError={handleUploadError}
-              />
+              {capabilities.has('send:media') ? (
+                <FileUpload
+                  conversationId={conversationId}
+                  onUploadComplete={handleUploadComplete}
+                  onUploadError={handleUploadError}
+                />
+              ) : (
+                <div
+                  className="p-2.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
+                  title="Verify your identity to send files"
+                >
+                  🔒
+                </div>
+              )}
               <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
                 <textarea
                   value={message}
@@ -784,17 +811,35 @@ export default function MessageThreadPage() {
                 />
               </div>
               <div className="relative flex-shrink-0">
-                <LocationPicker
-                  onLocationSelected={handleLocationSelected}
+                {capabilities.has('send:location') ? (
+                  <LocationPicker
+                    onLocationSelected={handleLocationSelected}
+                    disabled={sending}
+                  />
+                ) : (
+                  <div
+                    className="p-2.5 opacity-50 cursor-not-allowed text-gray-400"
+                    title="Verify your identity to share location"
+                  >
+                    🔒
+                  </div>
+                )}
+              </div>
+              {capabilities.has('send:voice') ? (
+                <VoiceRecorder
+                  onRecordingStart={() => setVoiceActive(true)}
+                  onRecordingComplete={handleVoiceComplete}
+                  onCancel={() => setVoiceActive(false)}
                   disabled={sending}
                 />
-              </div>
-              <VoiceRecorder
-                onRecordingStart={() => setVoiceActive(true)}
-                onRecordingComplete={handleVoiceComplete}
-                onCancel={() => setVoiceActive(false)}
-                disabled={sending}
-              />
+              ) : (
+                <div
+                  className="p-2.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
+                  title="Verify your identity to send voice messages"
+                >
+                  🔒
+                </div>
+              )}
               <button
                 onClick={handleSend}
                 disabled={(!message.trim() && !uploadedMedia) || sending}

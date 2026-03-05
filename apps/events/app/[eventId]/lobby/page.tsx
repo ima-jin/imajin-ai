@@ -107,6 +107,7 @@ export default function EventLobbyPage({ params }: { params: Promise<{ eventId: 
   const streamRef = useRef<MediaStream | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [capabilities, setCapabilities] = useState<Set<string>>(new Set(['send:text']));
 
   const CHAT_SERVICE_URL = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
   const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3002';
@@ -127,6 +128,22 @@ export default function EventLobbyPage({ params }: { params: Promise<{ eventId: 
     }
     fetchSession();
   }, [AUTH_SERVICE_URL]);
+
+  // Fetch capabilities from chat service
+  useEffect(() => {
+    async function fetchCapabilities() {
+      try {
+        const res = await fetch(`${CHAT_SERVICE_URL}/api/capabilities`, { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          setCapabilities(new Set(data.capabilities));
+        }
+      } catch {
+        // Silently fail - default to text-only
+      }
+    }
+    fetchCapabilities();
+  }, [CHAT_SERVICE_URL]);
 
   // Check ticket ownership
   useEffect(() => {
@@ -628,14 +645,23 @@ export default function EventLobbyPage({ params }: { params: Promise<{ eventId: 
               className="hidden"
               onChange={handleFileChange}
             />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={sending}
-              className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition disabled:opacity-50 text-gray-500 flex-shrink-0"
-              title="Attach file"
-            >
-              {'\uD83D\uDCCE'}
-            </button>
+            {capabilities.has('send:media') ? (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sending}
+                className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition disabled:opacity-50 text-gray-500 flex-shrink-0"
+                title="Attach file"
+              >
+                {'\uD83D\uDCCE'}
+              </button>
+            ) : (
+              <div
+                className="p-2.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
+                title="Verify your identity to send files"
+              >
+                🔒
+              </div>
+            )}
 
             {/* Text input */}
             <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
@@ -650,24 +676,42 @@ export default function EventLobbyPage({ params }: { params: Promise<{ eventId: 
             </div>
 
             {/* Location */}
-            <button
-              onClick={handleShareLocation}
-              disabled={sending}
-              className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition disabled:opacity-50 text-gray-500 flex-shrink-0"
-              title="Share location"
-            >
-              {'\uD83D\uDCCD'}
-            </button>
+            {capabilities.has('send:location') ? (
+              <button
+                onClick={handleShareLocation}
+                disabled={sending}
+                className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition disabled:opacity-50 text-gray-500 flex-shrink-0"
+                title="Share location"
+              >
+                {'\uD83D\uDCCD'}
+              </button>
+            ) : (
+              <div
+                className="p-2.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
+                title="Verify your identity to share location"
+              >
+                🔒
+              </div>
+            )}
 
             {/* Voice record */}
-            <button
-              onClick={startRecording}
-              disabled={sending}
-              className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition disabled:opacity-50 text-gray-500 flex-shrink-0"
-              title="Record voice message"
-            >
-              {'\uD83C\uDFA4'}
-            </button>
+            {capabilities.has('send:voice') ? (
+              <button
+                onClick={startRecording}
+                disabled={sending}
+                className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition disabled:opacity-50 text-gray-500 flex-shrink-0"
+                title="Record voice message"
+              >
+                {'\uD83C\uDFA4'}
+              </button>
+            ) : (
+              <div
+                className="p-2.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
+                title="Verify your identity to send voice messages"
+              >
+                🔒
+              </div>
+            )}
 
             {/* Send */}
             <button
