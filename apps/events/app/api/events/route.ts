@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     const PLATFORM_DID = process.env.PLATFORM_DID || 'did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213';
     const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE || '0.015'); // 1.5%
     const fairManifest = {
-      version: '1.0',
+      version: '0.2.0',
       chain: [
         { did: eventDid, role: 'event', share: 1 - PLATFORM_FEE },
         { did: PLATFORM_DID, role: 'platform', share: PLATFORM_FEE },

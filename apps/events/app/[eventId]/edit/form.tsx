@@ -346,7 +346,8 @@ export default function EventEditForm({ event, existingTickets }: Props) {
               </div>
 
               <div className="text-xs text-gray-400">
-                Version {fairManifest.version || '1.0'} · Applied to all ticket transactions
+                <a href="https://github.com/ima-jin/.fair" target="_blank" rel="noopener noreferrer" className="hover:text-orange-500 transition">.fair</a>
+                {' '}v{fairManifest.version || '0.2.0'} · Applied to all ticket transactions
               </div>
             </>
           ) : (

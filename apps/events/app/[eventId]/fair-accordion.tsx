@@ -93,7 +93,8 @@ export function FairAccordion({ fairManifest }: Props) {
           )}
 
           <div className="text-[10px] text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700">
-            .fair v{fairManifest.version || '1.0'} — transparent attribution for every transaction
+            <a href="https://github.com/ima-jin/.fair" target="_blank" rel="noopener noreferrer" className="hover:text-orange-500 transition">.fair</a>
+            {' '}v{fairManifest.version || '0.2.0'} — transparent attribution for every transaction
           </div>
         </div>
       )}

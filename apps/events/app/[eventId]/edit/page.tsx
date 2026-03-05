@@ -67,7 +67,15 @@ export default async function EditEventPage({ params }: Props) {
     <div className="min-h-screen">
       <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Edit Event</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-bold mb-2">Edit Event</h1>
+            <a
+              href={`/${eventId}`}
+              className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-1"
+            >
+              ← View Live Event
+            </a>
+          </div>
           <p className="text-gray-500 dark:text-gray-400">
             Update your event details
           </p>
