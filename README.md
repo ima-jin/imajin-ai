@@ -60,26 +60,28 @@ Core services that make up the sovereign stack.
 | [profile](./apps/profile) | 3005 | 7005 | [profile.imajin.ai](https://profile.imajin.ai) | Public identity pages | ✅ Live |
 | [events](./apps/events) | 3006 | 7006 | [events.imajin.ai](https://events.imajin.ai) | Create events, sell tickets | ✅ Live |
 | [chat](./apps/chat) | 3007 | 7007 | [chat.imajin.ai](https://chat.imajin.ai) | E2EE messaging, trust-bound | ✅ Live |
+| [input](./apps/input) | 3008 | 7008 | [input.imajin.ai](https://input.imajin.ai) | Input processing (voice, files) | 🔨 Dev |
+| [media](./apps/media) | 3009 | 7009 | [media.imajin.ai](https://media.imajin.ai) | Asset storage, .fair attribution | 🔨 Dev |
 
-### Profile Extensions
+### Imajin Apps (3100+/7100+)
 
 Account-based apps tied to a user's DID, accessible at `{service}.imajin.ai/{handle}`.
 
 | App | Dev Port | Prod Port | Purpose | Status |
 |-----|----------|-----------|---------|--------|
-| [coffee](./apps/coffee) | 3008 | 7008 | Tip jar / support page | 📋 Scaffolded |
-| [dykil](./apps/dykil) | 3009 | 7009 | Surveys & polls (event integration) | 📋 Scaffolded |
-| [links](./apps/links) | 3010 | 7010 | Curated link collection | 📋 Scaffolded |
-| learn | 3011 | 7011 | Lessons & courses | 📋 Planned |
+| [coffee](./apps/coffee) | 3100 | 7100 | Tip jar / support page | ✅ Live |
+| [dykil](./apps/dykil) | 3101 | 7101 | Surveys & polls (event integration) | 📋 Scaffolded |
+| [links](./apps/links) | 3102 | 7102 | Curated link collection | 📋 Scaffolded |
+| learn | 3103 | 7103 | Lessons & courses | 📋 Planned |
 
-### Standalone Apps
+### Client Apps (3400+/7400+)
 
 Separate repos — consume the platform but aren't part of it. Own databases.
 
 | App | Repo | Domain | Purpose | Status |
 |-----|------|--------|---------|--------|
-| fixready | [imajin-fixready](https://github.com/ima-jin/imajin-fixready) | [fixready.imajin.ai](https://fixready.imajin.ai) | Home repair knowledge marketplace | ✅ Live |
-| karaoke | [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke) | [karaoke.imajin.ai](https://karaoke.imajin.ai) | Music & performance | ✅ Live |
+| fixready | [imajin-fixready](https://github.com/ima-jin/imajin-fixready) | 3400/7400 | [fixready.imajin.ai](https://fixready.imajin.ai) | Home repair knowledge marketplace | ✅ Live |
+| karaoke | [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke) | 3401/7401 | [karaoke.imajin.ai](https://karaoke.imajin.ai) | Music & performance | ✅ Live |
 
 ---
 
@@ -94,6 +96,8 @@ Shared libraries used across all apps.
 | [@imajin/pay](./packages/pay) | Unified payments (Stripe + Solana) |
 | [@imajin/config](./packages/config) | Shared configuration |
 | [@imajin/ui](./packages/ui) | Shared UI components |
+| [@imajin/input](./packages/input) | Input components (emoji, voice, GPS, file upload) |
+| [@imajin/media](./packages/media) | Media browser & asset display components |
 
 ---
 
@@ -195,15 +199,20 @@ imajin-ai/
 │   ├── profile/       # Profile pages
 │   ├── events/        # Events & ticketing
 │   ├── chat/          # E2EE messaging
-│   ├── coffee/        # Tip jar
-│   ├── dykil/         # Surveys & polls
-│   └── links/         # Link collection
+│   ├── input/         # Input processing (voice, files)
+│   ├── media/         # Asset storage, .fair attribution
+│   ├── coffee/        # Tip jar (3100)
+│   ├── dykil/         # Surveys & polls (3101)
+│   ├── links/         # Link collection (3102)
+│   └── learn/         # Lessons & courses (3103)
 ├── packages/
 │   ├── auth/          # @imajin/auth — signing, DIDs
 │   ├── db/            # @imajin/db — database layer
 │   ├── pay/           # @imajin/pay — payments
 │   ├── config/        # @imajin/config — shared config
-│   └── ui/            # @imajin/ui — shared components
+│   ├── ui/            # @imajin/ui — shared components
+│   ├── input/         # @imajin/input — input components
+│   └── media/         # @imajin/media — media components
 ├── articles/          # Essays & reference docs
 │   ├── THESIS.md      # Canonical concept definitions
 │   ├── ARCHITECTURE.md # Technical architecture
@@ -223,7 +232,10 @@ imajin-ai/
 
 Self-hosted on HP ProLiant ML350p Gen8 (Ubuntu 24.04). Caddy for reverse proxy + auto-SSL. pm2 for process management. GitHub Actions self-hosted runner for CI/CD.
 
-**Port convention:** `3xxx` = dev, `7xxx` = prod (1:1 mapping). `x000-x099` = platform services, `x400+` = standalone client apps.
+**Port convention:** `3xxx` = dev, `7xxx` = prod (1:1 mapping). Three tiers:
+- `x000-x099` — Core platform services
+- `x100-x199` — Imajin apps (account-based, DID-linked)
+- `x400-x499` — Client apps (standalone repos, own databases)
 
 **pm2 naming:** Bare names = prod (`www`, `auth`, `events`). Prefixed = dev (`dev-www`, `dev-auth`, `dev-events`).
 

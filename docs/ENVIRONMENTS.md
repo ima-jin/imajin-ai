@@ -9,6 +9,8 @@ All environments run on the self-hosted server (`imajin-server`, 192.168.1.193).
 | Production | `imajin_prod` | `imajin` | 5432 |
 | Development | `imajin_dev` | `imajin_dev` | 5432 |
 
+Database schemas: `auth`, `profile`, `events`, `coffee`, `chat`, `connections`, `input`, `media` (one schema per service, shared database).
+
 Connection string format:
 ```
 DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/DATABASE"
@@ -22,10 +24,29 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 
 ### Port Convention
 
-- `3xxx` = development
-- `7xxx` = production
-- `x000-x099` = core platform services
-- `x400+` = client applications
+- `3xxx` = development, `7xxx` = production (1:1 mapping)
+- `x000-x099` — **Core platform** (www, auth, pay, events, input, media, etc.)
+- `x100-x199` — **Imajin apps** (coffee, dykil, links, learn — account-based, DID-linked)
+- `x400-x499` — **Client apps** (fixready, karaoke — standalone repos, own databases)
+
+| Tier | Service | Dev | Prod |
+|------|---------|-----|------|
+| Core | www | 3000 | 7000 |
+| Core | auth | 3001 | 7001 |
+| Core | registry | 3002 | 7002 |
+| Core | connections | 3003 | 7003 |
+| Core | pay | 3004 | 7004 |
+| Core | profile | 3005 | 7005 |
+| Core | events | 3006 | 7006 |
+| Core | chat | 3007 | 7007 |
+| Core | input | 3008 | 7008 |
+| Core | media | 3009 | 7009 |
+| Imajin | coffee | 3100 | 7100 |
+| Imajin | dykil | 3101 | 7101 |
+| Imajin | links | 3102 | 7102 |
+| Imajin | learn | 3103 | 7103 |
+| Client | fixready | 3400 | 7400 |
+| Client | karaoke | 3401 | 7401 |
 
 ### pm2 Naming
 
@@ -57,6 +78,20 @@ cd ~/prod/imajin-ai/apps/SERVICE
 DATABASE_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2) npx drizzle-kit push --force
 ```
 
+## GPU Node (imajin-ml)
+
+ML/compute services run on a dedicated GPU node (`192.168.1.124`), not the ProLiant.
+
+| Service | Port | Model | Purpose |
+|---------|------|-------|---------|
+| Whisper | 8765 | large-v3 (CUDA float16) | Speech-to-text transcription |
+
+The input service relays audio to the GPU node over LAN. No public subdomain — internal only.
+
+- **Repo:** [ima-jin/imajin-ml](https://github.com/ima-jin/imajin-ml)
+- **Server path:** `~/imajin-ml`
+- **Process:** uvicorn (systemd planned)
+
 ## Local Development
 
 To develop locally against the server DB, SSH tunnel:
@@ -72,3 +107,4 @@ Then use `localhost:5432` in your `.env.local`.
 - **pm2 prod:** `~/prod/ecosystem.config.js`
 - **pm2 dev:** `~/dev/ecosystem.config.js`
 - **Env files:** `.env.local` in each app directory
+
