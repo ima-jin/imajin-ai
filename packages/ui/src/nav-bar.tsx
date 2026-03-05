@@ -195,7 +195,7 @@ export function NavBar({
           href={buildUrl('www', servicePrefix, domain, serviceUrls)}
           className="flex items-center hover:opacity-80 transition"
         >
-          <img src="/images/logo.svg" alt="Imajin" className="h-8" />
+          <img src={`${buildUrl("www", servicePrefix, domain, overrides)}/images/logo.svg`} alt="Imajin" className="h-8" />
         </a>
 
         {/* Center - Nav Links (desktop) */}

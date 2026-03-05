@@ -36,6 +36,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Query connections from connections schema (pod-based model)
     // A connection = being in the same pod as someone else
+    // Only count members from 2-person pods (actual connections, not event/group pods)
     const sql = getClient();
     const [connectionsResult] = await sql`
       SELECT COUNT(DISTINCT pm2.did)::int as count
@@ -44,6 +45,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       WHERE pm1.did = ${profile.did}
         AND pm1.removed_at IS NULL
         AND pm2.removed_at IS NULL
+        AND pm1.pod_id IN (
+          SELECT pod_id FROM connections.pod_members
+          WHERE removed_at IS NULL
+          GROUP BY pod_id
+          HAVING count(*) = 2
+        )
     `;
 
     return jsonResponse({
