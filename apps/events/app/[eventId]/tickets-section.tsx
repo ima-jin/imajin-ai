@@ -10,6 +10,7 @@ interface UserTicket {
   purchasedAt: string | null;
   pricePaid: number | null;
   currency: string | null;
+  qrCodeDataUri?: string;
   ticketType: {
     name: string;
     description: string | null;
@@ -156,9 +157,21 @@ function MyTicketsTab({ userTickets }: { userTickets: UserTicket[] }) {
               </div>
             )}
 
+            {/* QR Code + Ticket ID */}
             <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                Ticket ID: {ticket.id}
+              <div className="bg-gray-900 dark:bg-[#0a0a0a] border border-gray-700 dark:border-gray-800 rounded-lg p-4 text-center">
+                {ticket.qrCodeDataUri && (
+                  <img
+                    src={ticket.qrCodeDataUri}
+                    alt="Ticket QR Code"
+                    width={160}
+                    height={160}
+                    className="mx-auto mb-3"
+                  />
+                )}
+                <div className="font-mono text-xs text-gray-400">
+                  {ticket.id}
+                </div>
               </div>
             </div>
           </div>

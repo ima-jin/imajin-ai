@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { db, events, ticketTypes, tickets } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { TicketsSection } from './tickets-section';
+import { generateQRCode } from '@/src/lib/email';
 
 export const revalidate = 0; // always fresh — event data changes frequently during editing
 import { Countdown } from './countdown';
@@ -140,17 +141,29 @@ async function getUserTickets(eventId: string, userDid: string) {
       )
     );
 
-  return userTickets.map(({ ticket, ticketType }) => ({
-    id: ticket.id,
-    status: ticket.status,
-    purchasedAt: (ticket.purchasedAt || ticket.createdAt)?.toISOString() || null,
-    pricePaid: ticket.pricePaid,
-    currency: ticket.currency,
-    ticketType: ticketType ? {
-      name: ticketType.name,
-      description: ticketType.description,
-      perks: ticketType.perks,
-    } : null,
+  const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
+
+  return Promise.all(userTickets.map(async ({ ticket, ticketType }) => {
+    // Generate QR code from magic link (same as email)
+    let qrCodeDataUri: string | undefined;
+    if (ticket.magicToken) {
+      const magicLink = `${authUrl}/api/magic?token=${ticket.magicToken}`;
+      qrCodeDataUri = await generateQRCode(magicLink) || undefined;
+    }
+
+    return {
+      id: ticket.id,
+      status: ticket.status,
+      purchasedAt: (ticket.purchasedAt || ticket.createdAt)?.toISOString() || null,
+      pricePaid: ticket.pricePaid,
+      currency: ticket.currency,
+      qrCodeDataUri,
+      ticketType: ticketType ? {
+        name: ticketType.name,
+        description: ticketType.description,
+        perks: ticketType.perks,
+      } : null,
+    };
   }));
 }
 
