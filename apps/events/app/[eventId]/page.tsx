@@ -9,7 +9,7 @@ export const revalidate = 0; // always fresh — event data changes frequently d
 import { Countdown } from './countdown';
 import { EventLobbyAccordion } from './event-lobby-accordion';
 import { EventSurveyAccordion } from './event-survey-accordion';
-import { FairAccordion } from './fair-accordion';
+import { FairAccordion } from '@imajin/fair';
 import { ShareButton } from './share-button';
 import { getSession } from '@/src/lib/auth';
 import type { Metadata } from 'next';
@@ -368,7 +368,7 @@ export default async function EventPage({ params }: Props) {
 
         {/* .fair Attribution */}
         <div className="mb-6">
-          <FairAccordion fairManifest={(event.metadata as any)?.fair || null} />
+          <FairAccordion manifest={(event.metadata as any)?.fair || null} />
         </div>
 
         {/* Tickets Section */}
