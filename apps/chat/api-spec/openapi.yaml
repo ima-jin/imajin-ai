@@ -1,0 +1,751 @@
+openapi: "3.1.0"
+info:
+  title: imajin chat
+  version: "1.0.0"
+  description: Conversations, messages, E2EE key bundles, event lobbies, reactions, invites, and media upload.
+servers:
+  - url: https://chat.imajin.ai
+    description: production
+  - url: https://dev-chat.imajin.ai
+    description: dev
+  - url: http://localhost:7007
+    description: local
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+  schemas:
+    Conversation:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string }
+        name: { type: string }
+        description: { type: string }
+        visibility: { type: string, enum: [public, private] }
+        createdAt: { type: string, format: date-time }
+    Message:
+      type: object
+      properties:
+        id: { type: string }
+        conversationId: { type: string }
+        authorDid: { type: string }
+        content: { type: string }
+        replyTo: { type: string }
+        mediaType: { type: string }
+        mediaPath: { type: string }
+        mediaMeta: { type: object }
+        createdAt: { type: string, format: date-time }
+    KeyBundle:
+      type: object
+      properties:
+        did: { type: string }
+        identityKey: { type: string }
+        signedPreKey: { type: string }
+        signature: { type: string }
+        oneTimePreKey: { type: string }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/session:
+    get:
+      operationId: getChatSession
+      summary: Get current chat session
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Session info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  identity:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      handle: { type: string }
+                      name: { type: string }
+                      type: { type: string }
+
+  /api/conversations:
+    get:
+      operationId: listConversations
+      summary: List conversations for authenticated user
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Conversations list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversations:
+                    type: array
+                    items: { $ref: "#/components/schemas/Conversation" }
+    post:
+      operationId: createConversation
+      summary: Create a new conversation
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, participantDids]
+              properties:
+                type: { type: string }
+                name: { type: string }
+                description: { type: string }
+                participantDids: { type: array, items: { type: string } }
+                visibility: { type: string, enum: [public, private], default: private }
+      responses:
+        "201":
+          description: Conversation created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Conversation" }
+
+  /api/conversations/unread:
+    get:
+      operationId: getUnreadCounts
+      summary: Get unread message counts
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Unread counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  conversations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        unread: { type: integer }
+
+  /api/conversations/{id}:
+    get:
+      operationId: getConversation
+      summary: Get conversation by ID
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Conversation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Conversation" }
+        "404":
+          description: Not found
+    patch:
+      operationId: updateConversation
+      summary: Update conversation metadata
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                visibility: { type: string, enum: [public, private] }
+      responses:
+        "200":
+          description: Updated
+    delete:
+      operationId: deleteConversation
+      summary: Delete conversation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+
+  /api/conversations/{id}/messages:
+    get:
+      operationId: getMessages
+      summary: Get messages in a conversation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: before
+          in: query
+          schema: { type: string }
+          description: "Cursor for pagination (message ID)"
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items: { $ref: "#/components/schemas/Message" }
+    post:
+      operationId: sendMessage
+      summary: Send a message
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+                replyTo: { type: string }
+                mediaType: { type: string }
+                mediaPath: { type: string }
+                mediaMeta: { type: object }
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Message" }
+
+  /api/conversations/{id}/messages/{msgId}:
+    put:
+      operationId: editMessage
+      summary: Edit a message
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: msgId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+      responses:
+        "200":
+          description: Message updated
+    delete:
+      operationId: deleteMessage
+      summary: Delete a message
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: msgId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Message deleted
+
+  /api/conversations/{id}/participants:
+    get:
+      operationId: listParticipants
+      summary: List conversation participants
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Participants list
+    post:
+      operationId: addParticipant
+      summary: Add a participant
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string }
+      responses:
+        "201":
+          description: Participant added
+    patch:
+      operationId: updateParticipant
+      summary: Update participant role
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                did: { type: string }
+                role: { type: string }
+      responses:
+        "200":
+          description: Updated
+    delete:
+      operationId: removeParticipant
+      summary: Remove a participant
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: did
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Removed
+
+  /api/conversations/{id}/read:
+    post:
+      operationId: markRead
+      summary: Mark conversation as read
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Marked as read
+
+  /api/conversations/{id}/upload:
+    post:
+      operationId: uploadMedia
+      summary: Upload media to a conversation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Media uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mediaType: { type: string }
+                  mediaPath: { type: string }
+                  mediaMeta: { type: object }
+
+  /api/invites:
+    get:
+      operationId: listInvites
+      summary: List conversation invites
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: conversationId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invites list
+    post:
+      operationId: createInvite
+      summary: Create a conversation invite
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                conversationId: { type: string }
+      responses:
+        "201":
+          description: Invite created
+
+  /api/invites/{id}:
+    get:
+      operationId: getInvite
+      summary: Get invite by ID (public)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invite details
+    post:
+      operationId: acceptInvite
+      summary: Accept a conversation invite
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invite accepted
+    delete:
+      operationId: revokeInvite
+      summary: Revoke a conversation invite
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invite revoked
+
+  /api/keys:
+    get:
+      operationId: getKeyBundle
+      summary: Get own E2EE key bundle
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Key bundle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KeyBundle" }
+    post:
+      operationId: uploadKeyBundle
+      summary: Upload E2EE key bundle (X3DH-style)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identityKey, signedPreKey, signature]
+              properties:
+                identityKey: { type: string }
+                signedPreKey: { type: string }
+                signature: { type: string }
+                oneTimePreKeys: { type: array, items: { type: string } }
+      responses:
+        "200":
+          description: Key bundle stored
+
+  /api/keys/{did}:
+    get:
+      operationId: getPublicKeys
+      summary: Get public keys for a DID (public)
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Public key bundle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KeyBundle" }
+
+  /api/lobby/{eventId}:
+    get:
+      operationId: getLobby
+      summary: Get lobby conversation for an event (requires ticket)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Lobby conversation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Conversation" }
+        "403":
+          description: No ticket
+
+  /api/lobby/{eventId}/messages:
+    get:
+      operationId: getLobbyMessages
+      summary: Get lobby messages (requires ticket)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: before
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Lobby messages
+    post:
+      operationId: sendLobbyMessage
+      summary: Send a lobby message (requires ticket)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+      responses:
+        "201":
+          description: Message sent
+
+  /api/lookup/{did}:
+    get:
+      operationId: lookupDid
+      summary: Resolve DID to handle and name (proxies to auth service)
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Identity info
+
+  /api/messages/{msgId}/reactions:
+    get:
+      operationId: listReactions
+      summary: List reactions on a message
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: msgId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Reactions
+    post:
+      operationId: addReaction
+      summary: Add a reaction to a message
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: msgId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emoji]
+              properties:
+                emoji: { type: string }
+      responses:
+        "201":
+          description: Reaction added
+    delete:
+      operationId: removeReaction
+      summary: Remove a reaction from a message
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: msgId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emoji]
+              properties:
+                emoji: { type: string }
+      responses:
+        "200":
+          description: Reaction removed
+
+  /api/participants/migrate:
+    post:
+      operationId: migrateParticipants
+      summary: Migrate chat data between DIDs (e.g. soft → hard DID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fromDid, toDid]
+              properties:
+                fromDid: { type: string }
+                toDid: { type: string }
+      responses:
+        "200":
+          description: Migration result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  migrated: { type: boolean }
+                  participants: { type: integer }
+                  messages: { type: integer }
+
+  /api/participants/{did}/conversations:
+    get:
+      operationId: getParticipantConversations
+      summary: Get conversation IDs for a DID (public)
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Conversation IDs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversationIds: { type: array, items: { type: string } }
+
+  /api/profile:
+    get:
+      operationId: getChatProfile
+      summary: Proxy profile lookup by handle
+      parameters:
+        - name: handle
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Profile data
+
+  /api/media/chat/{path}:
+    get:
+      operationId: serveChatMedia
+      summary: Serve chat media files (public)
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Media file

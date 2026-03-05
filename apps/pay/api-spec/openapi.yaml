@@ -1,0 +1,523 @@
+openapi: "3.1.0"
+info:
+  title: imajin pay
+  version: "1.0.0"
+  description: Payments, balances, Stripe Connect onboarding, .fair multi-party settlement, escrow, and webhooks.
+servers:
+  - url: https://pay.imajin.ai
+    description: production
+  - url: https://dev-pay.imajin.ai
+    description: dev
+  - url: http://localhost:7004
+    description: local
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "Bearer token (internal service-to-service or user API token)"
+    apiKeyAuth:
+      type: http
+      scheme: bearer
+      description: "PAY_SERVICE_API_KEY — internal service-to-service calls only"
+    stripeWebhook:
+      type: apiKey
+      in: header
+      name: stripe-signature
+      description: "Stripe webhook signature verification (HMAC-SHA256)"
+  schemas:
+    Balance:
+      type: object
+      properties:
+        did: { type: string }
+        cashAmount: { type: number }
+        creditAmount: { type: number }
+        total: { type: number }
+        currency: { type: string }
+        updatedAt: { type: string, format: date-time }
+    Transaction:
+      type: object
+      properties:
+        id: { type: string }
+        did: { type: string }
+        amount: { type: number }
+        currency: { type: string }
+        service: { type: string }
+        type: { type: string }
+        metadata: { type: object }
+        createdAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/health:
+    get:
+      operationId: healthCheck
+      summary: Service health check
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  providers: { type: object }
+                  timestamp: { type: string, format: date-time }
+
+  /api/balance/{did}:
+    get:
+      operationId: getBalance
+      summary: Get balance for a DID
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Balance retrieved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Balance" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/balance/gift:
+    post:
+      operationId: giftCredits
+      summary: Bulk gift credits to multiple recipients
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_did, recipients]
+              properties:
+                from_did: { type: string }
+                recipients:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      did: { type: string }
+                      cash_amount: { type: number }
+                      credit_amount: { type: number }
+                metadata: { type: object }
+      responses:
+        "200":
+          description: Credits gifted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/balance/event-topup:
+    post:
+      operationId: eventTopup
+      summary: Multiplier-based event credit gifting
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_did, event_id, multiplier, recipient_dids, metadata]
+              properties:
+                from_did: { type: string }
+                event_id: { type: string }
+                multiplier: { type: number }
+                recipient_dids: { type: array, items: { type: string } }
+                metadata:
+                  type: object
+                  required: [ticket_price]
+                  properties:
+                    ticket_price: { type: number }
+      responses:
+        "200":
+          description: Event credits applied
+
+  /api/balance/withdraw:
+    post:
+      operationId: withdraw
+      summary: Withdraw cash balance to Stripe Connect account
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, account_id]
+              properties:
+                amount: { type: number }
+                currency: { type: string, default: usd }
+                account_id: { type: string }
+      responses:
+        "200":
+          description: Withdrawal initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  transactionId: { type: string }
+                  transferId: { type: string }
+                  amount: { type: number }
+                  currency: { type: string }
+
+  /api/balance/transfer:
+    post:
+      operationId: transferBalance
+      summary: Transfer balance between DIDs (service-to-service)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_did, to_did, amount]
+              properties:
+                from_did: { type: string }
+                to_did: { type: string }
+                amount: { type: number }
+                metadata: { type: object }
+      responses:
+        "200":
+          description: Transfer complete
+
+  /api/balance/topup:
+    post:
+      operationId: topupBalance
+      summary: Credit cash balance — internal service-to-service only
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did, amount, service, type]
+              properties:
+                did: { type: string }
+                amount: { type: number }
+                service: { type: string }
+                type: { type: string }
+                metadata: { type: object }
+      responses:
+        "200":
+          description: Balance topped up
+
+  /api/charge:
+    post:
+      operationId: createCharge
+      summary: Create a payment charge
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, currency, to]
+              properties:
+                amount: { type: number }
+                currency: { type: string }
+                to: { type: string }
+                description: { type: string }
+                metadata: { type: object }
+                idempotencyKey: { type: string }
+      responses:
+        "200":
+          description: Charge created
+
+  /api/checkout:
+    post:
+      operationId: createCheckout
+      summary: Create a Stripe checkout session
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items, currency, successUrl, cancelUrl]
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      description: { type: string }
+                      amount: { type: number }
+                      quantity: { type: number }
+                currency: { type: string }
+                successUrl: { type: string }
+                cancelUrl: { type: string }
+                customerEmail: { type: string }
+                metadata: { type: object }
+                fairManifest: { type: object }
+                connectedAccountId: { type: string }
+      responses:
+        "200":
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  url: { type: string }
+                  expiresAt: { type: string, format: date-time }
+                  transactionId: { type: string }
+
+  /api/settle:
+    post:
+      operationId: fairSettle
+      summary: .fair multi-party revenue settlement — internal only
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_did, total_amount, service, type, fair_manifest]
+              properties:
+                from_did: { type: string }
+                total_amount: { type: number }
+                service: { type: string }
+                type: { type: string }
+                fair_manifest:
+                  type: object
+                  required: [chain]
+                  properties:
+                    chain:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          did: { type: string }
+                          amount: { type: number }
+                          role: { type: string }
+                metadata: { type: object }
+      responses:
+        "200":
+          description: Settlement complete
+
+  /api/escrow:
+    post:
+      operationId: createEscrow
+      summary: Create an escrow
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, currency, from, to]
+              properties:
+                amount: { type: number }
+                currency: { type: string }
+                from: { type: string }
+                to: { type: string }
+                arbiter: { type: string }
+                conditions: { type: object }
+                metadata: { type: object }
+      responses:
+        "201":
+          description: Escrow created
+    put:
+      operationId: releaseEscrow
+      summary: Release or refund an escrow
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action: { type: string, enum: [release, refund] }
+                escrowId: { type: string }
+      responses:
+        "200":
+          description: Escrow settled
+
+  /api/connect/onboard:
+    post:
+      operationId: stripeConnectOnboard
+      summary: Start Stripe Connect Express onboarding
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [return_url, refresh_url]
+              properties:
+                return_url: { type: string }
+                refresh_url: { type: string }
+      responses:
+        "200":
+          description: Onboarding link created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accountId: { type: string }
+                  onboardingUrl: { type: string }
+
+  /api/connect/status:
+    get:
+      operationId: stripeConnectStatus
+      summary: Check Stripe Connect account status
+      parameters:
+        - name: account_id
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Account status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accountId: { type: string }
+                  chargesEnabled: { type: boolean }
+                  payoutsEnabled: { type: boolean }
+                  detailsSubmitted: { type: boolean }
+
+  /api/connect/webhook:
+    post:
+      operationId: stripeConnectWebhook
+      summary: Stripe Connect webhook — account.updated events
+      security:
+        - stripeWebhook: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Event received
+
+  /api/transactions/{did}:
+    get:
+      operationId: listTransactions
+      summary: List transactions for a DID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+        - name: service
+          in: query
+          schema: { type: string }
+        - name: type
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactions:
+                    type: array
+                    items: { $ref: "#/components/schemas/Transaction" }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  count: { type: integer }
+
+  /api/transactions/{did}/summary:
+    get:
+      operationId: transactionSummary
+      summary: Transaction summary grouped by service
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  services: { type: object }
+                  total:
+                    type: object
+                    properties:
+                      earned: { type: number }
+                      spent: { type: number }
+                      net: { type: number }
+
+  /api/webhook:
+    post:
+      operationId: stripeWebhook
+      summary: Stripe webhook — payment_intent, checkout.session, subscription, invoice events
+      security:
+        - stripeWebhook: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Event received

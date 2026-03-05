@@ -1,0 +1,536 @@
+openapi: "3.1.0"
+info:
+  title: imajin connections
+  version: "1.0.0"
+  description: Pod-based social graph — 2-person connection pods, invite codes, trust graph invites, pod management, and member/link operations.
+servers:
+  - url: https://connections.imajin.ai
+    description: production
+  - url: https://dev-connections.imajin.ai
+    description: dev
+  - url: http://localhost:7003
+    description: local
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+  schemas:
+    Pod:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        ownerDid: { type: string }
+        type: { type: string, enum: [personal, group, community] }
+        visibility: { type: string, enum: [public, private] }
+        avatar: { type: string }
+        createdAt: { type: string, format: date-time }
+    Invite:
+      type: object
+      properties:
+        id: { type: string }
+        code: { type: string }
+        fromDid: { type: string }
+        fromHandle: { type: string }
+        note: { type: string }
+        used: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    TrustInvite:
+      type: object
+      properties:
+        id: { type: string }
+        inviterDid: { type: string }
+        inviteeDid: { type: string }
+        inviteeEmail: { type: string }
+        status: { type: string, enum: [pending, accepted, revoked, expired] }
+        expiresAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/connections:
+    get:
+      operationId: listConnections
+      summary: List 2-person connection pods for authenticated user
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Connections list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connections:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        did: { type: string }
+                        podId: { type: string }
+                        joinedAt: { type: string, format: date-time }
+                        podName: { type: string }
+                        handle: { type: string }
+                        name: { type: string }
+
+  /api/connections/{podId}:
+    delete:
+      operationId: disconnect
+      summary: Disconnect from a pod (leave 2-person connection)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: podId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Disconnected
+
+  /api/connections/status/{did}:
+    get:
+      operationId: checkGraphMembership
+      summary: Check if a DID is in the trust graph
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Graph membership status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  inGraph: { type: boolean }
+                  connectionCount: { type: integer }
+
+  /api/invites:
+    get:
+      operationId: listConnectionInvites
+      summary: List connection invites (sent by user)
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Invites list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invites:
+                    type: array
+                    items: { $ref: "#/components/schemas/Invite" }
+    post:
+      operationId: createConnectionInvite
+      summary: Create a connection invite
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                toEmail: { type: string, format: email }
+                toPhone: { type: string }
+                note: { type: string }
+                maxUses: { type: integer }
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invite: { $ref: "#/components/schemas/Invite" }
+                  url: { type: string }
+                  remaining: { type: integer }
+
+  /api/invites/{code}:
+    get:
+      operationId: getConnectionInvite
+      summary: Get invite by code (public, CORS-enabled)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invite details
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invite" }
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteConnectionInvite
+      summary: Delete an invite
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+
+  /api/invites/{code}/accept:
+    post:
+      operationId: acceptConnectionInvite
+      summary: Accept an invite — creates a 2-person connection pod
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "201":
+          description: Connected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  pod:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      name: { type: string }
+
+  /api/pods:
+    get:
+      operationId: listPods
+      summary: List pods for authenticated user
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Pods list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pods:
+                    type: array
+                    items: { $ref: "#/components/schemas/Pod" }
+    post:
+      operationId: createPod
+      summary: Create a pod — requires trust graph membership
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                avatar: { type: string }
+                type: { type: string, enum: [personal, group, community] }
+                visibility: { type: string, enum: [public, private] }
+      responses:
+        "201":
+          description: Pod created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pod" }
+
+  /api/pods/{id}:
+    get:
+      operationId: getPod
+      summary: Get pod by ID
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Pod
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pod" }
+    patch:
+      operationId: updatePod
+      summary: Update pod
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Pod" }
+      responses:
+        "200":
+          description: Pod updated
+    delete:
+      operationId: deletePod
+      summary: Delete pod
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+
+  /api/pods/{id}/members:
+    post:
+      operationId: addPodMember
+      summary: Add a member to a pod
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string }
+                role: { type: string, default: member }
+      responses:
+        "201":
+          description: Member added
+    delete:
+      operationId: removePodMember
+      summary: Remove a member from a pod
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string }
+      responses:
+        "200":
+          description: Member removed
+
+  /api/pods/{id}/links:
+    post:
+      operationId: linkPod
+      summary: Link a child pod to this pod
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [childPodId]
+              properties:
+                childPodId: { type: string }
+      responses:
+        "201":
+          description: Pod linked
+    delete:
+      operationId: unlinkPod
+      summary: Unlink a child pod
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [childPodId]
+              properties:
+                childPodId: { type: string }
+      responses:
+        "200":
+          description: Pod unlinked
+
+  /api/pods/{id}/resolve:
+    get:
+      operationId: resolvePodMembers
+      summary: Resolve full recursive member set via trust graph
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Resolved members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  podId: { type: string }
+                  members: { type: array, items: { type: string } }
+
+  /api/trust-invites:
+    get:
+      operationId: listTrustInvites
+      summary: List sent and received trust graph invites
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Trust invites
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent:
+                    type: array
+                    items: { $ref: "#/components/schemas/TrustInvite" }
+                  received:
+                    type: array
+                    items: { $ref: "#/components/schemas/TrustInvite" }
+    post:
+      operationId: createTrustInvite
+      summary: Create a trust graph invite — requires hard DID and trust graph membership. 7-day cooldown per invite.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                did: { type: string }
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invite: { $ref: "#/components/schemas/TrustInvite" }
+                  message: { type: string }
+        "403":
+          description: Not in trust graph or not hard DID
+        "429":
+          description: Cooldown active or pending invite exists
+
+  /api/trust-invites/{id}:
+    delete:
+      operationId: revokeTrustInvite
+      summary: Revoke a pending trust invite
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invite revoked
+
+  /api/trust-invites/{id}/accept:
+    post:
+      operationId: acceptTrustInvite
+      summary: Accept a trust graph invite — creates bilateral connection pod
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invite accepted, pod created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  pod:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      name: { type: string }
+                  message: { type: string }
+        "410":
+          description: Invite expired or already accepted/revoked
+
+  /api/auth/session:
+    get:
+      operationId: getAuthSession
+      summary: Proxy to auth service session
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Session data
+
+  /api/auth/logout:
+    post:
+      operationId: authLogout
+      summary: Proxy logout to auth service
+      responses:
+        "200":
+          description: Logged out

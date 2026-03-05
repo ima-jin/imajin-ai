@@ -1,0 +1,356 @@
+openapi: "3.1.0"
+info:
+  title: imajin auth
+  version: "1.0.0"
+  description: Identity registration, DID-based challenge-response authentication, session management, and magic-link flows.
+servers:
+  - url: https://auth.imajin.ai
+    description: production
+  - url: https://dev-auth.imajin.ai
+    description: dev
+  - url: http://localhost:7001
+    description: local
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+  schemas:
+    Identity:
+      type: object
+      properties:
+        did: { type: string, example: "did:imajin:abc123" }
+        handle: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [hard, soft] }
+        role: { type: string }
+        tier: { type: string, enum: [hard, soft] }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/challenge:
+    post:
+      operationId: createChallenge
+      summary: Create a signing challenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, description: "DID or public key" }
+      responses:
+        "200":
+          description: Challenge created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  challengeId: { type: string }
+                  challenge: { type: string }
+                  expiresAt: { type: number }
+
+  /api/authenticate:
+    post:
+      operationId: authenticate
+      summary: Submit signed challenge and receive a token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, challengeId, signature]
+              properties:
+                id: { type: string }
+                challengeId: { type: string }
+                signature: { type: string }
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  expiresAt: { type: number }
+                  identity: { $ref: "#/components/schemas/Identity" }
+        "401":
+          description: Invalid signature
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/login/challenge:
+    post:
+      operationId: createLoginChallenge
+      summary: Create a login challenge by handle or DID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                handle: { type: string }
+                did: { type: string }
+      responses:
+        "200":
+          description: Challenge created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  challengeId: { type: string }
+                  challenge: { type: string }
+                  expiresAt: { type: number }
+
+  /api/login/verify:
+    post:
+      operationId: verifyLogin
+      summary: Verify signed challenge and set session cookie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeId, signature]
+              properties:
+                challengeId: { type: string }
+                signature: { type: string }
+      responses:
+        "200":
+          description: Login successful — sets imajin_session cookie
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "imajin_session=<jwt>; HttpOnly; Secure; SameSite=Lax"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  handle: { type: string }
+                  type: { type: string }
+                  name: { type: string }
+        "401":
+          description: Invalid signature
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/logout:
+    post:
+      operationId: logout
+      summary: Clear session cookie
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+
+  /api/session:
+    get:
+      operationId: getSession
+      summary: Get current session from cookie
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Session data
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Identity" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/session/soft:
+    post:
+      operationId: createSoftSession
+      summary: Create a soft DID session from email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string }
+      responses:
+        "200":
+          description: Soft session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  handle: { type: string }
+                  type: { type: string, enum: [soft] }
+                  name: { type: string }
+                  tier: { type: string, enum: [soft] }
+
+  /api/register:
+    post:
+      operationId: register
+      summary: Register a new hard DID identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publicKey, type, signature]
+              properties:
+                publicKey: { type: string, description: "Ed25519 public key (base64)" }
+                handle: { type: string }
+                name: { type: string }
+                type: { type: string, enum: [hard] }
+                signature: { type: string }
+                inviteCode: { type: string }
+      responses:
+        "201":
+          description: Identity registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  handle: { type: string }
+                  type: { type: string }
+                  created: { type: boolean }
+                  inviteAccepted: { type: boolean }
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/magic:
+    get:
+      operationId: magicLink
+      summary: Authenticate via magic link token and redirect
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "302":
+          description: Redirects to event or destination after setting session cookie
+        "400":
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/lookup/{id}:
+    get:
+      operationId: lookupIdentity
+      summary: Look up identity by DID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: "DID (e.g., did:imajin:abc123)"
+      responses:
+        "200":
+          description: Identity found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  handle: { type: string }
+                  name: { type: string }
+                  type: { type: string }
+                  avatarUrl: { type: string }
+                  metadata: { type: object }
+                  createdAt: { type: string, format: date-time }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/validate:
+    post:
+      operationId: validateToken
+      summary: Validate an API token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean }
+                  identity: { $ref: "#/components/schemas/Identity" }
+
+  /api/verify:
+    post:
+      operationId: verifySignature
+      summary: Stateless verification of a signed message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: object
+                  required: [from, type, timestamp, payload, signature]
+                  properties:
+                    from: { type: string }
+                    type: { type: string }
+                    timestamp: { type: number }
+                    payload: { type: object }
+                    signature: { type: string }
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean }
+                  identity: { $ref: "#/components/schemas/Identity" }

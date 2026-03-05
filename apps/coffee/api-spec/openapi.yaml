@@ -1,0 +1,329 @@
+openapi: "3.1.0"
+info:
+  title: imajin coffee
+  version: "1.0.0"
+  description: Tip pages and one-time or recurring support payments via Stripe Checkout and Solana.
+servers:
+  - url: https://coffee.imajin.ai
+    description: production
+  - url: https://dev-coffee.imajin.ai
+    description: dev
+  - url: http://localhost:7100
+    description: local
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+    webhookSecret:
+      type: http
+      scheme: bearer
+      description: "Bearer WEBHOOK_SECRET — internal payment callback from pay service"
+  schemas:
+    CoffeePage:
+      type: object
+      properties:
+        id: { type: string }
+        did: { type: string }
+        handle: { type: string }
+        title: { type: string }
+        bio: { type: string }
+        avatar: { type: string }
+        theme: { type: object }
+        paymentMethods:
+          type: object
+          properties:
+            stripe:
+              type: object
+              properties:
+                enabled: { type: boolean }
+            solana:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                address: { type: string }
+        presets: { type: array, items: { type: integer }, description: "Preset amounts in cents" }
+        allowCustomAmount: { type: boolean }
+        allowMessages: { type: boolean }
+        isPublic: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    Tip:
+      type: object
+      properties:
+        id: { type: string }
+        pageId: { type: string }
+        fromDid: { type: string }
+        fromName: { type: string }
+        amount: { type: integer, description: "Amount in cents" }
+        currency: { type: string }
+        message: { type: string }
+        paymentMethod: { type: string, enum: [stripe, solana] }
+        paymentId: { type: string }
+        status: { type: string, enum: [pending, completed, failed] }
+        createdAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/pages:
+    post:
+      operationId: createCoffeePage
+      summary: Create a tip page — one per DID
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handle, title, paymentMethods]
+              properties:
+                handle: { type: string, description: "3-30 chars, lowercase alphanumeric and underscores" }
+                title: { type: string }
+                bio: { type: string }
+                avatar: { type: string }
+                theme: { type: object }
+                paymentMethods: { type: object }
+                presets: { type: array, items: { type: integer } }
+                allowCustomAmount: { type: boolean }
+                allowMessages: { type: boolean }
+      responses:
+        "201":
+          description: Page created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoffeePage" }
+        "409":
+          description: Page or handle already exists
+
+  /api/pages/mine:
+    get:
+      operationId: getMyCoffeePage
+      summary: Get authenticated user's tip page
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: User's coffee page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoffeePage" }
+        "404":
+          description: No page found
+
+  /api/pages/{handle}:
+    get:
+      operationId: getCoffeePage
+      summary: Get a public tip page by handle
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Tip page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoffeePage" }
+        "403":
+          description: Page is private
+        "404":
+          description: Not found
+    put:
+      operationId: updateCoffeePage
+      summary: Update tip page (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                bio: { type: string }
+                avatar: { type: string }
+                theme: { type: object }
+                paymentMethods: { type: object }
+                presets: { type: array, items: { type: integer } }
+                allowCustomAmount: { type: boolean }
+                allowMessages: { type: boolean }
+                isPublic: { type: boolean }
+      responses:
+        "200":
+          description: Page updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoffeePage" }
+    delete:
+      operationId: deleteCoffeePage
+      summary: Delete tip page (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+
+  /api/tip:
+    post:
+      operationId: sendTip
+      summary: Send a tip via Stripe Checkout (redirect) or Solana (address return)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pageHandle, amount, paymentMethod]
+              properties:
+                pageHandle: { type: string }
+                amount: { type: integer, description: "Amount in cents (minimum 100)" }
+                currency: { type: string, default: USD }
+                paymentMethod: { type: string, enum: [stripe, solana] }
+                message: { type: string }
+                fromName: { type: string }
+                fundDirection: { type: string }
+                recurring: { type: boolean }
+      responses:
+        "200":
+          description: Tip initiated
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    description: Stripe — redirect URL
+                    properties:
+                      tipId: { type: string }
+                      url: { type: string }
+                      paymentMethod: { type: string, enum: [stripe] }
+                  - type: object
+                    description: Solana — destination address
+                    properties:
+                      tipId: { type: string }
+                      solanaAddress: { type: string }
+                      amount: { type: integer }
+                      paymentMethod: { type: string, enum: [solana] }
+        "400":
+          description: Validation error
+        "403":
+          description: Page not accepting tips or payment method disabled
+
+  /api/checkout:
+    post:
+      operationId: coffeeCheckout
+      summary: Create Stripe checkout for one-time or recurring support (no specific page)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: integer, description: "Amount in cents (minimum 500)" }
+                recurring: { type: boolean }
+                joinMailingList: { type: boolean }
+      responses:
+        "200":
+          description: Checkout URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string }
+
+  /api/tips/{did}:
+    get:
+      operationId: getTipsReceived
+      summary: Get tips received by a DID (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, completed, failed] }
+      responses:
+        "200":
+          description: Tips and totals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tips:
+                    type: array
+                    items: { $ref: "#/components/schemas/Tip" }
+                  totals:
+                    type: object
+                    description: "Keyed by currency"
+                    additionalProperties:
+                      type: object
+                      properties:
+                        total: { type: number }
+                        count: { type: integer }
+                  pagination:
+                    type: object
+                    properties:
+                      limit: { type: integer }
+                      offset: { type: integer }
+
+  /api/webhook/payment:
+    post:
+      operationId: coffeePaymentWebhook
+      summary: Receive payment callbacks from pay service
+      security:
+        - webhookSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: { type: string, enum: [payment.succeeded, payment.failed, checkout.completed] }
+                tipId: { type: string }
+                pageId: { type: string }
+                amount: { type: number }
+                paymentId: { type: string }
+                status: { type: string }
+      responses:
+        "200":
+          description: Received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received: { type: boolean }

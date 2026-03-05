@@ -1,0 +1,374 @@
+openapi: "3.1.0"
+info:
+  title: imajin media
+  version: "1.0.0"
+  description: Asset upload and delivery with .fair access control, heuristic ML classification, virtual folder system, and thumbnail generation.
+servers:
+  - url: https://media.imajin.ai
+    description: production
+  - url: https://dev-media.imajin.ai
+    description: dev
+  - url: http://localhost:7009
+    description: local
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+  schemas:
+    Asset:
+      type: object
+      properties:
+        id: { type: string }
+        ownerDid: { type: string }
+        filename: { type: string }
+        mimeType: { type: string }
+        size: { type: integer }
+        storagePath: { type: string }
+        hash: { type: string, description: "SHA-256 hex" }
+        fairManifest: { type: object }
+        classification: { type: string }
+        classificationConfidence: { type: integer }
+        metadata: { type: object }
+        status: { type: string, enum: [active, deleted] }
+        createdAt: { type: string, format: date-time }
+    Folder:
+      type: object
+      properties:
+        id: { type: string }
+        ownerDid: { type: string }
+        name: { type: string }
+        parentId: { type: string }
+        icon: { type: string }
+        isSystem: { type: boolean }
+        sortOrder: { type: integer }
+        assetCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+    FairManifest:
+      type: object
+      properties:
+        version: { type: string }
+        asset: { type: string }
+        owner: { type: string }
+        access:
+          oneOf:
+            - type: string
+              enum: [public, private]
+            - type: object
+              properties:
+                type: { type: string, enum: [trust-graph] }
+                allowedDids: { type: array, items: { type: string } }
+        attribution: { type: array, items: { type: object } }
+        transfer: { type: object }
+        createdAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/health:
+    get:
+      operationId: healthCheck
+      summary: Service health check
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  service: { type: string }
+
+  /api/assets:
+    post:
+      operationId: uploadAsset
+      summary: Upload a file (50 MB max) — auto-creates .fair manifest and async classification
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "Allowed: image/*, audio/*, video/*, text/*, application/pdf"
+                filename: { type: string }
+      responses:
+        "201":
+          description: Asset uploaded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Asset" }
+        "400":
+          description: Missing file field
+        "413":
+          description: File exceeds 50 MB limit
+        "415":
+          description: MIME type not allowed
+    get:
+      operationId: listAssets
+      summary: List assets for authenticated user
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string }
+          description: "MIME type prefix filter (e.g., image, audio, video)"
+        - name: sort
+          in: query
+          schema: { type: string, default: created }
+        - name: order
+          in: query
+          schema: { type: string, enum: [asc, desc], default: desc }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: Assets list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assets:
+                    type: array
+                    items: { $ref: "#/components/schemas/Asset" }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  count: { type: integer }
+
+  /api/assets/{id}:
+    get:
+      operationId: getAsset
+      summary: Serve asset file with .fair access control. Supports thumbnail resizing (?w=) and conditional GET (ETag).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: w
+          in: query
+          schema: { type: integer }
+          description: "Resize width in pixels (images only)"
+        - name: download
+          in: query
+          schema: { type: boolean }
+          description: "Force Content-Disposition: attachment"
+      responses:
+        "200":
+          description: Asset file
+          headers:
+            ETag:
+              schema: { type: string }
+            X-Fair-Access:
+              schema: { type: string, enum: [public, private, trust-graph] }
+            Cache-Control:
+              schema: { type: string }
+        "304":
+          description: Not modified (ETag match)
+        "403":
+          description: Access denied per .fair manifest
+        "404":
+          description: Asset not found
+
+  /api/assets/{id}/fair:
+    get:
+      operationId: getAssetFair
+      summary: Get .fair manifest for an asset (same access rules as the asset itself)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Fair manifest
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FairManifest" }
+          headers:
+            X-Fair-Access:
+              schema: { type: string }
+        "403":
+          description: Access denied
+        "404":
+          description: Manifest not found
+
+  /api/assets/{id}/folders:
+    put:
+      operationId: setAssetFolders
+      summary: Set folder assignments for an asset (replaces all existing assignments)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [folderIds]
+              properties:
+                folderIds:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: Folder assignments updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assetId: { type: string }
+                  folderIds: { type: array, items: { type: string } }
+
+  /api/assets/{id}/classify:
+    post:
+      operationId: classifyAsset
+      summary: Re-classify an existing asset (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Classification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  classification:
+                    type: object
+                    properties:
+                      category: { type: string }
+                      confidence: { type: number }
+
+  /api/folders:
+    get:
+      operationId: listFolders
+      summary: List all folders with asset counts
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Folders list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folders:
+                    type: array
+                    items: { $ref: "#/components/schemas/Folder" }
+    post:
+      operationId: createFolder
+      summary: Create a folder
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                parentId: { type: string }
+                icon: { type: string }
+      responses:
+        "201":
+          description: Folder created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Folder" }
+
+  /api/folders/init:
+    post:
+      operationId: initFolders
+      summary: Create default system folders (Photos, Audio, Videos, Documents, Uncategorized) — idempotent
+      security:
+        - cookieAuth: []
+      responses:
+        "201":
+          description: Folders initialized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  created:
+                    type: array
+                    items: { $ref: "#/components/schemas/Folder" }
+        "200":
+          description: Already initialized
+
+  /api/folders/{id}:
+    patch:
+      operationId: updateFolder
+      summary: Rename, move, or change folder icon
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                parentId: { type: ["string", "null"] }
+                icon: { type: ["string", "null"] }
+      responses:
+        "200":
+          description: Folder updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Folder" }
+    delete:
+      operationId: deleteFolder
+      summary: Delete folder (assets stay, only folder assignments removed)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Folder deleted
+        "403":
+          description: Cannot delete system folders

@@ -1,0 +1,532 @@
+openapi: "3.1.0"
+info:
+  title: imajin events
+  version: "1.0.0"
+  description: Event creation, ticketing, ticket tiers, queue management, hold system, .fair manifests, checkout, and payment webhooks.
+servers:
+  - url: https://events.imajin.ai
+    description: production
+  - url: https://dev-events.imajin.ai
+    description: dev
+  - url: http://localhost:7006
+    description: local
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+    webhookSecret:
+      type: http
+      scheme: bearer
+      description: "Bearer WEBHOOK_SECRET — internal payment webhook from pay service"
+  schemas:
+    Event:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        status: { type: string }
+        fairManifest: { type: object }
+        createdAt: { type: string, format: date-time }
+    TicketTier:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        price: { type: number }
+        quantity: { type: integer }
+        perks: { type: array, items: { type: string } }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/events:
+    get:
+      operationId: listEvents
+      summary: List events
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: Events list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/Event" }
+    post:
+      operationId: createEvent
+      summary: Create an event — requires hard DID
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                startsAt: { type: string, format: date-time }
+                endsAt: { type: string, format: date-time }
+                location: { type: string }
+                coverImage: { type: string }
+                fairManifest: { type: object }
+      responses:
+        "201":
+          description: Event created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "403":
+          description: Requires hard DID
+
+  /api/events/mine:
+    get:
+      operationId: listMyEvents
+      summary: List authenticated user's events with stats
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: User's events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/Event" }
+
+  /api/events/{id}:
+    get:
+      operationId: getEvent
+      summary: Get event by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Event
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    put:
+      operationId: updateEvent
+      summary: Update event
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Event" }
+      responses:
+        "200":
+          description: Event updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+
+  /api/events/{id}/admins:
+    get:
+      operationId: listEventAdmins
+      summary: List event admins
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Admin list
+    post:
+      operationId: addEventAdmin
+      summary: Add an admin to an event
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string }
+      responses:
+        "201":
+          description: Admin added
+    delete:
+      operationId: removeEventAdmin
+      summary: Remove an admin from an event
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: did
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Admin removed
+
+  /api/events/{id}/my-ticket:
+    get:
+      operationId: getMyTicket
+      summary: Check if authenticated user has a ticket for this event
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Ticket ownership status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hasTicket: { type: boolean }
+                  tickets: { type: array, items: { type: object } }
+                  ticketId: { type: string }
+                  conversationId: { type: string }
+                  lobbyConversationId: { type: string }
+
+  /api/events/{id}/fair:
+    patch:
+      operationId: updateEventFair
+      summary: Update .fair manifest for an event
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [manifest]
+              properties:
+                manifest: { type: object }
+      responses:
+        "200":
+          description: Manifest updated
+
+  /api/events/{id}/queue:
+    get:
+      operationId: getQueue
+      summary: Get queue for a ticket type
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: ticketTypeId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Queue info
+    post:
+      operationId: joinQueue
+      summary: Join the ticket queue
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticketTypeId: { type: string }
+      responses:
+        "200":
+          description: Joined queue
+    delete:
+      operationId: leaveQueue
+      summary: Leave the ticket queue
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: ticketTypeId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Left queue
+
+  /api/events/{id}/hold:
+    post:
+      operationId: holdTicket
+      summary: Place a hold on a ticket
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ticketTypeId]
+              properties:
+                ticketTypeId: { type: string }
+                holdHours: { type: number, default: 24 }
+      responses:
+        "200":
+          description: Hold placed
+    delete:
+      operationId: releaseHold
+      summary: Release a ticket hold
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: ticketId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Hold released
+
+  /api/events/{id}/tiers:
+    get:
+      operationId: listTicketTiers
+      summary: List ticket tiers for an event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Tiers list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tiers:
+                    type: array
+                    items: { $ref: "#/components/schemas/TicketTier" }
+    post:
+      operationId: createTicketTier
+      summary: Create a ticket tier
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TicketTier" }
+      responses:
+        "201":
+          description: Tier created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketTier" }
+    put:
+      operationId: updateTicketTier
+      summary: Update a ticket tier
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tierId]
+              properties:
+                tierId: { type: string }
+                name: { type: string }
+                description: { type: string }
+                price: { type: number }
+                quantity: { type: integer }
+                perks: { type: array, items: { type: string } }
+      responses:
+        "200":
+          description: Tier updated
+
+  /api/checkout:
+    post:
+      operationId: eventCheckout
+      summary: Create checkout session via pay service
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventId, ticketTypeId]
+              properties:
+                eventId: { type: string }
+                ticketTypeId: { type: string }
+                quantity: { type: integer, default: 1 }
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Checkout URL created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string }
+                  sessionId: { type: string }
+
+  /api/tickets/by-token/{token}:
+    get:
+      operationId: getTicketByToken
+      summary: Look up a ticket by magic token
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Ticket found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket: { type: object }
+                  event: { $ref: "#/components/schemas/Event" }
+        "404":
+          description: Token not found
+
+  /api/webhook/payment:
+    post:
+      operationId: paymentWebhook
+      summary: Payment webhook from pay service
+      security:
+        - webhookSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Event received
+
+  /api/upload:
+    post:
+      operationId: uploadEventImage
+      summary: Upload event cover image
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Image uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string }
+
+  /api/media/{path}:
+    get:
+      operationId: serveMedia
+      summary: Serve media files
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Media file

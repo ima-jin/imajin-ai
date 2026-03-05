@@ -1,0 +1,321 @@
+openapi: "3.1.0"
+info:
+  title: imajin registry
+  version: "1.0.0"
+  description: Node registration, heartbeat, build attestation, and subdomain provisioning for the imajin.ai network.
+servers:
+  - url: https://registry.imajin.ai
+    description: production
+  - url: https://dev-registry.imajin.ai
+    description: dev
+  - url: http://localhost:7002
+    description: local
+
+components:
+  securitySchemes:
+    attestation:
+      type: http
+      scheme: bearer
+      description: "Ed25519-signed NodeAttestation or NodeHeartbeat payload. The payload itself carries the signature field; no separate HTTP auth header is used — the node's registered public key is used to verify the signature embedded in the request body."
+  schemas:
+    Node:
+      type: object
+      properties:
+        id: { type: string, description: "Node DID (did:imajin:...)" }
+        hostname: { type: string }
+        subdomain: { type: string, example: "jin.imajin.ai" }
+        services: { type: array, items: { type: string } }
+        capabilities: { type: array, items: { type: string } }
+        status: { type: string, enum: [active, stale, unreachable, expired, revoked] }
+        version: { type: string }
+        lastHeartbeat: { type: string, format: date-time }
+        registeredAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+    ApprovedBuild:
+      type: object
+      properties:
+        version: { type: string }
+        buildHash: { type: string }
+        architecture: { type: string }
+        releaseDate: { type: string, format: date-time }
+        deprecated: { type: boolean }
+    NodeAttestation:
+      type: object
+      required: [nodeId, publicKey, buildHash, hostname, signature, timestamp]
+      properties:
+        nodeId: { type: string }
+        publicKey: { type: string, description: "Ed25519 public key (base64)" }
+        buildHash: { type: string }
+        hostname: { type: string }
+        version: { type: string }
+        sourceCommit: { type: string }
+        services: { type: array, items: { type: string } }
+        capabilities: { type: array, items: { type: string } }
+        timestamp: { type: number }
+        signature: { type: string }
+    NodeHeartbeat:
+      type: object
+      required: [nodeId, timestamp, buildHash, version, signature]
+      properties:
+        nodeId: { type: string }
+        timestamp: { type: number }
+        buildHash: { type: string }
+        version: { type: string }
+        health: { type: object }
+        signature: { type: string }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/builds/verify:
+    get:
+      operationId: listApprovedBuilds
+      summary: List all approved builds
+      parameters:
+        - name: version
+          in: query
+          schema: { type: string }
+        - name: deprecated
+          in: query
+          schema: { type: boolean }
+          description: "Include deprecated builds (default: false)"
+      responses:
+        "200":
+          description: Approved builds list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  builds:
+                    type: array
+                    items: { $ref: "#/components/schemas/ApprovedBuild" }
+    post:
+      operationId: verifyBuild
+      summary: Check if a build hash is approved
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [buildHash]
+              properties:
+                buildHash: { type: string }
+                version: { type: string }
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean }
+                  source: { type: string, enum: [official, fork, unknown] }
+                  version: { type: string }
+                  architecture: { type: string }
+                  releaseDate: { type: string, format: date-time }
+                  deprecated: { type: boolean }
+                  error: { type: string }
+        "400":
+          description: Missing buildHash
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/node/register:
+    post:
+      operationId: registerNode
+      summary: Register a new node — verifies Ed25519 attestation and provisions subdomain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [attestation]
+              properties:
+                attestation: { $ref: "#/components/schemas/NodeAttestation" }
+      responses:
+        "201":
+          description: Node registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [verified] }
+                  subdomain: { type: string, example: "jin.imajin.ai" }
+                  expiresAt: { type: number }
+        "200":
+          description: Node renewed (existing node)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [verified] }
+                  subdomain: { type: string }
+                  expiresAt: { type: number }
+                  renewed: { type: boolean }
+        "400":
+          description: Invalid attestation structure or hostname format
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [rejected] }
+                  error: { type: string }
+                  hint: { type: string }
+        "401":
+          description: Invalid signature
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [rejected] }
+                  error: { type: string }
+        "403":
+          description: Unknown or deprecated build hash
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [rejected] }
+                  error: { type: string }
+                  hint: { type: string }
+        "409":
+          description: Hostname taken or in grace period
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [rejected] }
+                  error: { type: string }
+
+  /api/node/heartbeat:
+    post:
+      operationId: nodeHeartbeat
+      summary: Node liveness ping — verifies Ed25519 signature against registered public key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NodeHeartbeat" }
+      responses:
+        "200":
+          description: Heartbeat acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ack: { type: boolean }
+                  nextHeartbeat: { type: number, description: "Unix ms timestamp for next expected heartbeat" }
+                  actions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type: { type: string, enum: [renew, reattest, upgrade] }
+                        reason: { type: string }
+                        expiresIn: { type: number }
+                        targetVersion: { type: string }
+        "400":
+          description: Missing required fields
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Invalid signature
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Node expired or revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Node not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/node/list:
+    get:
+      operationId: listNodes
+      summary: List registered nodes
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [active, stale, all], default: active }
+        - name: service
+          in: query
+          schema: { type: string }
+          description: "Filter by service capability"
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100, maximum: 500 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: Node list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items: { $ref: "#/components/schemas/Node" }
+                  total: { type: integer }
+                  limit: { type: integer }
+                  offset: { type: integer }
+    head:
+      operationId: nodeStats
+      summary: Network statistics in response headers
+      responses:
+        "200":
+          description: Stats in headers
+          headers:
+            X-Total-Nodes:
+              schema: { type: integer }
+            X-Active-Nodes:
+              schema: { type: integer }
+            X-Stale-Nodes:
+              schema: { type: integer }
+            X-Unreachable-Nodes:
+              schema: { type: integer }
+
+  /api/node/lookup/{id}:
+    get:
+      operationId: lookupNode
+      summary: Look up a node by DID or hostname
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: "Node DID (did:imajin:...), hostname (jin), or full subdomain (jin.imajin.ai)"
+      responses:
+        "200":
+          description: Node found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Node" }
+        "404":
+          description: Node not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }

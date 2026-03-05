@@ -1,0 +1,308 @@
+openapi: "3.1.0"
+info:
+  title: imajin dykil
+  version: "1.0.0"
+  description: Survey creation, publishing, and response collection. Supports SurveyJS schema and legacy field formats. CORS-enabled for embedding in other services.
+servers:
+  - url: https://dykil.imajin.ai
+    description: production
+  - url: https://dev-dykil.imajin.ai
+    description: dev
+  - url: http://localhost:7101
+    description: local
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+  schemas:
+    Survey:
+      type: object
+      properties:
+        id: { type: string }
+        did: { type: string }
+        handle: { type: string }
+        title: { type: string }
+        description: { type: string }
+        fields:
+          oneOf:
+            - type: object
+              description: "SurveyJS schema: { elements: [...] }"
+              properties:
+                elements: { type: array, items: { type: object } }
+            - type: array
+              description: "Legacy format: array of field objects"
+              items: { type: object }
+        settings: { type: object }
+        eventId: { type: string }
+        type: { type: string, enum: [survey, poll, quiz] }
+        status: { type: string, enum: [draft, published, closed] }
+        createdAt: { type: string, format: date-time }
+    SurveyResponse:
+      type: object
+      properties:
+        id: { type: string }
+        surveyId: { type: string }
+        respondentDid: { type: string }
+        answers: { type: object }
+        createdAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/surveys:
+    post:
+      operationId: createSurvey
+      summary: Create a new survey
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, fields]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                fields:
+                  oneOf:
+                    - type: object
+                      description: "SurveyJS schema — { elements: [{ name, type, title, isRequired? }] }"
+                      required: [elements]
+                      properties:
+                        elements: { type: array, items: { type: object } }
+                    - type: array
+                      description: "Legacy format — will be wrapped into SurveyJS structure"
+                      items: { type: object }
+                settings: { type: object }
+                eventId: { type: string }
+                type: { type: string, enum: [survey, poll, quiz], default: survey }
+                status: { type: string, enum: [draft, published], default: draft }
+      responses:
+        "201":
+          description: Survey created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Survey" }
+    get:
+      operationId: listMySurveys
+      summary: List authenticated user's surveys
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Surveys list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  surveys:
+                    type: array
+                    items: { $ref: "#/components/schemas/Survey" }
+
+  /api/surveys/mine:
+    get:
+      operationId: getMySurveys
+      summary: List authenticated user's surveys (explicit route)
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Surveys list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  surveys:
+                    type: array
+                    items: { $ref: "#/components/schemas/Survey" }
+
+  /api/surveys/event/{eventId}:
+    get:
+      operationId: getEventSurveys
+      summary: Get published surveys linked to an event (public, CORS-enabled)
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Event surveys with response counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  surveys:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        title: { type: string }
+                        description: { type: string }
+                        type: { type: string }
+                        handle: { type: string }
+                        responseCount: { type: integer }
+
+  /api/surveys/handle/{handle}:
+    get:
+      operationId: getSurveysByHandle
+      summary: Get published surveys by user handle (public)
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Surveys list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  surveys:
+                    type: array
+                    items: { $ref: "#/components/schemas/Survey" }
+                  handle: { type: string }
+
+  /api/surveys/{id}:
+    get:
+      operationId: getSurvey
+      summary: Get survey by ID. Published surveys are public; draft surveys require ownership.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      security:
+        - cookieAuth: []
+        - {}
+      responses:
+        "200":
+          description: Survey
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Survey" }
+        "404":
+          description: Not found (or unpublished and not owner)
+    put:
+      operationId: updateSurvey
+      summary: Update survey (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                description: { type: string }
+                fields: { type: object }
+                settings: { type: object }
+                eventId: { type: string }
+                type: { type: string }
+                status: { type: string, enum: [draft, published, closed] }
+      responses:
+        "200":
+          description: Survey updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Survey" }
+    delete:
+      operationId: deleteSurvey
+      summary: Delete survey (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+
+  /api/surveys/{id}/respond:
+    post:
+      operationId: submitSurveyResponse
+      summary: Submit a response to a published survey. Optional auth — anonymous responses allowed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      security:
+        - cookieAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answers]
+              properties:
+                answers:
+                  type: object
+                  description: "Key-value pairs matching field names (SurveyJS: field.name; legacy: field.id)"
+      responses:
+        "201":
+          description: Response submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  response: { $ref: "#/components/schemas/SurveyResponse" }
+        "400":
+          description: Missing required fields
+        "403":
+          description: Survey not accepting responses (not published)
+        "404":
+          description: Survey not found
+
+  /api/surveys/{id}/responses:
+    get:
+      operationId: getSurveyResponses
+      summary: Get all responses for a survey (owner only, CORS-enabled)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Responses
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  responses:
+                    type: array
+                    items: { $ref: "#/components/schemas/SurveyResponse" }
+                  total: { type: integer }
+        "403":
+          description: Not the survey owner

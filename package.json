@@ -8,7 +8,8 @@
     "clean": "pnpm -r clean",
     "db:seed": "tsx scripts/seed.ts",
     "db:reset": "tsx scripts/reset-db.ts",
-    "db:migrate": "tsx scripts/migrate-to-schemas.ts"
+    "db:migrate": "tsx scripts/migrate-to-schemas.ts",
+    "generate:api-specs": "tsx scripts/generate-api-specs.ts"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7",

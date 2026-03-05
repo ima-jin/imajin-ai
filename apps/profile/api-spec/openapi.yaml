@@ -1,0 +1,483 @@
+openapi: "3.1.0"
+info:
+  title: imajin profile
+  version: "1.0.0"
+  description: Profile management, follow graph, presence, guest identity, handle availability, and media serving.
+servers:
+  - url: https://profile.imajin.ai
+    description: production
+  - url: https://dev-profile.imajin.ai
+    description: dev
+  - url: http://localhost:7005
+    description: local
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+  schemas:
+    Profile:
+      type: object
+      properties:
+        did: { type: string }
+        handle: { type: string }
+        displayName: { type: string }
+        displayType: { type: string }
+        bio: { type: string }
+        avatar: { type: string }
+        metadata: { type: object }
+        createdAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/profile:
+    post:
+      operationId: createProfileAuth
+      summary: Create a profile for authenticated user
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [displayName, displayType]
+              properties:
+                displayName: { type: string }
+                displayType: { type: string }
+                avatar: { type: string }
+                bio: { type: string }
+                handle: { type: string }
+                metadata: { type: object }
+      responses:
+        "201":
+          description: Profile created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+
+  /api/profile/search:
+    get:
+      operationId: searchProfiles
+      summary: Search profiles
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: type
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profiles:
+                    type: array
+                    items: { $ref: "#/components/schemas/Profile" }
+
+  /api/profile/claim-handle:
+    post:
+      operationId: claimHandle
+      summary: Claim a handle for the authenticated user
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handle]
+              properties:
+                handle: { type: string }
+      responses:
+        "200":
+          description: Handle claimed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  handle: { type: string }
+                  profile: { $ref: "#/components/schemas/Profile" }
+
+  /api/profile/{id}:
+    get:
+      operationId: getProfile
+      summary: Get profile by DID or handle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: "DID or handle"
+      responses:
+        "200":
+          description: Profile found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    put:
+      operationId: updateProfile
+      summary: Update profile
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Profile" }
+      responses:
+        "200":
+          description: Profile updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+    delete:
+      operationId: deleteProfile
+      summary: Delete profile
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Profile deleted
+
+  /api/profile/{id}/counts:
+    get:
+      operationId: getProfileCounts
+      summary: Get follower, following, and connection counts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  followers: { type: integer }
+                  following: { type: integer }
+                  connections: { type: integer }
+
+  /api/register:
+    post:
+      operationId: registerProfile
+      summary: Create profile with public key (no session required)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publicKey, displayName]
+              properties:
+                publicKey: { type: string }
+                handle: { type: string }
+                displayName: { type: string }
+                bio: { type: string }
+                avatar: { type: string }
+      responses:
+        "201":
+          description: Profile created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  handle: { type: string }
+                  displayName: { type: string }
+
+  /api/soft-register:
+    post:
+      operationId: softRegister
+      summary: Create a guest (soft DID) identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                phone: { type: string }
+                source: { type: string }
+                sourceId: { type: string }
+      responses:
+        "200":
+          description: Guest identity created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  isNew: { type: boolean }
+                  displayName: { type: string }
+
+  /api/claim:
+    post:
+      operationId: claimIdentity
+      summary: Merge guest identity into a hard DID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newDid, verificationToken]
+              properties:
+                newDid: { type: string }
+                email: { type: string }
+                phone: { type: string }
+                verificationToken: { type: string }
+      responses:
+        "200":
+          description: Identity claimed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  claimed: { type: boolean }
+                  guestDid: { type: string }
+                  newDid: { type: string }
+                  connectionsTransferred: { type: integer }
+
+  /api/follow:
+    post:
+      operationId: followUser
+      summary: Follow a user
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string }
+      responses:
+        "200":
+          description: Followed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  followed: { type: boolean }
+    delete:
+      operationId: unfollowUser
+      summary: Unfollow a user
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string }
+      responses:
+        "200":
+          description: Unfollowed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unfollowed: { type: boolean }
+
+  /api/follow/status:
+    get:
+      operationId: followStatus
+      summary: Check if authenticated user follows a DID
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Follow status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  following: { type: boolean }
+
+  /api/handle-check:
+    get:
+      operationId: checkHandleAvailability
+      summary: Check if a handle is available
+      parameters:
+        - name: handle
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Availability check result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available: { type: boolean }
+                  reason: { type: string }
+                  message: { type: string }
+
+  /api/presence/update:
+    post:
+      operationId: updatePresence
+      summary: Update last seen timestamp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did, lastSeenAt]
+              properties:
+                did: { type: string }
+                lastSeenAt: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Presence updated
+
+  /api/presence/{did}:
+    get:
+      operationId: getPresence
+      summary: Get presence status for a DID
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Presence data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  online: { type: boolean }
+                  lastSeen: { type: string, format: date-time }
+
+  /api/upload:
+    post:
+      operationId: uploadAvatar
+      summary: Upload avatar image
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image, did]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                did: { type: string }
+      responses:
+        "200":
+          description: Avatar uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string }
+
+  /api/media/{path}:
+    get:
+      operationId: serveMedia
+      summary: Serve media files from /mnt/media
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema: { type: string }
+          description: "Catch-all path to media file"
+      responses:
+        "200":
+          description: Media file
+
+  /api/auth/session:
+    get:
+      operationId: getAuthSession
+      summary: Proxy to auth service session
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Session data
+
+  /api/auth/logout:
+    post:
+      operationId: authLogout
+      summary: Clear session cookie
+      responses:
+        "200":
+          description: Logged out
+
+  /api/auth/register:
+    post:
+      operationId: authRegister
+      summary: Proxy to auth service register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "201":
+          description: Registered

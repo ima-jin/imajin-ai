@@ -1,0 +1,343 @@
+openapi: "3.1.0"
+info:
+  title: imajin links
+  version: "1.0.0"
+  description: Link-in-bio pages with privacy-preserving click analytics, multiple links per page, theme presets, and auto-creation from profile data.
+servers:
+  - url: https://links.imajin.ai
+    description: production
+  - url: https://dev-links.imajin.ai
+    description: dev
+  - url: http://localhost:7102
+    description: local
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+  schemas:
+    LinkPage:
+      type: object
+      properties:
+        id: { type: string }
+        did: { type: string }
+        handle: { type: string }
+        title: { type: string }
+        bio: { type: string }
+        avatar: { type: string }
+        theme: { type: object }
+        socialLinks: { type: object }
+        isPublic: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    Link:
+      type: object
+      properties:
+        id: { type: string }
+        pageId: { type: string }
+        title: { type: string }
+        url: { type: string }
+        icon: { type: string }
+        thumbnail: { type: string }
+        position: { type: integer }
+        isActive: { type: boolean }
+        visibility: { type: string, enum: [public, private] }
+        clicks: { type: integer }
+        createdAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/pages:
+    post:
+      operationId: createLinksPage
+      summary: Create a link-in-bio page — one per DID
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handle, title]
+              properties:
+                handle: { type: string, description: "3-30 chars, lowercase alphanumeric and underscores" }
+                title: { type: string }
+                bio: { type: string }
+                avatar: { type: string }
+                theme: { type: object }
+                themePreset: { type: string, description: "Named theme preset (e.g., dark, light)" }
+                socialLinks: { type: object }
+      responses:
+        "201":
+          description: Page created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LinkPage" }
+        "409":
+          description: Page or handle already exists
+
+  /api/pages/mine:
+    get:
+      operationId: getMyLinksPage
+      summary: Get authenticated user's link page with all links
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: User's links page (page: null if not created)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - allOf:
+                      - { $ref: "#/components/schemas/LinkPage" }
+                      - type: object
+                        properties:
+                          links:
+                            type: array
+                            items: { $ref: "#/components/schemas/Link" }
+                  - type: object
+                    properties:
+                      page: { type: "null" }
+
+  /api/pages/auto-create:
+    post:
+      operationId: autoCreateLinksPage
+      summary: Auto-create a link page from identity data (handle + name)
+      security:
+        - cookieAuth: []
+      responses:
+        "201":
+          description: Page created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LinkPage" }
+        "409":
+          description: Page already exists
+
+  /api/pages/{handle}:
+    get:
+      operationId: getLinksPage
+      summary: Get a public link page with active links
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Links page with links
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/LinkPage" }
+                  - type: object
+                    properties:
+                      links:
+                        type: array
+                        items: { $ref: "#/components/schemas/Link" }
+        "403":
+          description: Page is private
+        "404":
+          description: Not found
+    put:
+      operationId: updateLinksPage
+      summary: Update link page (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                bio: { type: string }
+                avatar: { type: string }
+                theme: { type: object }
+                socialLinks: { type: object }
+                isPublic: { type: boolean }
+      responses:
+        "200":
+          description: Page updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LinkPage" }
+    delete:
+      operationId: deleteLinksPage
+      summary: Delete link page (owner only) — links cascade
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+
+  /api/pages/{handle}/links:
+    post:
+      operationId: addLinks
+      summary: Add links to a page (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [links]
+              properties:
+                links:
+                  type: array
+                  items:
+                    type: object
+                    required: [title, url]
+                    properties:
+                      title: { type: string }
+                      url: { type: string, format: uri }
+                      icon: { type: string }
+                      thumbnail: { type: string }
+                      position: { type: integer }
+                      isActive: { type: boolean }
+                      visibility: { type: string, enum: [public, private] }
+      responses:
+        "201":
+          description: Links added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  links:
+                    type: array
+                    items: { $ref: "#/components/schemas/Link" }
+
+  /api/pages/{handle}/stats:
+    get:
+      operationId: getPageStats
+      summary: Get page click statistics (owner only) — last 30 days
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Page stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalClicks: { type: integer }
+                  clicksByLink:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        title: { type: string }
+                        url: { type: string }
+                        clicks: { type: integer }
+                  clicksByDay:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date: { type: string, format: date }
+                        clicks: { type: integer }
+                  topReferrers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        referrer: { type: string }
+                        clicks: { type: integer }
+
+  /api/links/{id}:
+    put:
+      operationId: updateLink
+      summary: Update a link (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                url: { type: string, format: uri }
+                icon: { type: string }
+                thumbnail: { type: string }
+                position: { type: integer }
+                isActive: { type: boolean }
+                visibility: { type: string, enum: [public, private] }
+      responses:
+        "200":
+          description: Link updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Link" }
+    delete:
+      operationId: deleteLink
+      summary: Delete a link (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+
+  /api/links/{id}/click:
+    post:
+      operationId: recordClick
+      summary: Record a link click (privacy-preserving — only referrer domain and country stored)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Click recorded (always succeeds to avoid UX disruption)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recorded: { type: boolean }
