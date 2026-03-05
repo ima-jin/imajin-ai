@@ -7,6 +7,18 @@
 
 ---
 
+## Why Existing Standards Aren't Enough
+
+The open web has spent years trying to solve social identity portability. The results are instructive failures:
+
+**ActivityPub / Fediverse:** The W3C-backed protocol behind Mastodon, Lemmy, Pixelfed, and others. Identity is `@user@instance.tld` — structurally bound to the server operator. If your instance shuts down, your identity, followers, and content go with it. Migration exists but it's manual, lossy, and requires the old instance to cooperate. The protocol solves *federation* (servers talking to each other) but not *sovereignty* (you owning your identity independent of any server).
+
+**AT Protocol / Bluesky:** Improves on ActivityPub with portable DIDs and signed data repositories. Closer to the right idea. But in practice, identity resolution still funnels through Bluesky's PLC directory — a centralized service that maps DIDs to hosting servers. The protocol *could* be decentralized, but the implementation concentrates control. And there's no native payment layer, no attribution standard, no concept of trust-bound access.
+
+**Solid / Tim Berners-Lee:** Personal data pods where you control your storage. Philosophically aligned but academically complex, low adoption, and no clear path to social features people actually want. Solving storage without solving identity, payments, or trust.
+
+**The common thread:** These projects solve parts of the problem (federation, data hosting, protocol interop) but none of them deliver full context portability — your identity, connections, trust graph, attribution records, payment history, and media as a single sovereign package that survives any single server failure.
+
 ## Problem
 
 Today, Imajin identities (DIDs + keypairs) are structurally independent from any server, but practically dependent on a single registry node. If imajin-server goes down:
@@ -17,7 +29,7 @@ Today, Imajin identities (DIDs + keypairs) are structurally independent from any
 - .fair attribution records disappear
 - Transaction history is gone
 
-The keypair survives on the user's device, but an identity without context is just a key that proves nothing useful. This is the same single-point-of-failure as ActivityPub instances (`@user@server`), just with different furniture.
+The keypair survives on the user's device, but an identity without context is just a key that proves nothing useful. We have the same single-point-of-failure as ActivityPub instances, just with different furniture.
 
 **The difference:** Our identity model (keypair-based, not `username@host`) means portability is *buildable* without redesigning the protocol. But until it's built, "sovereign identity" is a promise, not a fact.
 
@@ -50,13 +62,13 @@ The entire package is signed by the user's keypair and encrypted with their key.
 
 ### Three Tiers of Resilience
 
-#### Tier 1: Encrypted Export (available now-ish)
+#### Tier 1: Encrypted Export
 - User downloads their full identity context as an encrypted package
 - Store anywhere: USB drive, cloud storage, email to yourself
 - Restore by importing to any Imajin node
 - **Tradeoff:** Manual, point-in-time snapshot, no automatic failover
 
-#### Tier 2: Backup Nodes (target)
+#### Tier 2: Backup Nodes
 - User designates 1-3 backup nodes (friend's server, own RPi, VPS)
 - Primary node syncs encrypted context to backups on a schedule
 - Backup nodes can't read the data — they're encrypted storage
@@ -69,12 +81,12 @@ Primary node ──encrypted sync──→ Backup node 1
                               ──→ Backup node 3 (cloud VPS)
 ```
 
-#### Tier 3: On-Chain Registry + Mesh (future)
+#### Tier 3: On-Chain Registry + Mesh
 - DID → public key mapping on Solana (or similar)
 - Resolution doesn't depend on any single node
 - Backup node addresses registered on-chain
 - Automatic failover: if primary doesn't heartbeat, clients try backups
-- **Tradeoff:** Requires token/chain infrastructure (Year 2-3)
+- **Tradeoff:** Requires token/chain infrastructure
 
 ### Sync Protocol
 
@@ -121,7 +133,7 @@ Primary node ──encrypted sync──→ Backup node 1
 - **Identity context packaging** — new service/library to assemble + encrypt
 - **Sync protocol** — encrypted push to backup nodes
 - **Client-side decryption** — for restore flow
-- **On-chain registry** (Tier 3) — Solana DID resolution
+- **On-chain registry** (Tier 3) — Solana DID resolution (depends on MJN token)
 
 ## Open Questions
 
@@ -140,7 +152,7 @@ Primary node ──encrypted sync──→ Backup node 1
 - [ ] Encrypted sync protocol (Tier 2)
 - [ ] Backup node heartbeat monitoring
 - [ ] Failover flow (client-side)
-- [ ] On-chain DID resolution (Tier 3, depends on MJN token)
+- [ ] On-chain DID resolution (Tier 3)
 
 ---
 
