@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit } from '@/lib/metering';
 
 const GPU_NODE_URL = process.env.GPU_NODE_URL || 'http://192.168.1.124:8765';
 const GPU_AUTH_TOKEN = process.env.GPU_AUTH_TOKEN || '';
@@ -28,6 +29,15 @@ export async function POST(request: NextRequest) {
     }
   } catch {
     // Auth failure is non-fatal — proceed as anonymous
+  }
+
+  // Rate limit check
+  const rateCheck = checkRateLimit(callerDid, 'transcribe');
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded', retryAfterMs: rateCheck.retryAfterMs },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil(rateCheck.retryAfterMs / 1000)) } }
+    );
   }
 
   // Get the audio file from the request

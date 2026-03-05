@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit } from '@/lib/metering';
 
 const MEDIA_SERVICE_URL = process.env.MEDIA_SERVICE_URL || 'http://localhost:7009';
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:7001';
@@ -32,6 +33,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: 'Authentication required for file uploads' },
       { status: 401 }
+    );
+  }
+
+  // Rate limit check
+  const rateCheck = checkRateLimit(callerDid, 'upload');
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded', retryAfterMs: rateCheck.retryAfterMs },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil(rateCheck.retryAfterMs / 1000)) } }
     );
   }
 
