@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           items: [{
-            name: `Tip for ${page.displayName || page.handle}`,
+            name: `Tip for ${page.title || page.handle}`,
             description: message ? `"${message}" — ${fromName || 'Anonymous'}` : `From ${fromName || 'Anonymous'}`,
             amount,
             quantity: 1,
