@@ -87,10 +87,9 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
         throw new Error(data.error || 'Failed to process tip');
       }
 
-      if (paymentMethod === 'stripe' && data.clientSecret) {
-        // Redirect to Stripe checkout or show Stripe Elements
-        // For now, show a message (full Stripe integration needs Elements)
-        alert('Stripe payment initiated! Client secret: ' + data.clientSecret.slice(0, 20) + '...');
+      if (paymentMethod === "stripe" && data.url) {
+        // Redirect to Stripe Checkout
+        window.location.href = data.url;
       } else if (paymentMethod === 'solana' && data.solanaAddress) {
         // Show Solana address for payment
         alert(`Send ${amount / 100} USD worth of SOL to:\n${data.solanaAddress}`);
