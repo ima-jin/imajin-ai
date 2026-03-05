@@ -129,21 +129,26 @@ export default function EventLobbyPage({ params }: { params: { eventId: string }
     fetchSession();
   }, [AUTH_SERVICE_URL]);
 
-  // Fetch capabilities from chat service
+  // Resolve capabilities from session tier (avoids cross-origin CORS issue with chat service)
   useEffect(() => {
-    async function fetchCapabilities() {
+    async function resolveCapabilities() {
       try {
-        const res = await fetch(`${CHAT_SERVICE_URL}/api/capabilities`, { credentials: 'include' });
+        const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, { credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
-          setCapabilities(new Set(data.capabilities));
+          const tier = data.tier || 'soft';
+          if (tier === 'hard') {
+            setCapabilities(new Set(['send:text', 'send:voice', 'send:media', 'send:location']));
+          } else {
+            setCapabilities(new Set(['send:text']));
+          }
         }
       } catch {
-        // Silently fail - default to text-only
+        // Default to text-only
       }
     }
-    fetchCapabilities();
-  }, [CHAT_SERVICE_URL]);
+    resolveCapabilities();
+  }, [AUTH_SERVICE_URL]);
 
   // Check ticket ownership
   useEffect(() => {
