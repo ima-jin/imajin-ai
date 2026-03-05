@@ -73,7 +73,7 @@ export function getUsageStats(did: string) {
 // Clean up expired entries periodically (prevent memory leak)
 setInterval(() => {
   const now = Date.now();
-  for (const [key, window] of rateLimits.entries()) {
+  for (const [key, window] of Array.from(rateLimits.entries())) {
     if (now >= window.resetAt) {
       rateLimits.delete(key);
     }
