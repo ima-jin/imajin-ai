@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, use } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { VoiceMessage } from './components/VoiceMessage';
@@ -81,8 +81,8 @@ function MessageContent({ msg, isOwn }: { msg: Message; isOwn: boolean }) {
   return <p className="text-sm whitespace-pre-wrap">{t.text}</p>;
 }
 
-export default function EventLobbyPage({ params }: { params: Promise<{ eventId: string }> }) {
-  const { eventId } = use(params);
+export default function EventLobbyPage({ params }: { params: { eventId: string } }) {
+  const { eventId } = params;
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [message, setMessage] = useState('');
