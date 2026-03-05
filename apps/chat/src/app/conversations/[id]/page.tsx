@@ -9,6 +9,9 @@ import { MessageBubble } from '@/app/components/MessageBubble';
 import { TypingIndicator } from '@/app/components/TypingIndicator';
 import { FileUpload } from '@/app/components/FileUpload';
 import { MessageMedia } from '@/app/components/MessageMedia';
+import { VoiceRecorder } from '@/app/components/VoiceRecorder';
+import { LocationPicker, LocationData } from '@/app/components/LocationPicker';
+import { sendVoiceMessage } from '@/lib/voice';
 
 interface LinkPreview {
   url: string;
@@ -86,6 +89,8 @@ export default function MessageThreadPage() {
     mediaPath: string;
     mediaMeta: any;
   } | null>(null);
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceSending, setVoiceSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageIdRef = useRef<string | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -285,6 +290,51 @@ export default function MessageThreadPage() {
 
   const handleUploadError = (errorMsg: string) => {
     setError(errorMsg);
+  };
+
+  const handleVoiceComplete = async (blob: Blob, durationMs: number) => {
+    setVoiceSending(true);
+    try {
+      const { assetId, transcript } = await sendVoiceMessage(blob);
+      const res = await fetch(`/api/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contentType: 'voice',
+          content: { type: 'voice', assetId, transcript, durationMs },
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to send voice message');
+      }
+      await fetchMessages();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send voice message');
+    } finally {
+      setVoiceSending(false);
+      setVoiceActive(false);
+    }
+  };
+
+  const handleLocationSelected = async (location: LocationData) => {
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contentType: 'location',
+          content: { type: 'location', ...location },
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to send location');
+      }
+      await fetchMessages();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send location');
+    }
   };
 
   // Send or edit message
@@ -704,32 +754,60 @@ export default function MessageThreadPage() {
         )}
 
         <div className="flex items-end gap-2">
-          <FileUpload
-            conversationId={conversationId}
-            onUploadComplete={handleUploadComplete}
-            onUploadError={handleUploadError}
-          />
-          <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
-            <textarea
-              value={message}
-              onChange={(e) => handleMessageChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type a message..."
-              className="w-full bg-transparent resize-none outline-none text-sm max-h-32"
-              rows={1}
-            />
-          </div>
-          <button
-            onClick={handleSend}
-            disabled={(!message.trim() && !uploadedMedia) || sending}
-            className={`p-3 rounded-full transition ${
-              (message.trim() || uploadedMedia) && !sending
-                ? 'bg-orange-500 text-white hover:bg-orange-600'
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
-            }`}
-          >
-            {sending ? '...' : editingMessage ? '✓' : '➤'}
-          </button>
+          {voiceActive ? (
+            <>
+              <VoiceRecorder
+                onRecordingStart={() => setVoiceActive(true)}
+                onRecordingComplete={handleVoiceComplete}
+                onCancel={() => setVoiceActive(false)}
+                disabled={voiceSending}
+              />
+              {voiceSending && (
+                <span className="text-xs text-gray-400 self-center flex-shrink-0">Sending...</span>
+              )}
+            </>
+          ) : (
+            <>
+              <FileUpload
+                conversationId={conversationId}
+                onUploadComplete={handleUploadComplete}
+                onUploadError={handleUploadError}
+              />
+              <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
+                <textarea
+                  value={message}
+                  onChange={(e) => handleMessageChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Type a message..."
+                  className="w-full bg-transparent resize-none outline-none text-sm max-h-32"
+                  rows={1}
+                />
+              </div>
+              <div className="relative flex-shrink-0">
+                <LocationPicker
+                  onLocationSelected={handleLocationSelected}
+                  disabled={sending}
+                />
+              </div>
+              <VoiceRecorder
+                onRecordingStart={() => setVoiceActive(true)}
+                onRecordingComplete={handleVoiceComplete}
+                onCancel={() => setVoiceActive(false)}
+                disabled={sending}
+              />
+              <button
+                onClick={handleSend}
+                disabled={(!message.trim() && !uploadedMedia) || sending}
+                className={`p-3 rounded-full transition ${
+                  (message.trim() || uploadedMedia) && !sending
+                    ? 'bg-orange-500 text-white hover:bg-orange-600'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
+                }`}
+              >
+                {sending ? '...' : editingMessage ? '\u2713' : '\u27A4'}
+              </button>
+            </>
+          )}
         </div>
         <p className="text-xs text-gray-400 text-center mt-2">🔒 End-to-end encrypted</p>
       </div>
