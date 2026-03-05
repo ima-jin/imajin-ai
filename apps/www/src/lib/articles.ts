@@ -35,7 +35,7 @@ const slugMap: Record<string, string> = {
   'essay-05-you-dont-need-ads': 'you-dont-need-ads',
   'essay-06-the-guild': 'the-guild',
   'essay-07-utility': 'the-utility',
-  'essay-08-the-burn': 'the-burn',
+  'essay-08-ticketing': 'the-ticket-is-the-trust',
   'essay-09-the-network': 'the-network',  
   'essay-10-the-bridge': 'the-bridge',
   'essay-11-ticketing': 'ticketing',
