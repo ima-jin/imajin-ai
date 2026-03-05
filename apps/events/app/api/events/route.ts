@@ -90,8 +90,8 @@ export async function POST(request: NextRequest) {
     });
 
     // Auto-generate .fair attribution manifest
-    const PLATFORM_DID = 'did:imajin:platform';
-    const PLATFORM_FEE = 0.03; // 3%
+    const PLATFORM_DID = process.env.PLATFORM_DID || 'did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213';
+    const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE || '0.015'); // 1.5%
     const fairManifest = {
       version: '1.0',
       chain: [
