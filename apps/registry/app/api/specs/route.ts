@@ -17,15 +17,23 @@ const SERVICES = [
   { name: "media", description: "Media asset management, upload, and classification" },
 ];
 
+function buildServiceUrl(name: string): string {
+  // SERVICE_PREFIX may be "https://dev-" or just "dev" or empty
+  const prefix = SERVICE_PREFIX.replace(/^https?:\/\//, '').replace(/-$/, '');
+  const subdomain = prefix ? `${prefix}-${name}` : name;
+  return `https://${subdomain}.${DOMAIN}`;
+}
+
 export async function GET(request: NextRequest) {
-  const prefix = SERVICE_PREFIX ? `${SERVICE_PREFIX}-` : "";
-  
   return NextResponse.json({
-    services: SERVICES.map((s) => ({
-      name: s.name,
-      description: s.description,
-      url: `https://${prefix}${s.name}.${DOMAIN}`,
-      spec: `https://${prefix}${s.name}.${DOMAIN}/api/spec`,
-    })),
+    services: SERVICES.map((s) => {
+      const url = buildServiceUrl(s.name);
+      return {
+        name: s.name,
+        description: s.description,
+        url,
+        spec: `${url}/api/spec`,
+      };
+    }),
   });
 }
