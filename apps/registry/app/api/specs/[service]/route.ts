@@ -1,45 +1,59 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || "";
+const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || "imajin.ai";
+
+// Map service names to their internal (server-side) URLs
 const SERVICE_URLS: Record<string, string> = {
-  auth: process.env.AUTH_SERVICE_URL ?? "https://auth.imajin.ai",
-  pay: process.env.PAY_SERVICE_URL ?? "https://pay.imajin.ai",
-  profile: process.env.PROFILE_SERVICE_URL ?? "https://profile.imajin.ai",
-  events: process.env.EVENTS_SERVICE_URL ?? "https://events.imajin.ai",
-  chat: process.env.CHAT_SERVICE_URL ?? "https://chat.imajin.ai",
-  registry: process.env.REGISTRY_SERVICE_URL ?? "https://registry.imajin.ai",
-  connections: process.env.CONNECTIONS_SERVICE_URL ?? "https://connections.imajin.ai",
-  coffee: process.env.COFFEE_SERVICE_URL ?? "https://coffee.imajin.ai",
-  links: process.env.LINKS_SERVICE_URL ?? "https://links.imajin.ai",
-  dykil: process.env.DYKIL_SERVICE_URL ?? "https://dykil.imajin.ai",
-  media: process.env.MEDIA_SERVICE_URL ?? "https://media.imajin.ai",
+  auth: process.env.AUTH_SERVICE_URL || "http://localhost:3001",
+  pay: process.env.PAY_SERVICE_URL || "http://localhost:3004",
+  profile: process.env.PROFILE_SERVICE_URL || "http://localhost:3005",
+  events: process.env.EVENTS_SERVICE_URL || "http://localhost:3006",
+  chat: process.env.CHAT_SERVICE_URL || "http://localhost:3007",
+  registry: "http://localhost:" + (process.env.PORT || "3002"),
+  connections: process.env.CONNECTIONS_SERVICE_URL || "http://localhost:3003",
+  coffee: process.env.COFFEE_SERVICE_URL || "http://localhost:3100",
+  links: process.env.LINKS_SERVICE_URL || "http://localhost:3102",
+  dykil: process.env.DYKIL_SERVICE_URL || "http://localhost:3101",
+  media: process.env.MEDIA_SERVICE_URL || "http://localhost:3009",
 };
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { service: string } }
 ) {
   const { service } = params;
-  const baseUrl = SERVICE_URLS[service];
-
-  if (!baseUrl) {
-    return NextResponse.json({ error: `Unknown service: ${service}` }, { status: 404 });
+  const internalUrl = SERVICE_URLS[service];
+  
+  if (!internalUrl) {
+    return NextResponse.json({ error: "Unknown service" }, { status: 404 });
   }
 
-  const res = await fetch(`${baseUrl}/api/spec`, {
-    headers: { Accept: "text/yaml" },
-  });
+  try {
+    const res = await fetch(`${internalUrl}/api/spec`, { 
+      next: { revalidate: 60 } 
+    });
+    
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: `Service ${service} returned ${res.status}` },
+        { status: 502 }
+      );
+    }
 
-  if (!res.ok) {
+    const text = await res.text();
+    const contentType = res.headers.get("content-type") || "";
+    
+    return new NextResponse(text, {
+      headers: {
+        "Content-Type": contentType || "text/plain",
+        "Cache-Control": "public, max-age=60",
+      },
+    });
+  } catch (err) {
     return NextResponse.json(
-      { error: `Failed to fetch spec for ${service}: ${res.status}` },
-      { status: res.status }
+      { error: `Could not reach ${service} service` },
+      { status: 502 }
     );
   }
-
-  const body = await res.text();
-  return new NextResponse(body, {
-    headers: {
-      "Content-Type": res.headers.get("Content-Type") ?? "text/yaml",
-    },
-  });
 }
