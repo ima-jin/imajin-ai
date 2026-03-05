@@ -505,8 +505,8 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
   }
 
   const messagesAreaClass = compact
-    ? 'h-[400px] overflow-y-auto space-y-4 mb-4'
-    : 'flex-1 overflow-y-auto space-y-4 mb-4';
+    ? 'h-[400px] overflow-y-auto space-y-4 mb-4 scrollbar-dark'
+    : 'flex-1 overflow-y-auto space-y-4 mb-4 scrollbar-dark';
 
   return (
     <div className={compact ? '' : 'flex flex-col flex-1'}>

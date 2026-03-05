@@ -6,3 +6,22 @@ body {
   background-color: #0A0A0A;
   color: #FAFAFA;
 }
+
+/* Dark scrollbar for chat */
+.scrollbar-dark::-webkit-scrollbar {
+  width: 6px;
+}
+.scrollbar-dark::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-dark::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+.scrollbar-dark::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+.scrollbar-dark {
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
