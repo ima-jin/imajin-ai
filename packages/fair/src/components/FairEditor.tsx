@@ -335,8 +335,9 @@ export function FairEditor({
   manifest,
   onChange,
   readOnly = false,
-  sections = SECTION_DEFAULTS,
+  sections: sectionsProp,
 }: FairEditorProps) {
+  const sections = sectionsProp ?? SECTION_DEFAULTS;
   const [local, setLocal] = useState<FairManifest>(manifest);
 
   const update = useCallback(
