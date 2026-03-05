@@ -8,6 +8,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@emoji-mart/data": "^1.2.1",
+    "@emoji-mart/react": "^1.1.1",
     "react": "^18.2.0"
   },
   "devDependencies": {
