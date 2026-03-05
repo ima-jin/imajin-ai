@@ -112,7 +112,7 @@ function MyTicketsTab({ userTickets }: { userTickets: UserTicket[] }) {
             key={ticket.id}
             className="border-2 border-orange-500 dark:border-orange-500 rounded-xl p-6 bg-orange-50/50 dark:bg-orange-900/10"
           >
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-6 items-center">
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-6 items-start">
               {/* Left: ticket info */}
               <div>
                 <h3 className="text-2xl font-bold mb-1">
