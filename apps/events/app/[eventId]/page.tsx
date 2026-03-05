@@ -9,6 +9,7 @@ export const revalidate = 0; // always fresh — event data changes frequently d
 import { Countdown } from './countdown';
 import { EventLobbyAccordion } from './event-lobby-accordion';
 import { EventSurveyAccordion } from './event-survey-accordion';
+import { FairAccordion } from './fair-accordion';
 import { ShareButton } from './share-button';
 import { getSession } from '@/src/lib/auth';
 import type { Metadata } from 'next';
@@ -364,6 +365,11 @@ export default async function EventPage({ params }: Props) {
             </div>
           );
         })}
+
+        {/* .fair Attribution */}
+        <div className="mb-6">
+          <FairAccordion fairManifest={(event.metadata as any)?.fair || null} />
+        </div>
 
         {/* Tickets Section */}
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8" id="tickets">
