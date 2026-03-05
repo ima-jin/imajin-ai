@@ -24,7 +24,7 @@ function buildTree(folders: Folder[]): FolderNode[] {
     map.set(f.id, { ...f, children: [] });
   }
   const roots: FolderNode[] = [];
-  for (const node of map.values()) {
+  for (const node of Array.from(map.values())) {
     if (node.parentId && map.has(node.parentId)) {
       map.get(node.parentId)!.children.push(node);
     } else {
