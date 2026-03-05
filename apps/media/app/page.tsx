@@ -8,9 +8,8 @@ export default async function Page() {
   const session = await getSession();
 
   if (!session) {
-    const loginUrl = process.env.AUTH_SERVICE_URL
-      ? `${process.env.AUTH_SERVICE_URL}/login`
-      : "/api/auth/login";
+    const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_SERVICE_URL || "";
+    const loginUrl = authUrl ? `${authUrl}/login` : "/api/auth/login";
     redirect(loginUrl);
   }
 
