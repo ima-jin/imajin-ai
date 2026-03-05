@@ -8,7 +8,7 @@ import { requireAuth } from "@/src/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/classify";
 
-export const config = { api: { bodyParser: false } };
+export const dynamic = "force-dynamic";
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || "/mnt/media";
 const MAX_SIZE = 50 * 1024 * 1024; // 50 MB
