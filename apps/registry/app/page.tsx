@@ -26,7 +26,7 @@ export default function Home() {
 
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-xl p-6 mb-8">
         <a 
-          href="/api/specs" 
+          href="/docs" 
           className="text-[#F59E0B] hover:underline text-lg font-semibold"
         >
           Global API Specification →
