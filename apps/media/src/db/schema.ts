@@ -6,6 +6,8 @@ import {
   integer,
   index,
   pgSchema,
+  boolean,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 
 export const mediaSchema = pgSchema("media");
@@ -52,3 +54,29 @@ export const assets = mediaSchema.table(
 
 export type Asset = typeof assets.$inferSelect;
 export type NewAsset = typeof assets.$inferInsert;
+
+export const folders = mediaSchema.table("folders", {
+  id: text("id").primaryKey(),                              // folder_xxx
+  ownerDid: text("owner_did").notNull(),
+  name: text("name").notNull(),
+  parentId: text("parent_id"),                              // self-reference for tree
+  icon: text("icon"),                                       // emoji
+  isSystem: boolean("is_system").default(false),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  ownerIdx: index("idx_folders_owner").on(table.ownerDid),
+  parentIdx: index("idx_folders_parent").on(table.parentId),
+}));
+
+export const assetFolders = mediaSchema.table("asset_folders", {
+  assetId: text("asset_id").references(() => assets.id, { onDelete: "cascade" }).notNull(),
+  folderId: text("folder_id").references(() => folders.id, { onDelete: "cascade" }).notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.assetId, table.folderId] }),
+  assetIdx: index("idx_asset_folders_asset").on(table.assetId),
+  folderIdx: index("idx_asset_folders_folder").on(table.folderId),
+}));
+
+export type Folder = typeof folders.$inferSelect;
+export type NewFolder = typeof folders.$inferInsert;
