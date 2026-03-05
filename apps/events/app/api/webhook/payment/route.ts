@@ -353,8 +353,8 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
   const magicLink = `${AUTH_URL}/api/magic?token=${createdTickets[0].magicToken}`;
 
-  // Generate QR code from magic link (scannable for event entry)
-  const qrCodeDataUri = await generateQRCode(magicLink);
+  // Generate QR code from ticket ID (for check-in scanning)
+  const qrCodeDataUri = await generateQRCode(createdTickets[0].id);
 
   // Build absolute event image URL
   const eventImageUrl = event.imageUrl

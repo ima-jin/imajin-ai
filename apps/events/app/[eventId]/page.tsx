@@ -141,15 +141,9 @@ async function getUserTickets(eventId: string, userDid: string) {
       )
     );
 
-  const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
-
   return Promise.all(userTickets.map(async ({ ticket, ticketType }) => {
-    // Generate QR code from magic link (same as email)
-    let qrCodeDataUri: string | undefined;
-    if (ticket.magicToken) {
-      const magicLink = `${authUrl}/api/magic?token=${ticket.magicToken}`;
-      qrCodeDataUri = await generateQRCode(magicLink) || undefined;
-    }
+    // Generate QR code from ticket ID (for check-in scanning)
+    const qrCodeDataUri = await generateQRCode(ticket.id) || undefined;
 
     return {
       id: ticket.id,
