@@ -44,6 +44,7 @@ interface CheckoutBody {
   successUrl: string;
   cancelUrl: string;
   metadata?: Record<string, string>;
+  fairManifest?: Record<string, any>;
   connectedAccountId?: string;
 }
 
@@ -115,6 +116,7 @@ export async function POST(request: NextRequest) {
       status: 'pending',
       stripeId: result.id,
       metadata: body.metadata,
+      fairManifest: body.fairManifest || null,
     });
 
     return NextResponse.json({

@@ -89,6 +89,17 @@ export async function POST(request: NextRequest) {
       creatorDid: identity.id,
     });
 
+    // Auto-generate .fair attribution manifest
+    const PLATFORM_DID = 'did:imajin:platform';
+    const PLATFORM_FEE = 0.03; // 3%
+    const fairManifest = {
+      version: '1.0',
+      chain: [
+        { did: identity.id, role: 'organizer', share: 1 - PLATFORM_FEE },
+        { did: PLATFORM_DID, role: 'platform', share: PLATFORM_FEE },
+      ],
+    };
+
     // Create event
     const [event] = await db.insert(events).values({
       id: eventId,
@@ -111,6 +122,7 @@ export async function POST(request: NextRequest) {
       status: 'draft',
       podId,
       lobbyConversationId,
+      metadata: { fair: fairManifest },
     }).returning();
 
     // Create ticket types if provided

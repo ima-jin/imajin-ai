@@ -76,6 +76,10 @@ export async function POST(request: NextRequest) {
       }
     }
     
+    // Read .fair attribution from event metadata
+    const eventMetadata = (event.metadata || {}) as Record<string, any>;
+    const fairManifest = eventMetadata.fair || null;
+
     // Call pay service to create checkout session
     const payResponse = await fetch(`${PAY_SERVICE_URL}/api/checkout`, {
       method: 'POST',
@@ -91,6 +95,7 @@ export async function POST(request: NextRequest) {
         customerEmail: body.email,
         successUrl: `${EVENTS_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}&event=${event.id}`,
         cancelUrl: `${EVENTS_URL}/${event.id}`,
+        fairManifest,
         metadata: {
           service: 'events',
           eventId: event.id,
