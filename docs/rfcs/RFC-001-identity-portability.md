@@ -127,6 +127,43 @@ Primary node ──encrypted sync──→ Backup node 1
 | Trust relationships | Per-instance followers | Portable trust graph |
 | Payment history | N/A | Included in context package |
 
+## Value Flow
+
+The missing piece in every open standard to date: **who pays for the infrastructure?**
+
+ActivityPub instance operators run on donations and goodwill. When the money or motivation runs out, the instance dies — and every identity on it dies too. The protocol is technically sound; the economics are not. AT Protocol concentrates hosting at Bluesky because nobody else has incentive to run relay infrastructure at scale.
+
+Imajin solves this by making value flow naturally through the network as a consequence of people doing things:
+
+```
+User activity (message, file share, ticket purchase, query)
+  → .fair records attribution
+  → Transaction settles (fiat now, MJN when ready)
+  → Fees distribute to infrastructure operators
+```
+
+### Who Gets Paid
+
+| Role | Value Created | Revenue |
+|------|--------------|---------|
+| **Primary node operator** | Hosts your identity, serves your data | Storage + compute fees from your activity |
+| **Backup node operator** | Holds encrypted redundancy | Redundancy fee (tiny, automatic, per-sync) |
+| **DID resolver** | Answers "who is this?" lookups | Resolution fee per query |
+| **Relay node** | Routes messages between nodes | Relay fee per message |
+| **Content creator** | Produces things people want | .fair attribution splits on every transaction |
+
+### Why This Works
+
+Every node in the network is economically motivated to stay online. Backup nodes aren't charity — they're paid participants. The more active your identity, the more your infrastructure earns. This creates a natural market:
+
+- Popular identities generate more queries → node operators compete to host them
+- Redundancy has a price → users choose their backup level (1 node = cheap, 3 nodes = resilient)
+- Resolution is a service → more nodes = faster lookups = better network
+
+The economic model *is* the resilience model. Nodes stay up because they earn. Identities survive because keeping them alive is profitable.
+
+This is fundamentally different from "run a server and hope people donate." It's infrastructure that pays for itself.
+
 ## Dependencies
 
 - **Registry service** — needs backup node registration endpoints
