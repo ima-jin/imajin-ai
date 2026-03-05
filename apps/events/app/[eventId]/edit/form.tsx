@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ImageUpload } from '@/app/components/ImageUpload';
+import { FairEditor } from '@imajin/fair';
+import type { FairManifest } from '@imajin/fair';
 import type { Event, TicketType } from '@/src/db/schema';
 
 interface Props {
@@ -234,8 +236,38 @@ export default function EventEditForm({ event, existingTickets }: Props) {
     }
   }
 
-  // Extract .fair manifest from event metadata
-  const fairManifest = (event.metadata as any)?.fair || null;
+  // .fair manifest state
+  const [fairManifest, setFairManifest] = useState<FairManifest | null>(
+    (event.metadata as any)?.fair || null
+  );
+  const [fairSaving, setFairSaving] = useState(false);
+  const [fairSaveError, setFairSaveError] = useState('');
+  const [fairSaved, setFairSaved] = useState(false);
+
+  async function handleSaveFair() {
+    if (!fairManifest) return;
+    setFairSaving(true);
+    setFairSaveError('');
+    setFairSaved(false);
+    try {
+      const res = await fetch(`/api/events/${event.id}/fair`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ manifest: fairManifest }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to save .fair manifest');
+      }
+      setFairSaved(true);
+      setTimeout(() => setFairSaved(false), 3000);
+    } catch (err) {
+      setFairSaveError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setFairSaving(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -265,10 +297,10 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         </button>
       </div>
 
-      {/* .fair Viewer */}
+      {/* .fair Editor */}
       {activeTab === 'fair' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-4">
-          <div>
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
             <h2 className="text-xl font-semibold mb-1">Attribution Manifest</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Every ticket sold records this .fair — who created value, and what share they earn.
@@ -277,81 +309,30 @@ export default function EventEditForm({ event, existingTickets }: Props) {
 
           {fairManifest ? (
             <>
-              {/* Platform split */}
-              <div>
-                <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2 uppercase tracking-wide">Revenue Split</h3>
-                <div className="space-y-2">
-                  {fairManifest.chain?.map((entry: any, i: number) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-3 h-3 rounded-full ${
-                          entry.role === 'platform' ? 'bg-blue-500' : 'bg-orange-500'
-                        }`} />
-                        <div>
-                          <div className="font-medium text-sm">{entry.role}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate max-w-[280px]">
-                            {entry.did}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-lg font-bold">{(entry.share * 100).toFixed(1)}%</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <FairEditor
+                manifest={fairManifest}
+                onChange={(updated) => setFairManifest(updated)}
+                sections={['attribution', 'transfer']}
+                readOnly={false}
+              />
 
-              {/* Event distributions */}
-              {fairManifest.distributions && fairManifest.distributions.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2 uppercase tracking-wide">Event Distribution</h3>
-                  <p className="text-xs text-gray-400 mb-2">How the event&apos;s share is split among contributors</p>
-                  <div className="space-y-2">
-                    {fairManifest.distributions.map((entry: any, i: number) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-3 h-3 rounded-full bg-green-500" />
-                          <div>
-                            <div className="font-medium text-sm">{entry.role}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate max-w-[280px]">
-                              {entry.did}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-lg font-bold">{(entry.share * 100).toFixed(1)}%</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+              {fairSaveError && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
+                  {fairSaveError}
                 </div>
               )}
 
-              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                <details className="group">
-                  <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300">
-                    View raw manifest
-                  </summary>
-                  <pre className="mt-2 p-3 bg-gray-900 text-green-400 rounded-lg text-xs overflow-x-auto">
-                    {JSON.stringify(fairManifest, null, 2)}
-                  </pre>
-                </details>
-              </div>
-
-              <div className="text-xs text-gray-400">
-                <a href="https://github.com/ima-jin/.fair" target="_blank" rel="noopener noreferrer" className="hover:text-orange-500 transition">.fair</a>
-                {' '}v{fairManifest.version || '0.2.0'} · Applied to all ticket transactions
-              </div>
+              <button
+                type="button"
+                onClick={handleSaveFair}
+                disabled={fairSaving}
+                className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-semibold rounded-lg transition"
+              >
+                {fairSaving ? 'Saving...' : fairSaved ? 'Saved!' : 'Save .fair'}
+              </button>
             </>
           ) : (
-            <div className="text-center py-8">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 text-center py-8">
               <div className="text-4xl mb-3">⚖️</div>
               <p className="text-gray-500 dark:text-gray-400">
                 No .fair manifest attached to this event yet.
