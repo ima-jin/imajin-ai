@@ -69,7 +69,7 @@ export const messages = chatSchema.table('messages', {
 
   // Content (E2EE)
   content: jsonb('content').notNull(),                          // { encrypted, nonce } or { type: 'system', text }
-  contentType: text('content_type').notNull().default('text'),  // 'text' | 'system' | 'invite' | 'trust-extended'
+  contentType: text('content_type').notNull().default('text'),  // 'text' | 'system' | 'invite' | 'trust-extended' | 'voice' | 'media' | 'location'
 
   // Media attachments
   mediaType: text('media_type'),                                // 'image' | 'file' | null

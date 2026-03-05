@@ -124,9 +124,29 @@ export async function POST(
       return errorResponse('content is required and must be an object');
     }
 
-    // For E2EE messages, content should have { encrypted, nonce }
-    // For system messages, content has { type: 'system', text }
-    const contentType = content.type === 'system' ? 'system' : 'text';
+    // Determine contentType from body or infer from content shape
+    const requestedType = body.contentType || content.type || 'text';
+    const validContentTypes = ['text', 'system', 'invite', 'trust-extended', 'voice', 'media', 'location'];
+    if (!validContentTypes.includes(requestedType)) {
+      return errorResponse(`Invalid contentType: ${requestedType}`);
+    }
+
+    // Validate content shape for rich message types
+    if (requestedType === 'voice') {
+      if (!content.assetId || typeof content.transcript !== 'string' || typeof content.durationMs !== 'number') {
+        return errorResponse('voice message requires assetId, transcript, and durationMs');
+      }
+    } else if (requestedType === 'media') {
+      if (!content.assetId || !content.filename || !content.mimeType) {
+        return errorResponse('media message requires assetId, filename, and mimeType');
+      }
+    } else if (requestedType === 'location') {
+      if (typeof content.lat !== 'number' || typeof content.lng !== 'number') {
+        return errorResponse('location message requires lat and lng');
+      }
+    }
+
+    const contentType = requestedType;
 
     // If replying, verify the message exists in this conversation
     if (replyTo) {
@@ -141,14 +161,9 @@ export async function POST(
       }
     }
 
-    // Unfurl links from message content
+    // Unfurl links from message content (text and system messages only)
     let linkPreviews = null;
-    if (contentType === 'text' && content.text) {
-      // For plain text messages, unfurl from the text field
-      const previews = await unfurlLinks(content.text);
-      linkPreviews = previews.length > 0 ? previews : null;
-    } else if (contentType === 'system' && content.text) {
-      // For system messages, unfurl from the text field
+    if ((contentType === 'text' || contentType === 'system') && content.text) {
       const previews = await unfurlLinks(content.text);
       linkPreviews = previews.length > 0 ? previews : null;
     }
