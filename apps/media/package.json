@@ -16,7 +16,8 @@
     "react-dom": "^18",
     "drizzle-orm": "^0.45.1",
     "postgres": "^3.4.5",
-    "nanoid": "^5"
+    "nanoid": "^5",
+    "exif-reader": "^2.0.1"
   },
   "devDependencies": {
     "typescript": "^5",

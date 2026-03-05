@@ -6,6 +6,7 @@ import { nanoid } from "nanoid";
 import { db, assets } from "@/src/db";
 import { requireAuth } from "@/src/lib/auth";
 import { eq, and } from "drizzle-orm";
+import { classifyAsset } from "@/src/lib/classify";
 
 export const config = { api: { bodyParser: false } };
 
@@ -136,7 +137,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return NextResponse.json(
+  const response = NextResponse.json(
     {
       id: record.id,
       filename: record.filename,
@@ -149,6 +150,18 @@ export async function POST(request: NextRequest) {
     },
     { status: 201 }
   );
+
+  // Fire-and-forget async classification
+  const existingMeta = record.metadata;
+  classifyAsset(buffer, originalName, mimeType).then(async (result) => {
+    await db.update(assets).set({
+      classification: result.category,
+      classificationConfidence: Math.round(result.confidence * 100),
+      metadata: { ...(typeof existingMeta === "object" && existingMeta !== null ? existingMeta : {}), classification: result },
+    }).where(eq(assets.id, assetId));
+  }).catch(console.error);
+
+  return response;
 }
 
 // ---------------------------------------------------------------------------
