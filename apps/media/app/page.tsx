@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { getSession } from "@/src/lib/auth";
 import { MediaManager } from "@/src/components/MediaManager";
 
@@ -9,7 +10,12 @@ export default async function Page() {
 
   if (!session) {
     const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_SERVICE_URL || "";
-    const loginUrl = authUrl ? `${authUrl}/login` : "/api/auth/login";
+    const headersList = await headers();
+    const host = headersList.get("x-forwarded-host") || headersList.get("host") || "";
+    const proto = headersList.get("x-forwarded-proto") || "https";
+    const currentUrl = host ? `${proto}://${host}` : "";
+    const next = currentUrl ? `?next=${encodeURIComponent(currentUrl)}` : "";
+    const loginUrl = authUrl ? `${authUrl}/login${next}` : "/api/auth/login";
     redirect(loginUrl);
   }
 

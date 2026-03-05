@@ -99,7 +99,7 @@ function useAutoIdentity(servicePrefix: string, domain: string, overrides?: Serv
               } catch {}
               setIdentity({
                 isLoggedIn: false,
-                onLogin: () => { window.location.href = `${profileUrl}/login`; },
+                onLogin: () => { window.location.href = `${profileUrl}/login?next=${encodeURIComponent(window.location.href)}`; },
                 onRegister: () => { window.location.href = `${authUrl}/register`; },
               });
             },
@@ -109,13 +109,13 @@ function useAutoIdentity(servicePrefix: string, domain: string, overrides?: Serv
               ? () => { window.location.href = `${profileUrl}/${data.did}`; }
               : undefined,
             onEditProfile: () => { window.location.href = `${profileUrl}/edit`; },
-            onLogin: () => { window.location.href = `${profileUrl}/login`; },
+            onLogin: () => { window.location.href = `${profileUrl}/login?next=${encodeURIComponent(window.location.href)}`; },
             onRegister: () => { window.location.href = `${authUrl}/register`; },
           });
         } else {
           setIdentity({
             isLoggedIn: false,
-            onLogin: () => { window.location.href = `${profileUrl}/login`; },
+            onLogin: () => { window.location.href = `${profileUrl}/login?next=${encodeURIComponent(window.location.href)}`; },
             onRegister: () => { window.location.href = `${authUrl}/register`; },
           });
         }

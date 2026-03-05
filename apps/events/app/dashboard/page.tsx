@@ -42,7 +42,9 @@ export default async function DashboardPage() {
   const session = await getSession();
 
   if (!session) {
-    redirect('https://auth.imajin.ai/login?next=https://events.imajin.ai/dashboard');
+    const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
+    const eventsUrl = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+    redirect(`${authUrl}/login?next=${encodeURIComponent(`${eventsUrl}/dashboard`)}`);
   }
 
   const events = await getMyEvents();
