@@ -4,6 +4,10 @@ import { useState, useRef, useEffect } from 'react';
 import { ReactionPicker } from './ReactionPicker';
 import { LinkPreviewCard } from './LinkPreviewCard';
 import { MessageMedia } from './MessageMedia';
+import { VoiceMessage } from './VoiceMessage';
+import { MediaMessage } from './MediaMessage';
+import { LocationMessage } from './LocationMessage';
+import type { MessageContent } from '@/lib/message-types';
 
 interface LinkPreview {
   url: string;
@@ -18,7 +22,7 @@ interface Message {
   id: string;
   conversationId: string;
   fromDid: string;
-  content: { type: string; text: string };
+  content: MessageContent | { type: string; text: string };
   contentType: string;
   replyTo: string | null;
   linkPreviews?: LinkPreview[] | null;
@@ -79,15 +83,15 @@ export function MessageBubble({
 
   // Extract text from content
   const text =
-    typeof message.content === 'object' && message.content?.text
-      ? message.content.text
+    typeof message.content === 'object' && (message.content as any)?.text
+      ? (message.content as any).text
       : typeof message.content === 'string'
       ? message.content
       : '';
 
   const replyToText =
-    replyToMessage && typeof replyToMessage.content === 'object' && replyToMessage.content?.text
-      ? replyToMessage.content.text
+    replyToMessage && typeof replyToMessage.content === 'object' && (replyToMessage.content as any)?.text
+      ? (replyToMessage.content as any).text
       : replyToMessage && typeof replyToMessage.content === 'string'
       ? replyToMessage.content
       : '';
@@ -208,9 +212,53 @@ export function MessageBubble({
                 : 'bg-gray-100 dark:bg-gray-800 rounded-bl-md'
             }`}
           >
-            {text && <p className="text-sm whitespace-pre-wrap">{text}</p>}
+            {/* Rich content rendering */}
+            {(() => {
+              const ct = message.contentType || (message.content as any)?.type;
+              if (ct === 'voice') {
+                const c = message.content as any;
+                return (
+                  <VoiceMessage
+                    assetId={c.assetId}
+                    transcript={c.transcript}
+                    durationMs={c.durationMs}
+                    waveform={c.waveform}
+                    isOwn={isOwn}
+                  />
+                );
+              }
+              if (ct === 'media') {
+                const c = message.content as any;
+                return (
+                  <MediaMessage
+                    assetId={c.assetId}
+                    filename={c.filename}
+                    mimeType={c.mimeType}
+                    size={c.size}
+                    width={c.width}
+                    height={c.height}
+                    caption={c.caption}
+                    isOwn={isOwn}
+                  />
+                );
+              }
+              if (ct === 'location') {
+                const c = message.content as any;
+                return (
+                  <LocationMessage
+                    lat={c.lat}
+                    lng={c.lng}
+                    label={c.label}
+                    accuracy={c.accuracy}
+                    isOwn={isOwn}
+                  />
+                );
+              }
+              // Default: text rendering
+              return text ? <p className="text-sm whitespace-pre-wrap">{text}</p> : null;
+            })()}
 
-            {/* Media attachments */}
+            {/* Legacy media attachments */}
             {message.mediaType && message.mediaPath && message.mediaMeta && (
               <div className="mt-2">
                 <MessageMedia
