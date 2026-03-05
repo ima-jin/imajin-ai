@@ -488,6 +488,9 @@ importers:
       '@imajin/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@imajin/input':
+        specifier: workspace:*
+        version: link:../../packages/input
       '@imajin/ui':
         specifier: workspace:*
         version: link:../../packages/ui

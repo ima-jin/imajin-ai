@@ -91,13 +91,14 @@ export function VoiceRecorder({
         });
 
         // If we have an input service URL and a transcription callback, send for transcription
-        if (inputServiceUrl && onTranscribed) {
+        if (onTranscribed) {
           setState('processing');
           try {
             const formData = new FormData();
             formData.append('file', blob, `recording.${mimeType.includes('mp4') ? 'm4a' : 'webm'}`);
 
-            const res = await fetch(`${inputServiceUrl}/api/transcribe`, {
+            const transcribeUrl = inputServiceUrl ? `${inputServiceUrl.replace(/\/+$/, '')}/api/transcribe` : '/api/transcribe';
+            const res = await fetch(transcribeUrl, {
               method: 'POST',
               body: formData,
               credentials: 'include',

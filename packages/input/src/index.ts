@@ -1,6 +1,6 @@
 // Core component
 export { ImajinInput } from './ImajinInput';
-export type { ImajinInputProps, InputFeature, MediaRef } from './ImajinInput';
+export type { ImajinInputProps, InputFeature, TranscriptionMeta } from './ImajinInput';
 
 // Sub-components (can be used independently)
 export { EmojiPicker } from './EmojiPicker';

@@ -14,6 +14,8 @@ export interface FileAttachmentProps {
   /** Max file size in bytes (default: 50MB) */
   maxSize?: number;
   disabled?: boolean;
+  /** Custom trigger renderer — receives click handler to open file picker */
+  renderTrigger?: (onClick: () => void) => React.ReactNode;
 }
 
 const DEFAULT_ACCEPT = 'image/*,audio/*,video/*,.pdf,.doc,.docx,.txt,.md';
@@ -38,6 +40,7 @@ export function FileAttachment({
   accept = DEFAULT_ACCEPT,
   maxSize = DEFAULT_MAX_SIZE,
   disabled = false,
+  renderTrigger,
 }: FileAttachmentProps) {
   const [attachment, setAttachment] = useState<FileAttachmentData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -130,30 +133,37 @@ export function FileAttachment({
     );
   }
 
+  const openPicker = () => inputRef.current?.click();
+
   return (
     <div className="relative">
-      <label
-        className={`p-2 text-gray-500 hover:text-orange-400 transition-colors cursor-pointer inline-block ${
-          disabled ? 'opacity-40 cursor-not-allowed' : ''
-        } ${isDragging ? 'text-orange-400' : ''}`}
-        title="Attach file"
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
-        }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={handleDrop}
-      >
-        <input
-          ref={inputRef}
-          type="file"
-          accept={accept}
-          onChange={handleFileSelect}
-          disabled={disabled}
-          className="sr-only"
-        />
-        📎
-      </label>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        onChange={handleFileSelect}
+        disabled={disabled}
+        className="sr-only"
+      />
+      {renderTrigger ? (
+        renderTrigger(openPicker)
+      ) : (
+        <label
+          className={`p-2 text-gray-500 hover:text-orange-400 transition-colors cursor-pointer inline-block ${
+            disabled ? 'opacity-40 cursor-not-allowed' : ''
+          } ${isDragging ? 'text-orange-400' : ''}`}
+          title="Attach file"
+          onClick={openPicker}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleDrop}
+        >
+          📎
+        </label>
+      )}
       {error && (
         <div className="absolute bottom-full mb-1 left-0 text-xs text-red-400 whitespace-nowrap bg-gray-900 px-2 py-1 rounded">
           {error}

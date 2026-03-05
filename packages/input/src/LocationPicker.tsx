@@ -10,11 +10,13 @@ export interface LocationData {
 export interface LocationPickerProps {
   onLocation: (location: LocationData) => void;
   disabled?: boolean;
+  /** Custom trigger renderer — receives click handler */
+  renderTrigger?: (onClick: () => void) => React.ReactNode;
 }
 
 type LocationState = 'idle' | 'loading' | 'done' | 'error';
 
-export function LocationPicker({ onLocation, disabled = false }: LocationPickerProps) {
+export function LocationPicker({ onLocation, disabled = false, renderTrigger }: LocationPickerProps) {
   const [state, setState] = useState<LocationState>('idle');
   const [location, setLocation] = useState<LocationData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +97,10 @@ export function LocationPicker({ onLocation, disabled = false }: LocationPickerP
         </button>
       </div>
     );
+  }
+
+  if (renderTrigger) {
+    return renderTrigger(requestLocation);
   }
 
   return (
