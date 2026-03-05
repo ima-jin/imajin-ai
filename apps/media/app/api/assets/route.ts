@@ -1,0 +1,204 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
+import { mkdir, writeFile } from "fs/promises";
+import { extname } from "path";
+import { nanoid } from "nanoid";
+import { db, assets } from "@/src/db";
+import { requireAuth } from "@/src/lib/auth";
+import { eq, and } from "drizzle-orm";
+
+export const config = { api: { bodyParser: false } };
+
+const MEDIA_ROOT = process.env.MEDIA_ROOT || "/mnt/media";
+const MAX_SIZE = 50 * 1024 * 1024; // 50 MB
+
+const ALLOWED_MIME_PREFIXES = ["image/", "audio/", "video/", "text/"];
+const ALLOWED_MIME_EXACT = ["application/pdf"];
+
+function isAllowedMime(mime: string): boolean {
+  if (ALLOWED_MIME_EXACT.includes(mime)) return true;
+  return ALLOWED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix));
+}
+
+/** Replace chars that are unsafe on most filesystems */
+function didToPath(did: string): string {
+  return did.replace(/:/g, "_").replace(/[^a-zA-Z0-9._@-]/g, "_");
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/assets — upload a file
+// ---------------------------------------------------------------------------
+export async function POST(request: NextRequest) {
+  const authResult = await requireAuth(request);
+  if ("error" in authResult) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+  }
+  const { identity } = authResult;
+  const ownerDid = identity.id;
+
+  // Parse multipart form data
+  let formData: FormData;
+  try {
+    formData = await request.formData();
+  } catch {
+    return NextResponse.json({ error: "Invalid multipart data" }, { status: 400 });
+  }
+
+  const file = formData.get("file");
+  if (!file || !(file instanceof Blob)) {
+    return NextResponse.json({ error: "Missing file field" }, { status: 400 });
+  }
+
+  // Size check
+  if (file.size > MAX_SIZE) {
+    return NextResponse.json(
+      { error: "File exceeds 50 MB limit" },
+      { status: 413 }
+    );
+  }
+
+  // MIME check
+  const mimeType = file.type || "application/octet-stream";
+  if (!isAllowedMime(mimeType)) {
+    return NextResponse.json(
+      { error: `MIME type ${mimeType} is not allowed` },
+      { status: 415 }
+    );
+  }
+
+  const originalName =
+    (file as File).name ??
+    (formData.get("filename") as string | null) ??
+    "upload";
+
+  const assetId = `asset_${nanoid(16)}`;
+  const ext = extname(originalName) || "";
+
+  // Read file bytes
+  const bytes = await file.arrayBuffer();
+  const buffer = Buffer.from(bytes);
+
+  // SHA-256 hash
+  const hash = createHash("sha256").update(buffer).digest("hex");
+
+  // Storage path: {MEDIA_ROOT}/{didPath}/assets/{assetId}{ext}
+  const didPath = didToPath(ownerDid);
+  const dirPath = `${MEDIA_ROOT}/${didPath}/assets`;
+  const storagePath = `${dirPath}/${assetId}${ext}`;
+  const fairPath = `${dirPath}/${assetId}.fair.json`;
+
+  // .fair manifest
+  const fairManifest = {
+    version: "0.2.0",
+    asset: assetId,
+    owner: ownerDid,
+    access: "private",
+    attribution: [{ did: ownerDid, share: 100 }],
+    transfer: { allowed: false },
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    await mkdir(dirPath, { recursive: true });
+    await writeFile(storagePath, buffer);
+    await writeFile(fairPath, JSON.stringify(fairManifest, null, 2));
+  } catch (err) {
+    console.error("Storage write failed:", err);
+    return NextResponse.json(
+      { error: "Storage failure", detail: String(err) },
+      { status: 500 }
+    );
+  }
+
+  // Insert DB record
+  let record;
+  try {
+    [record] = await db
+      .insert(assets)
+      .values({
+        id: assetId,
+        ownerDid,
+        filename: originalName,
+        mimeType,
+        size: file.size,
+        storagePath,
+        hash,
+        fairManifest,
+        fairPath,
+        status: "active",
+      })
+      .returning();
+  } catch (err) {
+    console.error("DB insert failed:", err);
+    return NextResponse.json(
+      { error: "Database failure", detail: String(err) },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json(
+    {
+      id: record.id,
+      filename: record.filename,
+      mimeType: record.mimeType,
+      size: record.size,
+      hash: record.hash,
+      storagePath: record.storagePath,
+      fairManifest: record.fairManifest,
+      createdAt: record.createdAt,
+    },
+    { status: 201 }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/assets — list assets for authenticated user
+// ---------------------------------------------------------------------------
+export async function GET(request: NextRequest) {
+  const authResult = await requireAuth(request);
+  if ("error" in authResult) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+  }
+  const { identity } = authResult;
+  const ownerDid = identity.id;
+
+  const { searchParams } = new URL(request.url);
+  const type = searchParams.get("type");         // e.g. "image"
+  const sort = searchParams.get("sort") || "created";
+  const order = searchParams.get("order") || "desc";
+  const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200);
+  const offset = parseInt(searchParams.get("offset") || "0", 10);
+
+  try {
+    const { desc: drizzleDesc, asc: drizzleAsc } = await import("drizzle-orm");
+
+    // Build where conditions
+    const conditions = [eq(assets.ownerDid, ownerDid), eq(assets.status, "active")];
+
+    // Type filter (mime prefix match)
+    let rows = await db
+      .select()
+      .from(assets)
+      .where(and(...conditions))
+      .orderBy(
+        order === "asc"
+          ? drizzleAsc(assets.createdAt)
+          : drizzleDesc(assets.createdAt)
+      )
+      .limit(limit)
+      .offset(offset);
+
+    // Post-filter by MIME prefix (simple; can be pushed to DB if needed)
+    if (type) {
+      rows = rows.filter((r) => r.mimeType.startsWith(`${type}/`));
+    }
+
+    return NextResponse.json({ assets: rows, limit, offset, count: rows.length });
+  } catch (err) {
+    console.error("DB query failed:", err);
+    return NextResponse.json(
+      { error: "Database failure", detail: String(err) },
+      { status: 500 }
+    );
+  }
+}

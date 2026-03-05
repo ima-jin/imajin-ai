@@ -1,94 +1,129 @@
-import { NextRequest } from 'next/server';
+/**
+ * Auth utilities - validate sessions via cookie or Bearer token
+ */
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
+const COOKIE_NAME = "imajin_session";
 
 export interface Identity {
-  id: string;           // DID
-  publicKey?: string;   // Ed25519 public key
-  type: 'human' | 'agent' | 'presence';
+  id: string;
+  type: string;
   name?: string;
   handle?: string;
-  tier?: 'soft' | 'hard';
+  tier?: "soft" | "hard";
 }
 
-export interface AuthResult {
-  identity: Identity;
+/**
+ * Get session from cookie by calling auth service
+ */
+export async function getSessionFromCookie(
+  cookieHeader: string | null
+): Promise<Identity | null> {
+  if (!cookieHeader) return null;
+
+  const cookies = cookieHeader.split(";").map((c) => c.trim());
+  const sessionCookie = cookies.find((c) => c.startsWith(`${COOKIE_NAME}=`));
+  if (!sessionCookie) return null;
+
+  const token = sessionCookie.split("=")[1];
+  if (!token) return null;
+
+  try {
+    const response = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
+      headers: {
+        Cookie: `${COOKIE_NAME}=${token}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) return null;
+
+    const session = await response.json();
+    return {
+      id: session.did,
+      type: session.type,
+      name: session.name,
+      handle: session.handle,
+      tier: session.tier || "hard",
+    };
+  } catch (error) {
+    console.error("Session validation failed:", error);
+    return null;
+  }
 }
 
-export interface AuthError {
-  error: string;
-  status: number;
-}
-
-export async function requireAuth(request: NextRequest): Promise<AuthResult | AuthError> {
-  const authHeader = request.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.slice(7);
-    return validateBearerToken(token);
+/**
+ * Require auth - checks cookie first, then Bearer token
+ */
+export async function requireAuth(
+  request: Request
+): Promise<{ identity: Identity } | { error: string; status: number }> {
+  const cookieHeader = request.headers.get("Cookie");
+  const sessionIdentity = await getSessionFromCookie(cookieHeader);
+  if (sessionIdentity) {
+    return { identity: sessionIdentity };
   }
 
-  const sessionCookie = request.cookies.get('imajin_session')?.value;
-  if (sessionCookie) {
-    return validateSessionCookie(sessionCookie);
+  const auth = request.headers.get("Authorization");
+  if (!auth?.startsWith("Bearer ")) {
+    return { error: "Not authenticated", status: 401 };
   }
+  const token = auth.slice(7);
 
-  return { error: 'Missing authorization', status: 401 };
-}
-
-async function validateBearerToken(token: string): Promise<AuthResult | AuthError> {
   try {
     const response = await fetch(`${AUTH_SERVICE_URL}/api/validate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token }),
     });
 
-    if (!response.ok) {
-      return { error: 'Invalid or expired token', status: 401 };
+    if (!response.ok) return { error: "Invalid or expired token", status: 401 };
+
+    const result = await response.json();
+    if (!result.valid || !result.identity) {
+      return { error: "Invalid or expired token", status: 401 };
     }
 
-    const data = await response.json();
-    if (!data.valid || !data.identity) {
-      return { error: 'Invalid token', status: 401 };
-    }
-    return { identity: data.identity };
+    return { identity: result.identity };
   } catch (error) {
-    console.error('Token validation failed:', error);
-    return { error: 'Auth service unavailable', status: 503 };
+    console.error("Token validation failed:", error);
+    return { error: "Auth service unavailable", status: 401 };
   }
 }
 
-async function validateSessionCookie(jwt: string): Promise<AuthResult | AuthError> {
-  try {
-    const response = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      method: 'GET',
-      headers: {
-        Cookie: `imajin_session=${jwt}`,
-      },
-    });
+/**
+ * Get session for server components
+ */
+export async function getSession(): Promise<Identity | null> {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get(COOKIE_NAME);
 
-    if (!response.ok) {
-      return { error: 'Invalid or expired session', status: 401 };
-    }
+  if (!sessionCookie) return null;
 
-    const data = await response.json();
+  return getSessionFromCookie(`${COOKIE_NAME}=${sessionCookie.value}`);
+}
+
+/**
+ * Require hard DID authentication (keypair-based identity)
+ */
+export async function requireHardDID(
+  request: Request
+): Promise<{ identity: Identity } | { error: string; status: number }> {
+  const authResult = await requireAuth(request);
+
+  if ("error" in authResult) {
+    return authResult;
+  }
+
+  const { identity } = authResult;
+
+  if (identity.tier === "soft") {
     return {
-      identity: {
-        id: data.did,
-        type: data.type,
-        name: data.name,
-        handle: data.handle,
-        tier: data.tier || 'hard',
-      },
+      error: "This action requires a full identity (hard DID)",
+      status: 403,
     };
-  } catch (error) {
-    console.error('Session validation failed:', error);
-    return { error: 'Auth service unavailable', status: 503 };
   }
-}
 
-export async function optionalAuth(request: NextRequest): Promise<Identity | null> {
-  const result = await requireAuth(request);
-  if ('error' in result) return null;
-  return result.identity;
+  return { identity };
 }

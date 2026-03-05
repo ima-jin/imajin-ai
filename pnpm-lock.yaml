@@ -599,23 +599,26 @@ importers:
         specifier: workspace:*
         version: link:../../packages/db
       '@imajin/ui':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/ui
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.1(@neondatabase/serverless@1.0.2)(@prisma/client@5.22.0(prisma@5.22.0))(@types/pg@8.16.0)(postgres@3.4.8)(prisma@5.22.0)
+      nanoid:
+        specifier: ^5
+        version: 5.1.6
       next:
         specifier: ^14.2.0
         version: 14.2.35(@babel/core@7.29.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      postgres:
+        specifier: ^3.4.5
+        version: 3.4.8
       react:
-        specifier: ^18.2.0
+        specifier: ^18
         version: 18.3.1
       react-dom:
-        specifier: ^18.2.0
+        specifier: ^18
         version: 18.3.1(react@18.3.1)
-      zod:
-        specifier: ^3.22.0
-        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^20
@@ -623,26 +626,14 @@ importers:
       '@types/react':
         specifier: ^18
         version: 18.3.28
-      '@types/react-dom':
-        specifier: ^18
-        version: 18.3.7(@types/react@18.3.28)
       autoprefixer:
         specifier: ^10
         version: 10.4.24(postcss@8.5.6)
-      drizzle-kit:
-        specifier: ^0.31.9
-        version: 0.31.9
-      eslint:
-        specifier: ^8
-        version: 8.57.1
-      eslint-config-next:
-        specifier: ^14.2.0
-        version: 14.2.35(eslint@8.57.1)(typescript@5.9.3)
       postcss:
         specifier: ^8
         version: 8.5.6
       tailwindcss:
-        specifier: ^3.4.0
+        specifier: ^3.4
         version: 3.4.19
       typescript:
         specifier: ^5
