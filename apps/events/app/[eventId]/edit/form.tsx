@@ -277,29 +277,62 @@ export default function EventEditForm({ event, existingTickets }: Props) {
 
           {fairManifest ? (
             <>
-              <div className="space-y-3">
-                {fairManifest.chain?.map((entry: any, i: number) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-3 h-3 rounded-full ${
-                        entry.role === 'platform' ? 'bg-blue-500' : 'bg-orange-500'
-                      }`} />
-                      <div>
-                        <div className="font-medium text-sm">{entry.role}</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate max-w-[280px]">
-                          {entry.did}
+              {/* Platform split */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2 uppercase tracking-wide">Revenue Split</h3>
+                <div className="space-y-2">
+                  {fairManifest.chain?.map((entry: any, i: number) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-3 h-3 rounded-full ${
+                          entry.role === 'platform' ? 'bg-blue-500' : 'bg-orange-500'
+                        }`} />
+                        <div>
+                          <div className="font-medium text-sm">{entry.role}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate max-w-[280px]">
+                            {entry.did}
+                          </div>
                         </div>
                       </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold">{(entry.share * 100).toFixed(1)}%</div>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold">{(entry.share * 100).toFixed(0)}%</div>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
+
+              {/* Event distributions */}
+              {fairManifest.distributions && fairManifest.distributions.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2 uppercase tracking-wide">Event Distribution</h3>
+                  <p className="text-xs text-gray-400 mb-2">How the event&apos;s share is split among contributors</p>
+                  <div className="space-y-2">
+                    {fairManifest.distributions.map((entry: any, i: number) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-3 h-3 rounded-full bg-green-500" />
+                          <div>
+                            <div className="font-medium text-sm">{entry.role}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate max-w-[280px]">
+                              {entry.did}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold">{(entry.share * 100).toFixed(1)}%</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                 <details className="group">

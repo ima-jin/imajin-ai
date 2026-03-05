@@ -95,8 +95,11 @@ export async function POST(request: NextRequest) {
     const fairManifest = {
       version: '1.0',
       chain: [
-        { did: identity.id, role: 'organizer', share: 1 - PLATFORM_FEE },
+        { did: eventDid, role: 'event', share: 1 - PLATFORM_FEE },
         { did: PLATFORM_DID, role: 'platform', share: PLATFORM_FEE },
+      ],
+      distributions: [
+        { did: identity.id, role: 'creator', share: 1.0 },
       ],
     };
 
