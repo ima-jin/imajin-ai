@@ -193,10 +193,9 @@ export function NavBar({
         {/* Logo */}
         <a
           href={buildUrl('www', servicePrefix, domain, serviceUrls)}
-          className="flex items-center gap-2 font-bold text-lg hover:opacity-80 transition"
+          className="flex items-center hover:opacity-80 transition"
         >
-          <span className="text-2xl">🟠</span>
-          <span>Imajin</span>
+          <img src="/images/logo.svg" alt="Imajin" className="h-8" />
         </a>
 
         {/* Center - Nav Links (desktop) */}
