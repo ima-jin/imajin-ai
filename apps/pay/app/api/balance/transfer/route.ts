@@ -3,6 +3,7 @@
  *
  * Transfer balance from one DID to another.
  * Auth: sender must be authenticated as from_did.
+ * Burns credits first, then cash.
  *
  * Request:
  * {
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check sender has sufficient balance
+    // Check sender has sufficient balance (cash + credit)
     const senderBalanceRows = await db
       .select()
       .from(balances)
@@ -84,13 +85,29 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     const senderBalance = senderBalanceRows[0];
-    const currentBalance = senderBalance ? parseFloat(senderBalance.amount) : 0;
+    const currentCash = senderBalance ? parseFloat(senderBalance.cashAmount) : 0;
+    const currentCredit = senderBalance ? parseFloat(senderBalance.creditAmount) : 0;
+    const totalBalance = currentCash + currentCredit;
 
-    if (currentBalance < amount) {
+    if (totalBalance < amount) {
       return NextResponse.json(
         { error: 'Insufficient balance' },
         { status: 400, headers: cors }
       );
+    }
+
+    // Determine how much to burn from each bucket (credits first)
+    const creditBurn = Math.min(currentCredit, amount);
+    const cashBurn = amount - creditBurn;
+
+    // Determine source label
+    let source: 'credit' | 'fiat' | 'mixed';
+    if (cashBurn === 0) {
+      source = 'credit';
+    } else if (creditBurn === 0) {
+      source = 'fiat';
+    } else {
+      source = 'mixed';
     }
 
     const txId = genId('tx');
@@ -107,31 +124,34 @@ export async function POST(request: NextRequest) {
         amount: amount.toString(),
         currency: 'USD',
         status: 'completed',
+        source,
         metadata,
       });
 
-      // Debit sender
+      // Debit sender (credits first, then cash)
       await tx
         .update(balances)
         .set({
-          amount: sql`${balances.amount} - ${amount}`,
+          creditAmount: sql`${balances.creditAmount} - ${creditBurn}`,
+          cashAmount: sql`${balances.cashAmount} - ${cashBurn}`,
           updatedAt: new Date(),
         })
         .where(eq(balances.did, from_did));
 
-      // Credit recipient
+      // Credit recipient cash bucket (transfers go to cash — real value)
       await tx
         .insert(balances)
         .values({
           did: to_did,
-          amount: amount.toString(),
+          cashAmount: amount.toString(),
+          creditAmount: '0',
           currency: 'USD',
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
           target: balances.did,
           set: {
-            amount: sql`${balances.amount} + ${amount}`,
+            cashAmount: sql`${balances.cashAmount} + ${amount}`,
             updatedAt: new Date(),
           },
         });
@@ -144,6 +164,7 @@ export async function POST(request: NextRequest) {
         from_did,
         to_did,
         amount,
+        source,
       },
       { headers: cors }
     );

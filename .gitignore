@@ -29,3 +29,4 @@ apps/www/.env.development
 
 # Personal
 *.raw.md
+scripts/launch-local.ts

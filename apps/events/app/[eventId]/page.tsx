@@ -3,11 +3,13 @@ import Link from 'next/link';
 import { db, events, ticketTypes, tickets } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { TicketsSection } from './tickets-section';
+import { generateQRCode } from '@/src/lib/email';
 
-export const revalidate = 60; // revalidate every 60 seconds
+export const revalidate = 0; // always fresh — event data changes frequently during editing
 import { Countdown } from './countdown';
 import { EventLobbyAccordion } from './event-lobby-accordion';
 import { EventSurveyAccordion } from './event-survey-accordion';
+import { FairAccordion } from './fair-accordion';
 import { ShareButton } from './share-button';
 import { getSession } from '@/src/lib/auth';
 import type { Metadata } from 'next';
@@ -140,17 +142,23 @@ async function getUserTickets(eventId: string, userDid: string) {
       )
     );
 
-  return userTickets.map(({ ticket, ticketType }) => ({
-    id: ticket.id,
-    status: ticket.status,
-    purchasedAt: (ticket.purchasedAt || ticket.createdAt)?.toISOString() || null,
-    pricePaid: ticket.pricePaid,
-    currency: ticket.currency,
-    ticketType: ticketType ? {
-      name: ticketType.name,
-      description: ticketType.description,
-      perks: ticketType.perks,
-    } : null,
+  return Promise.all(userTickets.map(async ({ ticket, ticketType }) => {
+    // Generate QR code from ticket ID (for check-in scanning)
+    const qrCodeDataUri = await generateQRCode(ticket.id) || undefined;
+
+    return {
+      id: ticket.id,
+      status: ticket.status,
+      purchasedAt: (ticket.purchasedAt || ticket.createdAt)?.toISOString() || null,
+      pricePaid: ticket.pricePaid,
+      currency: ticket.currency,
+      qrCodeDataUri,
+      ticketType: ticketType ? {
+        name: ticketType.name,
+        description: ticketType.description,
+        perks: ticketType.perks,
+      } : null,
+    };
   }));
 }
 
@@ -210,8 +218,23 @@ export default async function EventPage({ params }: Props) {
     console.error('Failed to fetch event surveys:', err);
   }
 
-  const preEventSurvey = eventSurveys.find(s => s.type === 'pre-event');
-  const postEventSurvey = eventSurveys.find(s => s.type === 'post-event');
+  // Get survey visibility settings from event metadata
+  const linkedSurveySettings: Record<string, { visibility: string; paywall: boolean }> = {};
+  const linkedSurveysMeta = (event.metadata as any)?.linkedSurveys || [];
+  for (const ls of linkedSurveysMeta) {
+    linkedSurveySettings[ls.id] = { visibility: ls.visibility || 'always', paywall: ls.paywall || false };
+  }
+
+  // Filter surveys based on visibility settings and event state
+  const visibleSurveys = eventSurveys.filter((survey: any) => {
+    const settings = linkedSurveySettings[survey.id];
+    if (!settings) return true; // No settings = show always
+    
+    if (settings.visibility === 'pre-event' && !isUpcoming && !isOngoing) return false;
+    if (settings.visibility === 'post-event' && !isOngoing && !isCompleted) return false;
+    // paywall filtering would happen client-side based on ticket ownership
+    return true;
+  });
   const formattedDate = eventDate.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -327,29 +350,26 @@ export default async function EventPage({ params }: Props) {
           <EventLobbyAccordion eventId={event.id} />
         </div>
 
-        {/* Pre-Event Survey */}
-        {preEventSurvey && (isUpcoming || isOngoing) && (
-          <div className="mb-6">
-            <EventSurveyAccordion
-              eventId={event.id}
-              surveyId={preEventSurvey.id}
-              surveyTitle={preEventSurvey.title}
-              surveyType="pre-event"
-            />
-          </div>
-        )}
+        {/* Event Surveys */}
+        {visibleSurveys.map((survey: any) => {
+          const settings = linkedSurveySettings[survey.id];
+          return (
+            <div key={survey.id} className="mb-6">
+              <EventSurveyAccordion
+                eventId={event.id}
+                surveyId={survey.id}
+                surveyTitle={survey.title}
+                surveyType={survey.type}
+                requiresTicket={settings?.paywall || false}
+              />
+            </div>
+          );
+        })}
 
-        {/* Post-Event Survey */}
-        {postEventSurvey && (isOngoing || isCompleted) && (
-          <div className="mb-6">
-            <EventSurveyAccordion
-              eventId={event.id}
-              surveyId={postEventSurvey.id}
-              surveyTitle={postEventSurvey.title}
-              surveyType="post-event"
-            />
-          </div>
-        )}
+        {/* .fair Attribution */}
+        <div className="mb-6">
+          <FairAccordion fairManifest={(event.metadata as any)?.fair || null} />
+        </div>
 
         {/* Tickets Section */}
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8" id="tickets">

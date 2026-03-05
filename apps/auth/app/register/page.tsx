@@ -80,6 +80,8 @@ function RegisterPage() {
   const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
   const [inviteValid, setInviteValid] = useState<boolean | null>(null);
   const [checking, setChecking] = useState(true);
+  const [registeredKeypair, setRegisteredKeypair] = useState<{ publicKey: string; privateKey: string; did: string; handle: string } | null>(null);
+  const [keyBackedUp, setKeyBackedUp] = useState(false);
 
   // Validate invite code on mount (skip in dev with NEXT_PUBLIC_DISABLE_INVITE_GATE=true)
   const inviteGateDisabled = process.env.NEXT_PUBLIC_DISABLE_INVITE_GATE === 'true';
@@ -150,21 +152,16 @@ function RegisterPage() {
       }
       
       // Store keypair in localStorage
-      localStorage.setItem('imajin:keypair', JSON.stringify({
+      const keypairData = {
         publicKey: keypair.publicKey,
         privateKey: keypair.privateKey,
         did: data.did,
         handle: data.handle,
-      }));
+      };
+      localStorage.setItem('imajin:keypair', JSON.stringify(keypairData));
 
-      // Invite was auto-accepted server-side, go straight to connections
-      if (inviteCode) {
-        window.location.href = CONNECTIONS_URL;
-      } else if (redirectUrl) {
-        window.location.href = redirectUrl;
-      } else {
-        router.push('/');
-      }
+      // Show key backup screen before redirecting
+      setRegisteredKeypair(keypairData);
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
@@ -211,6 +208,92 @@ function RegisterPage() {
               Learn about Imajin
             </a>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Key backup interstitial
+  if (registeredKeypair) {
+    const keyFileContent = JSON.stringify({
+      did: registeredKeypair.did,
+      handle: registeredKeypair.handle,
+      publicKey: registeredKeypair.publicKey,
+      privateKey: registeredKeypair.privateKey,
+      exported: new Date().toISOString(),
+      warning: 'This file contains your private key. Anyone with this file can access your identity. Store it somewhere safe.',
+    }, null, 2);
+
+    const downloadKey = () => {
+      const blob = new Blob([keyFileContent], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `imajin-key-${registeredKeypair.handle}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setKeyBackedUp(true);
+    };
+
+    const continueAfterBackup = () => {
+      if (inviteCode) {
+        window.location.href = CONNECTIONS_URL;
+      } else if (redirectUrl) {
+        window.location.href = redirectUrl;
+      } else {
+        router.push('/');
+      }
+    };
+
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-900 dark:to-gray-800 p-4">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 w-full max-w-md">
+          <div className="text-center mb-6">
+            <div className="text-5xl mb-4">🔐</div>
+            <h1 className="text-2xl font-bold mb-2">Back Up Your Key</h1>
+            <p className="text-gray-500 dark:text-gray-400">
+              Welcome, <span className="font-medium text-orange-500">@{registeredKeypair.handle}</span>
+            </p>
+          </div>
+
+          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-4 mb-6">
+            <p className="text-red-800 dark:text-red-200 font-semibold text-sm mb-2">
+              ⚠️ This is your only chance to back up your key
+            </p>
+            <p className="text-red-700 dark:text-red-300 text-sm">
+              Your identity is controlled by a cryptographic key stored in this browser. 
+              <strong> If you lose it, your account is gone forever.</strong> There is no password reset. 
+              There is no recovery. No one — not even us — can restore it.
+            </p>
+          </div>
+
+          <button
+            onClick={downloadKey}
+            className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition mb-3 flex items-center justify-center gap-2"
+          >
+            📥 Download Backup Key
+          </button>
+
+          {keyBackedUp ? (
+            <button
+              onClick={continueAfterBackup}
+              className="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition"
+            >
+              ✓ Continue
+            </button>
+          ) : (
+            <button
+              onClick={continueAfterBackup}
+              className="w-full py-3 bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 font-medium rounded-lg transition text-sm"
+            >
+              Skip — I understand the risk
+            </button>
+          )}
+
+          <p className="mt-4 text-xs text-gray-400 text-center">
+            Store the key file somewhere safe — a password manager, USB drive, or secure cloud storage. 
+            You can use it to sign in on any device.
+          </p>
         </div>
       </div>
     );

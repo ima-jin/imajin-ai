@@ -34,36 +34,36 @@ export async function POST(req: NextRequest) {
     // 1. Migrate participants — handle conflicts where toDid already exists in the conversation
     // First, delete fromDid entries where toDid is already a participant (avoid PK conflict)
     const dupes = await db.execute(sql`
-      DELETE FROM chat_participants
+      DELETE FROM chat.participants
       WHERE did = ${fromDid}
         AND conversation_id IN (
-          SELECT conversation_id FROM chat_participants WHERE did = ${toDid}
+          SELECT conversation_id FROM chat.participants WHERE did = ${toDid}
         )
     `);
     results.participantsRemoved = (dupes as any)?.rowCount ?? 0;
 
     // Then migrate remaining
     const partResult = await db.execute(sql`
-      UPDATE chat_participants SET did = ${toDid} WHERE did = ${fromDid}
+      UPDATE chat.participants SET did = ${toDid} WHERE did = ${fromDid}
     `);
     results.participants = (partResult as any)?.rowCount ?? 0;
 
     // 2. Migrate messages
     const msgResult = await db.execute(sql`
-      UPDATE chat_messages SET from_did = ${toDid} WHERE from_did = ${fromDid}
+      UPDATE chat.messages SET from_did = ${toDid} WHERE from_did = ${fromDid}
     `);
     results.messages = (msgResult as any)?.rowCount ?? 0;
 
     // 3. Migrate read receipts (handle PK conflicts by deleting dupes first)
     await db.execute(sql`
-      DELETE FROM chat_read_receipts
+      DELETE FROM chat.read_receipts
       WHERE did = ${fromDid}
         AND conversation_id IN (
-          SELECT conversation_id FROM chat_read_receipts WHERE did = ${toDid}
+          SELECT conversation_id FROM chat.read_receipts WHERE did = ${toDid}
         )
     `);
     const rrResult = await db.execute(sql`
-      UPDATE chat_read_receipts SET did = ${toDid} WHERE did = ${fromDid}
+      UPDATE chat.read_receipts SET did = ${toDid} WHERE did = ${fromDid}
     `);
     results.readReceipts = (rrResult as any)?.rowCount ?? 0;
 
@@ -82,14 +82,14 @@ export async function POST(req: NextRequest) {
 
     // 5. Migrate reactions (handle PK conflicts)
     await db.execute(sql`
-      DELETE FROM chat_message_reactions
+      DELETE FROM chat.message_reactions
       WHERE did = ${fromDid}
         AND message_id IN (
-          SELECT message_id FROM chat_message_reactions WHERE did = ${toDid}
+          SELECT message_id FROM chat.message_reactions WHERE did = ${toDid}
         )
     `);
     const rxResult = await db.execute(sql`
-      UPDATE chat_message_reactions SET did = ${toDid} WHERE did = ${fromDid}
+      UPDATE chat.message_reactions SET did = ${toDid} WHERE did = ${fromDid}
     `);
     results.reactions = (rxResult as any)?.rowCount ?? 0;
 

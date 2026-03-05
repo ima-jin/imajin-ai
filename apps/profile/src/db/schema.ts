@@ -1,9 +1,11 @@
-import { pgTable, text, timestamp, jsonb, index, real } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, index, real, pgSchema, uniqueIndex } from 'drizzle-orm/pg-core';
+
+export const profileSchema = pgSchema('profile');
 
 /**
  * Profiles - public identity pages linked to DIDs
  */
-export const profiles = pgTable('profiles', {
+export const profiles = profileSchema.table('profiles', {
   did: text('did').primaryKey(),                              // did:imajin:xxx
   handle: text('handle').unique(),                            // unique handle (e.g., "jin", "ryan")
   displayName: text('display_name').notNull(),
@@ -14,6 +16,7 @@ export const profiles = pgTable('profiles', {
   phone: text('phone'),                                       // contact phone (plaintext for now)
   // invitedBy moved to connections service
   identityTier: text('identity_tier').notNull().default('soft'), // 'soft' | 'hard'
+  visibility: text('visibility').notNull().default('public'),   // 'public' | 'incognito'
   nextInviteAvailableAt: timestamp('next_invite_available_at', { withTimezone: true }), // NULL = can invite now
   metadata: jsonb('metadata').default({}),                    // location, website, etc.
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }), // Online presence tracking
@@ -28,7 +31,7 @@ export const profiles = pgTable('profiles', {
  * Connections - trust relationships between entities
  * Replaces invitedBy with a proper graph structure
  */
-export const connections = pgTable('connections', {
+export const connections = profileSchema.table('connections', {
   id: text('id').primaryKey(),                                // conn_xxx
   fromDid: text('from_did').notNull(),                        // Who created the connection
   toDid: text('to_did').notNull(),                            // Who they're connected to
@@ -52,7 +55,7 @@ export const connections = pgTable('connections', {
 /**
  * Connection requests - pending trust requests
  */
-export const connectionRequests = pgTable('connection_requests', {
+export const connectionRequests = profileSchema.table('connection_requests', {
   id: text('id').primaryKey(),                                // req_xxx
   fromDid: text('from_did').notNull(),
   toDid: text('to_did').notNull(),
@@ -67,9 +70,23 @@ export const connectionRequests = pgTable('connection_requests', {
 }));
 
 /**
+ * Follows - lightweight follow relationships (not trust-gated)
+ */
+export const follows = profileSchema.table('follows', {
+  id: text('id').primaryKey(),                                // follow_xxx
+  followerDid: text('follower_did').notNull(),                // who is following
+  followedDid: text('followed_did').notNull(),                // who is being followed
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  followerDidIdx: index('idx_follows_follower').on(table.followerDid),
+  followedDidIdx: index('idx_follows_followed').on(table.followedDid),
+  uniqueFollowIdx: uniqueIndex('idx_follows_unique').on(table.followerDid, table.followedDid),
+}));
+
+/**
  * DID migrations - track when soft DIDs upgrade to hard DIDs
  */
-export const didMigrations = pgTable('did_migrations', {
+export const didMigrations = profileSchema.table('did_migrations', {
   id: text('id').primaryKey(),                                // migration_xxx
   oldDid: text('old_did').notNull(),                          // did:email:xxx (soft)
   newDid: text('new_did').notNull(),                          // did:imajin:xxx (hard)
@@ -88,3 +105,5 @@ export type ConnectionRequest = typeof connectionRequests.$inferSelect;
 export type NewConnectionRequest = typeof connectionRequests.$inferInsert;
 export type DidMigration = typeof didMigrations.$inferSelect;
 export type NewDidMigration = typeof didMigrations.$inferInsert;
+export type Follow = typeof follows.$inferSelect;
+export type NewFollow = typeof follows.$inferInsert;

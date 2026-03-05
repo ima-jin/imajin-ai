@@ -8,6 +8,7 @@ const isDev = prefix.includes('dev-');
 const envLabel = isDev ? ' [DEV]' : '';
 
 export const metadata: Metadata = {
+  metadataBase: new URL(`${prefix}www.${domain}`),
   title: {
     default: `Imajin — Sovereign Technology${envLabel}`,
     template: `%s | Imajin${envLabel}`,

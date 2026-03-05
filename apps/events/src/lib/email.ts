@@ -1,3 +1,5 @@
+import QRCode from 'qrcode';
+
 /**
  * Email service using SendGrid API
  * 
@@ -56,6 +58,26 @@ export async function sendEmail(options: SendEmailOptions) {
   }
 }
 
+/**
+ * Generate a QR code as a base64 data URI.
+ * Returns the full data:image/png;base64,... string for embedding in HTML.
+ */
+export async function generateQRCode(data: string): Promise<string> {
+  try {
+    return await QRCode.toDataURL(data, {
+      width: 200,
+      margin: 1,
+      color: {
+        dark: '#ffffff',
+        light: '#1a1a1a',
+      },
+    });
+  } catch (error) {
+    console.error('QR code generation failed:', error);
+    return '';
+  }
+}
+
 function parseSender(from: string): { email: string; name?: string } {
   const match = from.match(/^(.+)\s*<(.+)>$/);
   if (match) return { name: match[1].trim(), email: match[2].trim() };
@@ -80,82 +102,129 @@ interface TicketConfirmationData {
   venue?: string;
   price: string;
   magicLink: string;
+  eventImageUrl?: string;
+  eventUrl?: string;
+  qrCodeDataUri?: string;
 }
 
 export function ticketConfirmationEmail(data: TicketConfirmationData): string {
+  const eventImage = data.eventImageUrl
+    ? `<img src="${data.eventImageUrl}" alt="${data.eventTitle}" style="width:100%;max-width:600px;height:auto;display:block;border-radius:8px 8px 0 0;" />`
+    : '';
+
   return `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { text-align: center; margin-bottom: 30px; }
-    .logo { font-size: 48px; margin-bottom: 10px; }
-    h1 { color: #f97316; margin: 0; }
-    .ticket-card { background: #f9fafb; border-radius: 12px; padding: 24px; margin: 20px 0; }
-    .ticket-header { font-size: 20px; font-weight: bold; margin-bottom: 16px; }
-    .detail { margin: 8px 0; }
-    .label { color: #6b7280; font-size: 14px; }
-    .value { font-weight: 500; }
-    .ticket-id { background: #fff; border: 1px dashed #d1d5db; border-radius: 8px; padding: 12px; text-align: center; margin-top: 16px; font-family: monospace; font-size: 14px; }
-    .footer { text-align: center; margin-top: 30px; color: #6b7280; font-size: 14px; }
-    .button { display: inline-block; background: #f97316; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin: 20px 0; }
-  </style>
 </head>
-<body>
-  <div class="header">
-    <div class="logo">🟠</div>
-    <h1>You're in!</h1>
-  </div>
-  
-  <p>Your ticket for <strong>${data.eventTitle}</strong> has been confirmed.</p>
-  
-  <div class="ticket-card">
-    <div class="ticket-header">${data.ticketType} Ticket</div>
-    
-    <div class="detail">
-      <span class="label">Event</span><br>
-      <span class="value">${data.eventTitle}</span>
-    </div>
-    
-    <div class="detail">
-      <span class="label">Date & Time</span><br>
-      <span class="value">${data.eventDate} at ${data.eventTime}</span>
-    </div>
-    
-    <div class="detail">
-      <span class="label">Location</span><br>
-      <span class="value">${data.isVirtual ? '💻 Virtual Event (link sent before event)' : `📍 ${data.venue}`}</span>
-    </div>
-    
-    <div class="detail">
-      <span class="label">Price Paid</span><br>
-      <span class="value">${data.price}</span>
-    </div>
-    
-    <div class="ticket-id">
-      Ticket ID: ${data.ticketId}
-    </div>
-  </div>
+<body style="margin:0;padding:0;background-color:#000000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#000000;">
+    <tr>
+      <td align="center" style="padding:20px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
 
-  <p style="text-align: center;">
-    <a href="${data.magicLink}" class="button">Access Event & Chat</a>
-  </p>
+          <!-- Event Image -->
+          ${eventImage ? `
+          <tr>
+            <td style="padding:0;">
+              ${eventImage}
+            </td>
+          </tr>
+          ` : ''}
 
-  <p style="font-size: 14px; color: #6b7280;">
-    Use the button above to access the event lobby and chat with other ticket holders. This link is unique to your ticket and will log you in automatically.
-  </p>
-  
-  <div class="footer">
-    <p>Questions? Reply to this email.</p>
-    <p>— Jin 🟠</p>
-    <p style="font-size: 12px; margin-top: 20px;">
-      You just transacted on the sovereign network.<br>
-      Thank you for being a part of the movement.
-    </p>
-  </div>
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#111111;padding:32px 32px 24px;${eventImage ? '' : 'border-radius:8px 8px 0 0;'}">
+              <h1 style="margin:0 0 8px;font-size:28px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">You're in.</h1>
+              <p style="margin:0;font-size:16px;color:#a1a1aa;line-height:1.5;">Your ticket for <strong style="color:#ffffff;">${data.eventTitle}</strong> is confirmed.</p>
+            </td>
+          </tr>
+
+          <!-- Ticket Card -->
+          <tr>
+            <td style="background-color:#111111;padding:0 32px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#1a1a1a;border-radius:8px;border:1px solid #262626;">
+                <tr>
+                  <td style="padding:24px;">
+                    <p style="margin:0 0 20px;font-size:18px;font-weight:600;color:#ffffff;">${data.ticketType} Ticket</p>
+
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="padding:8px 0;border-bottom:1px solid #262626;">
+                          <span style="font-size:13px;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;">Event</span><br/>
+                          <span style="font-size:15px;color:#e4e4e7;font-weight:500;">${data.eventTitle}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;border-bottom:1px solid #262626;">
+                          <span style="font-size:13px;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;">Date & Time</span><br/>
+                          <span style="font-size:15px;color:#e4e4e7;font-weight:500;">${data.eventDate} at ${data.eventTime}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;border-bottom:1px solid #262626;">
+                          <span style="font-size:13px;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;">Location</span><br/>
+                          <span style="font-size:15px;color:#e4e4e7;font-weight:500;">${data.isVirtual ? 'Virtual — link sent before event' : `📍 ${data.venue}`}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;">
+                          <span style="font-size:13px;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;">Paid</span><br/>
+                          <span style="font-size:15px;color:#e4e4e7;font-weight:500;">${data.price}</span>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- QR Code + Ticket ID -->
+                    <div style="margin-top:16px;padding:16px;background:#0a0a0a;border:1px solid #262626;border-radius:6px;text-align:center;">
+                      ${data.qrCodeDataUri ? `<img src="${data.qrCodeDataUri}" alt="Ticket QR Code" width="160" height="160" style="display:block;margin:0 auto 12px;" />` : ''}
+                      <div style="font-family:'SF Mono',Monaco,Consolas,monospace;font-size:13px;color:#71717a;">
+                        ${data.ticketId}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- CTA Button -->
+          <tr>
+            <td style="background-color:#111111;padding:24px 32px;text-align:center;">
+              <a href="${data.magicLink}" style="display:inline-block;background-color:#ffffff;color:#000000;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;letter-spacing:-0.2px;">Access Event & Chat →</a>
+              <p style="margin:12px 0 0;font-size:13px;color:#52525b;line-height:1.5;">This link is unique to your ticket and logs you in automatically.</p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#111111;padding:0 32px 32px;border-radius:0 0 8px 8px;">
+              <div style="border-top:1px solid #262626;padding-top:20px;text-align:center;">
+              </div>
+            </td>
+          </tr>
+
+          <!-- Brand -->
+          <tr>
+            <td style="padding:24px 32px;text-align:center;">
+              <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#ffffff;letter-spacing:2px;">IMAJIN</p>
+              <p style="margin:0 0 16px;font-size:12px;color:#52525b;">The internet that pays you back</p>
+              <p style="margin:0;font-size:12px;color:#3f3f46;">
+                Part of the <a href="https://imajin.ai" style="color:#52525b;text-decoration:underline;">Imajin</a> sovereign network
+                &nbsp;·&nbsp;
+                <a href="https://discord.gg/kWGHUY8wbe" style="color:#3f3f46;text-decoration:underline;">Discord</a>
+                &nbsp;·&nbsp;
+                <a href="https://github.com/ima-jin/imajin-ai" style="color:#3f3f46;text-decoration:underline;">GitHub</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>
 `;
@@ -173,36 +242,38 @@ export function paymentFailedEmail(data: PaymentFailedData): string {
 <html>
 <head>
   <meta charset="utf-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { text-align: center; margin-bottom: 30px; }
-    h1 { color: #ef4444; }
-    .button { display: inline-block; background: #f97316; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; }
-    .footer { text-align: center; margin-top: 30px; color: #6b7280; font-size: 14px; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
-<body>
-  <div class="header">
-    <h1>Payment didn't go through</h1>
-  </div>
-  
-  <p>We couldn't process your payment for <strong>${data.ticketType}</strong> ticket to <strong>${data.eventTitle}</strong>.</p>
-  
-  <p>This can happen if:</p>
-  <ul>
-    <li>Your card was declined</li>
-    <li>There were insufficient funds</li>
-    <li>The payment session expired</li>
-  </ul>
-  
-  <p style="text-align: center;">
-    <a href="${data.retryUrl}" class="button">Try Again</a>
-  </p>
-  
-  <div class="footer">
-    <p>Questions? Reply to this email.</p>
-    <p>— Jin 🟠</p>
-  </div>
+<body style="margin:0;padding:0;background-color:#000000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#000000;">
+    <tr>
+      <td align="center" style="padding:20px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+          <tr>
+            <td style="background-color:#111111;border-radius:8px;padding:32px;">
+              <h1 style="margin:0 0 16px;font-size:24px;font-weight:700;color:#ef4444;">Payment didn't go through</h1>
+              <p style="margin:0 0 16px;font-size:15px;color:#a1a1aa;line-height:1.6;">We couldn't process your payment for <strong style="color:#ffffff;">${data.ticketType}</strong> ticket to <strong style="color:#ffffff;">${data.eventTitle}</strong>.</p>
+              <p style="margin:0 0 8px;font-size:14px;color:#71717a;">This can happen if:</p>
+              <ul style="margin:0 0 24px;padding-left:20px;font-size:14px;color:#a1a1aa;line-height:1.8;">
+                <li>Your card was declined</li>
+                <li>There were insufficient funds</li>
+                <li>The payment session expired</li>
+              </ul>
+              <div style="text-align:center;">
+                <a href="${data.retryUrl}" style="display:inline-block;background-color:#ffffff;color:#000000;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;">Try Again →</a>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 32px;text-align:center;">
+              <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#ffffff;letter-spacing:2px;">IMAJIN</p>
+              <p style="margin:0;font-size:12px;color:#52525b;">The internet that pays you back</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>
 `;

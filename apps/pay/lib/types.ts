@@ -162,6 +162,8 @@ export interface CheckoutRequest {
   items: CheckoutItem[];
   /** Currency (fiat only for checkout) */
   currency: FiatCurrency;
+  /** Checkout mode: one-time payment or recurring subscription */
+  mode?: 'payment' | 'subscription';
   /** Customer email (pre-fills form) */
   customerEmail?: string;
   /** Redirect on success */
@@ -170,6 +172,8 @@ export interface CheckoutRequest {
   cancelUrl: string;
   /** Arbitrary metadata */
   metadata?: Record<string, string>;
+  /** Stripe Connect account ID to route funds to */
+  connectedAccountId?: string;
 }
 
 /** Result of checkout creation */

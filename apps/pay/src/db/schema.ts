@@ -1,9 +1,11 @@
-import { pgTable, text, timestamp, jsonb, integer, numeric, index, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, integer, numeric, index, primaryKey, pgSchema } from 'drizzle-orm/pg-core';
+
+export const paySchema = pgSchema('pay');
 
 /**
  * Transactions - ledger of all payments through the pay service
  */
-export const transactions = pgTable('transactions', {
+export const transactions = paySchema.table('transactions', {
   id: text('id').primaryKey(),                          // tx_xxx
   service: text('service').notNull(),                    // 'coffee' | 'events' | 'inference' | 'shop' | 'transfer'
   type: text('type').notNull(),                          // 'tip' | 'ticket' | 'subscription' | 'query' | 'transfer' | 'topup'
@@ -12,6 +14,7 @@ export const transactions = pgTable('transactions', {
   amount: numeric('amount', { precision: 20, scale: 8 }).notNull(),
   currency: text('currency').notNull().default('USD'),
   status: text('status').notNull().default('pending'),   // pending | completed | failed | refunded
+  source: text('source').notNull().default('fiat'),      // 'fiat' | 'credit' | 'mixed'
   stripeId: text('stripe_id'),                           // payment intent / invoice / checkout session
   metadata: jsonb('metadata').default({}),
   fairManifest: jsonb('fair_manifest'),                  // .fair attribution chain
@@ -29,9 +32,10 @@ export const transactions = pgTable('transactions', {
 /**
  * Balances - current balance for each DID
  */
-export const balances = pgTable('balances', {
+export const balances = paySchema.table('balances', {
   did: text('did').primaryKey(),
-  amount: numeric('amount', { precision: 20, scale: 8 }).notNull().default('0'),
+  cashAmount: numeric('cash_amount', { precision: 20, scale: 8 }).notNull().default('0'),
+  creditAmount: numeric('credit_amount', { precision: 20, scale: 8 }).notNull().default('0'),
   currency: text('currency').notNull().default('USD'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
@@ -39,7 +43,7 @@ export const balances = pgTable('balances', {
 /**
  * Balance Rollups - daily aggregated stats per DID per service
  */
-export const balanceRollups = pgTable('balance_rollups', {
+export const balanceRollups = paySchema.table('balance_rollups', {
   did: text('did').notNull(),
   date: timestamp('date', { withTimezone: true, mode: 'date' }).notNull(),
   service: text('service').notNull(),

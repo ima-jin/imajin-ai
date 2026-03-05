@@ -39,10 +39,13 @@ interface CheckoutBody {
     image?: string;
   }>;
   currency: FiatCurrency;
+  mode?: 'payment' | 'subscription';
   customerEmail?: string;
   successUrl: string;
   cancelUrl: string;
   metadata?: Record<string, string>;
+  fairManifest?: Record<string, any>;
+  connectedAccountId?: string;
 }
 
 export async function OPTIONS(request: NextRequest) {
@@ -84,6 +87,7 @@ export async function POST(request: NextRequest) {
     const checkoutRequest: CheckoutRequest = {
       items: body.items,
       currency: body.currency || 'USD',
+      mode: body.mode,
       customerEmail: body.customerEmail,
       successUrl: body.successUrl,
       cancelUrl: body.cancelUrl,
@@ -92,6 +96,7 @@ export async function POST(request: NextRequest) {
         // Add identity if authenticated
         ...(identity && { identity_id: identity.id }),
       },
+      connectedAccountId: body.connectedAccountId,
     };
     
     const result = await pay.checkout(checkoutRequest);
@@ -111,6 +116,7 @@ export async function POST(request: NextRequest) {
       status: 'pending',
       stripeId: result.id,
       metadata: body.metadata,
+      fairManifest: body.fairManifest || null,
     });
 
     return NextResponse.json({

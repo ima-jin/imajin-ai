@@ -1,7 +1,8 @@
 /**
  * POST /api/balance/topup
  *
- * Credit a DID's balance (service-to-service, requires API key or internal auth).
+ * Credit a DID's cash balance (service-to-service, requires API key or internal auth).
+ * Topups are real money, so they always go to cash_amount.
  *
  * Request:
  * {
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     const txId = genId('tx');
 
-    // Atomic operation: insert transaction + update balance
+    // Atomic operation: insert transaction + update cash balance (real money)
     await db.transaction(async (tx) => {
       // Insert transaction
       await tx.insert(transactions).values({
@@ -69,22 +70,24 @@ export async function POST(request: NextRequest) {
         amount: amount.toString(),
         currency: 'USD',
         status: 'completed',
+        source: 'fiat',
         metadata,
       });
 
-      // Update or insert balance
+      // Update or insert cash balance
       await tx
         .insert(balances)
         .values({
           did,
-          amount: amount.toString(),
+          cashAmount: amount.toString(),
+          creditAmount: '0',
           currency: 'USD',
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
           target: balances.did,
           set: {
-            amount: sql`${balances.amount} + ${amount}`,
+            cashAmount: sql`${balances.cashAmount} + ${amount}`,
             updatedAt: new Date(),
           },
         });

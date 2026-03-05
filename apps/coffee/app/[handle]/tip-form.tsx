@@ -31,6 +31,7 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
   const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'solana'>(
     page.paymentMethods.stripe?.enabled ? 'stripe' : 'solana'
   );
+  const [isRecurring, setIsRecurring] = useState(false);
   const [fundDirection, setFundDirection] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -72,6 +73,7 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
           pageHandle: page.handle,
           amount,
           currency: 'USD',
+          recurring: isRecurring,
           paymentMethod,
           message: page.allowMessages ? message : undefined,
           fromName: fromName || undefined,
@@ -85,10 +87,9 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
         throw new Error(data.error || 'Failed to process tip');
       }
 
-      if (paymentMethod === 'stripe' && data.clientSecret) {
-        // Redirect to Stripe checkout or show Stripe Elements
-        // For now, show a message (full Stripe integration needs Elements)
-        alert('Stripe payment initiated! Client secret: ' + data.clientSecret.slice(0, 20) + '...');
+      if (paymentMethod === "stripe" && data.url) {
+        // Redirect to Stripe Checkout
+        window.location.href = data.url;
       } else if (paymentMethod === 'solana' && data.solanaAddress) {
         // Show Solana address for payment
         alert(`Send ${amount / 100} USD worth of SOL to:\n${data.solanaAddress}`);
@@ -102,6 +103,34 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* One-time vs Monthly Toggle */}
+      <div className="flex justify-center">
+        <div className="inline-flex bg-white/50 rounded-xl p-1">
+          <button
+            type="button"
+            onClick={() => setIsRecurring(false)}
+            className={`px-6 py-2 rounded-lg font-medium transition ${
+              !isRecurring
+                ? 'bg-white shadow text-gray-900'
+                : 'text-gray-500'
+            }`}
+          >
+            One-time
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsRecurring(true)}
+            className={`px-6 py-2 rounded-lg font-medium transition ${
+              isRecurring
+                ? 'bg-white shadow text-gray-900'
+                : 'text-gray-500'
+            }`}
+          >
+            Monthly
+          </button>
+        </div>
+      </div>
+
       {/* Amount Presets */}
       <div className="flex justify-center gap-3 flex-wrap">
         {presets.map((amount) => (
@@ -124,6 +153,7 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
             }
           >
             {formatAmount(amount)}
+            {isRecurring && <span className="text-xs block opacity-75">/month</span>}
           </button>
         ))}
       </div>
@@ -243,7 +273,12 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
         className="w-full py-4 rounded-xl text-white font-semibold text-lg transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
         style={{ backgroundColor: primaryColor }}
       >
-        {isLoading ? 'Processing...' : `☕ Send ${formatAmount(getAmount())}`}
+        {isLoading 
+          ? 'Processing...' 
+          : isRecurring 
+            ? `☕ Support with ${formatAmount(getAmount())}/month`
+            : `☕ Send ${formatAmount(getAmount())}`
+        }
       </button>
     </form>
   );

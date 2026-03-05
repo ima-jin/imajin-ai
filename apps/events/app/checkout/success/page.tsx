@@ -12,11 +12,10 @@ export default async function SuccessPage({ searchParams }: Props) {
   const params = await searchParams;
   const eventId = params.event;
 
-  // Try to find the event details
-  let event: { id: string; title: string; startsAt: Date | null } | null = null;
+  let event: { id: string; title: string; startsAt: Date | null; imageUrl: string | null } | null = null;
   if (eventId) {
     const [found] = await db
-      .select({ id: events.id, title: events.title, startsAt: events.startsAt })
+      .select({ id: events.id, title: events.title, startsAt: events.startsAt, imageUrl: events.imageUrl })
       .from(events)
       .where(eq(events.id, eventId))
       .limit(1);
@@ -24,16 +23,28 @@ export default async function SuccessPage({ searchParams }: Props) {
   }
 
   return (
-    <div className="max-w-2xl mx-auto text-center py-16 px-4">
-      <div className="text-8xl mb-6">🟠</div>
-
-      <h1 className="text-4xl font-bold mb-2">You've got a ticket!</h1>
-      {event && (
-        <p className="text-2xl text-orange-500 font-semibold mb-6">{event.title}</p>
-      )}
+    <div className="max-w-2xl mx-auto text-center py-8 px-4">
+      {/* Hero banner with overlay */}
+      <div className="relative -mx-4 sm:mx-0 sm:rounded-2xl overflow-hidden mb-8">
+        {event?.imageUrl ? (
+          <img
+            src={event.imageUrl}
+            alt={event.title}
+            className="w-full h-[240px] md:h-[320px] object-cover"
+          />
+        ) : (
+          <div className="w-full h-[240px] md:h-[320px] bg-gradient-to-br from-orange-500 to-amber-600" />
+        )}
+        <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center">
+          <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">{"You've got a ticket!"}</h1>
+          {event && (
+            <p className="text-xl md:text-2xl text-orange-300 font-semibold">{event.title}</p>
+          )}
+        </div>
+      </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8 mb-8">
-        <h2 className="font-semibold text-lg mb-4">Here's what's waiting for you:</h2>
+        <h2 className="font-semibold text-lg mb-4">{"Here's what's waiting for you:"}</h2>
         <ul className="text-left text-gray-600 dark:text-gray-400 space-y-3">
           <li className="flex items-start gap-3">
             <span className="text-xl">📧</span>
@@ -41,7 +52,7 @@ export default async function SuccessPage({ searchParams }: Props) {
           </li>
           <li className="flex items-start gap-3">
             <span className="text-xl">💬</span>
-            <span><strong>Join the conversation</strong> — there's a live chat where ticket holders are hanging out</span>
+            <span><strong>Join the conversation</strong> — {"there's"} a live chat where ticket holders are hanging out</span>
           </li>
           <li className="flex items-start gap-3">
             <span className="text-xl">📋</span>

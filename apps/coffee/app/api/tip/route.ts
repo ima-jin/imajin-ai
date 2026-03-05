@@ -2,25 +2,15 @@ import { NextRequest } from 'next/server';
 import { db, coffeePages, tips } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
-import Stripe from 'stripe';
 
-// Lazy Stripe init to avoid build-time errors
-let _stripe: Stripe | null = null;
-function getStripe(): Stripe {
-  if (!_stripe) {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error('STRIPE_SECRET_KEY not configured');
-    }
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2023-10-16',
-    });
-  }
-  return _stripe;
-}
+const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
+const COFFEE_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX 
+  ? `${process.env.NEXT_PUBLIC_SERVICE_PREFIX}coffee.${process.env.NEXT_PUBLIC_DOMAIN}`
+  : 'https://coffee.imajin.ai';
 
 /**
- * POST /api/tip - Send a tip
- * 
+ * POST /api/tip - Send a tip via Stripe Checkout
+ *
  * Body:
  * - pageHandle: string (required)
  * - amount: number in cents (required)
@@ -28,11 +18,13 @@ function getStripe(): Stripe {
  * - paymentMethod: 'stripe' | 'solana' (required)
  * - message?: string
  * - fromName?: string (for anonymous tips)
+ * - fundDirection?: string
+ * - recurring?: boolean
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { pageHandle, amount, currency = 'USD', paymentMethod, message, fromName } = body;
+    const { pageHandle, amount, currency = 'USD', paymentMethod, message, fromName, fundDirection, recurring } = body;
 
     // Validate required fields
     if (!pageHandle) {
@@ -85,26 +77,43 @@ export async function POST(request: NextRequest) {
     const tipId = generateId('tip');
 
     if (paymentMethod === 'stripe') {
-      // Create Stripe Payment Intent
-      const stripeAccountId = methods.stripe.accountId;
-      
-      const paymentIntent = await getStripe().paymentIntents.create({
-        amount,
-        currency: currency.toLowerCase(),
-        automatic_payment_methods: { enabled: true },
-        metadata: {
-          tipId,
-          pageId: page.id,
-          pageHandle: page.handle,
-          fromDid: fromDid || 'anonymous',
-          fromName: fromName || 'Anonymous',
-          message: message || '',
-        },
-        // Transfer to connected account (minus platform fee if any)
-        transfer_data: stripeAccountId ? {
-          destination: stripeAccountId,
-        } : undefined,
+      // Use Stripe Checkout (redirect flow) via pay service
+      const payRes = await fetch(`${PAY_SERVICE_URL}/api/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: [{
+            name: `Tip for ${page.title || page.handle}`,
+            description: message ? `"${message}" — ${fromName || 'Anonymous'}` : `From ${fromName || 'Anonymous'}`,
+            amount,
+            quantity: 1,
+          }],
+          currency: currency.toUpperCase(),
+          mode: recurring ? 'subscription' : 'payment',
+          successUrl: `${COFFEE_URL}/success${recurring ? '?type=subscription' : ''}`,
+          cancelUrl: `${COFFEE_URL}/${pageHandle}`,
+          metadata: {
+            service: 'coffee',
+            type: 'tip',
+            tipId,
+            pageId: page.id,
+            pageHandle: page.handle,
+            to_did: page.did,
+            fromDid: fromDid || 'anonymous',
+            fromName: fromName || 'Anonymous',
+            message: message || '',
+            ...(fundDirection ? { fundDirection } : {}),
+          },
+        }),
       });
+
+      if (!payRes.ok) {
+        const err = await payRes.text();
+        console.error('Pay service checkout failed:', err);
+        return errorResponse('Failed to create payment', 500);
+      }
+
+      const payData = await payRes.json();
 
       // Insert pending tip
       await db.insert(tips).values({
@@ -116,23 +125,22 @@ export async function POST(request: NextRequest) {
         currency,
         message: message || null,
         paymentMethod: 'stripe',
-        paymentId: paymentIntent.id,
+        paymentId: payData.id,
         status: 'pending',
       });
 
+      // Return checkout URL for redirect
       return jsonResponse({
         tipId,
-        clientSecret: paymentIntent.client_secret,
+        url: payData.url,
         paymentMethod: 'stripe',
       });
-    } 
-    
+    }
+
     if (paymentMethod === 'solana') {
       // For Solana, return the destination address
-      // Client will build and sign the transaction
       const solanaAddress = methods.solana.address;
 
-      // Insert pending tip (will be confirmed via webhook or polling)
       await db.insert(tips).values({
         id: tipId,
         pageId: page.id,
@@ -142,7 +150,7 @@ export async function POST(request: NextRequest) {
         currency: 'SOL',
         message: message || null,
         paymentMethod: 'solana',
-        paymentId: 'pending', // Will be updated with tx signature
+        paymentId: 'pending',
         status: 'pending',
       });
 

@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes, tickets } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
-import { sendEmail, ticketConfirmationEmail } from '@/src/lib/email';
+import { sendEmail, ticketConfirmationEmail, generateQRCode } from '@/src/lib/email';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js';
@@ -104,7 +104,7 @@ async function attachEmailToProfile(did: string, email: string): Promise<void> {
   try {
     const normalizedEmail = email.toLowerCase().trim();
     const result = await db.execute(
-      sql`UPDATE profiles SET email = ${normalizedEmail} WHERE did = ${did} AND (email IS NULL OR email = '')`
+      sql`UPDATE profile.profiles SET email = ${normalizedEmail} WHERE did = ${did} AND (email IS NULL OR email = '')`
     );
     const rowCount = (result as any)?.rowCount ?? (result as any)?.count ?? 0;
     if (rowCount > 0) {
@@ -350,11 +350,20 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   // Send confirmation email with magic link
   const eventDate = new Date(event.startsAt);
   const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
+  const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
   const magicLink = `${AUTH_URL}/api/magic?token=${createdTickets[0].magicToken}`;
+
+  // Generate QR code from ticket ID (for check-in scanning)
+  const qrCodeDataUri = await generateQRCode(createdTickets[0].id);
+
+  // Build absolute event image URL
+  const eventImageUrl = event.imageUrl
+    ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
+    : undefined;
 
   await sendEmail({
     to: customerEmail,
-    subject: `🎉 You're in! Ticket for ${event.title}`,
+    subject: `You're in — ${event.title}`,
     html: ticketConfirmationEmail({
       eventTitle: event.title,
       ticketType: ticketType.name,
@@ -377,6 +386,9 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         currency: currency.toUpperCase(),
       }).format(amountTotal / 100),
       magicLink,
+      eventImageUrl,
+      eventUrl: `${EVENTS_URL}/${event.id}`,
+      qrCodeDataUri,
     }),
   });
 }

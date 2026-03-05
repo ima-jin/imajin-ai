@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Avatar } from '../components/Avatar';
+import { FollowButton } from '../components/FollowButton';
 
 interface PageProps {
   params: Promise<{ handle: string }>;
@@ -23,6 +24,18 @@ interface Profile {
     links?: string;
     coffee?: string;
   };
+}
+
+interface ProfileCounts {
+  followers: number;
+  following: number;
+  connections: number;
+}
+
+interface LinkItem {
+  title: string;
+  url: string;
+  description?: string;
 }
 
 async function getViewerDid(): Promise<string | null> {
@@ -59,16 +72,16 @@ async function isConnected(viewerDid: string, targetDid: string): Promise<boolea
 
 async function getProfile(handle: string): Promise<Profile | null> {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3005';
-  
+
   try {
     const response = await fetch(`${baseUrl}/api/profile/${handle}`, {
       cache: 'no-store',
     });
-    
+
     if (!response.ok) {
       return null;
     }
-    
+
     return response.json();
   } catch (error) {
     console.error('Failed to fetch profile:', error);
@@ -76,17 +89,61 @@ async function getProfile(handle: string): Promise<Profile | null> {
   }
 }
 
+async function getProfileCounts(profileDid: string): Promise<ProfileCounts> {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3005';
+  try {
+    const res = await fetch(`${baseUrl}/api/profile/${encodeURIComponent(profileDid)}/counts`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) return { followers: 0, following: 0, connections: 0 };
+    return res.json();
+  } catch { return { followers: 0, following: 0, connections: 0 }; }
+}
+
+async function getFollowStatus(targetDid: string): Promise<boolean> {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3005';
+  try {
+    const cookieStore = await cookies();
+    const session = cookieStore.get('imajin_session');
+    if (!session?.value) return false;
+    const res = await fetch(
+      `${baseUrl}/api/follow/status?did=${encodeURIComponent(targetDid)}`,
+      {
+        headers: { Cookie: `imajin_session=${session.value}` },
+        cache: 'no-store',
+      }
+    );
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.following ?? false;
+  } catch { return false; }
+}
+
+async function getLinks(linksHandle: string): Promise<LinkItem[]> {
+  const linksServiceUrl = process.env.LINKS_SERVICE_URL;
+  if (!linksServiceUrl) return [];
+  try {
+    const res = await fetch(
+      `${linksServiceUrl}/api/pages/${encodeURIComponent(linksHandle)}/links`,
+      { cache: 'no-store' }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : (data.links || []);
+  } catch { return []; }
+}
+
 // Generate dynamic metadata for OG/Twitter cards
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { handle } = await params;
   const profile = await getProfile(handle);
-  
+
   if (!profile) {
     return {
       title: 'Profile Not Found',
     };
   }
-  
+
   const typeEmoji: Record<string, string> = {
     human: '👤',
     presence: '🟠',
@@ -96,15 +153,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     event: '📅',
     service: '⚙️',
   };
-  
+
   const displayHandle = profile.handle ? `@${profile.handle}` : handle;
-  const description = profile.bio 
+  const description = profile.bio
     ? profile.bio.slice(0, 200) + (profile.bio.length > 200 ? '...' : '')
     : `${typeEmoji[profile.displayType]} ${profile.displayType} on the Imajin network`;
-  
+
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://profile.imajin.ai';
   const url = `${baseUrl}/${handle}`;
-  
+
   return {
     title: `${profile.displayName} (${displayHandle})`,
     description,
@@ -128,7 +185,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function ProfilePage({ params }: PageProps) {
   const { handle } = await params;
   const profile = await getProfile(handle);
-  
+
   if (!profile) {
     notFound();
   }
@@ -178,6 +235,16 @@ export default async function ProfilePage({ params }: PageProps) {
 
   const isSoftDID = profile.identityTier === 'soft' || profile.did.startsWith('did:email:');
 
+  // Fetch counts, follow status, and links in parallel
+  const [counts, isFollowing, links] = await Promise.all([
+    getProfileCounts(profile.did),
+    viewerDid && !isSelf ? getFollowStatus(profile.did) : Promise.resolve(false),
+    profile.metadata?.links ? getLinks(profile.metadata.links) : Promise.resolve([]),
+  ]);
+
+  const servicePrefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
+  const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+
   return (
     <div className="max-w-lg mx-auto">
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
@@ -204,6 +271,20 @@ export default async function ProfilePage({ params }: PageProps) {
           )}
         </div>
 
+        {/* Counts & Follow Button */}
+        <div className="mb-6 flex flex-col items-center gap-3">
+          <p className="text-sm text-gray-400">
+            <span className="text-white font-medium">{counts.followers}</span> followers
+            {' · '}
+            <span className="text-white font-medium">{counts.following}</span> following
+            {' · '}
+            <span className="text-white font-medium">{counts.connections}</span> connections
+          </p>
+          {viewerDid && !isSelf && (
+            <FollowButton targetDid={profile.did} initialFollowing={isFollowing} />
+          )}
+        </div>
+
         {/* Bio */}
         {profile.bio && (
           <p className="text-gray-300 mb-6">
@@ -211,22 +292,11 @@ export default async function ProfilePage({ params }: PageProps) {
           </p>
         )}
 
-        {/* Upgrade CTA for soft DID users viewing their own profile */}
+        {/* Info note for invited members viewing their own profile */}
         {isSoftDID && isSelf && (
-          <div className="mb-6 bg-gradient-to-r from-amber-900/20 to-orange-900/20 border border-amber-700/50 rounded-lg p-4">
-            <p className="text-sm text-amber-200 mb-3">
-              <strong>🔐 Upgrade to Full Profile</strong>
-            </p>
-            <p className="text-xs text-gray-400 mb-3">
-              Get a permanent identity with cryptographic keys, claim a custom handle, and unlock all Imajin features.
-            </p>
-            <a
-              href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}profile.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/register`}
-              className="inline-block px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium text-sm"
-            >
-              Upgrade Now
-            </a>
-          </div>
+          <p className="mb-6 text-xs text-gray-500 border border-gray-800 rounded-lg px-4 py-3">
+            Invited members can claim a handle and download backup keys
+          </p>
         )}
 
         {/* Contact Info (only visible to self/connections — API strips for others) */}
@@ -252,25 +322,58 @@ export default async function ProfilePage({ params }: PageProps) {
           </div>
         )}
 
-        {/* Links */}
-        <div className="flex justify-center gap-4 mb-6">
-          {profile.metadata?.links && (
+        {/* Ask button */}
+        <div className="mb-6">
+          <button
+            disabled
+            className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg text-gray-500 text-sm cursor-not-allowed"
+          >
+            Ask {profile.displayName} <span className="text-gray-600">(coming soon)</span>
+          </button>
+        </div>
+
+        {/* Links from service or fallback button */}
+        {links.length > 0 ? (
+          <div className="mb-6 space-y-2">
+            {links.map((link, i) => (
+              <a
+                key={i}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-left"
+              >
+                <p className="text-white text-sm font-medium">{link.title}</p>
+                {link.description && (
+                  <p className="text-gray-500 text-xs mt-0.5">{link.description}</p>
+                )}
+              </a>
+            ))}
+          </div>
+        ) : (
+          profile.metadata?.links && (
+            <div className="flex justify-center mb-6">
+              <a
+                href={`${servicePrefix}links.${domain}/${profile.metadata.links}`}
+                className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-white"
+              >
+                🔗 Links
+              </a>
+            </div>
+          )
+        )}
+
+        {/* Coffee button */}
+        {profile.metadata?.coffee && (
+          <div className="flex justify-center mb-6">
             <a
-              href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}links.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/${profile.metadata.links}`}
-              className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-white"
-            >
-              🔗 Links
-            </a>
-          )}
-          {profile.metadata?.coffee && (
-            <a
-              href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}coffee.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/${profile.metadata.coffee}`}
-              className="px-4 py-2 bg-[#F59E0B]/10 border border-[#F59E0B]/30 text-[#F59E0B] rounded-lg hover:bg-[#F59E0B]/20 transition"
+              href={`${servicePrefix}coffee.${domain}/${profile.metadata.coffee}`}
+              className="px-4 py-2 bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B] rounded-lg hover:bg-[#F59E0B]/20 transition border"
             >
               ☕ Tip Me
             </a>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Member since */}
         <p className="text-xs text-gray-500 mt-4">

@@ -6,7 +6,8 @@ interface EventSurveyAccordionProps {
   eventId: string;
   surveyId: string;
   surveyTitle: string;
-  surveyType: 'pre-event' | 'post-event';
+  surveyType?: 'pre-event' | 'post-event' | 'survey' | 'form';
+  requiresTicket?: boolean;
 }
 
 export function EventSurveyAccordion({
@@ -14,6 +15,7 @@ export function EventSurveyAccordion({
   surveyId,
   surveyTitle,
   surveyType,
+  requiresTicket = false,
 }: EventSurveyAccordionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [iframeHeight, setIframeHeight] = useState(600);
@@ -40,8 +42,7 @@ export function EventSurveyAccordion({
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  const icon = surveyType === 'pre-event' ? '📋' : '📝';
-  const label = surveyType === 'pre-event' ? 'Pre-Event Survey' : 'Post-Event Survey';
+  const icon = '📋';
 
   return (
     <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg overflow-hidden">
@@ -53,8 +54,7 @@ export function EventSurveyAccordion({
         <div className="flex items-center gap-3">
           <span className="text-2xl">{icon}</span>
           <div className="text-left">
-            <span className="font-semibold text-lg block">{label}</span>
-            <span className="text-sm text-gray-500 dark:text-gray-400">{surveyTitle}</span>
+            <span className="font-semibold text-lg block">{surveyTitle}</span>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -72,7 +72,15 @@ export function EventSurveyAccordion({
       {/* Expanded Survey */}
       {isExpanded && (
         <div className="border-t border-gray-200 dark:border-gray-700">
-          {isCompleted ? (
+          {requiresTicket ? (
+            <div className="p-8 text-center">
+              <div className="text-4xl mb-4">🎟️</div>
+              <h3 className="text-xl font-bold mb-2">Ticket Required</h3>
+              <p className="text-gray-600 dark:text-gray-400">
+                Purchase a ticket to access this survey.
+              </p>
+            </div>
+          ) : isCompleted ? (
             <div className="p-8 text-center">
               <div className="text-6xl mb-4">✓</div>
               <h3 className="text-2xl font-bold mb-2">Thank you!</h3>

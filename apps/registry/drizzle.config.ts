@@ -4,7 +4,7 @@ export default defineConfig({
   schema: './src/db/schema.ts',
   out: './drizzle',
   dialect: 'postgresql',
-  tablesFilter: ['registry_*'],
+  schemaFilter: ['registry'],
   dbCredentials: {
     url: process.env.DATABASE_URL!,
   },

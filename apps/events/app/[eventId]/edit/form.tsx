@@ -26,19 +26,27 @@ interface Survey {
   responseCount?: number;
 }
 
+type ActiveTab = 'details' | 'fair';
+
 export default function EventEditForm({ event, existingTickets }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('details');
 
   // Pre-fill form with existing data
   const [title, setTitle] = useState(event.title);
   const [description, setDescription] = useState(event.description || '');
+  // Format as local datetime for datetime-local input (avoid UTC conversion drift)
+  const toLocalDateTimeString = (date: Date) => {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
   const [dateTime, setDateTime] = useState(
-    event.startsAt ? new Date(event.startsAt).toISOString().slice(0, 16) : ''
+    event.startsAt ? toLocalDateTimeString(new Date(event.startsAt)) : ''
   );
   const [endDateTime, setEndDateTime] = useState(
-    event.endsAt ? new Date(event.endsAt).toISOString().slice(0, 16) : ''
+    event.endsAt ? toLocalDateTimeString(new Date(event.endsAt)) : ''
   );
   const [isVirtual, setIsVirtual] = useState(event.isVirtual || false);
   const [virtualUrl, setVirtualUrl] = useState(event.virtualUrl || '');
@@ -53,11 +61,18 @@ export default function EventEditForm({ event, existingTickets }: Props) {
   const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loadingSurveys, setLoadingSurveys] = useState(true);
-  const [preEventSurveyId, setPreEventSurveyId] = useState<string>(
-    (event.metadata as any)?.preEventSurveyId || ''
-  );
-  const [postEventSurveyId, setPostEventSurveyId] = useState<string>(
-    (event.metadata as any)?.postEventSurveyId || ''
+  interface LinkedSurvey {
+    id: string;
+    visibility: 'always' | 'pre-event' | 'post-event';
+    paywall: boolean;
+  }
+  const [linkedSurveys, setLinkedSurveys] = useState<LinkedSurvey[]>(
+    (event.metadata as any)?.linkedSurveys || 
+    // Migrate from old formats
+    ((event.metadata as any)?.linkedSurveyIds || [
+      (event.metadata as any)?.preEventSurveyId,
+      (event.metadata as any)?.postEventSurveyId,
+    ].filter(Boolean)).map((id: string) => ({ id, visibility: 'always' as const, paywall: false }))
   );
 
   // Fetch user's surveys
@@ -143,8 +158,11 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           status,
           metadata: {
             ...(event.metadata as any || {}),
-            preEventSurveyId: preEventSurveyId || null,
-            postEventSurveyId: postEventSurveyId || null,
+            linkedSurveys,
+            // Keep legacy fields for backwards compat
+            linkedSurveyIds: null,
+            preEventSurveyId: null,
+            postEventSurveyId: null,
           },
         }),
       });
@@ -154,26 +172,14 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         throw new Error(data.error || 'Failed to update event');
       }
 
-      // Update survey event_id and type
-      if (preEventSurveyId) {
-        await fetch(`${DYKIL_URL}/api/surveys/${preEventSurveyId}`, {
+      // Update survey event_id for all linked surveys
+      for (const survey of linkedSurveys) {
+        await fetch(`${DYKIL_URL}/api/surveys/${survey.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
             eventId: event.id,
-            type: 'pre-event',
-          }),
-        });
-      }
-      if (postEventSurveyId) {
-        await fetch(`${DYKIL_URL}/api/surveys/${postEventSurveyId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            eventId: event.id,
-            type: 'post-event',
           }),
         });
       }
@@ -228,7 +234,137 @@ export default function EventEditForm({ event, existingTickets }: Props) {
     }
   }
 
+  // Extract .fair manifest from event metadata
+  const fairManifest = (event.metadata as any)?.fair || null;
+
   return (
+    <div className="space-y-6">
+      {/* Tab Navigation */}
+      <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+        <button
+          type="button"
+          onClick={() => setActiveTab('details')}
+          className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition ${
+            activeTab === 'details'
+              ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+          }`}
+        >
+          ✏️ Event Details
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('fair')}
+          className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition ${
+            activeTab === 'fair'
+              ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+          }`}
+        >
+          ⚖️ .fair Attribution
+        </button>
+      </div>
+
+      {/* .fair Viewer */}
+      {activeTab === 'fair' && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold mb-1">Attribution Manifest</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Every ticket sold records this .fair — who created value, and what share they earn.
+            </p>
+          </div>
+
+          {fairManifest ? (
+            <>
+              {/* Platform split */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2 uppercase tracking-wide">Revenue Split</h3>
+                <div className="space-y-2">
+                  {fairManifest.chain?.map((entry: any, i: number) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-3 h-3 rounded-full ${
+                          entry.role === 'platform' ? 'bg-blue-500' : 'bg-orange-500'
+                        }`} />
+                        <div>
+                          <div className="font-medium text-sm">{entry.role}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate max-w-[280px]">
+                            {entry.did}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold">{(entry.share * 100).toFixed(1)}%</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Event distributions */}
+              {fairManifest.distributions && fairManifest.distributions.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2 uppercase tracking-wide">Event Distribution</h3>
+                  <p className="text-xs text-gray-400 mb-2">How the event&apos;s share is split among contributors</p>
+                  <div className="space-y-2">
+                    {fairManifest.distributions.map((entry: any, i: number) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-3 h-3 rounded-full bg-green-500" />
+                          <div>
+                            <div className="font-medium text-sm">{entry.role}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate max-w-[280px]">
+                              {entry.did}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold">{(entry.share * 100).toFixed(1)}%</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                <details className="group">
+                  <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300">
+                    View raw manifest
+                  </summary>
+                  <pre className="mt-2 p-3 bg-gray-900 text-green-400 rounded-lg text-xs overflow-x-auto">
+                    {JSON.stringify(fairManifest, null, 2)}
+                  </pre>
+                </details>
+              </div>
+
+              <div className="text-xs text-gray-400">
+                <a href="https://github.com/ima-jin/.fair" target="_blank" rel="noopener noreferrer" className="hover:text-orange-500 transition">.fair</a>
+                {' '}v{fairManifest.version || '0.2.0'} · Applied to all ticket transactions
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-8">
+              <div className="text-4xl mb-3">⚖️</div>
+              <p className="text-gray-500 dark:text-gray-400">
+                No .fair manifest attached to this event yet.
+              </p>
+              <p className="text-sm text-gray-400 mt-1">
+                Events created before .fair was enabled won&apos;t have one automatically.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+    {activeTab === 'details' && (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Basic Info */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-4">
@@ -477,48 +613,91 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           Link surveys to your event. Attendees will see them on the event page.
         </p>
 
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">Pre-Event Survey</label>
-            <select
-              value={preEventSurveyId}
-              onChange={(e) => setPreEventSurveyId(e.target.value)}
-              disabled={loadingSurveys}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
-            >
-              <option value="">None</option>
-              {surveys.map((survey) => (
-                <option key={survey.id} value={survey.id}>
-                  {survey.title}
-                  {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Shown before the event starts
-            </p>
-          </div>
+        <div className="space-y-4">
+          {loadingSurveys ? (
+            <p className="text-sm text-gray-500">Loading surveys...</p>
+          ) : surveys.length === 0 ? (
+            <p className="text-sm text-gray-500">No surveys found. Create one first.</p>
+          ) : (
+            <>
+              {linkedSurveys.map((linked, index) => (
+                <div key={`${linked.id}-${index}`} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={linked.id}
+                      onChange={(e) => {
+                        const updated = [...linkedSurveys];
+                        updated[index] = { ...updated[index], id: e.target.value };
+                        setLinkedSurveys(updated);
+                      }}
+                      className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+                    >
+                      {surveys.map((survey) => (
+                        <option key={survey.id} value={survey.id}>
+                          {survey.title}
+                          {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setLinkedSurveys(linkedSurveys.filter((_, i) => i !== index))}
+                      className="px-3 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+                      title="Remove survey"
+                    >
+                      ✕
+                    </button>
+                  </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Post-Event Survey</label>
-            <select
-              value={postEventSurveyId}
-              onChange={(e) => setPostEventSurveyId(e.target.value)}
-              disabled={loadingSurveys}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
-            >
-              <option value="">None</option>
-              {surveys.map((survey) => (
-                <option key={survey.id} value={survey.id}>
-                  {survey.title}
-                  {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
-                </option>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-gray-600 dark:text-gray-400">Show:</label>
+                      <select
+                        value={linked.visibility}
+                        onChange={(e) => {
+                          const updated = [...linkedSurveys];
+                          updated[index] = { ...updated[index], visibility: e.target.value as LinkedSurvey['visibility'] };
+                          setLinkedSurveys(updated);
+                        }}
+                        className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+                      >
+                        <option value="always">Always</option>
+                        <option value="pre-event">Pre-event only</option>
+                        <option value="post-event">Post-event only</option>
+                      </select>
+                    </div>
+
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={linked.paywall}
+                        onChange={(e) => {
+                          const updated = [...linkedSurveys];
+                          updated[index] = { ...updated[index], paywall: e.target.checked };
+                          setLinkedSurveys(updated);
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                      />
+                      <span className="text-gray-600 dark:text-gray-400">Requires ticket</span>
+                    </label>
+                  </div>
+                </div>
               ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Shown after the event ends
-            </p>
-          </div>
+
+              {surveys.filter(s => !linkedSurveys.some(ls => ls.id === s.id)).length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const available = surveys.find(s => !linkedSurveys.some(ls => ls.id === s.id));
+                    if (available) setLinkedSurveys([...linkedSurveys, { id: available.id, visibility: 'always', paywall: false }]);
+                  }}
+                  className="text-sm text-orange-500 hover:text-orange-600 font-medium"
+                >
+                  + Add Survey
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -545,5 +724,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         </button>
       </div>
     </form>
+    )}
+    </div>
   );
 }

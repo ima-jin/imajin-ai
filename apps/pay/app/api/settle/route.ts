@@ -3,8 +3,8 @@
  *
  * Execute a .fair multi-party settlement.
  * Validates from_did has sufficient balance, then atomically:
- * - Debit from_did
- * - Credit each recipient in the fair_manifest chain
+ * - Debit from_did (credits first, then cash)
+ * - Credit each recipient in the fair_manifest chain (cash — real value earned)
  * - Log all transactions
  *
  * Request:
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check sender has sufficient balance
+    // Check sender has sufficient balance (cash + credit)
     const senderBalanceRows = await db
       .select()
       .from(balances)
@@ -90,13 +90,28 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     const senderBalance = senderBalanceRows[0];
-    const currentBalance = senderBalance ? parseFloat(senderBalance.amount) : 0;
+    const currentCash = senderBalance ? parseFloat(senderBalance.cashAmount) : 0;
+    const currentCredit = senderBalance ? parseFloat(senderBalance.creditAmount) : 0;
+    const totalBalance = currentCash + currentCredit;
 
-    if (currentBalance < total_amount) {
+    if (totalBalance < total_amount) {
       return NextResponse.json(
-        { error: `Insufficient balance: ${currentBalance} < ${total_amount}` },
+        { error: `Insufficient balance: ${totalBalance} < ${total_amount}` },
         { status: 400, headers: cors }
       );
+    }
+
+    // Determine how much to burn from each bucket (credits first)
+    const creditBurn = Math.min(currentCredit, total_amount);
+    const cashBurn = total_amount - creditBurn;
+
+    let source: 'credit' | 'fiat' | 'mixed';
+    if (cashBurn === 0) {
+      source = 'credit';
+    } else if (creditBurn === 0) {
+      source = 'fiat';
+    } else {
+      source = 'mixed';
     }
 
     const batchId = genId('batch');
@@ -104,16 +119,17 @@ export async function POST(request: NextRequest) {
 
     // Atomic settlement
     await db.transaction(async (tx) => {
-      // Debit from_did
+      // Debit from_did (credits first, then cash)
       await tx
         .update(balances)
         .set({
-          amount: sql`${balances.amount} - ${total_amount}`,
+          creditAmount: sql`${balances.creditAmount} - ${creditBurn}`,
+          cashAmount: sql`${balances.cashAmount} - ${cashBurn}`,
           updatedAt: new Date(),
         })
         .where(eq(balances.did, from_did));
 
-      // Credit each recipient and log transactions
+      // Credit each recipient (earnings go to cash — real value created)
       for (const recipient of fair_manifest.chain) {
         const txId = genId('tx');
         txIds.push(txId);
@@ -128,6 +144,7 @@ export async function POST(request: NextRequest) {
           amount: recipient.amount.toString(),
           currency: 'USD',
           status: 'completed',
+          source,
           fairManifest: fair_manifest,
           batchId,
           metadata: {
@@ -136,19 +153,20 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // Credit recipient
+        // Credit recipient cash balance
         await tx
           .insert(balances)
           .values({
             did: recipient.did,
-            amount: recipient.amount.toString(),
+            cashAmount: recipient.amount.toString(),
+            creditAmount: '0',
             currency: 'USD',
             updatedAt: new Date(),
           })
           .onConflictDoUpdate({
             target: balances.did,
             set: {
-              amount: sql`${balances.amount} + ${recipient.amount}`,
+              cashAmount: sql`${balances.cashAmount} + ${recipient.amount}`,
               updatedAt: new Date(),
             },
           });
@@ -162,6 +180,7 @@ export async function POST(request: NextRequest) {
         transactions: txIds,
         total_amount,
         recipients: fair_manifest.chain.length,
+        source,
       },
       { headers: cors }
     );

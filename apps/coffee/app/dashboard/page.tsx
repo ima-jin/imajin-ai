@@ -114,16 +114,6 @@ export default function DashboardPage() {
       .reduce((sum, tip) => sum + tip.amount, 0);
   };
 
-  const getSupporterCount = () => {
-    if (!stats) return 0;
-    const uniqueSupporters = new Set(
-      stats.tips
-        .filter(tip => tip.fromName)
-        .map(tip => tip.fromName)
-    );
-    return uniqueSupporters.size;
-  };
-
   if (isLoading) {
     return (
       <main className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4">
@@ -157,41 +147,63 @@ export default function DashboardPage() {
 
   const usdTotal = stats?.totals?.USD?.total || 0;
   const thisMonthTotal = getThisMonthTotal();
-  const supporterCount = getSupporterCount();
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-start justify-between flex-wrap gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Track your support and earnings
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Link
+            <h1 className="text-3xl font-bold mb-1">{userPage?.title || 'Coffee Page'}</h1>
+            <a
               href={`/${userPage?.handle}`}
-              className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition font-medium"
+              className="text-orange-500 hover:underline text-sm"
             >
-              View Page
-            </Link>
+              coffee.imajin.ai/{userPage?.handle}
+            </a>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => navigator.clipboard.writeText(`${window.location.origin}/${userPage?.handle}`)}
+              className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition font-medium text-sm"
+            >
+              Copy Link
+            </button>
             <Link
               href="/edit"
-              className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white transition font-medium"
+              className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition font-medium text-sm"
             >
-              Edit Page
+              Edit Settings
+            </Link>
+            <Link
+              href={`/${userPage?.handle}`}
+              className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white transition font-medium text-sm"
+            >
+              View Page
             </Link>
           </div>
         </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* Total Earned */}
+          {/* Total Tips */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-500 dark:text-gray-400">Total Earned</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">Total Tips</span>
+              <span className="text-2xl">☕</span>
+            </div>
+            <div className="text-3xl font-bold text-orange-500">
+              {stats?.totals?.USD?.count || 0}
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              All time
+            </div>
+          </div>
+
+          {/* Total Received */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-gray-500 dark:text-gray-400">Total Received</span>
               <span className="text-2xl">💰</span>
             </div>
             <div className="text-3xl font-bold text-orange-500">
@@ -213,20 +225,6 @@ export default function DashboardPage() {
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-            </div>
-          </div>
-
-          {/* Supporters */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-500 dark:text-gray-400">Supporters</span>
-              <span className="text-2xl">❤️</span>
-            </div>
-            <div className="text-3xl font-bold text-orange-500">
-              {supporterCount}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Unique supporters
             </div>
           </div>
         </div>

@@ -259,7 +259,13 @@ Built with this stack. Tickets signed by the event's DID.
 
 This is early. The architecture is stabilizing but APIs will change.
 
-If you want to run your own node or build on the stack, open an issue or find us on [Discord](https://discord.gg/clawd).
+If you want to run your own node or build on the stack, open an issue or find us on [Discord](https://discord.gg/kWGHUY8wbe).
+
+### Rules
+
+- **Talk to us first.** Before requesting assignment on issues, claiming work, or submitting PRs — come find us on [Discord](https://discord.gg/kWGHUY8wbe) and introduce yourself. We want to know who we're working with.
+- **No drive-by PRs.** Unsolicited PRs from accounts with no prior conversation will be closed.
+- **Bot accounts and automated "/apply" comments will be deleted and blocked.**
 
 ---
 

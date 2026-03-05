@@ -111,6 +111,7 @@ export async function PUT(
       imageUrl,
       tags,
       status,
+      metadata,
     } = body;
 
     // Build update object with only provided fields
@@ -128,6 +129,7 @@ export async function PUT(
     if (imageUrl !== undefined) updates.imageUrl = imageUrl;
     if (tags !== undefined) updates.tags = tags;
     if (status !== undefined) updates.status = status;
+    if (metadata !== undefined) updates.metadata = metadata;
 
     const [updated] = await db
       .update(events)

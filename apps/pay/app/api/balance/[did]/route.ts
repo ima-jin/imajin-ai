@@ -2,14 +2,14 @@
  * GET /api/balance/[did]
  *
  * Get current balance for a DID.
- * Auth: must be authenticated as the same DID (via session).
+ * Auth: must be authenticated as the requested DID.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, balances } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { extractToken, validateToken } from '@/lib/auth';
 import { corsHeaders } from '@/src/lib/cors';
+import { authenticateRequest } from '@/lib/session-auth';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -17,60 +17,54 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { did: string } }
+  { params }: { params: Promise<{ did: string }> }
 ) {
   const cors = corsHeaders(request);
+  const { did } = await params;
+  const decoded = decodeURIComponent(did);
+
+  // Authenticate via cookie or Bearer token
+  const auth = await authenticateRequest(request);
+  if (!auth.authenticated || !auth.identity) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401, headers: cors }
+    );
+  }
+
+  // Must be requesting your own balance
+  if (auth.identity.did !== decoded) {
+    return NextResponse.json(
+      { error: 'Forbidden - can only access your own balance' },
+      { status: 403, headers: cors }
+    );
+  }
 
   try {
-    const { did } = params;
-
-    // Auth: must be the DID owner
-    const token = extractToken(request.headers.get('authorization'));
-    if (!token) {
-      return NextResponse.json(
-        { error: 'Unauthorized - no token provided' },
-        { status: 401, headers: cors }
-      );
-    }
-
-    const validation = await validateToken(token);
-    if (!validation.valid || !validation.identity) {
-      return NextResponse.json(
-        { error: 'Unauthorized - invalid token' },
-        { status: 401, headers: cors }
-      );
-    }
-
-    // Check if the authenticated user matches the requested DID
-    if (validation.identity.id !== did) {
-      return NextResponse.json(
-        { error: 'Forbidden - can only access your own balance' },
-        { status: 403, headers: cors }
-      );
-    }
-
-    // Get balance from DB
-    const balanceRows = await db
+    const [row] = await db
       .select()
       .from(balances)
-      .where(eq(balances.did, did))
+      .where(eq(balances.did, decoded))
       .limit(1);
 
-    const balance = balanceRows[0];
+    const cashAmount = row ? parseFloat(row.cashAmount) : 0;
+    const creditAmount = row ? parseFloat(row.creditAmount) : 0;
 
     return NextResponse.json(
       {
-        did,
-        amount: balance ? parseFloat(balance.amount) : 0,
-        currency: balance?.currency || 'USD',
-        updatedAt: balance?.updatedAt?.toISOString() || new Date().toISOString(),
+        did: decoded,
+        cashAmount,
+        creditAmount,
+        total: cashAmount + creditAmount,
+        currency: row?.currency || 'USD',
+        updatedAt: row?.updatedAt?.toISOString() || new Date().toISOString(),
       },
       { headers: cors }
     );
   } catch (error) {
     console.error('Balance fetch error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch balance' },
+      { error: 'Failed to fetch balance' },
       { status: 500, headers: cors }
     );
   }
