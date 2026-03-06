@@ -16,9 +16,17 @@ interface Profile {
   email?: string;
   phone?: string;
   visibility?: string;
+  metadata?: Record<string, string>;
 }
 
 type AvatarMode = 'emoji' | 'image';
+
+const SERVICES = [
+  { key: 'links', label: 'Links', description: 'Your link collection' },
+  { key: 'coffee', label: 'Coffee', description: 'Accept coffee tips' },
+  { key: 'dykil', label: 'Dykil', description: 'Your Dykil profile' },
+  { key: 'learn', label: 'Learn', description: 'Learning content' },
+];
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -37,6 +45,7 @@ export default function EditProfilePage() {
   const [phone, setPhone] = useState('');
   const [visibility, setVisibility] = useState<'public' | 'incognito'>('public');
   const [avatarMode, setAvatarMode] = useState<AvatarMode>('emoji');
+  const [serviceToggles, setServiceToggles] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!isLoggedIn || !did) {
@@ -66,6 +75,13 @@ export default function EditProfilePage() {
       setPhone(profile.phone || '');
       setVisibility((profile.visibility as 'public' | 'incognito') || 'public');
 
+      // Set service toggles from metadata
+      const toggles: Record<string, boolean> = {};
+      for (const svc of SERVICES) {
+        toggles[svc.key] = !!(profile.metadata && profile.metadata[svc.key]);
+      }
+      setServiceToggles(toggles);
+
       // Detect avatar mode based on current avatar
       if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.startsWith('/'))) {
         setAvatarMode('image');
@@ -87,6 +103,13 @@ export default function EditProfilePage() {
     setSaving(true);
 
     try {
+      const metadata: Record<string, string> = {};
+      for (const svc of SERVICES) {
+        if (serviceToggles[svc.key] && handle) {
+          metadata[svc.key] = handle;
+        }
+      }
+
       const payload = JSON.stringify({
         displayName,
         bio: bio || null,
@@ -94,6 +117,7 @@ export default function EditProfilePage() {
         email: email || null,
         phone: phone || null,
         visibility,
+        metadata,
       });
 
       // Sign the request body with the user's Ed25519 private key
@@ -295,6 +319,35 @@ export default function EditProfilePage() {
                 </button>
               </div>
             )}
+          </div>
+
+          {/* Apps / Service toggles */}
+          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+            <h3 className="font-medium text-white mb-1">Apps</h3>
+            <p className="text-sm text-gray-400 mb-4">Choose which Imajin apps appear on your profile.</p>
+            <div className="space-y-3">
+              {SERVICES.map((svc) => (
+                <div key={svc.key} className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-white font-medium">{svc.label}</p>
+                    <p className="text-xs text-gray-500">{svc.description}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setServiceToggles((prev) => ({ ...prev, [svc.key]: !prev[svc.key] }))}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                      serviceToggles[svc.key] ? 'bg-orange-500' : 'bg-gray-600'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                        serviceToggles[svc.key] ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Error/Success messages */}
