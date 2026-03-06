@@ -16,6 +16,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "@imajin/config": "workspace:*",
+    "@imajin/email": "workspace:*",
     "@imajin/db": "workspace:*",
     "@imajin/trust-graph": "workspace:*",
     "@imajin/ui": "workspace:^",
