@@ -106,8 +106,7 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
           remaining: data.remaining,
         };
         setQuota(q);
-        const trustPending = sentTrustInvites.filter(i => i.status === 'pending').length;
-        onCountUpdate?.(q.pending + trustPending, q.remaining);
+        onCountUpdate?.(q.pending, q.remaining);
       }
     } catch {}
   }
