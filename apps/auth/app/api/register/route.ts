@@ -129,10 +129,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Require invite code for new registrations (skip in dev with DISABLE_INVITE_GATE=true)
+    // Service-to-service registrations (events, agents, etc.) bypass the invite gate
     const inviteGateDisabled = process.env.NEXT_PUBLIC_DISABLE_INVITE_GATE === 'true';
+    const isServiceRegistration = type && type !== 'human';
     let inviteData: { fromDid: string; fromHandle?: string } | null = null;
 
-    if (!inviteGateDisabled) {
+    if (!inviteGateDisabled && !isServiceRegistration) {
       if (!inviteCode) {
         return NextResponse.json(
           { error: 'Imajin is invite-only. You need an invite code to register.' },
