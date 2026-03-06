@@ -234,13 +234,11 @@ export default function SurveyEmbedPage() {
 
   if (submitted) {
     // Editing mode: show editable survey with pre-filled data
-    if (editing && surveyModel) {
-      surveyModel.data = savedAnswers || {};
-      surveyModel.mode = 'edit';
-      surveyModel.showCompleteButton = true;
-      // Re-attach completion handler for updates
-      surveyModel.onComplete.clear();
-      surveyModel.onComplete.add(async (sender) => {
+    if (editing && surveyData) {
+      const editModel = new Model(surveyData.fields);
+      editModel.data = savedAnswers || {};
+      editModel.showCompleteButton = true;
+      editModel.onComplete.add(async (sender) => {
         const answers = JSON.parse(JSON.stringify(sender.data));
         await submitResponse(answers);
         setEditing(false);
@@ -253,21 +251,24 @@ export default function SurveyEmbedPage() {
               <span className="font-semibold">Editing your response</span>
             </div>
             <button
-              onClick={() => { surveyModel.mode = 'display'; setEditing(false); }}
+              onClick={() => setEditing(false)}
               className="text-sm text-gray-500 hover:text-gray-300 transition"
             >
               Cancel
             </button>
           </div>
-          <Survey model={surveyModel} />
+          <Survey model={editModel} />
         </div>
       );
     }
 
     // Show pre-filled read-only survey if we have saved answers
-    if (surveyModel && savedAnswers && Object.keys(savedAnswers).length > 0) {
-      surveyModel.data = savedAnswers;
-      surveyModel.mode = 'display';
+    // Create a fresh model — the original one is in "completed" state and won't render
+    if (surveyData && savedAnswers && Object.keys(savedAnswers).length > 0) {
+      const displayModel = new Model(surveyData.fields);
+      displayModel.data = savedAnswers;
+      displayModel.mode = 'display';
+      displayModel.showCompleteButton = false;
       return (
         <div ref={containerRef} className="p-6">
           <div className="mb-4 flex items-center justify-between">
@@ -282,7 +283,7 @@ export default function SurveyEmbedPage() {
               Edit answers
             </button>
           </div>
-          <Survey model={surveyModel} />
+          <Survey model={displayModel} />
         </div>
       );
     }
