@@ -1,56 +1,56 @@
 # Build Cost Estimate — Imajin Platform
 
-*Generated 2026-03-04 19:56*
+*Generated 2026-03-06 15:11*
 
 ## Summary
 
 | Metric | Value |
 |--------|-------|
-| Files analyzed | 549 |
-| Lines of code | 47,808 |
-| Traditional estimate | **$629,095** |
-| Traditional timeline | **11.1 months** (3-person team) |
+| Files analyzed | 697 |
+| Lines of code | 63,541 |
+| Traditional estimate | **$873,522** |
+| Traditional timeline | **15.3 months** (3-person team) |
 | Human hours | **100.0 hours** |
 | Human cost (@$200.00/hr) | **$20,000** |
 | AI/API spend | **$819.22** |
 | Total real cost | **$20,819** |
-| Built in | **22 days** |
-| Cost multiplier | **30x cheaper** |
+| Built in | **24 days** |
+| Cost multiplier | **42x cheaper** |
 
 ## Codebase Breakdown
 
 | Category | Files | Lines | Hours | Cost |
 |----------|------:|------:|------:|-----:|
-| Backend / API | 129 | 12,276 | 840 | $120,981 |
-| Frontend | 122 | 14,926 | 771 | $83,150 |
-| Auth / Security | 31 | 2,547 | 295 | $50,965 |
-| Application Logic | 60 | 5,261 | 324 | $42,751 |
-| Database / Schema | 49 | 2,415 | 194 | $31,800 |
-| Documentation | 73 | 9,036 | 196 | $23,048 |
-| Config / Build | 80 | 1,178 | 37 | $4,512 |
-| Infrastructure | 5 | 169 | 13 | $2,276 |
-| **Total** | **549** | **47,808** | **2,672** | **$359,483** |
+| Backend / API | 165 | 14,399 | 986 | $141,903 |
+| Frontend | 163 | 21,766 | 1,125 | $121,255 |
+| Infrastructure | 15 | 4,537 | 362 | $61,104 |
+| Auth / Security | 32 | 2,892 | 335 | $57,869 |
+| Application Logic | 90 | 6,613 | 407 | $53,737 |
+| Database / Schema | 56 | 2,568 | 207 | $33,814 |
+| Documentation | 74 | 9,193 | 200 | $23,448 |
+| Config / Build | 102 | 1,573 | 49 | $6,025 |
+| **Total** | **697** | **63,541** | **3,671** | **$499,156** |
 
 ## Overhead
 
 | Item | % | Hours | Cost |
 |------|--:|------:|-----:|
-| Project Management | 15% | 401 | $53,922 |
-| Code Review | 10% | 267 | $35,948 |
-| Meetings | 12% | 321 | $43,138 |
-| Qa Testing | 15% | 401 | $53,922 |
-| Deployment Ops | 8% | 214 | $28,759 |
-| Documentation | 5% | 134 | $17,974 |
-| Onboarding Rampup | 10% | 267 | $35,948 |
+| Project Management | 15% | 551 | $74,873 |
+| Code Review | 10% | 367 | $49,916 |
+| Meetings | 12% | 440 | $59,899 |
+| Qa Testing | 15% | 551 | $74,873 |
+| Deployment Ops | 8% | 294 | $39,932 |
+| Documentation | 5% | 184 | $24,958 |
+| Onboarding Rampup | 10% | 367 | $49,916 |
 
 ## The Comparison
 
 | | Traditional | AI-Assisted |
 |--|------------|------------|
-| Hours | 4,676 | 100.0 |
-| Cost | $629,095 | $20,819 |
-| Timeline | 11.1 months | 22 days |
-| At growth company | $849,278 | — |
+| Hours | 6,424 | 100.0 |
+| Cost | $873,522 | $20,819 |
+| Timeline | 15.3 months | 24 days |
+| At growth company | $1.2M | — |
 
 ---
 
