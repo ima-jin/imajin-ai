@@ -41,7 +41,6 @@ export default function SurveyEmbedPage() {
   const respondentDid = searchParams.get('respondentDid');
 
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [editing, setEditing] = useState(false);
   const [surveyData, setSurveyData] = useState<SurveyData | null>(null);
@@ -180,12 +179,19 @@ export default function SurveyEmbedPage() {
   };
 
   const submitResponse = async (data: any) => {
-    // Save answers immediately BEFORE the async POST — SurveyJS may clear references
+    // Save answers and show completion immediately — don't wait for POST
     setSavedAnswers(data);
     if (surveyModelRef.current) {
       surveyModelRef.current.data = data;
     }
-    setSubmitting(true);
+    setSubmitted(true);
+    // Notify parent iframe immediately
+    window.parent.postMessage(
+      { type: 'survey-completed', surveyId },
+      '*'
+    );
+
+    // POST in background — response is already shown to user
     try {
       const res = await fetch(`/api/surveys/${surveyId}/respond`, {
         method: 'POST',
@@ -200,21 +206,12 @@ export default function SurveyEmbedPage() {
         if (result.response?.id) {
           localStorage.setItem(`survey_${surveyId}_responseId`, result.response.id);
         }
-        setSubmitted(true);
-        // Notify parent iframe
-        window.parent.postMessage(
-          { type: 'survey-completed', surveyId },
-          '*'
-        );
       } else {
         const error = await res.json();
-        alert(error.error || 'Failed to submit response');
-        setSubmitting(false);
+        console.error('Failed to submit response:', error.error);
       }
     } catch (error) {
       console.error('Failed to submit response:', error);
-      alert('Failed to submit response');
-      setSubmitting(false);
     }
   };
 
@@ -323,7 +320,7 @@ export default function SurveyEmbedPage() {
         )}
       </div>
 
-      {surveyModel && !submitting ? (
+      {surveyModel ? (
         <Survey model={surveyModel} />
       ) : (
         <div className="flex justify-center py-12">
