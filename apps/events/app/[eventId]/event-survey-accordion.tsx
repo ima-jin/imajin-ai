@@ -94,9 +94,9 @@ export function EventSurveyAccordion({
                 ref={iframeRef}
                 src={embedUrl}
                 className="w-full border-0"
-                style={{ height: `${iframeHeight}px` }}
+                style={{ height: `${iframeHeight}px`, minHeight: '400px' }}
                 title={surveyTitle}
-                sandbox="allow-same-origin allow-scripts allow-forms"
+                allow="clipboard-write"
               />
             </div>
           )}
