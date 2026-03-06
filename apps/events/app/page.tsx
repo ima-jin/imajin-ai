@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { db, events } from '@/src/db';
 import { desc, eq, or, and, ne, isNull } from 'drizzle-orm';
-import { ne } from 'drizzle-orm';
 
 async function getViewerDid(): Promise<string | null> {
   const authUrl = process.env.AUTH_SERVICE_URL;
