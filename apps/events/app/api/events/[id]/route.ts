@@ -197,6 +197,7 @@ export async function PUT(
     if (description !== undefined) updates.description = description;
     if (startsAt !== undefined) updates.startsAt = new Date(startsAt);
     if (endsAt !== undefined) updates.endsAt = endsAt ? new Date(endsAt) : null;
+    if (body.timezone !== undefined) updates.timezone = body.timezone;
     if (isVirtual !== undefined) updates.isVirtual = isVirtual;
     if (virtualUrl !== undefined) updates.virtualUrl = virtualUrl;
     if (venue !== undefined) updates.venue = venue;

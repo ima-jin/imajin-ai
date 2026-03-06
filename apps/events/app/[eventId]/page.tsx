@@ -309,17 +309,34 @@ export default async function EventPage({ params, searchParams }: Props) {
     // paywall filtering would happen client-side based on ticket ownership
     return true;
   });
+  // Use event timezone if available, otherwise fall back to UTC
+  const eventTz = (event as any).timezone || 'UTC';
   const formattedDate = eventDate.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
+    timeZone: eventTz,
   });
   const formattedTime = eventDate.toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
     timeZoneName: 'short',
+    timeZone: eventTz,
   });
+  const formattedEndTime = eventEndDate ? eventEndDate.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: eventTz,
+  }) : null;
+  // If end date is a different day, show the full date too
+  const endIsNewDay = eventEndDate && eventEndDate.toLocaleDateString('en-US', { timeZone: eventTz }) !== eventDate.toLocaleDateString('en-US', { timeZone: eventTz });
+  const formattedEndDate = endIsNewDay ? eventEndDate!.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    timeZone: eventTz,
+  }) : null;
   
   // Calculate lowest price for sticky bar
   const lowestPrice = ticketTypesList.length > 0 ? Math.min(...ticketTypesList.map(t => t.price)) : null;
@@ -404,7 +421,12 @@ export default async function EventPage({ params, searchParams }: Props) {
               <div className="flex-1 min-w-0">
                 <div className="text-sm text-gray-500 dark:text-gray-400 mb-0.5">Date & Time</div>
                 <div className="font-semibold">{formattedDate}</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">{formattedTime}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  {formattedTime}
+                  {formattedEndTime && (
+                    <> — {formattedEndDate && <>{formattedEndDate}, </>}{formattedEndTime}</>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -537,18 +559,12 @@ export default async function EventPage({ params, searchParams }: Props) {
       {/* Mobile Sticky Bottom Bar — only for purchasable events */}
       {canPurchaseTickets && canSeeTickets && ticketTypesList.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 px-4 py-3 shadow-lg z-50">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Starting at</div>
-              <div className="text-2xl font-bold">{lowestPriceText}</div>
-            </div>
-            <a
-              href="#tickets"
-              className="px-8 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors"
-            >
-              Get Tickets
-            </a>
-          </div>
+          <a
+            href="#tickets"
+            className="block w-full text-center px-8 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors"
+          >
+            Get Tickets
+          </a>
         </div>
       )}
     </>

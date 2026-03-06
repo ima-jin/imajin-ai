@@ -18,6 +18,8 @@ export const events = eventsSchema.table('events', {
   startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
   endsAt: timestamp('ends_at', { withTimezone: true }),
   
+  timezone: text('timezone'),
+  
   // Location
   isVirtual: boolean('is_virtual').default(false),
   virtualUrl: text('virtual_url'),

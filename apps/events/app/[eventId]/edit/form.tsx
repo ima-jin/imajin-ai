@@ -51,6 +51,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
   const [endDateTime, setEndDateTime] = useState(
     event.endsAt ? toLocalDateTimeString(new Date(event.endsAt)) : ''
   );
+  const [timezone, setTimezone] = useState((event as any).timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [isVirtual, setIsVirtual] = useState(event.isVirtual || false);
   const [virtualUrl, setVirtualUrl] = useState(event.virtualUrl || '');
   const [venue, setVenue] = useState(event.venue || '');
@@ -157,6 +158,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           description,
           startsAt: new Date(dateTime).toISOString(),
           endsAt: endDateTime ? new Date(endDateTime).toISOString() : null,
+          timezone,
           isVirtual,
           virtualUrl: isVirtual ? virtualUrl : null,
           venue: !isVirtual ? venue : null,
@@ -400,6 +402,19 @@ export default function EventEditForm({ event, existingTickets }: Props) {
               className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
             />
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">Timezone</label>
+          <select
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+          >
+            {Intl.supportedValuesOf('timeZone').map((tz) => (
+              <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>
+            ))}
+          </select>
         </div>
 
         <div>

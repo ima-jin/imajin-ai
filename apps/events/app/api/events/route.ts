@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
       description,
       startsAt: new Date(startsAt),
       endsAt: endsAt ? new Date(endsAt) : null,
+      timezone: body.timezone || null,
       isVirtual: isVirtual || false,
       virtualUrl,
       venue,
