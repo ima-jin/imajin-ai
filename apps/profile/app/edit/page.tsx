@@ -49,7 +49,8 @@ export default function EditProfilePage() {
 
   useEffect(() => {
     if (!isLoggedIn || !did) {
-      router.push('/login');
+      const authUrl = `${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}auth.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`;
+      window.location.href = `${authUrl}/login?next=${encodeURIComponent(window.location.href)}`;
       return;
     }
 

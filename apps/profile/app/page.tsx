@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useIdentity } from './context/IdentityContext';
-import Link from 'next/link';
 
 export default function Home() {
   const { isLoggedIn, handle, did } = useIdentity();
@@ -44,12 +43,12 @@ export default function Home() {
       </p>
 
       <div className="flex flex-col gap-3 max-w-xs mx-auto">
-        <Link
-          href="/login"
+        <a
+          href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}auth.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/login`}
           className="px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold text-center"
         >
           Login with Key File
-        </Link>
+        </a>
         <p className="text-xs text-gray-500">
           Have an invite?{' '}
           <span className="text-gray-400">
