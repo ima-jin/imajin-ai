@@ -184,6 +184,11 @@ export default function SurveyEmbedPage() {
         if (result.response?.id) {
           localStorage.setItem(`survey_${surveyId}_responseId`, result.response.id);
         }
+        // Preserve answers on model so read-only view renders immediately
+        // (SurveyJS clears display after onComplete, but we need the data for the edit UX)
+        if (surveyModel) {
+          surveyModel.data = data;
+        }
         setSubmitted(true);
         // Notify parent iframe
         window.parent.postMessage(
