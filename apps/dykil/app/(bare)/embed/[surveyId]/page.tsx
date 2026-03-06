@@ -66,10 +66,30 @@ export default function SurveyEmbedPage() {
         const data = await res.json();
         setSurveyData(data);
 
-        // Create SurveyJS model
-        const surveyJson = typeof data.fields === 'object' && 'elements' in data.fields || 'pages' in data.fields
+        // Create SurveyJS model — filter out null elements to prevent crashes
+        let surveyJson = typeof data.fields === 'object' && ('elements' in data.fields || 'pages' in data.fields)
           ? data.fields
           : { elements: Array.isArray(data.fields) ? data.fields : [] };
+
+        // Sanitize: remove null elements from pages and top-level
+        if (surveyJson.pages) {
+          surveyJson = {
+            ...surveyJson,
+            pages: surveyJson.pages
+              .map((page: any) => page ? { ...page, elements: (page.elements || []).filter(Boolean) } : null)
+              .filter(Boolean)
+              .filter((page: any) => page.elements.length > 0),
+          };
+        }
+        if (surveyJson.elements) {
+          surveyJson = { ...surveyJson, elements: surveyJson.elements.filter(Boolean) };
+        }
+
+        // Don't create model if there are no questions
+        if ((!surveyJson.elements || surveyJson.elements.length === 0) && (!surveyJson.pages || surveyJson.pages.length === 0)) {
+          setSurveyData(data);
+          return;
+        }
 
         const model = new Model(surveyJson);
 
