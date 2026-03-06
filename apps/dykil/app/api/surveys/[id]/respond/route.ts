@@ -56,6 +56,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const fieldLabel = field.title || field.label;
       const isRequired = field.isRequired || field.required;
 
+      // Skip validation for conditionally visible fields whose condition isn't met
+      // SurveyJS handles client-side validation; server just does basic checks
+      if (field.visibleIf && isRequired) {
+        // Simple check: extract the referenced field from visibleIf (e.g. "{dietary} = \"Other\"")
+        const match = field.visibleIf.match(/\{(\w+)\}/);
+        if (match) {
+          const depField = match[1];
+          const depValue = answers[depField];
+          // If the dependency field doesn't match the condition, skip this field
+          if (!field.visibleIf.includes(`"${depValue}"`) && !field.visibleIf.includes(`'${depValue}'`)) {
+            continue;
+          }
+        }
+      }
+
       if (isRequired && !answers[fieldName]) {
         return errorResponse(`Field "${fieldLabel}" is required`, 400, cors);
       }
