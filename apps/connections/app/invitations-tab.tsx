@@ -66,7 +66,7 @@ function statusBadge(status: string) {
   );
 }
 
-export default function InvitationsTab() {
+export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pending: number, remaining: number | null) => void }) {
   const [invitedBy, setInvitedBy] = useState<InvitedBy | null | 'loading'>('loading');
   const [sentInvites, setSentInvites] = useState<SentInvite[]>([]);
   const [sentTrustInvites, setSentTrustInvites] = useState<TrustInvite[]>([]);
@@ -74,6 +74,8 @@ export default function InvitationsTab() {
   const [activeCreate, setActiveCreate] = useState<null | 'link' | 'email'>(null);
   const [inviteNote, setInviteNote] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
+  const [emailNote, setEmailNote] = useState('');
+  const [showAccepted, setShowAccepted] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatedInvite, setGeneratedInvite] = useState<{ url: string; code: string } | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -108,12 +110,14 @@ export default function InvitationsTab() {
       if (res.ok) {
         const data = await res.json();
         setSentInvites(data.invites || []);
-        setQuota({
+        const q = {
           role: data.role,
           limit: data.limit,
           pending: data.pending,
           remaining: data.remaining,
-        });
+        };
+        setQuota(q);
+        onCountUpdate?.(q.pending, q.remaining);
       }
     } catch {}
   }
@@ -159,12 +163,13 @@ export default function InvitationsTab() {
       const res = await fetch('/api/trust-invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail.trim() }),
+        body: JSON.stringify({ email: inviteEmail.trim(), note: emailNote || undefined }),
       });
       const data = await res.json();
       if (res.ok) {
         setEmailResult('success');
         setInviteEmail('');
+        setEmailNote('');
         fetchTrustInvites();
       } else {
         setEmailResult(data.error || 'Failed to send invite');
@@ -198,12 +203,14 @@ export default function InvitationsTab() {
     acceptedDate: string | null;
     url?: string;
     code?: string;
+    note?: string | null;
   }> = [
     ...sentInvites.map((inv) => ({
       key: inv.id,
       type: 'link' as const,
       recipient: inv.toEmail || inv.code.slice(0, 12) + '…',
       status: inv.consumedAt ? 'accepted' : 'pending',
+      note: inv.note || null,
       date: inv.createdAt,
       acceptedDate: inv.consumedAt || null,
       url: inv.url,
@@ -214,6 +221,7 @@ export default function InvitationsTab() {
       type: 'email' as const,
       recipient: inv.inviteeEmail || inv.inviteeDid || '—',
       status: inv.status,
+      note: (inv as any).note || null,
       date: inv.createdAt,
       acceptedDate: inv.acceptedAt,
     })),
@@ -377,6 +385,13 @@ export default function InvitationsTab() {
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white placeholder-gray-500 text-sm mb-3"
                   onKeyDown={(e) => e.key === 'Enter' && sendEmailInvite()}
                 />
+                <textarea
+                  value={emailNote}
+                  onChange={(e) => setEmailNote(e.target.value)}
+                  placeholder="Add a personal message (optional)"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white placeholder-gray-500 text-sm resize-none mb-3"
+                  rows={2}
+                />
                 {emailResult && emailResult !== 'success' && (
                   <p className="text-xs text-red-400 mb-3">{emailResult}</p>
                 )}
@@ -403,7 +418,17 @@ export default function InvitationsTab() {
 
       {/* ─── Section C: Sent Invites ─── */}
       <div>
-        <h2 className="text-lg font-semibold mb-4">Sent Invites</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Sent Invites</h2>
+          {allSentRows.some(r => r.status === 'accepted') && (
+            <button
+              onClick={() => setShowAccepted(!showAccepted)}
+              className="text-xs text-gray-500 hover:text-gray-300 transition"
+            >
+              {showAccepted ? 'Hide accepted' : 'Show accepted'}
+            </button>
+          )}
+        </div>
         {allSentRows.length === 0 ? (
           <div className="text-center py-10 bg-white/5 border border-white/10 rounded-lg">
             <div className="text-3xl mb-2">📨</div>
@@ -411,7 +436,7 @@ export default function InvitationsTab() {
           </div>
         ) : (
           <div className="space-y-2">
-            {allSentRows.map((row) => (
+            {allSentRows.filter(r => showAccepted || r.status !== "accepted").map((row) => (
               <div
                 key={row.key}
                 className="flex items-center gap-3 p-3.5 bg-white/5 border border-white/10 rounded-lg"
@@ -425,6 +450,9 @@ export default function InvitationsTab() {
                       <span className="text-green-500"> · accepted {formatDate(row.acceptedDate)}</span>
                     )}
                   </div>
+                  {row.note && (
+                    <div className="text-xs text-gray-500 mt-1 italic">“{row.note}”</div>
+                  )}
                 </div>
                 {statusBadge(row.status)}
                 {row.type === 'link' && row.status === 'pending' && row.url && row.code && (

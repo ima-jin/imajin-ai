@@ -33,6 +33,8 @@ type GroupFilter = 'all' | 'mine' | 'event';
 export default function ConnectionsPage() {
   const { did, handle, isLoggedIn, loading } = useIdentity();
   const [activeTab, setActiveTab] = useState<'connections' | 'groups' | 'invitations'>('connections');
+  const [invitePending, setInvitePending] = useState(0);
+  const [inviteRemaining, setInviteRemaining] = useState<number | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [pods, setPods] = useState<Pod[]>([]);
   const [groupFilter, setGroupFilter] = useState<GroupFilter>('all');
@@ -175,6 +177,8 @@ export default function ConnectionsPage() {
           }`}
         >
           Invitations
+            {invitePending > 0 && <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-yellow-500/20 text-yellow-300">{invitePending}</span>}
+            {inviteRemaining !== null && inviteRemaining > 0 && <span className="ml-1 text-xs text-gray-500">{inviteRemaining} left</span>}
         </button>
       </div>
 
@@ -256,7 +260,7 @@ export default function ConnectionsPage() {
       )}
 
       {/* ─── Invitations tab ─── */}
-      {activeTab === 'invitations' && <InvitationsTab />}
+      {activeTab === 'invitations' && <InvitationsTab onCountUpdate={(p, r) => { setInvitePending(p); setInviteRemaining(r); }} />}
 
       {/* ─── Groups tab ─── */}
       {activeTab === 'groups' && (

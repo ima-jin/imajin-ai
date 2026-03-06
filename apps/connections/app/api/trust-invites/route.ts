@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
 
   // Parse request body
   const body = await request.json().catch(() => ({}));
-  const { email, did: inviteeDid } = body;
+  const { email, did: inviteeDid, note } = body;
 
   if (!email && !inviteeDid) {
     return NextResponse.json({
@@ -117,6 +117,7 @@ export async function POST(request: NextRequest) {
     inviterDid: session.did,
     inviteeEmail: email || null,
     inviteeDid: inviteeDid || null,
+    note: note || null,
     status: 'pending',
     expiresAt,
   }).returning();
