@@ -96,6 +96,9 @@ export default function SurveyEmbedPage() {
 
         const model = new Model(surveyJson);
 
+        // Hide SurveyJS built-in completion page — we render our own
+        model.showCompletedPage = false;
+
         // Apply orange theme
         model.applyTheme({
           cssVariables: {
