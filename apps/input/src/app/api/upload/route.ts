@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/metering';
+import { corsHeaders, corsOptions } from '@/lib/cors';
 
 const MEDIA_SERVICE_URL = process.env.MEDIA_SERVICE_URL || 'http://localhost:7009';
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:7001';
 
+export async function OPTIONS(request: NextRequest) {
+  return corsOptions(request);
+}
+
 /**
  * POST /api/upload
- * 
+ *
  * Accepts file (multipart), validates session, forwards to media service
  * for storage + .fair attribution. Returns asset reference.
  */
 export async function POST(request: NextRequest) {
+  const cors = corsHeaders(request);
   // Validate session — uploads require authentication
   let callerDid: string | null = null;
   let sessionCookie = request.cookies.get('imajin_session')?.value;
@@ -32,7 +38,7 @@ export async function POST(request: NextRequest) {
   if (!callerDid) {
     return NextResponse.json(
       { error: 'Authentication required for file uploads' },
-      { status: 401 }
+      { status: 401, headers: cors }
     );
   }
 
@@ -86,12 +92,12 @@ export async function POST(request: NextRequest) {
 
     // TODO: Log to jobs table for metering (#172)
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, { headers: cors });
   } catch (error) {
     console.error('Media service unreachable:', error);
     return NextResponse.json(
       { error: 'Upload service unavailable' },
-      { status: 503 }
+      { status: 503, headers: cors }
     );
   }
 }

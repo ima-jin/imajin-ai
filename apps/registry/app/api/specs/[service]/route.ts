@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { corsHeaders, corsOptions } from "@/src/lib/cors";
 
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || "";
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || "imajin.ai";
@@ -18,34 +19,40 @@ const SERVICE_URLS: Record<string, string> = {
   media: process.env.MEDIA_SERVICE_URL || "http://localhost:3009",
 };
 
+export async function OPTIONS(request: NextRequest) {
+  return corsOptions(request);
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { service: string } }
 ) {
+  const cors = corsHeaders(request);
   const { service } = params;
   const internalUrl = SERVICE_URLS[service];
-  
+
   if (!internalUrl) {
-    return NextResponse.json({ error: "Unknown service" }, { status: 404 });
+    return NextResponse.json({ error: "Unknown service" }, { status: 404, headers: cors });
   }
 
   try {
-    const res = await fetch(`${internalUrl}/api/spec`, { 
-      next: { revalidate: 60 } 
+    const res = await fetch(`${internalUrl}/api/spec`, {
+      next: { revalidate: 60 },
     });
-    
+
     if (!res.ok) {
       return NextResponse.json(
         { error: `Service ${service} returned ${res.status}` },
-        { status: 502 }
+        { status: 502, headers: cors }
       );
     }
 
     const text = await res.text();
     const contentType = res.headers.get("content-type") || "";
-    
+
     return new NextResponse(text, {
       headers: {
+        ...cors,
         "Content-Type": contentType || "text/plain",
         "Cache-Control": "public, max-age=60",
       },
@@ -53,7 +60,7 @@ export async function GET(
   } catch (err) {
     return NextResponse.json(
       { error: `Could not reach ${service} service` },
-      { status: 502 }
+      { status: 502, headers: cors }
     );
   }
 }

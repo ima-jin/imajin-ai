@@ -36,6 +36,9 @@ importers:
       '@imajin/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@imajin/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@imajin/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -97,6 +100,9 @@ importers:
 
   apps/chat:
     dependencies:
+      '@imajin/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@imajin/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -216,6 +222,9 @@ importers:
 
   apps/connections:
     dependencies:
+      '@imajin/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@imajin/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -265,6 +274,9 @@ importers:
 
   apps/dykil:
     dependencies:
+      '@imajin/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@imajin/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -378,6 +390,9 @@ importers:
 
   apps/input:
     dependencies:
+      '@imajin/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@imajin/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -531,9 +546,15 @@ importers:
 
   apps/media:
     dependencies:
+      '@imajin/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@imajin/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@imajin/fair':
+        specifier: workspace:*
+        version: link:../../packages/fair
       '@imajin/ui':
         specifier: workspace:^
         version: link:../../packages/ui
@@ -580,6 +601,9 @@ importers:
 
   apps/pay:
     dependencies:
+      '@imajin/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@imajin/db':
         specifier: workspace:^
         version: link:../../packages/db
@@ -638,6 +662,9 @@ importers:
 
   apps/profile:
     dependencies:
+      '@imajin/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@imajin/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -693,6 +720,9 @@ importers:
       '@imajin/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@imajin/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@imajin/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -820,7 +850,11 @@ importers:
         specifier: ^1.0.0
         version: 1.6.1(@types/node@22.19.11)
 
-  packages/config: {}
+  packages/config:
+    dependencies:
+      next:
+        specifier: '>=14'
+        version: 14.2.35(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
   packages/db:
     dependencies:

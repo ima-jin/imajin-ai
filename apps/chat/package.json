@@ -13,6 +13,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
     "@imajin/ui": "workspace:*",
     "@noble/ciphers": "^1.2.1",

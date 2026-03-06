@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@imajin/auth": "workspace:*",
+    "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
     "@imajin/ui": "workspace:^",
     "@noble/ed25519": "^2.3.0",

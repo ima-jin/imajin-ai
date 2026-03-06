@@ -3,24 +3,12 @@ import { verifySessionToken, getSessionCookieOptions } from '@/lib/jwt';
 import { db } from '@/src/db';
 import { identities } from '@/src/db/schema';
 import { eq, sql } from 'drizzle-orm';
-
-function corsHeaders(request: NextRequest) {
-  const origin = request.headers.get('origin') || '';
-  // Allow any *.imajin.ai subdomain + localhost in dev
-  const isImajin = origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai';
-  const isLocalhost = origin.startsWith('http://localhost:');
-  const allowed = isImajin || isLocalhost;
-  return {
-    'Access-Control-Allow-Origin': allowed ? origin : '',
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-}
+import { corsHeaders } from '@imajin/config';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
+
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);

@@ -12,6 +12,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
     "@imajin/ui": "workspace:*",
     "drizzle-orm": "^0.45.1",
