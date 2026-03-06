@@ -31,9 +31,9 @@ async function resolveProfile(did: string): Promise<{ did: string; name: string 
  */
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const { id } = await params;
+  const { id } = params;
 
   try {
     const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
@@ -76,7 +76,7 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
@@ -84,7 +84,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
-  const { id } = await params;
+  const { id } = params;
 
   try {
     const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
@@ -102,31 +102,44 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { handle } = body;
+    const { handle, did: didParam } = body;
 
-    if (!handle || typeof handle !== 'string') {
-      return NextResponse.json({ error: 'handle is required' }, { status: 400 });
+    if (!didParam && !handle) {
+      return NextResponse.json({ error: 'did or handle is required' }, { status: 400 });
     }
 
-    // Look up DID from handle via profile service
+    // Look up DID from handle via profile service (or use did directly)
     let coHostDid: string;
     let profileData: { name?: string; handle?: string; avatar?: string; avatarUrl?: string } = {};
-    try {
-      const res = await fetch(
-        `${PROFILE_SERVICE_URL}/api/profile/by-handle/${encodeURIComponent(handle.replace(/^@/, ''))}`,
-        { cache: 'no-store' }
-      );
-      if (!res.ok) {
-        return NextResponse.json({ error: 'Handle not found' }, { status: 404 });
+
+    if (didParam && typeof didParam === 'string') {
+      coHostDid = didParam;
+      // Resolve profile for the DID
+      try {
+        const profile = await resolveProfile(coHostDid);
+        profileData = { name: profile.name || undefined, handle: profile.handle || undefined, avatar: profile.avatar || undefined };
+      } catch {}
+    } else {
+      if (typeof handle !== 'string') {
+        return NextResponse.json({ error: 'handle must be a string' }, { status: 400 });
       }
-      const data = await res.json();
-      coHostDid = data.did;
-      profileData = data;
-      if (!coHostDid) {
-        return NextResponse.json({ error: 'Could not resolve DID for handle' }, { status: 404 });
+      try {
+        const res = await fetch(
+          `${PROFILE_SERVICE_URL}/api/profile/by-handle/${encodeURIComponent(handle.replace(/^@/, ''))}`,
+          { cache: 'no-store' }
+        );
+        if (!res.ok) {
+          return NextResponse.json({ error: 'Handle not found' }, { status: 404 });
+        }
+        const data = await res.json();
+        coHostDid = data.did;
+        profileData = data;
+        if (!coHostDid) {
+          return NextResponse.json({ error: 'Could not resolve DID for handle' }, { status: 404 });
+        }
+      } catch {
+        return NextResponse.json({ error: 'Failed to look up handle' }, { status: 502 });
       }
-    } catch {
-      return NextResponse.json({ error: 'Failed to look up handle' }, { status: 502 });
     }
 
     // Can't add yourself
@@ -158,7 +171,7 @@ export async function POST(
     const cohost = {
       did: coHostDid,
       name: profileData.name || null,
-      handle: profileData.handle || handle.replace(/^@/, ''),
+      handle: profileData.handle || (handle ? handle.replace(/^@/, '') : null),
       avatar: profileData.avatarUrl || profileData.avatar || null,
       role: 'cohost',
       addedAt: new Date().toISOString(),
