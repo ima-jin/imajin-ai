@@ -26,6 +26,7 @@ export default function SurveyEmbedPage() {
   const [editing, setEditing] = useState(false);
   const [surveyData, setSurveyData] = useState<SurveyData | null>(null);
   const [surveyModel, setSurveyModel] = useState<Model | null>(null);
+  const surveyModelRef = useRef<Model | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Send height updates to parent iframe
@@ -142,6 +143,7 @@ export default function SurveyEmbedPage() {
               // Show as already completed with pre-filled data
               setSubmitted(true);
               setSurveyData(data);
+              surveyModelRef.current = model;
               setSurveyModel(model);
               // Notify parent that survey is already done
               window.parent.postMessage({ type: 'survey-completed', surveyId }, '*');
@@ -157,6 +159,7 @@ export default function SurveyEmbedPage() {
           await submitResponse(sender.data);
         });
 
+        surveyModelRef.current = model;
         setSurveyModel(model);
       } else {
         console.error('Survey not found');
@@ -186,8 +189,9 @@ export default function SurveyEmbedPage() {
         }
         // Preserve answers on model so read-only view renders immediately
         // (SurveyJS clears display after onComplete, but we need the data for the edit UX)
-        if (surveyModel) {
-          surveyModel.data = data;
+        // Use ref because this callback is created before setSurveyModel runs (stale closure)
+        if (surveyModelRef.current) {
+          surveyModelRef.current.data = data;
         }
         setSubmitted(true);
         // Notify parent iframe
