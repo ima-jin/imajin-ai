@@ -1,0 +1,449 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+
+interface Profile {
+  name: string | null;
+  handle: string | null;
+  avatar: string | null;
+}
+
+interface Guest {
+  id: string;
+  status: string;
+  ownerDid: string | null;
+  pricePaid: number | null;
+  currency: string | null;
+  purchasedAt: string | null;
+  usedAt: string | null;
+  ticketType: string;
+  profile: Profile | null;
+}
+
+interface GuestListProps {
+  eventId: string;
+  isOwner: boolean;
+}
+
+function formatCurrency(cents: number | null, currency: string | null): string {
+  if (cents === null) return '—';
+  return new Intl.NumberFormat('en-CA', {
+    style: 'currency',
+    currency: currency || 'CAD',
+  }).format(cents / 100);
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+}
+
+function formatDateTime(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-CA', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function truncateDid(did: string): string {
+  if (did.length <= 20) return did;
+  return `${did.slice(0, 16)}…`;
+}
+
+function ProfileCell({ ownerDid, profile }: { ownerDid: string | null; profile: Profile | null }) {
+  const display = profile?.name || profile?.handle || (ownerDid ? truncateDid(ownerDid) : '—');
+  const initials = display.charAt(0).toUpperCase();
+
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      {profile?.avatar ? (
+        <img
+          src={profile.avatar}
+          alt={display}
+          className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+        />
+      ) : (
+        <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center flex-shrink-0 text-xs font-semibold text-white">
+          {initials}
+        </div>
+      )}
+      <div className="min-w-0">
+        {profile?.name && (
+          <p className="text-sm font-medium truncate">{profile.name}</p>
+        )}
+        {profile?.handle && (
+          <p className="text-xs text-gray-400 truncate">@{profile.handle}</p>
+        )}
+        {!profile?.name && !profile?.handle && (
+          <p className="text-xs text-gray-400 font-mono truncate">{ownerDid ? truncateDid(ownerDid) : '—'}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type FilterKey = 'type' | 'status' | null;
+
+export function GuestList({ eventId, isOwner }: GuestListProps) {
+  const [guests, setGuests] = useState<Guest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filterKey, setFilterKey] = useState<FilterKey>(null);
+  const [filterValue, setFilterValue] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [confirmRefund, setConfirmRefund] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    fetch(`/api/events/${eventId}/guests`)
+      .then(r => r.json())
+      .then(data => {
+        setGuests(data.guests || []);
+        setLoading(false);
+      })
+      .catch(() => {
+        setError('Failed to load guest list');
+        setLoading(false);
+      });
+  }, [eventId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleCheckIn = async (ticketId: string) => {
+    setActionLoading(ticketId);
+    try {
+      const res = await fetch(`/api/events/${eventId}/tickets/${ticketId}/check-in`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Check-in failed');
+        return;
+      }
+      setGuests(prev => prev.map(g =>
+        g.id === ticketId ? { ...g, usedAt: data.ticket.usedAt } : g
+      ));
+    } catch {
+      alert('Check-in failed');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRefund = async (ticketId: string) => {
+    setConfirmRefund(null);
+    setActionLoading(ticketId);
+    try {
+      const res = await fetch(`/api/events/${eventId}/tickets/${ticketId}/refund`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Refund failed');
+        return;
+      }
+      setGuests(prev => prev.map(g =>
+        g.id === ticketId ? { ...g, status: 'refunded' } : g
+      ));
+    } catch {
+      alert('Refund failed');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Filter logic
+  const toggleFilter = (key: FilterKey, value: string) => {
+    if (filterKey === key && filterValue === value) {
+      setFilterKey(null);
+      setFilterValue(null);
+    } else {
+      setFilterKey(key);
+      setFilterValue(value);
+    }
+  };
+
+  const filteredGuests = guests.filter(g => {
+    if (!filterKey) return true;
+    if (filterKey === 'type') return g.ticketType === filterValue;
+    if (filterKey === 'status') return g.status === filterValue;
+    return true;
+  });
+
+  // Summary counts
+  const typeCounts = guests.reduce<Record<string, number>>((acc, g) => {
+    acc[g.ticketType] = (acc[g.ticketType] || 0) + 1;
+    return acc;
+  }, {});
+  const statusCounts = guests.reduce<Record<string, number>>((acc, g) => {
+    acc[g.status] = (acc[g.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  const uniqueTypes = Object.keys(typeCounts);
+  const uniqueStatuses = Object.keys(statusCounts);
+
+  if (loading) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+        <h2 className="text-xl font-semibold mb-2">Guest List</h2>
+        <p className="text-gray-500 text-sm">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+        <h2 className="text-xl font-semibold mb-2">Guest List</h2>
+        <p className="text-red-500 text-sm">{error}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+      <div className="px-6 pt-6 pb-4">
+        <h2 className="text-xl font-semibold mb-3">Guest List</h2>
+
+        {/* Summary badge */}
+        {guests.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+              {guests.length} ticket{guests.length !== 1 ? 's' : ''}
+            </span>
+            {uniqueTypes.map(type => (
+              <button
+                key={type}
+                onClick={() => toggleFilter('type', type)}
+                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium transition ${
+                  filterKey === 'type' && filterValue === type
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/60'
+                }`}
+              >
+                {type} ({typeCounts[type]})
+              </button>
+            ))}
+            {uniqueStatuses.map(status => (
+              <button
+                key={status}
+                onClick={() => toggleFilter('status', status)}
+                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium transition ${
+                  filterKey === 'status' && filterValue === status
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                }`}
+              >
+                {status} ({statusCounts[status]})
+              </button>
+            ))}
+            {filterKey && (
+              <button
+                onClick={() => { setFilterKey(null); setFilterValue(null); }}
+                className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/60 transition"
+              >
+                Clear filter
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {guests.length === 0 ? (
+        <p className="px-6 pb-6 text-gray-500 text-sm">No tickets sold yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[700px]">
+            <thead className="bg-gray-50 dark:bg-gray-900">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Profile
+                </th>
+                <th
+                  className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 transition"
+                  onClick={() => filterKey === 'type' ? (setFilterKey(null), setFilterValue(null)) : null}
+                >
+                  Type
+                  {filterKey === 'type' && (
+                    <span className="ml-1 text-orange-500">▾</span>
+                  )}
+                </th>
+                <th
+                  className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 transition"
+                  onClick={() => filterKey === 'status' ? (setFilterKey(null), setFilterValue(null)) : null}
+                >
+                  Status
+                  {filterKey === 'status' && (
+                    <span className="ml-1 text-orange-500">▾</span>
+                  )}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Price
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Purchased
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Checked In
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {filteredGuests.map(guest => (
+                <tr key={guest.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <td className="px-4 py-3">
+                    <ProfileCell ownerDid={guest.ownerDid} profile={guest.profile} />
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    {guest.ticketType}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <StatusBadge status={guest.status} />
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    {formatCurrency(guest.pricePaid, guest.currency)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    {formatDate(guest.purchasedAt)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    {guest.usedAt ? formatDateTime(guest.usedAt) : '—'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <ActionsCell
+                      guest={guest}
+                      isOwner={isOwner}
+                      loading={actionLoading === guest.id}
+                      confirmRefund={confirmRefund === guest.id}
+                      onCheckIn={() => handleCheckIn(guest.id)}
+                      onRefundRequest={() => setConfirmRefund(guest.id)}
+                      onRefundConfirm={() => handleRefund(guest.id)}
+                      onRefundCancel={() => setConfirmRefund(null)}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Refund confirmation dialog */}
+      {confirmRefund && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-semibold mb-2">Confirm Refund</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Are you sure you want to refund this ticket? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmRefund(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleRefund(confirmRefund)}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition"
+              >
+                Refund
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  switch (status) {
+    case 'valid':
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+          valid
+        </span>
+      );
+    case 'refunded':
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300">
+          refunded
+        </span>
+      );
+    case 'cancelled':
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300">
+          cancelled
+        </span>
+      );
+    default:
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+          {status}
+        </span>
+      );
+  }
+}
+
+interface ActionsCellProps {
+  guest: Guest;
+  isOwner: boolean;
+  loading: boolean;
+  confirmRefund: boolean;
+  onCheckIn: () => void;
+  onRefundRequest: () => void;
+  onRefundConfirm: () => void;
+  onRefundCancel: () => void;
+}
+
+function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest }: ActionsCellProps) {
+  const isValid = guest.status === 'valid';
+  const isCheckedIn = !!guest.usedAt;
+  const isRefunded = guest.status === 'refunded';
+  const isFree = !guest.pricePaid || guest.pricePaid === 0;
+
+  if (isRefunded) {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300">
+        Refunded
+      </span>
+    );
+  }
+
+  if (isCheckedIn) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
+        ✓ Checked In
+      </span>
+    );
+  }
+
+  if (!isValid) {
+    return <span className="text-xs text-gray-400">—</span>;
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={onCheckIn}
+        disabled={loading}
+        className="px-3 py-1.5 text-xs font-medium bg-green-500 hover:bg-green-600 text-white rounded-lg transition disabled:opacity-50"
+      >
+        {loading ? '…' : 'Check In'}
+      </button>
+      {isOwner && !isFree && (
+        <button
+          onClick={onRefundRequest}
+          disabled={loading}
+          className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-red-100 dark:hover:bg-red-900/40 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition disabled:opacity-50"
+        >
+          Refund
+        </button>
+      )}
+    </div>
+  );
+}

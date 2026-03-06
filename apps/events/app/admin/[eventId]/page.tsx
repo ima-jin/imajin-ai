@@ -8,6 +8,7 @@ import { eq, desc } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { EventStatusControls } from './event-status-controls';
 import { CohostManager } from './cohost-manager';
+import { GuestList } from './guest-list';
 import { getSession } from '@/src/lib/auth';
 import { getClient } from '@imajin/db';
 
@@ -122,60 +123,8 @@ export default async function AdminPage({ params }: Props) {
         </div>
       </div>
       
-      {/* Attendee List */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">
-          Attendees ({allTickets.length})
-        </h2>
-        
-        {allTickets.length === 0 ? (
-          <p className="text-gray-500">No tickets sold yet.</p>
-        ) : (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 dark:bg-gray-900">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Email</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Ticket</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Paid</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Date</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {allTickets.map(({ ticket, tierName }) => {
-                  const email = (ticket.metadata as any)?.purchaseEmail || 
-                    ticket.ownerDid?.replace('did:email:', '').replace('_at_', '@') || 
-                    'Unknown';
-                  
-                  return (
-                    <tr key={ticket.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                      <td className="px-4 py-3 text-sm">{email}</td>
-                      <td className="px-4 py-3 text-sm">{tierName}</td>
-                      <td className="px-4 py-3 text-sm">
-                        {formatCurrency(ticket.pricePaid || 0, ticket.currency || 'CAD')}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {ticket.createdAt 
-                          ? new Date(ticket.createdAt).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: 'numeric',
-                              minute: '2-digit',
-                            })
-                          : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <StatusBadge status={ticket.status} usedAt={ticket.usedAt} />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {/* Guest List */}
+      <GuestList eventId={eventId} isOwner={isOwner} />
     </div>
   );
 }
@@ -189,42 +138,6 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function StatusBadge({ status, usedAt }: { status: string; usedAt: Date | null }) {
-  if (usedAt) {
-    return (
-      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-        ✓ Checked In
-      </span>
-    );
-  }
-  
-  switch (status) {
-    case 'valid':
-      return (
-        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-          Valid
-        </span>
-      );
-    case 'held':
-      return (
-        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-          Held
-        </span>
-      );
-    case 'cancelled':
-      return (
-        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-          Cancelled
-        </span>
-      );
-    default:
-      return (
-        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-          {status}
-        </span>
-      );
-  }
-}
 
 function formatCurrency(cents: number, currency: string): string {
   return new Intl.NumberFormat('en-US', {
