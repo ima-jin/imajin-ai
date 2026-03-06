@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, sql, isNull, or } from 'drizzle-orm';
 import { db, trustGraphInvites, profiles, podMembers } from '../../../src/db/index';
 import { generateId } from '../../../src/lib/id';
+import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 const INVITE_COOLDOWN_DAYS = 7;
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
 
   // Parse request body
   const body = await request.json().catch(() => ({}));
-  const { email, did: inviteeDid } = body;
+  const { email, did: inviteeDid, note } = body;
 
   if (!email && !inviteeDid) {
     return NextResponse.json({
@@ -117,9 +118,34 @@ export async function POST(request: NextRequest) {
     inviterDid: session.did,
     inviteeEmail: email || null,
     inviteeDid: inviteeDid || null,
+    note: note || null,
     status: 'pending',
     expiresAt,
   }).returning();
+
+  // Send invite email if an email address was provided
+  if (email) {
+    const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
+    const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+    const inviteUrl = `${SERVICE_PREFIX}connections.${DOMAIN}/invite/${session.did}/${inviteId}`;
+
+    const inviterName = profile.displayName || profile.handle || session.did;
+    const inviterHandle = profile.handle || undefined;
+
+    sendEmail({
+      to: email,
+      subject: `${inviterName} invited you to Imajin`,
+      html: trustGraphInviteEmail({
+        inviterName,
+        inviterHandle,
+        inviteUrl,
+        note: note || undefined,
+        expiresAt: expiresAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      }),
+    }).catch((err: unknown) => {
+      console.error('Failed to send invite email:', err);
+    });
+  }
 
   return NextResponse.json({
     invite,

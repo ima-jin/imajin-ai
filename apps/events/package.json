@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@imajin/db": "workspace:*",
+    "@imajin/email": "workspace:*",
     "@imajin/fair": "workspace:*",
     "@imajin/ui": "workspace:*",
     "@noble/ed25519": "^3.0.0",

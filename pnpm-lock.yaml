@@ -228,6 +228,9 @@ importers:
       '@imajin/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@imajin/email':
+        specifier: workspace:*
+        version: link:../../packages/email
       '@imajin/trust-graph':
         specifier: workspace:*
         version: link:../../packages/trust-graph
@@ -332,6 +335,9 @@ importers:
       '@imajin/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@imajin/email':
+        specifier: workspace:*
+        version: link:../../packages/email
       '@imajin/fair':
         specifier: workspace:*
         version: link:../../packages/fair
@@ -867,6 +873,19 @@ importers:
     devDependencies:
       typescript:
         specifier: ^5
+        version: 5.9.3
+
+  packages/email:
+    dependencies:
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
+    devDependencies:
+      '@types/qrcode':
+        specifier: ^1.5.5
+        version: 1.5.6
+      typescript:
+        specifier: ^5.3.0
         version: 5.9.3
 
   packages/fair:
