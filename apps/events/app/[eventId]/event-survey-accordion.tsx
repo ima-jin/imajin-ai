@@ -80,6 +80,20 @@ export function EventSurveyAccordion({
                 Purchase a ticket to access this survey.
               </p>
             </div>
+          ) : isCompleted ? (
+            <div className="p-8 text-center">
+              <div className="text-6xl mb-4">✓</div>
+              <h3 className="text-2xl font-bold mb-2">Thank you!</h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                Your response has been recorded. You can now purchase tickets below.
+              </p>
+              <button
+                onClick={() => setIsExpanded(false)}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition text-sm font-medium"
+              >
+                View Tickets ↓
+              </button>
+            </div>
           ) : (
             <div className="p-0">
               <iframe
