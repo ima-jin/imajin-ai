@@ -80,14 +80,6 @@ export function EventSurveyAccordion({
                 Purchase a ticket to access this survey.
               </p>
             </div>
-          ) : isCompleted ? (
-            <div className="p-8 text-center">
-              <div className="text-6xl mb-4">✓</div>
-              <h3 className="text-2xl font-bold mb-2">Thank you!</h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                Your response has been recorded.
-              </p>
-            </div>
           ) : (
             <div className="p-0">
               <iframe
