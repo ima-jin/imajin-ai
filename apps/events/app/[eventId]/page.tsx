@@ -514,7 +514,7 @@ export default async function EventPage({ params, searchParams }: Props) {
                 surveyId={survey.id}
                 surveyTitle={survey.title}
                 surveyType={survey.type}
-                requiresTicket={settings?.paywall || false}
+                requiresTicket={(settings?.paywall || false) && !hasTicket}
               />
             </div>
           );
