@@ -28,6 +28,9 @@ export const events = eventsSchema.table('events', {
   
   // Status
   status: text('status').notNull().default('draft'),        // draft, published, cancelled, completed
+
+  // Access control
+  accessMode: text('access_mode').notNull().default('public'), // public, invite_only
   
   // Media
   imageUrl: text('image_url'),
@@ -166,6 +169,33 @@ export const ticketQueue = eventsSchema.table('ticket_queue', {
   statusIdx: index('idx_ticket_queue_status').on(table.status),
 }));
 
+/**
+ * Event Invites - invite links for invite-only events
+ *
+ * SQL migration:
+ * ALTER TABLE events.events ADD COLUMN IF NOT EXISTS access_mode TEXT NOT NULL DEFAULT 'public';
+ * CREATE TABLE IF NOT EXISTS events.event_invites (
+ *   id TEXT PRIMARY KEY,
+ *   event_id TEXT NOT NULL REFERENCES events.events(id),
+ *   token TEXT NOT NULL UNIQUE,
+ *   label TEXT,
+ *   max_uses INTEGER,
+ *   used_count INTEGER NOT NULL DEFAULT 0,
+ *   expires_at TIMESTAMPTZ,
+ *   created_at TIMESTAMPTZ DEFAULT NOW()
+ * );
+ */
+export const eventInvites = eventsSchema.table('event_invites', {
+  id: text('id').primaryKey(),
+  eventId: text('event_id').notNull().references(() => events.id),
+  token: text('token').notNull().unique(),
+  label: text('label'),
+  maxUses: integer('max_uses'),
+  usedCount: integer('used_count').notNull().default(0),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
 // Types
 export type Event = typeof events.$inferSelect;
 export type NewEvent = typeof events.$inferInsert;
@@ -174,3 +204,5 @@ export type TicketType = typeof ticketTypes.$inferSelect;
 export type Ticket = typeof tickets.$inferSelect;
 export type TicketTransfer = typeof ticketTransfers.$inferSelect;
 export type TicketQueueEntry = typeof ticketQueue.$inferSelect;
+export type EventInvite = typeof eventInvites.$inferSelect;
+export type NewEventInvite = typeof eventInvites.$inferInsert;

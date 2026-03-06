@@ -9,6 +9,7 @@ import { notFound } from 'next/navigation';
 import { EventStatusControls } from './event-status-controls';
 import { CohostManager } from './cohost-manager';
 import { GuestList } from './guest-list';
+import { InviteManager } from './invite-manager';
 import { getSession } from '@/src/lib/auth';
 import { getClient } from '@imajin/db';
 
@@ -99,6 +100,9 @@ export default async function AdminPage({ params }: Props) {
       <div className="mb-8">
         <CohostManager eventId={event.id} isOwner={isOwner} />
       </div>
+
+      {/* Invite Link Management */}
+      <InviteManager eventId={event.id} accessMode={event.accessMode || 'public'} />
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, events, ticketTypes } from '@/src/db';
+import { db, events, ticketTypes, eventInvites } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
 import { getSessionFromCookie } from '@/src/lib/auth';
 
@@ -18,6 +18,7 @@ interface CheckoutRequest {
   ticketTypeId: string;
   quantity: number;
   email?: string;
+  invite?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -47,6 +48,35 @@ export async function POST(request: NextRequest) {
 
     if (event.status !== 'published') {
       return NextResponse.json({ error: 'Tickets are not available for this event' }, { status: 400 });
+    }
+
+    // Invite-only access check
+    let inviteRecord: typeof eventInvites.$inferSelect | undefined;
+    if (event.accessMode === 'invite_only') {
+      const token = body.invite || request.nextUrl.searchParams.get('invite');
+      if (!token) {
+        return NextResponse.json({ error: 'This event requires an invite link' }, { status: 403 });
+      }
+
+      const [invite] = await db
+        .select()
+        .from(eventInvites)
+        .where(and(eq(eventInvites.eventId, body.eventId), eq(eventInvites.token, token)))
+        .limit(1);
+
+      if (!invite) {
+        return NextResponse.json({ error: 'Invalid invite token' }, { status: 403 });
+      }
+
+      if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
+        return NextResponse.json({ error: 'This invite link has expired' }, { status: 403 });
+      }
+
+      if (invite.maxUses !== null && invite.usedCount >= invite.maxUses) {
+        return NextResponse.json({ error: 'This invite link has reached its maximum uses' }, { status: 403 });
+      }
+
+      inviteRecord = invite;
     }
 
     const [ticketType] = await db
@@ -121,7 +151,15 @@ export async function POST(request: NextRequest) {
     }
     
     const checkout = await payResponse.json();
-    
+
+    // Increment invite used_count on successful checkout session creation
+    if (inviteRecord) {
+      await db
+        .update(eventInvites)
+        .set({ usedCount: inviteRecord.usedCount + 1 })
+        .where(eq(eventInvites.id, inviteRecord.id));
+    }
+
     return NextResponse.json({
       url: checkout.url,
       sessionId: checkout.id,

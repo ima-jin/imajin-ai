@@ -213,6 +213,7 @@ export async function PUT(
       }
       updates.nameDisplayPolicy = nameDisplayPolicy;
     }
+    if (body.accessMode !== undefined) updates.accessMode = body.accessMode;
 
     const [updated] = await db
       .update(events)

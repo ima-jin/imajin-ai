@@ -59,8 +59,13 @@ export default function EventEditForm({ event, existingTickets }: Props) {
   const [country, setCountry] = useState(event.country || '');
   const [imageUrl, setImageUrl] = useState(event.imageUrl || '');
   const [status, setStatus] = useState(event.status);
+<<<<<<< HEAD
   const [nameDisplayPolicy, setNameDisplayPolicy] = useState(
     (event as any).nameDisplayPolicy || 'attendee_choice'
+=======
+  const [accessMode, setAccessMode] = useState<'public' | 'invite_only'>(
+    (event.accessMode as 'public' | 'invite_only') || 'public'
+>>>>>>> feat/107-access-control
   );
 
   // Dykil integration
@@ -162,7 +167,11 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           country: !isVirtual ? country : null,
           imageUrl: imageUrl || null,
           status,
+<<<<<<< HEAD
           nameDisplayPolicy,
+=======
+          accessMode,
+>>>>>>> feat/107-access-control
           metadata: {
             ...(event.metadata as any || {}),
             linkedSurveys,
@@ -485,6 +494,44 @@ export default function EventEditForm({ event, existingTickets }: Props) {
             <option value="cancelled">Cancelled</option>
             <option value="completed">Completed</option>
           </select>
+        </div>
+      </div>
+
+      {/* Access Control */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-4">
+        <h2 className="text-xl font-semibold">Access Control</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Control who can purchase tickets to this event.
+        </p>
+        <div className="space-y-3">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="radio"
+              name="accessMode"
+              value="public"
+              checked={accessMode === 'public'}
+              onChange={() => setAccessMode('public')}
+              className="mt-1 w-4 h-4 text-orange-500 focus:ring-orange-500"
+            />
+            <div>
+              <div className="font-medium">Public</div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">Anyone can discover and buy tickets.</div>
+            </div>
+          </label>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="radio"
+              name="accessMode"
+              value="invite_only"
+              checked={accessMode === 'invite_only'}
+              onChange={() => setAccessMode('invite_only')}
+              className="mt-1 w-4 h-4 text-orange-500 focus:ring-orange-500"
+            />
+            <div>
+              <div className="font-medium">Invite Only</div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">Requires an invite link to purchase tickets. Manage invite links from the admin dashboard.</div>
+            </div>
+          </label>
         </div>
       </div>
 
