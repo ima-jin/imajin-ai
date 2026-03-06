@@ -53,8 +53,12 @@ export function EventStatusControls({ eventId, currentStatus }: Props) {
   const nextStatuses = STATUS_TRANSITIONS[status] || [];
 
   const handleTransition = async (newStatus: EventStatus) => {
-    if (newStatus === 'cancelled') {
-      const confirmed = window.confirm('Are you sure you want to cancel this event? This cannot be undone.');
+    if (newStatus === 'cancelled' || newStatus === 'completed') {
+      const messages: Record<string, string> = {
+        cancelled: 'Are you sure you want to cancel this event? This cannot be undone.',
+        completed: 'Are you sure you want to mark this event as completed? This cannot be undone.',
+      };
+      const confirmed = window.confirm(messages[newStatus] || 'Are you sure?');
       if (!confirmed) return;
     }
 
