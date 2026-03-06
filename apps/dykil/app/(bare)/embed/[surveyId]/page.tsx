@@ -34,7 +34,7 @@ export default function SurveyEmbedPage() {
         const height = containerRef.current.scrollHeight;
         window.parent.postMessage(
           { type: 'survey-height', height },
-          '*'
+          process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai'
         );
       }
     };
@@ -113,7 +113,7 @@ export default function SurveyEmbedPage() {
         // Notify parent iframe
         window.parent.postMessage(
           { type: 'survey-completed', surveyId },
-          '*'
+          process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai'
         );
       } else {
         const error = await res.json();

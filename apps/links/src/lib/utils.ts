@@ -2,7 +2,7 @@
  * Generate a random ID with prefix
  */
 export function generateId(prefix: string): string {
-  const random = Math.random().toString(36).substring(2, 15);
+  const random = crypto.randomUUID().replace(/-/g, '').substring(0, 13);
   const timestamp = Date.now().toString(36);
   return `${prefix}_${timestamp}${random}`;
 }

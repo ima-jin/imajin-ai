@@ -26,7 +26,7 @@ export function MessageMedia({ mediaType, mediaPath, mediaMeta }: MessageMediaPr
 
     return (
       <>
-        <div className="mt-2 cursor-pointer" onClick={() => setLightboxOpen(true)}>
+        <div role="button" tabIndex={0} className="mt-2 cursor-pointer" onClick={() => setLightboxOpen(true)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setLightboxOpen(true); }}>
           <img
             src={thumbUrl}
             alt={mediaMeta.originalName || 'Image'}
@@ -38,8 +38,11 @@ export function MessageMedia({ mediaType, mediaPath, mediaMeta }: MessageMediaPr
         {/* Lightbox */}
         {lightboxOpen && (
           <div
+            role="button"
+            tabIndex={0}
             className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
             onClick={() => setLightboxOpen(false)}
+            onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') setLightboxOpen(false); }}
           >
             <img
               src={fullUrl}

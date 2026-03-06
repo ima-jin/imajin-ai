@@ -27,8 +27,11 @@ export function AssetCard({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       className="bg-[#1a1a1a] border border-gray-800 rounded-lg overflow-hidden hover:border-orange-500 transition-colors cursor-pointer"
       onClick={() => onClick?.(id)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick?.(id); }}
     >
       {thumbPath ? (
         <img src={thumbPath} alt={filename} className="w-full h-32 object-cover" />

@@ -354,7 +354,7 @@ export function FolderTree({
         </button>
         {mobileOpen && (
           <div className="fixed inset-0 z-40 flex">
-            <div className="fixed inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
+            <div role="button" tabIndex={0} aria-label="Close menu" className="fixed inset-0 bg-black/60" onClick={() => setMobileOpen(false)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') setMobileOpen(false); }} />
             <div className="relative z-50 w-64 h-full bg-[#1a1a1a] border-r border-white/10 p-3">
               {treeContent}
             </div>

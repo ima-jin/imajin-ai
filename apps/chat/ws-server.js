@@ -124,7 +124,7 @@ function broadcastToConversation(conversationId, payload, excludeDid = null) {
   for (const [ws, meta] of socketMeta) {
     if (meta.subscriptions.has(conversationId) &&
         ws.readyState === 1 &&
-        meta.did !== excludeDid) {
+        (!excludeDid || meta.did !== excludeDid)) {
       ws.send(payloadStr);
     }
   }
@@ -163,7 +163,8 @@ function setupWebSocket(server) {
 
   server.on('upgrade', async (req, socket, head) => {
     const { pathname } = new URL(req.url, `http://${req.headers.host}`);
-    console.log('[WS] Upgrade request for:', pathname);
+    const safePath = pathname.replace(/[\r\n\x00-\x1f\x7f]/g, '').substring(0, 100);
+    console.log('[WS] Upgrade request for:', safePath);
     if (pathname !== '/ws') {
       socket.destroy();
       return;
