@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect } from 'react';
 import { useIdentity } from '../../context/IdentityContext';
 
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -37,8 +37,8 @@ interface Connection {
   name: string | null;
 }
 
-export default function PodDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function PodDetailPage({ params }: { params: { id: string } }) {
+  const { id } = params;
   const { did, isLoggedIn, loading } = useIdentity();
   const [pod, setPod] = useState<Pod | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
