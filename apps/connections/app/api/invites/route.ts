@@ -93,11 +93,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
+  const role: string = session.role || 'member';
+  const limit = getInviteLimit(role);
+
   const results = await db
     .select()
     .from(invites)
     .where(eq(invites.fromDid, session.did))
     .orderBy(desc(invites.createdAt));
+
+  const pending = results.filter((inv) => !inv.consumedAt).length;
 
   const now = Date.now();
   const withDaysAgo = results.map((inv) => ({
@@ -106,5 +111,11 @@ export async function GET(request: NextRequest) {
     url: `${SERVICE_PREFIX}connections.${DOMAIN}/invite/${inv.fromDid}/${inv.code}`,
   }));
 
-  return NextResponse.json({ invites: withDaysAgo });
+  return NextResponse.json({
+    invites: withDaysAgo,
+    role,
+    limit: limit === Infinity ? null : limit,
+    pending,
+    remaining: limit === Infinity ? null : Math.max(0, limit - pending),
+  });
 }

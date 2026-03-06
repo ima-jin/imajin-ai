@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useIdentity } from './context/IdentityContext';
+import InvitationsTab from './invitations-tab';
 
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
@@ -15,20 +16,6 @@ interface Connection {
   handle?: string;
   name?: string;
   joinedAt: string;
-}
-
-interface Invite {
-  id: string;
-  code: string;
-  fromHandle?: string;
-  toEmail?: string;
-  note?: string;
-  usedCount: number;
-  maxUses: number;
-  consumedAt?: string;
-  createdAt: string;
-  daysAgo: number;
-  url: string;
 }
 
 interface Pod {
@@ -45,15 +32,10 @@ type GroupFilter = 'all' | 'mine' | 'event';
 
 export default function ConnectionsPage() {
   const { did, handle, isLoggedIn, loading } = useIdentity();
-  const [activeTab, setActiveTab] = useState<'connections' | 'groups'>('connections');
+  const [activeTab, setActiveTab] = useState<'connections' | 'groups' | 'invitations'>('connections');
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [invites, setInvites] = useState<Invite[]>([]);
   const [pods, setPods] = useState<Pod[]>([]);
   const [groupFilter, setGroupFilter] = useState<GroupFilter>('all');
-  const [showInviteForm, setShowInviteForm] = useState(false);
-  const [inviteNote, setInviteNote] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
@@ -61,13 +43,14 @@ export default function ConnectionsPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('tab') === 'groups') setActiveTab('groups');
+    const tab = params.get('tab');
+    if (tab === 'groups') setActiveTab('groups');
+    else if (tab === 'invitations') setActiveTab('invitations');
   }, []);
 
   useEffect(() => {
     if (isLoggedIn) {
       fetchConnections();
-      fetchInvites();
       fetchPods();
     }
   }, [isLoggedIn]);
@@ -82,16 +65,6 @@ export default function ConnectionsPage() {
     } catch {}
   }
 
-  async function fetchInvites() {
-    try {
-      const res = await fetch('/api/invites');
-      if (res.ok) {
-        const data = await res.json();
-        setInvites(data.invites || []);
-      }
-    } catch {}
-  }
-
   async function fetchPods() {
     try {
       const res = await fetch('/api/groups');
@@ -102,24 +75,6 @@ export default function ConnectionsPage() {
     } catch {}
   }
 
-  async function createInvite() {
-    setCreating(true);
-    try {
-      const res = await fetch('/api/invites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: inviteNote || undefined }),
-      });
-      if (res.ok) {
-        setInviteNote('');
-        setShowInviteForm(false);
-        fetchInvites();
-      }
-    } catch {} finally {
-      setCreating(false);
-    }
-  }
-
   async function disconnectFrom(podId: string) {
     try {
       const res = await fetch(`/api/connections/${podId}`, { method: 'DELETE' });
@@ -127,19 +82,6 @@ export default function ConnectionsPage() {
         fetchConnections();
       }
     } catch {}
-  }
-
-  async function deleteInvite(code: string) {
-    try {
-      await fetch(`/api/invites/${code}`, { method: 'DELETE' });
-      fetchInvites();
-    } catch {}
-  }
-
-  function copyLink(url: string, code: string) {
-    navigator.clipboard.writeText(url);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 2000);
   }
 
   async function createGroup() {
@@ -188,8 +130,6 @@ export default function ConnectionsPage() {
     );
   }
 
-  const pendingInvites = invites.filter((i) => i.usedCount < i.maxUses);
-
   const filteredPods = pods.filter((p) => {
     if (groupFilter === 'mine') return p.ownerDid === did;
     if (groupFilter === 'event') return p.type === 'event';
@@ -198,16 +138,6 @@ export default function ConnectionsPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* Trust invites link */}
-      <div className="mb-4">
-        <a
-          href="/trust-invites"
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg transition"
-        >
-          🔐 Trust Graph Invites
-        </a>
-      </div>
-
       {/* Tab navigation */}
       <div className="flex gap-1 mb-8 border-b border-white/10">
         <button
@@ -236,6 +166,16 @@ export default function ConnectionsPage() {
             <span className="ml-2 px-1.5 py-0.5 text-xs bg-white/10 rounded-full">{pods.length}</span>
           )}
         </button>
+        <button
+          onClick={() => setActiveTab('invitations')}
+          className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
+            activeTab === 'invitations'
+              ? 'border-amber-500 text-amber-400'
+              : 'border-transparent text-gray-400 hover:text-white'
+          }`}
+        >
+          Invitations
+        </button>
       </div>
 
       {/* ─── Connections tab ─── */}
@@ -246,41 +186,12 @@ export default function ConnectionsPage() {
               {connections.length} connection{connections.length !== 1 ? 's' : ''}
             </p>
             <button
-              onClick={() => setShowInviteForm(!showInviteForm)}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition"
+              onClick={() => setActiveTab('invitations')}
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition text-sm"
             >
               + Invite Someone
             </button>
           </div>
-
-          {/* Invite Form */}
-          {showInviteForm && (
-            <div className="mb-8 p-6 bg-white/5 border border-amber-500/30 rounded-lg">
-              <h3 className="text-lg font-semibold mb-3">Create an Invite</h3>
-              <textarea
-                value={inviteNote}
-                onChange={(e) => setInviteNote(e.target.value)}
-                placeholder="Add a personal note (optional)"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white placeholder-gray-500 text-sm resize-none mb-3"
-                rows={2}
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={createInvite}
-                  disabled={creating}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-medium rounded-lg transition"
-                >
-                  {creating ? 'Creating...' : 'Generate Invite Link'}
-                </button>
-                <button
-                  onClick={() => setShowInviteForm(false)}
-                  className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Connections List */}
           {connections.length > 0 ? (
@@ -341,44 +252,11 @@ export default function ConnectionsPage() {
             </div>
           )}
 
-          {/* Pending Invites */}
-          {pendingInvites.length > 0 && (
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Pending Invites</h2>
-              <div className="space-y-3">
-                {pendingInvites.map((inv) => (
-                  <div
-                    key={inv.id}
-                    className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-lg"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm text-gray-300">
-                        {inv.note || 'No note'}
-                        {inv.toEmail && <span className="text-gray-500"> · {inv.toEmail}</span>}
-                      </div>
-                      <div className="text-gray-500 text-xs mt-1">
-                        {inv.daysAgo === 0 ? 'Today' : `${inv.daysAgo} day${inv.daysAgo !== 1 ? 's' : ''} ago`}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => copyLink(inv.url, inv.code)}
-                      className="px-3 py-1.5 text-xs bg-white/10 hover:bg-white/15 text-white rounded-lg transition"
-                    >
-                      {copiedCode === inv.code ? '✓ Copied' : 'Copy Link'}
-                    </button>
-                    <button
-                      onClick={() => deleteInvite(inv.code)}
-                      className="px-3 py-1.5 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </>
       )}
+
+      {/* ─── Invitations tab ─── */}
+      {activeTab === 'invitations' && <InvitationsTab />}
 
       {/* ─── Groups tab ─── */}
       {activeTab === 'groups' && (
