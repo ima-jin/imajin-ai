@@ -6,6 +6,26 @@ import { Model } from 'survey-core';
 import { Survey } from 'survey-react-ui';
 import 'survey-core/survey-core.min.css';
 
+/** Apply HTML allowlist handler to a SurveyJS model — allows safe formatting tags in questions */
+function applyHtmlHandler(model: Model) {
+  const allowed = ['a', 'b', 'i', 'em', 'strong', 'br', 'ul', 'ol', 'li', 'p', 'span'];
+  model.onTextMarkdown.add((_, options) => {
+    const cleaned = options.text
+      .replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/gi, (match: string, tag: string) => {
+        if (allowed.includes(tag.toLowerCase())) {
+          if (tag.toLowerCase() === 'a') {
+            return match
+              .replace(/<a\s/i, '<a target="_blank" rel="noopener noreferrer" ')
+              .replace(/target="_blank"\s*target="_blank"/g, 'target="_blank"');
+          }
+          return match;
+        }
+        return '';
+      });
+    options.html = cleaned;
+  });
+}
+
 interface SurveyData {
   id: string;
   title: string;
@@ -109,25 +129,7 @@ export default function SurveyEmbedPage() {
         });
 
         // Allow HTML in question titles/descriptions (for links etc.)
-        // Only allows <a>, <b>, <i>, <em>, <strong>, <br>, <ul>, <ol>, <li>, <p>, <span>
-        model.onTextMarkdown.add((_, options) => {
-          // Basic allowlist sanitizer — strip everything except safe tags
-          const allowed = ['a', 'b', 'i', 'em', 'strong', 'br', 'ul', 'ol', 'li', 'p', 'span'];
-          const cleaned = options.text
-            .replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/gi, (match: string, tag: string) => {
-              if (allowed.includes(tag.toLowerCase())) {
-                // For <a> tags, ensure they open in new tab and have rel=noopener
-                if (tag.toLowerCase() === 'a') {
-                  return match
-                    .replace(/<a\s/i, '<a target="_blank" rel="noopener noreferrer" ')
-                    .replace(/target="_blank"\s*target="_blank"/g, 'target="_blank"');
-                }
-                return match;
-              }
-              return '';
-            });
-          options.html = cleaned;
-        });
+        applyHtmlHandler(model);
 
         // Check for existing response and pre-fill
         try {
@@ -236,6 +238,7 @@ export default function SurveyEmbedPage() {
     // Editing mode: show editable survey with pre-filled data
     if (editing && surveyData) {
       const editModel = new Model(surveyData.fields);
+      applyHtmlHandler(editModel);
       editModel.data = savedAnswers || {};
       editModel.showCompleteButton = true;
       editModel.onComplete.add(async (sender) => {
@@ -266,6 +269,7 @@ export default function SurveyEmbedPage() {
     // Create a fresh model — the original one is in "completed" state and won't render
     if (surveyData && savedAnswers && Object.keys(savedAnswers).length > 0) {
       const displayModel = new Model(surveyData.fields);
+      applyHtmlHandler(displayModel);
       displayModel.data = savedAnswers;
       displayModel.mode = 'display';
       displayModel.showCompleteButton = false;
