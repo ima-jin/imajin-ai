@@ -6,6 +6,33 @@ import { Model } from 'survey-core';
 import { Survey } from 'survey-react-ui';
 import 'survey-core/survey-core.min.css';
 
+/** Apply dark-mode theme to a SurveyJS model */
+function applyDarkTheme(model: Model) {
+  model.applyTheme({
+    cssVariables: {
+      '--sjs-primary-backcolor': '#f97316',
+      '--sjs-primary-backcolor-dark': '#ea580c',
+      '--sjs-primary-backcolor-light': '#fb923c',
+      '--sjs-general-backcolor': 'transparent',
+      '--sjs-general-backcolor-dim': 'rgba(255,255,255,0.03)',
+      '--sjs-general-backcolor-dim-light': 'rgba(255,255,255,0.05)',
+      '--sjs-general-forecolor': '#e5e7eb',
+      '--sjs-general-forecolor-light': '#9ca3af',
+      '--sjs-editor-background': 'rgba(255,255,255,0.08)',
+      '--sjs-editor-forecolor': '#e5e7eb',
+      '--sjs-editor-forecolor-light': '#9ca3af',
+      '--sjs-error-background': 'rgba(239,68,68,0.1)',
+      '--sjs-error-forecolor': '#fca5a5',
+      '--sjs-border-default': 'rgba(255,255,255,0.1)',
+      '--sjs-border-light': 'rgba(255,255,255,0.06)',
+      '--sjs-questionpanel-backcolor': 'transparent',
+      '--sjs-font-questiontitle-color': '#e5e7eb',
+      '--sjs-font-questiondescription-color': '#9ca3af',
+      '--sjs-font-editorfontcolor': '#e5e7eb',
+    }
+  });
+}
+
 /** Apply HTML allowlist handler to a SurveyJS model — allows safe formatting tags in questions */
 function applyHtmlHandler(model: Model) {
   const allowed = ['a', 'b', 'i', 'em', 'strong', 'br', 'ul', 'ol', 'li', 'p', 'span'];
@@ -118,14 +145,8 @@ export default function SurveyEmbedPage() {
         // Hide SurveyJS built-in completion page — we render our own
         model.showCompletedPage = false;
 
-        // Apply orange theme
-        model.applyTheme({
-          cssVariables: {
-            '--sjs-primary-backcolor': '#f97316',
-            '--sjs-primary-backcolor-dark': '#ea580c',
-            '--sjs-primary-backcolor-light': '#fb923c',
-          }
-        });
+        // Apply dark-mode-safe theme
+        applyDarkTheme(model);
 
         // Allow HTML in question titles/descriptions (for links etc.)
         applyHtmlHandler(model);
@@ -235,6 +256,7 @@ export default function SurveyEmbedPage() {
     // Editing mode: show editable survey with pre-filled data
     if (editing && surveyData) {
       const editModel = new Model(surveyData.fields);
+      applyDarkTheme(editModel);
       applyHtmlHandler(editModel);
       editModel.data = savedAnswers || {};
       editModel.showCompleteButton = true;
@@ -266,6 +288,7 @@ export default function SurveyEmbedPage() {
     // Create a fresh model — the original one is in "completed" state and won't render
     if (surveyData && savedAnswers && Object.keys(savedAnswers).length > 0) {
       const displayModel = new Model(surveyData.fields);
+      applyDarkTheme(displayModel);
       applyHtmlHandler(displayModel);
       displayModel.data = savedAnswers;
       displayModel.mode = 'display';
