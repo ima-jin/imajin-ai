@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { db, events } from '@/src/db';
-import { desc, eq, or, and } from 'drizzle-orm';
+import { desc, eq, or, and, ne, isNull } from 'drizzle-orm';
+import { ne } from 'drizzle-orm';
 
 async function getViewerDid(): Promise<string | null> {
   const authUrl = process.env.AUTH_SERVICE_URL;
@@ -23,13 +24,17 @@ async function getViewerDid(): Promise<string | null> {
 async function getEvents(viewerDid: string | null) {
   try {
     const publicStatuses = ['published', 'cancelled', 'completed'];
+    // Hide invite-only events from non-owners (they can only access via direct link)
+    const isPublicAccess = or(ne(events.accessMode, 'invite_only'), isNull(events.accessMode));
     const conditions = viewerDid
       ? or(
-          ...publicStatuses.map(s => eq(events.status, s)),
+          and(or(...publicStatuses.map(s => eq(events.status, s))), isPublicAccess),
+          // Owners always see their own events regardless of access mode
           and(eq(events.status, 'draft'), eq(events.creatorDid, viewerDid)),
-          and(eq(events.status, 'paused'), eq(events.creatorDid, viewerDid))
+          and(eq(events.status, 'paused'), eq(events.creatorDid, viewerDid)),
+          and(or(...publicStatuses.map(s => eq(events.status, s))), eq(events.creatorDid, viewerDid))
         )
-      : or(...publicStatuses.map(s => eq(events.status, s)));
+      : and(or(...publicStatuses.map(s => eq(events.status, s))), isPublicAccess);
 
     return await db
       .select()

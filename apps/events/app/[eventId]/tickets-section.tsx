@@ -226,7 +226,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken }: { eventId: st
               <div className="flex md:flex-col items-center md:items-end gap-4 md:gap-3">
                 <div className="flex-1 md:flex-none text-left md:text-right">
                   <div className="text-3xl md:text-4xl font-bold">
-                    {ticket.price === 0 ? 'Free' : `CA\${(ticket.price / 100).toFixed(2)}`}
+                    {ticket.price === 0 ? 'Free' : `CA$${(ticket.price / 100).toFixed(2)}`}
                   </div>
                   {ticket.price > 0 && (
                     <div className="text-sm text-gray-500">{ticket.currency}</div>
