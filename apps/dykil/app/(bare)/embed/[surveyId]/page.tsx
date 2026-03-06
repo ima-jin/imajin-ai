@@ -23,6 +23,7 @@ export default function SurveyEmbedPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [surveyData, setSurveyData] = useState<SurveyData | null>(null);
   const [surveyModel, setSurveyModel] = useState<Model | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -218,14 +219,51 @@ export default function SurveyEmbedPage() {
   }
 
   if (submitted) {
+    // Editing mode: show editable survey with pre-filled data
+    if (editing && surveyModel) {
+      surveyModel.mode = 'edit';
+      surveyModel.showCompleteButton = true;
+      // Re-attach completion handler for updates
+      surveyModel.onComplete.clear();
+      surveyModel.onComplete.add(async (sender) => {
+        await submitResponse(sender.data);
+        setEditing(false);
+      });
+      return (
+        <div ref={containerRef} className="p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-orange-500">
+              <span className="text-xl">✏️</span>
+              <span className="font-semibold">Editing your response</span>
+            </div>
+            <button
+              onClick={() => { surveyModel.mode = 'display'; setEditing(false); }}
+              className="text-sm text-gray-500 hover:text-gray-300 transition"
+            >
+              Cancel
+            </button>
+          </div>
+          <Survey model={surveyModel} />
+        </div>
+      );
+    }
+
     // Show pre-filled read-only survey if model has data
     if (surveyModel && Object.keys(surveyModel.data || {}).length > 0) {
       surveyModel.mode = 'display';
       return (
         <div ref={containerRef} className="p-6">
-          <div className="mb-4 flex items-center gap-2 text-green-600 dark:text-green-400">
-            <span className="text-xl">✓</span>
-            <span className="font-semibold">Response submitted</span>
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <span className="text-xl">✓</span>
+              <span className="font-semibold">Response submitted</span>
+            </div>
+            <button
+              onClick={() => setEditing(true)}
+              className="text-sm px-3 py-1 rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 transition"
+            >
+              Edit answers
+            </button>
           </div>
           <Survey model={surveyModel} />
         </div>

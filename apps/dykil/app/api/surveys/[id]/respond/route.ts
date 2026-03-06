@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { db, surveys, surveyResponses } from '@/db';
 import { getSession } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } from '@/lib/utils';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 
 interface RouteParams {
   params: { id: string };
@@ -76,7 +76,24 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Create response
+    // Check for existing response (upsert: update if exists, create if not)
+    let existing: any = null;
+    if (session?.id) {
+      existing = await db.query.surveyResponses.findFirst({
+        where: (r, { eq, and }) => and(eq(r.surveyId, survey.id), eq(r.respondentDid, session.id)),
+      });
+    }
+
+    if (existing) {
+      // Update existing response
+      const [response] = await db.update(surveyResponses)
+        .set({ answers })
+        .where(eq(surveyResponses.id, existing.id))
+        .returning();
+      return jsonResponse({ message: 'Response updated successfully', response }, 200, cors);
+    }
+
+    // Create new response
     const [response] = await db.insert(surveyResponses).values({
       id: generateId('response'),
       surveyId: survey.id,
