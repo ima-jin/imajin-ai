@@ -17,6 +17,7 @@ export function EventSurveyAccordion({
   surveyType,
   requiresTicket = false,
 }: EventSurveyAccordionProps) {
+  const storageKey = `survey_completed_${surveyId}`;
   const [isExpanded, setIsExpanded] = useState(false);
   const [iframeHeight, setIframeHeight] = useState(600);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -25,6 +26,15 @@ export function EventSurveyAccordion({
 
   const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
   const embedUrl = `${DYKIL_URL}/embed/${surveyId}`;
+
+  // Restore completion state from localStorage on mount
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(storageKey) === 'true') {
+        setIsCompleted(true);
+      }
+    } catch {}
+  }, [storageKey]);
 
   // Listen for postMessage from iframe
   useEffect(() => {
@@ -36,12 +46,13 @@ export function EventSurveyAccordion({
         setIframeHeight(event.data.height + 40); // Add some padding
       } else if (event.data.type === 'survey-completed') {
         setIsCompleted(true);
+        try { localStorage.setItem(storageKey, 'true'); } catch {}
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [storageKey]);
 
   const icon = '📋';
 
