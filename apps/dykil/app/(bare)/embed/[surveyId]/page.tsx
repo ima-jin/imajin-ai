@@ -159,9 +159,10 @@ export default function SurveyEmbedPage() {
           // Non-fatal — just proceed without pre-fill
         }
 
-        // Handle completion
+        // Handle completion — clone data immediately since SurveyJS may mutate the reference
         model.onComplete.add(async (sender) => {
-          await submitResponse(sender.data);
+          const answers = JSON.parse(JSON.stringify(sender.data));
+          await submitResponse(answers);
         });
 
         surveyModelRef.current = model;
@@ -177,6 +178,11 @@ export default function SurveyEmbedPage() {
   };
 
   const submitResponse = async (data: any) => {
+    // Save answers immediately BEFORE the async POST — SurveyJS may clear references
+    setSavedAnswers(data);
+    if (surveyModelRef.current) {
+      surveyModelRef.current.data = data;
+    }
     setSubmitting(true);
     try {
       const res = await fetch(`/api/surveys/${surveyId}/respond`, {
@@ -191,12 +197,6 @@ export default function SurveyEmbedPage() {
         // Store response ID for anonymous pre-fill on reload
         if (result.response?.id) {
           localStorage.setItem(`survey_${surveyId}_responseId`, result.response.id);
-        }
-        // Save answers in React state for the read-only view
-        // (SurveyJS model.data is unreliable after onComplete fires)
-        setSavedAnswers(data);
-        if (surveyModelRef.current) {
-          surveyModelRef.current.data = data;
         }
         setSubmitted(true);
         // Notify parent iframe
@@ -241,7 +241,8 @@ export default function SurveyEmbedPage() {
       // Re-attach completion handler for updates
       surveyModel.onComplete.clear();
       surveyModel.onComplete.add(async (sender) => {
-        await submitResponse(sender.data);
+        const answers = JSON.parse(JSON.stringify(sender.data));
+        await submitResponse(answers);
         setEditing(false);
       });
       return (
