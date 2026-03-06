@@ -58,7 +58,7 @@ export default async function AdminPage({ params }: Props) {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <StatCard label="Tickets Sold" value={totalSold} />
-        <StatCard label="Revenue" value={formatCurrency(totalRevenue, 'USD')} />
+        <StatCard label="Revenue" value={formatCurrency(totalRevenue, 'CAD')} />
         <StatCard label="Checked In" value={`${checkedIn} / ${totalSold}`} />
         <StatCard 
           label="Event Date" 
@@ -121,7 +121,7 @@ export default async function AdminPage({ params }: Props) {
                       <td className="px-4 py-3 text-sm">{email}</td>
                       <td className="px-4 py-3 text-sm">{tierName}</td>
                       <td className="px-4 py-3 text-sm">
-                        {formatCurrency(ticket.pricePaid || 0, ticket.currency || 'USD')}
+                        {formatCurrency(ticket.pricePaid || 0, ticket.currency || 'CAD')}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500">
                         {ticket.createdAt 

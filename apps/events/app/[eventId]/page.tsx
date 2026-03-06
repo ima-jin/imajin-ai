@@ -53,7 +53,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const priceText = lowestPrice !== null
     ? lowestPrice === 0 
       ? 'Free' 
-      : `From $${(lowestPrice / 100).toFixed(2)}`
+      : `From CA${(lowestPrice / 100).toFixed(2)}`
     : '';
   
   const description = event.description
@@ -250,7 +250,7 @@ export default async function EventPage({ params }: Props) {
   // Calculate lowest price for sticky bar
   const lowestPrice = ticketTypesList.length > 0 ? Math.min(...ticketTypesList.map(t => t.price)) : null;
   const lowestPriceText = lowestPrice !== null
-    ? lowestPrice === 0 ? 'Free' : `From $${(lowestPrice / 100).toFixed(2)}`
+    ? lowestPrice === 0 ? 'Free' : `From CA${(lowestPrice / 100).toFixed(2)}`
     : '';
 
   return (
