@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { db, events, ticketTypes } from '@/src/db';
+import { db, events, ticketTypes, eventAdmins } from '@/src/db';
 import { requireAuth } from '@/src/lib/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq } from 'drizzle-orm';
