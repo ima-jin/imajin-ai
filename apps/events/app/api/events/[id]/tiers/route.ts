@@ -4,6 +4,9 @@ import { db, events, ticketTypes, eventAdmins } from '@/src/db';
 import { requireAuth } from '@/src/lib/auth';
 import { eq, and } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
+import { getClient } from '@imajin/db';
+
+const sql = getClient();
 
 /**
  * GET /api/events/[id]/tiers - List ticket tiers
@@ -209,10 +212,10 @@ export async function PUT(
   }
 }
 
-// Helper to check if user is creator or admin
+// Helper to check if user is creator, admin, or cohost
 async function isEventAdmin(eventId: string, did: string): Promise<boolean> {
   const [event] = await db
-    .select({ creatorDid: events.creatorDid })
+    .select({ creatorDid: events.creatorDid, podId: events.podId })
     .from(events)
     .where(eq(events.id, eventId))
     .limit(1);
@@ -229,5 +232,17 @@ async function isEventAdmin(eventId: string, did: string): Promise<boolean> {
     ))
     .limit(1);
 
-  return !!admin;
+  if (admin) return true;
+
+  // Check cohost
+  if (event.podId) {
+    const cohostRows = await sql`
+      SELECT did FROM connections.pod_members
+      WHERE pod_id = ${event.podId} AND did = ${did} AND role = 'cohost' AND removed_at IS NULL
+      LIMIT 1
+    `;
+    if (cohostRows.length > 0) return true;
+  }
+
+  return false;
 }
