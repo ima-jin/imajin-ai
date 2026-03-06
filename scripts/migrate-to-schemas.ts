@@ -84,7 +84,6 @@ const TABLE_MIGRATIONS: Record<string, string> = {
   'trust_pod_keys': 'connections',
   'trust_pod_member_keys': 'connections',
   'trust_invites': 'connections',
-  'trust_graph_invites': 'connections',
 };
 
 async function main() {

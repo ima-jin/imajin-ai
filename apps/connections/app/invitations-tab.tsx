@@ -19,24 +19,14 @@ interface SentInvite {
   code: string;
   toEmail: string | null;
   note: string | null;
+  delivery: 'link' | 'email';
+  status: string;
   usedCount: number;
   maxUses: number;
-  consumedAt: string | null;
-  consumedBy: string | null;
   createdAt: string | null;
+  acceptedAt: string | null;
   daysAgo: number;
   url: string;
-}
-
-interface TrustInvite {
-  id: string;
-  inviterDid: string;
-  inviteeEmail: string | null;
-  inviteeDid: string | null;
-  status: 'pending' | 'accepted' | 'expired' | 'revoked';
-  createdAt: string;
-  acceptedAt: string | null;
-  expiresAt: string;
 }
 
 interface Quota {
@@ -69,7 +59,6 @@ function statusBadge(status: string) {
 export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pending: number, remaining: number | null) => void }) {
   const [invitedBy, setInvitedBy] = useState<InvitedBy | null | 'loading'>('loading');
   const [sentInvites, setSentInvites] = useState<SentInvite[]>([]);
-  const [sentTrustInvites, setSentTrustInvites] = useState<TrustInvite[]>([]);
   const [quota, setQuota] = useState<Quota | null>(null);
   const [activeCreate, setActiveCreate] = useState<null | 'link' | 'email'>(null);
   const [inviteNote, setInviteNote] = useState('');
@@ -87,7 +76,7 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
   }, []);
 
   async function fetchAll() {
-    await Promise.all([fetchInvitedBy(), fetchSentInvites(), fetchTrustInvites()]);
+    await Promise.all([fetchInvitedBy(), fetchSentInvites()]);
   }
 
   async function fetchInvitedBy() {
@@ -123,16 +112,6 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
     } catch {}
   }
 
-  async function fetchTrustInvites() {
-    try {
-      const res = await fetch('/api/trust-invites');
-      if (res.ok) {
-        const data = await res.json();
-        setSentTrustInvites(data.sent || []);
-      }
-    } catch {}
-  }
-
   async function generateLink() {
     setGenerating(true);
     setGeneratedInvite(null);
@@ -161,17 +140,17 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
     setSendingEmail(true);
     setEmailResult(null);
     try {
-      const res = await fetch('/api/trust-invites', {
+      const res = await fetch('/api/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail.trim(), note: emailNote || undefined }),
+        body: JSON.stringify({ delivery: 'email', toEmail: inviteEmail.trim(), note: emailNote || undefined }),
       });
       const data = await res.json();
       if (res.ok) {
         setEmailResult('success');
         setInviteEmail('');
         setEmailNote('');
-        fetchTrustInvites();
+        fetchSentInvites();
       } else {
         setEmailResult(data.error || 'Failed to send invite');
         // If it's a pending invite issue, refresh the list
@@ -197,38 +176,19 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
     setTimeout(() => setCopiedCode(null), 2000);
   }
 
-  const allSentRows: Array<{
-    key: string;
-    type: 'link' | 'email';
-    recipient: string;
-    status: string;
-    date: string | null;
-    acceptedDate: string | null;
-    url?: string;
-    code?: string;
-    note?: string | null;
-  }> = [
-    ...sentInvites.map((inv) => ({
+  const allSentRows = sentInvites
+    .map((inv) => ({
       key: inv.id,
-      type: 'link' as const,
+      type: inv.delivery,
       recipient: inv.toEmail || inv.code.slice(0, 12) + '…',
-      status: inv.consumedAt ? 'accepted' : 'pending',
+      status: inv.status,
       note: inv.note || null,
       date: inv.createdAt,
-      acceptedDate: inv.consumedAt || null,
+      acceptedDate: inv.acceptedAt || null,
       url: inv.url,
       code: inv.code,
-    })),
-    ...sentTrustInvites.map((inv) => ({
-      key: inv.id,
-      type: 'email' as const,
-      recipient: inv.inviteeEmail || inv.inviteeDid || '—',
-      status: inv.status,
-      note: (inv as any).note || null,
-      date: inv.createdAt,
-      acceptedDate: inv.acceptedAt,
-    })),
-  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    }))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   return (
     <div className="space-y-8">
@@ -463,23 +423,25 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
                     )}
                   </div>
                   {row.note && (
-                    <div className="text-xs text-gray-500 mt-1 italic">“{row.note}”</div>
+                    <div className="text-xs text-gray-500 mt-1 italic">"{row.note}"</div>
                   )}
                 </div>
                 {statusBadge(row.status)}
-                {row.type === 'link' && row.status === 'pending' && row.url && row.code && (
+                {row.status === 'pending' && row.url && row.code && (
                   <>
-                    <button
-                      onClick={() => copyLink(row.url!, row.code!)}
-                      className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/15 text-white rounded transition shrink-0"
-                    >
-                      {copiedCode === row.code ? '✓' : 'Copy'}
-                    </button>
+                    {row.type === 'link' && (
+                      <button
+                        onClick={() => copyLink(row.url!, row.code!)}
+                        className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/15 text-white rounded transition shrink-0"
+                      >
+                        {copiedCode === row.code ? '✓' : 'Copy'}
+                      </button>
+                    )}
                     <button
                       onClick={() => deleteInvite(row.code!)}
                       className="px-2.5 py-1 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded transition shrink-0"
                     >
-                      Delete
+                      {row.type === 'email' ? 'Revoke' : 'Delete'}
                     </button>
                   </>
                 )}

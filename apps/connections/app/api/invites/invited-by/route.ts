@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and, isNotNull } from 'drizzle-orm';
-import { db, invites, trustGraphInvites, profiles } from '../../../../src/db/index';
+import { eq, and, or, isNotNull } from 'drizzle-orm';
+import { db, invites, profiles } from '../../../../src/db/index';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
@@ -26,49 +26,35 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  // Check code-based invites: consumedBy = current user
-  const [codeInvite] = await db
+  // Find invite where: consumedBy = current user (link invite accepted)
+  // OR toDid = current user AND status = accepted (email invite accepted)
+  const [foundInvite] = await db
     .select()
     .from(invites)
-    .where(and(eq(invites.consumedBy, session.did), isNotNull(invites.consumedAt)))
+    .where(or(
+      and(eq(invites.consumedBy, session.did), isNotNull(invites.consumedBy)),
+      and(eq(invites.toDid, session.did), eq(invites.status, 'accepted')),
+    ))
     .limit(1);
 
-  if (codeInvite) {
-    return NextResponse.json({
-      invitedBy: {
-        did: codeInvite.fromDid,
-        handle: codeInvite.fromHandle || null,
-        name: null,
-        avatar: null,
-        date: codeInvite.consumedAt?.toISOString() || codeInvite.createdAt?.toISOString() || null,
-      },
-    });
+  if (!foundInvite) {
+    return NextResponse.json({ invitedBy: null });
   }
 
-  // Check trust graph invites: inviteeDid = current user AND status = accepted
-  const [tgInvite] = await db
+  // Look up inviter profile for name/avatar
+  const [inviterProfile] = await db
     .select()
-    .from(trustGraphInvites)
-    .where(and(eq(trustGraphInvites.inviteeDid, session.did), eq(trustGraphInvites.status, 'accepted')))
+    .from(profiles)
+    .where(eq(profiles.did, foundInvite.fromDid))
     .limit(1);
 
-  if (tgInvite) {
-    const [inviterProfile] = await db
-      .select()
-      .from(profiles)
-      .where(eq(profiles.did, tgInvite.inviterDid))
-      .limit(1);
-
-    return NextResponse.json({
-      invitedBy: {
-        did: tgInvite.inviterDid,
-        handle: inviterProfile?.handle || null,
-        name: inviterProfile?.displayName || null,
-        avatar: inviterProfile?.avatar || null,
-        date: tgInvite.acceptedAt?.toISOString() || tgInvite.createdAt?.toISOString() || null,
-      },
-    });
-  }
-
-  return NextResponse.json({ invitedBy: null });
+  return NextResponse.json({
+    invitedBy: {
+      did: foundInvite.fromDid,
+      handle: inviterProfile?.handle || foundInvite.fromHandle || null,
+      name: inviterProfile?.displayName || null,
+      avatar: inviterProfile?.avatar || null,
+      date: foundInvite.acceptedAt?.toISOString() || foundInvite.createdAt?.toISOString() || null,
+    },
+  });
 }

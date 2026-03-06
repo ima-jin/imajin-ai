@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
-import { db, invites, pods, podMembers } from '../../../../../src/db/index';
+import { db, invites, profiles, pods, podMembers } from '../../../../../src/db/index';
 import { generateId } from '../../../../../src/lib/id';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
+const INVITE_COOLDOWN_DAYS = 7;
 
 async function getSession(request: NextRequest) {
   try {
@@ -36,12 +37,41 @@ export async function POST(
     return NextResponse.json({ error: 'Invite not found' }, { status: 404 });
   }
 
+  if (invite.status !== 'pending') {
+    return NextResponse.json({ error: `Invite is ${invite.status}` }, { status: 410 });
+  }
+
   if (invite.usedCount >= invite.maxUses) {
     return NextResponse.json({ error: 'Invite already used' }, { status: 410 });
   }
 
+  // Check expiry for email invites
+  if (invite.expiresAt && invite.expiresAt < new Date()) {
+    await db
+      .update(invites)
+      .set({ status: 'expired' })
+      .where(eq(invites.code, params.code));
+    return NextResponse.json({ error: 'Invite has expired' }, { status: 410 });
+  }
+
   if (invite.fromDid === session.did) {
     return NextResponse.json({ error: 'Cannot accept your own invite' }, { status: 400 });
+  }
+
+  // For email invites, verify this invite is for the current user
+  if (invite.delivery === 'email') {
+    const [inviteeProfile] = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.did, session.did))
+      .limit(1);
+
+    const isForUser = invite.toDid === session.did ||
+      (invite.toEmail && inviteeProfile?.email === invite.toEmail);
+
+    if (!isForUser) {
+      return NextResponse.json({ error: 'This invite is not for you' }, { status: 403 });
+    }
   }
 
   // Create a 2-person "connection" pod
@@ -62,15 +92,32 @@ export async function POST(
     { podId, did: session.did, role: 'member', addedBy: session.did },
   ]);
 
-  // Mark invite as consumed
+  const now = new Date();
+
+  // Mark invite as accepted
   await db
     .update(invites)
     .set({
+      status: 'accepted',
+      acceptedAt: now,
       usedCount: sql`${invites.usedCount} + 1`,
-      consumedAt: new Date(),
       consumedBy: session.did,
+      toDid: session.did,
     })
     .where(eq(invites.code, params.code));
+
+  // For email invites, set cooldown on both inviter and invitee profiles
+  if (invite.delivery === 'email') {
+    const cooldownEnd = new Date(now.getTime() + INVITE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+    await db
+      .update(profiles)
+      .set({ nextInviteAvailableAt: cooldownEnd })
+      .where(eq(profiles.did, invite.fromDid));
+    await db
+      .update(profiles)
+      .set({ nextInviteAvailableAt: cooldownEnd })
+      .where(eq(profiles.did, session.did));
+  }
 
   return NextResponse.json({
     ok: true,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
-import { db, invites } from '../../../../src/db/index';
+import { db, invites, profiles } from '../../../../src/db/index';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
@@ -53,7 +53,7 @@ export async function GET(
     fromDid: invite.fromDid,
     fromHandle: invite.fromHandle,
     note: invite.note,
-    used: invite.usedCount >= invite.maxUses,
+    used: invite.usedCount >= invite.maxUses || invite.status !== 'pending',
     createdAt: invite.createdAt,
   });
 
@@ -89,7 +89,23 @@ export async function DELETE(
     return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
   }
 
-  await db.delete(invites).where(eq(invites.code, params.code));
+  if (invite.status !== 'pending') {
+    return NextResponse.json({ error: `Cannot revoke ${invite.status} invite` }, { status: 400 });
+  }
+
+  // Soft delete: set status to revoked
+  await db
+    .update(invites)
+    .set({ status: 'revoked' })
+    .where(eq(invites.code, params.code));
+
+  // For email invites, clear the cooldown so the user can invite again immediately
+  if (invite.delivery === 'email') {
+    await db
+      .update(profiles)
+      .set({ nextInviteAvailableAt: null })
+      .where(eq(profiles.did, session.did));
+  }
 
   return NextResponse.json({ ok: true });
 }

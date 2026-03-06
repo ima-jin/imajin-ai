@@ -62,34 +62,20 @@ export const invites = connectionsSchema.table('invites', {
   fromDid: text('from_did').notNull(),
   fromHandle: text('from_handle'),
   toEmail: text('to_email'),
-  toPhone: text('to_phone'),
+  toDid: text('to_did'),
   note: text('note'),
-  usedCount: integer('used_count').notNull().default(0),
+  delivery: text('delivery', { enum: ['link', 'email'] }).notNull().default('link'),
+  status: text('status', { enum: ['pending', 'accepted', 'expired', 'revoked'] }).notNull().default('pending'),
   maxUses: integer('max_uses').notNull().default(1),
-  consumedAt: timestamp('consumed_at', { withTimezone: true }),
-  consumedBy: text('consumed_by'),
+  usedCount: integer('used_count').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-}, (table) => ({
-  codeIdx: index('idx_trust_invites_code').on(table.code),
-  fromDidIdx: index('idx_trust_invites_from_did').on(table.fromDid),
-}));
-
-/**
- * Trust graph invites - controlled invite system with cooldown
- */
-export const trustGraphInvites = connectionsSchema.table('graph_invites', {
-  id: text('id').primaryKey(),
-  inviterDid: text('inviter_did').notNull(),
-  inviteeEmail: text('invitee_email'),
-  inviteeDid: text('invitee_did'),
-  note: text("note"),
-  status: text("status", { enum: ['pending', 'accepted', 'expired', 'revoked'] }).notNull().default('pending'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   acceptedAt: timestamp('accepted_at', { withTimezone: true }),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedBy: text('consumed_by'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  role: text('role'),
 }, (table) => ({
-  inviterIdx: index('idx_trust_graph_invites_inviter').on(table.inviterDid),
-  inviteeEmailIdx: index('idx_trust_graph_invites_email').on(table.inviteeEmail),
-  inviteeDidIdx: index('idx_trust_graph_invites_did').on(table.inviteeDid),
-  statusIdx: index('idx_trust_graph_invites_status').on(table.status),
+  codeIdx: index('idx_invites_code').on(table.code),
+  fromDidIdx: index('idx_invites_from_did').on(table.fromDid),
+  toEmailIdx: index('idx_invites_to_email').on(table.toEmail),
+  statusIdx: index('idx_invites_status').on(table.status),
 }));
