@@ -100,7 +100,7 @@ export function EventCard({ event }: Props) {
           <div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Revenue</div>
             <div className="text-2xl font-bold">
-              CA${(event.revenue / 100).toFixed(0)}
+              CA\$${(event.revenue / 100).toFixed(0)}
             </div>
           </div>
         </div>
