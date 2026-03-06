@@ -223,9 +223,23 @@ export default async function EventPage({ params, searchParams }: Props) {
   const session = await getSession();
   const isCreator = session?.id === event.creatorDid;
 
+  // Check if user is a cohost
+  let isCohost = false;
+  if (session?.id && event.podId && !isCreator) {
+    try {
+      const [member] = await sql`
+        SELECT did FROM connections.pod_members
+        WHERE pod_id = ${event.podId} AND did = ${session.id} AND role = 'cohost' AND removed_at IS NULL
+        LIMIT 1
+      `;
+      isCohost = !!member;
+    } catch {}
+  }
+  const isOrganizer = isCreator || isCohost;
+
   // Status-based visibility
   const status = event.status || 'draft';
-  if (status === 'paused' && !isCreator) {
+  if (status === 'paused' && !isOrganizer) {
     notFound();
   }
 
@@ -252,7 +266,7 @@ export default async function EventPage({ params, searchParams }: Props) {
 
   // Whether we should show the ticket purchase section
   const canSeeTickets =
-    event.accessMode !== 'invite_only' || inviteValid || isCreator;
+    event.accessMode !== 'invite_only' || inviteValid || isOrganizer;
 
   // Fetch user's tickets if logged in
   const userTickets = session?.id ? await getUserTickets(event.id, session.id) : [];
@@ -370,7 +384,7 @@ export default async function EventPage({ params, searchParams }: Props) {
         </div>
 
         {/* Status Banners */}
-        {status === 'paused' && isCreator && (
+        {status === 'paused' && isOrganizer && (
           <div className="mb-6 px-4 py-3 rounded-xl bg-yellow-900/30 border border-yellow-700 text-yellow-400 font-medium">
             This event is paused. It is not visible to the public.
           </div>
@@ -392,7 +406,7 @@ export default async function EventPage({ params, searchParams }: Props) {
           <div className="flex justify-between items-start gap-4 mb-6">
             <h1 className="text-3xl md:text-5xl font-bold leading-tight flex-1">{event.title}</h1>
             <div className="flex items-center gap-2">
-              {isCreator && (
+              {isOrganizer && (
                 <>
                   <Link
                     href={`/admin/${event.id}`}

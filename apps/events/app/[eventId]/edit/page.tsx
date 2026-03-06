@@ -2,7 +2,10 @@ import { notFound, redirect } from 'next/navigation';
 import { getSession } from '@/src/lib/auth';
 import { db, events, ticketTypes } from '@/src/db';
 import { eq } from 'drizzle-orm';
+import { getClient } from '@imajin/db';
 import EventEditForm from './form';
+
+const sql = getClient();
 
 export const dynamic = 'force-dynamic';
 
@@ -40,8 +43,19 @@ export default async function EditEventPage({ params }: Props) {
     notFound();
   }
 
-  // Check authorization - only event creator can edit
-  if (event.creatorDid !== session.id) {
+  // Check authorization - creator or cohost can edit
+  let isOrganizer = event.creatorDid === session.id;
+  if (!isOrganizer && event.podId) {
+    try {
+      const [member] = await sql`
+        SELECT did FROM connections.pod_members
+        WHERE pod_id = ${event.podId} AND did = ${session.id} AND role = 'cohost' AND removed_at IS NULL
+        LIMIT 1
+      `;
+      isOrganizer = !!member;
+    } catch {}
+  }
+  if (!isOrganizer) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-6 text-center">
