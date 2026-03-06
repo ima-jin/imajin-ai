@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useIdentity } from '../../context/IdentityContext';
+import { ConnectionPicker } from '@imajin/ui';
 
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
@@ -30,34 +31,24 @@ interface Pod {
   memberCount: number;
 }
 
-interface Connection {
-  podId: string;
-  did: string;
-  handle: string | null;
-  name: string | null;
-}
 
 export default function PodDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
   const { did, isLoggedIn, loading } = useIdentity();
   const [pod, setPod] = useState<Pod | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
-  const [connections, setConnections] = useState<Connection[]>([]);
   const [loadingPod, setLoadingPod] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [saving, setSaving] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
-  const [addMemberDid, setAddMemberDid] = useState('');
-  const [addMemberSearch, setAddMemberSearch] = useState('');
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isLoggedIn) {
       fetchPod();
-      fetchConnections();
     }
   }, [isLoggedIn, id]);
 
@@ -79,16 +70,6 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
     }
   }
 
-  async function fetchConnections() {
-    try {
-      const res = await fetch('/api/connections');
-      if (res.ok) {
-        const data = await res.json();
-        setConnections(data.connections || []);
-      }
-    } catch {}
-  }
-
   async function saveEdit() {
     if (!editName.trim()) return;
     setSaving(true);
@@ -108,18 +89,15 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
     }
   }
 
-  async function addMember() {
-    if (!addMemberDid) return;
+  async function addMember(memberDid: string) {
     setAdding(true);
     try {
       const res = await fetch(`/api/groups/${id}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ did: addMemberDid }),
+        body: JSON.stringify({ did: memberDid }),
       });
       if (res.ok) {
-        setAddMemberDid('');
-        setAddMemberSearch('');
         setShowAddMember(false);
         fetchPod();
       } else {
@@ -167,15 +145,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
   const isEvent = pod?.type === 'event';
   const isReadOnly = isEvent;
 
-  // Filter connections not already in the group
-  const memberDids = new Set(members.map((m) => m.did));
-  const availableConnections = connections.filter((c) => !memberDids.has(c.did));
-  const filteredConnections = addMemberSearch
-    ? availableConnections.filter((c) =>
-        (c.handle || '').toLowerCase().includes(addMemberSearch.toLowerCase()) ||
-        (c.name || '').toLowerCase().includes(addMemberSearch.toLowerCase())
-      )
-    : availableConnections;
+  const memberDids = members.map((m) => m.did);
 
   if (loading || loadingPod) {
     return (
@@ -317,62 +287,20 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
         {showAddMember && (
           <div className="mb-4 p-4 bg-white/5 border border-amber-500/30 rounded-lg">
             <p className="text-sm text-gray-400 mb-3">Select from your connections:</p>
-            <input
-              value={addMemberSearch}
-              onChange={(e) => setAddMemberSearch(e.target.value)}
-              placeholder="Search connections..."
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 mb-3"
+            <ConnectionPicker
+              connectionsUrl="/api/connections"
+              excludeDids={memberDids}
+              onSelect={(conn) => addMember(conn.did)}
+              disabled={adding}
             />
-            {filteredConnections.length === 0 ? (
-              <p className="text-gray-500 text-sm">
-                {availableConnections.length === 0
-                  ? 'All your connections are already in this group.'
-                  : 'No matching connections.'}
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {filteredConnections.map((conn) => (
-                  <button
-                    key={conn.did}
-                    onClick={() => setAddMemberDid(addMemberDid === conn.did ? '' : conn.did)}
-                    className={`w-full flex items-center gap-3 p-2 rounded-lg text-left transition ${
-                      addMemberDid === conn.did
-                        ? 'bg-amber-500/20 border border-amber-500/40'
-                        : 'bg-white/5 hover:bg-white/10'
-                    }`}
-                  >
-                    <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm shrink-0">
-                      👤
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-white truncate">
-                        {conn.name || (conn.handle ? `@${conn.handle}` : conn.did.slice(0, 20) + '...')}
-                      </div>
-                      {conn.handle && conn.name && (
-                        <div className="text-xs text-gray-400">@{conn.handle}</div>
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-            {addMemberDid && (
-              <div className="mt-3 flex gap-2">
-                <button
-                  onClick={addMember}
-                  disabled={adding}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-medium rounded-lg transition text-sm"
-                >
-                  {adding ? 'Adding...' : 'Add to Group'}
-                </button>
-                <button
-                  onClick={() => { setShowAddMember(false); setAddMemberDid(''); setAddMemberSearch(''); }}
-                  className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
+            <div className="mt-3">
+              <button
+                onClick={() => setShowAddMember(false)}
+                className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
 
