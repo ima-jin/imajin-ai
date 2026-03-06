@@ -48,11 +48,12 @@ export async function GET(
 
     const ticketRows = await sql`
       SELECT t.id, t.status, t.owner_did, t.price_paid, t.currency, t.purchased_at, t.used_at,
+             t.payment_method, t.hold_expires_at,
              tt.name as ticket_type
       FROM events.tickets t
       JOIN events.ticket_types tt ON t.ticket_type_id = tt.id
       WHERE t.event_id = ${id}
-      ORDER BY t.purchased_at DESC
+      ORDER BY t.created_at DESC
     `;
 
     // Batch-resolve unique DIDs
@@ -77,6 +78,8 @@ export async function GET(
         purchasedAt: t.purchased_at,
         usedAt: t.used_at,
         ticketType: t.ticket_type,
+        paymentMethod: t.payment_method ?? null,
+        holdExpiresAt: t.hold_expires_at ?? null,
         profile,
       };
     });

@@ -128,6 +128,18 @@ export const tickets = eventsSchema.table('tickets', {
   // Magic link authentication
   magicToken: text('magic_token').unique(),
 
+  // Payment method: 'stripe' | 'etransfer' (null for legacy tickets)
+  // SQL: ALTER TABLE events.tickets ADD COLUMN IF NOT EXISTS payment_method TEXT;
+  paymentMethod: text('payment_method'),
+
+  // E-transfer: when the 72-hour hold expires
+  // SQL: ALTER TABLE events.tickets ADD COLUMN IF NOT EXISTS hold_expires_at TIMESTAMPTZ;
+  holdExpiresAt: timestamp('hold_expires_at', { withTimezone: true }),
+
+  // E-transfer: when admin confirmed receipt of payment
+  // SQL: ALTER TABLE events.tickets ADD COLUMN IF NOT EXISTS payment_confirmed_at TIMESTAMPTZ;
+  paymentConfirmedAt: timestamp('payment_confirmed_at', { withTimezone: true }),
+
   metadata: jsonb('metadata').default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

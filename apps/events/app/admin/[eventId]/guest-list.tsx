@@ -17,6 +17,8 @@ interface Guest {
   purchasedAt: string | null;
   usedAt: string | null;
   ticketType: string;
+  paymentMethod: string | null;
+  holdExpiresAt: string | null;
   profile: Profile | null;
 }
 
@@ -95,6 +97,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   const [filterValue, setFilterValue] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmRefund, setConfirmRefund] = useState<string | null>(null);
+  const [confirmETransfer, setConfirmETransfer] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -126,6 +129,26 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
       ));
     } catch {
       alert('Check-in failed');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleConfirmETransfer = async (ticketId: string) => {
+    setConfirmETransfer(null);
+    setActionLoading(ticketId);
+    try {
+      const res = await fetch(`/api/tickets/${ticketId}/confirm-payment`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Confirmation failed');
+        return;
+      }
+      setGuests(prev => prev.map(g =>
+        g.id === ticketId ? { ...g, status: 'valid', purchasedAt: data.ticket.purchasedAt } : g
+      ));
+    } catch {
+      alert('Confirmation failed');
     } finally {
       setActionLoading(null);
     }
@@ -301,7 +324,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                     {guest.ticketType}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <StatusBadge status={guest.status} />
+                    <StatusBadge status={guest.status} paymentMethod={guest.paymentMethod} />
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
                     {formatCurrency(guest.pricePaid, guest.currency)}
@@ -322,12 +345,40 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                       onRefundRequest={() => setConfirmRefund(guest.id)}
                       onRefundConfirm={() => handleRefund(guest.id)}
                       onRefundCancel={() => setConfirmRefund(null)}
+                      onConfirmETransfer={() => setConfirmETransfer(guest.id)}
                     />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* e-Transfer confirmation dialog */}
+      {confirmETransfer && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-semibold mb-2">Confirm e-Transfer Payment</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Have you received the e-Transfer for ticket <span className="font-mono text-xs">{confirmETransfer}</span>?
+              This will activate the ticket.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmETransfer(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleConfirmETransfer(confirmETransfer)}
+                className="px-4 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition"
+              >
+                Confirm Payment
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -360,7 +411,14 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, paymentMethod }: { status: string; paymentMethod?: string | null }) {
+  if (status === 'held' && paymentMethod === 'etransfer') {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300">
+        pending e-Transfer
+      </span>
+    );
+  }
   switch (status) {
     case 'valid':
       return (
@@ -398,13 +456,15 @@ interface ActionsCellProps {
   onRefundRequest: () => void;
   onRefundConfirm: () => void;
   onRefundCancel: () => void;
+  onConfirmETransfer: () => void;
 }
 
-function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest }: ActionsCellProps) {
+function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onConfirmETransfer }: ActionsCellProps) {
   const isValid = guest.status === 'valid';
   const isCheckedIn = !!guest.usedAt;
   const isRefunded = guest.status === 'refunded';
   const isFree = !guest.pricePaid || guest.pricePaid === 0;
+  const isPendingETransfer = guest.status === 'held' && guest.paymentMethod === 'etransfer';
 
   if (isRefunded) {
     return (
@@ -419,6 +479,18 @@ function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest }: Ac
       <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
         ✓ Checked In
       </span>
+    );
+  }
+
+  if (isPendingETransfer) {
+    return (
+      <button
+        onClick={onConfirmETransfer}
+        disabled={loading}
+        className="px-3 py-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition disabled:opacity-50"
+      >
+        {loading ? '…' : 'Confirm e-Transfer'}
+      </button>
     );
   }
 
