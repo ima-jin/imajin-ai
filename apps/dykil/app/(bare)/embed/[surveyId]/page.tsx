@@ -102,6 +102,27 @@ export default function SurveyEmbedPage() {
           }
         });
 
+        // Allow HTML in question titles/descriptions (for links etc.)
+        // Only allows <a>, <b>, <i>, <em>, <strong>, <br>, <ul>, <ol>, <li>, <p>, <span>
+        model.onTextMarkdown.add((_, options) => {
+          // Basic allowlist sanitizer — strip everything except safe tags
+          const allowed = ['a', 'b', 'i', 'em', 'strong', 'br', 'ul', 'ol', 'li', 'p', 'span'];
+          const cleaned = options.text
+            .replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/gi, (match: string, tag: string) => {
+              if (allowed.includes(tag.toLowerCase())) {
+                // For <a> tags, ensure they open in new tab and have rel=noopener
+                if (tag.toLowerCase() === 'a') {
+                  return match
+                    .replace(/<a\s/i, '<a target="_blank" rel="noopener noreferrer" ')
+                    .replace(/target="_blank"\s*target="_blank"/g, 'target="_blank"');
+                }
+                return match;
+              }
+              return '';
+            });
+          options.html = cleaned;
+        });
+
         // Check for existing response and pre-fill
         try {
           const storedResponseId = localStorage.getItem(`survey_${surveyId}_responseId`);
