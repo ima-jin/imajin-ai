@@ -50,7 +50,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const ticketsList = await db
     .select()
     .from(ticketTypes)
-    .where(eq(ticketTypes.eventId, eventId));
+    .where(eq(ticketTypes.eventId, eventId))
+    .orderBy(ticketTypes.sortOrder);
 
   const lowestPrice = ticketsList.length > 0
     ? Math.min(...ticketsList.map(t => t.price))
@@ -130,7 +131,8 @@ async function getTicketTypes(eventId: string) {
   return db
     .select()
     .from(ticketTypes)
-    .where(eq(ticketTypes.eventId, eventId));
+    .where(eq(ticketTypes.eventId, eventId))
+    .orderBy(ticketTypes.sortOrder);
 }
 
 async function getUserTickets(eventId: string, userDid: string) {

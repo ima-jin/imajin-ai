@@ -26,7 +26,8 @@ async function getTicketTypes(eventId: string) {
   return db
     .select()
     .from(ticketTypes)
-    .where(eq(ticketTypes.eventId, eventId));
+    .where(eq(ticketTypes.eventId, eventId))
+    .orderBy(ticketTypes.sortOrder);
 }
 
 export default async function EditEventPage({ params }: Props) {

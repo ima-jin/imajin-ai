@@ -138,6 +138,14 @@ export default function EventEditForm({ event, existingTickets }: Props) {
     }
   }
 
+  function moveTier(index: number, direction: 'up' | 'down') {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= tiers.length) return;
+    const newTiers = [...tiers];
+    [newTiers[index], newTiers[newIndex]] = [newTiers[newIndex], newTiers[index]];
+    setTiers(newTiers);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -203,7 +211,8 @@ export default function EventEditForm({ event, existingTickets }: Props) {
       }
 
       // Update ticket tiers
-      for (const tier of tiers) {
+      for (let i = 0; i < tiers.length; i++) {
+        const tier = tiers[i];
         if (tier.id) {
           // Update existing tier
           const tierRes = await fetch(`/api/events/${event.id}/tiers`, {
@@ -217,6 +226,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
               price: Math.round(tier.price * 100), // Convert dollars to cents
               quantity: tier.quantity,
               perks: tier.perks || [],
+              sortOrder: i,
             }),
           });
           if (!tierRes.ok) {
@@ -235,6 +245,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
               price: Math.round(tier.price * 100),
               quantity: tier.quantity,
               perks: tier.perks || [],
+              sortOrder: i,
             }),
           });
           if (!tierRes.ok) {
@@ -565,7 +576,28 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         <p className="text-xs text-gray-500">Prices can only decrease. Quantity can&apos;t go below sold count.</p>
 
         {tiers.map((tier, index) => (
-          <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
+          <div key={tier.id || `new-${index}`} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-gray-500 font-medium">Tier {index + 1}</span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => moveTier(index, 'up')}
+                  disabled={index === 0}
+                  className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveTier(index, 'down')}
+                  disabled={index === tiers.length - 1}
+                  className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                >
+                  ↓
+                </button>
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium mb-1">Tier Name</label>

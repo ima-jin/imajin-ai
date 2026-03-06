@@ -73,6 +73,8 @@ export const ticketTypes = eventsSchema.table('ticket_types', {
   // Perks/metadata
   perks: jsonb('perks').default([]),
   metadata: jsonb('metadata').default({}),
+
+  sortOrder: integer('sort_order').notNull().default(0),
   
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

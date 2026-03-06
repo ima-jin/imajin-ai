@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { db, events, ticketTypes } from '@/src/db';
 import { requireAuth } from '@/src/lib/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 
 /**
@@ -19,7 +19,8 @@ export async function GET(
     const tiers = await db
       .select()
       .from(ticketTypes)
-      .where(eq(ticketTypes.eventId, id));
+      .where(eq(ticketTypes.eventId, id))
+      .orderBy(asc(ticketTypes.sortOrder));
 
     return NextResponse.json({
       tiers: tiers.map(t => ({
@@ -56,7 +57,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { name, description, price, currency = 'USD', quantity, perks } = body;
+    const { name, description, price, currency = 'USD', quantity, perks, sortOrder } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
@@ -76,6 +77,7 @@ export async function POST(
       currency,
       quantity,
       perks: perks || [],
+      sortOrder: sortOrder ?? 0,
     }).returning();
 
     revalidatePath(`/${id}`);
@@ -109,7 +111,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { tierId, name, description, price, quantity, perks } = body;
+    const { tierId, name, description, price, quantity, perks, sortOrder } = body;
 
     if (!tierId) {
       return NextResponse.json({ error: 'tierId is required' }, { status: 400 });
@@ -132,9 +134,10 @@ export async function PUT(
     const updates: Record<string, any> = {};
     const violations: string[] = [];
 
-    // Name and description - freely editable
+    // Name, description, sort order - freely editable
     if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
+    if (sortOrder !== undefined) updates.sortOrder = sortOrder;
 
     // Price - freely editable if no tickets sold, can only decrease after sales
     if (price !== undefined) {
