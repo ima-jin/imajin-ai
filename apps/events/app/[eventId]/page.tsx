@@ -376,13 +376,22 @@ export default async function EventPage({ params, searchParams }: Props) {
             <h1 className="text-3xl md:text-5xl font-bold leading-tight flex-1">{event.title}</h1>
             <div className="flex items-center gap-2">
               {isCreator && (
-                <Link
-                  href={`/${event.id}/edit`}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
-                  title="Edit event"
-                >
-                  ✏️ Edit
-                </Link>
+                <>
+                  <Link
+                    href={`/admin/${event.id}`}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm text-orange-500 dark:text-orange-400 hover:text-orange-600 dark:hover:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition font-medium"
+                    title="Admin dashboard"
+                  >
+                    📊 Dashboard
+                  </Link>
+                  <Link
+                    href={`/${event.id}/edit`}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+                    title="Edit event"
+                  >
+                    ✏️ Edit
+                  </Link>
+                </>
               )}
               <ShareButton />
             </div>
