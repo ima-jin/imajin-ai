@@ -193,7 +193,10 @@ export function MessageBubble({
           {/* Reply preview */}
           {replyToMessage && (
             <div
+              role="button"
+              tabIndex={0}
               onClick={() => onScrollToMessage?.(message.replyTo!)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onScrollToMessage?.(message.replyTo!); }}
               className={`mb-1 px-3 py-1 rounded-lg text-xs cursor-pointer ${
                 isOwn
                   ? 'bg-orange-400/30 text-white'
@@ -282,9 +285,11 @@ export function MessageBubble({
           {/* Context Menu */}
           {showContextMenu && (
             <div
+              role="menu"
               className="fixed z-50 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[150px]"
               style={{ left: contextMenuPosition.x, top: contextMenuPosition.y }}
               onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
             >
               <button
                 onClick={() => {

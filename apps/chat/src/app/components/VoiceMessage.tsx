@@ -114,8 +114,12 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn 
           {/* Waveform / progress bar */}
           {waveform && waveform.length > 0 ? (
             <div
+              role="slider"
+              tabIndex={0}
+              aria-label="Audio progress"
               className="relative h-8 flex items-center gap-px cursor-pointer"
               onClick={handleProgressClick}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') (e.currentTarget as HTMLDivElement).click(); }}
             >
               {waveform.map((amp, i) => {
                 const barProgress = i / waveform.length;
@@ -136,8 +140,12 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn 
             </div>
           ) : (
             <div
+              role="slider"
+              tabIndex={0}
+              aria-label="Audio progress"
               className={`h-1.5 rounded-full cursor-pointer ${progressBg}`}
               onClick={handleProgressClick}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') (e.currentTarget as HTMLDivElement).click(); }}
             >
               <div
                 className={`h-full rounded-full transition-all ${isOwn ? 'bg-white' : 'bg-orange-500'}`}

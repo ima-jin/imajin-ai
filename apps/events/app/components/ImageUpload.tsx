@@ -144,7 +144,10 @@ export function ImageUpload({ currentImage, onUploadComplete }: ImageUploadProps
         onDrop={onDrop}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
+        role="button"
+        tabIndex={0}
         onClick={() => fileInputRef.current?.click()}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
         className={`
           border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition
           ${isDragging

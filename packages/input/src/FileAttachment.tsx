@@ -153,7 +153,9 @@ export function FileAttachment({
             disabled ? 'opacity-40 cursor-not-allowed' : ''
           } ${isDragging ? 'text-orange-400' : ''}`}
           title="Attach file"
+          tabIndex={0}
           onClick={openPicker}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openPicker(); }}
           onDragOver={(e) => {
             e.preventDefault();
             setIsDragging(true);

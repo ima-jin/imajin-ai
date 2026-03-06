@@ -51,8 +51,11 @@ export function MediaMessage({ assetId, filename, mimeType, size, width, height,
       <>
         <div className="max-w-[280px]">
           <div
+            role="button"
+            tabIndex={0}
             className="cursor-pointer rounded-lg overflow-hidden hover:opacity-90 transition"
             onClick={() => setLightboxOpen(true)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setLightboxOpen(true); }}
             style={aspectStyle}
           >
             <img
@@ -67,8 +70,11 @@ export function MediaMessage({ assetId, filename, mimeType, size, width, height,
 
         {lightboxOpen && (
           <div
+            role="button"
+            tabIndex={0}
             className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
             onClick={() => setLightboxOpen(false)}
+            onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') setLightboxOpen(false); }}
           >
             <img
               src={fullUrl}
