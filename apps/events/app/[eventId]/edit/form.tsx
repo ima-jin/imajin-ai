@@ -61,6 +61,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
   const [status, setStatus] = useState(event.status);
   const [nameDisplayPolicy, setNameDisplayPolicy] = useState(
     (event as any).nameDisplayPolicy || 'attendee_choice'
+  );
   const [accessMode, setAccessMode] = useState<'public' | 'invite_only'>(
     (event.accessMode as 'public' | 'invite_only') || 'public'
   );
