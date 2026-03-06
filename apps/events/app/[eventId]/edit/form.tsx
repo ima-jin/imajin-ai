@@ -59,13 +59,10 @@ export default function EventEditForm({ event, existingTickets }: Props) {
   const [country, setCountry] = useState(event.country || '');
   const [imageUrl, setImageUrl] = useState(event.imageUrl || '');
   const [status, setStatus] = useState(event.status);
-<<<<<<< HEAD
   const [nameDisplayPolicy, setNameDisplayPolicy] = useState(
     (event as any).nameDisplayPolicy || 'attendee_choice'
-=======
   const [accessMode, setAccessMode] = useState<'public' | 'invite_only'>(
     (event.accessMode as 'public' | 'invite_only') || 'public'
->>>>>>> feat/107-access-control
   );
 
   // Dykil integration
@@ -167,11 +164,8 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           country: !isVirtual ? country : null,
           imageUrl: imageUrl || null,
           status,
-<<<<<<< HEAD
           nameDisplayPolicy,
-=======
           accessMode,
->>>>>>> feat/107-access-control
           metadata: {
             ...(event.metadata as any || {}),
             linkedSurveys,
