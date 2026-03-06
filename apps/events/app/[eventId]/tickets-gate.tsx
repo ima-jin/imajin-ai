@@ -10,7 +10,14 @@ interface Props {
 }
 
 export function TicketsGate({ children, surveysRequired, initialCompleted, requiredSurveyIds }: Props) {
-  const [completed, setCompleted] = useState(initialCompleted);
+  const [completed, setCompleted] = useState(() => {
+    if (initialCompleted) return true;
+    if (!surveysRequired || typeof window === 'undefined') return false;
+    // Check localStorage fallback for anonymous users
+    return requiredSurveyIds.every(id =>
+      localStorage.getItem(`survey_${id}_completed`) === 'true'
+    );
+  });
 
   useEffect(() => {
     if (!surveysRequired || completed) return;
@@ -19,9 +26,12 @@ export function TicketsGate({ children, surveysRequired, initialCompleted, requi
       if (event.data?.type === 'survey-completed') {
         const completedSurveyId = event.data.surveyId;
         if (requiredSurveyIds.includes(completedSurveyId)) {
-          // Check if this was the last required survey
-          // For simplicity, unlock immediately — the page will verify on next load
-          setCompleted(true);
+          localStorage.setItem(`survey_${completedSurveyId}_completed`, 'true');
+          // Check if all required surveys are now done
+          const allDone = requiredSurveyIds.every(id =>
+            id === completedSurveyId || localStorage.getItem(`survey_${id}_completed`) === 'true'
+          );
+          if (allDone) setCompleted(true);
         }
       }
     };
