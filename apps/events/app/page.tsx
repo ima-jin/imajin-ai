@@ -22,12 +22,14 @@ async function getViewerDid(): Promise<string | null> {
 
 async function getEvents(viewerDid: string | null) {
   try {
+    const publicStatuses = ['published', 'cancelled', 'completed'];
     const conditions = viewerDid
       ? or(
-          eq(events.status, 'published'),
-          and(eq(events.status, 'draft'), eq(events.creatorDid, viewerDid))
+          ...publicStatuses.map(s => eq(events.status, s)),
+          and(eq(events.status, 'draft'), eq(events.creatorDid, viewerDid)),
+          and(eq(events.status, 'paused'), eq(events.creatorDid, viewerDid))
         )
-      : eq(events.status, 'published');
+      : or(...publicStatuses.map(s => eq(events.status, s)));
 
     return await db
       .select()
@@ -82,11 +84,13 @@ export default async function HomePage() {
         </div>
       ) : (
         <div className="grid gap-6">
-          {eventList.map((event) => (
+          {eventList.map((event) => {
+            const isDimmed = event.status === 'cancelled' || event.status === 'completed';
+            return (
             <Link
               key={event.id}
               href={`/${event.id}`}
-              className="bg-gray-900 border border-gray-800 rounded-xl p-6 hover:border-gray-700 transition"
+              className={`bg-gray-900 border border-gray-800 rounded-xl p-6 hover:border-gray-700 transition${isDimmed ? ' opacity-60' : ''}`}
             >
               <div className="flex gap-6">
                 {event.imageUrl && (
@@ -102,6 +106,21 @@ export default async function HomePage() {
                     {event.status === 'draft' && (
                       <span className="px-2 py-0.5 text-xs font-medium bg-yellow-900/50 text-yellow-400 border border-yellow-700 rounded">
                         Draft
+                      </span>
+                    )}
+                    {event.status === 'paused' && (
+                      <span className="px-2 py-0.5 text-xs font-medium bg-yellow-900/50 text-yellow-400 border border-yellow-700 rounded">
+                        Paused
+                      </span>
+                    )}
+                    {event.status === 'cancelled' && (
+                      <span className="px-2 py-0.5 text-xs font-medium bg-red-900/50 text-red-400 border border-red-700 rounded">
+                        Cancelled
+                      </span>
+                    )}
+                    {event.status === 'completed' && (
+                      <span className="px-2 py-0.5 text-xs font-medium bg-blue-900/50 text-blue-400 border border-blue-700 rounded">
+                        Completed
                       </span>
                     )}
                   </div>
@@ -122,7 +141,8 @@ export default async function HomePage() {
                 </div>
               </div>
             </Link>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

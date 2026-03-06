@@ -6,6 +6,7 @@
 import { db, events, tickets, ticketTypes } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
+import { EventStatusControls } from './event-status-controls';
 
 interface Props {
   params: Promise<{ eventId: string }>;
@@ -54,7 +55,10 @@ export default async function AdminPage({ params }: Props) {
         <h1 className="text-3xl font-bold">{event.title}</h1>
         <p className="text-gray-600 dark:text-gray-400">Admin Dashboard</p>
       </div>
-      
+
+      {/* Status Controls */}
+      <EventStatusControls eventId={event.id} currentStatus={event.status || 'draft'} />
+
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <StatCard label="Tickets Sold" value={totalSold} />

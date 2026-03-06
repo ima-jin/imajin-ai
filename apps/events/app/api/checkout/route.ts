@@ -44,7 +44,11 @@ export async function POST(request: NextRequest) {
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
-    
+
+    if (event.status !== 'published') {
+      return NextResponse.json({ error: 'Tickets are not available for this event' }, { status: 400 });
+    }
+
     const [ticketType] = await db
       .select()
       .from(ticketTypes)

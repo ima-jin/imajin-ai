@@ -49,6 +49,80 @@ export async function GET(
   }
 }
 
+const VALID_STATUSES = ['draft', 'published', 'paused', 'cancelled', 'completed'] as const;
+type EventStatus = typeof VALID_STATUSES[number];
+
+const STATUS_TRANSITIONS: Record<EventStatus, EventStatus[]> = {
+  draft: ['published'],
+  published: ['paused', 'cancelled', 'completed'],
+  paused: ['published', 'cancelled'],
+  cancelled: [],
+  completed: [],
+};
+
+/**
+ * PATCH /api/events/[id] - Update event status (requires auth as creator only)
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+  }
+
+  const { identity } = authResult;
+  const { id } = await params;
+
+  try {
+    const [event] = await db
+      .select()
+      .from(events)
+      .where(eq(events.id, id))
+      .limit(1);
+
+    if (!event) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    }
+
+    if (event.creatorDid !== identity.id) {
+      return NextResponse.json({ error: 'Only the event creator can change status' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { status: newStatus } = body;
+
+    if (!newStatus || !VALID_STATUSES.includes(newStatus)) {
+      return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+    }
+
+    const currentStatus = (event.status || 'draft') as EventStatus;
+    const allowed = STATUS_TRANSITIONS[currentStatus] || [];
+
+    if (!allowed.includes(newStatus as EventStatus)) {
+      return NextResponse.json(
+        { error: `Cannot transition from "${currentStatus}" to "${newStatus}"` },
+        { status: 400 }
+      );
+    }
+
+    const [updated] = await db
+      .update(events)
+      .set({ status: newStatus, updatedAt: new Date() })
+      .where(eq(events.id, id))
+      .returning();
+
+    revalidatePath(`/${id}`);
+    revalidatePath('/');
+
+    return NextResponse.json({ event: updated });
+  } catch (error) {
+    console.error('Failed to update event status:', error);
+    return NextResponse.json({ error: 'Failed to update event status' }, { status: 500 });
+  }
+}
+
 /**
  * PUT /api/events/[id] - Update event (requires auth as creator or admin)
  */

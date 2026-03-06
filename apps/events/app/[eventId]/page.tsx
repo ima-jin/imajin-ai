@@ -170,9 +170,17 @@ export default async function EventPage({ params }: Props) {
     notFound();
   }
 
-  const ticketTypesList = await getTicketTypes(event.id);
   const session = await getSession();
   const isCreator = session?.id === event.creatorDid;
+
+  // Status-based visibility
+  const status = event.status || 'draft';
+  if (status === 'paused' && !isCreator) {
+    notFound();
+  }
+
+  const ticketTypesList = await getTicketTypes(event.id);
+  const canPurchaseTickets = status === 'published';
 
   // Fetch user's tickets if logged in
   const userTickets = session?.id ? await getUserTickets(event.id, session.id) : [];
@@ -278,6 +286,23 @@ export default async function EventPage({ params }: Props) {
           )}
         </div>
 
+        {/* Status Banners */}
+        {status === 'paused' && isCreator && (
+          <div className="mb-6 px-4 py-3 rounded-xl bg-yellow-900/30 border border-yellow-700 text-yellow-400 font-medium">
+            This event is paused. It is not visible to the public.
+          </div>
+        )}
+        {status === 'cancelled' && (
+          <div className="mb-6 px-4 py-4 rounded-xl bg-red-900/30 border border-red-700 text-red-400 font-semibold text-center text-lg">
+            This event has been cancelled.
+          </div>
+        )}
+        {status === 'completed' && (
+          <div className="mb-6 px-4 py-4 rounded-xl bg-blue-900/30 border border-blue-700 text-blue-400 font-semibold text-center text-lg">
+            This event has ended.
+          </div>
+        )}
+
         {/* Event Info Card */}
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8 mb-6">
           {/* Title and Share */}
@@ -375,18 +400,26 @@ export default async function EventPage({ params }: Props) {
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8" id="tickets">
           <h2 className="text-2xl md:text-3xl font-bold mb-6">Tickets</h2>
 
-          <TicketsSection
-            eventId={event.id}
-            eventTitle={event.title}
-            tickets={ticketTypesList}
-            userTickets={userTickets}
-            hasTicket={hasTicket}
-          />
+          {canPurchaseTickets ? (
+            <TicketsSection
+              eventId={event.id}
+              eventTitle={event.title}
+              tickets={ticketTypesList}
+              userTickets={userTickets}
+              hasTicket={hasTicket}
+            />
+          ) : (
+            <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+              {status === 'cancelled' ? 'Ticket sales are closed — this event was cancelled.' :
+               status === 'completed' ? 'This event has ended. Ticket sales are closed.' :
+               'Ticket sales are not currently available.'}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Mobile Sticky Bottom Bar */}
-      {ticketTypesList.length > 0 && (
+      {/* Mobile Sticky Bottom Bar — only for purchasable events */}
+      {canPurchaseTickets && ticketTypesList.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 px-4 py-3 shadow-lg z-50">
           <div className="flex items-center justify-between gap-4">
             <div>
