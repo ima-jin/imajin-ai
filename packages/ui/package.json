@@ -8,7 +8,9 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "react": "^18.2.0"
+    "@mdxeditor/editor": "^3.52.4",
+    "react": "^18.2.0",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "@types/react": "^18",

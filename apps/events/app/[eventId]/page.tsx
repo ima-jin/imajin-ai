@@ -15,6 +15,7 @@ import { EventSurveyAccordion } from './event-survey-accordion';
 import { FairAccordion } from '@imajin/fair';
 import { ShareButton } from './share-button';
 import { getSession } from '@/src/lib/auth';
+import { MarkdownContent } from '@imajin/ui';
 import type { Metadata } from 'next';
 
 interface Props {
@@ -397,10 +398,8 @@ export default async function EventPage({ params }: Props) {
 
           {/* Description */}
           {event.description && (
-            <div className="prose dark:prose-invert max-w-none mb-6">
-              <p className="text-base md:text-lg whitespace-pre-wrap leading-relaxed">
-                {event.description}
-              </p>
+            <div className="mb-6">
+              <MarkdownContent content={event.description} />
             </div>
           )}
 
