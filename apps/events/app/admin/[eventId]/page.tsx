@@ -16,11 +16,11 @@ import { getClient } from '@imajin/db';
 const sql = getClient();
 
 interface Props {
-  params: Promise<{ eventId: string }>;
+  params: { eventId: string };
 }
 
 export default async function AdminPage({ params }: Props) {
-  const { eventId } = await params;
+  const { eventId } = params as unknown as { eventId: string };
 
   // Fetch event
   const [event] = await db
