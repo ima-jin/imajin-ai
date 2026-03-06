@@ -1,12 +1,8 @@
-'use client';
+import { redirect } from "next/navigation";
 
-import { Suspense } from 'react';
-import LoginForm from './LoginForm';
-
-export default function LoginPage() {
-  return (
-    <Suspense fallback={<div className="text-center text-gray-400 mt-20">Loading...</div>}>
-      <LoginForm />
-    </Suspense>
-  );
+export default function LoginRedirect({ searchParams }: { searchParams: { next?: string } }) {
+  const authDomain = process.env.NEXT_PUBLIC_AUTH_URL ||
+    `${process.env.NEXT_PUBLIC_SERVICE_PREFIX || "https://"}auth.${process.env.NEXT_PUBLIC_DOMAIN || "imajin.ai"}`;
+  const next = searchParams.next ? `?next=${encodeURIComponent(searchParams.next)}` : "";
+  redirect(`${authDomain}/login${next}`);
 }
