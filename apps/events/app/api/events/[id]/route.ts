@@ -204,6 +204,7 @@ export async function PUT(
     if (tags !== undefined) updates.tags = tags;
     if (status !== undefined) updates.status = status;
     if (metadata !== undefined) updates.metadata = metadata;
+    if (body.accessMode !== undefined) updates.accessMode = body.accessMode;
 
     const [updated] = await db
       .update(events)

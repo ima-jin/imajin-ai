@@ -7,9 +7,10 @@ interface Props {
   eventId: string;
   eventTitle: string;
   ticket: TicketType;
+  inviteToken?: string;
 }
 
-export function TicketPurchase({ eventId, eventTitle, ticket }: Props) {
+export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -31,6 +32,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket }: Props) {
           eventId,
           ticketTypeId: ticket.id,
           quantity: 1,
+          ...(inviteToken && { invite: inviteToken }),
         }),
       });
       

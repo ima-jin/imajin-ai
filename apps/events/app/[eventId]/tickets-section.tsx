@@ -24,9 +24,10 @@ interface Props {
   tickets: TicketType[];
   userTickets?: UserTicket[];
   hasTicket?: boolean;
+  inviteToken?: string;
 }
 
-export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [], hasTicket = false }: Props) {
+export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [], hasTicket = false, inviteToken }: Props) {
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'buy-tickets'>(
     hasTicket ? 'my-tickets' : 'buy-tickets'
   );
@@ -43,7 +44,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
 
   // If user doesn't have tickets, show purchase UI only
   if (!hasTicket || userTickets.length === 0) {
-    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} />;
+    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} />;
   }
 
   // User has tickets - show tabbed interface
@@ -77,7 +78,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
       {activeTab === 'my-tickets' ? (
         <MyTicketsTab userTickets={userTickets} />
       ) : (
-        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} />
+        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} />
       )}
     </div>
   );
@@ -173,7 +174,7 @@ function MyTicketsTab({ userTickets }: { userTickets: UserTicket[] }) {
   );
 }
 
-function PurchaseUI({ eventId, eventTitle, tickets }: { eventId: string; eventTitle: string; tickets: TicketType[] }) {
+function PurchaseUI({ eventId, eventTitle, tickets, inviteToken }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string }) {
   return (
     <div className="space-y-3 md:space-y-4">
       {tickets.map((ticket) => {
@@ -236,6 +237,7 @@ function PurchaseUI({ eventId, eventTitle, tickets }: { eventId: string; eventTi
                   eventId={eventId}
                   eventTitle={eventTitle}
                   ticket={ticket}
+                  inviteToken={inviteToken}
                 />
               </div>
             </div>

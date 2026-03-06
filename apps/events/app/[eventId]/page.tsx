@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { db, events, ticketTypes, tickets } from '@/src/db';
+import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { TicketsSection } from './tickets-section';
 import { generateQRCode } from '@/src/lib/email';
@@ -20,6 +20,7 @@ import type { Metadata } from 'next';
 
 interface Props {
   params: Promise<{ eventId: string }>;
+  searchParams: Promise<{ invite?: string }>;
 }
 
 // Generate dynamic metadata for OG/Twitter cards
@@ -210,8 +211,9 @@ async function getCohosts(podId: string, authUrl: string): Promise<OrganizerProf
   }
 }
 
-export default async function EventPage({ params }: Props) {
+export default async function EventPage({ params, searchParams }: Props) {
   const { eventId } = await params;
+  const { invite: inviteToken } = await searchParams;
   const event = await getEvent(eventId);
 
   if (!event) {
@@ -229,6 +231,28 @@ export default async function EventPage({ params }: Props) {
 
   const ticketTypesList = await getTicketTypes(event.id);
   const canPurchaseTickets = status === 'published';
+
+  // Invite-only access check
+  let inviteValid = false;
+  if (event.accessMode === 'invite_only' && inviteToken) {
+    const [invite] = await db
+      .select()
+      .from(eventInvites)
+      .where(and(eq(eventInvites.eventId, event.id), eq(eventInvites.token, inviteToken)))
+      .limit(1);
+
+    if (
+      invite &&
+      (!invite.expiresAt || new Date(invite.expiresAt) > new Date()) &&
+      (invite.maxUses === null || invite.usedCount < invite.maxUses)
+    ) {
+      inviteValid = true;
+    }
+  }
+
+  // Whether we should show the ticket purchase section
+  const canSeeTickets =
+    event.accessMode !== 'invite_only' || inviteValid || isCreator;
 
   // Fetch user's tickets if logged in
   const userTickets = session?.id ? await getUserTickets(event.id, session.id) : [];
@@ -474,13 +498,22 @@ export default async function EventPage({ params }: Props) {
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8" id="tickets">
           <h2 className="text-2xl md:text-3xl font-bold mb-6">Tickets</h2>
 
-          {canPurchaseTickets ? (
+          {!canSeeTickets ? (
+            <div className="text-center py-12">
+              <div className="text-5xl mb-4">🔒</div>
+              <p className="text-lg font-semibold mb-2">This event is invite-only</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">
+                You need a valid invite link to purchase tickets.
+              </p>
+            </div>
+          ) : canPurchaseTickets ? (
             <TicketsSection
               eventId={event.id}
               eventTitle={event.title}
               tickets={ticketTypesList}
               userTickets={userTickets}
               hasTicket={hasTicket}
+              inviteToken={inviteToken}
             />
           ) : (
             <p className="text-gray-500 dark:text-gray-400 text-center py-8">
@@ -493,7 +526,7 @@ export default async function EventPage({ params }: Props) {
       </div>
 
       {/* Mobile Sticky Bottom Bar — only for purchasable events */}
-      {canPurchaseTickets && ticketTypesList.length > 0 && (
+      {canPurchaseTickets && canSeeTickets && ticketTypesList.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 px-4 py-3 shadow-lg z-50">
           <div className="flex items-center justify-between gap-4">
             <div>
