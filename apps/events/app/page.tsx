@@ -1,7 +1,10 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { db, events } from '@/src/db';
-import { desc, eq, or, and, ne, isNull } from 'drizzle-orm';
+import { desc, eq, or, and, ne, isNull, inArray } from 'drizzle-orm';
+import { getClient } from '@imajin/db';
+
+const sql = getClient();
 
 async function getViewerDid(): Promise<string | null> {
   const authUrl = process.env.AUTH_SERVICE_URL;
@@ -23,33 +26,62 @@ async function getViewerDid(): Promise<string | null> {
 async function getEvents(viewerDid: string | null) {
   try {
     const publicStatuses = ['published', 'cancelled', 'completed'];
-    // Hide invite-only events from non-owners (they can only access via direct link)
     const isPublicAccess = or(ne(events.accessMode, 'invite_only'), isNull(events.accessMode));
+
+    // Find event IDs where viewer is a cohost or has a ticket
+    let cohostEventIds: string[] = [];
+    let ticketEventIds: string[] = [];
+    if (viewerDid) {
+      const cohostRows = await sql`
+        SELECT DISTINCT pm.pod_id, e.id as event_id
+        FROM connections.pod_members pm
+        JOIN events.events e ON e.pod_id = pm.pod_id
+        WHERE pm.did = ${viewerDid} AND pm.role IN ('owner', 'cohost') AND pm.removed_at IS NULL
+      `;
+      cohostEventIds = cohostRows.map((r: any) => r.event_id);
+
+      const ticketRows = await sql`
+        SELECT DISTINCT event_id FROM events.tickets
+        WHERE owner_did = ${viewerDid} AND status != 'cancelled'
+      `;
+      ticketEventIds = ticketRows.map((r: any) => r.event_id);
+    }
+
+    const accessibleEventIds = [...new Set([...cohostEventIds, ...ticketEventIds])];
+
     const conditions = viewerDid
       ? or(
+          // Public events
           and(or(...publicStatuses.map(s => eq(events.status, s))), isPublicAccess),
-          // Owners always see their own events regardless of access mode
+          // Creator sees all their events
           and(eq(events.status, 'draft'), eq(events.creatorDid, viewerDid)),
           and(eq(events.status, 'paused'), eq(events.creatorDid, viewerDid)),
-          and(or(...publicStatuses.map(s => eq(events.status, s))), eq(events.creatorDid, viewerDid))
+          and(or(...publicStatuses.map(s => eq(events.status, s))), eq(events.creatorDid, viewerDid)),
+          // Cohosts and ticket holders see invite-only events
+          ...(accessibleEventIds.length > 0
+            ? [and(or(...publicStatuses.map(s => eq(events.status, s))), inArray(events.id, accessibleEventIds))]
+            : [])
         )
       : and(or(...publicStatuses.map(s => eq(events.status, s))), isPublicAccess);
 
-    return await db
+    const results = await db
       .select()
       .from(events)
       .where(conditions)
       .orderBy(desc(events.startsAt))
       .limit(20);
-  } catch {
-    return [];
+
+    return { events: results, cohostEventIds, ticketEventIds };
+  } catch (err) {
+    console.error('Failed to fetch events:', err);
+    return { events: [], cohostEventIds: [], ticketEventIds: [] };
   }
 }
 
 export default async function HomePage() {
   const viewerDid = await getViewerDid();
   const loggedIn = !!viewerDid;
-  const eventList = await getEvents(viewerDid);
+  const { events: eventList, cohostEventIds, ticketEventIds } = await getEvents(viewerDid);
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -125,6 +157,16 @@ export default async function HomePage() {
                     {event.status === 'completed' && (
                       <span className="px-2 py-0.5 text-xs font-medium bg-blue-900/50 text-blue-400 border border-blue-700 rounded">
                         Completed
+                      </span>
+                    )}
+                    {cohostEventIds.includes(event.id) && (
+                      <span className="px-2 py-0.5 text-xs font-medium bg-orange-900/50 text-orange-400 border border-orange-700 rounded">
+                        Cohost
+                      </span>
+                    )}
+                    {ticketEventIds.includes(event.id) && (
+                      <span className="px-2 py-0.5 text-xs font-medium bg-green-900/50 text-green-400 border border-green-700 rounded">
+                        🎫 Attending
                       </span>
                     )}
                   </div>
