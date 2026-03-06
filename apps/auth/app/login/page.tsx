@@ -82,10 +82,24 @@ function LoginForm() {
   const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
-    // If already logged in, redirect
+    // If localStorage says logged in, verify the session is still valid
     const storedDid = localStorage.getItem('imajin_did');
     if (storedDid) {
-      window.location.href = nextUrl || '/';
+      // Check if the actual session cookie is still valid
+      fetch('/api/session', { credentials: 'include' })
+        .then(res => {
+          if (res.ok) {
+            // Session is valid — redirect to destination
+            window.location.href = nextUrl || '/';
+          } else {
+            // Session expired — clear stale localStorage
+            localStorage.removeItem('imajin_did');
+            localStorage.removeItem('imajin_keypair');
+          }
+        })
+        .catch(() => {
+          // Network error — don't redirect, let them re-login
+        });
     }
   }, [nextUrl]);
 
