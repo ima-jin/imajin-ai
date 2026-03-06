@@ -13,6 +13,7 @@ import { Countdown } from './countdown';
 import { EventLobbyAccordion } from './event-lobby-accordion';
 import { EventSurveyAccordion } from './event-survey-accordion';
 import { FairAccordion } from '@imajin/fair';
+import { TicketsGate } from './tickets-gate';
 import { ShareButton } from './share-button';
 import { getSession } from '@/src/lib/auth';
 import { MarkdownContent } from '@imajin/ui';
@@ -307,10 +308,36 @@ export default async function EventPage({ params, searchParams }: Props) {
   }
 
   // Get survey visibility settings from event metadata
-  const linkedSurveySettings: Record<string, { visibility: string; paywall: boolean }> = {};
+  const linkedSurveySettings: Record<string, { visibility: string; paywall: boolean; requiredForTickets: boolean }> = {};
   const linkedSurveysMeta = (event.metadata as any)?.linkedSurveys || [];
   for (const ls of linkedSurveysMeta) {
-    linkedSurveySettings[ls.id] = { visibility: ls.visibility || 'always', paywall: ls.paywall || false };
+    linkedSurveySettings[ls.id] = { visibility: ls.visibility || 'always', paywall: ls.paywall || false, requiredForTickets: ls.requiredForTickets || false };
+  }
+
+  // Check if any surveys are required before ticket purchase
+  const requiredSurveyIds = eventSurveys
+    .filter((s: any) => s.requiredForTickets || linkedSurveySettings[s.id]?.requiredForTickets)
+    .map((s: any) => s.id);
+
+  let surveysCompleted = requiredSurveyIds.length === 0; // No required surveys = completed
+  if (!surveysCompleted && session) {
+    try {
+      const checks = await Promise.all(
+        requiredSurveyIds.map(async (surveyId: string) => {
+          const checkRes = await fetch(`${DYKIL_URL}/api/surveys/${surveyId}/responses/check?did=${encodeURIComponent(session.id)}`, {
+            cache: 'no-store',
+          });
+          if (checkRes.ok) {
+            const data = await checkRes.json();
+            return data.completed;
+          }
+          return false;
+        })
+      );
+      surveysCompleted = checks.every(Boolean);
+    } catch (err) {
+      console.error('Failed to check survey completion:', err);
+    }
   }
 
   // Filter surveys based on visibility settings and event state
@@ -552,14 +579,20 @@ export default async function EventPage({ params, searchParams }: Props) {
               </p>
             </div>
           ) : canPurchaseTickets ? (
-            <TicketsSection
-              eventId={event.id}
-              eventTitle={event.title}
-              tickets={ticketTypesList}
-              userTickets={userTickets}
-              hasTicket={hasTicket}
-              inviteToken={inviteToken}
-            />
+            <TicketsGate
+              surveysRequired={requiredSurveyIds.length > 0}
+              initialCompleted={surveysCompleted}
+              requiredSurveyIds={requiredSurveyIds}
+            >
+              <TicketsSection
+                eventId={event.id}
+                eventTitle={event.title}
+                tickets={ticketTypesList}
+                userTickets={userTickets}
+                hasTicket={hasTicket}
+                inviteToken={inviteToken}
+              />
+            </TicketsGate>
           ) : (
             <p className="text-gray-500 dark:text-gray-400 text-center py-8">
               {status === 'cancelled' ? 'Ticket sales are closed — this event was cancelled.' :
@@ -571,7 +604,7 @@ export default async function EventPage({ params, searchParams }: Props) {
       </div>
 
       {/* Mobile Sticky Bottom Bar — only for purchasable events */}
-      {canPurchaseTickets && canSeeTickets && ticketTypesList.length > 0 && (
+      {canPurchaseTickets && canSeeTickets && surveysCompleted && ticketTypesList.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 px-4 py-3 shadow-lg z-50">
           <a
             href="#tickets"

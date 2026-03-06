@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, index, pgSchema } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, index, pgSchema, boolean } from 'drizzle-orm/pg-core';
 
 export const dykil_schema = pgSchema('dykil');
 
@@ -15,6 +15,7 @@ export const surveys = dykil_schema.table('surveys', {
   settings: jsonb('settings').default({}),                    // Survey settings
   eventId: text('event_id'),                                  // Optional event link
   type: text('type').notNull().default('survey'),             // survey, pre-event, post-event, form
+  requiredForTickets: boolean('required_for_tickets').default(false), // Must complete before ticket purchase
   status: text('status').notNull().default('draft'),          // draft, published, closed
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

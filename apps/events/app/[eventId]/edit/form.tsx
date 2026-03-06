@@ -75,14 +75,18 @@ export default function EventEditForm({ event, existingTickets }: Props) {
     id: string;
     visibility: 'always' | 'pre-event' | 'post-event';
     paywall: boolean;
+    requiredForTickets: boolean;
   }
   const [linkedSurveys, setLinkedSurveys] = useState<LinkedSurvey[]>(
-    (event.metadata as any)?.linkedSurveys || 
+    (event.metadata as any)?.linkedSurveys?.map((ls: any) => ({
+      ...ls,
+      requiredForTickets: ls.requiredForTickets || false,
+    })) || 
     // Migrate from old formats
     ((event.metadata as any)?.linkedSurveyIds || [
       (event.metadata as any)?.preEventSurveyId,
       (event.metadata as any)?.postEventSurveyId,
-    ].filter(Boolean)).map((id: string) => ({ id, visibility: 'always' as const, paywall: false }))
+    ].filter(Boolean)).map((id: string) => ({ id, visibility: 'always' as const, paywall: false, requiredForTickets: false }))
   );
 
   // Fetch user's surveys
@@ -185,7 +189,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         throw new Error(data.error || 'Failed to update event');
       }
 
-      // Update survey event_id for all linked surveys
+      // Update survey event_id and requiredForTickets for all linked surveys
       for (const survey of linkedSurveys) {
         await fetch(`${DYKIL_URL}/api/surveys/${survey.id}`, {
           method: 'PUT',
@@ -193,6 +197,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           credentials: 'include',
           body: JSON.stringify({
             eventId: event.id,
+            requiredForTickets: survey.requiredForTickets,
           }),
         });
       }
@@ -721,6 +726,20 @@ export default function EventEditForm({ event, existingTickets }: Props) {
                       />
                       <span className="text-gray-600 dark:text-gray-400">Requires ticket</span>
                     </label>
+
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={linked.requiredForTickets}
+                        onChange={(e) => {
+                          const updated = [...linkedSurveys];
+                          updated[index] = { ...updated[index], requiredForTickets: e.target.checked };
+                          setLinkedSurveys(updated);
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                      />
+                      <span className="text-gray-600 dark:text-gray-400">Required before tickets</span>
+                    </label>
                   </div>
                 </div>
               ))}
@@ -730,7 +749,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
                   type="button"
                   onClick={() => {
                     const available = surveys.find(s => !linkedSurveys.some(ls => ls.id === s.id));
-                    if (available) setLinkedSurveys([...linkedSurveys, { id: available.id, visibility: 'always', paywall: false }]);
+                    if (available) setLinkedSurveys([...linkedSurveys, { id: available.id, visibility: 'always', paywall: false, requiredForTickets: false }]);
                   }}
                   className="text-sm text-orange-500 hover:text-orange-600 font-medium"
                 >
