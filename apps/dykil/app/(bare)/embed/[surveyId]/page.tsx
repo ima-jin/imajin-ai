@@ -26,6 +26,7 @@ export default function SurveyEmbedPage() {
   const [editing, setEditing] = useState(false);
   const [surveyData, setSurveyData] = useState<SurveyData | null>(null);
   const [surveyModel, setSurveyModel] = useState<Model | null>(null);
+  const [savedAnswers, setSavedAnswers] = useState<Record<string, any> | null>(null);
   const surveyModelRef = useRef<Model | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -141,6 +142,7 @@ export default function SurveyEmbedPage() {
                 localStorage.setItem(`survey_${surveyId}_responseId`, checkData.responseId);
               }
               // Show as already completed with pre-filled data
+              setSavedAnswers(checkData.answers);
               setSubmitted(true);
               setSurveyData(data);
               surveyModelRef.current = model;
@@ -187,9 +189,9 @@ export default function SurveyEmbedPage() {
         if (result.response?.id) {
           localStorage.setItem(`survey_${surveyId}_responseId`, result.response.id);
         }
-        // Preserve answers on model so read-only view renders immediately
-        // (SurveyJS clears display after onComplete, but we need the data for the edit UX)
-        // Use ref because this callback is created before setSurveyModel runs (stale closure)
+        // Save answers in React state for the read-only view
+        // (SurveyJS model.data is unreliable after onComplete fires)
+        setSavedAnswers(data);
         if (surveyModelRef.current) {
           surveyModelRef.current.data = data;
         }
@@ -230,6 +232,7 @@ export default function SurveyEmbedPage() {
   if (submitted) {
     // Editing mode: show editable survey with pre-filled data
     if (editing && surveyModel) {
+      surveyModel.data = savedAnswers || {};
       surveyModel.mode = 'edit';
       surveyModel.showCompleteButton = true;
       // Re-attach completion handler for updates
@@ -257,8 +260,9 @@ export default function SurveyEmbedPage() {
       );
     }
 
-    // Show pre-filled read-only survey if model has data
-    if (surveyModel && Object.keys(surveyModel.data || {}).length > 0) {
+    // Show pre-filled read-only survey if we have saved answers
+    if (surveyModel && savedAnswers && Object.keys(savedAnswers).length > 0) {
+      surveyModel.data = savedAnswers;
       surveyModel.mode = 'display';
       return (
         <div ref={containerRef} className="p-6">
