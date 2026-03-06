@@ -102,6 +102,34 @@ export default function SurveyEmbedPage() {
           }
         });
 
+        // Check for existing response and pre-fill
+        try {
+          const storedResponseId = localStorage.getItem(`survey_${surveyId}_responseId`);
+          const checkUrl = new URL(`/api/surveys/${surveyId}/responses/check`, window.location.origin);
+          checkUrl.searchParams.set('include', 'answers');
+          if (storedResponseId) checkUrl.searchParams.set('responseId', storedResponseId);
+
+          const checkRes = await fetch(checkUrl.toString(), { credentials: 'include' });
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            if (checkData.completed && checkData.answers) {
+              model.data = checkData.answers;
+              if (checkData.responseId) {
+                localStorage.setItem(`survey_${surveyId}_responseId`, checkData.responseId);
+              }
+              // Show as already completed with pre-filled data
+              setSubmitted(true);
+              setSurveyData(data);
+              setSurveyModel(model);
+              // Notify parent that survey is already done
+              window.parent.postMessage({ type: 'survey-completed', surveyId }, '*');
+              return;
+            }
+          }
+        } catch (e) {
+          // Non-fatal — just proceed without pre-fill
+        }
+
         // Handle completion
         model.onComplete.add(async (sender) => {
           await submitResponse(sender.data);
@@ -129,6 +157,11 @@ export default function SurveyEmbedPage() {
       });
 
       if (res.ok) {
+        const result = await res.json();
+        // Store response ID for anonymous pre-fill on reload
+        if (result.response?.id) {
+          localStorage.setItem(`survey_${surveyId}_responseId`, result.response.id);
+        }
         setSubmitted(true);
         // Notify parent iframe
         window.parent.postMessage(
@@ -164,6 +197,19 @@ export default function SurveyEmbedPage() {
   }
 
   if (submitted) {
+    // Show pre-filled read-only survey if model has data
+    if (surveyModel && Object.keys(surveyModel.data || {}).length > 0) {
+      surveyModel.mode = 'display';
+      return (
+        <div ref={containerRef} className="p-6">
+          <div className="mb-4 flex items-center gap-2 text-green-600 dark:text-green-400">
+            <span className="text-xl">✓</span>
+            <span className="font-semibold">Response submitted</span>
+          </div>
+          <Survey model={surveyModel} />
+        </div>
+      );
+    }
     return (
       <div ref={containerRef} className="p-8 text-center">
         <div className="text-6xl mb-4">✓</div>
