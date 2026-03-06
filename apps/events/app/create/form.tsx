@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ImageUpload } from '@/app/components/ImageUpload';
+import { MarkdownEditor } from '@imajin/ui';
 
 interface Props {
   organizerDid: string;
@@ -230,12 +231,10 @@ export default function EventCreateForm({ organizerDid }: Props) {
 
         <div>
           <label className="block text-sm font-medium mb-1">Description</label>
-          <textarea
+          <MarkdownEditor
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={4}
+            onChange={setDescription}
             placeholder="Tell people what your event is about..."
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
           />
         </div>
       </div>

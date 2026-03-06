@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ImageUpload } from '@/app/components/ImageUpload';
+import { MarkdownEditor } from '@imajin/ui';
 import { FairEditor } from '@imajin/fair';
 import type { FairManifest } from '@imajin/fair';
 import type { Event, TicketType } from '@/src/db/schema';
@@ -364,11 +365,9 @@ export default function EventEditForm({ event, existingTickets }: Props) {
 
         <div>
           <label className="block text-sm font-medium mb-1">Description</label>
-          <textarea
+          <MarkdownEditor
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={4}
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+            onChange={setDescription}
           />
         </div>
 
