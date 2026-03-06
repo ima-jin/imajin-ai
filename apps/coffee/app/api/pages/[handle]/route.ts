@@ -64,16 +64,17 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { 
-      title, 
-      bio, 
-      avatar, 
+    const {
+      title,
+      bio,
+      avatar,
       theme,
       paymentMethods,
       presets,
       allowCustomAmount,
       allowMessages,
       isPublic,
+      thankYouContent,
     } = body;
 
     // Build update object
@@ -90,6 +91,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (allowCustomAmount !== undefined) updates.allowCustomAmount = allowCustomAmount;
     if (allowMessages !== undefined) updates.allowMessages = allowMessages;
     if (isPublic !== undefined) updates.isPublic = isPublic;
+    if (thankYouContent !== undefined) updates.thankYouContent = thankYouContent || null;
 
     // Update page
     const [updated] = await db
