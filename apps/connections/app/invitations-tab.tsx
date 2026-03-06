@@ -153,7 +153,7 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
       } else {
         setEmailResult(data.error || 'Failed to send invite');
         // If it's a pending invite issue, refresh the list
-        if (data.pendingInvite) fetchTrustInvites();
+        if (data.pendingInvite) fetchSentInvites();
       }
     } catch {
       setEmailResult('An error occurred');
@@ -232,13 +232,9 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
           <h2 className="text-lg font-semibold">Create Invite</h2>
           {quota && (
             <span className="text-xs text-gray-400">
-              {(() => {
-                const trustPending = sentTrustInvites.filter(i => i.status === 'pending').length;
-                const totalPending = quota.pending + trustPending;
-                return quota.remaining === null
-                  ? `${totalPending} pending · unlimited`
-                  : `${quota.remaining} remaining · ${totalPending} pending`;
-              })()}
+              {quota.remaining === null
+                ? `${quota.pending} pending · unlimited`
+                : `${quota.remaining} remaining · ${quota.pending} pending`}
               <span className="ml-1 text-gray-600">({quota.role})</span>
             </span>
           )}
@@ -331,7 +327,7 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
         {/* Email Invite panel */}
         {activeCreate === 'email' && (
           <div className="p-5 bg-white/5 border border-amber-500/20 rounded-lg">
-            {sentTrustInvites.some(i => i.status === 'pending') && (
+            {sentInvites.some(i => i.delivery === 'email' && i.status === 'pending') && (
               <div className="mb-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-xs text-yellow-300">
                 ⚠️ You have a pending email invite. It must be accepted, expired, or revoked before you can send another.
               </div>
