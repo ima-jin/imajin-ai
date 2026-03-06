@@ -101,7 +101,7 @@ export async function POST(
     }
 
     // Only creator can add owners
-    if (role === 'owner' && !isCreator) {
+    if (role === 'owner' && orgCheck.role !== 'creator') {
       return NextResponse.json({ error: 'Only creator can add owners' }, { status: 403 });
     }
 
