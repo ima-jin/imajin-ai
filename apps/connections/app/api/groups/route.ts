@@ -1,0 +1,99 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { db, pods, podMembers } from '../../../src/db/index';
+import { eq, and, isNull, inArray, sql, ne } from 'drizzle-orm';
+import { generateId } from '@/lib/id';
+
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
+
+async function getSession(request: NextRequest) {
+  try {
+    const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
+      headers: { Cookie: request.headers.get('cookie') || '' },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const session = await getSession(request);
+  if (!session?.did) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  // Get all pods the user is a member of (excluding personal/connection pods)
+  const memberPodIds = await db
+    .select({ podId: podMembers.podId })
+    .from(podMembers)
+    .where(and(eq(podMembers.did, session.did), isNull(podMembers.removedAt)));
+
+  if (memberPodIds.length === 0) {
+    return NextResponse.json({ pods: [] });
+  }
+
+  const podIds = memberPodIds.map((r) => r.podId);
+
+  // Fetch pods with type shared or event (not personal connection pods)
+  const groupPods = await db
+    .select()
+    .from(pods)
+    .where(and(
+      inArray(pods.id, podIds),
+      ne(pods.type, 'personal')
+    ));
+
+  // Get member counts for each pod
+  const counts = await db
+    .select({ podId: podMembers.podId, count: sql<number>`count(*)::int` })
+    .from(podMembers)
+    .where(and(inArray(podMembers.podId, podIds), isNull(podMembers.removedAt)))
+    .groupBy(podMembers.podId);
+
+  const countMap = new Map(counts.map((c) => [c.podId, c.count]));
+
+  const result = groupPods.map((pod) => ({
+    ...pod,
+    memberCount: countMap.get(pod.id) ?? 0,
+  }));
+
+  return NextResponse.json({ pods: result });
+}
+
+export async function POST(request: NextRequest) {
+  const session = await getSession(request);
+  if (!session?.did) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const body = await request.json();
+  if (!body.name?.trim()) {
+    return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+  }
+
+  const id = generateId('pod_');
+  const now = new Date();
+
+  const [pod] = await db.insert(pods).values({
+    id,
+    name: body.name.trim(),
+    description: body.description?.trim() || null,
+    avatar: null,
+    ownerDid: session.did,
+    type: 'shared',
+    visibility: 'private',
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+
+  await db.insert(podMembers).values({
+    podId: id,
+    did: session.did,
+    role: 'owner',
+    addedBy: session.did,
+    joinedAt: now,
+  });
+
+  return NextResponse.json({ pod: { ...pod, memberCount: 1 } }, { status: 201 });
+}
