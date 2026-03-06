@@ -10,12 +10,12 @@
 | Lines of code | 63,541 |
 | Traditional estimate | **$873,522** |
 | Traditional timeline | **15.3 months** (3-person team) |
-| Human hours | **100.0 hours** |
-| Human cost (@$200.00/hr) | **$20,000** |
-| AI/API spend | **$819.22** |
-| Total real cost | **$20,819** |
+| Human hours | **180.0 hours** |
+| Human cost (@$200.00/hr) | **$36,000** |
+| AI/API spend | **$1,395** |
+| Total real cost | **$37,395** |
 | Built in | **24 days** |
-| Cost multiplier | **42x cheaper** |
+| Cost multiplier | **23x cheaper** |
 
 ## Codebase Breakdown
 
@@ -47,8 +47,8 @@
 
 | | Traditional | AI-Assisted |
 |--|------------|------------|
-| Hours | 6,424 | 100.0 |
-| Cost | $873,522 | $20,819 |
+| Hours | 6,424 | 180.0 |
+| Cost | $873,522 | $37,395 |
 | Timeline | 15.3 months | 24 days |
 | At growth company | $1.2M | — |
 
