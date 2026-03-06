@@ -16,6 +16,7 @@ export const coffeePages = coffeeSchema.table('pages', {
   paymentMethods: jsonb('payment_methods').notNull(),         // { stripe: {...}, solana: {...} }
   presets: integer('presets').array().default([100, 500, 1000]), // cents: $1, $5, $10
   fundDirections: jsonb('fund_directions').default([]),       // [{ id, label, description }] — configurable by page owner
+  thankYouContent: text('thank_you_content'),                    // Custom thank-you page markdown
   allowCustomAmount: boolean('allow_custom_amount').default(true),
   allowMessages: boolean('allow_messages').default(true),
   isPublic: boolean('is_public').default(true),

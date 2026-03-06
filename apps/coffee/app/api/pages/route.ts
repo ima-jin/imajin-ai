@@ -17,16 +17,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { 
-      handle, 
-      title, 
-      bio, 
-      avatar, 
+    const {
+      handle,
+      title,
+      bio,
+      avatar,
       theme,
       paymentMethods,
       presets,
       allowCustomAmount,
       allowMessages,
+      thankYouContent,
     } = body;
 
     // Validate required fields
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
       theme: theme || {},
       paymentMethods,
       presets: presets || [100, 500, 1000],
+      thankYouContent: thankYouContent || null,
       allowCustomAmount: allowCustomAmount !== false,
       allowMessages: allowMessages !== false,
       isPublic: true,

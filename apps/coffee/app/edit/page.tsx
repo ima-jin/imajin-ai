@@ -2,6 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
+import { MarkdownContent } from '@imajin/ui';
+
+const MarkdownEditor = dynamic(
+  () => import('@imajin/ui').then((m) => ({ default: m.MarkdownEditor })),
+  { ssr: false }
+);
 
 interface FundDirection {
   id: string;
@@ -24,6 +31,7 @@ interface CoffeePage {
   allowCustomAmount?: boolean;
   allowMessages?: boolean;
   isPublic?: boolean;
+  thankYouContent?: string;
 }
 
 export default function EditPage() {
@@ -46,6 +54,8 @@ export default function EditPage() {
   const [allowMessages, setAllowMessages] = useState(true);
   const [isPublic, setIsPublic] = useState(true);
   const [fundDirections, setFundDirections] = useState<FundDirection[]>([]);
+  const [thankYouContent, setThankYouContent] = useState('');
+  const [showThankYouPreview, setShowThankYouPreview] = useState(false);
 
   const commonEmojis = ['☕', '💰', '🎨', '💻', '📚', '🎵', '🎮', '🏋️', '🍕', '🚀', '🌟', '💡', '🔥', '❤️', '👋', '🎯'];
 
@@ -70,6 +80,7 @@ export default function EditPage() {
           setAllowMessages(page.allowMessages !== false);
           setIsPublic(page.isPublic !== false);
           setFundDirections(page.fundDirections || []);
+          setThankYouContent(page.thankYouContent || '');
         } else if (res.status !== 404) {
           // 404 means no page exists yet, which is fine
           setError('Failed to load coffee page');
@@ -120,6 +131,7 @@ export default function EditPage() {
         },
         presets: presetArray,
         fundDirections: fundDirections.filter(d => d.label.trim()),
+        thankYouContent: thankYouContent || null,
         allowCustomAmount,
         allowMessages,
         isPublic,
@@ -369,6 +381,59 @@ export default function EditPage() {
                 </button>
               </div>
             ))}
+          </div>
+
+          {/* Thank You Page */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-medium">Thank You Page</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Custom message shown after someone tips you. Supports markdown.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowThankYouPreview(false)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                    !showThankYouPreview
+                      ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
+                      : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                  }`}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowThankYouPreview(true)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                    showThankYouPreview
+                      ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
+                      : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                  }`}
+                >
+                  Preview
+                </button>
+              </div>
+            </div>
+            {showThankYouPreview ? (
+              <div className="min-h-[120px] p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
+                {thankYouContent ? (
+                  <MarkdownContent content={thankYouContent} />
+                ) : (
+                  <p className="text-gray-400 italic text-sm">
+                    No custom content — the default thank-you message will be shown.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <MarkdownEditor
+                value={thankYouContent}
+                onChange={setThankYouContent}
+                placeholder="Write a personal thank-you message for your supporters..."
+              />
+            )}
           </div>
 
           {/* Options */}

@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
           }],
           currency: currency.toUpperCase(),
           mode: recurring ? 'subscription' : 'payment',
-          successUrl: `${COFFEE_URL}/success${recurring ? '?type=subscription' : ''}`,
+          successUrl: `${COFFEE_URL}/success?handle=${pageHandle}${recurring ? '&type=subscription' : ''}`,
           cancelUrl: `${COFFEE_URL}/${pageHandle}`,
           metadata: {
             service: 'coffee',
