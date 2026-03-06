@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { db, events, eventAdmins } from '@/src/db';
+import { db, events } from '@/src/db';
 import { requireAuth } from '@/src/lib/auth';
-import { eq, and } from 'drizzle-orm';
+import { isEventOrganizer } from '@/src/lib/organizer';
+import { eq } from 'drizzle-orm';
 import { validateManifest } from '@imajin/fair';
 
 /**
@@ -32,18 +33,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    const isCreator = event.creatorDid === identity.id;
-    let isAdmin = false;
-    if (!isCreator) {
-      const [admin] = await db
-        .select()
-        .from(eventAdmins)
-        .where(and(eq(eventAdmins.eventId, id), eq(eventAdmins.did, identity.id)))
-        .limit(1);
-      isAdmin = !!admin;
-    }
-
-    if (!isCreator && !isAdmin) {
+    const orgCheck = await isEventOrganizer(id, identity.id);
+    if (!orgCheck.authorized) {
       return NextResponse.json({ error: 'Not authorized to update this event' }, { status: 403 });
     }
 

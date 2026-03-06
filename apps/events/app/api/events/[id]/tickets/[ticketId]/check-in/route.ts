@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, events } from '@/src/db';
 import { requireAuth } from '@/src/lib/auth';
-import { eq } from 'drizzle-orm';
+import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 
 const sql = getClient();
@@ -22,24 +21,8 @@ export async function POST(
   const { id, ticketId } = await params;
 
   try {
-    const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
-    if (!event) {
-      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
-    }
-
-    const isOwner = event.creatorDid === identity.id;
-    let isCohost = false;
-
-    if (!isOwner && event.podId) {
-      const rows = await sql`
-        SELECT role FROM connections.pod_members
-        WHERE pod_id = ${event.podId} AND did = ${identity.id} AND role IN ('owner', 'cohost')
-        LIMIT 1
-      `;
-      isCohost = rows.length > 0;
-    }
-
-    if (!isOwner && !isCohost) {
+    const orgCheck = await isEventOrganizer(id, identity.id);
+    if (!orgCheck.authorized) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

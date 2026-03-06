@@ -4,34 +4,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, events, eventInvites, eventAdmins } from '@/src/db';
-import { eq, and } from 'drizzle-orm';
+import { db, eventInvites } from '@/src/db';
+import { eq } from 'drizzle-orm';
 import { requireAuth } from '@/src/lib/auth';
+import { isEventOrganizer } from '@/src/lib/organizer';
 import { randomBytes } from 'crypto';
 
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
-
-async function assertOwnerOrAdmin(eventId: string, did: string) {
-  const [event] = await db
-    .select({ creatorDid: events.creatorDid })
-    .from(events)
-    .where(eq(events.id, eventId))
-    .limit(1);
-
-  if (!event) return { error: 'Event not found', status: 404 };
-
-  if (event.creatorDid === did) return { ok: true };
-
-  const [admin] = await db
-    .select()
-    .from(eventAdmins)
-    .where(and(eq(eventAdmins.eventId, eventId), eq(eventAdmins.did, did)))
-    .limit(1);
-
-  if (admin) return { ok: true };
-
-  return { error: 'Not authorized', status: 403 };
-}
 
 export async function GET(
   request: NextRequest,
@@ -43,9 +22,9 @@ export async function GET(
   }
 
   const { id } = await params;
-  const check = await assertOwnerOrAdmin(id, authResult.identity.id);
-  if ('error' in check) {
-    return NextResponse.json({ error: check.error }, { status: check.status });
+  const check = await isEventOrganizer(id, authResult.identity.id);
+  if (!check.authorized) {
+    return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
   }
 
   const invites = await db
@@ -71,9 +50,9 @@ export async function POST(
   }
 
   const { id } = await params;
-  const check = await assertOwnerOrAdmin(id, authResult.identity.id);
-  if ('error' in check) {
-    return NextResponse.json({ error: check.error }, { status: check.status });
+  const check = await isEventOrganizer(id, authResult.identity.id);
+  if (!check.authorized) {
+    return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
   }
 
   const body = await request.json();

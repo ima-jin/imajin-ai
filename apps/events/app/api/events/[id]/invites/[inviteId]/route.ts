@@ -3,9 +3,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, events, eventInvites } from '@/src/db';
+import { db, eventInvites } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth } from '@/src/lib/auth';
+import { isEventOrganizer } from '@/src/lib/organizer';
 
 export async function DELETE(
   request: NextRequest,
@@ -18,18 +19,9 @@ export async function DELETE(
 
   const { id, inviteId } = await params;
 
-  const [event] = await db
-    .select({ creatorDid: events.creatorDid })
-    .from(events)
-    .where(eq(events.id, id))
-    .limit(1);
-
-  if (!event) {
-    return NextResponse.json({ error: 'Event not found' }, { status: 404 });
-  }
-
-  if (event.creatorDid !== authResult.identity.id) {
-    return NextResponse.json({ error: 'Only the event owner can revoke invites' }, { status: 403 });
+  const check = await isEventOrganizer(id, authResult.identity.id);
+  if (!check.authorized) {
+    return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
   }
 
   const deleted = await db

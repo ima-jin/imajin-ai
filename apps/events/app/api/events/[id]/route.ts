@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { db, events, ticketTypes, eventAdmins } from '@/src/db';
+import { db, events, ticketTypes } from '@/src/db';
 import { requireAuth } from '@/src/lib/auth';
-import { eq, and } from 'drizzle-orm';
-import { getClient } from '@imajin/db';
-
-const sql = getClient();
+import { isEventOrganizer } from '@/src/lib/organizer';
+import { eq } from 'drizzle-orm';
 
 /**
  * GET /api/events/[id] - Get event details with ticket types
@@ -154,32 +152,8 @@ export async function PUT(
     }
 
     // Check authorization: must be creator, admin, or cohost
-    const isCreator = event.creatorDid === identity.id;
-    
-    let isAdmin = false;
-    let isCohost = false;
-    if (!isCreator) {
-      const [admin] = await db
-        .select()
-        .from(eventAdmins)
-        .where(and(
-          eq(eventAdmins.eventId, id),
-          eq(eventAdmins.did, identity.id)
-        ))
-        .limit(1);
-      isAdmin = !!admin;
-
-      if (!isAdmin && event.podId) {
-        const cohostRows = await sql`
-          SELECT did FROM connections.pod_members
-          WHERE pod_id = ${event.podId} AND did = ${identity.id} AND role = 'cohost' AND removed_at IS NULL
-          LIMIT 1
-        `;
-        isCohost = cohostRows.length > 0;
-      }
-    }
-
-    if (!isCreator && !isAdmin && !isCohost) {
+    const orgCheck = await isEventOrganizer(id, identity.id);
+    if (!orgCheck.authorized) {
       return NextResponse.json({ error: 'Not authorized to update this event' }, { status: 403 });
     }
 

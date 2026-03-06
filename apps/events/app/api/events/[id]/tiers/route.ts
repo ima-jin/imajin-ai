@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { db, events, ticketTypes, eventAdmins } from '@/src/db';
+import { db, events, ticketTypes } from '@/src/db';
 import { requireAuth } from '@/src/lib/auth';
-import { eq, and } from 'drizzle-orm';
+import { isEventOrganizer } from '@/src/lib/organizer';
+import { eq } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
-import { getClient } from '@imajin/db';
-
-const sql = getClient();
 
 /**
  * GET /api/events/[id]/tiers - List ticket tiers
@@ -52,8 +50,8 @@ export async function POST(
 
   try {
     // Check authorization
-    const authorized = await isEventAdmin(id, identity.id);
-    if (!authorized) {
+    const orgCheck = await isEventOrganizer(id, identity.id);
+    if (!orgCheck.authorized) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
 
@@ -105,8 +103,8 @@ export async function PUT(
   const { id } = await params;
 
   try {
-    const authorized = await isEventAdmin(id, identity.id);
-    if (!authorized) {
+    const orgCheck = await isEventOrganizer(id, identity.id);
+    if (!orgCheck.authorized) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
 
@@ -212,37 +210,4 @@ export async function PUT(
   }
 }
 
-// Helper to check if user is creator, admin, or cohost
-async function isEventAdmin(eventId: string, did: string): Promise<boolean> {
-  const [event] = await db
-    .select({ creatorDid: events.creatorDid, podId: events.podId })
-    .from(events)
-    .where(eq(events.id, eventId))
-    .limit(1);
 
-  if (!event) return false;
-  if (event.creatorDid === did) return true;
-
-  const [admin] = await db
-    .select()
-    .from(eventAdmins)
-    .where(and(
-      eq(eventAdmins.eventId, eventId),
-      eq(eventAdmins.did, did)
-    ))
-    .limit(1);
-
-  if (admin) return true;
-
-  // Check cohost
-  if (event.podId) {
-    const cohostRows = await sql`
-      SELECT did FROM connections.pod_members
-      WHERE pod_id = ${event.podId} AND did = ${did} AND role = 'cohost' AND removed_at IS NULL
-      LIMIT 1
-    `;
-    if (cohostRows.length > 0) return true;
-  }
-
-  return false;
-}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, eventAdmins } from '@/src/db';
 import { requireAuth } from '@/src/lib/auth';
+import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq, and } from 'drizzle-orm';
 
 /**
@@ -62,23 +63,9 @@ export async function POST(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    // Must be creator or existing admin to add admins
-    const isCreator = event.creatorDid === identity.id;
-    
-    let isAdmin = false;
-    if (!isCreator) {
-      const [admin] = await db
-        .select()
-        .from(eventAdmins)
-        .where(and(
-          eq(eventAdmins.eventId, id),
-          eq(eventAdmins.did, identity.id)
-        ))
-        .limit(1);
-      isAdmin = !!admin;
-    }
-
-    if (!isCreator && !isAdmin) {
+    // Must be an organizer (creator, admin, or cohost) to add admins
+    const orgCheck = await isEventOrganizer(id, identity.id);
+    if (!orgCheck.authorized) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
 
@@ -167,12 +154,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    const isCreator = event.creatorDid === identity.id;
-
-    // Admins can remove themselves, creator can remove anyone
+    // Admins/cohosts can remove themselves, organizers can remove anyone
     const isSelf = did === identity.id;
+    const orgCheck = await isEventOrganizer(id, identity.id);
     
-    if (!isCreator && !isSelf) {
+    if (!orgCheck.authorized && !isSelf) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
 
