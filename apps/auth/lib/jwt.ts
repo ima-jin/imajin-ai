@@ -126,7 +126,7 @@ export function getSessionCookieOptions(isProduction: boolean) {
     options: {
       httpOnly: true,
       secure: isProduction,
-      sameSite: 'lax' as const,
+      sameSite: 'none' as const,
       path: '/',
       ...(isProduction ? { domain: '.imajin.ai' } : {}),
       maxAge: 60 * 60 * 24, // 24 hours
