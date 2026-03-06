@@ -4,6 +4,9 @@ import { db, events, ticketTypes, tickets } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { TicketsSection } from './tickets-section';
 import { generateQRCode } from '@/src/lib/email';
+import { getClient } from '@imajin/db';
+
+const sql = getClient();
 
 export const revalidate = 0; // always fresh — event data changes frequently during editing
 import { Countdown } from './countdown';
@@ -162,6 +165,50 @@ async function getUserTickets(eventId: string, userDid: string) {
   }));
 }
 
+interface OrganizerProfile {
+  did: string;
+  name: string | null;
+  handle: string | null;
+  avatar: string | null;
+  role: 'owner' | 'cohost';
+}
+
+async function resolveOrganizerProfile(did: string, authUrl: string): Promise<OrganizerProfile> {
+  try {
+    const res = await fetch(`${authUrl}/api/lookup/${encodeURIComponent(did)}`, { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      const identity = data.identity || data;
+      return {
+        did,
+        name: identity.name || null,
+        handle: identity.handle || null,
+        avatar: identity.avatar || identity.avatarUrl || null,
+        role: 'owner',
+      };
+    }
+  } catch {}
+  return { did, name: null, handle: null, avatar: null, role: 'owner' };
+}
+
+async function getCohosts(podId: string, authUrl: string): Promise<OrganizerProfile[]> {
+  try {
+    const rows = await sql`
+      SELECT did FROM connections.pod_members
+      WHERE pod_id = ${podId} AND role = 'cohost'
+      ORDER BY joined_at ASC
+    `;
+    return Promise.all(
+      rows.map(async (row) => {
+        const profile = await resolveOrganizerProfile(row.did as string, authUrl);
+        return { ...profile, role: 'cohost' as const };
+      })
+    );
+  } catch {
+    return [];
+  }
+}
+
 export default async function EventPage({ params }: Props) {
   const { eventId } = await params;
   const event = await getEvent(eventId);
@@ -186,17 +233,11 @@ export default async function EventPage({ params }: Props) {
   const userTickets = session?.id ? await getUserTickets(event.id, session.id) : [];
   const hasTicket = userTickets.length > 0;
 
-  // Resolve organizer name
-  let organizerName = event.creatorDid.slice(0, 30) + '...';
-  try {
-    const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-    const res = await fetch(`${authUrl}/api/lookup/${encodeURIComponent(event.creatorDid)}`, { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      const identity = data.identity || data;
-      organizerName = identity.name || (identity.handle ? `@${identity.handle}` : organizerName);
-    }
-  } catch {}
+  // Resolve organizer profile and cohosts
+  const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+  const ownerProfile = await resolveOrganizerProfile(event.creatorDid, authUrl);
+  const cohosts = event.podId ? await getCohosts(event.podId, authUrl) : [];
+  const organizers: OrganizerProfile[] = [ownerProfile, ...cohosts];
 
   const metadata = (event.metadata || {}) as EventMetadata;
   const theme = metadata.theme || {};
@@ -363,10 +404,44 @@ export default async function EventPage({ params }: Props) {
             </div>
           )}
 
-          {/* Organizer */}
+          {/* Organizers */}
           <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-            <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Organized by</div>
-            <div className="font-medium">{organizerName}</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+              {organizers.length > 1 ? 'Organizers' : 'Organized by'}
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {organizers.map(org => (
+                <div key={org.did} className="flex items-center gap-2">
+                  {org.avatar ? (
+                    <img
+                      src={org.avatar}
+                      alt={org.name || org.handle || org.did}
+                      className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 text-sm font-semibold text-gray-500">
+                      {(org.name || org.handle || org.did).charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    {org.name && <p className="text-sm font-medium leading-none">{org.name}</p>}
+                    {org.handle && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 leading-none mt-0.5">@{org.handle}</p>
+                    )}
+                    {!org.name && !org.handle && (
+                      <p className="text-xs text-gray-500 font-mono">{org.did.slice(0, 20)}...</p>
+                    )}
+                  </div>
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0 ${
+                    org.role === 'owner'
+                      ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
+                      : 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
+                  }`}>
+                    {org.role === 'owner' ? 'Organizer' : 'Co-host'}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 

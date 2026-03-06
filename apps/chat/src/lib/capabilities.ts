@@ -18,7 +18,7 @@ export function getCapabilities(ctx: CapabilityContext): Set<Capability> {
   // Everyone can send text
   caps.add("send:text");
 
-  if (ctx.tier === "hard") {
+  if (ctx.tier === "hard" || ctx.role === "cohost") {
     caps.add("send:voice");
     caps.add("send:media");
     caps.add("send:location");

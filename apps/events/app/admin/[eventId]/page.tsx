@@ -7,6 +7,11 @@ import { db, events, tickets, ticketTypes } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { EventStatusControls } from './event-status-controls';
+import { CohostManager } from './cohost-manager';
+import { getSession } from '@/src/lib/auth';
+import { getClient } from '@imajin/db';
+
+const sql = getClient();
 
 interface Props {
   params: Promise<{ eventId: string }>;
@@ -14,15 +19,33 @@ interface Props {
 
 export default async function AdminPage({ params }: Props) {
   const { eventId } = await params;
-  
+
   // Fetch event
   const [event] = await db
     .select()
     .from(events)
     .where(eq(events.id, eventId))
     .limit(1);
-  
+
   if (!event) {
+    notFound();
+  }
+
+  // Auth check: viewer must be owner or cohost
+  const session = await getSession();
+  const isOwner = session?.id === event.creatorDid;
+
+  if (!isOwner && event.podId) {
+    // Check if viewer is a cohost
+    const podRows = await sql`
+      SELECT role FROM connections.pod_members
+      WHERE pod_id = ${event.podId} AND did = ${session?.id ?? ''} AND role IN ('owner', 'cohost')
+      LIMIT 1
+    `;
+    if (!podRows.length) {
+      notFound();
+    }
+  } else if (!isOwner) {
     notFound();
   }
   
@@ -58,6 +81,11 @@ export default async function AdminPage({ params }: Props) {
 
       {/* Status Controls */}
       <EventStatusControls eventId={event.id} currentStatus={event.status || 'draft'} />
+
+      {/* Co-host Management */}
+      <div className="mb-8">
+        <CohostManager eventId={event.id} isOwner={isOwner} />
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
