@@ -83,6 +83,18 @@ export default async function AdminPage({ params }: Props) {
       {/* Status Controls */}
       <EventStatusControls eventId={event.id} currentStatus={event.status || 'draft'} />
 
+      {/* Name Display Policy */}
+      <div className="mb-8 flex items-center gap-3">
+        <span className="text-sm text-gray-500 dark:text-gray-400">Attendee name display:</span>
+        <NamePolicyBadge policy={(event as any).nameDisplayPolicy || 'attendee_choice'} />
+        <a
+          href={`/${event.id}/edit`}
+          className="text-xs text-orange-500 hover:text-orange-600 underline"
+        >
+          Change
+        </a>
+      </div>
+
       {/* Co-host Management */}
       <div className="mb-8">
         <CohostManager eventId={event.id} isOwner={isOwner} />
@@ -138,6 +150,22 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+
+const NAME_POLICY_LABELS: Record<string, { label: string; color: string }> = {
+  attendee_choice: { label: 'Attendee choice', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  real_name:       { label: 'Real name',       color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+  handle:          { label: 'Handle only',     color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
+  anonymous:       { label: 'Anonymous',       color: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
+};
+
+function NamePolicyBadge({ policy }: { policy: string }) {
+  const meta = NAME_POLICY_LABELS[policy] ?? NAME_POLICY_LABELS['attendee_choice'];
+  return (
+    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${meta.color}`}>
+      {meta.label}
+    </span>
+  );
+}
 
 function formatCurrency(cents: number, currency: string): string {
   return new Intl.NumberFormat('en-US', {

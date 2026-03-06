@@ -92,6 +92,21 @@ The implemented features (issues #6-9) work with the **existing schema** without
 3. **Public Event Page (#8)**: Uses existing event fields and metadata
 4. **Edit Page (#9)**: Updates existing event fields via PUT /api/events/[id]
 
+## Migration #106 — Attendee Name Display Policy
+
+**Issue:** #106 — Organizer policy for attendee name display
+
+```sql
+-- Add name_display_policy column to events.events
+-- Values: real_name | handle | anonymous | attendee_choice
+ALTER TABLE events.events
+  ADD COLUMN IF NOT EXISTS name_display_policy TEXT NOT NULL DEFAULT 'attendee_choice';
+```
+
+Run this manually against the production database. No data migration needed — all existing events default to `attendee_choice` (most privacy-respecting).
+
+---
+
 ## Recommendations
 
 1. **No immediate migrations required** - all features work with current schema

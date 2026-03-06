@@ -36,6 +36,9 @@ export const events = eventsSchema.table('events', {
   tags: jsonb('tags').default([]),
   metadata: jsonb('metadata').default({}),
 
+  // Name display policy
+  nameDisplayPolicy: text('name_display_policy').notNull().default('attendee_choice'), // real_name, handle, anonymous, attendee_choice
+
   // Trust pod integration
   podId: text('pod_id'),                                    // Links to trust_pods.id
   lobbyConversationId: text('lobby_conversation_id'),       // Event lobby chat (open to ticket holders)

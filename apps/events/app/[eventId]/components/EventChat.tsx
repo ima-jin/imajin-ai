@@ -27,6 +27,9 @@ interface Profile {
   name?: string;
 }
 
+type NameDisplayPolicy = 'real_name' | 'handle' | 'anonymous' | 'attendee_choice';
+type AttendeeDisplayPref = 'real_name' | 'handle' | 'anonymous';
+
 type RecordingState = 'idle' | 'recording' | 'processing';
 
 const WAVEFORM_BARS = 20;
@@ -95,6 +98,10 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
   const [currentUserDid, setCurrentUserDid] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Name display policy
+  const [nameDisplayPolicy, setNameDisplayPolicy] = useState<NameDisplayPolicy>('attendee_choice');
+  const [myDisplayPref, setMyDisplayPref] = useState<AttendeeDisplayPref>('handle');
+
   // Voice recording state
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -135,6 +142,32 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
     }
     fetchSession();
   }, [AUTH_SERVICE_URL]);
+
+  // Load attendee display pref from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem(`eventChat_displayPref_${eventId}`);
+    if (stored && ['real_name', 'handle', 'anonymous'].includes(stored)) {
+      setMyDisplayPref(stored as AttendeeDisplayPref);
+    }
+  }, [eventId]);
+
+  // Fetch event name display policy
+  useEffect(() => {
+    async function fetchPolicy() {
+      try {
+        const res = await fetch(`/api/events/${eventId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.event?.nameDisplayPolicy) {
+            setNameDisplayPolicy(data.event.nameDisplayPolicy as NameDisplayPolicy);
+          }
+        }
+      } catch {
+        // fallback to default
+      }
+    }
+    fetchPolicy();
+  }, [eventId]);
 
   // Check ticket ownership
   useEffect(() => {
@@ -466,12 +499,40 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
     };
   }, []);
 
-  const getDisplayName = (did: string): string => {
+  const getDisplayName = (did: string, msgIndex?: number): string => {
     const profile = profiles[did];
+
+    // Determine effective policy for this sender
+    const isOwnMessage = did === currentUserDid;
+    let effectivePolicy: AttendeeDisplayPref;
+
+    if (nameDisplayPolicy === 'attendee_choice') {
+      // For own messages use the user's stored pref; for others default to handle
+      effectivePolicy = isOwnMessage ? myDisplayPref : 'handle';
+    } else {
+      effectivePolicy = nameDisplayPolicy as AttendeeDisplayPref;
+    }
+
+    if (effectivePolicy === 'anonymous') {
+      return msgIndex !== undefined ? `Attendee #${msgIndex + 1}` : 'Attendee';
+    }
+
     if (!profile) return did.slice(0, 16) + '...';
-    if (profile.handle) return `@${profile.handle}`;
+
+    if (effectivePolicy === 'handle') {
+      if (profile.handle) return `@${profile.handle}`;
+      return did.slice(0, 16) + '...';
+    }
+
+    // real_name
     if (profile.name) return profile.name;
+    if (profile.handle) return `@${profile.handle}`;
     return did.slice(0, 16) + '...';
+  };
+
+  const handleSetDisplayPref = (pref: AttendeeDisplayPref) => {
+    setMyDisplayPref(pref);
+    localStorage.setItem(`eventChat_displayPref_${eventId}`, pref);
   };
 
   if (loading) {
@@ -535,6 +596,12 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
               !prevMsg ||
               new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
 
+            // For anonymous policy, compute a stable attendee number per unique sender
+            const uniqueSenders = nameDisplayPolicy === 'anonymous'
+              ? Array.from(new Set(messages.map(m => m.fromDid)))
+              : [];
+            const senderIndex = uniqueSenders.indexOf(msg.fromDid);
+
             return (
               <div key={msg.id}>
                 {showDateDivider && (
@@ -549,7 +616,7 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
                   <div className="max-w-[70%]">
                     {!isOwn && (!prevMsg || prevMsg.fromDid !== msg.fromDid || showDateDivider) && (
                       <p className="text-xs text-orange-500 mb-1 ml-3 font-medium">
-                        {getDisplayName(msg.fromDid)}
+                        {getDisplayName(msg.fromDid, senderIndex >= 0 ? senderIndex : undefined)}
                       </p>
                     )}
 
@@ -706,9 +773,23 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
             </button>
           </div>
         )}
-        <p className="text-xs text-gray-400 text-center mt-2">
-          Visible to all ticket holders
-        </p>
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-xs text-gray-400">Visible to all ticket holders</p>
+          {nameDisplayPolicy === 'attendee_choice' && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400">Show me as:</span>
+              <select
+                value={myDisplayPref}
+                onChange={(e) => handleSetDisplayPref(e.target.value as AttendeeDisplayPref)}
+                className="text-xs bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-500"
+              >
+                <option value="real_name">Real name</option>
+                <option value="handle">@handle</option>
+                <option value="anonymous">Anonymous</option>
+              </select>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

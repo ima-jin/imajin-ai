@@ -186,7 +186,10 @@ export async function PUT(
       tags,
       status,
       metadata,
+      nameDisplayPolicy,
     } = body;
+
+    const VALID_NAME_POLICIES = ['real_name', 'handle', 'anonymous', 'attendee_choice'];
 
     // Build update object with only provided fields
     const updates: Record<string, any> = { updatedAt: new Date() };
@@ -204,6 +207,12 @@ export async function PUT(
     if (tags !== undefined) updates.tags = tags;
     if (status !== undefined) updates.status = status;
     if (metadata !== undefined) updates.metadata = metadata;
+    if (nameDisplayPolicy !== undefined) {
+      if (!VALID_NAME_POLICIES.includes(nameDisplayPolicy)) {
+        return NextResponse.json({ error: 'Invalid nameDisplayPolicy' }, { status: 400 });
+      }
+      updates.nameDisplayPolicy = nameDisplayPolicy;
+    }
 
     const [updated] = await db
       .update(events)

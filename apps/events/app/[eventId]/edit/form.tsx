@@ -59,6 +59,9 @@ export default function EventEditForm({ event, existingTickets }: Props) {
   const [country, setCountry] = useState(event.country || '');
   const [imageUrl, setImageUrl] = useState(event.imageUrl || '');
   const [status, setStatus] = useState(event.status);
+  const [nameDisplayPolicy, setNameDisplayPolicy] = useState(
+    (event as any).nameDisplayPolicy || 'attendee_choice'
+  );
 
   // Dykil integration
   const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
@@ -159,6 +162,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           country: !isVirtual ? country : null,
           imageUrl: imageUrl || null,
           status,
+          nameDisplayPolicy,
           metadata: {
             ...(event.metadata as any || {}),
             linkedSurveys,
@@ -678,6 +682,39 @@ export default function EventEditForm({ event, existingTickets }: Props) {
               )}
             </>
           )}
+        </div>
+      </div>
+
+      {/* Privacy & Display */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-4">
+        <div>
+          <h2 className="text-xl font-semibold">Privacy &amp; Display</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Control how attendee names appear in the event chat.
+          </p>
+        </div>
+        <div className="space-y-3">
+          {([
+            { value: 'attendee_choice', label: 'Attendee choice', description: 'Each attendee picks how their name appears' },
+            { value: 'real_name', label: 'Real name', description: 'Always show profile display name' },
+            { value: 'handle', label: 'Handle only', description: 'Show @handle, no real name' },
+            { value: 'anonymous', label: 'Anonymous', description: 'Show "Attendee" — no names visible' },
+          ] as const).map((option) => (
+            <label key={option.value} className="flex items-start gap-3 cursor-pointer group">
+              <input
+                type="radio"
+                name="nameDisplayPolicy"
+                value={option.value}
+                checked={nameDisplayPolicy === option.value}
+                onChange={() => setNameDisplayPolicy(option.value)}
+                className="mt-0.5 w-4 h-4 text-orange-500 focus:ring-orange-500 border-gray-300"
+              />
+              <div>
+                <span className="text-sm font-medium group-hover:text-orange-500 transition">{option.label}</span>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{option.description}</p>
+              </div>
+            </label>
+          ))}
         </div>
       </div>
 
