@@ -1,28 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, podMembers, pods } from '../../../src/db/index';
+import { corsHeaders, corsOptions, withCors } from '@/lib/cors';
 import { eq, and, isNull, ne, sql } from 'drizzle-orm';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
-function withCors(response: NextResponse, request: NextRequest): NextResponse {
-  const origin = request.headers.get('origin') || '';
-  if (origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai') {
-    response.headers.set('Access-Control-Allow-Origin', origin);
-    response.headers.set('Access-Control-Allow-Credentials', 'true');
-  }
-  return response;
-}
-
 export async function OPTIONS(request: NextRequest) {
-  const res = new NextResponse(null, { status: 204 });
-  const origin = request.headers.get('origin') || '';
-  if (origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai') {
-    res.headers.set('Access-Control-Allow-Origin', origin);
-    res.headers.set('Access-Control-Allow-Credentials', 'true');
-    res.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.headers.set('Access-Control-Allow-Headers', 'Content-Type');
-  }
-  return res;
+  return corsOptions(request);
 }
 
 async function getSession(request: NextRequest) {
@@ -38,9 +22,10 @@ async function getSession(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const cors = corsHeaders(request);
   const session = await getSession(request);
   if (!session?.did) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401, headers: cors });
   }
 
   // Find 2-person pods I'm in

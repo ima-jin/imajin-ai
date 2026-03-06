@@ -1,23 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
-
-/**
- * CORS headers for cross-origin requests from *.imajin.ai
- */
-export function corsHeaders(request: NextRequest) {
-  const origin = request.headers.get('origin') || '';
-  const allowed = origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai';
-  return {
-    'Access-Control-Allow-Origin': allowed ? origin : '',
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-}
-
-export function corsOptions(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { corsHeaders, corsOptions } from '@imajin/config';
 
 /**
  * Generate a prefixed ID

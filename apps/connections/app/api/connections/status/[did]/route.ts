@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, podMembers } from '../../../../../src/db/index';
+import { corsHeaders, corsOptions } from '@/lib/cors';
 import { eq, and, isNull, sql } from 'drizzle-orm';
+
+export async function OPTIONS(request: NextRequest) {
+  return corsOptions(request);
+}
 
 /**
  * GET /api/connections/status/:did
@@ -13,10 +18,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { did: string } }
 ) {
+  const cors = corsHeaders(request);
   const { did } = params;
 
   if (!did) {
-    return NextResponse.json({ error: 'DID is required' }, { status: 400 });
+    return NextResponse.json({ error: 'DID is required' }, { status: 400, headers: cors });
   }
 
   try {
@@ -37,15 +43,12 @@ export async function GET(
     const connectionCount = twoPersonPods.length;
     const inGraph = connectionCount > 0;
 
-    return NextResponse.json({
-      inGraph,
-      connectionCount,
-    });
+    return NextResponse.json({ inGraph, connectionCount }, { headers: cors });
   } catch (error) {
     console.error('Failed to check graph status:', error);
     return NextResponse.json(
       { error: 'Failed to check graph status' },
-      { status: 500 }
+      { status: 500, headers: cors }
     );
   }
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { corsHeaders, corsOptions } from "@/src/lib/cors";
 
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || "";
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || "imajin.ai";
@@ -24,7 +25,12 @@ function buildServiceUrl(name: string): string {
   return `https://${subdomain}.${DOMAIN}`;
 }
 
+export async function OPTIONS(request: NextRequest) {
+  return corsOptions(request);
+}
+
 export async function GET(request: NextRequest) {
+  const cors = corsHeaders(request);
   return NextResponse.json({
     services: SERVICES.map((s) => {
       const url = buildServiceUrl(s.name);
@@ -35,5 +41,5 @@ export async function GET(request: NextRequest) {
         spec: `${url}/api/spec`,
       };
     }),
-  });
+  }, { headers: cors });
 }

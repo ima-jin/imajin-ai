@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
     "@imajin/fair": "workspace:*",
     "@imajin/ui": "workspace:^",

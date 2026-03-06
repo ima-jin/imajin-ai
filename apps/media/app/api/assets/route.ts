@@ -5,10 +5,15 @@ import { extname } from "path";
 import { nanoid } from "nanoid";
 import { db, assets } from "@/src/db";
 import { requireAuth } from "@/src/lib/auth";
+import { corsHeaders, corsOptions } from "@/src/lib/cors";
 import { eq, and } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/classify";
 
 export const dynamic = "force-dynamic";
+
+export async function OPTIONS(request: NextRequest) {
+  return corsOptions(request);
+}
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || "/mnt/media";
 const MAX_SIZE = 50 * 1024 * 1024; // 50 MB
@@ -30,9 +35,10 @@ function didToPath(did: string): string {
 // POST /api/assets — upload a file
 // ---------------------------------------------------------------------------
 export async function POST(request: NextRequest) {
+  const cors = corsHeaders(request);
   const authResult = await requireAuth(request);
   if ("error" in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const { identity } = authResult;
   const ownerDid = identity.id;
@@ -148,7 +154,7 @@ export async function POST(request: NextRequest) {
       fairManifest: record.fairManifest,
       createdAt: record.createdAt,
     },
-    { status: 201 }
+    { status: 201, headers: cors }
   );
 
   // Fire-and-forget async classification
@@ -168,9 +174,10 @@ export async function POST(request: NextRequest) {
 // GET /api/assets — list assets for authenticated user
 // ---------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
+  const cors = corsHeaders(request);
   const authResult = await requireAuth(request);
   if ("error" in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const { identity } = authResult;
   const ownerDid = identity.id;
@@ -206,12 +213,12 @@ export async function GET(request: NextRequest) {
       rows = rows.filter((r) => r.mimeType.startsWith(`${type}/`));
     }
 
-    return NextResponse.json({ assets: rows, limit, offset, count: rows.length });
+    return NextResponse.json({ assets: rows, limit, offset, count: rows.length }, { headers: cors });
   } catch (err) {
     console.error("DB query failed:", err);
     return NextResponse.json(
       { error: "Database failure", detail: String(err) },
-      { status: 500 }
+      { status: 500, headers: cors }
     );
   }
 }

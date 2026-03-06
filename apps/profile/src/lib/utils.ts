@@ -1,3 +1,5 @@
+export { corsHeaders, corsOptions, withCors } from '@imajin/config';
+
 /**
  * Generate a random ID with prefix
  */

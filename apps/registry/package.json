@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@imajin/auth": "workspace:*",
+    "@imajin/config": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "next": "^14.2.0",
     "react": "^18.3.0",

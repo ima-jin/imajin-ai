@@ -1,9 +1,9 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { db, profiles } from '@/db';
 import { requireAuth } from '@/lib/auth';
-import { jsonResponse, errorResponse } from '@/lib/utils';
+import { corsHeaders, corsOptions } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
 // Configure ed25519 with sha512 (required for @noble/ed25519 v3)
@@ -101,21 +101,26 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+export async function OPTIONS(request: NextRequest) {
+  return corsOptions(request);
+}
+
 /**
  * GET /api/profile/:id - Get profile by DID or handle
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
+  const cors = corsHeaders(request);
 
   try {
     // Look up by DID or handle
     const profile = await db.query.profiles.findFirst({
-      where: (profiles, { eq, or }) => 
+      where: (profiles, { eq, or }) =>
         or(eq(profiles.did, id), eq(profiles.handle, id)),
     });
 
     if (!profile) {
-      return errorResponse('Profile not found', 404);
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404, headers: cors });
     }
 
     // Gate contact info: only visible to self or connections
@@ -131,10 +136,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    return jsonResponse(result);
+    return NextResponse.json(result, { headers: cors });
   } catch (error) {
     console.error('Failed to fetch profile:', error);
-    return errorResponse('Failed to fetch profile', 500);
+    return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500, headers: cors });
   }
 }
 
@@ -143,11 +148,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
+  const cors = corsHeaders(request);
 
   // Require authentication
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
 
   const { identity } = authResult;
@@ -155,17 +161,17 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     // Fetch existing profile
     const existing = await db.query.profiles.findFirst({
-      where: (profiles, { eq, or }) => 
+      where: (profiles, { eq, or }) =>
         or(eq(profiles.did, id), eq(profiles.handle, id)),
     });
 
     if (!existing) {
-      return errorResponse('Profile not found', 404);
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404, headers: cors });
     }
 
     // Check ownership
     if (existing.did !== identity.id) {
-      return errorResponse('Not authorized to update this profile', 403);
+      return NextResponse.json({ error: 'Not authorized to update this profile' }, { status: 403, headers: cors });
     }
 
     // Clone the request body for signature verification
@@ -176,11 +182,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (request.headers.get('x-signature')) {
       // Signature headers are present — enforce verification
       if (!sigResult.valid) {
-        return errorResponse(`Signature verification failed: ${sigResult.error}`, 401);
+        return NextResponse.json({ error: `Signature verification failed: ${sigResult.error}` }, { status: 401, headers: cors });
       }
       // Ensure the signing DID matches the authenticated identity
       if (sigResult.did !== identity.id) {
-        return errorResponse('Signature DID does not match authenticated identity', 403);
+        return NextResponse.json({ error: 'Signature DID does not match authenticated identity' }, { status: 403, headers: cors });
       }
     }
 
@@ -195,7 +201,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (displayName !== undefined) updates.displayName = displayName;
     if (displayType !== undefined) {
       if (!['human', 'agent', 'presence'].includes(displayType)) {
-        return errorResponse('displayType must be human, agent, or presence');
+        return NextResponse.json({ error: 'displayType must be human, agent, or presence' }, { status: 400, headers: cors });
       }
       updates.displayType = displayType;
     }
@@ -206,7 +212,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (metadata !== undefined) updates.metadata = metadata;
     if (visibility !== undefined) {
       if (!['public', 'incognito'].includes(visibility)) {
-        return errorResponse('visibility must be public or incognito');
+        return NextResponse.json({ error: 'visibility must be public or incognito' }, { status: 400, headers: cors });
       }
       updates.visibility = visibility;
     }
@@ -218,10 +224,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       .where(eq(profiles.did, existing.did))
       .returning();
 
-    return jsonResponse(updated);
+    return NextResponse.json(updated, { headers: cors });
   } catch (error) {
     console.error('Failed to update profile:', error);
-    return errorResponse('Failed to update profile', 500);
+    return NextResponse.json({ error: 'Failed to update profile' }, { status: 500, headers: cors });
   }
 }
 
@@ -230,11 +236,12 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
+  const cors = corsHeaders(request);
 
   // Require authentication
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
 
   const { identity } = authResult;
@@ -242,25 +249,25 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     // Fetch existing profile
     const existing = await db.query.profiles.findFirst({
-      where: (profiles, { eq, or }) => 
+      where: (profiles, { eq, or }) =>
         or(eq(profiles.did, id), eq(profiles.handle, id)),
     });
 
     if (!existing) {
-      return errorResponse('Profile not found', 404);
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404, headers: cors });
     }
 
     // Check ownership
     if (existing.did !== identity.id) {
-      return errorResponse('Not authorized to delete this profile', 403);
+      return NextResponse.json({ error: 'Not authorized to delete this profile' }, { status: 403, headers: cors });
     }
 
     // Delete profile
     await db.delete(profiles).where(eq(profiles.did, existing.did));
 
-    return jsonResponse({ deleted: true });
+    return NextResponse.json({ deleted: true }, { headers: cors });
   } catch (error) {
     console.error('Failed to delete profile:', error);
-    return errorResponse('Failed to delete profile', 500);
+    return NextResponse.json({ error: 'Failed to delete profile' }, { status: 500, headers: cors });
   }
 }
