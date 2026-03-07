@@ -212,7 +212,7 @@ export default function CourseDetailPage() {
               </p>
             </div>
             <a
-              href={`${typeof window !== 'undefined' ? window.location.protocol + '//' + window.location.hostname.replace(/^(dev-)?[^.]+/, '$1events') : ''}/e/${course.eventSlug}`}
+              href={`${typeof window !== 'undefined' ? window.location.protocol + '//' + window.location.hostname.replace(/^(dev-)?[^.]+/, '$1events') : ''}/${course.eventSlug}`}
               className="shrink-0 px-5 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium text-sm no-underline"
             >
               View Event →
