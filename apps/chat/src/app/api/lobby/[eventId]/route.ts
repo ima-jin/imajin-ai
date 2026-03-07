@@ -37,7 +37,7 @@ export async function GET(
     }
 
     const ticketData = await ticketRes.json();
-    if (!ticketData.hasTicket) {
+    if (!ticketData.hasAccess && !ticketData.hasTicket) {
       return errorResponse('You need a ticket to access the event lobby', 403);
     }
 

@@ -9,10 +9,10 @@ const EVENTS_SERVICE_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:3
 /**
  * Verify ticket ownership for event lobby access
  */
-async function verifyTicketOwnership(
+async function verifyEventAccess(
   eventId: string,
   cookieHeader: string | null
-): Promise<{ hasTicket: boolean; lobbyConversationId: string | null }> {
+): Promise<{ hasAccess: boolean; lobbyConversationId: string | null }> {
   try {
     const ticketRes = await fetch(
       `${EVENTS_SERVICE_URL}/api/events/${eventId}/my-ticket`,
@@ -22,17 +22,17 @@ async function verifyTicketOwnership(
     );
 
     if (!ticketRes.ok) {
-      return { hasTicket: false, lobbyConversationId: null };
+      return { hasAccess: false, lobbyConversationId: null };
     }
 
     const ticketData = await ticketRes.json();
     return {
-      hasTicket: ticketData.hasTicket || false,
+      hasAccess: ticketData.hasAccess || ticketData.hasTicket || false,
       lobbyConversationId: ticketData.lobbyConversationId || null,
     };
   } catch (error) {
-    console.error('Failed to verify ticket:', error);
-    return { hasTicket: false, lobbyConversationId: null };
+    console.error('Failed to verify event access:', error);
+    return { hasAccess: false, lobbyConversationId: null };
   }
 }
 
@@ -65,14 +65,14 @@ export async function GET(
   const before = url.searchParams.get('before'); // Message ID cursor
 
   try {
-    // Verify ticket ownership
+    // Verify event access (ticket holder OR organizer)
     const cookieHeader = request.headers.get('Cookie');
-    const { hasTicket, lobbyConversationId } = await verifyTicketOwnership(
+    const { hasAccess, lobbyConversationId } = await verifyEventAccess(
       eventId,
       cookieHeader
     );
 
-    if (!hasTicket || !lobbyConversationId) {
+    if (!hasAccess || !lobbyConversationId) {
       return errorResponse('You need a ticket to access the event lobby', 403, cors);
     }
 
@@ -85,7 +85,7 @@ export async function GET(
     });
 
     if (!participant) {
-      // Auto-add them as a participant if they have a ticket
+      // Auto-add them as a participant if they have access
       await db.insert(participants).values({
         conversationId: lobbyConversationId,
         did: identity.id,
@@ -157,14 +157,14 @@ export async function POST(
   const { eventId } = await params;
 
   try {
-    // Verify ticket ownership
+    // Verify event access (ticket holder OR organizer)
     const cookieHeader = request.headers.get('Cookie');
-    const { hasTicket, lobbyConversationId } = await verifyTicketOwnership(
+    const { hasAccess, lobbyConversationId } = await verifyEventAccess(
       eventId,
       cookieHeader
     );
 
-    if (!hasTicket || !lobbyConversationId) {
+    if (!hasAccess || !lobbyConversationId) {
       return errorResponse('You need a ticket to post in the event lobby', 403, cors);
     }
 
@@ -177,7 +177,7 @@ export async function POST(
     });
 
     if (!participant) {
-      // Auto-add them as a participant if they have a ticket
+      // Auto-add them as a participant if they have access
       await db.insert(participants).values({
         conversationId: lobbyConversationId,
         did: identity.id,
