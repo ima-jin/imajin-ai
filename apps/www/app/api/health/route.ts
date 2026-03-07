@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 interface ServiceCheck {
   name: string;
+  label: string;
   url: string;
   status: 'up' | 'down' | 'degraded';
   responseTime: number | null;
@@ -13,35 +14,51 @@ const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 
 const SERVICES = [
-  { name: 'www', url: `${SERVICE_PREFIX}www.${DOMAIN}` },
-  { name: 'auth', url: `${SERVICE_PREFIX}auth.${DOMAIN}` },
-  { name: 'pay', url: `${SERVICE_PREFIX}pay.${DOMAIN}` },
-  { name: 'profile', url: `${SERVICE_PREFIX}profile.${DOMAIN}` },
-  { name: 'registry', url: `${SERVICE_PREFIX}registry.${DOMAIN}` },
-  { name: 'events', url: `${SERVICE_PREFIX}events.${DOMAIN}` },
-  { name: 'chat', url: `${SERVICE_PREFIX}chat.${DOMAIN}` },
+  // Core platform
+  { name: 'www', label: 'Website' },
+  { name: 'auth', label: 'Auth' },
+  { name: 'pay', label: 'Payments' },
+  { name: 'profile', label: 'Profiles' },
+  { name: 'registry', label: 'Registry' },
+  { name: 'events', label: 'Events' },
+  { name: 'chat', label: 'Chat' },
+  { name: 'connections', label: 'Connections' },
+  { name: 'input', label: 'Input' },
+  { name: 'media', label: 'Media' },
+  // Imajin apps
+  { name: 'coffee', label: 'Coffee' },
+  { name: 'dykil', label: 'Surveys' },
+  { name: 'links', label: 'Links' },
+  { name: 'learn', label: 'Learn' },
 ];
 
-async function checkService(service: { name: string; url: string }): Promise<ServiceCheck> {
+async function checkService(service: { name: string; label: string }): Promise<ServiceCheck> {
+  const url = `${SERVICE_PREFIX}${service.name}.${DOMAIN}`;
   const start = Date.now();
-  
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
-    
-    const response = await fetch(service.url, {
+
+    const response = await fetch(url, {
       method: 'HEAD',
       signal: controller.signal,
+      redirect: 'manual', // Don't follow redirects — a redirect means the service is alive
       cache: 'no-store',
     });
-    
+
     clearTimeout(timeout);
     const responseTime = Date.now() - start;
-    
+
+    // Any response (including redirects, 401, 403) means the service is up.
+    // Only 5xx means degraded.
+    const status = response.status >= 500 ? 'degraded' : 'up';
+
     return {
       name: service.name,
-      url: service.url,
-      status: response.ok ? 'up' : 'degraded',
+      label: service.label,
+      url,
+      status,
       responseTime,
       statusCode: response.status,
     };
@@ -49,7 +66,8 @@ async function checkService(service: { name: string; url: string }): Promise<Ser
     const responseTime = Date.now() - start;
     return {
       name: service.name,
-      url: service.url,
+      label: service.label,
+      url,
       status: 'down',
       responseTime: responseTime < 10000 ? responseTime : null,
       statusCode: null,
@@ -60,10 +78,10 @@ async function checkService(service: { name: string; url: string }): Promise<Ser
 
 export async function GET() {
   const checks = await Promise.all(SERVICES.map(checkService));
-  
+
   const allUp = checks.every(c => c.status === 'up');
   const anyDown = checks.some(c => c.status === 'down');
-  
+
   return NextResponse.json({
     status: anyDown ? 'degraded' : allUp ? 'operational' : 'degraded',
     timestamp: new Date().toISOString(),

@@ -5,6 +5,7 @@ import Link from 'next/link';
 
 interface ServiceCheck {
   name: string;
+  label?: string;
   url: string;
   status: 'up' | 'down' | 'degraded';
   responseTime: number | null;
@@ -117,10 +118,12 @@ export default function HealthPage() {
         )}
 
         {/* Services list */}
-        <div className="space-y-4">
-          <h2 className="text-xl font-medium text-gray-400 mb-4">Services</h2>
-          
-          {health?.services.map((service) => (
+        {(() => {
+          const CORE = ['www', 'auth', 'pay', 'profile', 'registry', 'events', 'chat', 'connections', 'input', 'media'];
+          const core = health?.services.filter(s => CORE.includes(s.name)) || [];
+          const apps = health?.services.filter(s => !CORE.includes(s.name)) || [];
+
+          const renderService = (service: ServiceCheck) => (
             <div
               key={service.name}
               className="flex items-center justify-between p-4 bg-gray-900 rounded-lg border border-gray-800"
@@ -134,12 +137,12 @@ export default function HealthPage() {
                     rel="noopener noreferrer"
                     className="font-medium hover:text-orange-400 transition-colors"
                   >
-                    {service.name}
+                    {service.label || service.name}
                   </a>
-                  <p className="text-sm text-gray-500">{service.url}</p>
+                  <p className="text-sm text-gray-500">{service.name}.imajin.ai</p>
                 </div>
               </div>
-              
+
               <div className="text-right">
                 <p className={`font-medium ${
                   service.status === 'up' ? 'text-green-400' :
@@ -160,15 +163,32 @@ export default function HealthPage() {
                 )}
               </div>
             </div>
-          ))}
+          );
 
-          {loading && !health && (
-            <div className="space-y-4">
-              {[...Array(7)].map((_, i) => (
-                <div key={i} className="h-20 bg-gray-900 rounded-lg animate-pulse" />
-              ))}
-            </div>
-          )}
+          return (
+            <>
+              <div className="space-y-3">
+                <h2 className="text-xl font-medium text-gray-400 mb-4">Core Platform</h2>
+                {core.map(renderService)}
+              </div>
+
+              {apps.length > 0 && (
+                <div className="space-y-3 mt-8">
+                  <h2 className="text-xl font-medium text-gray-400 mb-4">Applications</h2>
+                  {apps.map(renderService)}
+                </div>
+              )}
+            </>
+          );
+        })()}
+
+        {loading && !health && (
+          <div className="space-y-3">
+            {[...Array(14)].map((_, i) => (
+              <div key={i} className="h-20 bg-gray-900 rounded-lg animate-pulse" />
+            ))}
+          </div>
+        )}
         </div>
 
         {/* Footer */}
