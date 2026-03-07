@@ -79,9 +79,10 @@ export default function AppsPage() {
   }, []);
 
   const visible = filterByTier(services, tier);
-  const publicApps = visible.filter((s) => s.visibility === 'public');
-  const authenticatedApps = visible.filter((s) => s.visibility === 'authenticated');
-  const creatorApps = visible.filter((s) => s.visibility === 'creator');
+  const publicApps = visible.filter((s) => s.category === 'core' && s.visibility === 'public');
+  const authenticatedApps = visible.filter((s) => s.category === 'core' && s.visibility === 'authenticated');
+  const creatorApps = visible.filter((s) => s.category === 'creator');
+  const developerApps = visible.filter((s) => s.category === 'developer');
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-black">
@@ -132,6 +133,19 @@ export default function AppsPage() {
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {creatorApps.map((s) => (
+                    <ServiceCard key={s.name} service={s} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {developerApps.length > 0 && (
+              <section className="mb-12">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-4 px-1">
+                  Developers
+                </h2>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {developerApps.map((s) => (
                     <ServiceCard key={s.name} service={s} />
                   ))}
                 </div>

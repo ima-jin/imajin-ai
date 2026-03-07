@@ -5,7 +5,7 @@ const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || "";
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || "imajin.ai";
 
 export type ServiceVisibility = "public" | "authenticated" | "creator" | "internal";
-export type ServiceCategory = "core" | "creator" | "infrastructure";
+export type ServiceCategory = "core" | "creator" | "developer" | "infrastructure";
 
 export interface ServiceEntry {
   name: string;
@@ -28,7 +28,7 @@ const SERVICES: ServiceEntry[] = [
   { name: "coffee", description: "Tipping and creator support pages", icon: "☕", label: "Coffee", visibility: "creator", category: "creator" },
   { name: "links", description: "Link-in-bio pages and click tracking", icon: "🔗", label: "Links", visibility: "creator", category: "creator" },
   { name: "dykil", description: "Surveys and do-you-know-if-I-like polls", icon: "📋", label: "Surveys", visibility: "creator", category: "creator" },
-  { name: "registry", description: "Node registration, heartbeat, and subdomain provisioning", icon: "📡", label: "Registry", visibility: "authenticated", category: "core" },
+  { name: "registry", description: "Node registration, heartbeat, and subdomain provisioning", icon: "📡", label: "Registry", visibility: "authenticated", category: "developer" },
   { name: "auth", description: "Authentication and identity", icon: "🔐", label: "Auth", visibility: "internal", category: "infrastructure" },
   { name: "input", description: "Media upload relay and Whisper transcription", icon: "📥", label: "Input", visibility: "internal", category: "infrastructure" },
 ];

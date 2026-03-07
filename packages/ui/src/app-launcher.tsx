@@ -30,10 +30,11 @@ function filterByTier(services: LauncherService[], tier: string): LauncherServic
   });
 }
 
-function groupByCategory(services: LauncherService[]): { core: LauncherService[]; creator: LauncherService[] } {
+function groupByCategory(services: LauncherService[]): { core: LauncherService[]; creator: LauncherService[]; developer: LauncherService[] } {
   return {
     core: services.filter((s) => s.category === 'core'),
     creator: services.filter((s) => s.category === 'creator'),
+    developer: services.filter((s) => s.category === 'developer'),
   };
 }
 
@@ -63,7 +64,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   }, [showPanel]);
 
   const visible = filterByTier(services, tier);
-  const { core, creator } = groupByCategory(visible);
+  const { core, creator, developer } = groupByCategory(visible);
 
   const wwwUrl = services.find((s) => s.name === 'www')?.url || '#';
 
@@ -98,6 +99,14 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
             Creator Tools
           </div>
           {creator.map(renderTile)}
+        </div>
+      )}
+      {developer.length > 0 && (
+        <div>
+          <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            Developers
+          </div>
+          {developer.map(renderTile)}
         </div>
       )}
       <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-1">
