@@ -8,34 +8,34 @@ interface EventLobbyAccordionProps {
 }
 
 export function EventLobbyAccordion({ eventId }: EventLobbyAccordionProps) {
-  const [hasTicket, setHasTicket] = useState<boolean | null>(null);
+  const [hasAccess, setHasAccess] = useState<boolean | null>(null);
   const [lobbyConversationId, setLobbyConversationId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const CHAT_SERVICE_URL = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
 
-  // Check ticket ownership on mount
+  // Check event access on mount (ticket holder OR organizer)
   useEffect(() => {
-    async function checkTicket() {
+    async function checkAccess() {
       try {
         const res = await fetch(`/api/events/${eventId}/my-ticket`);
         if (res.ok) {
           const data = await res.json();
-          if (data.hasTicket) {
-            setHasTicket(true);
+          if (data.hasAccess) {
+            setHasAccess(true);
             setLobbyConversationId(data.lobbyConversationId);
           } else {
-            setHasTicket(false);
+            setHasAccess(false);
           }
         } else {
-          setHasTicket(false);
+          setHasAccess(false);
         }
       } catch {
-        setHasTicket(false);
+        setHasAccess(false);
       }
     }
-    checkTicket();
+    checkAccess();
   }, [eventId]);
 
   // Fetch unread count when collapsed
@@ -59,14 +59,14 @@ export function EventLobbyAccordion({ eventId }: EventLobbyAccordionProps) {
 
   // Poll for unread count when collapsed
   useEffect(() => {
-    if (isExpanded || !hasTicket || !lobbyConversationId) return;
+    if (isExpanded || !hasAccess || !lobbyConversationId) return;
     fetchUnreadCount();
     const interval = setInterval(fetchUnreadCount, 3000);
     return () => clearInterval(interval);
-  }, [fetchUnreadCount, isExpanded, hasTicket, lobbyConversationId]);
+  }, [fetchUnreadCount, isExpanded, hasAccess, lobbyConversationId]);
 
-  // Render nothing if no ticket or not authenticated
-  if (hasTicket === false || hasTicket === null) {
+  // Render nothing if no access or not authenticated
+  if (hasAccess === false || hasAccess === null) {
     return null;
   }
 
