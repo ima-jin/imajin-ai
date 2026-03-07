@@ -546,6 +546,24 @@ export default async function EventPage({ params, searchParams }: Props) {
           </div>
         </div>
 
+        {/* Pre-reading banner */}
+        {event.courseSlug && (
+          <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-5 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-blue-900 dark:text-blue-200">📚 Pre-reading available</p>
+              <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+                Study the course material before the event to get the most out of it.
+              </p>
+            </div>
+            <a
+              href={`${process.env.NEXT_PUBLIC_LEARN_URL || 'https://learn.imajin.ai'}/course/${event.courseSlug}`}
+              className="shrink-0 px-5 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium text-sm no-underline"
+            >
+              View Course →
+            </a>
+          </div>
+        )}
+
         {/* Event Lobby Accordion */}
         <div className="mb-6">
           <EventLobbyAccordion eventId={event.id} />

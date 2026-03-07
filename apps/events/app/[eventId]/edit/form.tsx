@@ -66,6 +66,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
   const [accessMode, setAccessMode] = useState<'public' | 'invite_only'>(
     (event.accessMode as 'public' | 'invite_only') || 'public'
   );
+  const [courseSlug, setCourseSlug] = useState((event as any).courseSlug || '');
 
   // Dykil integration
   const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
@@ -181,6 +182,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           status,
           nameDisplayPolicy,
           accessMode,
+          courseSlug: courseSlug || null,
           metadata: {
             ...(event.metadata as any || {}),
             linkedSurveys,
@@ -507,6 +509,18 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           currentImage={imageUrl || undefined}
           onUploadComplete={(url) => setImageUrl(url)}
         />
+
+        <div>
+          <label className="block text-sm font-medium mb-1">Linked Course Slug</label>
+          <input
+            type="text"
+            value={courseSlug}
+            onChange={(e) => setCourseSlug(e.target.value)}
+            placeholder="intro-to-ai"
+            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+          />
+          <p className="text-xs text-gray-500 mt-1">Optional: link this event to a course on Learn</p>
+        </div>
 
         <div>
           <label className="block text-sm font-medium mb-1">Status</label>

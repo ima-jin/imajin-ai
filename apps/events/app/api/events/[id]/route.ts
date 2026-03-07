@@ -202,6 +202,7 @@ export async function PUT(
       updates.nameDisplayPolicy = nameDisplayPolicy;
     }
     if (body.accessMode !== undefined) updates.accessMode = body.accessMode;
+    if (body.courseSlug !== undefined) updates.courseSlug = body.courseSlug || null;
 
     const [updated] = await db
       .update(events)

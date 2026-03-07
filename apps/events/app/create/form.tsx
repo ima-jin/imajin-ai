@@ -34,7 +34,8 @@ export default function EventCreateForm({ organizerDid }: Props) {
   const [city, setCity] = useState('');
   const [country, setCountry] = useState('');
   const [coverImageUrl, setCoverImageUrl] = useState('');
-  
+  const [courseSlug, setCourseSlug] = useState('');
+
   // Ticket tiers
   const [tiers, setTiers] = useState<TicketTier[]>([
     { name: 'General Admission', price: 0, quantity: null, description: '' }
@@ -78,6 +79,7 @@ export default function EventCreateForm({ organizerDid }: Props) {
           city: !isVirtual ? city : null,
           country: !isVirtual ? country : null,
           imageUrl: coverImageUrl || null,
+          courseSlug: courseSlug || null,
           tickets: tiers.filter(t => t.name).map(t => ({
             name: t.name,
             description: t.description,
@@ -224,6 +226,18 @@ export default function EventCreateForm({ organizerDid }: Props) {
             </div>
           </>
         )}
+
+        <div>
+          <label className="block text-sm font-medium mb-1">Linked Course Slug</label>
+          <input
+            type="text"
+            value={courseSlug}
+            onChange={(e) => setCourseSlug(e.target.value)}
+            placeholder="intro-to-ai"
+            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+          />
+          <p className="text-xs text-gray-500 mt-1">Optional: link this event to a course on Learn</p>
+        </div>
 
         <ImageUpload
           onUploadComplete={(url) => setCoverImageUrl(url)}
