@@ -147,10 +147,10 @@ export default function AppsPage() {
             {tier === 'anonymous' && (
               <div className="text-center mt-8">
                 <a
-                  href={buildUrl('auth') + '/register'}
+                  href={buildUrl('auth') + '/login?next=' + encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}
                   className="text-orange-400 hover:text-orange-300 transition-colors text-sm"
                 >
-                  Sign up to access more apps →
+                  Login to access more apps →
                 </a>
               </div>
             )}

@@ -24,7 +24,7 @@ const SERVICES: ServiceEntry[] = [
   { name: "media", description: "Media asset management, upload, and classification", icon: "🖼️", label: "Media", visibility: "authenticated", category: "core" },
   { name: "profile", description: "User profiles and social graph", icon: "👤", label: "Profile", visibility: "authenticated", category: "core" },
   { name: "pay", description: "Payments, escrow, and balance management", icon: "💳", label: "Pay", visibility: "authenticated", category: "core" },
-  { name: "learn", description: "Courses, lessons, and learning progress", icon: "📚", label: "Learn", visibility: "creator", category: "creator" },
+  { name: "learn", description: "Courses, lessons, and learning progress", icon: "📚", label: "Learn", visibility: "public", category: "core" },
   { name: "coffee", description: "Tipping and creator support pages", icon: "☕", label: "Coffee", visibility: "creator", category: "creator" },
   { name: "links", description: "Link-in-bio pages and click tracking", icon: "🔗", label: "Links", visibility: "creator", category: "creator" },
   { name: "dykil", description: "Surveys and do-you-know-if-I-like polls", icon: "📋", label: "Surveys", visibility: "creator", category: "creator" },
