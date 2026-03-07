@@ -263,7 +263,15 @@ export function NavBar({
 
         {/* Right - Auth Section */}
         <div className="flex items-center gap-2">
-          {identity?.isLoggedIn ? (
+          {identity?.isLoggedIn && identity?.tier === 'soft' ? (
+            /* Soft DID — just a logout button, no dropdown */
+            <button
+              onClick={() => identity.onLogout?.()}
+              className="px-3 py-1.5 rounded-lg text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+            >
+              Logout
+            </button>
+          ) : identity?.isLoggedIn ? (
             <div className="flex items-center gap-2">
               {balance !== null && balance > 0 && (
                 <span className="text-sm font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full">
@@ -277,7 +285,6 @@ export function NavBar({
               >
                 <span className="text-xl">👤</span>
                 <span className="text-sm font-medium">
-                  {identity.tier === 'soft' && '⚡ '}
                   {identity.handle
                     ? `@${identity.handle}`
                     : identity.name
@@ -288,43 +295,47 @@ export function NavBar({
 
               {showDropdown && (
                 <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg py-1 z-50">
-                  {identity.onViewProfile && (
-                    <button
-                      onClick={() => { identity.onViewProfile?.(); setShowDropdown(false); }}
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
-                    >
-                      <span>👤</span> View Profile
-                    </button>
+                  {identity.tier !== 'soft' && (
+                    <>
+                      {identity.onViewProfile && (
+                        <button
+                          onClick={() => { identity.onViewProfile?.(); setShowDropdown(false); }}
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
+                        >
+                          <span>👤</span> View Profile
+                        </button>
+                      )}
+                      {identity.onEditProfile && (
+                        <button
+                          onClick={() => { identity.onEditProfile?.(); setShowDropdown(false); }}
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
+                        >
+                          <span>✏️</span> Edit Profile
+                        </button>
+                      )}
+                      <hr className="my-1 border-gray-200 dark:border-gray-800" />
+                      <a
+                        href={userLinks.messages}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                      >
+                        <span>💬</span> Messages
+                        {unreadMessages > 0 && (
+                          <span className="ml-auto bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
+                            {unreadMessages}
+                          </span>
+                        )}
+                      </a>
+                      <a
+                        href={userLinks.connections}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                      >
+                        <span>🤝</span> Connections
+                      </a>
+                    </>
                   )}
-                  {identity.onEditProfile && (
-                    <button
-                      onClick={() => { identity.onEditProfile?.(); setShowDropdown(false); }}
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
-                    >
-                      <span>✏️</span> Edit Profile
-                    </button>
-                  )}
-                  <hr className="my-1 border-gray-200 dark:border-gray-800" />
-                  <a
-                    href={userLinks.messages}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
-                  >
-                    <span>💬</span> Messages
-                    {unreadMessages > 0 && (
-                      <span className="ml-auto bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
-                        {unreadMessages}
-                      </span>
-                    )}
-                  </a>
-                  <a
-                    href={userLinks.connections}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
-                  >
-                    <span>🤝</span> Connections
-                  </a>
                   {identity.onLogout && (
                     <>
-                      <hr className="my-1 border-gray-200 dark:border-gray-800" />
+                      {identity.tier !== 'soft' && <hr className="my-1 border-gray-200 dark:border-gray-800" />}
                       <button
                         onClick={() => { identity.onLogout?.(); setShowDropdown(false); }}
                         className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
@@ -371,7 +382,7 @@ export function NavBar({
               </a>
             );
           })}
-          {identity?.isLoggedIn && (
+          {identity?.isLoggedIn && identity?.tier !== 'soft' && (
             <>
               <hr className="my-2 border-gray-200 dark:border-gray-800" />
               <a href={userLinks.messages} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 no-underline">
