@@ -115,7 +115,7 @@ export default function AppsPage() {
             {authenticatedApps.length > 0 && (
               <section className="mb-12">
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-4 px-1">
-                  Your Network
+                  My Imajin
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {authenticatedApps.map((s) => (
