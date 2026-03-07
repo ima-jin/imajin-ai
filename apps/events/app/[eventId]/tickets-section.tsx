@@ -45,7 +45,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
 
   // If user doesn't have tickets, show purchase UI only
   if (!hasTicket || userTickets.length === 0) {
-    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} />;
+    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} />;
   }
 
   // User has tickets - show tabbed interface
@@ -79,7 +79,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
       {activeTab === 'my-tickets' ? (
         <MyTicketsTab userTickets={userTickets} />
       ) : (
-        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} />
+        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} />
       )}
     </div>
   );
@@ -175,7 +175,7 @@ function MyTicketsTab({ userTickets }: { userTickets: UserTicket[] }) {
   );
 }
 
-function PurchaseUI({ eventId, eventTitle, tickets, inviteToken }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string }) {
+function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnabled = false }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string; etransferEnabled?: boolean }) {
   return (
     <div className="space-y-3 md:space-y-4">
       {tickets.map((ticket) => {
