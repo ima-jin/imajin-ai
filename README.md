@@ -98,6 +98,7 @@ Shared libraries used across all apps.
 | [@imajin/ui](./packages/ui) | Shared UI components |
 | [@imajin/input](./packages/input) | Input components (emoji, voice, GPS, file upload) |
 | [@imajin/media](./packages/media) | Media browser & asset display components |
+| [@imajin/fair](./packages/fair) | .fair attribution (types, validator, editor components) |
 
 ---
 
@@ -271,7 +272,7 @@ Built with this stack. Tickets signed by the event's DID.
 
 This is early. The architecture is stabilizing but APIs will change.
 
-If you want to run your own node or build on the stack, open an issue or find us on [Discord](https://discord.gg/kWGHUY8wbe).
+If you want to run your own node or build on the stack, start with the [Developer Guide](./docs/DEVELOPER.md), then open an issue or find us on [Discord](https://discord.gg/kWGHUY8wbe).
 
 ### Rules
 
