@@ -2,12 +2,9 @@ import type { Metadata } from 'next';
 import { NavBar } from '@imajin/ui';
 import './globals.css';
 
-const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-
 export const metadata: Metadata = {
   title: 'Learn | Imajin',
-  description: 'AI workshops for humans. No hype, just skills.',
+  description: 'Courses and lessons on the Imajin network — teach and learn, sovereign and DID-linked',
 };
 
 export default function RootLayout({
@@ -15,17 +12,18 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const servicePrefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
+  const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-black text-white">
+      <body className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
         <NavBar
           currentService="Learn"
-          servicePrefix={SERVICE_PREFIX}
-          domain={DOMAIN}
+          servicePrefix={servicePrefix}
+          domain={domain}
         />
-        <main className="max-w-4xl mx-auto px-4 py-8">
-          {children}
-        </main>
+        {children}
       </body>
     </html>
   );
