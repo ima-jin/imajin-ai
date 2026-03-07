@@ -21,7 +21,7 @@ interface ETransferInstructions {
   message: string;
 }
 
-type Step = 'button' | 'selector' | 'loading-card' | 'loading-etransfer' | 'etransfer-done';
+type Step = 'button' | 'selector' | 'loading-card' | 'etransfer-confirm' | 'loading-etransfer' | 'etransfer-done';
 
 export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false }: Props) {
   const [step, setStep] = useState<Step>('button');
@@ -169,7 +169,40 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
     );
   }
 
-  if (step === 'selector' || step === 'loading-card' || step === 'loading-etransfer') {
+  if (step === 'etransfer-confirm' || step === 'loading-etransfer') {
+    return (
+      <div className="w-full max-w-md rounded-xl border border-orange-500/30 bg-orange-500/5 dark:bg-orange-500/10 p-5 space-y-4">
+        <h3 className="font-semibold text-base">🏦 Pay by Interac e-Transfer</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          You&apos;ll need to send <span className="font-semibold">{formatPrice(ticket.price, ticket.currency)}</span> via
+          Interac e-Transfer within 72 hours. Your ticket will be held until payment is confirmed.
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={handleETransfer}
+            disabled={step === 'loading-etransfer'}
+            className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${
+              step === 'loading-etransfer'
+                ? 'bg-orange-400 text-white cursor-wait'
+                : 'bg-orange-500 text-white hover:bg-orange-600'
+            }`}
+          >
+            {step === 'loading-etransfer' ? 'Reserving...' : 'Reserve My Ticket'}
+          </button>
+          <button
+            onClick={() => { setStep('selector'); setError(null); }}
+            disabled={step === 'loading-etransfer'}
+            className="px-3 py-2.5 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition disabled:opacity-50"
+          >
+            Back
+          </button>
+        </div>
+        {error && <p className="text-red-500 text-xs">{error}</p>}
+      </div>
+    );
+  }
+
+  if (step === 'selector' || step === 'loading-card') {
     return (
       <div className="space-y-2">
         {error && <p className="text-red-500 text-xs">{error}</p>}
@@ -186,15 +219,11 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
             {step === 'loading-card' ? 'Loading...' : '💳 Pay with Card'}
           </button>
           <button
-            onClick={handleETransfer}
-            disabled={step === 'loading-card' || step === 'loading-etransfer'}
-            className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${
-              step === 'loading-etransfer'
-                ? 'bg-orange-400 text-white cursor-wait'
-                : 'bg-orange-500/20 text-orange-500 border border-orange-500/40 hover:bg-orange-500/30 disabled:opacity-50'
-            }`}
+            onClick={() => setStep('etransfer-confirm')}
+            disabled={step === 'loading-card'}
+            className="px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap bg-orange-500/20 text-orange-500 border border-orange-500/40 hover:bg-orange-500/30 disabled:opacity-50"
           >
-            {step === 'loading-etransfer' ? 'Loading...' : '🏦 Pay by e-Transfer'}
+            🏦 Pay by e-Transfer
           </button>
           <button
             onClick={() => { setStep('button'); setError(null); }}
