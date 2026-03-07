@@ -40,6 +40,7 @@ interface Course {
     progress: { total: number; completed: number };
   } | null;
   isCreator: boolean;
+  isAuthenticated: boolean;
 }
 
 const contentTypeIcons: Record<string, string> = {
@@ -185,6 +186,14 @@ export default function CourseDetailPage() {
                   </span>
                 )}
               </Link>
+            ) : course.isAuthenticated ? (
+              <button
+                onClick={handleEnroll}
+                disabled={enrolling}
+                className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium disabled:opacity-50"
+              >
+                {enrolling ? 'Enrolling...' : course.price === 0 ? 'Start Learning — Free' : `Enroll — $${(course.price / 100).toFixed(2)}`}
+              </button>
             ) : (
               <OnboardGate
                 action={`enroll in "${course.title}"`}

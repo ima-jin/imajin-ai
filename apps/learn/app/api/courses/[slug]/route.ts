@@ -91,6 +91,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     modules: modulesWithLessons,
     enrollment,
     isCreator: identity?.id === course.creatorDid,
+    isAuthenticated: !!identity,
   });
 }
 
