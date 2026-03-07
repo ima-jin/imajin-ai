@@ -35,7 +35,7 @@ export function OnboardGate({
   // Resolve auth URL from props or env
   const authUrl = authUrlProp || (
     typeof window !== 'undefined'
-      ? `${window.location.protocol}//${window.location.hostname.replace(/^[^.]+/, 'auth')}`
+      ? `${window.location.protocol}//${window.location.hostname.replace(/^(dev-)?[^.]+/, '$1auth')}`
       : ''
   );
 
