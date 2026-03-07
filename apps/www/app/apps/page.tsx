@@ -1,9 +1,6 @@
-import type { Metadata } from 'next';
+'use client';
 
-export const metadata: Metadata = {
-  title: 'Apps — Imajin',
-  description: 'Explore the Imajin app ecosystem.',
-};
+import { useState, useEffect } from 'react';
 
 const PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -18,21 +15,26 @@ interface ServiceEntry {
   url: string;
 }
 
-async function getServices(): Promise<ServiceEntry[]> {
-  try {
-    const registryPrefix = PREFIX.replace(/^https?:\/\//, '').replace(/-$/, '');
-    const subdomain = registryPrefix ? `${registryPrefix}-registry` : 'registry';
-    const registryUrl = `https://${subdomain}.${DOMAIN}`;
-    
-    const res = await fetch(`${registryUrl}/api/specs`, {
-      next: { revalidate: 900 }, // 15 min ISR
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.services || [];
-  } catch {
-    return [];
-  }
+function buildUrl(service: string): string {
+  const raw = PREFIX.replace(/^https?:\/\//, '').replace(/-$/, '');
+  const subdomain = raw ? `${raw}-${service}` : service;
+  return `https://${subdomain}.${DOMAIN}`;
+}
+
+function getTier(session: { tier?: string } | null): string {
+  if (!session) return 'anonymous';
+  if (session.tier === 'soft') return 'soft';
+  return 'hard';
+}
+
+function filterByTier(services: ServiceEntry[], tier: string): ServiceEntry[] {
+  return services.filter((s) => {
+    if (s.visibility === 'internal') return false;
+    if (s.visibility === 'public') return true;
+    if (s.visibility === 'authenticated') return tier !== 'anonymous';
+    if (s.visibility === 'creator') return tier === 'hard' || tier === 'creator';
+    return false;
+  });
 }
 
 function ServiceCard({ service }: { service: ServiceEntry }) {
@@ -56,12 +58,30 @@ function ServiceCard({ service }: { service: ServiceEntry }) {
   );
 }
 
-export default async function AppsPage() {
-  const services = await getServices();
+export default function AppsPage() {
+  const [services, setServices] = useState<ServiceEntry[]>([]);
+  const [tier, setTier] = useState<string>('anonymous');
+  const [loading, setLoading] = useState(true);
 
-  const publicApps = services.filter((s) => s.visibility === 'public');
-  const authenticatedApps = services.filter((s) => s.visibility === 'authenticated');
-  const creatorApps = services.filter((s) => s.visibility === 'creator');
+  useEffect(() => {
+    const registryUrl = buildUrl('registry');
+    const authUrl = buildUrl('auth');
+
+    // Fetch services and session in parallel
+    Promise.all([
+      fetch(`${registryUrl}/api/specs`).then(r => r.ok ? r.json() : null),
+      fetch(`${authUrl}/api/session`, { credentials: 'include' }).then(r => r.ok ? r.json() : null),
+    ]).then(([specData, session]) => {
+      if (specData?.services) setServices(specData.services);
+      setTier(getTier(session));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const visible = filterByTier(services, tier);
+  const publicApps = visible.filter((s) => s.visibility === 'public');
+  const authenticatedApps = visible.filter((s) => s.visibility === 'authenticated');
+  const creatorApps = visible.filter((s) => s.visibility === 'creator');
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-black">
@@ -75,49 +95,66 @@ export default async function AppsPage() {
           </p>
         </div>
 
-        {publicApps.length > 0 && (
-          <section className="mb-12">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-4 px-1">
-              Explore
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {publicApps.map((s) => (
-                <ServiceCard key={s.name} service={s} />
-              ))}
-            </div>
-          </section>
-        )}
+        {loading ? (
+          <div className="text-center py-12 text-gray-400">Loading...</div>
+        ) : (
+          <>
+            {publicApps.length > 0 && (
+              <section className="mb-12">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-4 px-1">
+                  Explore
+                </h2>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {publicApps.map((s) => (
+                    <ServiceCard key={s.name} service={s} />
+                  ))}
+                </div>
+              </section>
+            )}
 
-        {authenticatedApps.length > 0 && (
-          <section className="mb-12">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-4 px-1">
-              Your Network
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {authenticatedApps.map((s) => (
-                <ServiceCard key={s.name} service={s} />
-              ))}
-            </div>
-          </section>
-        )}
+            {authenticatedApps.length > 0 && (
+              <section className="mb-12">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-4 px-1">
+                  Your Network
+                </h2>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {authenticatedApps.map((s) => (
+                    <ServiceCard key={s.name} service={s} />
+                  ))}
+                </div>
+              </section>
+            )}
 
-        {creatorApps.length > 0 && (
-          <section className="mb-12">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-4 px-1">
-              Creator Tools
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {creatorApps.map((s) => (
-                <ServiceCard key={s.name} service={s} />
-              ))}
-            </div>
-          </section>
-        )}
+            {creatorApps.length > 0 && (
+              <section className="mb-12">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-4 px-1">
+                  Creator Tools
+                </h2>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {creatorApps.map((s) => (
+                    <ServiceCard key={s.name} service={s} />
+                  ))}
+                </div>
+              </section>
+            )}
 
-        {services.length === 0 && (
-          <div className="text-center py-12 text-gray-400">
-            <p>Unable to load apps. Please try again later.</p>
-          </div>
+            {visible.length === 0 && !loading && (
+              <div className="text-center py-12 text-gray-400">
+                <p>Unable to load apps. Please try again later.</p>
+              </div>
+            )}
+
+            {tier === 'anonymous' && (
+              <div className="text-center mt-8">
+                <a
+                  href={buildUrl('auth') + '/register'}
+                  className="text-orange-400 hover:text-orange-300 transition-colors text-sm"
+                >
+                  Sign up to access more apps →
+                </a>
+              </div>
+            )}
+          </>
         )}
       </div>
     </main>

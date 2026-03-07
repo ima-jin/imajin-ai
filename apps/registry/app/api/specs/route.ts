@@ -30,7 +30,7 @@ const SERVICES: ServiceEntry[] = [
   { name: "auth", description: "Authentication and identity", icon: "🔐", label: "Auth", visibility: "internal", category: "infrastructure" },
   { name: "registry", description: "Node registration, heartbeat, and subdomain provisioning", icon: "📡", label: "Registry", visibility: "internal", category: "infrastructure" },
   { name: "input", description: "Media upload relay and Whisper transcription", icon: "📥", label: "Input", visibility: "internal", category: "infrastructure" },
-  { name: "media", description: "Media asset management, upload, and classification", icon: "🖼️", label: "Media", visibility: "internal", category: "infrastructure" },
+  { name: "media", description: "Media asset management, upload, and classification", icon: "🖼️", label: "Media", visibility: "authenticated", category: "core" },
 ];
 
 function buildServiceUrl(name: string): string {
