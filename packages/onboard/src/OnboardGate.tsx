@@ -117,7 +117,13 @@ export function OnboardGate({
   // Idle state — show the trigger
   if (state === 'idle') {
     return (
-      <div onClick={handleTriggerClick} style={{ cursor: 'pointer' }}>
+      <div
+        onClick={handleTriggerClick}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTriggerClick(); } }}
+        role="button"
+        tabIndex={0}
+        style={{ cursor: 'pointer' }}
+      >
         {children}
       </div>
     );
