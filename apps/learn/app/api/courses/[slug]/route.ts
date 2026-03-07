@@ -122,7 +122,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 
   const body = await request.json();
-  const allowedFields = ['title', 'description', 'slug', 'price', 'currency', 'visibility', 'imageUrl', 'tags', 'metadata', 'status'];
+  const allowedFields = ['title', 'description', 'slug', 'price', 'currency', 'visibility', 'imageUrl', 'tags', 'metadata', 'status', 'eventSlug'];
   const updates: Record<string, any> = {};
 
   for (const field of allowedFields) {
@@ -135,10 +135,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return errorResponse('No fields to update');
   }
 
-  // Map camelCase to snake_case for image_url
+  // Map camelCase to snake_case
   if (updates.imageUrl !== undefined) {
     updates.image_url = updates.imageUrl;
     delete updates.imageUrl;
+  }
+  if (updates.eventSlug !== undefined) {
+    updates.event_slug = updates.eventSlug;
+    delete updates.eventSlug;
   }
 
   updates.updated_at = new Date();

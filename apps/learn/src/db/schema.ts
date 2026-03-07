@@ -17,6 +17,7 @@ export const courses = learnSchema.table('courses', {
   imageUrl: text('image_url'),
   tags: jsonb('tags').default([]),
   metadata: jsonb('metadata').default({}),
+  eventSlug: text('event_slug'),                                   // linked event on events.imajin.ai
   status: text('status').default('draft'),                        // draft / published / archived
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

@@ -32,6 +32,7 @@ interface Course {
   imageUrl: string | null;
   tags: string[];
   status: string;
+  eventSlug: string | null;
   modules: Module[];
   enrollment: {
     id: string;
@@ -200,6 +201,24 @@ export default function CourseDetailPage() {
             )}
           </div>
         </div>
+
+        {/* Linked event banner */}
+        {course.eventSlug && (
+          <div className="mb-8 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-5 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-amber-900 dark:text-amber-200">🎓 This course has a live workshop</p>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+                We're teaching this material in person. Read ahead and come with questions.
+              </p>
+            </div>
+            <a
+              href={`${typeof window !== 'undefined' ? window.location.protocol + '//' + window.location.hostname.replace(/^(dev-)?[^.]+/, '$1events') : ''}/e/${course.eventSlug}`}
+              className="shrink-0 px-5 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium text-sm no-underline"
+            >
+              View Event →
+            </a>
+          </div>
+        )}
 
         {/* Course outline */}
         <div className="space-y-4">
