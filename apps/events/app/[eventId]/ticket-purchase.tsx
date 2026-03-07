@@ -216,14 +216,9 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
       )}
       <button
         onClick={() => etransferEnabled ? setStep('selector') : handleCardPayment()}
-        disabled={step === 'loading-card'}
-        className={`px-6 md:px-8 py-2.5 md:py-3 rounded-lg font-semibold transition whitespace-nowrap ${
-          step === 'loading-card'
-            ? 'bg-orange-400 text-white cursor-wait'
-            : 'bg-orange-500 text-white hover:bg-orange-600'
-        }`}
+        className="px-6 md:px-8 py-2.5 md:py-3 rounded-lg font-semibold transition whitespace-nowrap bg-orange-500 text-white hover:bg-orange-600"
       >
-        {step === 'loading-card' ? 'Loading...' : 'Get Ticket'}
+        Get Ticket
       </button>
     </>
   );
