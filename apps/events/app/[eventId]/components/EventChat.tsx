@@ -176,8 +176,8 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
         const res = await fetch(`/api/events/${eventId}/my-ticket`);
         if (res.ok) {
           const data = await res.json();
-          setHasTicket(data.hasTicket);
-          if (!data.hasTicket) {
+          setHasTicket(data.hasAccess ?? data.hasTicket);
+          if (!data.hasAccess && !data.hasTicket) {
             setLoading(false);
           }
         } else {
