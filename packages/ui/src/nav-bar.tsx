@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { AppLauncher } from './app-launcher';
 
 export interface NavIdentity {
   isLoggedIn: boolean;
@@ -40,29 +41,22 @@ function buildUrl(service: string, prefix: string, domain: string, overrides?: S
   return url || `${prefix}${service}.${domain}`;
 }
 
-// Primary nav items (always visible in top bar)
-function buildPrimaryServices(prefix: string, domain: string, overrides?: ServiceUrls) {
-  return [
-    { name: 'Home', href: buildUrl('www', prefix, domain, overrides) },
-    { name: 'Events', href: buildUrl('events', prefix, domain, overrides) },
-  ];
-}
-
-// Secondary nav items (in hamburger dropdown)
-function buildSecondaryServices(prefix: string, domain: string, overrides?: ServiceUrls) {
-  return [
-    { name: 'Surveys', href: buildUrl('dykil', prefix, domain, overrides) },
-    { name: 'Links', href: buildUrl('links', prefix, domain, overrides) },
-    { name: 'Coffee', href: buildUrl('coffee', prefix, domain, overrides) },
-  ];
-}
-
 function buildUserLinks(prefix: string, domain: string, overrides?: ServiceUrls) {
   return {
     connections: buildUrl('connections', prefix, domain, overrides),
     messages: buildUrl('chat', prefix, domain, overrides),
     profile: buildUrl('profile', prefix, domain, overrides),
   };
+}
+
+/**
+ * Map identity tier to launcher tier.
+ */
+function getLauncherTier(identity: NavIdentity | null): 'anonymous' | 'soft' | 'hard' | 'creator' {
+  if (!identity?.isLoggedIn) return 'anonymous';
+  if (identity.tier === 'soft') return 'soft';
+  // TODO: distinguish creator from hard DID when roles are implemented
+  return 'hard';
 }
 
 /**
@@ -138,20 +132,18 @@ export function NavBar({
   unreadMessages = 0,
   serviceUrls,
 }: NavBarProps) {
-  const primaryServices = buildPrimaryServices(servicePrefix, domain, serviceUrls);
-  const secondaryServices = buildSecondaryServices(servicePrefix, domain, serviceUrls);
-  const allServices = [...primaryServices, ...secondaryServices];
   const userLinks = buildUserLinks(servicePrefix, domain, serviceUrls);
   const isDev = servicePrefix.includes('dev-');
   const [showDropdown, setShowDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [showAppsMenu, setShowAppsMenu] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const appsRef = useRef<HTMLDivElement>(null);
 
   // Auto-fetch identity if no prop provided
   const autoIdentity = useAutoIdentity(servicePrefix, domain, serviceUrls);
   const identity = identityProp ?? autoIdentity;
+
+  const registryUrl = buildUrl('registry', servicePrefix, domain, serviceUrls);
+  const launcherTier = getLauncherTier(identity);
 
   // Fetch balance from pay service
   const [balance, setBalance] = useState<number | null>(null);
@@ -169,18 +161,12 @@ export function NavBar({
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowDropdown(false);
       }
-      if (appsRef.current && !appsRef.current.contains(event.target as Node)) {
-        setShowAppsMenu(false);
-      }
     }
-    if (showDropdown || showAppsMenu) {
+    if (showDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [showDropdown, showAppsMenu]);
-
-  // Check if current service is in the secondary list
-  const currentInSecondary = secondaryServices.some(s => s.name === currentService);
+  }, [showDropdown]);
 
   return (
     <nav className="w-full border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm relative z-50">
@@ -198,59 +184,13 @@ export function NavBar({
           <img src={`${buildUrl("www", servicePrefix, domain, serviceUrls)}/images/logo.svg`} alt="Imajin" className="h-8" />
         </a>
 
-        {/* Center - Nav Links (desktop) */}
+        {/* Center - Launcher (desktop) */}
         <div className="hidden sm:flex items-center gap-1">
-          {primaryServices.map((service) => {
-            const isCurrent = service.name === currentService;
-            return (
-              <a
-                key={service.name}
-                href={service.href}
-                className={`px-3 py-1.5 rounded-lg text-sm transition ${
-                  isCurrent
-                    ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-              >
-                {service.name}
-              </a>
-            );
-          })}
-
-          {/* Apps dropdown */}
-          <div className="relative" ref={appsRef}>
-            <button
-              onClick={() => setShowAppsMenu(!showAppsMenu)}
-              className={`px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-1 ${
-                currentInSecondary
-                  ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
-            >
-              Apps
-              <span className="text-xs">{showAppsMenu ? '▲' : '▼'}</span>
-            </button>
-            {showAppsMenu && (
-              <div className="absolute left-0 mt-2 w-40 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg py-1 z-50">
-                {secondaryServices.map((service) => {
-                  const isCurrent = service.name === currentService;
-                  return (
-                    <a
-                      key={service.name}
-                      href={service.href}
-                      className={`block px-4 py-2 text-sm transition no-underline ${
-                        isCurrent
-                          ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium'
-                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                      }`}
-                    >
-                      {service.name}
-                    </a>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <AppLauncher
+            registryUrl={registryUrl}
+            currentService={currentService}
+            tier={launcherTier}
+          />
         </div>
 
         {/* Mobile hamburger */}
@@ -365,23 +305,13 @@ export function NavBar({
 
       {/* Mobile menu */}
       {showMobileMenu && (
-        <div className="sm:hidden border-t border-gray-200 dark:border-gray-800 px-4 py-3 space-y-1">
-          {allServices.map((service) => {
-            const isCurrent = service.name === currentService;
-            return (
-              <a
-                key={service.name}
-                href={service.href}
-                className={`block px-3 py-2 rounded-lg text-sm transition ${
-                  isCurrent
-                    ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-              >
-                {service.name}
-              </a>
-            );
-          })}
+        <div className="sm:hidden border-t border-gray-200 dark:border-gray-800 px-4 py-3">
+          <AppLauncher
+            registryUrl={registryUrl}
+            currentService={currentService}
+            tier={launcherTier}
+            inline
+          />
           {identity?.isLoggedIn && identity?.tier !== 'soft' && (
             <>
               <hr className="my-2 border-gray-200 dark:border-gray-800" />

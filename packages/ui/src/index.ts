@@ -1,5 +1,7 @@
 export { NavBar } from './nav-bar';
 export type { NavBarProps, NavIdentity, ServiceUrls } from './nav-bar';
+export { AppLauncher } from './app-launcher';
+export type { AppLauncherProps, LauncherService } from './app-launcher';
 export { Button } from './button';
 export { BalanceBadge } from './balance-badge';
 export type { BalanceBadgeProps } from './balance-badge';
