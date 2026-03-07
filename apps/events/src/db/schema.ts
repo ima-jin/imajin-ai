@@ -44,6 +44,11 @@ export const events = eventsSchema.table('events', {
   // Name display policy
   nameDisplayPolicy: text('name_display_policy').notNull().default('attendee_choice'), // real_name, handle, anonymous, attendee_choice
 
+  // Course link
+  // SQL: ALTER TABLE events.events ADD COLUMN IF NOT EXISTS course_slug TEXT;
+  // SQL: CREATE INDEX IF NOT EXISTS idx_events_course_slug ON events.events(course_slug);
+  courseSlug: text('course_slug'),                          // Links to learn.courses.slug
+
   // Trust pod integration
   podId: text('pod_id'),                                    // Links to trust_pods.id
   lobbyConversationId: text('lobby_conversation_id'),       // Event lobby chat (open to ticket holders)
@@ -55,6 +60,7 @@ export const events = eventsSchema.table('events', {
   statusIdx: index('idx_events_status').on(table.status),
   startsIdx: index('idx_events_starts').on(table.startsAt),
   podIdx: index('idx_events_pod_id').on(table.podId),
+  courseSlugIdx: index('idx_events_course_slug').on(table.courseSlug),
 }));
 
 /**

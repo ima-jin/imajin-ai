@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes } from '@/src/db';
 import { requireHardDID } from '@/src/lib/auth';
-import { desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, gt } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { createEventPod } from '@/src/lib/pods';
 
@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       imageUrl,
       tags,
       tickets: ticketTypesInput,
+      courseSlug,
     } = body;
 
     // Validate required fields
@@ -123,6 +124,7 @@ export async function POST(request: NextRequest) {
       country,
       imageUrl,
       tags: tags || [],
+      courseSlug: courseSlug || null,
       status: 'draft',
       podId,
       lobbyConversationId,
@@ -171,18 +173,25 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/events - List events
+ * Supports: ?courseSlug=intro-to-ai&upcoming=true&status=published&limit=20
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status') || 'published';
   const limit = parseInt(searchParams.get('limit') || '20');
+  const courseSlug = searchParams.get('courseSlug');
+  const upcoming = searchParams.get('upcoming') === 'true';
 
   try {
+    const conditions = [eq(events.status, status)];
+    if (courseSlug) conditions.push(eq(events.courseSlug, courseSlug));
+    if (upcoming) conditions.push(gt(events.startsAt, new Date()));
+
     const eventList = await db
       .select()
       .from(events)
-      .where(eq(events.status, status))
-      .orderBy(desc(events.startsAt))
+      .where(and(...conditions))
+      .orderBy(upcoming ? asc(events.startsAt) : desc(events.startsAt))
       .limit(limit);
 
     return NextResponse.json({ events: eventList });
