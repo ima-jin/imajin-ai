@@ -37,8 +37,8 @@ async function getNetworkStats() {
     
     const [lightningProfiles] = await sql`
       SELECT COUNT(*)::int as count 
-      FROM profile.profiles 
-      WHERE identity_tier = 'soft'
+      FROM auth.identities 
+      WHERE id LIKE 'did:email:%'
     `;
     
     return {
