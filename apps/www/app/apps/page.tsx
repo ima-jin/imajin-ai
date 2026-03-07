@@ -28,11 +28,12 @@ function getTier(session: { tier?: string } | null): string {
 }
 
 function filterByTier(services: ServiceEntry[], tier: string): ServiceEntry[] {
+  const hasProfile = tier === 'hard' || tier === 'creator';
   return services.filter((s) => {
     if (s.visibility === 'internal') return false;
     if (s.visibility === 'public') return true;
-    if (s.visibility === 'authenticated') return tier !== 'anonymous';
-    if (s.visibility === 'creator') return tier === 'hard' || tier === 'creator';
+    if (s.visibility === 'authenticated') return hasProfile;
+    if (s.visibility === 'creator') return hasProfile;
     return false;
   });
 }
@@ -158,7 +159,7 @@ export default function AppsPage() {
               </div>
             )}
 
-            {tier === 'anonymous' && (
+            {(tier === 'anonymous' || tier === 'soft') && (
               <div className="text-center mt-8">
                 <a
                   href={buildUrl('auth') + '/login?next=' + encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}
