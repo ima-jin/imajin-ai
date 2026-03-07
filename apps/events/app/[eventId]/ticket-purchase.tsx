@@ -209,7 +209,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
         <div className="flex flex-col sm:flex-row gap-2">
           <button
             onClick={handleCardPayment}
-            disabled={step === 'loading-card' || step === 'loading-etransfer'}
+            disabled={step === 'loading-card'}
             className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${
               step === 'loading-card'
                 ? 'bg-orange-400 text-white cursor-wait'
@@ -227,7 +227,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
           </button>
           <button
             onClick={() => { setStep('button'); setError(null); }}
-            disabled={step === 'loading-card' || step === 'loading-etransfer'}
+            disabled={step === 'loading-card'}
             className="px-3 py-2.5 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition disabled:opacity-50"
           >
             Cancel
