@@ -281,6 +281,10 @@ export default async function EventPage({ params, searchParams }: Props) {
   const cohosts = event.podId ? await getCohosts(event.podId, authUrl) : [];
   const organizers: OrganizerProfile[] = [ownerProfile, ...cohosts];
 
+  // Check if organizer has an email for e-transfer payments
+  const [creatorProfileRow] = await sql`SELECT email FROM profile.profiles WHERE did = ${event.creatorDid}`;
+  const etransferEnabled = !!creatorProfileRow?.email;
+
   const metadata = (event.metadata || {}) as EventMetadata;
   const theme = metadata.theme || {};
   const themeColor = theme.color || 'orange';
@@ -593,6 +597,7 @@ export default async function EventPage({ params, searchParams }: Props) {
                 userTickets={userTickets}
                 hasTicket={hasTicket}
                 inviteToken={inviteToken}
+                etransferEnabled={etransferEnabled}
               />
             </TicketsGate>
           ) : (

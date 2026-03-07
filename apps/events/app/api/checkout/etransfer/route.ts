@@ -9,10 +9,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
 import { eq, and, lt } from 'drizzle-orm';
 import { requireAuth } from '@/src/lib/auth';
+import { getClient } from '@imajin/db';
 import { randomBytes } from 'crypto';
 
+const sql = getClient();
 const HOLD_HOURS = 72;
-const ETRANSFER_EMAIL = 'jin@imajin.ai';
 
 interface ETransferCheckoutRequest {
   eventId: string;
@@ -44,6 +45,15 @@ export async function POST(request: NextRequest) {
 
     if (event.status !== 'published') {
       return NextResponse.json({ error: 'Tickets are not available for this event' }, { status: 400 });
+    }
+
+    // Look up organizer's e-transfer email from their profile
+    const [creatorProfile] = await sql`
+      SELECT email FROM profile.profiles WHERE did = ${event.creatorDid}
+    `;
+    const etransferEmail = creatorProfile?.email;
+    if (!etransferEmail) {
+      return NextResponse.json({ error: 'e-Transfer is not available for this event' }, { status: 400 });
     }
 
     // Invite-only access check
@@ -103,7 +113,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         ticketId: existingHold.id,
         instructions: {
-          email: ETRANSFER_EMAIL,
+          email: etransferEmail,
           amount,
           currency: ticketType.currency,
           memo,
@@ -167,7 +177,7 @@ export async function POST(request: NextRequest) {
       {
         ticketId: ticket.id,
         instructions: {
-          email: ETRANSFER_EMAIL,
+          email: etransferEmail,
           amount,
           currency: ticketType.currency,
           memo,

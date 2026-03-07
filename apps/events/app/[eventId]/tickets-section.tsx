@@ -25,9 +25,10 @@ interface Props {
   userTickets?: UserTicket[];
   hasTicket?: boolean;
   inviteToken?: string;
+  etransferEnabled?: boolean;
 }
 
-export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [], hasTicket = false, inviteToken }: Props) {
+export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [], hasTicket = false, inviteToken, etransferEnabled = false }: Props) {
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'buy-tickets'>(
     hasTicket ? 'my-tickets' : 'buy-tickets'
   );
@@ -238,6 +239,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken }: { eventId: st
                   eventTitle={eventTitle}
                   ticket={ticket}
                   inviteToken={inviteToken}
+                  etransferEnabled={etransferEnabled}
                 />
               </div>
             </div>

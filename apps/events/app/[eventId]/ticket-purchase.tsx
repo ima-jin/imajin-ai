@@ -8,6 +8,7 @@ interface Props {
   eventTitle: string;
   ticket: TicketType;
   inviteToken?: string;
+  etransferEnabled?: boolean;
 }
 
 interface ETransferInstructions {
@@ -22,7 +23,7 @@ interface ETransferInstructions {
 
 type Step = 'button' | 'selector' | 'loading-card' | 'loading-etransfer' | 'etransfer-done';
 
-export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken }: Props) {
+export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false }: Props) {
   const [step, setStep] = useState<Step>('button');
   const [error, setError] = useState<string | null>(null);
   const [etransfer, setEtransfer] = useState<ETransferInstructions | null>(null);
@@ -214,10 +215,15 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken }: Pro
         <p className="text-red-500 text-xs mb-2">{error}</p>
       )}
       <button
-        onClick={() => setStep('selector')}
-        className="px-6 md:px-8 py-2.5 md:py-3 rounded-lg font-semibold transition whitespace-nowrap bg-orange-500 text-white hover:bg-orange-600"
+        onClick={() => etransferEnabled ? setStep('selector') : handleCardPayment()}
+        disabled={step === 'loading-card'}
+        className={`px-6 md:px-8 py-2.5 md:py-3 rounded-lg font-semibold transition whitespace-nowrap ${
+          step === 'loading-card'
+            ? 'bg-orange-400 text-white cursor-wait'
+            : 'bg-orange-500 text-white hover:bg-orange-600'
+        }`}
       >
-        Get Ticket
+        {step === 'loading-card' ? 'Loading...' : 'Get Ticket'}
       </button>
     </>
   );
