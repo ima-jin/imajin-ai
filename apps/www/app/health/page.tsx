@@ -19,17 +19,53 @@ interface HealthResponse {
   services: ServiceCheck[];
 }
 
-const STATUS_COLORS = {
+const STATUS_COLORS: Record<string, string> = {
   up: 'bg-green-500',
   down: 'bg-red-500',
   degraded: 'bg-yellow-500',
 };
 
-const STATUS_TEXT = {
+const STATUS_TEXT: Record<string, string> = {
   up: 'Operational',
   down: 'Down',
   degraded: 'Degraded',
 };
+
+function ServiceRow({ service }: { service: ServiceCheck }) {
+  return (
+    <div className="flex items-center justify-between p-4 bg-gray-900 rounded-lg border border-gray-800">
+      <div className="flex items-center gap-4">
+        <div className={`w-2.5 h-2.5 rounded-full ${STATUS_COLORS[service.status]}`} />
+        <div>
+          <a
+            href={service.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium hover:text-orange-400 transition-colors"
+          >
+            {service.label || service.name}
+          </a>
+          <p className="text-sm text-gray-500">{service.name}.imajin.ai</p>
+        </div>
+      </div>
+      <div className="text-right">
+        <p className={`font-medium ${
+          service.status === 'up' ? 'text-green-400' :
+          service.status === 'down' ? 'text-red-400' :
+          'text-yellow-400'
+        }`}>
+          {STATUS_TEXT[service.status]}
+        </p>
+        {service.responseTime !== null && (
+          <p className="text-sm text-gray-500">{service.responseTime}ms</p>
+        )}
+        {service.error && (
+          <p className="text-sm text-red-400 max-w-48 truncate" title={service.error}>{service.error}</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function HealthPage() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -66,43 +102,6 @@ export default function HealthPage() {
   const CORE_NAMES = ['www', 'auth', 'pay', 'profile', 'registry', 'events', 'chat', 'connections', 'input', 'media'];
   const coreServices = health?.services.filter(s => CORE_NAMES.includes(s.name)) || [];
   const appServices = health?.services.filter(s => !CORE_NAMES.includes(s.name)) || [];
-
-  const renderService = (service: ServiceCheck) => (
-    <div
-      key={service.name}
-      className="flex items-center justify-between p-4 bg-gray-900 rounded-lg border border-gray-800"
-    >
-      <div className="flex items-center gap-4">
-        <div className={`w-2.5 h-2.5 rounded-full ${STATUS_COLORS[service.status]}`} />
-        <div>
-          <a
-            href={service.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium hover:text-orange-400 transition-colors"
-          >
-            {service.label || service.name}
-          </a>
-          <p className="text-sm text-gray-500">{service.name}.imajin.ai</p>
-        </div>
-      </div>
-      <div className="text-right">
-        <p className={`font-medium ${
-          service.status === 'up' ? 'text-green-400' :
-          service.status === 'down' ? 'text-red-400' :
-          'text-yellow-400'
-        }`}>
-          {STATUS_TEXT[service.status]}
-        </p>
-        {service.responseTime !== null && (
-          <p className="text-sm text-gray-500">{service.responseTime}ms</p>
-        )}
-        {service.error && (
-          <p className="text-sm text-red-400 max-w-48 truncate" title={service.error}>{service.error}</p>
-        )}
-      </div>
-    </div>
-  );
 
   return (
     <main className="min-h-screen py-16 px-6">
@@ -161,13 +160,13 @@ export default function HealthPage() {
         {/* Services list */}
         <div className="space-y-3">
           <h2 className="text-xl font-medium text-gray-400 mb-4">Core Platform</h2>
-          {coreServices.map(renderService)}
+          {coreServices.map(s => <ServiceRow key={s.name} service={s} />)}
         </div>
 
         {appServices.length > 0 && (
           <div className="space-y-3 mt-8">
             <h2 className="text-xl font-medium text-gray-400 mb-4">Applications</h2>
-            {appServices.map(renderService)}
+            {appServices.map(s => <ServiceRow key={s.name} service={s} />)}
           </div>
         )}
 
