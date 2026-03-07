@@ -12,10 +12,12 @@ const SERVICES = [
   { name: "chat", description: "Real-time messaging and conversations" },
   { name: "registry", description: "Node registration, heartbeat, and subdomain provisioning" },
   { name: "connections", description: "Social connections, pods, and trust invites" },
-  { name: "coffee", description: "Tipping and creator support pages" },
-  { name: "links", description: "Link-in-bio pages and click tracking" },
-  { name: "dykil", description: "Surveys and do-you-know-if-I-like polls" },
+  { name: "input", description: "Media upload relay and Whisper transcription" },
   { name: "media", description: "Media asset management, upload, and classification" },
+  { name: "coffee", description: "Tipping and creator support pages" },
+  { name: "dykil", description: "Surveys and do-you-know-if-I-like polls" },
+  { name: "links", description: "Link-in-bio pages and click tracking" },
+  { name: "learn", description: "Courses, lessons, and learning progress" },
 ];
 
 function buildServiceUrl(name: string): string {

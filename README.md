@@ -99,6 +99,9 @@ Shared libraries used across all apps.
 | [@imajin/input](./packages/input) | Input components (emoji, voice, GPS, file upload) |
 | [@imajin/media](./packages/media) | Media browser & asset display components |
 | [@imajin/fair](./packages/fair) | .fair attribution (types, validator, editor components) |
+| [@imajin/onboard](./packages/onboard) | Anonymous → soft DID onboarding (`<OnboardGate>`) |
+| [@imajin/email](./packages/email) | Email sending (SendGrid), templates, QR generation |
+| [@imajin/trust-graph](./packages/trust-graph) | Trust graph queries (connection checks) |
 
 ---
 

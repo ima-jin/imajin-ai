@@ -86,6 +86,9 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | `@imajin/input` | Input components (emoji, voice, GPS, file upload) |
 | `@imajin/media` | Media browser & asset display components |
 | `@imajin/fair` | .fair attribution (types, validator, FairEditor, FairAccordion) |
+| `@imajin/onboard` | `<OnboardGate>` — shared anonymous → soft DID onboarding flow |
+| `@imajin/email` | Email sending (SendGrid) + templates + QR generation |
+| `@imajin/trust-graph` | Trust graph queries (connection checks) |
 
 ## Environment Variables
 
