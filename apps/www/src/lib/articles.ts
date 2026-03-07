@@ -5,7 +5,11 @@ import { remark } from 'remark';
 import html from 'remark-html';
 
 // Articles directory - lives in apps/www/articles
-const articlesDirectory = path.join(process.cwd(), 'articles');
+// At build time (npx next build apps/www), cwd may be monorepo root.
+// At runtime (pm2), cwd is apps/www. Handle both.
+const articlesDirectory = fs.existsSync(path.join(process.cwd(), 'articles'))
+  ? path.join(process.cwd(), 'articles')
+  : path.join(process.cwd(), 'apps/www/articles');
 
 export type ArticleStatus = 'POSTED' | 'REVIEW' | 'DRAFT';
 
