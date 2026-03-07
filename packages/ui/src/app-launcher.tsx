@@ -8,7 +8,7 @@ export interface LauncherService {
   icon: string;
   label: string;
   visibility: 'public' | 'authenticated' | 'creator' | 'internal';
-  category: 'core' | 'creator' | 'infrastructure';
+  category: 'core' | 'creator' | 'developer' | 'infrastructure';
   url: string;
 }
 
