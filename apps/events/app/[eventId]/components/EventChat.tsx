@@ -211,14 +211,19 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
       }
 
       const data = await res.json();
-      setMessages(data.messages || []);
+      const newMessages = data.messages || [];
+      const hadMessages = messages.length;
+      setMessages(newMessages);
       setLoading(false);
 
-      setTimeout(() => {
-        if (messagesEndRef.current) {
-          messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-        }
-      }, 100);
+      // Only auto-scroll when new messages arrive, not on every poll
+      if (newMessages.length > hadMessages) {
+        setTimeout(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+          }
+        }, 100);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load messages');
       setLoading(false);
