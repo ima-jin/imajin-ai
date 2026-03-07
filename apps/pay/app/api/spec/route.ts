@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readFileSync } from "fs";
 import { join } from "path";
+export const dynamic = "force-dynamic";
 
 let cachedSpec: string | null = null;
 
