@@ -6,6 +6,7 @@ const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || "imajin.ai";
 
 // Map service names to their internal (server-side) URLs
 const SERVICE_URLS: Record<string, string> = {
+  www: process.env.WWW_SERVICE_URL || "http://localhost:3000",
   auth: process.env.AUTH_SERVICE_URL || "http://localhost:3001",
   registry: "http://localhost:" + (process.env.PORT || "3002"),
   connections: process.env.CONNECTIONS_SERVICE_URL || "http://localhost:3003",
