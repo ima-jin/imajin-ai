@@ -7,16 +7,18 @@ const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || "imajin.ai";
 // Map service names to their internal (server-side) URLs
 const SERVICE_URLS: Record<string, string> = {
   auth: process.env.AUTH_SERVICE_URL || "http://localhost:3001",
+  registry: "http://localhost:" + (process.env.PORT || "3002"),
+  connections: process.env.CONNECTIONS_SERVICE_URL || "http://localhost:3003",
   pay: process.env.PAY_SERVICE_URL || "http://localhost:3004",
   profile: process.env.PROFILE_SERVICE_URL || "http://localhost:3005",
   events: process.env.EVENTS_SERVICE_URL || "http://localhost:3006",
   chat: process.env.CHAT_SERVICE_URL || "http://localhost:3007",
-  registry: "http://localhost:" + (process.env.PORT || "3002"),
-  connections: process.env.CONNECTIONS_SERVICE_URL || "http://localhost:3003",
-  coffee: process.env.COFFEE_SERVICE_URL || "http://localhost:3100",
-  links: process.env.LINKS_SERVICE_URL || "http://localhost:3102",
-  dykil: process.env.DYKIL_SERVICE_URL || "http://localhost:3101",
+  input: process.env.INPUT_SERVICE_URL || "http://localhost:3008",
   media: process.env.MEDIA_SERVICE_URL || "http://localhost:3009",
+  coffee: process.env.COFFEE_SERVICE_URL || "http://localhost:3100",
+  dykil: process.env.DYKIL_SERVICE_URL || "http://localhost:3101",
+  links: process.env.LINKS_SERVICE_URL || "http://localhost:3102",
+  learn: process.env.LEARN_SERVICE_URL || "http://localhost:3103",
 };
 
 export async function OPTIONS(request: NextRequest) {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { OnboardGate } from '@imajin/onboard';
 
 interface Lesson {
   id: string;
@@ -71,6 +72,16 @@ export default function CourseDetailPage() {
     }
     load();
   }, [slug]);
+
+  // Auto-enroll after onboard email verification redirect
+  useEffect(() => {
+    if (!course || course.enrollment || enrolling) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('enroll') === '1') {
+      window.history.replaceState({}, '', `/course/${slug}`);
+      handleEnroll();
+    }
+  }, [course]);
 
   async function handleEnroll() {
     if (!course) return;
@@ -174,13 +185,18 @@ export default function CourseDetailPage() {
                 )}
               </Link>
             ) : (
-              <button
-                onClick={handleEnroll}
-                disabled={enrolling}
-                className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium disabled:opacity-50"
+              <OnboardGate
+                action={`enroll in "${course.title}"`}
+                redirectUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/course/${slug}?enroll=1`}
+                onIdentity={() => handleEnroll()}
               >
-                {enrolling ? 'Enrolling...' : course.price === 0 ? 'Start Learning — Free' : `Enroll — $${(course.price / 100).toFixed(2)}`}
-              </button>
+                <button
+                  disabled={enrolling}
+                  className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium disabled:opacity-50"
+                >
+                  {enrolling ? 'Enrolling...' : course.price === 0 ? 'Start Learning — Free' : `Enroll — $${(course.price / 100).toFixed(2)}`}
+                </button>
+              </OnboardGate>
             )}
           </div>
         </div>

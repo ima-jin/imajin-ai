@@ -47,8 +47,30 @@ export const tokens = authSchema.table('tokens', {
   identityIdx: index('idx_auth_tokens_identity').on(table.identityId),
 }));
 
+/**
+ * Onboard Tokens - email verification for anonymous → soft DID onboarding
+ *
+ * Used by @imajin/onboard to verify email before minting soft DID.
+ * 15 minute TTL, single use.
+ */
+export const onboardTokens = authSchema.table('onboard_tokens', {
+  id: text('id').primaryKey(),
+  email: text('email').notNull(),
+  name: text('name'),
+  token: text('token').notNull().unique(),
+  redirectUrl: text('redirect_url'),
+  context: text('context'),                       // Human-readable: "Enroll in Intro to AI"
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  tokenIdx: index('idx_auth_onboard_tokens_token').on(table.token),
+  emailIdx: index('idx_auth_onboard_tokens_email').on(table.email),
+}));
+
 // Types
 export type Identity = typeof identities.$inferSelect;
 export type NewIdentity = typeof identities.$inferInsert;
 export type Challenge = typeof challenges.$inferSelect;
 export type Token = typeof tokens.$inferSelect;
+export type OnboardToken = typeof onboardTokens.$inferSelect;

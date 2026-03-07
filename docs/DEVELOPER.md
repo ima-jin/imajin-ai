@@ -101,6 +101,9 @@ Code shared across services lives in `packages/`:
 | `@imajin/input` | Input widgets (emoji, voice, GPS, upload) |
 | `@imajin/media` | Media browser components |
 | `@imajin/fair` | .fair attribution standard |
+| `@imajin/onboard` | `<OnboardGate>` — anonymous → soft DID onboarding |
+| `@imajin/email` | Email sending (SendGrid), templates, QR codes |
+| `@imajin/trust-graph` | Trust graph queries for connection checks |
 | `@imajin/config` | Shared configuration |
 
 ### When shared packages change
