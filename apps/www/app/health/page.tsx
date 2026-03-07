@@ -177,7 +177,6 @@ export default function HealthPage() {
             ))}
           </div>
         )}
-        </div>
 
         {/* Footer */}
         <div className="mt-16 pt-8 border-t border-gray-800 text-center text-gray-500 text-sm">
