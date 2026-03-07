@@ -50,6 +50,7 @@ export default function CourseEditorPage() {
   const [editPrice, setEditPrice] = useState(0);
   const [editVisibility, setEditVisibility] = useState('public');
   const [editStatus, setEditStatus] = useState('draft');
+  const [editEventSlug, setEditEventSlug] = useState('');
 
   // Module/lesson creation
   const [newModuleTitle, setNewModuleTitle] = useState('');
@@ -68,6 +69,7 @@ export default function CourseEditorPage() {
       setEditPrice(data.price || 0);
       setEditVisibility(data.visibility || 'public');
       setEditStatus(data.status || 'draft');
+      setEditEventSlug(data.eventSlug || '');
     } catch (e) {
       console.error(e);
     } finally {
@@ -90,6 +92,7 @@ export default function CourseEditorPage() {
           price: editPrice,
           visibility: editVisibility,
           status: editStatus,
+          eventSlug: editEventSlug || null,
         }),
       });
       await loadCourse();
@@ -203,6 +206,16 @@ export default function CourseEditorPage() {
                 rows={3}
                 className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Linked Event</label>
+              <input
+                value={editEventSlug}
+                onChange={(e) => setEditEventSlug(e.target.value)}
+                placeholder="Event ID (e.g. jins-launch-party)"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
+              />
+              <p className="text-xs text-gray-400 mt-1">Shows a &quot;Live Workshop&quot; banner on the course page linking to this event.</p>
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
