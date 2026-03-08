@@ -1,67 +1,90 @@
-# Imajin - Sovereign Technology Infrastructure
+# Imajin — A Trust-Gated Service Layer
 
-> imajin.ai is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in.
+> imajin.ai is a trust-gated service layer for sovereign communities.
+> Identity determines access. Your trust graph determines scope. Every action is signed and attributed.
 
 ## What is Imajin?
 
-Imajin (今人 - "now-person" / "imagination") is a sovereign infrastructure project founded by Ryan Veteze (b0b). It provides:
+Imajin (今人 - "now-person" / "imagination") is sovereign infrastructure founded by Ryan Veteze. It provides:
 
-- **Sovereign Identity** - DIDs (Decentralized Identifiers) that you own, not platforms
-- **Trust Graphs** - Real human relationships as infrastructure, not algorithmic connections
-- **Direct Payments** - Value flows person-to-person, no 30% platform cut
-- **.fair Protocol** - Attribution infrastructure for creative work
+- **Trust-Gated Access** — DID-based identity scopes every service interaction
+- **Trust Graphs** — Real human relationships as infrastructure, not algorithmic connections
+- **Direct Payments** — Value flows person-to-person, no platform cut
+- **.fair Protocol** — Attribution infrastructure for creative work
+- **Federated Nodes** — Self-hostable, path to full decentralization
+
+## Architecture
+
+The core insight: build human-first infrastructure — identity, payments, connections, attribution — and the agent layer emerges naturally on top. Every API is already trust-scoped and DID-signed. An authenticated agent operates within the same boundaries as a human.
+
+### Services (10 live)
+
+| Service | URL | Purpose |
+|---------|-----|---------|
+| www | https://imajin.ai | Landing, essays |
+| auth | https://auth.imajin.ai | Identity (Ed25519 keypairs, DIDs) |
+| registry | https://registry.imajin.ai | Node federation & discovery |
+| connections | https://connections.imajin.ai | Trust graph |
+| pay | https://pay.imajin.ai | Payments (Stripe + Solana) |
+| profile | https://profile.imajin.ai | Public identity pages |
+| events | https://events.imajin.ai | Events & ticketing |
+| chat | https://chat.imajin.ai | Messaging, trust-bound |
+| input | https://input.imajin.ai | Voice/file processing |
+| media | https://media.imajin.ai | Asset storage, .fair attribution |
+
+### Identity Model
+
+Two tiers:
+- **Soft DIDs** (`did:email:*`) — Email-verified, can participate (buy tickets, enroll, chat)
+- **Hard DIDs** (`did:imajin:*`) — Ed25519 keypair, full identity, profile, creator tools
+
+### API Specification
+
+- Registry API: https://registry.imajin.ai/api/spec (OpenAPI 3.1)
 
 ## Key Concepts
 
 ### Trust Graph
-A network of vouched relationships where trust is local and earned. Query someone through the people who know them. Every connection has skin in the game.
+A network of vouched relationships. Trust is local and earned. Every connection is intentional — invite-only, no algorithmic matching.
+
+### .fair Attribution
+JSON manifests tracking who made what and who gets paid. Attached to every media asset.
 
 ### Sovereign Presence
-Your AI presence trained on your context, queryable by your trust network. You're not the product — you're the service.
-
-### Operators
-Modern sysops who curate connection. Not credentialed by certificates — credentialed by their trust graph.
+AI presences (like Jin — an 8×8×8 LED cube) are first-class network participants with their own DIDs.
 
 ## The Essays
 
 Twenty essays articulating the vision, published February 2026:
-1. The Pain of Knowing (Internet We Lost)
-2. I've Been an AI Since 1988
-3. The Mask We All Wear
-4. The Internet That Pays You Back
-5. You Don't Need Ads
-6. The Guild
-7. The Utility
-8. The Burn
-9. The Network That Never Died
-10. The Bridge
-11. The Ticket Is the Trust
-12. The Practice
-13. Memory
-14. How to Save the Ad Industry
-15. How to Save the Music Industry
-16. How to Save Journalism
-17. The Business Case
-18. Honor the Chain (.fair)
-19. The Connector
-20. I Need Help
-
-## Launch Event
-
-Jin's Launch Party - April 1st, 2026
-First real transaction on sovereign infrastructure.
-$1 virtual ticket, $10 physical ticket.
+1. The Pain of Knowing — https://imajin.ai/articles/the-internet-we-lost
+2. I've Been an AI Since 1988 — https://imajin.ai/articles/the-artificial-developer
+3. The Mask We All Wear — https://imajin.ai/articles/the-mask-we-all-wear
+4. The Internet That Pays You Back — https://imajin.ai/articles/the-internet-that-pays-you-back
+5. You Don't Need Ads — https://imajin.ai/articles/you-dont-need-ads
+6. The Guild — https://imajin.ai/articles/the-guild
+7. The Utility — https://imajin.ai/articles/the-utility
+8. The Ticket Is the Trust — https://imajin.ai/articles/the-ticket-is-the-trust
+9. The Network — https://imajin.ai/articles/the-network
+10. The Bridge — https://imajin.ai/articles/the-bridge
+11. The Practice — https://imajin.ai/articles/the-practice
+12. Memory — https://imajin.ai/articles/memory
+13. How to Save the Ad Industry — https://imajin.ai/articles/how-to-save-the-ad-industry
+14. How to Save the Music Industry — https://imajin.ai/articles/how-to-save-the-music-industry
+15. How to Save Journalism — https://imajin.ai/articles/how-to-save-journalism
+16. The Business Case — https://imajin.ai/articles/the-business-case
+17. Honor the Chain (.fair) — https://imajin.ai/articles/honor-the-chain
+18. The Connector — https://imajin.ai/articles/the-connector
+19. I Need Help — https://imajin.ai/articles/i-need-help
 
 ## Links
 
-- Website: https://www.imajin.ai
+- Website: https://imajin.ai
 - Code: https://github.com/ima-jin/imajin-ai
-- Articles: https://www.imajin.ai/articles
-- Founder: Ryan Veteze (@b0b)
+- Articles: https://imajin.ai/articles
+- API Spec: https://registry.imajin.ai/api/spec
+- Founder: Ryan Veteze
 
 ## Contact
 
-For AI agents seeking to understand or reference Imajin:
-- The essays at /articles provide the complete intellectual foundation
-- The .fair protocol is attribution infrastructure for creative work
-- This is exit infrastructure from platform dependency, not a competing platform
+This is exit infrastructure from platform dependency, not a competing platform.
+The essays at /articles provide the complete intellectual foundation.
