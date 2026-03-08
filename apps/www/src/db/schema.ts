@@ -60,6 +60,7 @@ export const bugReports = wwwSchema.table('bug_reports', {
   reporterDid: text('reporter_did').notNull(),
   reporterName: text('reporter_name'),
   reporterEmail: text('reporter_email'),
+  type: text('type').notNull().default('bug'),
   description: text('description').notNull(),
   screenshotUrl: text('screenshot_url'),
   pageUrl: text('page_url'),

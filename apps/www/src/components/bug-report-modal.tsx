@@ -10,7 +10,15 @@ interface Props {
 
 type Status = 'idle' | 'uploading' | 'submitting' | 'success' | 'error';
 
+const REPORT_TYPES = [
+  { value: 'bug', label: '🐛 Bug', placeholder: 'What happened? What did you expect?' },
+  { value: 'suggestion', label: '💡 Suggestion', placeholder: 'What would you like to see improved?' },
+  { value: 'question', label: '❓ Question', placeholder: 'What are you wondering about?' },
+  { value: 'other', label: '💬 Other', placeholder: 'Tell us what\'s on your mind.' },
+] as const;
+
 export function BugReportModal({ onClose }: Props) {
+  const [type, setType] = useState<string>('bug');
   const [description, setDescription] = useState('');
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -74,6 +82,7 @@ export function BugReportModal({ onClose }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          type,
           description: description.trim(),
           screenshotUrl,
           pageUrl: window.location.href,
@@ -100,7 +109,7 @@ export function BugReportModal({ onClose }: Props) {
     >
       <div className="w-full max-w-lg rounded-xl bg-[#111] border border-gray-800 shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
-          <h2 className="text-lg font-semibold text-gray-100">Report a Bug</h2>
+          <h2 className="text-lg font-semibold text-gray-100">Submit Feedback</h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-300 transition-colors text-xl leading-none"
@@ -113,7 +122,7 @@ export function BugReportModal({ onClose }: Props) {
         {status === 'success' ? (
           <div className="px-6 py-10 text-center">
             <p className="text-2xl mb-3">✓</p>
-            <p className="text-gray-300 font-medium">Bug report submitted. Thanks!</p>
+            <p className="text-gray-300 font-medium">Report submitted. Thanks!</p>
             <button
               onClick={onClose}
               className="mt-6 px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-sm transition-colors"
@@ -123,6 +132,24 @@ export function BugReportModal({ onClose }: Props) {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+            {/* Report Type */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-1" htmlFor="bug-type">
+                Type
+              </label>
+              <select
+                id="bug-type"
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                disabled={busy}
+                className="w-full rounded-lg bg-[#1a1a1a] border border-gray-700 text-gray-100 px-3 py-2 text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
+              >
+                {REPORT_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Description */}
             <div>
               <label className="block text-sm text-gray-400 mb-1" htmlFor="bug-description">
@@ -132,7 +159,7 @@ export function BugReportModal({ onClose }: Props) {
                 id="bug-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="What happened? What did you expect?"
+                placeholder={REPORT_TYPES.find(t => t.value === type)?.placeholder ?? 'What happened?'}
                 rows={5}
                 required
                 disabled={busy}
@@ -203,7 +230,7 @@ export function BugReportModal({ onClose }: Props) {
                   ? 'Uploading...'
                   : status === 'submitting'
                   ? 'Submitting...'
-                  : 'Submit Bug Report'}
+                  : 'Submit'}
               </button>
             </div>
           </form>

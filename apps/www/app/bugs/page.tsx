@@ -98,6 +98,9 @@ export default async function BugsPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-200 line-clamp-3 mb-2">{r.description}</p>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded font-medium bg-gray-700 text-gray-300">
+                      {r.type === 'suggestion' ? '💡' : r.type === 'question' ? '❓' : r.type === 'other' ? '💬' : '🐛'}
+                    </span>
                     <StatusBadge status={r.status} />
                     <span>{formatDate(r.createdAt)}</span>
                     {r.status === 'imported' && r.githubIssueUrl && (

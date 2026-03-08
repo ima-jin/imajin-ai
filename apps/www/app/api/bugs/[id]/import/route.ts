@@ -28,7 +28,12 @@ export async function POST(
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const title = `[Bug Report] ${report.description.slice(0, 80)}`;
+  const typeLabel = report.type === 'suggestion' ? 'Suggestion'
+    : report.type === 'question' ? 'Question'
+    : report.type === 'other' ? 'Feedback'
+    : 'Bug Report';
+  const title = `[${typeLabel}] ${report.description.slice(0, 80)}`;
+  const ghLabel = report.type === 'suggestion' ? 'enhancement' : 'bug';
 
   const bodyParts: string[] = [report.description];
 
@@ -57,7 +62,7 @@ export async function POST(
       'Content-Type': 'application/json',
       'X-GitHub-Api-Version': '2022-11-28',
     },
-    body: JSON.stringify({ title, body: issueBody, labels: ['bug'] }),
+    body: JSON.stringify({ title, body: issueBody, labels: [ghLabel] }),
   });
 
   if (!ghRes.ok) {

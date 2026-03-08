@@ -18,7 +18,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { description, screenshotUrl, pageUrl, viewport } = body as {
+  const { type, description, screenshotUrl, pageUrl, viewport } = body as {
+    type?: string;
     description?: string;
     screenshotUrl?: string;
     pageUrl?: string;
@@ -29,12 +30,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'description is required' }, { status: 400 });
   }
 
+  const validTypes = ['bug', 'suggestion', 'question', 'other'];
+  const reportType = validTypes.includes(type ?? '') ? type! : 'bug';
+
   const userAgent = request.headers.get('user-agent') ?? undefined;
 
   const [report] = await db.insert(bugReports).values({
     id: `bug_${nanoid(16)}`,
     reporterDid: auth.identity.did,
     reporterName: auth.identity.name ?? null,
+    type: reportType,
     description: description.trim(),
     screenshotUrl: typeof screenshotUrl === 'string' ? screenshotUrl : null,
     pageUrl: typeof pageUrl === 'string' ? pageUrl : null,

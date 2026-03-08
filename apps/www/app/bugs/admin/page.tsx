@@ -153,6 +153,9 @@ export default function AdminBugsPage() {
                 {/* Header */}
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                   <StatusBadge status={r.status} />
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-300">
+                    {r.type === 'suggestion' ? '💡 Suggestion' : r.type === 'question' ? '❓ Question' : r.type === 'other' ? '💬 Other' : '🐛 Bug'}
+                  </span>
                   <span className="text-xs text-gray-500">{r.id}</span>
                   <span className="text-xs text-gray-600">{formatDate(r.createdAt)}</span>
                 </div>

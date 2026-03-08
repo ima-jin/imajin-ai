@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS www.bug_reports (
   reporter_did TEXT NOT NULL,
   reporter_name TEXT,
   reporter_email TEXT,
+  type TEXT NOT NULL DEFAULT 'bug',
   description TEXT NOT NULL,
   screenshot_url TEXT,
   page_url TEXT,
