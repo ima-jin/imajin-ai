@@ -45,6 +45,10 @@ export default function LessonViewerPage() {
   const nextLesson = currentIndex < allLessons.length - 1 ? allLessons[currentIndex + 1] : null;
   const currentProgress = allLessons.find(l => l.id === lessonId);
 
+  // Index of this lesson within slide-type lessons only (for "Present from here")
+  const slideLessons = allLessons.filter(l => l.contentType === 'slide');
+  const slideIndex = slideLessons.findIndex(l => l.id === lessonId);
+
   useEffect(() => {
     async function load() {
       setLoading(true);
@@ -166,6 +170,51 @@ export default function LessonViewerPage() {
 
           <h1 className="text-3xl font-bold mb-6">{lesson.title}</h1>
 
+          {/* Slide content — card-style preview with present button */}
+          {lesson.contentType === 'slide' && (
+            <div className="mb-8">
+              <div className="bg-[#0a0a0a] text-white rounded-xl p-8 md:p-10 border border-gray-800">
+                {lesson.metadata?.subtitle && (
+                  <p className="text-white/40 text-sm mb-4">{lesson.metadata.subtitle}</p>
+                )}
+                {lesson.content && (
+                  <div
+                    className="text-white/70 leading-relaxed text-base"
+                    dangerouslySetInnerHTML={{ __html: simpleMarkdown(lesson.content) }}
+                  />
+                )}
+                {lesson.metadata?.items && (
+                  <div className="mt-4 space-y-3">
+                    {lesson.metadata.items.map((item: string, i: number) => (
+                      <div key={i} className="flex gap-3 text-white/70">
+                        <span className="text-white/30 font-mono shrink-0">{i + 1}</span>
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {lesson.metadata?.stats && (
+                  <div className="mt-4 border border-white/10 rounded-lg p-4">
+                    {lesson.metadata.stats.map((s: { label: string; value: string }, i: number) => (
+                      <div key={i} className="flex justify-between border-b border-white/10 py-2 last:border-0 text-sm">
+                        <span className="text-white/40">{s.label}</span>
+                        <span className="text-white/80">{s.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="mt-4 flex justify-end">
+                <a
+                  href={`/course/${slug}/present#${slideIndex}`}
+                  className="px-4 py-2 bg-gray-900 text-white/70 hover:text-white border border-gray-700 rounded-lg text-sm transition-colors"
+                >
+                  ▶ Present from here
+                </a>
+              </div>
+            </div>
+          )}
+
           {/* Video content */}
           {lesson.contentType === 'video' && lesson.metadata?.videoUrl && (
             <div className="aspect-video mb-6 bg-black rounded-lg overflow-hidden">
@@ -177,8 +226,8 @@ export default function LessonViewerPage() {
             </div>
           )}
 
-          {/* Markdown content */}
-          {lesson.content && (
+          {/* Markdown content (non-slide) */}
+          {lesson.content && lesson.contentType !== 'slide' && (
             <div
               className="prose prose-lg dark:prose-invert max-w-none mb-8"
               dangerouslySetInnerHTML={{ __html: simpleMarkdown(lesson.content) }}

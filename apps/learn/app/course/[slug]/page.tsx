@@ -186,7 +186,18 @@ export default function CourseDetailPage() {
           )}
 
           {/* Action buttons */}
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
+            {/* Present button — only shown if course has slide lessons */}
+            {course.modules.some((m: Module) => m.lessons.some((l: Lesson) => l.contentType === 'slide')) && (
+              course.isCreator || course.enrollment
+            ) && (
+              <Link
+                href={`/course/${course.slug}/present`}
+                className="px-6 py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-700 font-medium border border-gray-700"
+              >
+                ▶ Present
+              </Link>
+            )}
             {course.isCreator ? (
               <Link
                 href={`/dashboard/${course.slug}`}
