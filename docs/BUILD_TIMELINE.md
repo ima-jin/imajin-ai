@@ -186,7 +186,7 @@ This is where the trust graph stopped being a connection list and became an *eco
 
 ### February 21 — The Essay Series
 
-Ryan wrote 20 essays — the complete intellectual foundation. From the BBS origin story through .fair attribution to the honest ask for help. Filed as `essay-00-sequence.md`.
+Ryan wrote 30 essays — the complete intellectual foundation. From the BBS origin story through .fair attribution to the honest ask for help. 9 published so far. Filed as `essay-00-sequence.md`.
 
 > "How to Save the World by Partying: The Cult of Community"
 
@@ -348,7 +348,7 @@ auth, pay, www, profile, registry, events, chat, connections, media, input, lear
 ### Key Numbers
 - ~60 registered identities
 - 3 tickets sold on the sovereign stack
-- 20 essays written
+- 30 essays written (9 published)
 - 739 files, 68,024 lines of code
 - $1,589 in inference costs (API spend)
 - 190 human hours across 25 build days
