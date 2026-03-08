@@ -126,6 +126,12 @@ export default async function Home() {
         >
           Jin's Launch Party →
         </a>
+        <a
+          href={`${PREFIX}registry.${DOMAIN}/api/spec`}
+          className="text-orange-400 hover:text-orange-300 transition-colors"
+        >
+          API Spec →
+        </a>
       </div>
 
       {/* Shared footer */}
