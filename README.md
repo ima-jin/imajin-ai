@@ -1,15 +1,17 @@
 # imajin-ai
 
-**Sovereign infrastructure for humans, agents, and events.**
+**A trust-gated service layer for sovereign communities.**
 
-Identity. Payments. Attribution. No platform lock-in.  
-Every interaction signed, typed, and owned by you.
+Identity determines access. Your trust graph determines scope. Every action is signed and attributed.  
+No subscriptions. No cloud dependency. No platform lock-in.
 
 ---
 
 ## The Philosophy
 
 This isn't a platform. It's exit infrastructure.
+
+The core insight: build human-first infrastructure — identity, payments, connections, attribution — and the agent layer emerges naturally on top. Every API is already trust-scoped and DID-signed. An authenticated agent operates within the same boundaries as a human.
 
 ```
 ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
