@@ -94,6 +94,18 @@ export default async function Home() {
         <StatCard emoji="⚡" count={stats.lightning} max="∞" label="Lightning" />
       </div>
 
+      {/* Architecture blurb */}
+      <div className="max-w-xl text-center mb-16 px-4">
+        <h2 className="text-lg font-semibold text-gray-200 mb-3">
+          A trust-gated service layer
+        </h2>
+        <p className="text-sm text-gray-400 leading-relaxed">
+          Every service is scoped to your identity. Your trust graph determines access.
+          Every action is signed and attributed. No subscriptions, no cloud dependency, no platform lock-in.
+          Sovereign infrastructure — built from the human out.
+        </p>
+      </div>
+
       {/* Links */}
       <div className="flex flex-col items-center gap-4">
         <Link
