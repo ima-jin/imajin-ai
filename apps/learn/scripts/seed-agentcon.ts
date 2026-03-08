@@ -20,150 +20,135 @@ function generateId(prefix: string): string {
 }
 
 const slides = [
-  // --- ACT 1: THE SETUP ---
+  // --- ACT 1: THE CONSTRAINT ---
   {
-    title: '35 days ago I started building.',
-    content: "I didn't have a deck. I didn't have a pitch.\n\nI had a glowing cube, a Postgres database, and a thesis I couldn't quite articulate yet.",
+    title: 'I\'ve been trying to build this for 30 years.',
+    content: "I ran a BBS at fifteen. Three phone lines, three hundred people finding each other before the web existed.\n\nI've seen the whole arc — the wonder, the capture, the extraction. I've known what needs to exist. The architecture has been in my head for decades.\n\nBut no one was going to fund what was in my brain. Not from someone who could barely articulate a coherent thesis to a room full of MBAs.",
     metadata: { layout: 'center' },
   },
   {
-    title: 'Day 1 — A body for AI.',
-    content: 'Unit 8×8×8. 512 RGBW LEDs. An AI presence that expresses through light, not text.\n\nThe question was simple: what happens when AI takes up physical space?\n\nComputers became invisible. Invisible became unaccountable. What if you could *see* it thinking?',
-    metadata: {
-      layout: 'left',
-      subtitle: 'February 1, 2026',
-    },
+    title: 'The cycle.',
+    content: "Every 10 to 14 days, the same pattern.\n\nSee it. Start building. Go go go. Burn out. Pause. Recharge. Repeat.\n\nEach time, analyzing. Projecting. The speed of development was accelerating. The tools were getting closer. But they weren't ready yet.\n\nSouth Africa, 2025. WER1. Tried the CLI tools. Tried the agents. Projected that we were near a tipping point — that dev speed would keep accelerating, then level off. Diminishing returns in inference that would need coherence in the rails.",
+    metadata: { layout: 'left' },
   },
   {
-    title: 'Day 3 — The first decision.',
-    content: "I needed auth. The simplest possible kind.\n\nNot email and password. Not OAuth. Not \"Sign in with Google.\"\n\nEd25519 keypair → DID. That's it.\n\nSame primitive for humans and agents. If you can hold a key, you can have an identity. No one else involved.",
-    metadata: {
-      layout: 'left',
-      subtitle: 'February 13, 2026',
-    },
-  },
-  {
-    title: 'Day 3 — The second decision.',
-    content: "Same afternoon. Payments.\n\nNot \"how do we monetize.\" Just plumbing.\n\nIf identity is a keypair, then a transaction is a signed message between two keypairs. Stripe for fiat. Solana for crypto. Same interface, different rails.\n\nTwo commits. Auth and Pay. Both DID-based from line one.",
-    metadata: {
-      layout: 'left',
-      subtitle: 'Still February 13',
-      items: [
-        'feat(auth): add sovereign identity package and service',
-        'feat: add pay package and service, wire Ed25519 crypto',
-      ],
-    },
+    title: 'Then the gloves came off.',
+    content: "35 days ago, I knew we were going to hit it.\n\nI installed OpenClaw. The constraints broke.\n\nNot \"AI wrote my code.\" The interface layer between what I *see* and working systems finally existed.\n\n30 years of vision. 30 essays already in my head. Hold my beer.",
+    metadata: { layout: 'center' },
   },
 
   // --- ACT 2: THE BUILD ---
   {
-    title: 'Day 4 — The registry.',
-    content: "If anyone can have an identity, anyone can run a node.\n\nFederated, not decentralized. Honest about the tradeoff.\n\nCentral registry for discovery now. On-chain later. Mesh trust eventually.\n\nThe exit door is always open. The registry is open source. Nodes work locally without it.",
+    title: 'So I built a light.',
+    content: "512 LEDs. An 8×8×8 cube. An AI presence that expresses through color and motion, not text.\n\nComputers became invisible. Invisible became unaccountable.\n\nWhat if you could *see* it thinking?",
     metadata: {
       layout: 'left',
-      subtitle: 'February 14, 2026',
+      subtitle: 'Day 1',
     },
   },
   {
-    title: 'Day 7 — First ticket sold.',
-    content: 'events.imajin.ai → pay.imajin.ai → Stripe → webhook → ticket created.\n\nIdentity → payment → attribution → ticket. All DID-scoped.\n\nThe whole thesis, working as code.',
-    metadata: {
-      layout: 'center',
-      subtitle: 'February 20, 2026',
-    },
-  },
-  {
-    title: 'Day 14 — The server comes home.',
-    content: "HP ProLiant ML350p Gen8. My first real Linux server. In my house.\n\nCaddy reverse proxy. PM2 process management. Local Postgres.\n\nThe platform was no longer on Vercel's servers. It was on hardware I own, behind a domain I control.",
+    title: 'Then I needed a login.',
+    content: "Not email and password. Not OAuth. Not \"Sign in with Google.\"\n\nEd25519 keypair → DID. That's it.\n\nSame primitive for humans and agents. If you can hold a key, you have an identity. No one else involved.",
     metadata: {
       layout: 'left',
-      subtitle: 'February 24, 2026',
+      subtitle: 'Day 3',
     },
   },
   {
-    title: 'Day 16 — Invite only.',
-    content: "No public signup. You need an invite code.\n\nThe invite IS the trust boundary.\n\nBuying a ticket to an event? The ticket IS the invite. No code needed — the transaction creates the trust relationship.\n\nJin was Account #1. I accepted Jin's genesis invite to become Account #2.",
+    title: 'Then I needed to take a payment.',
+    content: "Same afternoon. Not \"how do we monetize.\" Just plumbing.\n\nIf identity is a keypair, then a transaction is a signed message between two keypairs.\n\nStripe for fiat. Solana for crypto. Same interface, different rails.",
     metadata: {
       layout: 'left',
-      subtitle: 'February 26, 2026',
+      subtitle: 'Still Day 3',
     },
   },
-
-  // --- ACT 3: THE ACCELERATION ---
   {
-    title: 'Day 20 — External contributors.',
-    content: "A Staff Engineer at Slack opened the first PRs.\n\nThe codebase was legible enough for a stranger to contribute to in 20 days.\n\nBranch protection added. CI pipeline on self-hosted runner. The project had gravity.",
+    title: 'Then I needed a phone book.',
+    content: "If anyone can have an identity, anyone can run a node.\n\nFederated, not decentralized. Honest about the tradeoff. Central registry now. On-chain later. Mesh trust eventually.\n\nThe exit door is always open.",
     metadata: {
       layout: 'left',
-      subtitle: 'March 2, 2026',
+      subtitle: 'Day 4',
     },
   },
   {
-    title: 'Day 23 — Parallel builds.',
-    content: "7 features shipped in 90 minutes using parallel coding agents.\n\nMedia service. .fair attribution package. Rich chat. Input service with Whisper transcription. OpenAPI specs for all services.\n\n~4,800 lines in a day.",
-    metadata: {
-      layout: 'left',
-      subtitle: 'March 5, 2026',
-    },
-  },
-  {
-    title: 'Day 25 — Someone else uses it.',
-    content: "Not a developer. A real person.\n\nCreated a real event. 6 ticket tiers. Survey gating. E-Transfer payments.\n\nThe platform was being *used*, not just built.",
-    metadata: {
-      layout: 'left',
-      subtitle: 'March 6, 2026',
-    },
-  },
-
-  // --- ACT 4: THE REVEAL ---
-  {
-    title: 'Then I realized what I built.',
-    content: "I started from the human angle — auth, pay, connect, share.\n\nBut the agent layer was always implicit.\n\nIdentity + trust graph + inference = sovereign agent gateway.\n\nThe trust boundaries that protect people are the same boundaries that make agent actions safe.",
+    title: 'Then someone bought a ticket.',
+    content: "events.imajin.ai → pay.imajin.ai → Stripe → webhook → ticket created.\n\nIdentity → payment → attribution → ticket. All DID-scoped.\n\nThe whole thesis, working as code. Day 7.",
     metadata: { layout: 'center' },
   },
   {
-    title: 'The pattern I followed.',
-    content: "Every choice seemed practical at the time. In sequence, they reveal something else.",
+    title: 'Then the server came home.',
+    content: "HP ProLiant in my house. Caddy. PM2. Local Postgres.\n\nThe platform was no longer on someone else's servers. It was on hardware I own, behind a domain I control.\n\nSelf-hosted stopped being a feature and became real.",
+    metadata: {
+      layout: 'left',
+      subtitle: 'Day 14',
+    },
+  },
+  {
+    title: 'Then I made it invite-only.',
+    content: "No public signup. You need an invite code.\n\nThe invite IS the trust boundary.\n\nBuying a ticket? The ticket IS the invite. The transaction creates the trust relationship.\n\nMy AI was Account #1. I accepted its genesis invite to become Account #2.",
+    metadata: {
+      layout: 'left',
+      subtitle: 'Day 16',
+    },
+  },
+  {
+    title: 'Then strangers started contributing.',
+    content: "A Staff Engineer at Slack opened PRs on day 20.\n\nThe codebase was legible enough for a stranger to contribute to. In 20 days.\n\n7 features shipped in 90 minutes on day 23 using parallel coding agents. 4,800 lines.",
+    metadata: {
+      layout: 'left',
+      subtitle: 'Days 20–23',
+    },
+  },
+  {
+    title: 'Then someone who isn\'t a developer used it.',
+    content: "Created a real event. 6 ticket tiers. Survey gating. E-Transfer payments.\n\nThe platform was being *used*, not just built.\n\nDay 25.",
+    metadata: { layout: 'center' },
+  },
+
+  // --- ACT 3: THE REVEAL ---
+  {
+    title: 'I didn\'t realize what I\'d built.',
+    content: "That's not true. I always knew.\n\nBut the *shape* surprised me.\n\nI built from the human angle — auth, pay, connect, share. And the agent layer was always implicit. Hiding inside the trust boundaries I built for people.\n\nIdentity + trust graph + inference = sovereign agent gateway.\n\nThe trust boundaries that protect people are the same boundaries that make agent actions safe.",
+    metadata: { layout: 'center' },
+  },
+  {
+    title: 'The choices that seemed practical.',
+    content: "In sequence, they reveal something else.",
     metadata: {
       layout: 'left',
       items: [
-        'Identity first — before features, before UI. Who are you, without trusting anyone else?',
-        'Payments as plumbing — not monetization. Infrastructure. The ability to transact is as fundamental as the ability to identify.',
-        'Trust as topology — connections aren\'t social. They\'re structural. They define what you can see and what actions are allowed.',
-        'Attribution as memory — .fair manifests. Every interaction has provenance. Who made it, who gets compensated.',
-        'Hardware as anchor — you can\'t have a physical presence device that phones home to someone else\'s cloud.',
+        'Identity first — who are you, without trusting anyone else?',
+        'Payments as plumbing — the ability to transact is as fundamental as the ability to identify.',
+        'Trust as topology — connections aren\'t social. They\'re structural.',
+        'Attribution as memory — every interaction has provenance.',
+        'Hardware as anchor — presence devices can\'t phone home to someone else\'s cloud.',
+      ],
+    },
+  },
+
+  // --- ACT 4: THE NUMBERS ---
+  {
+    title: '14 services. 35 days. $1,589 in inference.',
+    content: "Traditional estimate: $932,316 over 16.4 months with a 3-person team.\n\n190 human hours. 68,024 lines of code. 30 essays. 9 published.\n\nAll open source. All self-hosted. All trust-gated.",
+    metadata: {
+      layout: 'left',
+      items: [
+        'auth · pay · profile · registry · connections',
+        'events · chat · media · input · learn',
+        'coffee · links · dykil · www',
       ],
     },
   },
   {
-    title: '14 services. $1,589.',
-    content: "Traditional estimate: $932,316 over 16.4 months with a 3-person team.\n\n190 human hours. 25 build days. 68,024 lines of code.\n\nAll open source. All self-hosted. All trust-gated.",
-    metadata: {
-      layout: 'left',
-      subtitle: 'As of March 8, 2026',
-      items: [
-        'auth — keypair identity',
-        'pay — settlement engine',
-        'profile — sovereign profiles',
-        'registry — node discovery',
-        'connections — trust graph',
-        'events — ticketing',
-        'chat — real-time messaging',
-        'media — DID-pegged storage + .fair',
-        'input — voice transcription',
-        'learn — courses + presentations',
-        'coffee — direct support',
-        'links — link pages',
-        'dykil — surveys',
-        'www — landing + essays',
-      ],
-    },
+    title: 'This presentation is running on it.',
+    content: "learn.imajin.ai. One of the 14 services.\n\nSeeded from a markdown file I wrote this morning. Rendered by a slide system built this afternoon.\n\nOn my server. On my hardware. On my domain.\n\nThe demo is the infrastructure.",
+    metadata: { layout: 'center' },
   },
 
   // --- ACT 5: THE THESIS ---
   {
     title: 'Start from the human.',
-    content: "Everyone in this room is building agents to operate better *within* platforms.\n\nWhat if the platform was trust infrastructure that agents and humans share?\n\nSame keypairs. Same DIDs. Same trust graph. Every interaction typed — you always know if you're talking to a human or an agent.\n\nThe agent layer doesn't need its own architecture. It emerges from proper trust boundaries.",
+    content: "Everyone in this room is building agents to operate better within platforms.\n\nI spent 30 years being gated by platforms. So I built the exit.\n\nSame keypairs for humans and agents. Same trust graph. Every interaction typed — you always know who you're talking to.\n\nThe agent layer doesn't need its own architecture. It emerges from proper trust boundaries.",
     metadata: { layout: 'center' },
   },
   {
@@ -202,7 +187,7 @@ async function main() {
     id: courseId,
     creatorDid: CREATOR_DID,
     title: 'AgentCon: The Architecture of Trust',
-    description: '35 days. 14 services. $1,589 in inference costs. How building for humans first created a sovereign agent gateway.',
+    description: '30 years of constrained vision. 35 days of execution. How building for humans first created a sovereign agent gateway.',
     slug: 'agentcon-architecture-of-trust',
     price: 0,
     currency: 'CAD',
