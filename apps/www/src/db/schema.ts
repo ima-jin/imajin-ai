@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, boolean, index, unique, pgSchema } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, boolean, index, unique, pgSchema, integer } from 'drizzle-orm/pg-core';
 
 export const wwwSchema = pgSchema('www');
 
@@ -52,7 +52,36 @@ export const subscriptions = wwwSchema.table('subscriptions', {
   uniqueSub: unique('uniq_www_subscription').on(table.contactId, table.mailingListId),
 }));
 
+/**
+ * Bug Reports - internal bug tracking
+ */
+export const bugReports = wwwSchema.table('bug_reports', {
+  id: text('id').primaryKey(),
+  reporterDid: text('reporter_did').notNull(),
+  reporterName: text('reporter_name'),
+  reporterEmail: text('reporter_email'),
+  description: text('description').notNull(),
+  screenshotUrl: text('screenshot_url'),
+  pageUrl: text('page_url'),
+  userAgent: text('user_agent'),
+  viewport: text('viewport'),
+  status: text('status').notNull().default('new'),
+  githubIssueNumber: integer('github_issue_number'),
+  githubIssueUrl: text('github_issue_url'),
+  adminNotes: text('admin_notes'),
+  duplicateOf: text('duplicate_of'),
+  reviewedBy: text('reviewed_by'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  reporterIdx: index('idx_bug_reports_reporter').on(table.reporterDid),
+  statusIdx: index('idx_bug_reports_status').on(table.status),
+}));
+
 // Types
+export type BugReport = typeof bugReports.$inferSelect;
+export type NewBugReport = typeof bugReports.$inferInsert;
+
 export type Contact = typeof contacts.$inferSelect;
 export type NewContact = typeof contacts.$inferInsert;
 export type MailingList = typeof mailingLists.$inferSelect;

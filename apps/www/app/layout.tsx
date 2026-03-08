@@ -1,6 +1,27 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import { NavBar } from './components/NavBar';
+import { BugReportButton } from '@/components/bug-report-button';
+
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+const SESSION_COOKIE = 'imajin_session';
+
+async function BugReportWidget() {
+  const cookieStore = cookies();
+  const session = cookieStore.get(SESSION_COOKIE);
+  if (!session) return null;
+  try {
+    const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
+      headers: { Cookie: `${SESSION_COOKIE}=${session.value}` },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    return <BugReportButton />;
+  } catch {
+    return null;
+  }
+}
 
 const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -54,6 +75,7 @@ export default function RootLayout({
       <body className="min-h-screen antialiased bg-[#0a0a0a] text-white">
         <NavBar currentService="Home" />
         {children}
+        <BugReportWidget />
       </body>
     </html>
   );
