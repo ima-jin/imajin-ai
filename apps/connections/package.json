@@ -12,15 +12,16 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "next": "^14.2.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
     "@imajin/config": "workspace:*",
-    "@imajin/email": "workspace:*",
     "@imajin/db": "workspace:*",
+    "@imajin/email": "workspace:*",
     "@imajin/trust-graph": "workspace:*",
     "@imajin/ui": "workspace:^",
-    "drizzle-orm": "^0.45.1"
+    "drizzle-orm": "^0.45.1",
+    "next": "^14.2.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@types/node": "^20",

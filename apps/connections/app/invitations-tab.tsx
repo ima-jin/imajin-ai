@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
@@ -70,6 +71,7 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailResult, setEmailResult] = useState<string | null>(null);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAll();
@@ -191,6 +193,29 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
 
   return (
     <div className="space-y-8">
+      {/* ─── QR Code Fullscreen Overlay ─── */}
+      {qrUrl && (
+        <div
+          className="fixed inset-0 z-[9999] bg-white flex items-center justify-center cursor-pointer"
+          onClick={() => setQrUrl(null)}
+        >
+          <div className="flex flex-col items-center gap-6 p-8 max-w-[90vmin]">
+            <QRCodeSVG
+              value={qrUrl}
+              size={Math.min(typeof window !== 'undefined' ? window.innerWidth * 0.8 : 320, typeof window !== 'undefined' ? window.innerHeight * 0.7 : 320, 512)}
+              level="M"
+              includeMargin
+              bgColor="#ffffff"
+              fgColor="#000000"
+            />
+            <div className="text-center">
+              <div className="text-black/80 text-sm font-medium mb-1">Scan to connect on Imajin</div>
+              <div className="text-black/40 text-xs">Tap anywhere to close</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─── Section A: Invited by ─── */}
       {invitedBy !== 'loading' && invitedBy !== null && (
         <div className="p-4 bg-white/5 border border-white/10 rounded-lg flex items-center gap-3">
@@ -281,6 +306,13 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
                 <p className="text-sm text-gray-400 mb-3">Share this link with someone you trust:</p>
                 <div className="flex items-center gap-2 bg-black/30 border border-white/10 rounded-lg px-3 py-2 mb-3">
                   <code className="text-xs text-amber-300 flex-1 truncate">{generatedInvite.url}</code>
+                  <button
+                    onClick={() => setQrUrl(generatedInvite.url)}
+                    className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/20 text-white font-medium rounded transition shrink-0"
+                    title="Show QR code"
+                  >
+                    QR
+                  </button>
                   <button
                     onClick={() => copyLink(generatedInvite.url, generatedInvite.code)}
                     className="px-2.5 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-black font-medium rounded transition shrink-0"
@@ -425,12 +457,21 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
                 {row.status === 'pending' && row.url && row.code && (
                   <>
                     {row.type === 'link' && (
-                      <button
-                        onClick={() => copyLink(row.url!, row.code!)}
-                        className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/15 text-white rounded transition shrink-0"
-                      >
-                        {copiedCode === row.code ? '✓' : 'Copy'}
-                      </button>
+                      <>
+                        <button
+                          onClick={() => setQrUrl(row.url!)}
+                          className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/15 text-white rounded transition shrink-0"
+                          title="Show QR code"
+                        >
+                          QR
+                        </button>
+                        <button
+                          onClick={() => copyLink(row.url!, row.code!)}
+                          className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/15 text-white rounded transition shrink-0"
+                        >
+                          {copiedCode === row.code ? '✓' : 'Copy'}
+                        </button>
+                      </>
                     )}
                     <button
                       onClick={() => deleteInvite(row.code!)}
