@@ -127,10 +127,10 @@ export default async function Home() {
           Jin's Launch Party →
         </a>
         <a
-          href={`${PREFIX}registry.${DOMAIN}/api/spec`}
+          href={`${PREFIX}registry.${DOMAIN}/docs`}
           className="text-orange-400 hover:text-orange-300 transition-colors"
         >
-          API Spec →
+          API Docs →
         </a>
       </div>
 
