@@ -13,11 +13,11 @@ let lastGlobalCleanup = Date.now();
 
 function pruneStore(now: number) {
   if (now - lastGlobalCleanup < 60_000) return;
-  for (const [key, entry] of store) {
+  store.forEach((entry, key) => {
     if (now - entry.lastSeen > 120_000) {
       store.delete(key);
     }
-  }
+  });
   lastGlobalCleanup = now;
 }
 
