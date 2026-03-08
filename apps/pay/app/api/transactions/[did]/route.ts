@@ -109,7 +109,7 @@ export async function GET(
   } catch (error) {
     console.error('Transactions fetch error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch transactions' },
+      { error: 'Failed to fetch transactions' },
       { status: 500, headers: cors }
     );
   }

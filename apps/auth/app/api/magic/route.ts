@@ -206,7 +206,7 @@ export async function GET(request: NextRequest) {
       <body>
         <h1>Authentication Error</h1>
         <p>Something went wrong while authenticating your ticket. Please try again or contact support.</p>
-        <p style="font-size: 12px; color: #666;">Error: ${error instanceof Error ? error.message : 'Unknown error'}</p>
+        <p style="font-size: 12px; color: #666;">Please try again or contact support if the issue persists.</p>
       </body>
       </html>
       `,

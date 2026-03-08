@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Transfer error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Transfer failed' },
+      { error: 'Transfer failed' },
       { status: 500, headers: cors }
     );
   }

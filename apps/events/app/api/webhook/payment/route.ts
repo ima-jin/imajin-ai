@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Payment webhook error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Webhook failed' },
+      { error: 'Webhook processing failed' },
       { status: 500 }
     );
   }

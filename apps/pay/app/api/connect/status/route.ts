@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Connect status error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to retrieve account status' },
+      { error: 'Status check failed' },
       { status: 500, headers: cors }
     );
   }

@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Event topup error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Event topup failed' },
+      { error: 'Top-up failed' },
       { status: 500, headers: cors }
     );
   }

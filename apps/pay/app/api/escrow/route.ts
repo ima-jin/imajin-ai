@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Escrow error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Escrow creation failed' },
+      { error: 'Escrow operation failed' },
       { status: 500, headers: cors }
     );
   }
@@ -192,7 +192,7 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     console.error('Escrow release error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Escrow operation failed' },
+      { error: 'Escrow operation failed' },
       { status: 500 }
     );
   }

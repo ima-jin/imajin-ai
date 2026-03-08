@@ -5,18 +5,7 @@ import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 import { identities } from '@/src/db/schema';
 import { eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-
-function corsHeaders(request: NextRequest) {
-  const origin = request.headers.get('origin') || '';
-  // Allow any *.imajin.ai subdomain
-  const allowed = origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai';
-  return {
-    'Access-Control-Allow-Origin': allowed ? origin : '',
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-}
+import { corsHeaders } from '@imajin/config';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });

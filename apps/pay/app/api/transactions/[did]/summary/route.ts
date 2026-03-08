@@ -123,7 +123,7 @@ export async function GET(
   } catch (error) {
     console.error('Summary fetch error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch summary' },
+      { error: 'Failed to fetch summary' },
       { status: 500, headers: cors }
     );
   }

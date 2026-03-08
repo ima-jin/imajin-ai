@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Charge error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Charge failed' },
+      { error: 'Charge failed' },
       { status: 500, headers: cors }
     );
   }

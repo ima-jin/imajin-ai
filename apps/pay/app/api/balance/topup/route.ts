@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Topup error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Topup failed' },
+      { error: 'Top-up failed' },
       { status: 500, headers: cors }
     );
   }

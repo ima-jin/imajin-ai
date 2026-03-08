@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Withdrawal error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Withdrawal failed' },
+      { error: 'Withdrawal failed' },
       { status: 500, headers: cors }
     );
   }

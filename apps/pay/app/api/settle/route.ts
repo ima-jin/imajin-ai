@@ -187,7 +187,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Settlement error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Settlement failed' },
+      { error: 'Settlement failed' },
       { status: 500, headers: cors }
     );
   }

@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Connect onboard error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Onboarding failed' },
+      { error: 'Onboarding failed' },
       { status: 500, headers: cors }
     );
   }

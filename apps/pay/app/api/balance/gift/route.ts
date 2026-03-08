@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Gift error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Gift failed' },
+      { error: 'Gift operation failed' },
       { status: 500, headers: cors }
     );
   }
