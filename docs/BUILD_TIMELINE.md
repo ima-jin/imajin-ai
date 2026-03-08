@@ -161,7 +161,7 @@ Massive day:
 
 ### February 18 — Network of Souls
 
-Evening brainstorm (Ryan on a joint + K) produced the conceptual capstone:
+An evening brainstorm produced the conceptual capstone:
 
 **"Ask [Name]"** — Personal AI trained on your context. Trust-bound access. Inference fees paid by the questioner. You get compensated without trading time.
 
@@ -251,7 +251,7 @@ Josh Allen (Staff Software Engineer @ Slack) submitted PRs #119 + #120 — devel
 
 ### March 3–4 — Infrastructure Hardening
 
-Database migrations formalized. Schema isolation per service. Git auth standardized. .fair attribution on events with live accordions. QR codes on tickets. Cost estimate documented: $39.6K traditional development cost vs $932 actual API spend.
+Database migrations formalized. Schema isolation per service. Git auth standardized. .fair attribution on events with live accordions. QR codes on tickets.
 
 ### March 5 — The Parallel Build Day
 
@@ -349,8 +349,10 @@ auth, pay, www, profile, registry, events, chat, connections, media, input, lear
 - ~60 registered identities
 - 3 tickets sold on the sovereign stack
 - 20 essays written
-- 739 files, 68K lines of code
-- ~$932 in API costs (vs ~$39.6K traditional estimate)
+- 739 files, 68,024 lines of code
+- $1,589 in inference costs (API spend)
+- 190 human hours across 25 build days
+- Traditional estimate: $932,316 over 16.4 months with a 3-person team
 - 35 days from first commit to 14 live services
 
 ### The Stack
