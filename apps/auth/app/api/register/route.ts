@@ -5,6 +5,7 @@ import { didFromPublicKey, verifySignature } from '@/lib/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/lib/jwt';
 
 const CONNECTIONS_SERVICE_URL = process.env.CONNECTIONS_SERVICE_URL!;
+const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL!;
 
 /**
  * POST /api/register
@@ -201,6 +202,26 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
 
     response.cookies.set(cookieConfig.name, token, cookieConfig.options);
+
+    // Create profile row so the user is visible/discoverable
+    try {
+      const displayType = ['human', 'agent', 'presence'].includes(type) ? type : 'human';
+      await fetch(`${PROFILE_SERVICE_URL}/api/profile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `${cookieConfig.name}=${token}`,
+        },
+        body: JSON.stringify({
+          displayName: name?.trim().slice(0, 100) || handle || 'Anonymous',
+          displayType,
+          handle: handle || undefined,
+        }),
+      });
+    } catch (err) {
+      console.error('Profile creation failed (non-fatal):', err);
+      // Non-fatal — user can still use the platform, profile can be created later
+    }
 
     // Auto-accept the invite (create the connection)
     // We do this server-side so the new user lands with their first connection
