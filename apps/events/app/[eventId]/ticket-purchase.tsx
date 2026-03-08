@@ -27,6 +27,8 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
   const [step, setStep] = useState<Step>('button');
   const [error, setError] = useState<string | null>(null);
   const [etransfer, setEtransfer] = useState<ETransferInstructions | null>(null);
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
 
   const available = ticket.quantity === null
     ? 'Unlimited'
@@ -70,11 +72,14 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
     try {
       const response = await fetch('/api/checkout/etransfer', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           eventId,
           ticketTypeId: ticket.id,
           ...(inviteToken && { invite: inviteToken }),
+          ...(email && { email: email.trim() }),
+          ...(name && { name: name.trim() }),
         }),
       });
 
@@ -177,13 +182,33 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
           You&apos;ll need to send <span className="font-semibold">{formatPrice(ticket.price, ticket.currency)}</span> via
           Interac e-Transfer within 72 hours. Your ticket will be held until payment is confirmed.
         </p>
+        <div className="space-y-2">
+          <input
+            type="text"
+            placeholder="Your name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={step === 'loading-etransfer'}
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
+          />
+          <input
+            type="email"
+            placeholder="Your email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={step === 'loading-etransfer'}
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
+          />
+        </div>
         <div className="flex gap-2">
           <button
             onClick={handleETransfer}
-            disabled={step === 'loading-etransfer'}
+            disabled={step === 'loading-etransfer' || !email.includes('@')}
             className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${
               step === 'loading-etransfer'
                 ? 'bg-orange-400 text-white cursor-wait'
+                : !email.includes('@')
+                ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
                 : 'bg-orange-500 text-white hover:bg-orange-600'
             }`}
           >

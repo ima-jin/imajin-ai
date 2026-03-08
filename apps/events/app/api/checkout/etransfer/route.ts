@@ -8,32 +8,74 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
 import { eq, and, lt } from 'drizzle-orm';
-import { requireAuth } from '@/src/lib/auth';
+import { getSessionFromCookie } from '@/src/lib/auth';
 import { getClient } from '@imajin/db';
 import { randomBytes } from 'crypto';
 
 const sql = getClient();
+const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const HOLD_HOURS = 72;
 
 interface ETransferCheckoutRequest {
   eventId: string;
   ticketTypeId: string;
+  email?: string;
+  name?: string;
   invite?: string;
 }
 
-export async function POST(request: NextRequest) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+/**
+ * Create or retrieve a soft DID session from email (same pattern as webhook ticket creation).
+ */
+async function getOrCreateSoftDid(email: string, name?: string): Promise<string> {
+  try {
+    const response = await fetch(`${AUTH_URL}/api/session/soft`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.toLowerCase().trim(), name }),
+    });
+    if (!response.ok) {
+      console.error('Soft DID creation failed:', response.status);
+      const emailSlug = email.toLowerCase().trim().replace(/@/g, '_at_').replace(/\./g, '_');
+      return `did:email:${emailSlug}`;
+    }
+    const data = await response.json();
+    return data.did;
+  } catch (error) {
+    console.error('Soft DID creation error:', error);
+    const emailSlug = email.toLowerCase().trim().replace(/@/g, '_at_').replace(/\./g, '_');
+    return `did:email:${emailSlug}`;
   }
+}
 
-  const { identity } = authResult;
+export async function POST(request: NextRequest) {
+  // Try session auth first (logged-in user), but don't require it
+  const cookieHeader = request.headers.get('cookie');
+  const session = await getSessionFromCookie(cookieHeader);
+
+  // We'll resolve identity after parsing body (may need email fallback)
 
   try {
     const body: ETransferCheckoutRequest = await request.json();
 
     if (!body.eventId || !body.ticketTypeId) {
       return NextResponse.json({ error: 'eventId and ticketTypeId are required' }, { status: 400 });
+    }
+
+    // Resolve identity: session cookie (hard or soft DID) → email fallback → 401
+    let ownerDid: string;
+    let ownerEmail: string | undefined = body.email;
+
+    if (session) {
+      ownerDid = session.id;
+    } else if (body.email) {
+      ownerDid = await getOrCreateSoftDid(body.email, body.name);
+      ownerEmail = body.email;
+    } else {
+      return NextResponse.json(
+        { error: 'Not authenticated. Please log in or provide an email address.' },
+        { status: 401 }
+      );
     }
 
     // Fetch event
@@ -100,7 +142,7 @@ export async function POST(request: NextRequest) {
       .where(
         and(
           eq(tickets.ticketTypeId, body.ticketTypeId),
-          eq(tickets.ownerDid, identity.id),
+          eq(tickets.ownerDid, ownerDid),
           eq(tickets.status, 'held')
         )
       )
@@ -156,12 +198,12 @@ export async function POST(request: NextRequest) {
         id: ticketId,
         eventId: body.eventId,
         ticketTypeId: body.ticketTypeId,
-        ownerDid: identity.id,
-        originalOwnerDid: identity.id,
+        ownerDid: ownerDid,
+        originalOwnerDid: ownerDid,
         pricePaid: ticketType.price,
         currency: ticketType.currency,
         status: 'held',
-        heldBy: identity.id,
+        heldBy: ownerDid,
         heldUntil: holdUntil,
         holdExpiresAt: holdUntil,
         paymentMethod: 'etransfer',
