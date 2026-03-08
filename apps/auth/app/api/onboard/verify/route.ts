@@ -87,6 +87,26 @@ export async function GET(request: NextRequest) {
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = getSessionCookieOptions(isProduction);
 
+    // Create profile row if it doesn't exist
+    const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL;
+    if (PROFILE_SERVICE_URL) {
+      try {
+        await fetch(`${PROFILE_SERVICE_URL}/api/profile`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Cookie: `${cookieOptions.name}=${sessionToken}`,
+          },
+          body: JSON.stringify({
+            displayName: identity.name || record.name || record.email.split('@')[0],
+            displayType: 'human',
+          }),
+        });
+      } catch (err) {
+        console.error('Profile creation failed (non-fatal):', err);
+      }
+    }
+
     const redirectUrl = record.redirectUrl || '/';
     const response = NextResponse.redirect(redirectUrl);
 
