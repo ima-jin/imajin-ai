@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes, eventInvites } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
 import { getSessionFromCookie } from '@/src/lib/auth';
+import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL!;
@@ -22,6 +23,15 @@ interface CheckoutRequest {
 }
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIP(request);
+  const rl = rateLimit(ip, 10, 60_000);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: 'Too many requests', retryAfter: rl.retryAfter },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
+
   try {
     const body: CheckoutRequest = await request.json();
     

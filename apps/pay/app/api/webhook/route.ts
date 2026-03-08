@@ -141,6 +141,13 @@ export async function POST(request: NextRequest) {
 // =============================================================================
 
 async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+  // Idempotency: skip if already completed
+  const existing = await db.select().from(transactions).where(eq(transactions.stripeId, paymentIntent.id)).limit(1);
+  if (existing[0]?.status === 'completed') {
+    console.log('Payment already completed, skipping:', paymentIntent.id);
+    return;
+  }
+
   // Check if this is an escrow release
   if (paymentIntent.metadata.escrow === 'true') {
     console.log('Escrow released:', {
@@ -195,6 +202,13 @@ async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+  // Idempotency: skip if already completed
+  const existing = await db.select().from(transactions).where(eq(transactions.stripeId, session.id)).limit(1);
+  if (existing[0]?.status === 'completed') {
+    console.log('Checkout already completed, skipping:', session.id);
+    return;
+  }
+
   console.log('Checkout completed:', {
     id: session.id,
     customerEmail: session.customer_email,

@@ -226,6 +226,18 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const customerEmail = payload.customerEmail || null;
   const quantity = parseInt(metadata.quantity) || 1;
 
+  // Idempotency: check if tickets for this Stripe session already exist
+  const existingTickets = await db
+    .select({ id: tickets.id })
+    .from(tickets)
+    .where(sql`${tickets.metadata}->>'stripeSessionId' = ${sessionId}`)
+    .limit(1);
+
+  if (existingTickets.length > 0) {
+    console.log('Duplicate webhook — tickets already exist for session:', sessionId);
+    return;
+  }
+
   if (!customerEmail) {
     throw new Error('Customer email is required for ticket creation');
   }

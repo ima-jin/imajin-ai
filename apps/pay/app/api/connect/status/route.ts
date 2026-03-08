@@ -10,6 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { corsHeaders } from '@/src/lib/cors';
+import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
+import { authenticateRequest } from '@/lib/session-auth';
 
 let _stripe: Stripe | null = null;
 function getStripe(): Stripe {
@@ -30,6 +32,23 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
+
+  const ip = getClientIP(request);
+  const rl = rateLimit(ip, 30, 60_000);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: 'Too many requests', retryAfter: rl.retryAfter },
+      { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
+
+  const auth = await authenticateRequest(request);
+  if (!auth.authenticated) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401, headers: cors }
+    );
+  }
 
   const { searchParams } = new URL(request.url);
   const accountId = searchParams.get('account_id');

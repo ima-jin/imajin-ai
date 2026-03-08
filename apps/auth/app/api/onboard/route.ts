@@ -13,6 +13,7 @@ import { onboardTokens } from '@/src/db/schema';
 import { sendEmail } from '@imajin/email';
 import { nanoid } from 'nanoid';
 import { corsHeaders } from '@imajin/config';
+import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 
 const AUTH_URL = process.env.AUTH_URL || process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
 
@@ -22,6 +23,15 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
+
+  const ip = getClientIP(request);
+  const rl = rateLimit(ip, 5, 60_000);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: 'Too many requests', retryAfter: rl.retryAfter },
+      { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
 
   try {
     const body = await request.json();

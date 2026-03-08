@@ -29,6 +29,7 @@ import type { CheckoutRequest, FiatCurrency } from '@/lib';
 import { db, transactions } from '@/src/db';
 import { genId } from '@/src/lib/id';
 import { corsHeaders } from '@/src/lib/cors';
+import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 
 interface CheckoutBody {
   items: Array<{
@@ -54,9 +55,19 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
+
+  const ip = getClientIP(request);
+  const rl = rateLimit(ip, 10, 60_000);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: 'Too many requests', retryAfter: rl.retryAfter },
+      { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
+
   try {
     const body: CheckoutBody = await request.json();
-    
+
     // Validate required fields
     if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
       return NextResponse.json(
@@ -71,7 +82,42 @@ export async function POST(request: NextRequest) {
         { status: 400, headers: cors }
       );
     }
-    
+
+    // Validate each item's amount and quantity
+    for (let i = 0; i < body.items.length; i++) {
+      const item = body.items[i];
+      if (!Number.isInteger(item.amount) || item.amount <= 0) {
+        return NextResponse.json(
+          { error: `items[${i}].amount must be a positive integer` },
+          { status: 400, headers: cors }
+        );
+      }
+      if (item.amount < 50) {
+        return NextResponse.json(
+          { error: `items[${i}].amount must be >= 50 (Stripe minimum is 50 cents)` },
+          { status: 400, headers: cors }
+        );
+      }
+      if (item.amount > 99_999_900) {
+        return NextResponse.json(
+          { error: `items[${i}].amount must be < $1,000,000` },
+          { status: 400, headers: cors }
+        );
+      }
+      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+        return NextResponse.json(
+          { error: `items[${i}].quantity must be a positive integer >= 1` },
+          { status: 400, headers: cors }
+        );
+      }
+      if (item.quantity > 100) {
+        return NextResponse.json(
+          { error: `items[${i}].quantity must be <= 100` },
+          { status: 400, headers: cors }
+        );
+      }
+    }
+
     // Optional: validate auth token if provided
     const token = extractToken(request.headers.get('authorization'));
     let identity = null;

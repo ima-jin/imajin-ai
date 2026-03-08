@@ -8,6 +8,7 @@ import { requireAuth } from "@/src/lib/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/cors";
 import { eq, and } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/classify";
+import { rateLimit, getClientIP } from "@/src/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,16 @@ function didToPath(did: string): string {
 // ---------------------------------------------------------------------------
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
+
+  const ip = getClientIP(request);
+  const rl = rateLimit(ip, 20, 60_000);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: "Too many requests", retryAfter: rl.retryAfter },
+      { status: 429, headers: { ...cors, "Retry-After": String(rl.retryAfter) } }
+    );
+  }
+
   const authResult = await requireAuth(request);
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });

@@ -3,6 +3,7 @@ import { db, identities, challenges } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { generateChallenge } from '@/lib/crypto';
 import { randomUUID } from 'crypto';
+import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 
 /**
  * POST /api/login/challenge
@@ -20,6 +21,15 @@ import { randomUUID } from 'crypto';
  * }
  */
 export async function POST(request: NextRequest) {
+  const ip = getClientIP(request);
+  const rl = rateLimit(ip, 10, 60_000);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: 'Too many requests', retryAfter: rl.retryAfter },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
+
   try {
     const body = await request.json();
     const { handle, did } = body;

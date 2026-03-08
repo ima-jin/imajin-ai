@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSessionToken, getSessionCookieOptions } from '@/lib/jwt';
 import { db } from '@/src/db';
+import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 import { identities } from '@/src/db/schema';
 import { eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
@@ -32,6 +33,15 @@ export async function OPTIONS(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
+
+  const ip = getClientIP(request);
+  const rl = rateLimit(ip, 10, 60_000);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: 'Too many requests', retryAfter: rl.retryAfter },
+      { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
 
   try {
     const body = await request.json();

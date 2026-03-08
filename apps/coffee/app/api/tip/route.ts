@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { db, coffeePages, tips } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
+import { rateLimit, getClientIP } from '@/lib/rate-limit';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
 const COFFEE_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX 
@@ -22,6 +23,12 @@ const COFFEE_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX
  * - recurring?: boolean
  */
 export async function POST(request: NextRequest) {
+  const ip = getClientIP(request);
+  const rl = rateLimit(ip, 10, 60_000);
+  if (rl.limited) {
+    return errorResponse(`Too many requests. Retry after ${rl.retryAfter}s`, 429);
+  }
+
   try {
     const body = await request.json();
     const { pageHandle, amount, currency = 'USD', paymentMethod, message, fromName, fundDirection, recurring } = body;

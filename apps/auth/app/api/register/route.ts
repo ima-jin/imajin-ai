@@ -3,6 +3,7 @@ import { db, identities } from '@/src/db';
 import { eq, or } from 'drizzle-orm';
 import { didFromPublicKey, verifySignature } from '@/lib/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/lib/jwt';
+import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 
 const CONNECTIONS_SERVICE_URL = process.env.CONNECTIONS_SERVICE_URL!;
 const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL!;
@@ -22,6 +23,15 @@ const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL!;
  * }
  */
 export async function POST(request: NextRequest) {
+  const ip = getClientIP(request);
+  const rl = rateLimit(ip, 5, 60_000);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: 'Too many requests', retryAfter: rl.retryAfter },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
+
   try {
     const body = await request.json();
     const { publicKey, handle, name, type, signature, inviteCode } = body;
