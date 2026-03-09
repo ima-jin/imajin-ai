@@ -76,7 +76,8 @@ export async function GET(req: NextRequest) {
             .where(
               and(
                 eq(messages.conversationId, conversationId),
-                gt(messages.createdAt, lastReadAt)
+                gt(messages.createdAt, lastReadAt),
+                sql`${messages.fromDid} != ${did}`
               )
             );
           unreadCount = result[0]?.count || 0;
