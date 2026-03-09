@@ -4,7 +4,7 @@
 
 **今人 — ima jin — "now person"**
 
-**Protocol Specification v0.1 · February 2026 · DRAFT**
+**Protocol Specification v0.2 · March 2026 · DRAFT**
 
 *Ryan Veteze (b0b) · ryan@imajin.ai · imajin.ai · github.com/ima-jin/imajin-ai*
 
@@ -83,6 +83,116 @@ MJN DIDs are compatible with the W3C DID Core specification. They are portable a
 did:mjn:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK
 ```
 
+##### Typed Identity Primitives
+
+MJN does not treat identity as a flat concept. A DID is always one of four typed primitives, each encoding a fundamentally different kind of entity with different trust semantics, governance models, and graph behavior:
+
+**Individual** — the person. The atomic unit of identity. A human being with a keypair, a body, a presence.
+
+- Self-sovereign: generated, not issued
+- Governance: individual autonomy
+- Entry: invitation from existing trust graph
+- Default visibility: private — you control what others see
+- The foundation everything else is built from
+
+**Family** — intimate trust. Biological or chosen. The smallest unit of shared identity.
+
+- Formed by mutual attestation between Individual DIDs
+- Governance: consensus among members
+- Entry: invitation + acceptance by existing members
+- Default visibility: private interior, shared exterior
+- Shared resources: custody, finance, healthcare decisions, emergency access
+- The trust boundary where privacy is structurally different — members share context that no external party can access
+
+**Cultural** — communities of practice. Art collectives, music scenes, mutual aid networks, open-source projects, festival communities. Entities defined by shared practice rather than legal structure.
+
+- Formed by quorum: minimum founding Individual DIDs with demonstrated participation history
+- Governance: trust-weighted — contribution history (.fair), activity recency, and attestation weight determine authority
+- Entry: formation threshold + demonstrated participation (a performance qualifier, not a financial barrier)
+- Membership: fluid and tiered (governing, active, participant, observer)
+- Default visibility: public face, private interior — the world sees the identity and output; membership roster stays internal
+- No single Individual DID can hold unilateral control — structural anti-capture
+- Profit motive structurally excluded — this is not a business, it's a practice
+
+**Org** — businesses and legal entities. Incorporated, registered, with named founders and optionally a profit motive.
+
+- Formed by declaration from one or more founding Individual DIDs
+- Governance: founder-anchored hierarchy with delegated roles
+- Entry: vetting + covenant alignment
+- Membership: fixed (employees, partners, with scoped permissions)
+- Default visibility: public by default — name, category, output, aggregate transactions
+- Can receive reviews, issue .fair manifests on products, hold balances, transact
+- Can be soft-loaded: community-built from check-in and transaction data before the owner claims it
+
+##### Structural Comparison
+
+| Property | Individual | Family | Cultural | Org |
+|----------|-----------|--------|----------|-----|
+| Default visibility | Private | Private interior | Public face, private interior | Public |
+| Governance | Individual | Consensus | Trust-weighted quorum | Founder-anchored |
+| Entry condition | Invitation | Mutual attestation | Quorum + participation threshold | Declaration + covenant |
+| Membership | Singular | Intimate, stable | Fluid, tiered | Fixed, role-scoped |
+| Profit motive | N/A | N/A | Structurally excluded | Allowed |
+| Can hold funds | Yes | Yes (shared) | Yes (quorum-signed) | Yes |
+
+These are not access tiers. They are not permission levels. They are fundamentally different kinds of entities in the world, and the protocol treats them as such. A music collective is not a business that hasn't incorporated yet. A family is not a group chat with special permissions. The protocol knows the difference because the identity type carries it.
+
+##### The Typed Identity Graph
+
+The same trust graph connects all four primitive types. The structural insight: the graph is one data structure, but the primitive type at the center of the query determines what the graph means.
+
+**Query from an Individual:**
+```
+          Cultural DID (member of)
+              ↑
+Individual → Family (belongs to)
+              ↓
+          Org DID (employed by)
+```
+The Individual sees their connections, the events they attended, the communities they participate in, the organizations they work for. The graph radiates outward from a person. This is the familiar social model — but with typed relationships instead of a flat friends list.
+
+**Query from a Cultural DID:**
+```
+              Individual (governing member, weight: 0.3)
+                  ↑
+Cultural DID → Individual (active member, weight: 0.15)
+                  ↓
+              Individual (participant, weight: 0.05)
+                  ↓
+              Org DID (sponsor, observer tier)
+```
+The Cultural DID sees its membership tiers, governance weights, contribution history, shared creative output, and the businesses that orbit it. The same graph, but the query shape is entirely different — it reveals the internal structure of a collective.
+
+**Query from a Family:**
+```
+              Individual (parent, custodial authority)
+                  ↑
+Family DID → Individual (child, limited authority)
+                  ↓
+              Org DID (family business)
+                  ↓
+              Cultural DID (community membership)
+```
+The Family sees shared resources, custodial relationships, emergency contacts, healthcare proxies — the most intimate trust boundary in the system. The graph reveals what no other query can: who has authority over shared decisions.
+
+**Query from an Org:**
+```
+              Individual (founder, admin)
+                  ↑
+Org DID    → Individual (employee, scoped)
+                  ↓
+              Cultural DID (scene participant, observer)
+                  ↓
+              Org DID (partner, vendor)
+```
+The Org sees its hierarchy, delegated authorities, business relationships, and the communities it participates in. The graph reveals operational structure.
+
+**Why this matters:** Every identity system in production today treats identity as a flat concept — an "account" with permissions attached after the fact. Google, Apple, Meta, even the W3C DID specification itself — all model identity as one type. They handle the differences in application logic, not at the identity layer.
+
+MJN encodes the type at the protocol level. This means trust relationships, governance models, and privacy boundaries are structural — they cannot be bypassed by application code because they are properties of the identity itself, not policies applied to it.
+
+The same graph, queried from different primitive types, yields fundamentally different shapes. This is not a feature. It is the architecture.
+
 #### 2. .fair — Attribution Manifest
 
 Every piece of creative work that moves through the MJN network carries a `.fair` manifest: a cryptographically signed document embedded in the work itself — not in a platform database — that records the complete chain of human creative labor that produced it.
@@ -114,15 +224,21 @@ The manifest travels with the work. It is immutable. It is owned by nobody. It i
 }
 ```
 
+Attribution chains are typed by the identity primitives. A .fair manifest from an Individual credits a person. A .fair manifest from a Cultural DID credits a collective — with internal splits governed by the collective's own governance model. A .fair manifest from an Org credits a business entity, with employee contributions visible in the chain. The attribution system inherits the identity graph's structure.
+
 #### 3. Consent Declaration
 
 Every MJN exchange includes a machine-readable consent declaration: what the sender permits the receiver to do with the content of this exchange. Consent is explicit, versioned, and cryptographically signed. It cannot be implied, assumed, or buried in terms of service.
 
 Consent declarations execute automatically via the settlement layer when their conditions are met. No platform required to enforce them. No legal dispute needed to trigger them.
 
+Consent semantics vary by identity type. An Individual consents for themselves. A Family DID may carry custodial consent — a parent consenting on behalf of a minor, with the consent declaration encoding the custodial relationship. A Cultural DID's consent requires quorum attestation from governing members. An Org's consent flows through its delegation hierarchy. The consent primitive respects the governance model of the identity that signs it.
+
 #### 4. Settlement Instruction
 
 Every MJN exchange that carries value includes a settlement instruction: who gets paid, in what proportion, through what mechanism, on what trigger. Settlement executes automatically via the MJN token layer. There is no platform in the middle. Value flows directly from the party consuming to the parties who created.
+
+Settlement follows the identity graph. When a consumer pays for work attributed to a Cultural DID, the settlement instruction splits according to the collective's .fair manifest — which itself reflects the governance-weighted contribution history of the members. Value flows through the graph to the Individual DIDs who actually did the work. The Org that sponsored the collective receives its declared share. The settlement layer doesn't need special logic for each identity type — it follows the .fair chain, and the .fair chain follows the identity graph.
 
 ---
 
@@ -146,6 +262,8 @@ MJN makes the legitimate version possible. A creator publishes work with a `.fai
 
 At scale: every Claude conversation, every Substack article, every GitHub commit that carries a `.fair` manifest becomes part of a consented, attributed, compensated training data marketplace. The distillation attack becomes a distillation *market*.
 
+The typed identity model deepens this. A Cultural DID representing an open-source project can set collective consent terms for training on the project's output — with settlement flowing to contributors proportional to their .fair shares. An Org can license its employee-created content with consent flowing through the corporate delegation hierarchy. The consent and settlement layers don't need special cases — they follow the identity graph.
+
 ### Platform Identity Layer
 
 Substack, 1Password, Anthropic, and DeepSeek each hold a fragment of an identity that belongs to a single human. MJN connects them. A user's DID is their identity on all four platforms simultaneously. Their `.fair` manifest carries attribution across all four. Their consent declaration governs what each platform can do with their presence. Their settlement instruction ensures value flows back to them from all four.
@@ -157,6 +275,16 @@ Platforms implement MJN as an auth layer. They don't surrender their users — t
 A journalist publishes with a `.fair` manifest recording their DID as author, sources compensated, prior work cited, terms governing reproduction, price for full access, price for inference against their body of work. The article syndicates anywhere. Every reproduction carries the manifest. Every inference pays the journalist. The platform syndicating it earns a routing fee. The journalist earns the rest.
 
 Twenty years of beat reporting is no longer an institutional asset that dies with the newsroom. It is a sovereign catalogue that earns for as long as it is queried.
+
+### Trust-Gated Presence
+
+A knowledge leader — a doctor, a lawyer, a domain expert, a community elder — operates a node on the MJN network. Their node carries their body of work, their trust graph, their consent terms, and their inference pricing.
+
+Only people in their trust graph can query their presence. The querier's DID is verified. The trust relationship is checked — not just "are you connected?" but "what type of connection, at what trust depth, through which identity primitives?" A query routed through a Cultural DID the expert belongs to may have different consent terms than a direct Individual-to-Individual query.
+
+The response is signed by the expert's DID. The .fair manifest attributes it. Settlement executes — inference fee flows to the expert. The querier gets an answer from someone they trust, not an algorithm. The expert gets compensated for their knowledge without being available 24/7 — their presence handles it.
+
+Scale this up: every person with expertise runs a node. Every query flows through the trust graph. Leadership emerges naturally from who gets queried most — not who games an algorithm, but who earns actual trust, measured in actual payments, from actual relationships in the graph.
 
 ---
 
@@ -193,10 +321,10 @@ The name *今人* draws from Japanese. The protocol is built by a Canadian. It w
 
 | Period | Milestone |
 |--------|-----------|
-| Q1 2026 | Protocol v0.1 specification · MJN Foundation incorporation · April 1st: first party on MJN infrastructure (imajin.ai reference implementation) |
-| Q2 2026 | Token structure and FINMA engagement · API SDK release · First platform integration conversations (Substack, 1Password, Anthropic) |
+| Q1 2026 | Protocol v0.1 specification · v0.2 typed identity model · MJN Foundation incorporation · April 1st: first party on MJN infrastructure (imajin.ai reference implementation) |
+| Q2 2026 | Token structure and FINMA engagement · API SDK release · First platform integration conversations (Substack, 1Password, Anthropic) · Cultural DID and Org DID reference implementations |
 | Q3 2026 | Foundation seed raise · First non-imajin node operators · Chinese lab engagement via neutral Foundation channel |
-| Q4 2026 | MJN v1.0 specification · First cross-platform `.fair` settlement · Open RFC process launched |
+| Q4 2026 | MJN v1.0 specification · First cross-platform `.fair` settlement · Open RFC process launched · Family DID reference implementation |
 
 ---
 
@@ -228,6 +356,10 @@ More than 240 million people came online in 2025, bringing the world's total num
 
 The global decentralized identity market was estimated at $3 billion in 2025, projected to reach $623 billion by 2035 at a CAGR of 70.8%. MJN is not a player in this market. MJN is the protocol this market runs on — the same structural position TCP/IP holds to the internet.
 
+**The typed identity advantage:**
+
+The decentralized identity market today treats identity as a monolith — individual wallets, individual credentials. MJN's typed primitives address the 80% of human economic activity that doesn't happen as isolated individuals: families sharing resources, communities governing creative output, organizations delegating authority. No competing protocol encodes these relationship types at the identity layer. The total addressable market for typed sovereign identity — families, communities, and organizations, not just individuals — is structurally larger than what current DID solutions can serve.
+
 **The protocol fee model:**
 
 MJN itself charges nothing. Protocols don't charge. But the MJN token is the settlement currency for every exchange on the network. Token velocity equals total economic activity flowing through MJN settlement.
@@ -246,6 +378,8 @@ The distillation attacks of early 2026 demonstrated that frontier AI labs will p
 **The compounding effect:**
 
 Each now person who joins the network deepens the value of every other node. A journalist's twenty years of beat reporting becomes more valuable as more readers query it. A developer's contribution history becomes more valuable as more projects reference it. A musician's catalogue earns more as the trust graph routes more discovery through it. This is the opposite of platform economics where value accumulates at the center. On MJN, value accumulates at the edges — at the nodes — because that's where the now persons are.
+
+The typed identity model compounds this further. A Cultural DID representing a music scene doesn't just aggregate individual value — it creates emergent value that no individual member could generate alone. The scene's collective reputation, its curated output, its governance-weighted creative decisions — these are properties of the collective identity, not sums of individual identities. The network effect operates at every primitive level: individuals strengthen families, families strengthen communities, communities strengthen the organizations that serve them.
 
 ---
 
@@ -295,3 +429,20 @@ The person. Now.
 - Reference implementation: imajin.ai
 - Foundation: [TBD — Swiss Stiftung, Q1 2026]
 - First demonstration: April 1st, 2026
+
+---
+
+## Changelog
+
+### v0.2 (March 2026)
+- **Typed Identity Primitives:** Identity section expanded from flat DID concept to four first-class primitive types (Individual, Family, Cultural, Org) with distinct governance models, trust semantics, and visibility defaults.
+- **Typed Identity Graph:** New section showing how the same trust graph yields fundamentally different query shapes depending on which primitive type is at the center.
+- **Attribution integration:** .fair manifests now typed by identity primitive — collective attribution, corporate attribution, and individual attribution follow different governance paths through the same system.
+- **Consent semantics:** Consent declarations now respect identity governance — individual autonomy, custodial consent, quorum consent, delegated consent.
+- **Settlement follows the graph:** Settlement instructions trace through the identity graph to reach the Individual DIDs who did the work, regardless of which primitive type initiated the exchange.
+- **Trust-Gated Presence:** New reference implementation section demonstrating typed trust queries.
+- **Market projection update:** Typed identity advantage section added — the TAM for sovereign identity that serves families, communities, and organizations, not just individuals.
+- **Roadmap updated** with typed primitive implementation milestones.
+
+### v0.1 (February 2026)
+- Initial protocol specification.
