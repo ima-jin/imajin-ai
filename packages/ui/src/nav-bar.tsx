@@ -271,6 +271,13 @@ export function NavBar({
                       >
                         <span>🤝</span> Connections
                       </a>
+                      <hr className="my-1 border-gray-200 dark:border-gray-800" />
+                      <a
+                        href={`${buildUrl('www', servicePrefix, domain, serviceUrls)}/bugs`}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                      >
+                        <span>🐛</span> Report a Bug
+                      </a>
                     </>
                   )}
                   {identity.onLogout && (
@@ -312,20 +319,7 @@ export function NavBar({
             tier={launcherTier}
             inline
           />
-          {identity?.isLoggedIn && identity?.tier !== 'soft' && (
-            <>
-              <hr className="my-2 border-gray-200 dark:border-gray-800" />
-              <a href={userLinks.messages} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 no-underline">
-                <span>💬 Messages</span>
-                {unreadMessages > 0 && (
-                  <span className="bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
-                    {unreadMessages}
-                  </span>
-                )}
-              </a>
-              <a href={userLinks.connections} className="block px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 no-underline">🤝 Connections</a>
-            </>
-          )}
+
         </div>
       )}
     </nav>
