@@ -19,6 +19,7 @@ interface SentInvite {
   id: string;
   code: string;
   toEmail: string | null;
+  toDid: string | null;
   note: string | null;
   delivery: 'link' | 'email';
   status: string;
@@ -26,6 +27,8 @@ interface SentInvite {
   maxUses: number;
   createdAt: string | null;
   acceptedAt: string | null;
+  acceptedBy: string | null;
+  acceptedHandle: string | null;
   daysAgo: number;
   url: string;
 }
@@ -186,6 +189,9 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
       note: inv.note || null,
       date: inv.createdAt,
       acceptedDate: inv.acceptedAt || null,
+      acceptedBy: inv.acceptedBy || null,
+      acceptedHandle: inv.acceptedHandle || null,
+      acceptedDid: inv.toDid || null,
       url: inv.url,
       code: inv.code,
     }))
@@ -442,7 +448,29 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
               >
                 <span className="text-base shrink-0">{row.type === 'link' ? '🔗' : '📧'}</span>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-gray-200 truncate">{row.recipient}</div>
+                  <div className="text-sm text-gray-200 truncate">
+                    {row.status === 'accepted' && row.acceptedHandle ? (
+                      <a
+                        href={`${PROFILE_URL}/${row.acceptedHandle}`}
+                        className="text-amber-400 hover:text-amber-300 transition"
+                      >
+                        @{row.acceptedHandle}
+                      </a>
+                    ) : row.status === 'accepted' && row.acceptedBy ? (
+                      row.acceptedDid ? (
+                        <a
+                          href={`${PROFILE_URL}/${row.acceptedDid}`}
+                          className="text-amber-400 hover:text-amber-300 transition"
+                        >
+                          {row.acceptedBy}
+                        </a>
+                      ) : (
+                        <span>{row.acceptedBy}</span>
+                      )
+                    ) : (
+                      row.recipient
+                    )}
+                  </div>
                   <div className="text-xs text-gray-500 mt-0.5">
                     {formatDate(row.date)}
                     {row.acceptedDate && (
@@ -450,7 +478,7 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
                     )}
                   </div>
                   {row.note && (
-                    <div className="text-xs text-gray-500 mt-1 italic">"{row.note}"</div>
+                    <div className="text-xs text-gray-500 mt-1 italic">&ldquo;{row.note}&rdquo;</div>
                   )}
                 </div>
                 {statusBadge(row.status)}

@@ -209,19 +209,26 @@ export async function GET(request: NextRequest) {
   const limit = getInviteLimit(role);
 
   const results = await db
-    .select()
+    .select({
+      invite: invites,
+      acceptedHandle: profiles.handle,
+      acceptedName: profiles.displayName,
+    })
     .from(invites)
+    .leftJoin(profiles, eq(invites.toDid, profiles.did))
     .where(eq(invites.fromDid, session.did))
     .orderBy(desc(invites.createdAt));
 
   // Quota is based on pending link invites only
-  const pending = results.filter((inv) => inv.delivery === 'link' && inv.status === 'pending').length;
+  const pending = results.filter((r) => r.invite.delivery === 'link' && r.invite.status === 'pending').length;
 
   const now = Date.now();
-  const withDaysAgo = results.map((inv) => ({
-    ...inv,
-    daysAgo: inv.createdAt ? Math.floor((now - new Date(inv.createdAt).getTime()) / 86400000) : 0,
-    url: `${SERVICE_PREFIX}connections.${DOMAIN}/invite/${inv.fromDid}/${inv.code}`,
+  const withDaysAgo = results.map((r) => ({
+    ...r.invite,
+    acceptedBy: r.acceptedHandle || r.acceptedName || null,
+    acceptedHandle: r.acceptedHandle || null,
+    daysAgo: r.invite.createdAt ? Math.floor((now - new Date(r.invite.createdAt).getTime()) / 86400000) : 0,
+    url: `${SERVICE_PREFIX}connections.${DOMAIN}/invite/${r.invite.fromDid}/${r.invite.code}`,
   }));
 
   return NextResponse.json({
