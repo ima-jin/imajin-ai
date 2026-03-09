@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { publicKey, handle, name, type, signature, inviteCode } = body;
+    const { publicKey, handle, name, type, signature, inviteCode, email, phone, optInUpdates } = body;
 
     // Validate required fields
     if (!publicKey || typeof publicKey !== 'string') {
@@ -226,6 +226,9 @@ export async function POST(request: NextRequest) {
           displayName: name?.trim().slice(0, 100) || handle || 'Anonymous',
           displayType,
           handle: handle || undefined,
+          email: email?.trim() || undefined,
+          phone: phone?.trim() || undefined,
+          optInUpdates: optInUpdates || false,
         }),
       });
     } catch (err) {

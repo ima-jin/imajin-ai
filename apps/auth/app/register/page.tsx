@@ -74,6 +74,9 @@ function RegisterPage() {
 
   const [handle, setHandle] = useState('');
   const [name, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [optInUpdates, setOptInUpdates] = useState(false);
   const [type, setType] = useState<'human' | 'agent'>('human');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -142,6 +145,9 @@ function RegisterPage() {
           ...payload,
           signature,
           inviteCode: inviteCode || undefined,
+          email: email.trim() || undefined,
+          phone: phone.trim() || undefined,
+          optInUpdates,
         }),
       });
       
@@ -347,6 +353,46 @@ function RegisterPage() {
             />
           </div>
           
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Email <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Phone <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+1 (555) 000-0000"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+            />
+          </div>
+
+          {(email.trim() || phone.trim()) && (
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={optInUpdates}
+                onChange={(e) => setOptInUpdates(e.target.checked)}
+                className="mt-1 rounded border-gray-300 dark:border-gray-600 text-orange-500 focus:ring-orange-500"
+              />
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                Send me occasional system updates (new features, important changes). No spam, ever. You can opt out anytime.
+              </span>
+            </label>
+          )}
+
           <div>
             <label className="block text-sm font-medium mb-1">Type</label>
             <select

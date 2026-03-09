@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { displayName, displayType, avatar, bio, handle, metadata } = body;
+    const { displayName, displayType, avatar, bio, handle, metadata, email, phone, optInUpdates } = body;
 
     // Validate required fields
     if (!displayName) {
@@ -62,7 +62,12 @@ export async function POST(request: NextRequest) {
       avatar: avatar || null,
       bio: bio || null,
       handle: handle || null,
-      metadata: metadata || {},
+      email: email || null,
+      phone: phone || null,
+      metadata: {
+        ...(metadata || {}),
+        ...(optInUpdates !== undefined ? { optInUpdates } : {}),
+      },
     }).returning();
 
     const profile = Array.isArray(result) ? result[0] : result;
