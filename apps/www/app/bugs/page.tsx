@@ -22,9 +22,12 @@ async function getSession() {
   }
 }
 
-async function getBugReports(sessionCookieValue: string): Promise<BugReport[]> {
+async function getBugReports(sessionCookieValue: string, scope?: string): Promise<BugReport[]> {
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_WWW_URL || 'http://localhost:3000'}/api/bugs`, {
+    const url = scope
+      ? `${process.env.NEXT_PUBLIC_WWW_URL || 'http://localhost:3000'}/api/bugs?scope=${scope}`
+      : `${process.env.NEXT_PUBLIC_WWW_URL || 'http://localhost:3000'}/api/bugs`;
+    const res = await fetch(url, {
       headers: { Cookie: `${SESSION_COOKIE}=${sessionCookieValue}` },
       cache: 'no-store',
     });
@@ -43,6 +46,13 @@ const STATUS_STYLES: Record<string, string> = {
   duplicate: 'bg-yellow-900 text-yellow-300',
 };
 
+const TYPE_EMOJI: Record<string, string> = {
+  bug: '🐛',
+  suggestion: '💡',
+  question: '❓',
+  other: '💬',
+};
+
 function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLES[status] ?? 'bg-gray-700 text-gray-300'}`}>
@@ -56,6 +66,48 @@ function formatDate(date: Date | string | null) {
   return new Date(date).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function ReportCard({ r }: { r: BugReport }) {
+  return (
+    <li className="rounded-xl border border-gray-800 bg-[#111] p-5">
+      <div className="flex items-start gap-4">
+        {r.screenshotUrl && (
+          <a href={r.screenshotUrl} target="_blank" rel="noreferrer" className="shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={r.screenshotUrl}
+              alt="Screenshot"
+              className="h-16 w-16 rounded object-cover border border-gray-700"
+            />
+          </a>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-gray-200 line-clamp-3 mb-2">{r.description}</p>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+            <span className="inline-flex items-center px-2 py-0.5 rounded font-medium bg-gray-700 text-gray-300">
+              {TYPE_EMOJI[r.type] ?? '🐛'}
+            </span>
+            <StatusBadge status={r.status} />
+            <span>{formatDate(r.createdAt)}</span>
+            {r.status === 'imported' && r.githubIssueUrl && (
+              <a
+                href={r.githubIssueUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-orange-400 hover:text-orange-300 transition-colors"
+              >
+                #{r.githubIssueNumber} on GitHub →
+              </a>
+            )}
+            {r.status === 'duplicate' && r.duplicateOf && (
+              <span className="text-yellow-500">Duplicate of {r.duplicateOf}</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </li>
+  );
+}
+
 export default async function BugsPage() {
   const cookieStore = cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE);
@@ -64,65 +116,71 @@ export default async function BugsPage() {
   const session = await getSession();
   if (!session) redirect('/');
 
-  const reports = await getBugReports(sessionCookie.value);
+  const [myReports, allReports] = await Promise.all([
+    getBugReports(sessionCookie.value),
+    getBugReports(sessionCookie.value, 'all'),
+  ]);
+
+  // Others' reports = all reports minus mine
+  const otherReports = allReports.filter(r => r.reporterDid !== session.did);
 
   return (
     <main className="min-h-screen px-6 py-12 max-w-3xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-100 mb-1">My Bug Reports</h1>
-        <p className="text-sm text-gray-500">
-          {reports.length} report{reports.length !== 1 ? 's' : ''}
-        </p>
+      {/* Header with report button */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-100 mb-1">Bug Reports</h1>
+          <p className="text-sm text-gray-500">
+            {allReports.length} total report{allReports.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <button
+          id="open-bug-reporter"
+          className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
+        >
+          🐛 Report a Bug
+        </button>
       </div>
 
-      {reports.length === 0 ? (
-        <div className="rounded-xl border border-gray-800 bg-[#111] px-6 py-12 text-center">
-          <p className="text-gray-500">No bug reports yet.</p>
-          <p className="text-sm text-gray-600 mt-1">Use the 🐛 button to report an issue.</p>
-        </div>
-      ) : (
-        <ul className="space-y-4">
-          {reports.map((r) => (
-            <li key={r.id} className="rounded-xl border border-gray-800 bg-[#111] p-5">
-              <div className="flex items-start gap-4">
-                {r.screenshotUrl && (
-                  <a href={r.screenshotUrl} target="_blank" rel="noreferrer" className="shrink-0">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={r.screenshotUrl}
-                      alt="Screenshot"
-                      className="h-16 w-16 rounded object-cover border border-gray-700"
-                    />
-                  </a>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-200 line-clamp-3 mb-2">{r.description}</p>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded font-medium bg-gray-700 text-gray-300">
-                      {r.type === 'suggestion' ? '💡' : r.type === 'question' ? '❓' : r.type === 'other' ? '💬' : '🐛'}
-                    </span>
-                    <StatusBadge status={r.status} />
-                    <span>{formatDate(r.createdAt)}</span>
-                    {r.status === 'imported' && r.githubIssueUrl && (
-                      <a
-                        href={r.githubIssueUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-orange-400 hover:text-orange-300 transition-colors"
-                      >
-                        #{r.githubIssueNumber} on GitHub →
-                      </a>
-                    )}
-                    {r.status === 'duplicate' && r.duplicateOf && (
-                      <span className="text-yellow-500">Duplicate of {r.duplicateOf}</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* Script to trigger the floating bug reporter */}
+      <script dangerouslySetInnerHTML={{ __html: `
+        document.getElementById('open-bug-reporter')?.addEventListener('click', function() {
+          var btn = document.querySelector('[data-bug-reporter-trigger]');
+          if (btn) btn.click();
+          else alert('Bug reporter is loading — try again in a moment.');
+        });
+      `}} />
+
+      {/* My Reports */}
+      <section className="mb-10">
+        <h2 className="text-lg font-semibold text-gray-200 mb-4">My Reports</h2>
+        {myReports.length === 0 ? (
+          <div className="rounded-xl border border-gray-800 bg-[#111] px-6 py-8 text-center">
+            <p className="text-gray-500">You haven't reported anything yet.</p>
+            <p className="text-sm text-gray-600 mt-1">
+              Found something off? Hit the button above or use the 🐛 in the bottom-right corner.
+            </p>
+          </div>
+        ) : (
+          <ul className="space-y-4">
+            {myReports.map((r) => <ReportCard key={r.id} r={r} />)}
+          </ul>
+        )}
+      </section>
+
+      {/* All Reported Issues */}
+      <section>
+        <h2 className="text-lg font-semibold text-gray-200 mb-4">All Reported Issues</h2>
+        {otherReports.length === 0 ? (
+          <div className="rounded-xl border border-gray-800 bg-[#111] px-6 py-8 text-center">
+            <p className="text-gray-500">No other reports yet.</p>
+          </div>
+        ) : (
+          <ul className="space-y-4">
+            {otherReports.map((r) => <ReportCard key={r.id} r={r} />)}
+          </ul>
+        )}
+      </section>
 
       <div className="mt-8">
         <Link href="/" className="text-orange-400 hover:text-orange-300 text-sm transition-colors">

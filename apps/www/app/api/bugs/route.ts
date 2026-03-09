@@ -51,11 +51,28 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(report, { status: 201 });
 }
 
-// GET /api/bugs — list bugs for the authenticated user
+// GET /api/bugs — list bugs for the authenticated user, or all bugs with ?scope=all
 export async function GET(request: NextRequest) {
   const auth = await authenticateRequest(request);
   if (!auth.authenticated || !auth.identity) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const url = new URL(request.url);
+  const scope = url.searchParams.get('scope');
+
+  if (scope === 'all') {
+    // Return all bug reports (no DID filter), but strip reporter details for privacy
+    const reports = await db
+      .select()
+      .from(bugReports)
+      .orderBy(desc(bugReports.createdAt));
+
+    return NextResponse.json(reports.map(r => ({
+      ...r,
+      reporterDid: r.reporterDid === auth.identity!.did ? r.reporterDid : undefined,
+      reporterName: r.reporterDid === auth.identity!.did ? r.reporterName : undefined,
+    })));
   }
 
   const reports = await db
