@@ -131,8 +131,16 @@ Revenue from day one. No critical mass required. Every stream produces income fr
 ### 1. Settlement Fees (#113)
 Protocol percentage on every transaction. Ticket sales, tips, service calls. Revenue from transaction one.
 
-### 2. Sovereign Ad Routing (#114)
-Users build their own advertising profiles — declared intent, not surveillance. Advertisers pay to reach verified humans. User controls the profile, can revoke anytime, earns from their own attention. Better product than what exists because consent-based with real conversion data.
+### 2. Declared-Intent Marketplace (#114)
+Users own their attention as an asset — not data harvested by platforms, but a profile they consciously build and rent out. Like owning property with a billboard on it: you decide what goes up, you get paid, you can take it down tomorrow.
+
+Three tiers of commercial reach:
+
+- **Trust graph (free/low cost)** — You're connected to a coffee shop. They post "new blend, $12/bag." You see it because you chose to connect. Settlement fee on resulting transactions. This isn't advertising — it's the graph working.
+- **Declared interest (medium gas)** — Users opt into categories: "I care about specialty coffee, vinyl, local restaurants." Businesses pay to reach matching users. User gets a cut. The profile never leaves the user's node — matching happens locally, not in an exchange.
+- **Extended reach (high gas)** — Business wants to reach beyond their direct graph. Higher cost per impression, larger user cut. Still requires the recipient to have opted in — you can't burn gas to reach someone who hasn't opened the door.
+
+**The structural difference from surveillance advertising:** The profile stays on the user's node. There's no exchange, no intermediary holding attention profiles, no auction. .fair manifest on every commercial interaction — full attribution chain, who paid what, where the user's cut went. Revocable at any time, granular control over what's shared.
 
 ### 3. Headless Service Settlement (#115)
 Machine-to-machine. Every API call between nodes is a settlement event. Bots, translation services, embedding services, notification routers — each call settles through .fair. This is where the agent economy lives.
@@ -201,11 +209,41 @@ The execution barrier being near zero is a feature, not a threat. It means anyon
 
 Yes — because inference is stream 5 of 5, not the foundation.
 
-Streams 1-4 (settlement fees, sovereign advertising, headless service settlement, education) don't require running personal AI. Users earn from transacting, sharing attention on their terms, offering services, and teaching.
+Streams 1-4 (settlement fees, declared-intent marketplace, headless service settlement, education) don't require running personal AI. Users earn from transacting, sharing attention on their terms, offering services, and teaching.
 
 Stream 5 (trust graph queries) is the high-upside path for people who invest in building their sovereign presence — but it's additive, not gatekeeping. The base layer is transactions, not inference. The network produces equitable outcomes because value flows through multiple channels, not a single mechanism.
 
 The asymmetry between those who run AI and those who don't exists — but it's the same asymmetry as between someone who writes a book and someone who reads it. The author captures more value. That's not inequitable. It's proportional to contribution.
+
+### Q: Isn't sovereign ad routing still surveillance capitalism with better consent forms?
+
+*(Greg's follow-up, March 9 — the hardest question in the stack.)*
+
+The original framing of Stream 2 — "Sovereign Ad Routing" — had a structural contradiction. The project rejects surveillance capitalism, but advertising is surveillance capitalism's revenue model. Calling it "consent-based" reframes the tension without dissolving it. If Imajin routes ads from external advertisers to users based on attention profiles, it's a cleaner version of the same game. Better consent model, same master-servant dynamic.
+
+**The revision:** Stream 2 isn't ad routing. It's a **declared-intent marketplace where users own their attention as an asset.**
+
+The structural differences that make this not-surveillance-capitalism:
+
+1. **The profile never leaves the user's node.** There's no central attention database. No exchange. No auction house. Matching happens locally — the user's node evaluates whether a business's offer matches their declared interests. The business never sees the profile. They see a match count and pay for delivery.
+
+2. **The user gets paid, not the platform.** Current model: platform harvests data → builds profile → sells access → keeps the money. This model: user declares interests → profile stays on their node → business pays to match → user gets a cut. The economics flow to the person, not the intermediary.
+
+3. **Businesses are just nodes with DIDs.** No special advertiser class. No capital → reach pipeline. A business earns trust-graph position the same way a person does — through connections, not through spending. A company with $10M has the same graph mechanics as a person with $0.
+
+4. **Gas cost scales with distance.** Reaching your own connections is cheap. Reaching people who've opted into your category costs more. Reaching further costs significantly more. This is the inverse of current advertising, where reach is cheapest at scale (bulk buys, programmatic) and most expensive for small players.
+
+5. **Revocable at any time.** Not "delete your account" revocable. Instant, granular: stop sharing with this business, stop this category, stop everything. No dark patterns, no 30-day waiting periods.
+
+**The honest tension that remains:** Does the incentive to earn from your attention profile pressure people into sharing more than they would otherwise? Yes, probably. But the pressure exists today with zero compensation and zero control. This puts the asset in their hands and lets them decide. The sovereignty guarantee holds because the *choice* is real — you can opt out entirely and the network still works for you through every other stream.
+
+**To Greg's specific sub-questions:**
+
+- *Can an advertiser become a node?* Yes — but they're a node like everyone else. Subject to the same trust dynamics. Betraying trust costs connections. No special privileges.
+- *Does capital give trust-graph weight?* No. Trust is connection-based, not stake-based. You can't buy connections. A large advertiser can burn more gas to reach opted-in users at higher cost, but they can't buy *position* in anyone's trust graph.
+- *Serving two masters?* The user and the business aren't being served by Imajin — they're transacting directly through the graph. Imajin takes a settlement fee. There's no optimization function trying to maximize both engagement and ad revenue. The match is declared by the user, not inferred by the platform.
+
+**The concession:** The original "Sovereign Ad Routing" name was wrong. It implied Imajin routes ads. Imajin doesn't route anything — users declare, businesses offer, the graph connects them. Updated to "Declared-Intent Marketplace" to reflect the actual mechanics.
 
 ---
 
