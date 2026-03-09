@@ -134,6 +134,27 @@ export default async function Home() {
         </a>
       </div>
 
+      {/* RFC callout */}
+      <div className="mt-12 max-w-md text-center px-4">
+        <a
+          href="https://github.com/ima-jin/imajin-ai/discussions/categories/ideas"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group block rounded-lg border border-gray-700 hover:border-orange-500/50 p-6 transition-colors"
+        >
+          <p className="text-lg font-semibold text-gray-200 mb-2 group-hover:text-orange-400 transition-colors">
+            Help us build this
+          </p>
+          <p className="text-sm text-gray-400 leading-relaxed">
+            We have open Requests for Comment on features we're building.
+            Read, discuss, and shape what comes next.
+          </p>
+          <p className="text-orange-400 text-sm mt-3 group-hover:text-orange-300 transition-colors">
+            Join the conversation →
+          </p>
+        </a>
+      </div>
+
       {/* Shared footer */}
       <footer className="mt-auto pt-16 pb-8">
         <ImajinFooter />
