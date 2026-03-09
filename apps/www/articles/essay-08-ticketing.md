@@ -124,6 +124,7 @@ Jin's Launch Party is live. A $1 virtual ticket gets you into the lobby right no
 **If you want to follow along:**
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](https://www.imajin.ai)
+- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-08-ticketing.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-08-ticketing.md)
 
-This article was originally published on imajin.ai on March 4, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/the-ticket-is-the-trust) on March 4, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
