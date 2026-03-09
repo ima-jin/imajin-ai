@@ -194,9 +194,16 @@ export async function POST(
       return errorResponse('content is required and must be an object', 400, cors);
     }
 
-    // Event lobby messages should have { text: string }
-    if (!content.text || typeof content.text !== 'string') {
-      return errorResponse('content.text is required for lobby messages', 400, cors);
+    // Determine content type from the content object
+    const contentType = content.type || 'text';
+    const validTypes = ['text', 'voice', 'media', 'location'];
+    if (!validTypes.includes(contentType)) {
+      return errorResponse('Invalid content type', 400, cors);
+    }
+
+    // Text messages require text field
+    if (contentType === 'text' && (!content.text || typeof content.text !== 'string')) {
+      return errorResponse('content.text is required for text messages', 400, cors);
     }
 
     // If replying, verify the message exists in this conversation
@@ -219,8 +226,8 @@ export async function POST(
       id: messageId,
       conversationId: lobbyConversationId,
       fromDid: identity.id,
-      content: { text: content.text }, // Store as plaintext
-      contentType: 'text',
+      content,
+      contentType,
       replyTo: replyTo || null,
     });
 
