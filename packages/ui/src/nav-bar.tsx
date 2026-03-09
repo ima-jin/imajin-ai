@@ -156,6 +156,22 @@ export function NavBar({
       .catch(() => {});
   }, [identity?.isLoggedIn, identity?.did, servicePrefix, domain, serviceUrls]);
 
+  // Fetch unread message count from chat service
+  const [unread, setUnread] = useState<number>(unreadMessages);
+  useEffect(() => {
+    if (!identity?.isLoggedIn || identity?.tier === 'soft') { setUnread(0); return; }
+    const chatUrl = buildUrl('chat', servicePrefix, domain, serviceUrls);
+    function fetchUnread() {
+      fetch(`${chatUrl}/api/conversations/unread`, { credentials: 'include' })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data?.total != null) setUnread(data.total); })
+        .catch(() => {});
+    }
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 60_000); // poll every 60s
+    return () => clearInterval(interval);
+  }, [identity?.isLoggedIn, identity?.tier, servicePrefix, domain, serviceUrls]);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -184,13 +200,36 @@ export function NavBar({
           <img src={`${buildUrl("www", servicePrefix, domain, serviceUrls)}/images/logo.svg`} alt="Imajin" className="h-8" />
         </a>
 
-        {/* Center - Launcher (desktop) */}
+        {/* Center - Launcher + Quick Access (desktop) */}
         <div className="hidden sm:flex items-center gap-1">
           <AppLauncher
             registryUrl={registryUrl}
             currentService={currentService}
             tier={launcherTier}
           />
+          {identity?.isLoggedIn && identity?.tier !== 'soft' && (
+            <>
+              <a
+                href={userLinks.messages}
+                className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
+                title="Messages"
+              >
+                <span className="text-lg">💬</span>
+                {unread > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 bg-orange-500 text-white text-[10px] font-bold rounded-full min-w-[1.1rem] h-[1.1rem] flex items-center justify-center px-1">
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                )}
+              </a>
+              <a
+                href={userLinks.connections}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
+                title="Connections"
+              >
+                <span className="text-lg">🤝</span>
+              </a>
+            </>
+          )}
         </div>
 
         {/* Mobile hamburger */}
@@ -259,9 +298,9 @@ export function NavBar({
                         className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
                       >
                         <span>💬</span> Messages
-                        {unreadMessages > 0 && (
+                        {unread > 0 && (
                           <span className="ml-auto bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
-                            {unreadMessages}
+                            {unread}
                           </span>
                         )}
                       </a>
@@ -319,7 +358,27 @@ export function NavBar({
             tier={launcherTier}
             inline
           />
-
+          {identity?.isLoggedIn && identity?.tier !== 'soft' && (
+            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
+              <a
+                href={userLinks.messages}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline text-sm text-inherit"
+              >
+                <span>💬</span> Messages
+                {unread > 0 && (
+                  <span className="bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
+                    {unread}
+                  </span>
+                )}
+              </a>
+              <a
+                href={userLinks.connections}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline text-sm text-inherit"
+              >
+                <span>🤝</span> Connections
+              </a>
+            </div>
+          )}
         </div>
       )}
     </nav>
