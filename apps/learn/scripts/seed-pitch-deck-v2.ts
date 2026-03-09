@@ -121,7 +121,7 @@ const slides = [
       layout: 'left',
       items: [
         'Settlement fees — protocol percentage on every transaction that flows through the network.',
-        'Sovereign advertising — users build their own ad profiles. Declared intent, not surveillance. User earns from their own attention.',
+        'Declared-intent marketplace — users own their attention as an asset. They build profiles on their own nodes, businesses pay to match. Profile never leaves the user. Revocable anytime.',
         'Headless service settlement — machine-to-machine. Every API call between nodes is a revenue event. This is where the agent economy lives.',
         'Education settlement — direct knowledge transactions. Courses, tutorials, consultations. Attribution chains compensate upstream.',
         'Trust graph queries — "Ask [Name]." Domain expertise as queryable infrastructure. The revenue stream with no ceiling.',
