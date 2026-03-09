@@ -158,7 +158,8 @@ function RegisterPage() {
         did: data.did,
         handle: data.handle,
       };
-      localStorage.setItem('imajin:keypair', JSON.stringify(keypairData));
+      localStorage.setItem('imajin_keypair', JSON.stringify(keypairData));
+      localStorage.setItem('imajin_did', data.did);
 
       // Show key backup screen before redirecting
       setRegisteredKeypair(keypairData);
@@ -218,9 +219,11 @@ function RegisterPage() {
     const keyFileContent = JSON.stringify({
       did: registeredKeypair.did,
       handle: registeredKeypair.handle,
-      publicKey: registeredKeypair.publicKey,
-      privateKey: registeredKeypair.privateKey,
-      exported: new Date().toISOString(),
+      keypair: {
+        publicKey: registeredKeypair.publicKey,
+        privateKey: registeredKeypair.privateKey,
+      },
+      exportedAt: new Date().toISOString(),
       warning: 'This file contains your private key. Anyone with this file can access your identity. Store it somewhere safe.',
     }, null, 2);
 

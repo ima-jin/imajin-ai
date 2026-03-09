@@ -111,11 +111,14 @@ function LoginForm() {
       const text = await file.text();
       const data = JSON.parse(text);
 
-      if (!data.keypair?.privateKey) {
-        throw new Error('Invalid backup file format. Missing keypair.privateKey');
+      // Accept both nested format (v0.2+: { keypair: { privateKey } })
+      // and flat format (v0.1: { privateKey })
+      const privateKey = data.keypair?.privateKey || data.privateKey;
+      if (!privateKey) {
+        throw new Error('Invalid backup file format. Missing privateKey.');
       }
 
-      const result = await importPrivateKey(data.keypair.privateKey);
+      const result = await importPrivateKey(privateKey);
 
       if (result.success) {
         window.location.href = nextUrl || '/';
