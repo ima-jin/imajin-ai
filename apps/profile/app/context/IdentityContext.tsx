@@ -38,6 +38,7 @@ interface IdentityContextType {
   avatar: string | null;
   displayName: string | null;
   isLoggedIn: boolean;
+  isLoading: boolean;
   logout: () => Promise<void>;
   importKeys: (privateKeyHex: string) => Promise<{ success: boolean; error?: string; did?: string; handle?: string }>;
   refreshProfile: () => Promise<void>;
@@ -51,10 +52,11 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   const [avatar, setAvatar] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Check localStorage on mount
   useEffect(() => {
-    loadIdentity();
+    loadIdentity().finally(() => setIsLoading(false));
   }, []);
 
   async function loadIdentity() {
@@ -216,6 +218,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         avatar,
         displayName,
         isLoggedIn,
+        isLoading,
         logout,
         importKeys,
         refreshProfile,

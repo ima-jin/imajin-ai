@@ -1,3 +1,4 @@
+import { SESSION_COOKIE_NAME } from "@imajin/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/metering';
 import { corsHeaders, corsOptions } from '@/lib/cors';
@@ -23,10 +24,10 @@ export async function POST(request: NextRequest) {
   // Validate session (optional — allow anonymous for now, but track DID if present)
   let callerDid = 'anonymous';
   try {
-    const sessionCookie = request.cookies.get('imajin_session')?.value;
+    const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
     if (sessionCookie) {
       const sessionRes = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-        headers: { Cookie: `imajin_session=${sessionCookie}` },
+        headers: { Cookie: `${SESSION_COOKIE_NAME}=${sessionCookie}` },
       });
       if (sessionRes.ok) {
         const session = await sessionRes.json();

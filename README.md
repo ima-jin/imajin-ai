@@ -62,8 +62,8 @@ Core services that make up the sovereign stack.
 | [profile](./apps/profile) | 3005 | 7005 | [profile.imajin.ai](https://profile.imajin.ai) | Public identity pages | ✅ Live |
 | [events](./apps/events) | 3006 | 7006 | [events.imajin.ai](https://events.imajin.ai) | Create events, sell tickets | ✅ Live |
 | [chat](./apps/chat) | 3007 | 7007 | [chat.imajin.ai](https://chat.imajin.ai) | E2EE messaging, trust-bound | ✅ Live |
-| [input](./apps/input) | 3008 | 7008 | [input.imajin.ai](https://input.imajin.ai) | Input processing (voice, files) | 🔨 Dev |
-| [media](./apps/media) | 3009 | 7009 | [media.imajin.ai](https://media.imajin.ai) | Asset storage, .fair attribution | 🔨 Dev |
+| [input](./apps/input) | 3008 | 7008 | [input.imajin.ai](https://input.imajin.ai) | Input processing (voice, files) | ✅ Live |
+| [media](./apps/media) | 3009 | 7009 | [media.imajin.ai](https://media.imajin.ai) | Asset storage, .fair attribution | 🧪 Alpha |
 
 ### Imajin Apps (3100+/7100+)
 
@@ -72,9 +72,9 @@ Account-based apps tied to a user's DID, accessible at `{service}.imajin.ai/{han
 | App | Dev Port | Prod Port | Purpose | Status |
 |-----|----------|-----------|---------|--------|
 | [coffee](./apps/coffee) | 3100 | 7100 | Tip jar / support page | ✅ Live |
-| [dykil](./apps/dykil) | 3101 | 7101 | Surveys & polls (event integration) | 📋 Scaffolded |
-| [links](./apps/links) | 3102 | 7102 | Curated link collection | 📋 Scaffolded |
-| learn | 3103 | 7103 | Lessons & courses | 📋 Planned |
+| [dykil](./apps/dykil) | 3101 | 7101 | Surveys & polls (event integration) | ✅ Live |
+| [links](./apps/links) | 3102 | 7102 | Curated link collection | ✅ Live |
+| [learn](./apps/learn) | 3103 | 7103 | Courses, lessons, and learning progress | ✅ Live |
 
 ### Client Apps (3400+/7400+)
 
@@ -96,7 +96,7 @@ Shared libraries used across all apps.
 | [@imajin/auth](./packages/auth) | Ed25519 signing, verification, DID creation |
 | [@imajin/db](./packages/db) | Database layer (postgres-js + drizzle-orm) |
 | [@imajin/pay](./packages/pay) | Unified payments (Stripe + Solana) |
-| [@imajin/config](./packages/config) | Shared configuration |
+| [@imajin/config](./packages/config) | Service manifest, session config, CORS |
 | [@imajin/ui](./packages/ui) | Shared UI components |
 | [@imajin/input](./packages/input) | Input components (emoji, voice, GPS, file upload) |
 | [@imajin/media](./packages/media) | Media browser & asset display components |

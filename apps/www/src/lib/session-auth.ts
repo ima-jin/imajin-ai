@@ -8,7 +8,7 @@
 import { NextRequest } from 'next/server';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-const SESSION_COOKIE = 'imajin_session';
+import { SESSION_COOKIE_NAME as SESSION_COOKIE } from '@imajin/config';
 
 // Comma-separated list of DIDs that have admin access
 const ADMIN_DIDS = (process.env.ADMIN_DID || '').split(',').map((d) => d.trim()).filter(Boolean);

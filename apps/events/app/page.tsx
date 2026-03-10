@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
+import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { db, events } from '@/src/db';
 import { desc, eq, or, and, ne, isNull, inArray } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
@@ -11,10 +12,10 @@ async function getViewerDid(): Promise<string | null> {
   if (!authUrl) return null;
   try {
     const cookieStore = await cookies();
-    const session = cookieStore.get('imajin_session');
+    const session = cookieStore.get(SESSION_COOKIE_NAME);
     if (!session?.value) return null;
     const res = await fetch(`${authUrl}/api/session`, {
-      headers: { Cookie: `imajin_session=${session.value}` },
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${session.value}` },
       cache: 'no-store',
     });
     if (!res.ok) return null;

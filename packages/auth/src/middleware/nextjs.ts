@@ -6,6 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { SESSION_COOKIE_NAME } from '@imajin/config';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL;
 
@@ -36,7 +37,7 @@ async function validateSession(request: NextRequest): Promise<AuthSession | null
   }
 
   try {
-    const sessionCookie = request.cookies.get('imajin_session')?.value;
+    const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
     if (!sessionCookie) {
       return null;
     }
@@ -44,7 +45,7 @@ async function validateSession(request: NextRequest): Promise<AuthSession | null
     const response = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
       method: 'GET',
       headers: {
-        Cookie: `imajin_session=${sessionCookie}`,
+        Cookie: `${SESSION_COOKIE_NAME}=${sessionCookie}`,
       },
     });
 

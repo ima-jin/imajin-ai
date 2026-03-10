@@ -1,3 +1,4 @@
+import { SESSION_COOKIE_NAME } from "@imajin/config";
 import { NextRequest, NextResponse } from 'next/server';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
@@ -8,7 +9,7 @@ const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL!;
  * Verifies JWT via auth service, then fetches profile
  */
 export async function GET(request: NextRequest) {
-  const sessionCookie = request.cookies.get('imajin_session')?.value;
+  const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
 
   if (!sessionCookie) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
   try {
     // Verify JWT with auth service
     const authRes = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      headers: { Cookie: `imajin_session=${sessionCookie}` },
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${sessionCookie}` },
     });
 
     if (!authRes.ok) {

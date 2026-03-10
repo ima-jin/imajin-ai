@@ -1,3 +1,4 @@
+import { SESSION_COOKIE_NAME } from "@imajin/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { conversationReads, messages, participants } from '@/db/schema';
@@ -5,13 +6,13 @@ import { and, eq, gt, sql } from 'drizzle-orm';
 import { corsHeaders, corsOptions } from '@/lib/utils';
 
 async function getSessionDid(req: NextRequest): Promise<string | null> {
-  const cookie = req.cookies.get('imajin_session');
+  const cookie = req.cookies.get(SESSION_COOKIE_NAME);
   if (!cookie) return null;
 
   const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
   try {
     const res = await fetch(`${authUrl}/api/session`, {
-      headers: { Cookie: `imajin_session=${cookie.value}` },
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${cookie.value}` },
     });
     if (!res.ok) return null;
     const data = await res.json();

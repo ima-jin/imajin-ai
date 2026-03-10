@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { SESSION_COOKIE_NAME } from '@imajin/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -6,11 +7,11 @@ const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
 /**
  * GET /api/auth/session - Proxy to auth service session check
- * Forwards the imajin_session cookie to auth service
+ * Forwards the session cookie to auth service
  */
 export async function GET(request: NextRequest) {
   try {
-    const cookie = request.cookies.get('imajin_session');
+    const cookie = request.cookies.get(SESSION_COOKIE_NAME);
 
     // Forward request to auth service with cookie
     const headers: HeadersInit = {

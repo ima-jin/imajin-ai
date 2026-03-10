@@ -10,7 +10,7 @@
 import { NextRequest } from 'next/server';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-const SESSION_COOKIE = 'imajin_session';
+import { SESSION_COOKIE_NAME as SESSION_COOKIE } from '@imajin/config';
 
 export interface SessionIdentity {
   did: string;

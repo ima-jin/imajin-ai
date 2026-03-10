@@ -117,19 +117,5 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
   }
 }
 
-/**
- * Cookie configuration for cross-subdomain sessions
- */
-export function getSessionCookieOptions(isProduction: boolean) {
-  return {
-    name: 'imajin_session',
-    options: {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: 'none' as const,
-      path: '/',
-      ...(isProduction ? { domain: '.imajin.ai' } : {}),
-      maxAge: 60 * 60 * 24, // 24 hours
-    },
-  };
-}
+// Re-export from @imajin/config — auth's own callers can keep importing from here
+export { getSessionCookieOptions } from '@imajin/config';

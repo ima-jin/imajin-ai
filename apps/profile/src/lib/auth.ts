@@ -1,6 +1,7 @@
 /**
  * Auth utilities - validate session cookies against auth service
  */
+import { SESSION_COOKIE_NAME } from '@imajin/config';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
@@ -19,12 +20,13 @@ export interface Identity {
 export async function requireAuth(request: Request): Promise<{ identity: Identity } | { error: string; status: number }> {
   // Try session cookie first (how the browser authenticates)
   const cookieHeader = request.headers.get('cookie') || '';
-  const sessionMatch = cookieHeader.match(/imajin_session=([^;]+)/);
+  const cookiePattern = new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`);
+  const sessionMatch = cookieHeader.match(cookiePattern);
 
   if (sessionMatch) {
     try {
       const response = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-        headers: { Cookie: `imajin_session=${sessionMatch[1]}` },
+        headers: { Cookie: `${SESSION_COOKIE_NAME}=${sessionMatch[1]}` },
       });
 
       if (response.ok) {

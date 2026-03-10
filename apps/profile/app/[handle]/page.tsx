@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { Avatar } from '../components/Avatar';
 import { FollowButton } from '../components/FollowButton';
 
@@ -43,10 +44,10 @@ async function getViewerDid(): Promise<string | null> {
   if (!authUrl) return null;
   try {
     const cookieStore = await cookies();
-    const session = cookieStore.get('imajin_session');
+    const session = cookieStore.get(SESSION_COOKIE_NAME);
     if (!session?.value) return null;
     const res = await fetch(`${authUrl}/api/session`, {
-      headers: { Cookie: `imajin_session=${session.value}` },
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${session.value}` },
       cache: 'no-store',
     });
     if (!res.ok) return null;
@@ -60,9 +61,9 @@ async function isConnected(viewerDid: string, targetDid: string): Promise<boolea
   if (!connectionsUrl) return false;
   try {
     const cookieStore = await cookies();
-    const session = cookieStore.get('imajin_session');
+    const session = cookieStore.get(SESSION_COOKIE_NAME);
     const res = await fetch(`${connectionsUrl}/api/connections`, {
-      headers: session?.value ? { Cookie: `imajin_session=${session.value}` } : {},
+      headers: session?.value ? { Cookie: `${SESSION_COOKIE_NAME}=${session.value}` } : {},
     });
     if (!res.ok) return false;
     const data = await res.json();
@@ -104,12 +105,12 @@ async function getFollowStatus(targetDid: string): Promise<boolean> {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3005';
   try {
     const cookieStore = await cookies();
-    const session = cookieStore.get('imajin_session');
+    const session = cookieStore.get(SESSION_COOKIE_NAME);
     if (!session?.value) return false;
     const res = await fetch(
       `${baseUrl}/api/follow/status?did=${encodeURIComponent(targetDid)}`,
       {
-        headers: { Cookie: `imajin_session=${session.value}` },
+        headers: { Cookie: `${SESSION_COOKIE_NAME}=${session.value}` },
         cache: 'no-store',
       }
     );
