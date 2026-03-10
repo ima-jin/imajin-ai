@@ -2,15 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { VoiceMessage } from './VoiceMessage';
-import { MediaMessage } from './MediaMessage';
-import { LocationMessage } from './LocationMessage';
-
-type TextContent = { type?: 'text'; text: string };
-type VoiceContent = { type: 'voice'; assetId: string; transcript: string; durationMs: number; waveform?: number[] };
-type MediaContent = { type: 'media'; assetId: string; filename: string; mimeType: string; size: number; width?: number; height?: number; caption?: string };
-type LocationContent = { type: 'location'; lat: number; lng: number; label?: string; accuracy?: number };
-type MessageContent = TextContent | VoiceContent | MediaContent | LocationContent;
+import { VoiceMessage, MediaMessage, LocationMessage } from '@imajin/chat';
+import type { MessageContent, VoiceContent, MediaContent, LocationContent, TextContent } from '@imajin/chat';
 
 interface Message {
   id: string;
@@ -62,17 +55,19 @@ function formatRecordingTime(ms: number): string {
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
+const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
+
 function MessageContentRenderer({ msg, isOwn }: { msg: Message; isOwn: boolean }) {
   const content = msg.content;
   const ct = content.type || msg.contentType || 'text';
 
   if (ct === 'voice') {
     const v = content as VoiceContent;
-    return <VoiceMessage assetId={v.assetId} transcript={v.transcript} durationMs={v.durationMs} waveform={v.waveform} isOwn={isOwn} />;
+    return <VoiceMessage assetId={v.assetId} transcript={v.transcript} durationMs={v.durationMs} waveform={v.waveform} isOwn={isOwn} mediaUrl={MEDIA_URL} />;
   }
   if (ct === 'media') {
     const m = content as MediaContent;
-    return <MediaMessage assetId={m.assetId} filename={m.filename} mimeType={m.mimeType} size={m.size} width={m.width} height={m.height} caption={m.caption} isOwn={isOwn} />;
+    return <MediaMessage assetId={m.assetId} filename={m.filename} mimeType={m.mimeType} size={m.size} width={m.width} height={m.height} caption={m.caption} isOwn={isOwn} mediaUrl={MEDIA_URL} />;
   }
   if (ct === 'location') {
     const l = content as LocationContent;

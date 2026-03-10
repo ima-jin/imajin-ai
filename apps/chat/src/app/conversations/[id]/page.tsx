@@ -5,13 +5,15 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useIdentity, LoginPrompt } from '@/contexts/IdentityContext';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { MessageBubble } from '@/app/components/MessageBubble';
+import { MessageBubble } from '@imajin/chat';
 import { TypingIndicator } from '@/app/components/TypingIndicator';
 import { FileUpload } from '@/app/components/FileUpload';
 import { MessageMedia } from '@/app/components/MessageMedia';
 import { VoiceRecorder } from '@/app/components/VoiceRecorder';
 import { LocationPicker, LocationData } from '@/app/components/LocationPicker';
 import { sendVoiceMessage } from '@/lib/voice';
+
+const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
 
 interface LinkPreview {
   url: string;
@@ -702,6 +704,7 @@ export default function MessageThreadPage() {
                     onReactionToggle={(emoji, reacted) => handleReactionToggle(msg.id, emoji, reacted)}
                     replyToMessage={replyTo}
                     onScrollToMessage={scrollToMessage}
+                    mediaUrl={MEDIA_URL}
                   />
                 )}
               </div>
