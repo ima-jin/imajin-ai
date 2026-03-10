@@ -1,3 +1,4 @@
+import { SESSION_COOKIE_NAME } from "@imajin/config";
 import { NextRequest } from 'next/server';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
@@ -27,7 +28,7 @@ export async function requireAuth(request: NextRequest): Promise<AuthResult | Au
     return validateBearerToken(token);
   }
 
-  const sessionCookie = request.cookies.get('imajin_session')?.value;
+  const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   if (sessionCookie) {
     return validateSessionCookie(sessionCookie);
   }
@@ -63,7 +64,7 @@ async function validateSessionCookie(jwt: string): Promise<AuthResult | AuthErro
     const response = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
       method: 'GET',
       headers: {
-        Cookie: `imajin_session=${jwt}`,
+        Cookie: `${SESSION_COOKIE_NAME}=${jwt}`,
       },
     });
 

@@ -1,26 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { corsHeaders, corsOptions } from "@/src/lib/cors";
+import { corsHeaders, corsOptions, buildServiceUrlMap, getService } from "@imajin/config";
 
-const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || "";
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || "imajin.ai";
+const IS_PROD = process.env.NODE_ENV === "production" || process.env.IMAJIN_ENV === "prod";
+const SERVICE_URLS = buildServiceUrlMap(process.env as Record<string, string | undefined>, IS_PROD ? "prod" : "dev");
 
-// Map service names to their internal (server-side) URLs
-const SERVICE_URLS: Record<string, string> = {
-  www: process.env.WWW_SERVICE_URL || "http://localhost:3000",
-  auth: process.env.AUTH_SERVICE_URL || "http://localhost:3001",
-  registry: "http://localhost:" + (process.env.PORT || "3002"),
-  connections: process.env.CONNECTIONS_SERVICE_URL || "http://localhost:3003",
-  pay: process.env.PAY_SERVICE_URL || "http://localhost:3004",
-  profile: process.env.PROFILE_SERVICE_URL || "http://localhost:3005",
-  events: process.env.EVENTS_SERVICE_URL || "http://localhost:3006",
-  chat: process.env.CHAT_SERVICE_URL || "http://localhost:3007",
-  input: process.env.INPUT_SERVICE_URL || "http://localhost:3008",
-  media: process.env.MEDIA_SERVICE_URL || "http://localhost:3009",
-  coffee: process.env.COFFEE_SERVICE_URL || "http://localhost:3100",
-  dykil: process.env.DYKIL_SERVICE_URL || "http://localhost:3101",
-  links: process.env.LINKS_SERVICE_URL || "http://localhost:3102",
-  learn: process.env.LEARN_SERVICE_URL || "http://localhost:3103",
-};
+// Override registry's own URL to use localhost + current port
+SERVICE_URLS["registry"] = "http://localhost:" + (process.env.PORT || "3002");
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -32,11 +17,12 @@ export async function GET(
 ) {
   const cors = corsHeaders(request);
   const { service } = params;
-  const internalUrl = SERVICE_URLS[service];
 
-  if (!internalUrl) {
+  if (!getService(service)) {
     return NextResponse.json({ error: "Unknown service" }, { status: 404, headers: cors });
   }
+
+  const internalUrl = SERVICE_URLS[service];
 
   try {
     const res = await fetch(`${internalUrl}/api/spec`, {

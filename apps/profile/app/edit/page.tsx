@@ -30,7 +30,7 @@ const SERVICES = [
 
 export default function EditProfilePage() {
   const router = useRouter();
-  const { did, isLoggedIn, refreshProfile } = useIdentity();
+  const { did, isLoggedIn, isLoading: identityLoading, refreshProfile } = useIdentity();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -48,6 +48,9 @@ export default function EditProfilePage() {
   const [serviceToggles, setServiceToggles] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    // Don't redirect until the session check has completed
+    if (identityLoading) return;
+
     if (!isLoggedIn || !did) {
       const authUrl = `${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}auth.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`;
       window.location.href = `${authUrl}/login?next=${encodeURIComponent(window.location.href)}`;
@@ -56,7 +59,7 @@ export default function EditProfilePage() {
 
     loadProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, did]);
+  }, [identityLoading, isLoggedIn, did]);
 
   async function loadProfile() {
     if (!did) return;

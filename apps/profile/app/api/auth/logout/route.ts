@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { SESSION_COOKIE_NAME } from '@imajin/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,11 +9,9 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   const response = NextResponse.json({ success: true });
 
-  // Clear the imajin_session cookie
-  // Use the same domain setting as production for consistency
   const isProduction = process.env.NODE_ENV === 'production';
 
-  response.cookies.set('imajin_session', '', {
+  response.cookies.set(SESSION_COOKIE_NAME, '', {
     httpOnly: true,
     secure: isProduction,
     sameSite: 'lax',

@@ -3,6 +3,7 @@ import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { db, profiles } from '@/db';
 import { requireAuth } from '@/lib/auth';
+import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { corsHeaders, corsOptions } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
@@ -72,11 +73,11 @@ async function getViewerDid(request: NextRequest): Promise<string | null> {
   const authUrl = process.env.AUTH_SERVICE_URL;
   if (!authUrl) return null;
   const cookie = request.headers.get('cookie') || '';
-  const match = cookie.match(/imajin_session=([^;]+)/);
+  const match = cookie.match(new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`));
   if (!match) return null;
   try {
     const res = await fetch(`${authUrl}/api/session`, {
-      headers: { Cookie: `imajin_session=${match[1]}` },
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${match[1]}` },
     });
     if (!res.ok) return null;
     const data = await res.json();

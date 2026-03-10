@@ -3,7 +3,7 @@
  */
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
-const COOKIE_NAME = 'imajin_session';
+import { SESSION_COOKIE_NAME as COOKIE_NAME } from '@imajin/config';
 
 export interface Identity {
   id: string;

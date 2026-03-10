@@ -4,7 +4,7 @@ import Link from 'next/link';
 import type { BugReport } from '@/db/schema';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-const SESSION_COOKIE = 'imajin_session';
+import { SESSION_COOKIE_NAME as SESSION_COOKIE } from '@imajin/config';
 
 async function getSession() {
   const cookieStore = cookies();

@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, pods, podMembers } from '../../../../src/db/index';
 import { eq, and } from 'drizzle-orm';
+import { SESSION_COOKIE_NAME } from '@imajin/config';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
 async function getSessionDid(request: NextRequest): Promise<string | null> {
   const cookie = request.headers.get('cookie') || '';
-  const match = cookie.match(/imajin_session=([^;]+)/);
+  const match = cookie.match(new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`));
   if (!match) return null;
 
   try {
     const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      headers: { Cookie: `imajin_session=${match[1]}` },
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${match[1]}` },
     });
     if (!res.ok) return null;
     const data = await res.json();
