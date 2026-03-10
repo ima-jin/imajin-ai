@@ -79,7 +79,14 @@ export default async function CoffeePage({ params }: PageProps) {
 
         {/* Tip Form */}
         <TipForm
-          page={page}
+          page={{
+            handle: page.handle,
+            presets: page.presets ?? [300, 500, 1000],
+            fundDirections: (page.fundDirections as any) ?? undefined,
+            allowCustomAmount: page.allowCustomAmount ?? true,
+            allowMessages: page.allowMessages ?? true,
+            paymentMethods: (page.paymentMethods as any) ?? {},
+          }}
           primaryColor={primaryColor}
         />
 
