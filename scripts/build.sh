@@ -1,0 +1,89 @@
+#!/bin/bash
+# Build and deploy services
+# Usage: ./scripts/build.sh [--prod|--dev] [app1 app2 ...]
+# Example: ./scripts/build.sh --dev registry www learn
+#          ./scripts/build.sh --prod www auth profile
+#
+# Defaults to dev if not specified.
+# Detects environment from the working directory if --prod/--dev not given.
+
+set -e
+export PATH=/home/jin/.nvm/versions/node/v22.22.0/bin:$PATH
+
+# Parse environment flag
+ENV="auto"
+APPS=()
+for arg in "$@"; do
+  case "$arg" in
+    --prod) ENV="prod" ;;
+    --dev)  ENV="dev" ;;
+    *)      APPS+=("$arg") ;;
+  esac
+done
+
+# Auto-detect from cwd if not specified
+if [ "$ENV" = "auto" ]; then
+  case "$(pwd)" in
+    */prod/*) ENV="prod" ;;
+    *)        ENV="dev" ;;
+  esac
+fi
+
+# Set paths based on environment
+if [ "$ENV" = "prod" ]; then
+  BASE_DIR="/home/jin/prod/imajin-ai"
+  PM2_PREFIX=""
+  LABEL="PROD"
+else
+  BASE_DIR="/home/jin/dev/imajin-ai"
+  PM2_PREFIX="dev-"
+  LABEL="DEV"
+fi
+
+REPORT="$BASE_DIR/.build-report"
+
+# Default to www if no apps specified
+if [ ${#APPS[@]} -eq 0 ]; then
+  APPS=("www")
+fi
+
+FAILED=()
+SUCCEEDED=()
+
+echo "=== [$LABEL] Build started: $(date) ===" > "$REPORT"
+echo "Apps: ${APPS[*]}" >> "$REPORT"
+echo "" >> "$REPORT"
+
+cd "$BASE_DIR"
+
+for app in "${APPS[@]}"; do
+  echo "=== Building $app ===" | tee -a "$REPORT"
+  cd "apps/$app"
+  rm -rf .next
+
+  if npx next build >> "$REPORT" 2>&1; then
+    SUCCEEDED+=("$app")
+    echo "✅ $app" | tee -a "$REPORT"
+  else
+    FAILED+=("$app")
+    echo "❌ $app — FAILED" | tee -a "$REPORT"
+  fi
+
+  cd "$BASE_DIR"
+  echo "" >> "$REPORT"
+done
+
+# Only restart services that built successfully
+if [ ${#SUCCEEDED[@]} -gt 0 ]; then
+  RESTART_LIST=$(printf "${PM2_PREFIX}%s " "${SUCCEEDED[@]}")
+  echo "=== Restarting: $RESTART_LIST ===" | tee -a "$REPORT"
+  pm2 restart $RESTART_LIST >> "$REPORT" 2>&1
+fi
+
+echo "" >> "$REPORT"
+echo "=== [$LABEL] Build finished: $(date) ===" >> "$REPORT"
+echo "✅ Succeeded: ${SUCCEEDED[*]:-none}" | tee -a "$REPORT"
+echo "❌ Failed: ${FAILED[*]:-none}" | tee -a "$REPORT"
+
+# Exit with error if anything failed
+[ ${#FAILED[@]} -eq 0 ]
