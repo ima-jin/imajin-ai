@@ -20,7 +20,7 @@ export default async function CoffeePage({ params }: PageProps) {
     notFound();
   }
 
-  const theme = page.theme || {};
+  const theme = (page.theme || {}) as Record<string, string>;
   const bgColor = theme.backgroundColor || '#fffbeb';
   const primaryColor = theme.primaryColor || '#f59e0b';
 
