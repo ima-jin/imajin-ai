@@ -118,7 +118,7 @@ That's what we're building.
 **If you want to follow along:**
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](https://imajin.ai)
-- Jin's party: April 1st, 2026
+- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-10-memory.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-10-memory.md)
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-10-memory) on March 10, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/memory) on March 10, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
