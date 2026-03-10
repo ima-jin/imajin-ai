@@ -4,7 +4,7 @@
  * Consumers: registry specs, Caddy config, pm2 ecosystem, docs sync, shared nav.
  */
 
-export type ServiceTier = "core" | "imajin" | "client";
+export type ServiceTier = "core" | "imajin";
 export type ServiceVisibility = "public" | "authenticated" | "creator" | "internal";
 export type ServiceCategory = "core" | "creator" | "developer" | "infrastructure";
 
@@ -50,9 +50,8 @@ export const SERVICES: readonly ServiceDefinition[] = [
   { name: "links",       label: "Links",       icon: "🔗", description: "Link-in-bio pages and click tracking",             devPort: 3102, prodPort: 7102, schema: "links",       tier: "imajin", visibility: "creator",       category: "creator" },
   { name: "learn",       label: "Learn",       icon: "📚", description: "Courses, lessons, and learning progress",          devPort: 3103, prodPort: 7103, schema: "learn",       tier: "imajin", visibility: "public",        category: "core" },
 
-  // Client apps (separate repos, included for completeness)
-  { name: "fixready",    label: "FixReady",    icon: "🔧", description: "Home repair tracking and scheduling",              devPort: 3400, prodPort: 7400, schema: "fixready",    tier: "client", visibility: "authenticated", category: "core" },
-  { name: "karaoke",     label: "Karaoke",     icon: "🎤", description: "Karaoke session management",                       devPort: 3401, prodPort: 7401, schema: "karaoke",     tier: "client", visibility: "authenticated", category: "core" },
+  // Connected apps (separate repos) will use the plugin architecture (#249).
+  // Not included here — they authenticate via delegated sessions, not the monorepo manifest.
 ] as const satisfies readonly ServiceDefinition[];
 
 // ── Lookup helpers ──────────────────────────────────────────────────────────
