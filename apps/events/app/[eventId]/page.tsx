@@ -616,6 +616,7 @@ export default async function EventPage({ params, searchParams }: Props) {
                 hasTicket={hasTicket}
                 inviteToken={inviteToken}
                 etransferEnabled={etransferEnabled}
+                isAuthenticated={!!session}
               />
             </TicketsGate>
           ) : (

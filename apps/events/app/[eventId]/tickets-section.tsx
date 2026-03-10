@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { TicketType } from '@/src/db/schema';
 import { TicketPurchase } from './ticket-purchase';
+import { OnboardGate } from '@imajin/onboard';
 
 interface UserTicket {
   id: string;
@@ -26,9 +27,10 @@ interface Props {
   hasTicket?: boolean;
   inviteToken?: string;
   etransferEnabled?: boolean;
+  isAuthenticated?: boolean;
 }
 
-export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [], hasTicket = false, inviteToken, etransferEnabled = false }: Props) {
+export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [], hasTicket = false, inviteToken, etransferEnabled = false, isAuthenticated = false }: Props) {
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'buy-tickets'>(
     hasTicket ? 'my-tickets' : 'buy-tickets'
   );
@@ -45,7 +47,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
 
   // If user doesn't have tickets, show purchase UI only
   if (!hasTicket || userTickets.length === 0) {
-    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} />;
+    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} />;
   }
 
   // User has tickets - show tabbed interface
@@ -79,7 +81,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
       {activeTab === 'my-tickets' ? (
         <MyTicketsTab userTickets={userTickets} />
       ) : (
-        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} />
+        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} />
       )}
     </div>
   );
@@ -175,7 +177,7 @@ function MyTicketsTab({ userTickets }: { userTickets: UserTicket[] }) {
   );
 }
 
-function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnabled = false }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string; etransferEnabled?: boolean }) {
+function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnabled = false, isAuthenticated = false }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean }) {
   return (
     <div className="space-y-3 md:space-y-4">
       {tickets.map((ticket) => {
@@ -234,13 +236,29 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
                   )}
                 </div>
 
-                <TicketPurchase
-                  eventId={eventId}
-                  eventTitle={eventTitle}
-                  ticket={ticket}
-                  inviteToken={inviteToken}
-                  etransferEnabled={etransferEnabled}
-                />
+                {isAuthenticated ? (
+                  <TicketPurchase
+                    eventId={eventId}
+                    eventTitle={eventTitle}
+                    ticket={ticket}
+                    inviteToken={inviteToken}
+                    etransferEnabled={etransferEnabled}
+                  />
+                ) : (
+                  <OnboardGate
+                    action="purchase a ticket"
+                    onIdentity={() => window.location.reload()}
+                    requireVerification={true}
+                  >
+                    <TicketPurchase
+                      eventId={eventId}
+                      eventTitle={eventTitle}
+                      ticket={ticket}
+                      inviteToken={inviteToken}
+                      etransferEnabled={etransferEnabled}
+                    />
+                  </OnboardGate>
+                )}
               </div>
             </div>
           </div>

@@ -1,3 +1,5 @@
+// DEPRECATED: Use /api/onboard/verify instead. Kept for existing magic links in the wild.
+
 /**
  * GET /api/magic?token=xxx
  *

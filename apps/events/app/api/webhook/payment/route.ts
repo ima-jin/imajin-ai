@@ -14,6 +14,7 @@ import { sha512 } from '@noble/hashes/sha2.js';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js';
 import { getEventPod, addEventParticipant } from '@/src/lib/pods';
 import { randomBytes } from 'crypto';
+import { getClient } from '@imajin/db';
 
 // Configure ed25519 with sha512
 ed.hashes.sha512 = sha512;
@@ -288,9 +289,6 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   for (let i = 0; i < quantity; i++) {
     const ticketId = `tkt_${Date.now().toString(36)}_${i}`;
 
-    // Generate magic token for authentication
-    const magicToken = randomBytes(32).toString('hex');
-
     // Sign ticket with event's Ed25519 private key
     const signatureData = `${ticketId}:${event.did}:${customerEmail}:${Date.now()}`;
     const msgBytes = new TextEncoder().encode(signatureData);
@@ -316,7 +314,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       status: 'valid',
       purchasedAt: new Date(),
       signature,
-      magicToken,
+      magicToken: null,
       metadata: {
         stripeSessionId: sessionId,
         purchaseEmail: customerEmail,
@@ -359,11 +357,30 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     }
   }
   
-  // Send confirmation email with magic link
+  // Send confirmation email with onboard verification link
   const eventDate = new Date(event.startsAt);
   const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
   const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
-  const magicLink = `${AUTH_URL}/api/magic?token=${createdTickets[0].magicToken}`;
+
+  const authSql = getClient();
+  const onboardToken = randomBytes(36).toString('hex');
+  const onboardId = `obt_${randomBytes(8).toString('hex')}`;
+  const redirectUrl = `${EVENTS_URL}/${event.id}`;
+
+  await authSql`
+    INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
+    VALUES (
+      ${onboardId},
+      ${customerEmail.toLowerCase().trim()},
+      ${customerName || null},
+      ${onboardToken},
+      ${redirectUrl},
+      ${'access your ticket for ' + event.title},
+      ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)}
+    )
+  `;
+
+  const magicLink = `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`;
 
   // Generate QR code from ticket ID (for check-in scanning)
   const qrCodeDataUri = await generateQRCode(createdTickets[0].id);
