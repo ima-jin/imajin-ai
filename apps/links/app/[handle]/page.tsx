@@ -1,19 +1,11 @@
 import { notFound } from 'next/navigation';
+import { db, linkPages, links } from '@/db';
+import { eq, and, asc } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
 import LinkButton from './link-button';
 
 interface PageProps {
   params: { handle: string };
-}
-
-interface Link {
-  id: string;
-  title: string;
-  url: string;
-  icon?: string;
-  thumbnail?: string;
-  clicks: number;
-  visibility?: string;
 }
 
 interface Theme {
@@ -24,43 +16,30 @@ interface Theme {
   buttonStyle?: 'rounded' | 'square' | 'pill';
 }
 
-async function getLinksPage(handle: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3010';
-  
-  try {
-    const response = await fetch(`${baseUrl}/api/pages/${handle}`, {
-      cache: 'no-store',
-    });
-    
-    if (!response.ok) {
-      return null;
-    }
-    
-    return response.json();
-  } catch (error) {
-    console.error('Failed to fetch links page:', error);
-    return null;
-  }
-}
-
 export default async function LinksPage({ params }: PageProps) {
-  const page = await getLinksPage(params.handle);
+  const page = await db.query.linkPages.findFirst({
+    where: eq(linkPages.handle, params.handle),
+  });
 
-  if (!page) {
+  if (!page || !page.isPublic) {
     notFound();
   }
+
+  const pageLinks = await db.select().from(links)
+    .where(and(eq(links.pageId, page.id), eq(links.isActive, true)))
+    .orderBy(asc(links.position));
 
   // Get session to determine which links to show
   const session = await getSession();
   const isAuthenticated = !!session;
 
   // Filter links based on visibility
-  const visibleLinks = page.links?.filter((link: Link) => {
+  const visibleLinks = pageLinks.filter((link) => {
     if (link.visibility === 'authenticated') {
       return isAuthenticated;
     }
     return true; // public links are always visible
-  }) || [];
+  });
 
   const theme: Theme = page.theme || {};
   const bgColor = theme.backgroundColor || '#1a1a1a';
@@ -112,7 +91,7 @@ export default async function LinksPage({ params }: PageProps) {
 
         {/* Links */}
         <div className="space-y-3">
-          {visibleLinks.map((link: Link) => (
+          {visibleLinks.map((link) => (
             <LinkButton
               key={link.id}
               link={link}

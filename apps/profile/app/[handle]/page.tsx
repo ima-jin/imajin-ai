@@ -3,6 +3,9 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
+import { db, profiles, follows } from '@/db';
+import { getClient } from '@imajin/db';
+import { eq, count } from 'drizzle-orm';
 import { Avatar } from '../components/Avatar';
 import { FollowButton } from '../components/FollowButton';
 
@@ -72,52 +75,40 @@ async function isConnected(viewerDid: string, targetDid: string): Promise<boolea
 }
 
 async function getProfile(handle: string): Promise<Profile | null> {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3005';
-
-  try {
-    const response = await fetch(`${baseUrl}/api/profile/${handle}`, {
-      cache: 'no-store',
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    return response.json();
-  } catch (error) {
-    console.error('Failed to fetch profile:', error);
-    return null;
-  }
+  const row = await db.query.profiles.findFirst({
+    where: (profiles, { eq, or }) => or(eq(profiles.did, handle), eq(profiles.handle, handle)),
+  });
+  return row as unknown as Profile | null;
 }
 
 async function getProfileCounts(profileDid: string): Promise<ProfileCounts> {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3005';
   try {
-    const res = await fetch(`${baseUrl}/api/profile/${encodeURIComponent(profileDid)}/counts`, {
-      cache: 'no-store',
-    });
-    if (!res.ok) return { followers: 0, following: 0, connections: 0 };
-    return res.json();
+    const [followersResult] = await db.select({ count: count() }).from(follows).where(eq(follows.followedDid, profileDid));
+    const [followingResult] = await db.select({ count: count() }).from(follows).where(eq(follows.followerDid, profileDid));
+    const sql = getClient();
+    const [connectionsResult] = await sql`
+      SELECT COUNT(DISTINCT pm2.did)::int as count
+      FROM connections.pod_members pm1
+      JOIN connections.pod_members pm2 ON pm1.pod_id = pm2.pod_id AND pm1.did != pm2.did
+      WHERE pm1.did = ${profileDid}
+        AND pm1.removed_at IS NULL AND pm2.removed_at IS NULL
+        AND pm1.pod_id IN (
+          SELECT pod_id FROM connections.pod_members WHERE removed_at IS NULL GROUP BY pod_id HAVING count(*) = 2
+        )
+    `;
+    return {
+      followers: Number(followersResult.count),
+      following: Number(followingResult.count),
+      connections: connectionsResult?.count ?? 0,
+    };
   } catch { return { followers: 0, following: 0, connections: 0 }; }
 }
 
-async function getFollowStatus(targetDid: string): Promise<boolean> {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3005';
-  try {
-    const cookieStore = await cookies();
-    const session = cookieStore.get(SESSION_COOKIE_NAME);
-    if (!session?.value) return false;
-    const res = await fetch(
-      `${baseUrl}/api/follow/status?did=${encodeURIComponent(targetDid)}`,
-      {
-        headers: { Cookie: `${SESSION_COOKIE_NAME}=${session.value}` },
-        cache: 'no-store',
-      }
-    );
-    if (!res.ok) return false;
-    const data = await res.json();
-    return data.following ?? false;
-  } catch { return false; }
+async function getFollowStatus(viewerDid: string, targetDid: string): Promise<boolean> {
+  const existingFollow = await db.query.follows.findFirst({
+    where: (follows, { eq, and }) => and(eq(follows.followerDid, viewerDid), eq(follows.followedDid, targetDid)),
+  });
+  return !!existingFollow;
 }
 
 async function getLinks(linksHandle: string): Promise<LinkItem[]> {
@@ -239,7 +230,7 @@ export default async function ProfilePage({ params }: PageProps) {
   // Fetch counts, follow status, and links in parallel
   const [counts, isFollowing, links] = await Promise.all([
     getProfileCounts(profile.did),
-    viewerDid && !isSelf ? getFollowStatus(profile.did) : Promise.resolve(false),
+    viewerDid && !isSelf ? getFollowStatus(viewerDid, profile.did) : Promise.resolve(false),
     profile.metadata?.links ? getLinks(profile.metadata.links) : Promise.resolve([]),
   ]);
 
