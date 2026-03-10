@@ -39,7 +39,7 @@ export default async function CoffeePage({ params }: PageProps) {
         <div className="mb-4">
           {avatarIsImage ? (
             <img
-              src={page.avatar}
+              src={page.avatar!}
               alt={page.title}
               className="w-24 h-24 rounded-full mx-auto object-cover"
             />
