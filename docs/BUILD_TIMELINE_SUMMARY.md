@@ -1,12 +1,12 @@
 # Build Timeline Summary & Pressure Test
 
-*Compiled March 8, 2026 — from the full [Build Timeline](./BUILD_TIMELINE.md), external analysis, and founder responses.*
+*Compiled March 8, 2026. Updated March 9, 2026 — from the full [Build Timeline](./BUILD_TIMELINE.md), external analysis, and founder responses.*
 
 ---
 
 ## What This Actually Is
 
-A build chronicle — part technical changelog, part philosophical memoir — documenting how one developer built a sovereign digital infrastructure stack in 35 days, largely alone, using AI as a parallel coding partner. Retrospective journalism written from the git history.
+A build chronicle — part technical changelog, part philosophical memoir — documenting how one developer built a sovereign protocol in 37 days, largely alone, using AI as a parallel coding partner. Retrospective journalism written from the git history.
 
 ## The Core Thesis
 
@@ -78,19 +78,22 @@ OpenClaw dropped. The interface layer between architectural vision and working s
 | 23 | 7 features shipped in 90 minutes using parallel coding agents |
 | 25 | First non-developer creates a real event with ticket sales |
 | 35 | 14 live services, ~60 identities, 68,024 lines of code |
+| 36 | Typed identity primitives — Individual, Family, Cultural, Org. Greg crystallizes: "restructure backwards from the Cultural DID" |
+| 37 | **The protocol discovers itself** — Ed25519 DID keypairs are Solana wallets. Identity IS settlement. Token economics model. |
 
 ### The Numbers
 
 | Metric | Value |
 |--------|-------|
 | Services live | 14 |
-| Lines of code | 68,024 |
+| Lines of code | 68,000+ |
 | Inference cost | $1,589 |
-| Human hours | 190 |
-| Build days | 35 |
+| Human hours | 190+ |
+| Build days | 37 |
 | Traditional estimate | $932,316 over 16.4 months (3-person team) |
 | Essays written | 30 (9 published) |
-| Registered identities | ~60 |
+| Registered identities | ~73 (~25 hard DIDs, ~48 soft DIDs) |
+| Solana wallets (latent) | Every hard DID — they just don't know it yet |
 
 ---
 
@@ -247,6 +250,39 @@ The structural differences that make this not-surveillance-capitalism:
 
 ---
 
+## The Convergence (March 9, 2026)
+
+On Day 37, two things happened that reframed everything that came before.
+
+**First:** Greg Mulholland's pressure testing crystallized the typed identity model. The flat "DID" in the whitepaper became four first-class primitives — Individual, Family, Cultural, Org — each with different governance, trust semantics, and graph behavior. The same trust graph, queried from different primitive types, yields fundamentally different shapes. Whitepaper bumped to v0.2.
+
+**Second:** Ryan asked whether the app should have wallet functionality. The answer: **every Imajin DID keypair is already a valid Solana wallet.**
+
+Ed25519 was chosen on Day 3 for identity — the right primitive for sovereign keypairs. Solana uses Ed25519 for wallet addresses. Nobody coordinated this. The choice was made for identity, not settlement. But because both were solving for the same mathematical truth, every registered user was already a wallet holder. The settlement layer was hiding inside the identity layer for 34 days.
+
+This is the punchline the build timeline was writing toward without knowing it:
+
+- Day 3: Ed25519 keypair → sovereign identity
+- Day 7: First ticket → settlement works
+- Day 14: Server comes home → sovereignty is physical
+- Day 35: "Start from the human" → the agent layer emerges from trust boundaries
+- **Day 37: The protocol discovers itself** → the settlement layer emerges from the identity layer
+
+Each layer was discovered, not designed. Excavated from the git history by building from the right principles.
+
+**What followed in one session:**
+- MJN-scoped wallet (blast radius contained — not a general crypto wallet)
+- Hierarchical key derivation (child keys for spending, delegation, sessions — each revocable)
+- Per-primitive wallet governance (Family = multi-sig, Cultural = quorum, Org = delegation)
+- Reserve-backed token economics (dual-currency, mint/burn, fixed rate → managed float)
+- Foundation clearinghouse model
+
+Three RFCs in one evening. Not designed from a whiteboard — discovered from the build.
+
+> **"Start from the human and you will find the protocol."**
+
+---
+
 ## What This Is Challenging
 
 A direct counter-stack to:
@@ -270,4 +306,4 @@ A direct counter-stack to:
 
 ---
 
-*Based on analysis by Greg [surname redacted], founder responses, and the [full build timeline](./BUILD_TIMELINE.md). March 8, 2026.*
+*Based on analysis by Greg [surname redacted], founder responses, and the [full build timeline](./BUILD_TIMELINE.md). March 8–9, 2026.*

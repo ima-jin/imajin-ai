@@ -1,6 +1,6 @@
 # Build Timeline: The Architecture of Trust
 
-*How Imajin went from a glowing cube to a sovereign trust-gated service layer — and when the builder realized what he was actually building.*
+*How Imajin went from a glowing cube to a sovereign protocol — and when the builder realized what he was actually building.*
 
 ---
 
@@ -332,7 +332,42 @@ A developer building a platform with auth, payments, events, chat, media, etc.
 
 ---
 
-## What Exists (as of March 8, 2026)
+## Phase 9: The Convergence (March 9, 2026)
+
+### March 9 — The Protocol Discovers Itself
+
+Two realizations on the same day. The first came from Greg Mulholland's pressure testing:
+
+**Typed Identity Primitives:** The flat "DID" concept in the whitepaper became four first-class primitive types — Individual, Family, Cultural, Org. Greg's key insight: "The cultural DID is actually the main point to restructure backwards from." Ryan's response: "When you query the graph from the POV of the primitives at the center — Individual, Family, Culture, Org — it helps shape the outputs."
+
+The same trust graph, queried from different primitive types, yields fundamentally different shapes. This isn't a feature — it's the architecture. Whitepaper bumped to v0.2.
+
+**The Wallet Discovery:** That evening, Ryan asked: "What if the app was also a wallet app?"
+
+The answer stopped the conversation: **every Imajin DID keypair is already a valid Solana wallet.**
+
+Ed25519 was chosen on Day 3 for identity — because it was the right cryptographic primitive for sovereign keypairs. Solana uses Ed25519 for wallet addresses. These were not coordinated decisions. The choice was made for identity, not settlement. But because both were solving for the same mathematical truth, every registered user — every DID, every backup file — was already a wallet. Nobody planned it. 37 days of building from the right principles, and the settlement layer was waiting inside the identity layer the whole time.
+
+**What followed in the same session:**
+- **MJN-scoped only** — the wallet transacts MJN tokens, nothing else. Blast radius structurally contained.
+- **Hierarchical key derivation** — child keys for spending, savings, delegation, app sessions. Each revocable by the master.
+- **Per-primitive wallet governance** — Individual wallets are simple. Family wallets are multi-sig. Cultural wallets require quorum. Org wallets have delegation hierarchy.
+- **Token economics model** — reserve-backed utility token. Dual-currency (fiat + MJN). Mint on deposit, burn on withdrawal. Start at fixed rate, evolve to managed float.
+- **Foundation clearinghouse** — the MJN Foundation holds fiat reserves, mints/burns, publishes rates. Not a bank — a protocol clearinghouse.
+
+Three RFCs created in one session: Whitepaper v0.2, Embedded Wallet (Discussion #268), Token Economics (Discussion #269).
+
+### The sentence that was always true but took 37 days to say:
+
+> **"Start from the human and you will find the protocol."**
+
+The agent layer emerged from trust boundaries. The settlement layer emerged from identity primitives. The token economics emerged from the settlement layer. Each layer was discovered, not designed — excavated from the git history by building from the right principles.
+
+The build timeline isn't a changelog. It's the protocol's provenance.
+
+---
+
+## What Exists (as of March 9, 2026)
 
 ### Live Services (14)
 auth, pay, www, profile, registry, events, chat, connections, media, input, learn, coffee, links, dykil
@@ -346,14 +381,15 @@ auth, pay, www, profile, registry, events, chat, connections, media, input, lear
 - MJN token reserved on Solana mainnet
 
 ### Key Numbers
-- ~60 registered identities
+- ~73 registered identities (~25 hard DIDs, ~48 soft DIDs)
 - 3 tickets sold on the sovereign stack
 - 30 essays written (9 published)
-- 739 files, 68,024 lines of code
+- 14 live services, 68,000+ lines of code
 - $1,589 in inference costs (API spend)
-- 190 human hours across 25 build days
+- 190+ human hours across 37 build days
 - Traditional estimate: $932,316 over 16.4 months with a 3-person team
-- 35 days from first commit to 14 live services
+- 37 days from first commit to protocol convergence
+- Every registered user is already a Solana wallet holder (they just don't know it yet)
 
 ### The Stack
 
@@ -386,4 +422,4 @@ auth, pay, www, profile, registry, events, chat, connections, media, input, lear
 
 ---
 
-*Compiled March 8, 2026, from git history (290+ commits), daily memory files (35 days), and 20 essays.*
+*Compiled March 8, 2026. Updated March 9, 2026. From git history (300+ commits), daily memory files (37 days), and 30 essays.*
