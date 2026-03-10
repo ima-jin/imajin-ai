@@ -306,14 +306,14 @@ MJN Foundation (Switzerland)
 ├── Operator Registry  
 │   └── Node certification, compliance
 │
-└── Ryan Veteze (b0b) — Lead Protocol Architect [contractor]
+└── Ryan Veteze (b0b) — Lead Protocol Architect [contractor, via Imajin Inc.]
 ```
 
 The Foundation is explicitly structured to be capturable by neither US nor Chinese regulatory pressure. Sovereign infrastructure requires sovereign governance. Switzerland's neutrality is not incidental — it is architectural.
 
 The name *今人* draws from Japanese. The protocol is built by a Canadian. It will be governed from Switzerland. It is designed for the world. This is not a Western protocol imposing Silicon Valley architecture, nor an Eastern one. It belongs to the now persons who use it.
 
-**imajin.ai** operates as the reference implementation and first node operator. It is one implementer among many, not the owner of the protocol.
+**Imajin Inc.** (Canadian corporation) operates imajin.ai as the reference implementation and first node operator. It is one implementer among many, not the owner of the protocol. The Foundation contracts Imajin Inc. for protocol development; the protocol itself belongs to the Foundation.
 
 ---
 
