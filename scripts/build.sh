@@ -63,9 +63,11 @@ ENV_FLAG="--env dev"
 
 ENV_CHECK_FAILED=false
 for app in "${APPS[@]}"; do
+  set -o pipefail
   if ! npx tsx scripts/check-env.ts $ENV_FLAG "$app" 2>&1 | tee -a "$REPORT"; then
     ENV_CHECK_FAILED=true
   fi
+  set +o pipefail
 done
 
 if [ "$ENV_CHECK_FAILED" = true ]; then
