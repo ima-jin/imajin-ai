@@ -16,30 +16,11 @@ export default function PrivacyPage() {
 
         <div className="prose prose-lg dark:prose-invert max-w-none space-y-8">
           <section>
-            <h2 className="text-2xl font-bold mb-4">Your email becomes your identity — not our asset.</h2>
+            <h2 className="text-2xl font-bold mb-4">We only ask for your email when you need it.</h2>
             <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
-              When you sign up, your email creates a decentralized identifier (DID) that you own.
-              We don&apos;t sell your data. We don&apos;t serve ads. We don&apos;t share your information with anyone.
-              We don&apos;t track you across the web. We don&apos;t do behavioral targeting.
+              If you enroll in a course, RSVP to an event, or purchase a ticket, we ask for your email so you can
+              access what you signed up for. That&apos;s the only reason we collect it.
             </p>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold mb-3">What we collect</h2>
-            <ul className="space-y-2 text-gray-600 dark:text-gray-400">
-              <li className="flex gap-3">
-                <span className="text-amber-500 shrink-0">→</span>
-                <span><strong>Email address</strong> — for account access and event/course communication</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="text-amber-500 shrink-0">→</span>
-                <span><strong>Profile information</strong> — name and details you choose to share</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="text-amber-500 shrink-0">→</span>
-                <span><strong>Transaction records</strong> — ticket purchases and enrollment history</span>
-              </li>
-            </ul>
           </section>
 
           <section>
@@ -47,7 +28,11 @@ export default function PrivacyPage() {
             <ul className="space-y-2 text-gray-600 dark:text-gray-400">
               <li className="flex gap-3">
                 <span className="text-gray-400 shrink-0">✕</span>
-                <span>Sell or share your data with third parties</span>
+                <span>Sell or share your email with anyone</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-gray-400 shrink-0">✕</span>
+                <span>Send marketing emails or newsletters</span>
               </li>
               <li className="flex gap-3">
                 <span className="text-gray-400 shrink-0">✕</span>
@@ -61,9 +46,23 @@ export default function PrivacyPage() {
                 <span className="text-gray-400 shrink-0">✕</span>
                 <span>Use your data to train AI models</span>
               </li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold mb-3">What we use your email for</h2>
+            <ul className="space-y-2 text-gray-600 dark:text-gray-400">
               <li className="flex gap-3">
-                <span className="text-gray-400 shrink-0">✕</span>
-                <span>Send marketing emails without your consent</span>
+                <span className="text-amber-500 shrink-0">→</span>
+                <span>Letting you access courses and events you signed up for</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-500 shrink-0">→</span>
+                <span>Sending you a ticket or receipt if you bought something</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-500 shrink-0">→</span>
+                <span>That&apos;s it</span>
               </li>
             </ul>
           </section>
@@ -72,8 +71,7 @@ export default function PrivacyPage() {
             <h2 className="text-xl font-semibold mb-3">Where your data lives</h2>
             <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
               Imajin is self-hosted on hardware we own in Toronto, Canada. Your data doesn&apos;t live
-              on AWS or Google Cloud. It lives on a server in a room. We use Stripe for payment
-              processing — they have their own{' '}
+              on AWS or Google Cloud. We use Stripe for payment processing — they have their own{' '}
               <a href="https://stripe.com/privacy" className="text-amber-500 hover:underline" target="_blank" rel="noopener noreferrer">
                 privacy policy
               </a>.
@@ -83,19 +81,18 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-xl font-semibold mb-3">Your rights</h2>
             <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
-              You can request a copy of your data or ask us to delete it at any time.
-              Email{' '}
+              Want your data deleted? Email{' '}
               <a href="mailto:privacy@imajin.ai" className="text-amber-500 hover:underline">
                 privacy@imajin.ai
-              </a>.
+              </a>{' '}
+              and we&apos;ll take care of it.
             </p>
           </section>
 
           <section className="border-t border-gray-200 dark:border-gray-800 pt-8">
             <p className="text-gray-500 text-sm leading-relaxed">
               This policy reflects how we actually operate, not how lawyers told us to write it.
-              If something here changes, we&apos;ll update this page and note the date.
-              No dark patterns. No legalese. You own your identity.
+              If something changes, we&apos;ll update this page and note the date.
             </p>
           </section>
         </div>
