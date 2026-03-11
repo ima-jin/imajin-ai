@@ -9,6 +9,7 @@ export async function sendVoiceMessage(audioBlob: Blob): Promise<{
 
   const uploadForm = new FormData();
   uploadForm.append('file', audioBlob, 'voice.webm');
+  uploadForm.append('context', JSON.stringify({ app: 'chat', feature: 'voice' }));
 
   const transcribeForm = new FormData();
   transcribeForm.append('file', audioBlob, 'voice.webm');
