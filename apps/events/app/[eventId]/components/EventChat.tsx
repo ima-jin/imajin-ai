@@ -114,7 +114,7 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
 
   const CHAT_SERVICE_URL = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
   const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3002';
-  const INPUT_URL = process.env.NEXT_PUBLIC_INPUT_URL || 'http://localhost:3010';
+  const INPUT_URL = process.env.NEXT_PUBLIC_INPUT_URL || 'http://localhost:3008';
 
   // Get current user's DID and resolve capabilities from session tier
   useEffect(() => {
@@ -368,7 +368,7 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
           const transcribeForm = new FormData();
           transcribeForm.append('file', blob, 'voice.webm');
 
-          const inputUrl = process.env.NEXT_PUBLIC_INPUT_URL || 'http://localhost:3010';
+          const inputUrl = process.env.NEXT_PUBLIC_INPUT_URL || 'http://localhost:3008';
           const chatUrl = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
 
           const [uploadRes, transcribeRes] = await Promise.all([

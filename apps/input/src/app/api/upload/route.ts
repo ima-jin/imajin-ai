@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
     const mediaRes = await fetch(`${MEDIA_SERVICE_URL}/api/assets`, {
       method: 'POST',
       body: mediaFormData,
+      headers: sessionCookie ? { Cookie: `${SESSION_COOKIE_NAME}=${sessionCookie}` } : {},
     });
 
     if (!mediaRes.ok) {
