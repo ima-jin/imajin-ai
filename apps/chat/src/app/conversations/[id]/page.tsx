@@ -5,15 +5,13 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useIdentity, LoginPrompt } from '@/contexts/IdentityContext';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { MessageBubble } from '@imajin/chat';
+import { MessageBubble, ChatComposer } from '@imajin/chat';
+import type { ComposerPayload } from '@imajin/chat';
 import { TypingIndicator } from '@/app/components/TypingIndicator';
-import { FileUpload } from '@/app/components/FileUpload';
 import { MessageMedia } from '@/app/components/MessageMedia';
-import { VoiceRecorder } from '@/app/components/VoiceRecorder';
-import { LocationPicker, LocationData } from '@/app/components/LocationPicker';
-import { sendVoiceMessage } from '@/lib/voice';
 
 const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
+const INPUT_URL = process.env.NEXT_PUBLIC_INPUT_URL ?? '';
 
 interface LinkPreview {
   url: string;
@@ -77,7 +75,6 @@ export default function MessageThreadPage() {
   const { identity, loading: authLoading } = useIdentity();
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversation, setConversation] = useState<ConversationInfo | null>(null);
-  const [message, setMessage] = useState('');
   const [loadingMessages, setLoadingMessages] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,13 +83,6 @@ export default function MessageThreadPage() {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [messageReactions, setMessageReactions] = useState<Record<string, Reaction[]>>({});
   const [typingUsers, setTypingUsers] = useState<Array<{ did: string; name: string | null }>>([]);
-  const [uploadedMedia, setUploadedMedia] = useState<{
-    mediaType: 'image' | 'file';
-    mediaPath: string;
-    mediaMeta: any;
-  } | null>(null);
-  const [voiceActive, setVoiceActive] = useState(false);
-  const [voiceSending, setVoiceSending] = useState(false);
   const [capabilities, setCapabilities] = useState<Set<string>>(new Set(['send:text']));
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageIdRef = useRef<string | null>(null);
@@ -299,68 +289,16 @@ export default function MessageThreadPage() {
     return () => clearInterval(interval);
   }, [identity, conversationId, fetchMessages, wsConnected]);
 
-  // Handle file upload completion
-  const handleUploadComplete = (data: {
-    mediaType: 'image' | 'file';
-    mediaPath: string;
-    mediaMeta: any;
-  }) => {
-    setUploadedMedia(data);
-  };
-
-  const handleUploadError = (errorMsg: string) => {
-    setError(errorMsg);
-  };
-
-  const handleVoiceComplete = async (blob: Blob, durationMs: number) => {
-    setVoiceSending(true);
-    try {
-      const { assetId, transcript } = await sendVoiceMessage(blob);
-      const res = await fetch(`/api/conversations/${conversationId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contentType: 'voice',
-          content: { type: 'voice', assetId, transcript, durationMs },
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to send voice message');
+  // Clean up typing timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
       }
-      await fetchMessages();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send voice message');
-    } finally {
-      setVoiceSending(false);
-      setVoiceActive(false);
-    }
-  };
+    };
+  }, []);
 
-  const handleLocationSelected = async (location: LocationData) => {
-    try {
-      const res = await fetch(`/api/conversations/${conversationId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contentType: 'location',
-          content: { type: 'location', ...location },
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to send location');
-      }
-      await fetchMessages();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send location');
-    }
-  };
-
-  // Send or edit message
-  const handleSend = async () => {
-    if ((!message.trim() && !uploadedMedia) || sending) return;
-
+  const handleComposerSend = async (payload: ComposerPayload) => {
     // Stop typing indicator
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -372,48 +310,75 @@ export default function MessageThreadPage() {
 
     setSending(true);
     try {
-      if (editingMessage) {
-        // Edit existing message
-        const res = await fetch(`/api/conversations/${conversationId}/messages/${editingMessage.id}`, {
+      if (payload.kind === 'edit') {
+        const res = await fetch(`/api/conversations/${conversationId}/messages/${payload.messageId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            content: { type: 'text', text: message.trim() },
+            content: { type: 'text', text: payload.text },
           }),
         });
-
         if (!res.ok) {
           const data = await res.json();
           throw new Error(data.error || 'Failed to edit');
         }
-
         setEditingMessage(null);
-        setMessage('');
         await fetchMessages();
-      } else {
-        // Send new message
+      } else if (payload.kind === 'text') {
         const res = await fetch(`/api/conversations/${conversationId}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            content: { type: 'text', text: message.trim() || '' },
-            replyTo: replyToMessage?.id || undefined,
-            ...(uploadedMedia && {
-              mediaType: uploadedMedia.mediaType,
-              mediaPath: uploadedMedia.mediaPath,
-              mediaMeta: uploadedMedia.mediaMeta,
-            }),
+            content: { type: 'text', text: payload.text },
+            replyTo: payload.replyTo,
           }),
         });
-
         if (!res.ok) {
           const data = await res.json();
           throw new Error(data.error || 'Failed to send');
         }
-
         setReplyToMessage(null);
-        setMessage('');
-        setUploadedMedia(null);
+        await fetchMessages();
+      } else if (payload.kind === 'voice') {
+        const res = await fetch(`/api/conversations/${conversationId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contentType: 'voice',
+            content: { type: 'voice', assetId: payload.assetId, transcript: payload.transcript, durationMs: payload.durationMs },
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Failed to send voice message');
+        }
+        await fetchMessages();
+      } else if (payload.kind === 'media') {
+        const res = await fetch(`/api/conversations/${conversationId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: { type: 'media', assetId: payload.assetId, filename: payload.filename, mimeType: payload.mimeType, size: payload.size, width: payload.width, height: payload.height },
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Failed to send file');
+        }
+        await fetchMessages();
+      } else if (payload.kind === 'location') {
+        const res = await fetch(`/api/conversations/${conversationId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contentType: 'location',
+            content: { type: 'location', lat: payload.lat, lng: payload.lng, accuracy: payload.accuracy },
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Failed to send location');
+        }
         await fetchMessages();
       }
     } catch (err) {
@@ -423,125 +388,6 @@ export default function MessageThreadPage() {
     }
   };
 
-  // Paste handler for images
-  const handlePaste = useCallback(async (e: ClipboardEvent) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-
-    for (const item of Array.from(items)) {
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (file) {
-          e.preventDefault();
-          // Upload the file
-          const formData = new FormData();
-          formData.append('file', file);
-
-          try {
-            const res = await fetch(`/api/conversations/${conversationId}/upload`, {
-              method: 'POST',
-              body: formData,
-            });
-
-            if (res.ok) {
-              const data = await res.json();
-              handleUploadComplete(data);
-            }
-          } catch (err) {
-            handleUploadError('Failed to upload pasted image');
-          }
-        }
-      }
-    }
-  }, [conversationId]);
-
-  // Drag and drop handlers
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const files = e.dataTransfer?.files;
-    if (!files || files.length === 0) return;
-
-    const file = files[0];
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const res = await fetch(`/api/conversations/${conversationId}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        handleUploadComplete(data);
-      } else {
-        const data = await res.json();
-        handleUploadError(data.error || 'Upload failed');
-      }
-    } catch (err) {
-      handleUploadError('Failed to upload file');
-    }
-  }, [conversationId]);
-
-  // Attach paste handler
-  useEffect(() => {
-    document.addEventListener('paste', handlePaste);
-    return () => document.removeEventListener('paste', handlePaste);
-  }, [handlePaste]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    } else if (e.key === 'Escape') {
-      setReplyToMessage(null);
-      setEditingMessage(null);
-      setMessage('');
-    }
-  };
-
-  // Handle typing indicator on input change
-  const handleMessageChange = (text: string) => {
-    setMessage(text);
-
-    if (!text.trim() || !conversationId) return;
-
-    // Debounced typing indicator (max 1 per 2s)
-    const now = Date.now();
-    if (now - lastTypingSentRef.current > 2000) {
-      sendTyping(conversationId, identity?.name || null);
-      lastTypingSentRef.current = now;
-    }
-
-    // Reset stop typing timer
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    // Send stop typing after 3s of no input
-    typingTimeoutRef.current = setTimeout(() => {
-      if (conversationId) {
-        sendStopTyping(conversationId);
-      }
-    }, 3000);
-  };
-
-  // Clean up typing timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    };
-  }, []);
-
   const handleReply = (msg: Message) => {
     setReplyToMessage(msg);
     setEditingMessage(null);
@@ -550,13 +396,6 @@ export default function MessageThreadPage() {
   const handleEdit = (msg: Message) => {
     setEditingMessage(msg);
     setReplyToMessage(null);
-    const text =
-      typeof msg.content === 'object' && msg.content?.text
-        ? msg.content.text
-        : typeof msg.content === 'string'
-        ? msg.content
-        : '';
-    setMessage(text);
   };
 
   const handleDelete = async (msg: Message) => {
@@ -618,6 +457,20 @@ export default function MessageThreadPage() {
 
   if (!identity) return <LoginPrompt />;
 
+  const replyToText =
+    replyToMessage && typeof replyToMessage.content === 'object' && replyToMessage.content?.text
+      ? replyToMessage.content.text
+      : replyToMessage && typeof replyToMessage.content === 'string'
+      ? replyToMessage.content
+      : '';
+
+  const editingInitialText =
+    editingMessage && typeof editingMessage.content === 'object' && (editingMessage.content as any)?.text
+      ? (editingMessage.content as any).text
+      : editingMessage && typeof editingMessage.content === 'string'
+      ? editingMessage.content
+      : '';
+
   return (
     <div className="max-w-2xl mx-auto flex flex-col h-[calc(100vh-200px)]">
       {/* Header */}
@@ -652,8 +505,6 @@ export default function MessageThreadPage() {
       <div
         ref={chatAreaRef}
         className="flex-1 overflow-y-auto py-4 space-y-4"
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
       >
         {loadingMessages ? (
           <div className="text-center text-gray-500 mt-8">Loading messages...</div>
@@ -705,6 +556,13 @@ export default function MessageThreadPage() {
                     replyToMessage={replyTo}
                     onScrollToMessage={scrollToMessage}
                     mediaUrl={MEDIA_URL}
+                    renderLegacyMedia={
+                      msg.mediaType && msg.mediaPath && msg.mediaMeta
+                        ? ({ mediaType, mediaPath, mediaMeta }) => (
+                            <MessageMedia mediaType={mediaType} mediaPath={mediaPath} mediaMeta={mediaMeta} />
+                          )
+                        : undefined
+                    }
                   />
                 )}
               </div>
@@ -716,147 +574,36 @@ export default function MessageThreadPage() {
 
       {/* Input */}
       <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-        {/* Typing Indicator */}
         <TypingIndicator typingUsers={typingUsers} />
-
-        {/* Reply preview */}
-        {replyToMessage && (
-          <div className="mb-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-between">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                Replying to {handleMap[replyToMessage.fromDid] || replyToMessage.fromDid.slice(0, 16) + '...'}
-              </p>
-              <p className="text-sm truncate text-gray-800 dark:text-gray-200">
-                {typeof replyToMessage.content === 'object' && replyToMessage.content?.text
-                  ? replyToMessage.content.text
-                  : typeof replyToMessage.content === 'string'
-                  ? replyToMessage.content
-                  : ''}
-              </p>
-            </div>
-            <button
-              onClick={() => setReplyToMessage(null)}
-              className="ml-2 p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Edit preview */}
-        {editingMessage && (
-          <div className="mb-2 p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-between">
-            <p className="text-xs font-medium text-blue-600 dark:text-blue-400">Editing message</p>
-            <button
-              onClick={() => {
-                setEditingMessage(null);
-                setMessage('');
-              }}
-              className="ml-2 p-1 hover:bg-blue-200 dark:hover:bg-blue-800 rounded"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Uploaded media preview */}
-        {uploadedMedia && (
-          <div className="mb-2 flex items-center gap-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
-            <span className="text-sm text-gray-600 dark:text-gray-400">
-              {uploadedMedia.mediaType === 'image' ? '🖼️' : '📎'} {uploadedMedia.mediaMeta.originalName}
-            </span>
-            <button
-              onClick={() => setUploadedMedia(null)}
-              className="ml-auto text-gray-500 hover:text-red-500"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        <div className="flex items-end gap-2">
-          {voiceActive ? (
-            <>
-              <VoiceRecorder
-                onRecordingStart={() => setVoiceActive(true)}
-                onRecordingComplete={handleVoiceComplete}
-                onCancel={() => setVoiceActive(false)}
-                disabled={voiceSending}
-              />
-              {voiceSending && (
-                <span className="text-xs text-gray-400 self-center flex-shrink-0">Sending...</span>
-              )}
-            </>
-          ) : (
-            <>
-              {capabilities.has('send:media') ? (
-                <FileUpload
-                  conversationId={conversationId}
-                  onUploadComplete={handleUploadComplete}
-                  onUploadError={handleUploadError}
-                />
-              ) : (
-                <div
-                  className="p-2.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
-                  title="Verify your identity to send files"
-                >
-                  🔒
-                </div>
-              )}
-              <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
-                <textarea
-                  value={message}
-                  onChange={(e) => handleMessageChange(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Type a message..."
-                  className="w-full bg-transparent resize-none outline-none text-sm max-h-32"
-                  rows={1}
-                />
-              </div>
-              <div className="relative flex-shrink-0">
-                {capabilities.has('send:location') ? (
-                  <LocationPicker
-                    onLocationSelected={handleLocationSelected}
-                    disabled={sending}
-                  />
-                ) : (
-                  <div
-                    className="p-2.5 opacity-50 cursor-not-allowed text-gray-400"
-                    title="Verify your identity to share location"
-                  >
-                    🔒
-                  </div>
-                )}
-              </div>
-              {capabilities.has('send:voice') ? (
-                <VoiceRecorder
-                  onRecordingStart={() => setVoiceActive(true)}
-                  onRecordingComplete={handleVoiceComplete}
-                  onCancel={() => setVoiceActive(false)}
-                  disabled={sending}
-                />
-              ) : (
-                <div
-                  className="p-2.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
-                  title="Verify your identity to send voice messages"
-                >
-                  🔒
-                </div>
-              )}
-              <button
-                onClick={handleSend}
-                disabled={(!message.trim() && !uploadedMedia) || sending}
-                className={`p-3 rounded-full transition ${
-                  (message.trim() || uploadedMedia) && !sending
-                    ? 'bg-orange-500 text-white hover:bg-orange-600'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
-                }`}
-              >
-                {sending ? '...' : editingMessage ? '\u2713' : '\u27A4'}
-              </button>
-            </>
-          )}
-        </div>
+        <ChatComposer
+          onSend={handleComposerSend}
+          inputUrl={INPUT_URL}
+          capabilities={capabilities}
+          disabled={sending}
+          replyTo={replyToMessage ? {
+            id: replyToMessage.id,
+            senderLabel: handleMap[replyToMessage.fromDid] || replyToMessage.fromDid.slice(0, 16) + '...',
+            text: replyToText,
+          } : null}
+          onCancelReply={() => setReplyToMessage(null)}
+          editing={editingMessage ? {
+            messageId: editingMessage.id,
+            initialText: editingInitialText,
+          } : null}
+          onCancelEdit={() => setEditingMessage(null)}
+          onTextChange={(text) => {
+            if (!text.trim() || !conversationId) return;
+            const now = Date.now();
+            if (now - lastTypingSentRef.current > 2000) {
+              sendTyping(conversationId, identity?.name || null);
+              lastTypingSentRef.current = now;
+            }
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(() => {
+              if (conversationId) sendStopTyping(conversationId);
+            }, 3000);
+          }}
+        />
         <p className="text-xs text-gray-400 text-center mt-2">🔒 End-to-end encrypted</p>
       </div>
     </div>
