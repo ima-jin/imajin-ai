@@ -16,6 +16,149 @@ interface SurveyData {
   type?: string;
 }
 
+function FieldFormPanel({
+  fieldForm,
+  setFieldForm,
+  onSave,
+  onCancel,
+  isEditing,
+}: {
+  fieldForm: SurveyJSElement;
+  setFieldForm: (f: SurveyJSElement) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  isEditing: boolean;
+}) {
+  return (
+    <div className="mb-2 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border-2 border-orange-500/50">
+      <h3 className="text-lg font-semibold mb-3">
+        {isEditing ? 'Edit Question' : `Add ${fieldForm.type} Question`}
+      </h3>
+
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium mb-1">Question Text *</label>
+          <input
+            type="text"
+            value={fieldForm.title}
+            onChange={(e) => setFieldForm({ ...fieldForm, title: e.target.value })}
+            placeholder="What would you like to ask?"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+            autoFocus
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={fieldForm.isRequired || false}
+            onChange={(e) => setFieldForm({ ...fieldForm, isRequired: e.target.checked })}
+            id={`required-${isEditing ? 'edit' : 'new'}`}
+            className="rounded"
+          />
+          <label htmlFor={`required-${isEditing ? 'edit' : 'new'}`} className="text-sm">Required question</label>
+        </div>
+
+        {(fieldForm.type === 'radiogroup' || fieldForm.type === 'checkbox' || fieldForm.type === 'dropdown') && (
+          <div>
+            <label className="block text-sm font-medium mb-1">Answer Choices</label>
+            {(fieldForm.choices || []).map((choice, i) => {
+              const choiceText = typeof choice === 'string' ? choice : choice.text || '';
+              return (
+                <div key={i} className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={choiceText}
+                    onChange={(e) => {
+                      const newChoices = [...(fieldForm.choices || [])];
+                      newChoices[i] = e.target.value;
+                      setFieldForm({ ...fieldForm, choices: newChoices });
+                    }}
+                    placeholder={`Choice ${i + 1}`}
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  />
+                  {i > 0 && (
+                    <button
+                      onClick={() => {
+                        const newChoices = (fieldForm.choices || []).filter((_, idx) => idx !== i);
+                        setFieldForm({ ...fieldForm, choices: newChoices });
+                      }}
+                      className="px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            <button
+              onClick={() => {
+                setFieldForm({ ...fieldForm, choices: [...(fieldForm.choices || []), ''] });
+              }}
+              className="text-sm text-orange-500 hover:text-orange-600"
+            >
+              + Add choice
+            </button>
+          </div>
+        )}
+
+        {fieldForm.type === 'rating' && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">Min Value</label>
+              <input
+                type="number"
+                value={fieldForm.rateMin || 1}
+                onChange={(e) => setFieldForm({ ...fieldForm, rateMin: Number(e.target.value) })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Max Value</label>
+              <input
+                type="number"
+                value={fieldForm.rateMax || 5}
+                onChange={(e) => setFieldForm({ ...fieldForm, rateMax: Number(e.target.value) })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+              />
+            </div>
+          </div>
+        )}
+
+        {fieldForm.type === 'text' && (
+          <div>
+            <label className="block text-sm font-medium mb-1">Input Type</label>
+            <select
+              value={fieldForm.inputType || 'text'}
+              onChange={(e) => setFieldForm({ ...fieldForm, inputType: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+            >
+              <option value="text">Text</option>
+              <option value="email">Email</option>
+              <option value="number">Number</option>
+            </select>
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-2">
+          <button
+            onClick={onSave}
+            className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
+          >
+            {isEditing ? 'Save Changes' : 'Add Question'}
+          </button>
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CreateSurveyContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -316,135 +459,15 @@ function CreateSurveyContent() {
                 </button>
               </div>
 
-              {showFieldForm && (
-                <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-300 dark:border-gray-700">
-                  <h3 className="text-lg font-semibold mb-3">
-                    {editingFieldIndex !== null ? 'Edit Question' : `Add ${fieldForm.type} Question`}
-                  </h3>
-
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Question Text *</label>
-                      <input
-                        type="text"
-                        value={fieldForm.title}
-                        onChange={(e) => setFieldForm({ ...fieldForm, title: e.target.value })}
-                        placeholder="What would you like to ask?"
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                      />
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={fieldForm.isRequired || false}
-                        onChange={(e) => setFieldForm({ ...fieldForm, isRequired: e.target.checked })}
-                        id="required"
-                        className="rounded"
-                      />
-                      <label htmlFor="required" className="text-sm">Required question</label>
-                    </div>
-
-                    {(fieldForm.type === 'radiogroup' || fieldForm.type === 'checkbox' || fieldForm.type === 'dropdown') && (
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Answer Choices</label>
-                        {(fieldForm.choices || []).map((choice, i) => {
-                          const choiceText = typeof choice === 'string' ? choice : choice.text || '';
-                          return (
-                            <div key={i} className="flex gap-2 mb-2">
-                              <input
-                                type="text"
-                                value={choiceText}
-                                onChange={(e) => {
-                                  const newChoices = [...(fieldForm.choices || [])];
-                                  newChoices[i] = e.target.value;
-                                  setFieldForm({ ...fieldForm, choices: newChoices });
-                                }}
-                                placeholder={`Choice ${i + 1}`}
-                                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                              />
-                              {i > 0 && (
-                                <button
-                                  onClick={() => {
-                                    const newChoices = (fieldForm.choices || []).filter((_, idx) => idx !== i);
-                                    setFieldForm({ ...fieldForm, choices: newChoices });
-                                  }}
-                                  className="px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })}
-                        <button
-                          onClick={() => {
-                            setFieldForm({ ...fieldForm, choices: [...(fieldForm.choices || []), ''] });
-                          }}
-                          className="text-sm text-orange-500 hover:text-orange-600"
-                        >
-                          + Add choice
-                        </button>
-                      </div>
-                    )}
-
-                    {fieldForm.type === 'rating' && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Min Value</label>
-                          <input
-                            type="number"
-                            value={fieldForm.rateMin || 1}
-                            onChange={(e) => setFieldForm({ ...fieldForm, rateMin: Number(e.target.value) })}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Max Value</label>
-                          <input
-                            type="number"
-                            value={fieldForm.rateMax || 5}
-                            onChange={(e) => setFieldForm({ ...fieldForm, rateMax: Number(e.target.value) })}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {fieldForm.type === 'text' && (
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Input Type</label>
-                        <select
-                          value={fieldForm.inputType || 'text'}
-                          onChange={(e) => setFieldForm({ ...fieldForm, inputType: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                        >
-                          <option value="text">Text</option>
-                          <option value="email">Email</option>
-                          <option value="number">Number</option>
-                        </select>
-                      </div>
-                    )}
-
-                    <div className="flex gap-2 pt-2">
-                      <button
-                        onClick={saveField}
-                        className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
-                      >
-                        {editingFieldIndex !== null ? 'Save Changes' : 'Add Question'}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowFieldForm(false);
-                          setEditingFieldIndex(null);
-                        }}
-                        className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </div>
+              {/* Field form for NEW questions — renders above the list */}
+              {showFieldForm && editingFieldIndex === null && (
+                <FieldFormPanel
+                  fieldForm={fieldForm}
+                  setFieldForm={setFieldForm}
+                  onSave={saveField}
+                  onCancel={() => { setShowFieldForm(false); setEditingFieldIndex(null); }}
+                  isEditing={false}
+                />
               )}
 
               <div className="space-y-2">
@@ -454,50 +477,60 @@ function CreateSurveyContent() {
                   </div>
                 ) : (
                   survey.fields.elements.map((field, index) => (
-                    <div
-                      key={field.name}
-                      className="p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 flex items-center justify-between"
-                    >
-                      <div className="flex-1">
-                        <div className="font-medium text-sm">
-                          {field.title}
-                          {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+                    <div key={field.name}>
+                      {/* Inline edit form — replaces the question card when editing */}
+                      {showFieldForm && editingFieldIndex === index ? (
+                        <FieldFormPanel
+                          fieldForm={fieldForm}
+                          setFieldForm={setFieldForm}
+                          onSave={saveField}
+                          onCancel={() => { setShowFieldForm(false); setEditingFieldIndex(null); }}
+                          isEditing={true}
+                        />
+                      ) : (
+                        <div className="p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="font-medium text-sm">
+                              {field.title}
+                              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {field.type}
+                              {(field.type === 'radiogroup' || field.type === 'checkbox' || field.type === 'dropdown') &&
+                                ` (${field.choices?.length || 0} choices)`}
+                              {field.type === 'rating' && ` (${field.rateMin || 1}-${field.rateMax || 5})`}
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => moveField(index, 'up')}
+                              disabled={index === 0}
+                              className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs disabled:opacity-30"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              onClick={() => moveField(index, 'down')}
+                              disabled={index === survey.fields.elements.length - 1}
+                              className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs disabled:opacity-30"
+                            >
+                              ↓
+                            </button>
+                            <button
+                              onClick={() => editField(index)}
+                              className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs hover:bg-gray-100 dark:hover:bg-gray-800"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => deleteField(index)}
+                              className="px-2 py-1 border border-red-300 dark:border-red-700 text-red-600 rounded text-xs hover:bg-red-50 dark:hover:bg-red-900/20"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {field.type}
-                          {(field.type === 'radiogroup' || field.type === 'checkbox' || field.type === 'dropdown') &&
-                            ` (${field.choices?.length || 0} choices)`}
-                          {field.type === 'rating' && ` (${field.rateMin || 1}-${field.rateMax || 5})`}
-                        </div>
-                      </div>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => moveField(index, 'up')}
-                          disabled={index === 0}
-                          className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs disabled:opacity-30"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          onClick={() => moveField(index, 'down')}
-                          disabled={index === survey.fields.elements.length - 1}
-                          className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs disabled:opacity-30"
-                        >
-                          ↓
-                        </button>
-                        <button
-                          onClick={() => editField(index)}
-                          className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs hover:bg-gray-100 dark:hover:bg-gray-800"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => deleteField(index)}
-                          className="px-2 py-1 border border-red-300 dark:border-red-700 text-red-600 rounded text-xs hover:bg-red-50 dark:hover:bg-red-900/20"
-                        >
-                          Delete
-                        </button>
-                      </div>
+                      )}
                     </div>
                   ))
                 )}
