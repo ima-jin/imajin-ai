@@ -33,6 +33,7 @@ interface Course {
   tags: string[];
   status: string;
   eventSlug: string | null;
+  courseType: string | null;
   modules: Module[];
   enrollment: {
     id: string;
@@ -105,6 +106,15 @@ export default function CourseDetailPage() {
     }
   }, [course]);
 
+  // Auto-redirect to presentation mode for decks
+  const isDeck = course?.courseType === 'deck';
+  useEffect(() => {
+    if (!course || !isDeck) return;
+    if (course.enrollment && !course.isCreator) {
+      router.replace(`/course/${slug}/present`);
+    }
+  }, [course, isDeck, router, slug]);
+
   async function handleEnroll() {
     if (!course) return;
     setEnrolling(true);
@@ -128,6 +138,9 @@ export default function CourseDetailPage() {
       const data = await res.json();
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
+      } else if (isDeck) {
+        // Free deck enrollment — go straight to presentation
+        router.push(`/course/${slug}/present`);
       } else {
         // Free enrollment — reload
         window.location.reload();
@@ -207,14 +220,18 @@ export default function CourseDetailPage() {
               </Link>
             ) : course.enrollment ? (
               <Link
-                href={`/course/${course.slug}/${course.modules[0]?.lessons[0]?.id || ''}`}
+                href={isDeck ? `/course/${course.slug}/present` : `/course/${course.slug}/${course.modules[0]?.lessons[0]?.id || ''}`}
                 className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
               >
-                {course.enrollment.progress.completed > 0 ? 'Continue Learning' : 'Start Learning'}
-                {course.enrollment.progress.total > 0 && (
-                  <span className="ml-2 text-sm opacity-80">
-                    ({Math.round((course.enrollment.progress.completed / course.enrollment.progress.total) * 100)}%)
-                  </span>
+                {isDeck ? '▶ View Presentation' : (
+                  <>
+                    {course.enrollment.progress.completed > 0 ? 'Continue Learning' : 'Start Learning'}
+                    {course.enrollment.progress.total > 0 && (
+                      <span className="ml-2 text-sm opacity-80">
+                        ({Math.round((course.enrollment.progress.completed / course.enrollment.progress.total) * 100)}%)
+                      </span>
+                    )}
+                  </>
                 )}
               </Link>
             ) : course.isAuthenticated ? (
@@ -223,11 +240,13 @@ export default function CourseDetailPage() {
                 disabled={enrolling}
                 className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium disabled:opacity-50"
               >
-                {enrolling ? 'Enrolling...' : course.price === 0 ? 'Start Learning — Free' : `Enroll — $${(course.price / 100).toFixed(2)}`}
+                {enrolling ? 'Loading...' : course.price === 0
+                  ? (isDeck ? '▶ View Presentation' : 'Start Learning — Free')
+                  : `Enroll — $${(course.price / 100).toFixed(2)}`}
               </button>
             ) : (
               <OnboardGate
-                action={`enroll in "${course.title}"`}
+                action={isDeck ? `view "${course.title}"` : `enroll in "${course.title}"`}
                 redirectUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/course/${slug}?enroll=1`}
                 onIdentity={() => handleEnroll()}
               >
@@ -235,7 +254,9 @@ export default function CourseDetailPage() {
                   disabled={enrolling}
                   className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium disabled:opacity-50"
                 >
-                  {enrolling ? 'Enrolling...' : course.price === 0 ? 'Start Learning — Free' : `Enroll — $${(course.price / 100).toFixed(2)}`}
+                  {enrolling ? 'Loading...' : course.price === 0
+                    ? (isDeck ? '▶ View Presentation' : 'Start Learning — Free')
+                    : `Enroll — $${(course.price / 100).toFixed(2)}`}
                 </button>
               </OnboardGate>
             )}
