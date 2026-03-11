@@ -52,12 +52,12 @@ export async function GET(
       const eventSlug = targetDid.slice('did:imajin:event:'.length);
 
       const rows = await sql`
-        SELECT t.id, t.status, e.id as event_id, e.created_by
+        SELECT t.id, t.status, e.id as event_id, e.creator_did
         FROM events.tickets t
         JOIN events.events e ON e.id = t.event_id
         WHERE (e.id = ${eventSlug} OR e.did = ${targetDid})
-          AND t.attendee_did = ${requesterDid}
-          AND t.status NOT IN ('cancelled', 'refunded')
+          AND t.owner_did = ${requesterDid}
+          AND t.status NOT IN ('cancelled', 'available')
         LIMIT 1
       `;
 
@@ -70,10 +70,10 @@ export async function GET(
 
       // Check if requester is the event creator (organizer access)
       const orgRows = await sql`
-        SELECT id, created_by
+        SELECT id, creator_did
         FROM events.events
         WHERE (id = ${eventSlug} OR did = ${targetDid})
-          AND created_by = ${requesterDid}
+          AND creator_did = ${requesterDid}
         LIMIT 1
       `;
 
@@ -141,34 +141,19 @@ export async function GET(
 
     // --- did:imajin:group:* ---
     if (targetDid.startsWith('did:imajin:group:')) {
-      // Check v2 reads table first
-      const readsRows = await sql`
-        SELECT conversation_did
-        FROM chat.conversation_reads_v2
-        WHERE conversation_did = ${targetDid}
-          AND did = ${requesterDid}
+      // Check chat.participants for group membership (conversation_id stores the group DID)
+      const rows = await sql`
+        SELECT p.role
+        FROM chat.participants p
+        WHERE p.conversation_id = ${targetDid}
+          AND p.did = ${requesterDid}
         LIMIT 1
       `;
 
-      if (readsRows.length > 0) {
+      if (rows.length > 0) {
+        const role = rows[0].role as string;
         return NextResponse.json(
-          { allowed: true, role: 'member', governance: 'group' },
-          { headers: cors }
-        );
-      }
-
-      // Check conversations_v2 — if requester is creator
-      const convRows = await sql`
-        SELECT did, created_by
-        FROM chat.conversations_v2
-        WHERE did = ${targetDid}
-          AND created_by = ${requesterDid}
-        LIMIT 1
-      `;
-
-      if (convRows.length > 0) {
-        return NextResponse.json(
-          { allowed: true, role: 'owner', governance: 'group' },
+          { allowed: true, role, governance: 'group' },
           { headers: cors }
         );
       }
