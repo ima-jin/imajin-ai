@@ -24,12 +24,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   const course = result[0];
 
+  // Single session lookup for visibility, creator check, and enrollment
+  const cookieHeader = request.headers.get('Cookie');
+  const identity = await getSessionFromCookie(cookieHeader);
+  const isCreator = identity?.id === course.creatorDid;
+
   // Check visibility
   if (course.visibility === 'private') {
-    // Only creator can see private courses
-    const cookieHeader = request.headers.get('Cookie');
-    const identity = await getSessionFromCookie(cookieHeader);
-    if (!identity || identity.id !== course.creatorDid) {
+    if (!isCreator) {
       return errorResponse('Course not found', 404);
     }
   }
@@ -43,13 +45,25 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     .orderBy(asc(modules.sortOrder));
 
   const modulesWithLessons = await Promise.all(courseModules.map(async (mod) => {
-    const moduleLessons = await db.select({
-      id: lessons.id,
-      title: lessons.title,
-      contentType: lessons.contentType,
-      durationMinutes: lessons.durationMinutes,
-      sortOrder: lessons.sortOrder,
-    })
+    const lessonSelect = isCreator
+      ? {
+          id: lessons.id,
+          title: lessons.title,
+          contentType: lessons.contentType,
+          content: lessons.content,
+          durationMinutes: lessons.durationMinutes,
+          sortOrder: lessons.sortOrder,
+          metadata: lessons.metadata,
+        }
+      : {
+          id: lessons.id,
+          title: lessons.title,
+          contentType: lessons.contentType,
+          durationMinutes: lessons.durationMinutes,
+          sortOrder: lessons.sortOrder,
+        };
+
+    const moduleLessons = await db.select(lessonSelect)
       .from(lessons)
       .where(eq(lessons.moduleId, mod.id))
       .orderBy(asc(lessons.sortOrder));
@@ -59,8 +73,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   // Check enrollment for current user
   let enrollment = null;
-  const cookieHeader = request.headers.get('Cookie');
-  const identity = await getSessionFromCookie(cookieHeader);
   if (identity) {
     const enrollResult = await db.select()
       .from(enrollments)
@@ -90,7 +102,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     ...course,
     modules: modulesWithLessons,
     enrollment,
-    isCreator: identity?.id === course.creatorDid,
+    isCreator,
     isAuthenticated: !!identity,
   });
 }
