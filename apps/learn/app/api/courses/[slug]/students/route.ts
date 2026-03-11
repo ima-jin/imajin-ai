@@ -52,10 +52,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   let profileMap: Record<string, { displayName: string | null; email: string | null; handle: string | null }> = {};
   if (studentDids.length > 0) {
     try {
-      const profiles: { did: string; display_name: string | null; email: string | null; handle: string | null }[] = await db.execute(
+      const result = await db.execute(
         sql`SELECT did, display_name, email, handle FROM profile.profiles WHERE did = ANY(${studentDids})`
       );
-      for (const p of profiles) {
+      const profiles = (result as any).rows ?? result;
+      for (const p of profiles as any[]) {
         profileMap[p.did] = { displayName: p.display_name, email: p.email, handle: p.handle };
       }
     } catch {
