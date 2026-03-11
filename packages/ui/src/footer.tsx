@@ -10,6 +10,8 @@ export function ImajinFooter({ className }: { className?: string }) {
         <a href="https://discord.gg/kWGHUY8wbe" className="hover:underline">Discord</a>
         {" · "}
         <a href="https://github.com/ima-jin/imajin-ai" className="hover:underline">GitHub</a>
+        {" · "}
+        <a href="https://imajin.ai/privacy" className="hover:underline">Privacy</a>
       </p>
       <BuildInfo />
     </div>
