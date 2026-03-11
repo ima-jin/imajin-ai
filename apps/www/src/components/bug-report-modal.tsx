@@ -83,7 +83,7 @@ export function BugReportModal({ onClose }: Props) {
       try {
         const formData = new FormData();
         formData.append('file', screenshotFile);
-        formData.append('context', JSON.stringify({ app: 'www', feature: 'bugs' }));
+        formData.append('context', JSON.stringify({ app: 'www', feature: 'bugs', access: 'public' }));
         const res = await fetch(`${MEDIA_SERVICE_URL}/api/assets`, {
           method: 'POST',
           body: formData,

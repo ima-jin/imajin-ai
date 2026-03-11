@@ -97,8 +97,8 @@ export async function POST(request: NextRequest) {
     (formData.get("filename") as string | null) ??
     "upload";
 
-  // Parse optional context (for auto-folder assignment)
-  let context: { app?: string; feature?: string; entityId?: string } | null = null;
+  // Parse optional context (for auto-folder assignment + access override)
+  let context: { app?: string; feature?: string; entityId?: string; access?: string } | null = null;
   const contextRaw = formData.get("context");
   if (contextRaw && typeof contextRaw === "string") {
     try { context = JSON.parse(contextRaw); } catch { /* ignore bad JSON */ }
@@ -120,12 +120,13 @@ export async function POST(request: NextRequest) {
   const storagePath = `${dirPath}/${assetId}${ext}`;
   const fairPath = `${dirPath}/${assetId}.fair.json`;
 
-  // .fair manifest
+  // .fair manifest — allow context to override access (public only)
+  const accessLevel = context?.access === "public" ? "public" : "private";
   const fairManifest = {
     version: "0.2.0",
     asset: assetId,
     owner: ownerDid,
-    access: "private",
+    access: accessLevel,
     attribution: [{ did: ownerDid, share: 100 }],
     transfer: { allowed: false },
     createdAt: new Date().toISOString(),
