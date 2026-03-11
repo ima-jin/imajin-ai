@@ -47,6 +47,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     .where(eq(enrollments.courseId, course.id))
     .orderBy(asc(enrollments.enrolledAt));
 
+  // Resolve DIDs to profile names/emails
+  const studentDids = enrolled.map(e => e.studentDid);
+  let profileMap: Record<string, { displayName: string | null; email: string | null; handle: string | null }> = {};
+  if (studentDids.length > 0) {
+    try {
+      const profiles: { did: string; display_name: string | null; email: string | null; handle: string | null }[] = await db.execute(
+        sql`SELECT did, display_name, email, handle FROM profile.profiles WHERE did = ANY(${studentDids})`
+      );
+      for (const p of profiles) {
+        profileMap[p.did] = { displayName: p.display_name, email: p.email, handle: p.handle };
+      }
+    } catch {
+      // Profile schema may not be accessible — continue with DIDs only
+    }
+  }
+
   const students = await Promise.all(enrolled.map(async (enrollment) => {
     // Count completed lessons
     const [progress] = await db.select({ completed: count() })
@@ -58,8 +74,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         )
       );
 
+    const profile = profileMap[enrollment.studentDid];
+
     return {
       studentDid: enrollment.studentDid,
+      displayName: profile?.displayName || null,
+      email: profile?.email || null,
+      handle: profile?.handle || null,
       enrolledAt: enrollment.enrolledAt,
       completedAt: enrollment.completedAt,
       progress: {

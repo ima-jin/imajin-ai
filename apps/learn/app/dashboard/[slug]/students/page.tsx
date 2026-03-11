@@ -6,6 +6,9 @@ import Link from 'next/link';
 
 interface Student {
   studentDid: string;
+  displayName: string | null;
+  email: string | null;
+  handle: string | null;
   enrolledAt: string;
   completedAt: string | null;
   progress: { total: number; completed: number; percentage: number };
@@ -103,9 +106,24 @@ export default function StudentsPage() {
                 {data.students.map((student, i) => (
                   <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                     <td className="px-5 py-3">
-                      <span className="font-mono text-xs" title={student.studentDid}>
-                        {shortDid(student.studentDid)}
-                      </span>
+                      <div>
+                        {student.displayName && (
+                          <div className="font-medium text-sm">{student.displayName}</div>
+                        )}
+                        {student.email && (
+                          <div className="text-xs text-gray-500">{student.email}</div>
+                        )}
+                        {!student.displayName && !student.email && (
+                          <span className="font-mono text-xs" title={student.studentDid}>
+                            {shortDid(student.studentDid)}
+                          </span>
+                        )}
+                        {(student.displayName || student.email) && (
+                          <span className="font-mono text-[10px] text-gray-400" title={student.studentDid}>
+                            {shortDid(student.studentDid)}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-3 text-gray-500" title={new Date(student.enrolledAt).toLocaleString()}>
                       {timeAgo(student.enrolledAt)}
