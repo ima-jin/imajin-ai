@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
           tier: 'hard', // registrations with public keys are hard DIDs
         });
 
-        const cookieConfig = getSessionCookieOptions(process.env.NODE_ENV === 'production');
+        const cookieConfig = getSessionCookieOptions();
         const response = NextResponse.json({
           did: existing[0].id,
           handle: existing[0].handle,
@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Set cookie first so the accept call is authenticated
-    const cookieConfig = getSessionCookieOptions(process.env.NODE_ENV === 'production');
+    const cookieConfig = getSessionCookieOptions();
     const response = NextResponse.json({
       did: identity.id,
       handle: identity.handle,

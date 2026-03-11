@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Set cookie and return
-    const cookieConfig = getSessionCookieOptions(process.env.NODE_ENV === 'production');
+    const cookieConfig = getSessionCookieOptions();
     const response = NextResponse.json({
       did: identity.id,
       handle: identity.handle,

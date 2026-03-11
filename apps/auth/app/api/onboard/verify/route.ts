@@ -84,8 +84,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Set cookie and redirect
-    const isProduction = process.env.NODE_ENV === 'production';
-    const cookieOptions = getSessionCookieOptions(isProduction);
+    const cookieOptions = getSessionCookieOptions();
 
     const redirectUrl = record.redirectUrl || '/';
     const response = NextResponse.redirect(redirectUrl);

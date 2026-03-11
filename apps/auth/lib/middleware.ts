@@ -11,7 +11,7 @@ import { verifySessionToken, getSessionCookieOptions, SessionPayload } from './j
  * }
  */
 export async function requireAuth(request: NextRequest): Promise<SessionPayload | null> {
-  const cookieConfig = getSessionCookieOptions(process.env.NODE_ENV === 'production');
+  const cookieConfig = getSessionCookieOptions();
   const token = request.cookies.get(cookieConfig.name)?.value;
 
   if (!token) {

@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
       tier: 'soft',
     });
 
-    const cookieConfig = getSessionCookieOptions(process.env.NODE_ENV === 'production');
+    const cookieConfig = getSessionCookieOptions();
     const response = NextResponse.json({
       did: identity[0].id,
       handle: identity[0].handle,
