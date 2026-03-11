@@ -114,7 +114,7 @@ export default async function BugsPage() {
   // Others' reports = all reports minus mine (strip reporter details for privacy)
   const otherReports = allReports
     .filter(r => r.reporterDid !== session.did)
-    .map(r => ({ ...r, reporterDid: undefined, reporterName: undefined }));
+    .map(r => ({ ...r, reporterDid: 'anonymous', reporterName: null }));
 
   return (
     <main className="min-h-screen px-6 py-12 max-w-3xl mx-auto">
