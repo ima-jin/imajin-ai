@@ -45,30 +45,25 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     .orderBy(asc(modules.sortOrder));
 
   const modulesWithLessons = await Promise.all(courseModules.map(async (mod) => {
-    const lessonSelect = isCreator
-      ? {
-          id: lessons.id,
-          title: lessons.title,
-          contentType: lessons.contentType,
-          content: lessons.content,
-          durationMinutes: lessons.durationMinutes,
-          sortOrder: lessons.sortOrder,
-          metadata: lessons.metadata,
-        }
-      : {
-          id: lessons.id,
-          title: lessons.title,
-          contentType: lessons.contentType,
-          durationMinutes: lessons.durationMinutes,
-          sortOrder: lessons.sortOrder,
-        };
-
-    const moduleLessons = await db.select(lessonSelect)
+    const moduleLessons = await db.select({
+      id: lessons.id,
+      title: lessons.title,
+      contentType: lessons.contentType,
+      content: lessons.content,
+      durationMinutes: lessons.durationMinutes,
+      sortOrder: lessons.sortOrder,
+      metadata: lessons.metadata,
+    })
       .from(lessons)
       .where(eq(lessons.moduleId, mod.id))
       .orderBy(asc(lessons.sortOrder));
 
-    return { ...mod, lessons: moduleLessons };
+    // Strip content + metadata for non-creators (keep listing lean)
+    const sanitized = isCreator
+      ? moduleLessons
+      : moduleLessons.map(({ content, metadata, ...rest }) => rest);
+
+    return { ...mod, lessons: sanitized };
   }));
 
   // Check enrollment for current user
