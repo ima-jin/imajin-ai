@@ -178,8 +178,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Set session cookie
-    const isProduction = process.env.NODE_ENV === 'production';
-    const cookieOptions = getSessionCookieOptions(isProduction);
+    const cookieOptions = getSessionCookieOptions();
 
     const response = NextResponse.redirect(`${EVENTS_URL}/${ticketData.ticket.eventId}`);
 

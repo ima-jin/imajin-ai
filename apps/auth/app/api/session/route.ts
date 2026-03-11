@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
 
   try {
-    const cookieConfig = getSessionCookieOptions(process.env.NODE_ENV === 'production');
+    const cookieConfig = getSessionCookieOptions();
     const token = request.cookies.get(cookieConfig.name)?.value;
 
     if (!token) {

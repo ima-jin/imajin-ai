@@ -20,10 +20,13 @@ export function getSessionCookieName(env?: "dev" | "prod"): string {
 /** Default cookie name — resolves at import time based on environment */
 export const SESSION_COOKIE_NAME = getSessionCookieName();
 
-/** Cookie options for cross-subdomain sessions */
-export function getSessionCookieOptions(isProduction: boolean) {
+/** Cookie options for cross-subdomain sessions.
+ *  When called with no argument, auto-detects from IMAJIN_ENV (same logic as getSessionCookieName).
+ *  Accepts optional "dev" | "prod" override for explicit control.
+ */
+export function getSessionCookieOptions(env?: "dev" | "prod") {
   return {
-    name: getSessionCookieName(isProduction ? "prod" : "dev"),
+    name: getSessionCookieName(env),
     options: {
       httpOnly: true,
       secure: true,

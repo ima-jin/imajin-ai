@@ -20,7 +20,7 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
-  const cookieConfig = getSessionCookieOptions(process.env.NODE_ENV === 'production');
+  const cookieConfig = getSessionCookieOptions();
   
   const response = NextResponse.json({ success: true }, { headers: cors });
   
