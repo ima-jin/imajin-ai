@@ -28,17 +28,22 @@ export function PrimitiveMatrix({ active, compact }: PrimitiveMatrixProps) {
 
   return (
     <div className={compact ? '' : 'w-full'}>
-      {/* Column headers */}
-      <div className="grid gap-1" style={{ gridTemplateColumns: `80px repeat(${COLS.length}, 1fr)` }}>
+      {/* Column headers — vertical text */}
+      <div className="grid gap-1 mb-2" style={{ gridTemplateColumns: `80px repeat(${COLS.length}, 1fr)` }}>
         <div /> {/* empty corner */}
         {COLS.map((col, ci) => (
           <div
             key={ci}
-            className={`text-center text-[10px] uppercase tracking-wider pb-2 transition-colors duration-500 ${
+            className={`flex justify-center h-20 transition-colors duration-500 ${
               showAll || (active || []).some(([, c]) => c === ci) ? 'text-white/60' : 'text-white/20'
             }`}
           >
-            {col}
+            <span
+              className="text-[10px] uppercase tracking-wider font-medium whitespace-nowrap origin-center"
+              style={{ writingMode: 'vertical-lr', transform: 'rotate(180deg)' }}
+            >
+              {col}
+            </span>
           </div>
         ))}
       </div>
