@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { simpleMarkdown } from '@/app/lib/markdown';
+import { simpleMarkdown } from '../../../lib/markdown';
 
 interface Lesson {
   id: string;
