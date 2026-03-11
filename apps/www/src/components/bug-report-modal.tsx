@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 const MEDIA_SERVICE_URL = process.env.NEXT_PUBLIC_MEDIA_SERVICE_URL || '';
 
@@ -18,6 +19,7 @@ const REPORT_TYPES = [
 ] as const;
 
 export function BugReportModal({ onClose }: Props) {
+  const router = useRouter();
   const [type, setType] = useState<string>('bug');
   const [description, setDescription] = useState('');
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
@@ -124,7 +126,7 @@ export function BugReportModal({ onClose }: Props) {
             <p className="text-2xl mb-3">✓</p>
             <p className="text-gray-300 font-medium">Report submitted. Thanks!</p>
             <button
-              onClick={onClose}
+              onClick={() => { router.refresh(); onClose(); }}
               className="mt-6 px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-sm transition-colors"
             >
               Close

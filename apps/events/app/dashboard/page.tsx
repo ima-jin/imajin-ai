@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/src/lib/auth';
+import { db, events, ticketTypes } from '@/src/db';
+import { eq, desc } from 'drizzle-orm';
 import Link from 'next/link';
 import { EventCard } from './event-card';
 
@@ -14,30 +16,6 @@ interface EventWithStats {
   revenue: number;
 }
 
-async function getMyEvents(): Promise<EventWithStats[]> {
-  const baseUrl = process.env.NEXT_PUBLIC_EVENTS_URL || 'http://localhost:3004';
-
-  try {
-    const response = await fetch(`${baseUrl}/api/events/mine`, {
-      cache: 'no-store',
-      headers: {
-        // Forward cookies from the server-side request
-        Cookie: (await import('next/headers')).cookies().toString(),
-      },
-    });
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const data = await response.json();
-    return data.events || [];
-  } catch (error) {
-    console.error('Failed to fetch events:', error);
-    return [];
-  }
-}
-
 export default async function DashboardPage() {
   const session = await getSession();
 
@@ -47,7 +25,18 @@ export default async function DashboardPage() {
     redirect(`${authUrl}/login?next=${encodeURIComponent(`${eventsUrl}/dashboard`)}`);
   }
 
-  const events = await getMyEvents();
+  const userEvents = await db.select().from(events).where(eq(events.creatorDid, session.id)).orderBy(desc(events.createdAt));
+  const eventsWithStats = await Promise.all(userEvents.map(async (event) => {
+    const types = await db.select().from(ticketTypes).where(eq(ticketTypes.eventId, event.id));
+    const totalTicketsSold = types.reduce((sum, t) => sum + (t.sold || 0), 0);
+    const totalRevenue = types.reduce((sum, t) => sum + (t.sold || 0) * t.price, 0);
+    let statusBadge = event.status;
+    const now = new Date();
+    if (event.status === 'published') {
+      statusBadge = new Date(event.startsAt) < now ? 'past' : 'live';
+    }
+    return { ...event, ticketsSold: totalTicketsSold, revenue: totalRevenue, statusBadge, ticketTypes: types };
+  }));
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -71,7 +60,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Events Grid or Empty State */}
-      {events.length === 0 ? (
+      {eventsWithStats.length === 0 ? (
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-12 text-center">
           <div className="max-w-md mx-auto">
             <div className="text-6xl mb-4">🎉</div>
@@ -92,7 +81,7 @@ export default async function DashboardPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {events.map((event) => (
+          {eventsWithStats.map((event) => (
             <EventCard key={event.id} event={event} />
           ))}
         </div>

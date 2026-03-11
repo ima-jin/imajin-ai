@@ -26,10 +26,10 @@ export function getSessionCookieOptions(isProduction: boolean) {
     name: getSessionCookieName(isProduction ? "prod" : "dev"),
     options: {
       httpOnly: true,
-      secure: isProduction,
+      secure: true,
       sameSite: "none" as const,
       path: "/",
-      ...(isProduction ? { domain: ".imajin.ai" } : {}),
+      domain: ".imajin.ai",
       maxAge: 60 * 60 * 24, // 24 hours
     },
   };

@@ -1,27 +1,9 @@
 import { notFound } from 'next/navigation';
+import { db, coffeePages } from '@/db';
 import TipForm from './tip-form';
 
 interface PageProps {
   params: { handle: string };
-}
-
-async function getCoffeePage(handle: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3009';
-
-  try {
-    const response = await fetch(`${baseUrl}/api/pages/${handle}`, {
-      cache: 'no-store',
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    return response.json();
-  } catch (error) {
-    console.error('Failed to fetch coffee page:', error);
-    return null;
-  }
 }
 
 export default async function CoffeePage({ params }: PageProps) {
@@ -30,13 +12,15 @@ export default async function CoffeePage({ params }: PageProps) {
     notFound();
   }
 
-  const page = await getCoffeePage(params.handle);
+  const page = await db.query.coffeePages.findFirst({
+    where: (pages, { eq }) => eq(pages.handle, params.handle),
+  });
 
-  if (!page) {
+  if (!page || !page.isPublic) {
     notFound();
   }
 
-  const theme = page.theme || {};
+  const theme = (page.theme || {}) as Record<string, string>;
   const bgColor = theme.backgroundColor || '#fffbeb';
   const primaryColor = theme.primaryColor || '#f59e0b';
 
@@ -55,7 +39,7 @@ export default async function CoffeePage({ params }: PageProps) {
         <div className="mb-4">
           {avatarIsImage ? (
             <img
-              src={page.avatar}
+              src={page.avatar!}
               alt={page.title}
               className="w-24 h-24 rounded-full mx-auto object-cover"
             />
@@ -95,7 +79,14 @@ export default async function CoffeePage({ params }: PageProps) {
 
         {/* Tip Form */}
         <TipForm
-          page={page}
+          page={{
+            handle: page.handle,
+            presets: page.presets ?? [300, 500, 1000],
+            fundDirections: (page.fundDirections as any) ?? undefined,
+            allowCustomAmount: page.allowCustomAmount ?? true,
+            allowMessages: page.allowMessages ?? true,
+            paymentMethods: (page.paymentMethods as any) ?? {},
+          }}
           primaryColor={primaryColor}
         />
 

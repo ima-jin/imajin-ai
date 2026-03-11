@@ -1,5 +1,5 @@
 {
-  "name": "@imajin/chat",
+  "name": "@imajin/chat-app",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -13,6 +13,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@imajin/chat": "workspace:*",
     "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
     "@imajin/ui": "workspace:*",

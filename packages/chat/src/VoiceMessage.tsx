@@ -8,6 +8,7 @@ interface VoiceMessageProps {
   durationMs: number;
   waveform?: number[];
   isOwn: boolean;
+  mediaUrl?: string;
 }
 
 function formatDuration(ms: number): string {
@@ -17,9 +18,7 @@ function formatDuration(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
-
-export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn }: VoiceMessageProps) {
+export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn, mediaUrl = '' }: VoiceMessageProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -27,7 +26,7 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn 
   const audioRef = useRef<HTMLAudioElement>(null);
   const animFrameRef = useRef<number | null>(null);
 
-  const audioSrc = `${MEDIA_URL}/api/assets/${assetId}`;
+  const audioSrc = `${mediaUrl}/api/assets/${assetId}`;
   const totalDuration = durationMs / 1000;
 
   const updateProgress = () => {
@@ -79,15 +78,19 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn 
   }, []);
 
   const displayTime = currentTime > 0 ? formatDuration(currentTime * 1000) : formatDuration(durationMs);
+
+  const accentColor = isOwn ? 'bg-white/30' : 'bg-orange-500';
+  const progressBg = isOwn ? 'bg-white/20' : 'bg-gray-200 dark:bg-gray-600';
   const buttonColor = isOwn ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-orange-500 hover:bg-orange-600 text-white';
   const timeColor = isOwn ? 'text-white/70' : 'text-gray-500 dark:text-gray-400';
   const transcriptColor = isOwn ? 'text-white/80' : 'text-gray-600 dark:text-gray-400';
   const transcriptBtnColor = isOwn ? 'text-white/60 hover:text-white/90' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200';
 
   return (
-    <div className="min-w-[180px] max-w-[260px]">
+    <div className="min-w-[200px] max-w-[280px]">
       <audio ref={audioRef} src={audioSrc} onEnded={handleEnded} preload="metadata" />
 
+      {/* Player row */}
       <div className="flex items-center gap-2">
         <button
           onClick={togglePlay}
@@ -107,15 +110,20 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn 
         </button>
 
         <div className="flex-1 flex flex-col gap-1">
+          {/* Waveform / progress bar */}
           {waveform && waveform.length > 0 ? (
             <div
-              className="relative h-7 flex items-center gap-px cursor-pointer"
+              role="slider"
+              tabIndex={0}
+              aria-label="Audio progress"
+              className="relative h-8 flex items-center gap-px cursor-pointer"
               onClick={handleProgressClick}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') (e.currentTarget as HTMLDivElement).click(); }}
             >
               {waveform.map((amp, i) => {
                 const barProgress = i / waveform.length;
                 const filled = barProgress <= progress;
-                const height = Math.max(3, Math.round(amp * 24));
+                const height = Math.max(3, Math.round(amp * 28));
                 return (
                   <div
                     key={i}
@@ -131,8 +139,12 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn 
             </div>
           ) : (
             <div
-              className={`h-1.5 rounded-full cursor-pointer ${isOwn ? 'bg-white/20' : 'bg-gray-200 dark:bg-gray-600'}`}
+              role="slider"
+              tabIndex={0}
+              aria-label="Audio progress"
+              className={`h-1.5 rounded-full cursor-pointer ${progressBg}`}
               onClick={handleProgressClick}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') (e.currentTarget as HTMLDivElement).click(); }}
             >
               <div
                 className={`h-full rounded-full transition-all ${isOwn ? 'bg-white' : 'bg-orange-500'}`}
@@ -140,12 +152,14 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn 
               />
             </div>
           )}
+
           <span className={`text-xs ${timeColor}`}>{displayTime}</span>
         </div>
       </div>
 
+      {/* Transcript */}
       {transcript && (
-        <div className="mt-1">
+        <div className="mt-1.5">
           <button
             onClick={() => setShowTranscript(!showTranscript)}
             className={`text-xs ${transcriptBtnColor} transition flex items-center gap-1`}

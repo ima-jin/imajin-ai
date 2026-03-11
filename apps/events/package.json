@@ -10,10 +10,12 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@imajin/chat": "workspace:*",
     "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
     "@imajin/email": "workspace:*",
     "@imajin/fair": "workspace:*",
+    "@imajin/onboard": "workspace:*",
     "@imajin/ui": "workspace:*",
     "@noble/ed25519": "^3.0.0",
     "@noble/hashes": "^2.0.1",

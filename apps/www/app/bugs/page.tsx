@@ -101,6 +101,14 @@ function ReportCard({ r }: { r: BugReport }) {
             {r.status === 'duplicate' && r.duplicateOf && (
               <span className="text-yellow-500">Duplicate of {r.duplicateOf}</span>
             )}
+            {r.pageUrl && (
+              <span className="truncate max-w-[200px]" title={r.pageUrl}>
+                📍 {r.pageUrl.replace(/^https?:\/\/[^/]+/, '') || '/'}
+              </span>
+            )}
+            {r.viewport && (
+              <span>📐 {r.viewport}</span>
+            )}
           </div>
         </div>
       </div>

@@ -6,8 +6,8 @@ interface Link {
   id: string;
   title: string;
   url: string;
-  icon?: string;
-  thumbnail?: string;
+  icon?: string | null;
+  thumbnail?: string | null;
 }
 
 interface LinkButtonProps {

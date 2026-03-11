@@ -228,8 +228,10 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     await notifyEventsService('checkout.completed', session);
   }
 
-  // Add other service callbacks here as needed
-  // e.g., if (session.metadata?.orderId) { await notifyShopService(...) }
+  // Coffee service handles tips
+  if (session.metadata?.service === 'coffee') {
+    await notifyCoffeeServiceSession('checkout.completed', session);
+  }
 }
 
 /**
@@ -273,6 +275,52 @@ async function notifyEventsService(
     console.error('Failed to notify events service:', error);
     // Don't throw - we don't want to fail the Stripe webhook
     // The payment is still valid, we just need to handle the fulfillment separately
+  }
+}
+
+/**
+ * Notify coffee service about checkout session completion (tip flow)
+ */
+async function notifyCoffeeServiceSession(
+  type: 'checkout.completed',
+  session: Stripe.Checkout.Session
+) {
+  const coffeeServiceUrl = process.env.COFFEE_SERVICE_URL!;
+  const webhookSecret = process.env.COFFEE_WEBHOOK_SECRET!;
+
+  if (!coffeeServiceUrl || !webhookSecret) {
+    console.warn('Coffee service URL or webhook secret not configured');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${coffeeServiceUrl}/api/webhook/payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${webhookSecret}`,
+      },
+      body: JSON.stringify({
+        type,
+        tipId: session.metadata?.tipId,
+        pageId: session.metadata?.pageId,
+        amount: session.amount_total,
+        paymentId: typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : session.payment_intent?.id,
+        status: 'completed',
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Coffee service webhook failed:', error);
+    } else {
+      console.log('Coffee service notified successfully');
+    }
+  } catch (error) {
+    console.error('Failed to notify coffee service:', error);
+    // Don't throw - we don't want to fail the Stripe webhook
   }
 }
 
