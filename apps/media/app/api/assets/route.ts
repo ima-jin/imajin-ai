@@ -203,9 +203,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Build public URL from request origin
+  const origin = new URL(request.url).origin;
+  const url = `${origin}/api/assets/${record.id}`;
+
   const response = NextResponse.json(
     {
       id: record.id,
+      url,
       filename: record.filename,
       mimeType: record.mimeType,
       size: record.size,
