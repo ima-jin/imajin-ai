@@ -1,7 +1,9 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import { db, bugReports } from '@/db';
 import type { BugReport } from '@/db/schema';
+import { eq, desc } from 'drizzle-orm';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 import { SESSION_COOKIE_NAME as SESSION_COOKIE } from '@imajin/config';
@@ -19,22 +21,6 @@ async function getSession() {
     return res.json() as Promise<{ did: string; name?: string; tier?: string }>;
   } catch {
     return null;
-  }
-}
-
-async function getBugReports(sessionCookieValue: string, scope?: string): Promise<BugReport[]> {
-  try {
-    const url = scope
-      ? `${process.env.NEXT_PUBLIC_WWW_URL || 'http://localhost:3000'}/api/bugs?scope=${scope}`
-      : `${process.env.NEXT_PUBLIC_WWW_URL || 'http://localhost:3000'}/api/bugs`;
-    const res = await fetch(url, {
-      headers: { Cookie: `${SESSION_COOKIE}=${sessionCookieValue}` },
-      cache: 'no-store',
-    });
-    if (!res.ok) return [];
-    return res.json();
-  } catch {
-    return [];
   }
 }
 
@@ -117,20 +103,18 @@ function ReportCard({ r }: { r: BugReport }) {
 }
 
 export default async function BugsPage() {
-  const cookieStore = cookies();
-  const sessionCookie = cookieStore.get(SESSION_COOKIE);
-  if (!sessionCookie) redirect('/');
-
   const session = await getSession();
   if (!session) redirect('/');
 
   const [myReports, allReports] = await Promise.all([
-    getBugReports(sessionCookie.value),
-    getBugReports(sessionCookie.value, 'all'),
+    db.select().from(bugReports).where(eq(bugReports.reporterDid, session.did)).orderBy(desc(bugReports.createdAt)),
+    db.select().from(bugReports).orderBy(desc(bugReports.createdAt)),
   ]);
 
-  // Others' reports = all reports minus mine
-  const otherReports = allReports.filter(r => r.reporterDid !== session.did);
+  // Others' reports = all reports minus mine (strip reporter details for privacy)
+  const otherReports = allReports
+    .filter(r => r.reporterDid !== session.did)
+    .map(r => ({ ...r, reporterDid: undefined, reporterName: undefined }));
 
   return (
     <main className="min-h-screen px-6 py-12 max-w-3xl mx-auto">
