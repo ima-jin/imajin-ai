@@ -2,9 +2,9 @@
 title: "How to Save Education"
 subtitle: "The credential was always a receipt for time served. Here's what replaces it."
 description: "A $6 trillion industry built on selling proof you sat in a room. Domain knowledge is the last defensible asset on earth, and the people who have the most of it are getting paid the least for it."
-date: "2026-02-28"
+date: "2026-03-16"
 author: "Ryan Veteze"
-status: "DRAFT"
+status: "POSTED"
 ---
 
 An open letter to the teachers who know, the students drowning in debt, and the institutions selling the receipt.
@@ -61,9 +61,9 @@ Here's the trust graph version.
 
 A teacher builds a course on their node. Not on Udemy, where the platform owns the distribution and the algorithm decides who sees it. On their own node. Through their own trust graph. Priced at what their knowledge is actually worth — determined by the teacher, validated by the market, not by a race to the bottom.
 
-Students who complete the course are attested in the graph. Not by the institution. By the teacher. And the attestation costs them something: their standing in the network is attached to the quality of what they vouch for. If they accredit someone who turns out to be incompetent, their own trust weight diminishes. Not as punishment. As consequence. The same way a mentor's reputation suffers when they recommend someone who can't do the job.
+Students who complete the course are attested in the graph. Not by the institution. By the teacher. The attestation isn't a gate — it's an investment. The teacher's trust weight deepens every time a student goes on to succeed. Not as reward. As consequence. The same way a mentor's reputation compounds when the people they backed turn out to be right.
 
-The student's accreditation isn't a document. It's a position in a trust graph. A web of verified humans who staked their own reputation on the claim that you know what you're talking about. It doesn't expire. It doesn't need to be renewed by paying another fee. It compounds — every time the student demonstrates the knowledge, every time someone acts on their expertise and it turns out to be right, the accreditation deepens.
+The student's accreditation isn't a document. It's a position in a trust graph. A web of verified humans who backed the claim that you know what you're talking about. It doesn't expire. It doesn't need to be renewed by paying another fee. It compounds — every time the student demonstrates the knowledge, every time someone acts on their expertise and it turns out to be right, the accreditation deepens.
 
 The institution gives you a credential and forgets you exist.
 
@@ -99,23 +99,21 @@ The teacher becomes the most valuable node type in the network. Because they're 
 
 ---
 
-## Domain Knowledge Is Everywhere
+## The Infrastructure Is Live
 
-Most people don't know what their domain knowledge is worth. Because the credential economy told them it wasn't knowledge unless an institution stamped it.
+You've already met this person in Essay 12 — the one who doesn't know what their domain knowledge is worth because the credential economy told them it wasn't knowledge unless an institution stamped it. The bartender. The farmer. The parent who homeschooled through a pandemic. The mechanic who hears the engine.
 
-The customer service rep who's spent eight years learning how to de-escalate — that's domain knowledge. The parent who homeschooled three kids through a pandemic — that's domain knowledge. The bartender who can read a room and adjust the vibe through music selection — that's domain knowledge. The farmer who can tell you what the soil needs by the color of the leaves. The mechanic who hears the engine. The cook who knows by smell when the bread is done.
+None of them have a credential for what they know. All of them have knowledge that no AI can replicate because it was never in the training data.
 
-None of these people have credentials for what they know. All of them have knowledge that took years to accumulate and that no AI model can replicate because it was never in the training data.
+The infrastructure to accredit that knowledge now exists.
 
-learn.imajin.ai is where they find it, articulate it, and get it accredited through the trust graph.
+[learn.imajin.ai](https://learn.imajin.ai) is live. The first course is already there — an introduction to AI for people who want to understand what they're working with before they decide what to build. You can take it, complete it, get attested, and start building your own. The loop is open.
 
-Three things happen there.
+The learn service is one of 14 running on sovereign infrastructure right now. Fourteen services — identity, verification, discovery, payment, events, chat, media, connections, and more. Learn is the one that makes the rest compound. Every other service on the network creates or transacts; learn is the one that multiplies the humans capable of doing both.
 
-**Experts teach.** On their own node. Through their own trust graph. Priced at what the knowledge is actually worth. Every student who completes and goes on to demonstrate competence is a living attestation that the teaching was real. The teacher's trust weight compounds with every one of them.
+Without learn, the network depends on people who already have domain knowledge. With learn, the network produces more of them. Each generation of teachers producing the next. All of it attested, all of it attributed, all of it compensated through the same .fair chain that runs everything else.
 
-**Consumers discover they're creators.** Not everyone will. Not everyone needs to. But the path exists for anyone who wants to walk it — to surface what they know, articulate it, and get it attested by the people positioned to vouch for it.
-
-**The platform teaches itself.** How sovereign identity works. What a .fair chain is. How to operate a node. How to price yourself. How to build a trust graph that actually converts. That's the meta-layer — imajin teaching people how to use imajin — which is also domain knowledge, which also accrues in the graph. The first students of the school become the first teachers of the school. The loop closes immediately.
+The network doesn't just store knowledge. It grows it.
 
 ---
 
@@ -127,7 +125,7 @@ But guilds have always had apprenticeships. That's how guilds work. The master t
 
 learn.imajin.ai is the front door.
 
-You walk in as a consumer. You learn. You demonstrate. You get accredited by the people who taught you — people whose own accreditation traces back to their teachers, and their teachers before them. You start operating. You start teaching. The cycle continues.
+You walk in as a consumer. You learn. You demonstrate. You get attested by the people who taught you — people whose own accreditation traces back to their teachers, and their teachers before them. You start operating. You start teaching. The cycle continues.
 
 Nobody designed this as an apprenticeship model. The architecture produces it. The trust graph naturally creates lineages of knowledge transfer that compound over time. The teacher's investment in the student isn't charity — it's a network investment that pays returns every time the student succeeds, because the success traces back through the graph.
 
@@ -138,24 +136,6 @@ The only thing that's new is that the chain is permanent, legible, and economica
 The institution extracted tuition and gave you a certificate.
 
 The guild invests in you and grows when you do.
-
----
-
-## Five Services
-
-Profile. Auth. Registry. Chat. Learn.
-
-Identity. Verification. Discovery. Presence. Education.
-
-That's not a platform with features. That's a complete sovereign stack for human knowledge.
-
-Profile is who you are. Auth is how you prove it. Registry is how you're found. Chat is how you connect. Learn is how you grow.
-
-Every service that gets built on this infrastructure — events, articles, music, journalism, whatever comes next — plugs into these five. Because every human activity that involves knowledge requires these layers: a verified identity, a discoverable presence, a way to communicate, and a way to learn and teach.
-
-Without learn, the network depends on people who already have domain knowledge. With learn, the network produces more of them. Continuously. Indefinitely. Each generation of teachers producing the next generation of teachers, all of it attested, all of it attributed, all of it compensated through the same .fair chain that runs everything else.
-
-The network doesn't just store knowledge. It grows it.
 
 ---
 
@@ -177,6 +157,8 @@ Now it does.
 
 ## April 1st, 2026
 
+If you're a teacher who's been transferring knowledge for thirty years and watching someone else get the credit — this is for you. If you're a student carrying debt for a credential that didn't get you the job — this is for you. If you're the bartender, the farmer, the mechanic, the parent who homeschooled through a pandemic and has never once been told that what you know has value — this is specifically, architecturally, economically for you.
+
 Jin throws a party.
 
 But before the party, Jin teaches. The first interaction most people will have with sovereign infrastructure isn't buying a ticket. It's learning what a ticket means in this context. Why it's different. What the trust graph is. Why the .fair chain matters. Why the whole thing exists.
@@ -196,7 +178,10 @@ Walk in.
 ---
 
 **If you want to follow along:**
+- The first course: [learn.imajin.ai/course/intro-to-ai](https://learn.imajin.ai/course/intro-to-ai)
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](https://imajin.ai)
-- The school: [learn.imajin.ai](https://learn.imajin.ai)
-- Jin's party: April 1st, 2026
+- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-16-how-to-save-education](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-16-how-to-save-education.md)
+
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/memory) on March 16, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)

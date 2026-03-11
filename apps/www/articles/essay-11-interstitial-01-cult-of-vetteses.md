@@ -1,91 +1,152 @@
 ---
-title: "The Cult of Community"
+title: "The Cult of Family"
 subtitle: "What I learned before I had language for any of it"
 description: "A personal interstitial. The Rexdale house. Lou's concrete. A village that crossed an ocean and forgot what it was for."
+date: "2026-03-11"
 author: "Ryan Veteze"
-status: "DRAFT"
+status: "POSTED"
 ---
 
-There is concrete underneath the CN Tower.
+The CN Tower is concrete.
 
-Most people know that in the abstract — someone poured it, obviously, the tower didn't assemble itself out of ambition. But the specific name of the company that supplied it is not on the tower. It's not in the tourist pamphlets. It has never been relevant to anyone standing at the base of that thing looking up.
+Not just the foundation in the ground — the entire shaft, from the earth up to the revolving restaurant, is poured reinforced concrete. The thing you're looking at when you look at it. The landmark. The icon on every postcard and every skyline photo ever taken from the lake.
 
-Lou Vettese ran that company. My grandfather. His concrete is in the ground beneath the most recognizable structure in Canada, and almost nobody knows it.
+What most people don't know is how many companies supplied it. The project contracted at least seven different concrete suppliers. Seven companies whose material went into the most recognizable structure in Canada — some of it underground, some of it in the walls you can see from the highway — and not one of their names is on the tower. Not in the tourist pamphlets. Not anywhere.
+
+Lou Vettese ran one of those companies. My grandfather. He wasn't the biggest supplier on the job. He was one of many, each pouring their section, none of them credited, all of them foundational.
 
 I think about that a lot.
 
 ---
 
-Lou grew up in a family that had crossed an ocean to get to Toronto. The Vetteses were from Monte Cassino — a hilltop town in southern Italy where, from what my family understands, they were not just residents but something closer to anchors. The kind of family a community organizes around without quite naming the arrangement. When the great-grandfather left, that role didn't transfer to anyone. It just stopped existing.
+The Vetteses were from Monte Cassino — a hilltop town in southern Italy that, if you go today, is still full of Vetteses. Which tells you something about the kind of family they were. Not transient. Not passing through. Rooted.
 
-I don't have documentation for this. What I have is a family name that still appears in Monte Cassino, and aunts and uncles who went to look, and the particular way my family carries itself — like people who were once at the center of something and can't quite figure out what went wrong.
+Ernesto, my great-grandfather, was the kind of man a community organizes around without quite naming the arrangement. You know who to go to. The network radiates from somewhere. What holds a village together isn't a rule or an institution — it's a person who has accumulated enough trust and relationship that his home becomes infrastructure. The Vetteses had been that family for long enough that it was simply who they were.
+
+Around 1924 or 1925, Ernesto left. Fascism was metastasizing across Italy, and whatever the specific calculation was, he got out. He took his partner and went to Scotland first. Not Canada. Not directly. Scotland, where Lou was born, into a country that had no frame for either of them.
+
+When Ernesto left Monte Cassino, his role didn't transfer to anyone. It just stopped existing.
+
+What crossed the ocean was the impulse without the infrastructure. The memory of what the family had been, carried in bodies that were now living somewhere that had no architecture for it.
 
 ---
 
-Lou's house in Rexdale was a three-lot bungalow in a subdivision. Poured concrete everything. The pool was L-shaped, large enough to actually swim in, with a pool house along one arm that over the years became a kind of rotating home for whichever family member needed a soft landing. The retaining walls into the ravine behind the property — concrete. The house itself — solid as a foundation, which was the point, which was the only thing Lou knew how to build.
+This is not a story unique to the Vetteses.
 
-Dorothy, my grandmother, filled the interior. Her curation was everywhere: objects, colors, a kind of deliberate beauty that said someone was paying attention to what a home could hold. And they held a lot of people in it. The parties were real. The table was always bigger than necessary.
+Every immigrant family that left a European village and landed in a North American subdivision went through some version of this. They came from places where culture had solidified over generations — uncountable, accumulated, structural. They knew who they were in relation to everyone around them because those relationships had been defined and refined for longer than anyone could remember. The village was the node. It held identity, economy, mutual aid, reputation, belonging — not as separate systems but as one continuous thing.
 
-Seven kids: Grant, Serena, Sirah, Vic, Mike, Mitch, Neta. My dad is Mike, oldest of the younger three.
+Then they came here.
 
-Lou got an MS diagnosis in his late forties. By his fifties he was in a wheelchair. He was still there, still in the house, still at the center of everything — surrounded by family, surrounded by the village he'd built — and completely unreachable. He shouted a lot. He was not a happy man. Looking back, with everything I now know about how certain kinds of brains work, I think he was probably just autistic and exhausted and trapped in a body that had stopped cooperating, and nobody had language for any of that, least of all him. He didn't know what he'd built. I'm not sure he ever got to feel it.
+The subdivision was not designed for them. It was designed for capital. Rows of similar houses on similar lots, organized around the car and the commute, optimized for individual ownership rather than collective life. There was no piazza. No shared infrastructure that accumulated memory over time. No architecture for the role Ernesto had been. The box was the wrong shape for what they were carrying.
 
-He passed in the early 2000s.
+So they did what people do. They tried to recreate the form inside the box. Big table. Open door. Parties. Family. The gestures of village life, performed in a space that had no way of making them mean what they'd meant before.
+
+It was almost enough. Sometimes. For a while.
+
+---
+
+Lou and Dorothy's house in Rexdale was a three-lot bungalow in a subdivision. Poured concrete everything. The pool was L-shaped, large enough to actually swim in, with a pool house along one arm that became a rotating home for whichever family member needed a soft landing. Retaining walls into the ravine — concrete. The house itself solid as a foundation, which was the point, which was the only thing Lou knew how to build.
+
+Dorothy filled the interior. Her curation was everywhere: objects, colors, a kind of deliberate beauty that said someone was paying attention to what a home could hold. And they held a lot of people in it. The parties were real. The table was always bigger than necessary.
+
+Seven kids. Eighteen cousins. Thirty-five or more great-grandchildren — the number kept growing and I stopped being able to track it. The family expanded the way families do when the door is always open and the sense of obligation runs deep.
+
+Lou built provision into everything. He showed up for people — materially, consistently, at scale — in the only language he fully trusted.
+
+What he couldn't seem to do was feel received.
+
+He got an MS diagnosis in his late forties. By his fifties he was in a wheelchair. Still there, still at the center of everything he'd built — the house, the business, the family, the parties — and increasingly unreachable. He shouted a lot. He was not a happy man.
+
+I think I understand it now in a way I couldn't as a kid. He had organized his entire identity around providing for people. And somewhere along the way he stopped feeling like they saw what it cost him. The labor. The effort. The decades of showing up. And then his body started failing, and the thing he'd always been able to do — build, provide, be useful — was being taken from him, piece by piece.
+
+The family carried fractures nobody had language for. Things that got managed rather than healed. Lou was not the only one.
+
+He passed in 2003.
 
 ---
 
 Here is what I think that house was trying to be, and couldn't quite become.
 
-In Monte Cassino, the Vettese family's role was structural — not political or formal, but the kind of structural that makes a village function. You know who to go to. You know the network radiates from somewhere. You know that what holds the community together isn't a rule, it's a person, or a family, who has accumulated enough trust and relationship that their home is a kind of infrastructure.
+In Monte Cassino, the Vettese family's role was legible. The village had a name for it. The trust was visible because the architecture made it visible — everyone knew who the relationships ran through, who you went to, what the center of gravity was. That legibility wasn't incidental. It was load-bearing. It was what allowed the role to be inhabited fully, recognized, and — eventually — passed on.
 
-You cannot transplant that into a subdivision in Rexdale by replicating the form. Lou built the most solid house on the block. Dorothy curated it into something beautiful. The parties happened. The pool house had a rotating cast of family members who needed a floor to sleep on. Every element of the village was present in miniature.
+You cannot transplant that into a subdivision in Rexdale by replicating the form. Lou built the most solid house on the block. Dorothy curated it into something beautiful. The parties happened. The pool house had its rotating cast. Every gesture of the village was present.
 
-But a village isn't a house. It's a set of relationships between roles, and those roles need a context that names them before anyone can inhabit them fully. Without that context, the talent goes unrecognized, the energy goes sideways, the impulse to build community keeps firing into a structure that doesn't have the architecture to receive it.
+But a village isn't a house. It's a set of relationships between roles. And those roles need a context that names them before anyone can inhabit them fully.
 
-Most of the family has ADHD, undiagnosed, the way an entire generation managed it — through work, through stubbornness, through varying degrees of damage. The pattern recognition that runs in that family is real. What was missing was the container.
+Without that context, the talent goes unrecognized. The energy goes sideways. The impulse to build community keeps firing into a structure that doesn't have the architecture to receive it.
+
+Dorothy understood this in practice, even if she never would have said it that way. After Lou went into the wheelchair, and then after he was gone, she kept the family oriented toward each other. The calls, the coordination, the social memory that made sure everyone still knew where the center was. She held that for the last years of Lou's life, and then for sixteen more years after — still in the house, still the axis the family turned around.
+
+We called her GG in those later years. Great-grandma. She loved that house. She loved being surrounded by what she and Lou had built.
+
+She passed in 2019.
 
 ---
 
-I moved a lot as a kid. New schools, new towns, new social ecosystems to decode from scratch every time. By the time I'd settled into any cohort it was mid-year, and I spent the rest of my time in each place trying to understand something that seemed obvious to everyone else: how the in-group worked. What the actual rules were. Why certain people were at the center and others weren't, and whether the mechanism was transferable or just something you had or didn't have.
+After GG was gone, the family dissolved the corporate structure that had been keeping her in the house. The property sold for a significant sum. It was divided.
+
+The person who had kept the family business running through all of it — who had held the engine together for years, who had made sure GG was provided for, who knew the business the way you only know something you've given yourself to — was out of a job the day the deal closed.
+
+I don't say this to assign blame. I don't think it was malicious. I think it was a family that had never built the shared systems for understanding what they had. No structure for weighing what a going concern is worth over decades against what it's worth liquidated today. No mechanism for honoring the chain of labor that had built and sustained the thing. No architecture for making that decision together in a way that accounted for everyone in the chain.
+
+What they had — if they'd had the architecture to see it — was a golden goose. Multi-generational income. A container for everything they'd been trying to preserve since Monte Cassino.
+
+The legacy dissolved. Not stolen. Not abandoned. Dissolved — into individual decisions made by people who had no shared system for making them together.
+
+Ernesto left Monte Cassino and the role stopped existing.
+
+Lou built everything he could in a place that had no name for what he was doing.
+
+Dorothy held it together on will alone for decades, and then she was gone.
+
+Three generations of the same impulse. No architecture.
+
+And this is the part I want to be clear about: they did not fail because they were inadequate. The Vetteses were extraordinary people. The impulse was real. The love was real. The effort was real. They failed because the container failed them — first the subdivision, which was never designed to hold what they were carrying, and then the absence of any shared system for understanding and preserving what they'd built inside it.
+
+This is not a Vettese story. This is an immigrant story. It is the immigrant story, repeated in every family that crossed an ocean and tried to reassemble their village in a box that wasn't built for it.
+
+Most immigrant families absorb this loss quietly. Two or three children. A small household. The pattern fades across a generation or two, and the grief is real but diffuse — hard to name, easy to mistake for ordinary assimilation.
+
+The Vetteses were different in scale, not in kind. Seven kids. Eighteen cousins. Thirty-five or more great-grandchildren. They didn't just gesture toward the village — they came close enough to actually pattern one. Which meant when it dissolved, it dissolved at village scale. The loss was proportional to how much they'd managed to build. You could see exactly what had been there, and exactly what was gone.
+
+That visibility is painful. It is also clarifying.
+
+The village was the node. And they left the node behind.
+
+---
+
+I moved a lot as a kid. New schools, new towns, new social ecosystems to decode from scratch. I spent my childhood trying to understand something that seemed obvious to everyone else: how the in-group worked. What the actual rules were. Why certain people were at the center and others weren't.
 
 I never cracked it. And I never stopped thinking about it.
 
-In 1991, at fifteen, I dialed into a BBS called Happy Boat. Something about it felt immediately different from every social environment I'd been in. I drove out to Markham that same night in my dad's truck to meet the guy who ran it, because when something feels real you move toward it.
+I found my first answer at fifteen, on a BBS, where none of those signals could travel. You were interesting or you weren't. You contributed or you didn't. I went home and built a room where that was true. Nearly three hundred people found each other in it.
 
-What was different: there was no machinery. No visual hierarchy, no right hallway to be seen in, no inherited coolness from whoever stood next to you. You showed up as words on a screen. You were interesting or you weren't. You contributed or you didn't. The in-group and out-group dissolved because the signals that maintained them couldn't travel through a phone line.
+I didn't plan any of that. I built the room. The room made it possible.
 
-I went home and built b0bby's World. Three nodes. Three phone lines. Nearly three hundred people who kept finding each other, kept making things together. My sister met her husband on that board. Both fifteen. Two kids now. Still together.
+The impulse that produced that room is the same one Ernesto had in Monte Cassino. The same one Lou was trying to execute in Rexdale. The same one Dorothy held together with calls and curation and sheer will for three decades.
 
-I didn't plan any of that. I built a room. The room made it possible.
+It runs in the family. What we never had was a system.
 
----
+What I didn't understand until much later was that this wasn't just my family's problem. The internet was supposed to be the answer — the global village, the connected world, the thing that finally gave everyone the infrastructure the subdivision never provided. And for a moment, in the early days, it felt like it might be.
 
-b0bby's World ran from 1991 to 1994, when the internet arrived and made local BBSes unnecessary — which was true, and also a loss I felt immediately and couldn't explain for years. The form changed. The impulse didn't.
+Then the platforms arrived. And did to the internet what the subdivision had done to the village. Took something people had built organically, dropped it into an architecture optimized for extraction, and called it progress.
 
-It surfaced again in 2009 as Summer Camp — the first one, at the Estonian community grounds in Elora, Ontario. Eighty-five people. The Toronto party crew, the people I'd been watching find each other in clubs and at cottages and through a decade of shared experience. I knew who needed to be in that room together before any of them would have been able to say it themselves.
-
-I knew because that's the thing I do. That's always been the thing I do.
-
-Kenny showed up dressed as an owl. Nobody asked him to. There was no costume theme. He was just Kenny, and the owl was how he arrived into that space, and by the following year the owl was the official camp logo because the mythology always arrives before you name it.
-
-Fifteen summers. The camp held at a size that could still be a community rather than an event. The specific, patient, largely invisible work of keeping the room from becoming a party and staying a place.
+Same pattern. Different medium. Same result: the impulse fires, the room fills, and then the infrastructure that was supposed to hold it turns out to be designed for something else entirely.
 
 ---
 
-Lou's concrete is under the CN Tower. It will still be there when every company name on every plaque has been forgotten. The foundation is the thing that persists, and the foundation is the thing nobody credits.
+The CN Tower is made of concrete. Lou's material is in there — in the ground, in the walls, in the structure itself. It will still be there when every company name on every plaque has been forgotten. The tower persists. The tower is the thing nobody credits.
 
-He never seemed to know that. Or if he did, he couldn't access whatever satisfaction was supposed to come with it. He was at the center of everything he'd built — the house, the family, the business, the parties — and he couldn't reach any of it. Trapped in the wrong body, in a century that had no language for how his brain worked, surrounded by people who loved him and couldn't get through either.
+He didn't get to feel that. He gave everything to people who he felt didn't see what it cost, and then his body took the rest. The room he built was real. He just couldn't live in it.
 
-I understand that inheritance now in a way I didn't for most of my life. Not the concrete specifically — I'm not building in that material. But the impulse to build what holds everything else up. The impulse to make the room that makes other things possible. And the specific danger that comes with it: you can build the room and still not be able to live in it.
+I understand that inheritance now — not just personally, but structurally. The danger isn't that the impulse fails. The impulse doesn't fail. It runs in families across generations, it resurfaces in fifteen-year-olds building BBSes, it keeps firing no matter what. The danger is that it fires into containers that weren't built to hold it. That the role goes unnamed. That the chain of labor goes unhonored. That the village keeps trying to exist in the subdivision, and the subdivision keeps winning — not because it's better, but because it's what got built.
 
-The BBS was a room I could live in. Summer Camp is a room I can live in. What I'm building now is infrastructure so that rooms like those can exist at scale — and persist. So that the people who make them don't have to run everything manually in their heads forever. So that the connection survives the platform dying, the organizer burning out, the patriarch going silent in his wheelchair.
+What I'm building now is infrastructure for the village. Not a replica of Monte Cassino. Not nostalgia. Architecture that gives the room memory — so that the relationships survive the patriarch going silent, the matriarch passing, the platform dying, the organizer burning out. So that the chain of labor is legible. So that the person who kept the engine running doesn't lose their livelihood when the center goes quiet.
 
-The question I kept not being able to answer was how you give the room memory. How the thing that happens when the right people find each other survives past that moment.
+The question I kept not being able to answer was how you give the room memory. How what happens when the right people find each other survives past that moment.
 
-That's the question this whole series is trying to answer.
+That's what this whole series is trying to answer.
 
 The architecture comes next.
 
----
-
-*The Good Times Gang appears after Part II: Architecture.*
+*— Ryan VETEZE aka b0b*
