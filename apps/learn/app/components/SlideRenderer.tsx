@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { simpleMarkdown } from '../lib/markdown';
+import { PrimitiveMatrix } from './PrimitiveMatrix';
 
 export interface SlideLesson {
   id: string;
@@ -18,6 +19,7 @@ export interface SlideLesson {
       rows: { cells: string[]; highlight?: boolean }[];
     };
     cta?: { text: string; href: string };
+    matrix?: { active?: [number, number][] };
   } | null;
 }
 
@@ -78,6 +80,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
   const meta = slide?.metadata || {};
   const layout = meta?.layout || 'left';
   const isCenter = layout === 'center';
+  const hasMatrix = !!meta?.matrix;
 
   return (
     <div
@@ -113,7 +116,31 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
         </div>
       </div>
 
-      {/* Slide content */}
+      {/* Matrix split layout */}
+      {hasMatrix ? (
+        <div className="absolute inset-0 top-14 bottom-14 flex flex-col md:flex-row">
+          {/* Matrix — sticky left panel */}
+          <div className="md:w-[420px] shrink-0 flex items-center justify-center px-8 py-6 md:border-r md:border-white/10">
+            <PrimitiveMatrix active={meta.matrix?.active} />
+          </div>
+          {/* Content — right panel, scrollable */}
+          <div className="flex-1 overflow-y-auto px-8 md:px-12 py-8 md:py-12">
+            <div className="max-w-xl" key={current}>
+              <h1 className="text-3xl md:text-5xl font-bold tracking-tight mb-4 leading-tight">
+                {slide.title}
+              </h1>
+              {slide.content && (
+                <div
+                  className="text-lg text-white/70 leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: simpleMarkdown(slide.content) }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+
+      /* Standard slide layout */
       <div className="absolute inset-0 top-14 bottom-14 overflow-y-auto px-8 md:px-16 py-8 md:py-12">
         <div className={`min-h-full flex ${isCenter ? 'items-center justify-center' : 'items-center'}`}>
           <div
@@ -239,6 +266,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
           </div>
         </div>
       </div>
+      )}
 
       {/* Bottom navigation */}
       <div className="absolute bottom-0 left-0 right-0 h-14 flex items-center justify-between px-8 md:px-16 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a] to-transparent z-10">
