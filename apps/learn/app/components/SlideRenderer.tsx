@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { simpleMarkdown } from '../lib/markdown';
 
 export interface SlideLesson {
   id: string;
@@ -24,25 +25,6 @@ interface SlideRendererProps {
   slides: SlideLesson[];
   initialIndex?: number;
   onExit: () => void;
-}
-
-function simpleMarkdown(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/^### (.+)$/gm, '<h3 class="text-2xl font-bold mb-4 text-white">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="text-3xl font-bold mb-6 text-white">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="text-4xl md:text-5xl font-bold tracking-tight mb-8 text-white">$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em class="italic">$1</em>')
-    .replace(/```[\w]*\n([\s\S]*?)```/g, '<pre class="bg-white/5 border border-white/10 rounded-lg p-4 text-sm font-mono text-white/70 overflow-x-auto my-4"><code>$1</code></pre>')
-    .replace(/`(.+?)`/g, '<code class="bg-white/10 px-1.5 py-0.5 rounded font-mono text-sm text-white/80">$1</code>')
-    .replace(/^\- (.+)$/gm, '<li class="flex gap-3 text-white/70"><span class="text-white/30 mt-1 shrink-0">—</span><span>$1</span></li>')
-    .replace(/(<li[\s\S]*?<\/li>\n?)+/g, (m) => `<ul class="space-y-3 my-4">${m}</ul>`)
-    .replace(/\n\n/g, '</p><p class="text-lg text-white/70 leading-relaxed mb-4">')
-    .replace(/^(?!<[hupuo])(.+)$/gm, '<p class="text-lg text-white/70 leading-relaxed mb-4">$1</p>')
-    .replace(/<p[^>]*>\s*<\/p>/g, '');
 }
 
 export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendererProps) {
