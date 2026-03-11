@@ -3,12 +3,20 @@ import { createHash } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import { extname } from "path";
 import { nanoid } from "nanoid";
-import { db, assets } from "@/src/db";
+import { db, assets, folders, assetFolders } from "@/src/db";
 import { requireAuth } from "@/src/lib/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/cors";
 import { eq, and } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/classify";
 import { rateLimit, getClientIP } from "@/src/lib/rate-limit";
+
+// Context → folder mapping
+const CONTEXT_FOLDER_MAP: Record<string, { name: string; icon: string }> = {
+  bugs: { name: "Bug Reports", icon: "🐛" },
+  chat: { name: "Chat", icon: "💬" },
+  profile: { name: "Profile", icon: "👤" },
+  events: { name: "Events", icon: "🎫" },
+};
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +97,13 @@ export async function POST(request: NextRequest) {
     (formData.get("filename") as string | null) ??
     "upload";
 
+  // Parse optional context (for auto-folder assignment)
+  let context: { app?: string; feature?: string; entityId?: string } | null = null;
+  const contextRaw = formData.get("context");
+  if (contextRaw && typeof contextRaw === "string") {
+    try { context = JSON.parse(contextRaw); } catch { /* ignore bad JSON */ }
+  }
+
   const assetId = `asset_${nanoid(16)}`;
   const ext = extname(originalName) || "";
 
@@ -144,6 +159,7 @@ export async function POST(request: NextRequest) {
         fairManifest,
         fairPath,
         status: "active",
+        metadata: context ? { context } : {},
       })
       .returning();
   } catch (err) {
@@ -152,6 +168,39 @@ export async function POST(request: NextRequest) {
       { error: "Database failure", detail: String(err) },
       { status: 500 }
     );
+  }
+
+  // Auto-assign to folder based on context
+  if (context?.feature || context?.app) {
+    const folderKey = context.feature || context.app || "";
+    const folderConfig = CONTEXT_FOLDER_MAP[folderKey];
+    if (folderConfig) {
+      try {
+        // Find or create the system folder for this user
+        const existing = await db.select().from(folders).where(
+          and(eq(folders.ownerDid, ownerDid), eq(folders.name, folderConfig.name), eq(folders.isSystem, true))
+        ).limit(1);
+
+        let folderId: string;
+        if (existing.length > 0) {
+          folderId = existing[0].id;
+        } else {
+          folderId = `folder_${nanoid(16)}`;
+          await db.insert(folders).values({
+            id: folderId,
+            ownerDid,
+            name: folderConfig.name,
+            icon: folderConfig.icon,
+            isSystem: true,
+          });
+        }
+
+        // Link asset to folder
+        await db.insert(assetFolders).values({ assetId, folderId }).onConflictDoNothing();
+      } catch (err) {
+        console.error("Auto-folder assignment failed (non-fatal):", err);
+      }
+    }
   }
 
   const response = NextResponse.json(

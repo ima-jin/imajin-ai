@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 const MEDIA_SERVICE_URL = process.env.NEXT_PUBLIC_MEDIA_SERVICE_URL || '';
@@ -29,18 +29,38 @@ export function BugReportModal({ onClose }: Props) {
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = (file: File | null) => {
+  const handleFile = useCallback((file: File | null) => {
     if (!file || !file.type.startsWith('image/')) return;
     setScreenshotFile(file);
     setPreviewUrl(URL.createObjectURL(file));
-  };
+  }, []);
+
+  // Ctrl+V paste support for images
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            handleFile(file);
+          }
+          break;
+        }
+      }
+    };
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [handleFile]);
 
   const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDragging(false);
     const file = e.dataTransfer.files?.[0] ?? null;
     handleFile(file);
-  }, []);
+  }, [handleFile]);
 
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -63,6 +83,7 @@ export function BugReportModal({ onClose }: Props) {
       try {
         const formData = new FormData();
         formData.append('file', screenshotFile);
+        formData.append('context', JSON.stringify({ app: 'www', feature: 'bugs' }));
         const res = await fetch(`${MEDIA_SERVICE_URL}/api/assets`, {
           method: 'POST',
           body: formData,
@@ -193,7 +214,7 @@ export function BugReportModal({ onClose }: Props) {
                   />
                 ) : (
                   <p className="text-sm text-gray-500">
-                    Drag & drop an image, or <span className="text-orange-400">click to browse</span>
+                    Drag & drop, paste (Ctrl+V), or <span className="text-orange-400">click to browse</span>
                   </p>
                 )}
                 <input
