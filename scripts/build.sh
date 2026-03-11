@@ -56,6 +56,26 @@ echo "" >> "$REPORT"
 
 cd "$BASE_DIR"
 
+# Pre-flight: check env vars for all target apps
+echo "=== Pre-flight: checking env vars ===" | tee -a "$REPORT"
+ENV_FLAG="--env dev"
+[ "$ENV" = "prod" ] && ENV_FLAG="--env prod"
+
+ENV_CHECK_FAILED=false
+for app in "${APPS[@]}"; do
+  if ! npx tsx scripts/check-env.ts $ENV_FLAG "$app" 2>&1 | tee -a "$REPORT"; then
+    ENV_CHECK_FAILED=true
+  fi
+done
+
+if [ "$ENV_CHECK_FAILED" = true ]; then
+  echo "" | tee -a "$REPORT"
+  echo "❌ Env check found errors. Fix missing vars before building." | tee -a "$REPORT"
+  echo "   Run: npx tsx scripts/check-env.ts $ENV_FLAG ${APPS[*]}" | tee -a "$REPORT"
+  exit 1
+fi
+echo "" >> "$REPORT"
+
 for app in "${APPS[@]}"; do
   echo "=== Building $app ===" | tee -a "$REPORT"
   cd "apps/$app"
