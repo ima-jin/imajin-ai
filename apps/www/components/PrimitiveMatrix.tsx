@@ -1,22 +1,8 @@
 'use client';
 
-import matrixData from '../../../docs/matrix-status.json';
-
-const SCOPES = matrixData.scopes;
-const PRIMITIVES = matrixData.primitives;
+const SCOPES = ['Actor', 'Family', 'Community', 'Business'];
+const PRIMITIVES = ['Attestation', 'Communication', 'Attribution', 'Settlement', 'Discovery'];
 const SCOPE_ICONS = ['◆', '◇', '○', '□'];
-
-function getPercent(scope: string, primitive: string): number {
-  const key = `${scope}×${primitive}`;
-  const cell = (matrixData.cells as Record<string, { percent: number }>)[key];
-  return cell?.percent ?? 0;
-}
-
-function getOverallPercent(): number {
-  const values = Object.values(matrixData.cells as Record<string, { percent: number }>);
-  const sum = values.reduce((acc, v) => acc + v.percent, 0);
-  return Math.round(sum / values.length);
-}
 
 function barColor(pct: number): string {
   if (pct === 0) return 'bg-transparent';
@@ -32,9 +18,12 @@ function glowClass(pct: number): string {
   return '';
 }
 
-export function PrimitiveMatrix() {
-  const overall = getOverallPercent();
+interface PrimitiveMatrixProps {
+  cells: Record<string, number>;
+  overall: number;
+}
 
+export function PrimitiveMatrix({ cells, overall }: PrimitiveMatrixProps) {
   return (
     <div className="w-full max-w-2xl mx-auto">
       {/* Column headers — vertical text */}
@@ -70,7 +59,8 @@ export function PrimitiveMatrix() {
 
           {/* Cells — horizontal fill left to right */}
           {PRIMITIVES.map((primitive, ci) => {
-            const pct = getPercent(scope, primitive);
+            const key = `${scope}×${primitive}`;
+            const pct = cells[key] ?? 0;
             return (
               <div
                 key={ci}
@@ -79,7 +69,7 @@ export function PrimitiveMatrix() {
               >
                 {/* Progress fill from left */}
                 <div
-                  className={`absolute top-0 bottom-0 left-0 transition-all duration-700 ${barColor(pct)}`}
+                  className={`absolute top-0 bottom-0 left-0 ${barColor(pct)}`}
                   style={{ width: `${pct}%` }}
                 />
               </div>
@@ -88,10 +78,10 @@ export function PrimitiveMatrix() {
         </div>
       ))}
 
-      {/* Legend — bottom right */}
+      {/* Legend — bottom right, small */}
       <div className="flex justify-end mt-3">
-        <div className="flex items-center gap-2 text-[11px] text-white/40">
-          <div className="w-3 h-3 rounded-sm bg-amber-500/80" />
+        <div className="flex items-center gap-2 text-[10px] text-white/40">
+          <div className="w-2.5 h-2.5 rounded-sm bg-amber-500/80" />
           <span>{overall}% complete</span>
         </div>
       </div>
