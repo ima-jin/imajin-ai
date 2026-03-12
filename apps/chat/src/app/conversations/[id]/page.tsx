@@ -1,19 +1,141 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useIdentity, LoginPrompt } from '@/contexts/IdentityContext';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { MessageBubble } from '@imajin/chat';
+import { MessageBubble, Chat, ChatProvider, VoiceRecorder } from '@imajin/chat';
 import { TypingIndicator } from '@/app/components/TypingIndicator';
 import { FileUpload } from '@/app/components/FileUpload';
-import { MessageMedia } from '@/app/components/MessageMedia';
-import { VoiceRecorder } from '@imajin/chat';
 import { LocationPicker, LocationData } from '@/app/components/LocationPicker';
 import { sendVoiceMessage } from '@/lib/voice';
 
+// Inline DID parser (avoids importing Node.js crypto in client bundle)
+function parseConvDid(did: string): { type: string; slug?: string } {
+  const prefix = 'did:imajin:';
+  if (!did.startsWith(prefix)) return { type: 'unknown' };
+  const rest = did.slice(prefix.length);
+  const idx = rest.indexOf(':');
+  if (idx === -1) return { type: 'unknown' };
+  return { type: rest.slice(0, idx), slug: rest.slice(idx + 1) || undefined };
+}
+
 const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
+
+// ─── DID-based conversation view ─────────────────────────────────────────────
+
+function DIDConversationView({ did }: { did: string }) {
+  const { identity, loading: authLoading } = useIdentity();
+  const searchParams = useSearchParams();
+  const [convName, setConvName] = useState<string | null>(null);
+  const [nameSet, setNameSet] = useState(false);
+  const parsed = parseConvDid(did);
+
+  // Display name from URL param (e.g., when creating a group)
+  const nameParam = searchParams.get('name');
+
+  // Fetch stored conversation name from v2 API
+  useEffect(() => {
+    if (!identity) return;
+    fetch(`/api/conversations-v2?did=${encodeURIComponent(did)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const conv = data?.conversations?.[0];
+        if (conv?.name &&
+          !conv.name.startsWith('dm:') &&
+          !conv.name.startsWith('group:') &&
+          !conv.name.startsWith('event:')
+        ) {
+          setConvName(conv.name);
+          setNameSet(true);
+        }
+      })
+      .catch(() => {});
+  }, [identity, did]);
+
+  // If a name was passed in the URL and we haven't stored a proper name yet,
+  // save it via PATCH once the conversation exists (after the first message creates it).
+  // We use a short delay to give the auto-create time to run.
+  useEffect(() => {
+    if (!identity || !nameParam || nameSet) return;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/conversations-v2', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ did, name: nameParam }),
+        });
+        if (res.ok) setNameSet(true);
+      } catch {
+        // Ignore — the name can be set later
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [identity, nameParam, nameSet, did]);
+
+  const chatUrl = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
+  const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3002';
+  const inputUrl = process.env.NEXT_PUBLIC_INPUT_URL || 'http://localhost:3008';
+  const mediaUrl = MEDIA_URL;
+
+  const displayName =
+    convName ||
+    nameParam ||
+    (parsed.type === 'dm'
+      ? 'Direct Message'
+      : parsed.type === 'event'
+      ? 'Event Chat'
+      : parsed.type === 'group'
+      ? 'Group Chat'
+      : 'Conversation');
+
+  if (authLoading) {
+    return <div className="max-w-2xl mx-auto mt-20 text-center text-gray-500">Loading...</div>;
+  }
+
+  if (!identity) return <LoginPrompt />;
+
+  return (
+    <div className="max-w-2xl mx-auto flex flex-col h-[calc(100vh-200px)]">
+      {/* Header */}
+      <div className="flex items-center gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+        <Link
+          href="/conversations"
+          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition"
+        >
+          ← Back
+        </Link>
+        <div className="flex-1">
+          <h1 className="font-semibold">{displayName}</h1>
+          {parsed.type === 'group' && (
+            <p className="text-xs text-gray-500 mt-0.5">Group conversation</p>
+          )}
+          {parsed.type === 'event' && (
+            <p className="text-xs text-gray-500 mt-0.5">Event chat</p>
+          )}
+        </div>
+      </div>
+
+      {/* Chat */}
+      <div className="flex-1 overflow-hidden min-h-0">
+        <ChatProvider chatUrl={chatUrl} authUrl={authUrl} inputUrl={inputUrl} mediaUrl={mediaUrl}>
+          <Chat
+            did={did}
+            currentUserDid={identity.did}
+            mediaUrl={mediaUrl}
+            enableVoice
+            enableMedia
+            enableLocation
+            className="h-full"
+          />
+        </ChatProvider>
+      </div>
+    </div>
+  );
+}
+
+// ─── Legacy conversation view (conv_xxx) ─────────────────────────────────────
 
 interface LinkPreview {
   url: string;
@@ -37,7 +159,7 @@ interface Message {
   deletedAt: string | null;
   mediaType?: 'image' | 'file' | null;
   mediaPath?: string | null;
-  mediaMeta?: any;
+  mediaMeta?: unknown;
 }
 
 interface ConversationInfo {
@@ -71,9 +193,7 @@ function formatDateDivider(dateStr: string): string {
   });
 }
 
-export default function MessageThreadPage() {
-  const params = useParams<{ id: string }>();
-  const router = useRouter();
+function LegacyConversationView({ conversationId }: { conversationId: string }) {
   const { identity, loading: authLoading } = useIdentity();
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversation, setConversation] = useState<ConversationInfo | null>(null);
@@ -89,7 +209,7 @@ export default function MessageThreadPage() {
   const [uploadedMedia, setUploadedMedia] = useState<{
     mediaType: 'image' | 'file';
     mediaPath: string;
-    mediaMeta: any;
+    mediaMeta: unknown;
   } | null>(null);
   const [voiceActive, setVoiceActive] = useState(false);
   const [voiceSending, setVoiceSending] = useState(false);
@@ -99,11 +219,14 @@ export default function MessageThreadPage() {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSentRef = useRef<number>(0);
   const chatAreaRef = useRef<HTMLDivElement>(null);
-  const { lastMessage: wsMessage, isConnected: wsConnected, subscribe: wsSubscribe, sendTyping, sendStopTyping } = useWebSocket();
+  const {
+    lastMessage: wsMessage,
+    isConnected: wsConnected,
+    subscribe: wsSubscribe,
+    sendTyping,
+    sendStopTyping,
+  } = useWebSocket();
 
-  const conversationId = params.id;
-
-  // Fetch capabilities on mount
   useEffect(() => {
     if (!identity) return;
     async function fetchCapabilities() {
@@ -114,13 +237,12 @@ export default function MessageThreadPage() {
           setCapabilities(new Set(data.capabilities));
         }
       } catch {
-        // Silently fail - default to text-only
+        // Silently fail
       }
     }
     fetchCapabilities();
   }, [identity]);
 
-  // Fetch conversation info and mark as read
   useEffect(() => {
     if (!identity || !conversationId) return;
 
@@ -132,36 +254,31 @@ export default function MessageThreadPage() {
           setConversation(data.conversation || data);
         }
       } catch {
-        // Conversation info is optional for display
+        // Optional
       }
     }
 
     async function markAsRead() {
       try {
-        await fetch(`/api/conversations/${conversationId}/read`, {
-          method: 'POST',
-        });
+        await fetch(`/api/conversations/${conversationId}/read`, { method: 'POST' });
       } catch {
-        // Silently fail - not critical
+        // Silently fail
       }
     }
 
     fetchConversation();
     markAsRead();
 
-    // Mark as read whenever the window gains focus
-    const handleFocus = () => {
-      markAsRead();
-    };
-
+    const handleFocus = () => markAsRead();
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [identity, conversationId]);
 
-  // Resolve handles for message senders
   useEffect(() => {
     if (!messages.length) return;
-    const unknownDids = Array.from(new Set(messages.map(m => m.fromDid))).filter(d => !handleMap[d]);
+    const unknownDids = Array.from(new Set(messages.map((m) => m.fromDid))).filter(
+      (d) => !handleMap[d]
+    );
     if (!unknownDids.length) return;
 
     unknownDids.forEach(async (did) => {
@@ -170,18 +287,17 @@ export default function MessageThreadPage() {
         if (res.ok) {
           const data = await res.json();
           const label = data.handle ? `@${data.handle}` : data.name || did.slice(0, 16) + '...';
-          setHandleMap(prev => ({ ...prev, [did]: label }));
+          setHandleMap((prev) => ({ ...prev, [did]: label }));
         } else {
-          setHandleMap(prev => ({ ...prev, [did]: did.slice(0, 16) + '...' }));
+          setHandleMap((prev) => ({ ...prev, [did]: did.slice(0, 16) + '...' }));
         }
       } catch {
-        setHandleMap(prev => ({ ...prev, [did]: did.slice(0, 16) + '...' }));
+        setHandleMap((prev) => ({ ...prev, [did]: did.slice(0, 16) + '...' }));
       }
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
-  // Fetch reactions for all messages
   useEffect(() => {
     if (!identity || !messages.length) return;
 
@@ -191,15 +307,14 @@ export default function MessageThreadPage() {
         const res = await fetch(`/api/messages/${msg.id}/reactions`);
         if (res.ok) {
           const data = await res.json();
-          setMessageReactions(prev => ({ ...prev, [msg.id]: data.reactions || [] }));
+          setMessageReactions((prev) => ({ ...prev, [msg.id]: data.reactions || [] }));
         }
       } catch {
-        // Ignore reaction fetch errors
+        // Ignore
       }
     });
   }, [identity, messages]);
 
-  // Fetch messages
   const fetchMessages = useCallback(async () => {
     if (!identity || !conversationId) return;
 
@@ -220,7 +335,6 @@ export default function MessageThreadPage() {
       const msgs = data.messages || [];
       setMessages(msgs);
 
-      // Auto-scroll if new messages arrived
       const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : null;
       if (lastId && lastId !== lastMessageIdRef.current) {
         lastMessageIdRef.current = lastId;
@@ -233,31 +347,26 @@ export default function MessageThreadPage() {
     } finally {
       setLoadingMessages(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identity, conversationId]);
 
-  // Initial fetch
   useEffect(() => {
     fetchMessages();
   }, [fetchMessages]);
 
-  // Subscribe to WebSocket for this conversation
   useEffect(() => {
     if (!identity || !conversationId) return;
     wsSubscribe(conversationId);
   }, [identity, conversationId, wsSubscribe]);
 
-  // Handle incoming WebSocket messages
   useEffect(() => {
     if (!wsMessage || !wsMessage.type) return;
 
     if (wsMessage.type === 'new_message' && wsMessage.message) {
       const msg = wsMessage.message as Message;
       if (msg.conversationId !== conversationId) return;
-
-      setMessages(prev => {
-        // Deduplicate
-        if (prev.some(m => m.id === msg.id)) return prev;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
         const updated = [...prev, msg];
         setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
         return updated;
@@ -265,45 +374,45 @@ export default function MessageThreadPage() {
     } else if (wsMessage.type === 'message_edited' && wsMessage.message) {
       const msg = wsMessage.message as Message;
       if (msg.conversationId !== conversationId) return;
-
-      setMessages(prev => prev.map(m => m.id === msg.id ? msg : m));
+      setMessages((prev) => prev.map((m) => (m.id === msg.id ? msg : m)));
     } else if (wsMessage.type === 'message_deleted' && wsMessage.message) {
       const msg = wsMessage.message as Message;
       if (msg.conversationId !== conversationId) return;
-
-      setMessages(prev => prev.map(m => m.id === msg.id ? msg : m));
-    } else if ((wsMessage.type === 'reaction_added' || wsMessage.type === 'reaction_removed') && wsMessage.messageId) {
+      setMessages((prev) => prev.map((m) => (m.id === msg.id ? msg : m)));
+    } else if (
+      (wsMessage.type === 'reaction_added' || wsMessage.type === 'reaction_removed') &&
+      wsMessage.messageId
+    ) {
       if (wsMessage.reactions) {
-        setMessageReactions(prev => ({
+        setMessageReactions((prev) => ({
           ...prev,
           [wsMessage.messageId]: wsMessage.reactions,
         }));
       }
     } else if (wsMessage.type === 'user_typing' && wsMessage.conversationId === conversationId) {
-      setTypingUsers(prev => {
-        // Don't show own typing indicator
+      setTypingUsers((prev) => {
         if (wsMessage.did === identity?.did) return prev;
-        // Deduplicate
-        if (prev.some(u => u.did === wsMessage.did)) return prev;
+        if (prev.some((u) => u.did === wsMessage.did)) return prev;
         return [...prev, { did: wsMessage.did, name: wsMessage.name || null }];
       });
-    } else if (wsMessage.type === 'user_stop_typing' && wsMessage.conversationId === conversationId) {
-      setTypingUsers(prev => prev.filter(u => u.did !== wsMessage.did));
+    } else if (
+      wsMessage.type === 'user_stop_typing' &&
+      wsMessage.conversationId === conversationId
+    ) {
+      setTypingUsers((prev) => prev.filter((u) => u.did !== wsMessage.did));
     }
   }, [wsMessage, conversationId, identity]);
 
-  // Fall back to polling if WebSocket is disconnected
   useEffect(() => {
     if (!identity || !conversationId || wsConnected) return;
     const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
   }, [identity, conversationId, fetchMessages, wsConnected]);
 
-  // Handle file upload completion
   const handleUploadComplete = (data: {
     mediaType: 'image' | 'file';
     mediaPath: string;
-    mediaMeta: any;
+    mediaMeta: unknown;
   }) => {
     setUploadedMedia(data);
   };
@@ -357,41 +466,34 @@ export default function MessageThreadPage() {
     }
   };
 
-  // Send or edit message
   const handleSend = async () => {
     if ((!message.trim() && !uploadedMedia) || sending) return;
 
-    // Stop typing indicator
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
     }
-    if (conversationId) {
-      sendStopTyping(conversationId);
-    }
+    if (conversationId) sendStopTyping(conversationId);
 
     setSending(true);
     try {
       if (editingMessage) {
-        // Edit existing message
-        const res = await fetch(`/api/conversations/${conversationId}/messages/${editingMessage.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content: { type: 'text', text: message.trim() },
-          }),
-        });
-
+        const res = await fetch(
+          `/api/conversations/${conversationId}/messages/${editingMessage.id}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: { type: 'text', text: message.trim() } }),
+          }
+        );
         if (!res.ok) {
           const data = await res.json();
           throw new Error(data.error || 'Failed to edit');
         }
-
         setEditingMessage(null);
         setMessage('');
         await fetchMessages();
       } else {
-        // Send new message
         const res = await fetch(`/api/conversations/${conversationId}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -405,12 +507,10 @@ export default function MessageThreadPage() {
             }),
           }),
         });
-
         if (!res.ok) {
           const data = await res.json();
           throw new Error(data.error || 'Failed to send');
         }
-
         setReplyToMessage(null);
         setMessage('');
         setUploadedMedia(null);
@@ -423,74 +523,73 @@ export default function MessageThreadPage() {
     }
   };
 
-  // Paste handler for images
-  const handlePaste = useCallback(async (e: ClipboardEvent) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
+  const handlePaste = useCallback(
+    async (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
 
-    for (const item of Array.from(items)) {
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (file) {
-          e.preventDefault();
-          // Upload the file
-          const formData = new FormData();
-          formData.append('file', file);
-
-          try {
-            const res = await fetch(`/api/conversations/${conversationId}/upload`, {
-              method: 'POST',
-              body: formData,
-            });
-
-            if (res.ok) {
-              const data = await res.json();
-              handleUploadComplete(data);
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+              const res = await fetch(`/api/conversations/${conversationId}/upload`, {
+                method: 'POST',
+                body: formData,
+              });
+              if (res.ok) {
+                const data = await res.json();
+                handleUploadComplete(data);
+              }
+            } catch {
+              handleUploadError('Failed to upload pasted image');
             }
-          } catch (err) {
-            handleUploadError('Failed to upload pasted image');
           }
         }
       }
-    }
-  }, [conversationId]);
+    },
+    [conversationId]
+  );
 
-  // Drag and drop handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
   };
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-    const files = e.dataTransfer?.files;
-    if (!files || files.length === 0) return;
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
 
-    const file = files[0];
-    const formData = new FormData();
-    formData.append('file', file);
+      const file = files[0];
+      const formData = new FormData();
+      formData.append('file', file);
 
-    try {
-      const res = await fetch(`/api/conversations/${conversationId}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        handleUploadComplete(data);
-      } else {
-        const data = await res.json();
-        handleUploadError(data.error || 'Upload failed');
+      try {
+        const res = await fetch(`/api/conversations/${conversationId}/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          handleUploadComplete(data);
+        } else {
+          const data = await res.json();
+          handleUploadError(data.error || 'Upload failed');
+        }
+      } catch {
+        handleUploadError('Failed to upload file');
       }
-    } catch (err) {
-      handleUploadError('Failed to upload file');
-    }
-  }, [conversationId]);
+    },
+    [conversationId]
+  );
 
-  // Attach paste handler
   useEffect(() => {
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
@@ -507,38 +606,25 @@ export default function MessageThreadPage() {
     }
   };
 
-  // Handle typing indicator on input change
   const handleMessageChange = (text: string) => {
     setMessage(text);
-
     if (!text.trim() || !conversationId) return;
 
-    // Debounced typing indicator (max 1 per 2s)
     const now = Date.now();
     if (now - lastTypingSentRef.current > 2000) {
       sendTyping(conversationId, identity?.name || null);
       lastTypingSentRef.current = now;
     }
 
-    // Reset stop typing timer
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    // Send stop typing after 3s of no input
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
-      if (conversationId) {
-        sendStopTyping(conversationId);
-      }
+      if (conversationId) sendStopTyping(conversationId);
     }, 3000);
   };
 
-  // Clean up typing timeout on unmount
   useEffect(() => {
     return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, []);
 
@@ -564,12 +650,10 @@ export default function MessageThreadPage() {
       const res = await fetch(`/api/conversations/${conversationId}/messages/${msg.id}`, {
         method: 'DELETE',
       });
-
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Failed to delete');
       }
-
       await fetchMessages();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete');
@@ -584,17 +668,12 @@ export default function MessageThreadPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ emoji }),
       });
-
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Failed to react');
       }
-
       const data = await res.json();
-      setMessageReactions(prev => ({
-        ...prev,
-        [msgId]: data.reactions || [],
-      }));
+      setMessageReactions((prev) => ({ ...prev, [msgId]: data.reactions || [] }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to react');
     }
@@ -604,7 +683,6 @@ export default function MessageThreadPage() {
     const element = document.getElementById(`msg-${messageId}`);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Highlight briefly
       element.classList.add('bg-yellow-100', 'dark:bg-yellow-900/30');
       setTimeout(() => {
         element.classList.remove('bg-yellow-100', 'dark:bg-yellow-900/30');
@@ -630,21 +708,24 @@ export default function MessageThreadPage() {
         </Link>
         <div className="flex-1">
           <h1 className="font-semibold">
-            {conversation?.name || (conversation?.type === 'direct' ? 'Direct Message' : 'Conversation')}
+            {conversation?.name ||
+              (conversation?.type === 'direct' ? 'Direct Message' : 'Conversation')}
           </h1>
           {conversation?.type === 'group' && conversation?.participantCount && (
             <p className="text-xs text-gray-500 mt-1">
-              {conversation.participantCount} {conversation.participantCount === 1 ? 'member' : 'members'}
+              {conversation.participantCount}{' '}
+              {conversation.participantCount === 1 ? 'member' : 'members'}
             </p>
           )}
         </div>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="my-2 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline">dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline">
+            dismiss
+          </button>
         </div>
       )}
 
@@ -667,11 +748,11 @@ export default function MessageThreadPage() {
             const prevMsg = messages[index - 1];
             const showDateDivider =
               !prevMsg ||
-              new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-
-            const showSenderLabel = !isOwn && (!prevMsg || prevMsg.fromDid !== msg.fromDid || showDateDivider);
-
-            const replyTo = msg.replyTo ? messages.find(m => m.id === msg.replyTo) : null;
+              new Date(msg.createdAt).toDateString() !==
+                new Date(prevMsg.createdAt).toDateString();
+            const showSenderLabel =
+              !isOwn && (!prevMsg || prevMsg.fromDid !== msg.fromDid || showDateDivider);
+            const replyTo = msg.replyTo ? messages.find((m) => m.id === msg.replyTo) : null;
 
             return (
               <div key={msg.id} id={`msg-${msg.id}`}>
@@ -701,7 +782,9 @@ export default function MessageThreadPage() {
                     onEdit={() => handleEdit(msg)}
                     onDelete={() => handleDelete(msg)}
                     reactions={messageReactions[msg.id] || []}
-                    onReactionToggle={(emoji, reacted) => handleReactionToggle(msg.id, emoji, reacted)}
+                    onReactionToggle={(emoji, reacted) =>
+                      handleReactionToggle(msg.id, emoji, reacted)
+                    }
                     replyToMessage={replyTo}
                     onScrollToMessage={scrollToMessage}
                     mediaUrl={MEDIA_URL}
@@ -716,15 +799,15 @@ export default function MessageThreadPage() {
 
       {/* Input */}
       <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-        {/* Typing Indicator */}
         <TypingIndicator typingUsers={typingUsers} />
 
-        {/* Reply preview */}
         {replyToMessage && (
           <div className="mb-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-between">
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                Replying to {handleMap[replyToMessage.fromDid] || replyToMessage.fromDid.slice(0, 16) + '...'}
+                Replying to{' '}
+                {handleMap[replyToMessage.fromDid] ||
+                  replyToMessage.fromDid.slice(0, 16) + '...'}
               </p>
               <p className="text-sm truncate text-gray-800 dark:text-gray-200">
                 {typeof replyToMessage.content === 'object' && replyToMessage.content?.text
@@ -743,10 +826,11 @@ export default function MessageThreadPage() {
           </div>
         )}
 
-        {/* Edit preview */}
         {editingMessage && (
           <div className="mb-2 p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-between">
-            <p className="text-xs font-medium text-blue-600 dark:text-blue-400">Editing message</p>
+            <p className="text-xs font-medium text-blue-600 dark:text-blue-400">
+              Editing message
+            </p>
             <button
               onClick={() => {
                 setEditingMessage(null);
@@ -759,11 +843,11 @@ export default function MessageThreadPage() {
           </div>
         )}
 
-        {/* Uploaded media preview */}
         {uploadedMedia && (
           <div className="mb-2 flex items-center gap-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
             <span className="text-sm text-gray-600 dark:text-gray-400">
-              {uploadedMedia.mediaType === 'image' ? '🖼️' : '📎'} {uploadedMedia.mediaMeta.originalName}
+              {uploadedMedia.mediaType === 'image' ? '🖼️' : '📎'}{' '}
+              {(uploadedMedia.mediaMeta as { originalName?: string })?.originalName ?? 'file'}
             </span>
             <button
               onClick={() => setUploadedMedia(null)}
@@ -784,7 +868,9 @@ export default function MessageThreadPage() {
                 disabled={voiceSending}
               />
               {voiceSending && (
-                <span className="text-xs text-gray-400 self-center flex-shrink-0">Sending...</span>
+                <span className="text-xs text-gray-400 self-center flex-shrink-0">
+                  Sending...
+                </span>
               )}
             </>
           ) : (
@@ -852,7 +938,7 @@ export default function MessageThreadPage() {
                     : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
                 }`}
               >
-                {sending ? '...' : editingMessage ? '\u2713' : '\u27A4'}
+                {sending ? '...' : editingMessage ? '✓' : '➤'}
               </button>
             </>
           )}
@@ -861,4 +947,17 @@ export default function MessageThreadPage() {
       </div>
     </div>
   );
+}
+
+// ─── Router: DID vs legacy ────────────────────────────────────────────────────
+
+export default function ConversationPage() {
+  const params = useParams<{ id: string }>();
+  const decoded = decodeURIComponent(params.id);
+
+  if (decoded.startsWith('did:')) {
+    return <DIDConversationView did={decoded} />;
+  }
+
+  return <LegacyConversationView conversationId={params.id} />;
 }
