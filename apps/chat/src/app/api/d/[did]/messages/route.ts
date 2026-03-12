@@ -134,6 +134,11 @@ export async function POST(
   const { identity } = authResult;
   const { did } = await params;
 
+  // Soft DIDs (did:email:*) cannot send messages — they must verify their account first
+  if (identity.id.startsWith('did:email:')) {
+    return errorResponse('Please verify your account to send messages', 403, cors);
+  }
+
   // Verify access
   const cookieHeader = request.headers.get('Cookie');
   const hasAccess = await verifyDidAccess(did, cookieHeader);

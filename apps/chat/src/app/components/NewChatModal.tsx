@@ -89,6 +89,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
         const seen = new Map<string, Connection>();
         for (const conn of resolved) {
           if (identity && conn.did === identity.did) continue; // exclude self
+          if (conn.did.startsWith('did:email:')) continue; // soft DIDs cannot receive messages
           const existing = seen.get(conn.did);
           // Keep the entry with the most profile info
           if (!existing || (conn.name && !existing.name)) {
