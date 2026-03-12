@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
+  MessageBubble,
   VoiceMessage,
   MediaMessage,
   LocationMessage,
@@ -14,13 +15,42 @@ import {
 } from '@imajin/chat';
 import type { MessageContent, VoiceContent, MediaContent, LocationContent, TextContent } from '@imajin/chat';
 
+interface RawReaction {
+  emoji: string;
+  senderDid?: string;
+  fromDid?: string;
+}
+
 interface Message {
   id: string;
   conversationId: string;
+  conversationDid?: string;
   fromDid: string;
   content: MessageContent;
   contentType: string;
+  replyTo: string | null;
+  linkPreviews?: null;
   createdAt: string;
+  editedAt: string | null;
+  deletedAt: string | null;
+  mediaType?: null;
+  mediaPath?: null;
+  mediaMeta?: null;
+  reactions?: RawReaction[];
+}
+
+function computeReactions(
+  raw: RawReaction[] | undefined,
+  myDid: string | null,
+): { emoji: string; count: number; reacted: boolean }[] {
+  if (!raw?.length) return [];
+  const map = new Map<string, { count: number; reacted: boolean }>();
+  for (const r of raw) {
+    const sender = r.senderDid ?? r.fromDid ?? '';
+    const e = map.get(r.emoji) ?? { count: 0, reacted: false };
+    map.set(r.emoji, { count: e.count + 1, reacted: e.reacted || sender === myDid });
+  }
+  return Array.from(map.entries()).map(([emoji, data]) => ({ emoji, ...data }));
 }
 
 interface Profile {
@@ -90,6 +120,8 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
   const [error, setError] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [currentUserDid, setCurrentUserDid] = useState<string | null>(null);
+  const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
+  const [editingMessage, setEditingMessage] = useState<{ id: string; text: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Name display policy
@@ -231,7 +263,7 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
   }, [messages, AUTH_SERVICE_URL]);
 
   // Send a message with arbitrary content (DID-based route)
-  const sendMessage = async (content: MessageContent) => {
+  const sendMessage = async (content: MessageContent, replyToId?: string) => {
     setSending(true);
     setError(null);
     try {
@@ -241,7 +273,7 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({ content, ...(replyToId ? { replyToMessageId: replyToId } : {}) }),
         }
       );
 
@@ -257,6 +289,57 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
     }
   };
 
+  const handleScrollToMessage = (messageId: string) => {
+    document.getElementById(`msg-${messageId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const handleReply = (msg: Message) => {
+    setReplyToMessage(msg);
+    setEditingMessage(null);
+  };
+
+  const handleEdit = (msg: Message) => {
+    const text = (msg.content as any)?.text || '';
+    setEditingMessage({ id: msg.id, text });
+    setMessage(text);
+    setReplyToMessage(null);
+  };
+
+  const handleDelete = async (msgId: string) => {
+    try {
+      await fetch(
+        `${CHAT_SERVICE_URL}/api/d/${encodeURIComponent(did)}/messages/${msgId}`,
+        { method: 'DELETE', credentials: 'include' }
+      );
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, deletedAt: new Date().toISOString() } : m));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete');
+    }
+  };
+
+  const handleReactionToggle = async (msgId: string, emoji: string, reacted: boolean) => {
+    try {
+      const method = reacted ? 'DELETE' : 'POST';
+      const res = await fetch(
+        `${CHAT_SERVICE_URL}/api/d/${encodeURIComponent(did)}/messages/${msgId}/reactions`,
+        {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ emoji }),
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(prev =>
+          prev.map(m => m.id === msgId ? { ...m, reactions: data.reactions || [] } : m)
+        );
+      }
+    } catch {
+      // ignore reaction errors
+    }
+  };
+
   // Send text message
   const handleSend = async () => {
     if (!message.trim() || sending) return;
@@ -264,7 +347,34 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
     setMessage('');
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     stopTyping();
-    await sendMessage({ type: 'text', text });
+
+    if (editingMessage) {
+      setEditingMessage(null);
+      setSending(true);
+      try {
+        const res = await fetch(
+          `${CHAT_SERVICE_URL}/api/d/${encodeURIComponent(did)}/messages/${editingMessage.id}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ content: { type: 'text', text } }),
+          }
+        );
+        if (!res.ok) throw new Error('Failed to edit message');
+        const data = await res.json();
+        setMessages(prev => prev.map(m => m.id === editingMessage.id ? { ...m, ...data.message } : m));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to edit');
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    const replyToId = replyToMessage?.id;
+    setReplyToMessage(null);
+    await sendMessage({ type: 'text', text }, replyToId);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -421,8 +531,14 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
               : [];
             const senderIndex = uniqueSenders.indexOf(msg.fromDid);
 
+            const showSenderLabel =
+              !isOwn && (!prevMsg || prevMsg.fromDid !== msg.fromDid || showDateDivider);
+            const replyToMsg = msg.replyTo
+              ? messages.find(m => m.id === msg.replyTo) ?? null
+              : null;
+
             return (
-              <div key={msg.id}>
+              <div key={msg.id} id={`msg-${msg.id}`}>
                 {showDateDivider && (
                   <div className="flex items-center justify-center my-4">
                     <span className="px-3 py-1 bg-gray-100 dark:bg-gray-800 rounded-full text-xs text-gray-500">
@@ -431,29 +547,20 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
                   </div>
                 )}
 
-                <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                  <div className="max-w-[70%]">
-                    {!isOwn && (!prevMsg || prevMsg.fromDid !== msg.fromDid || showDateDivider) && (
-                      <p className="text-xs text-orange-500 mb-1 ml-3 font-medium">
-                        {getDisplayName(msg.fromDid, senderIndex >= 0 ? senderIndex : undefined)}
-                      </p>
-                    )}
-
-                    <div
-                      className={`px-4 py-2 rounded-2xl ${
-                        isOwn
-                          ? 'bg-orange-500 text-white rounded-br-md'
-                          : 'bg-gray-100 dark:bg-gray-800 rounded-bl-md'
-                      }`}
-                    >
-                      <MessageContentRenderer msg={msg} isOwn={isOwn} />
-                    </div>
-
-                    <p className={`text-xs text-gray-400 mt-1 ${isOwn ? 'text-right mr-1' : 'ml-3'}`}>
-                      {formatMessageTime(msg.createdAt)}
-                    </p>
-                  </div>
-                </div>
+                <MessageBubble
+                  message={msg}
+                  isOwn={isOwn}
+                  senderLabel={getDisplayName(msg.fromDid, senderIndex >= 0 ? senderIndex : undefined)}
+                  showSenderLabel={showSenderLabel}
+                  onReply={() => handleReply(msg)}
+                  onEdit={() => handleEdit(msg)}
+                  onDelete={() => handleDelete(msg.id)}
+                  reactions={computeReactions(msg.reactions, currentUserDid)}
+                  onReactionToggle={(emoji, reacted) => handleReactionToggle(msg.id, emoji, reacted)}
+                  replyToMessage={replyToMsg}
+                  onScrollToMessage={handleScrollToMessage}
+                  mediaUrl={MEDIA_URL}
+                />
               </div>
             );
           })
@@ -478,6 +585,19 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
 
       {/* Input */}
       <div className="bg-white dark:bg-gray-900 pt-4 border-t border-gray-200 dark:border-gray-700 overflow-hidden">
+        {(replyToMessage || editingMessage) && (
+          <div className="mb-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-xs flex items-center justify-between">
+            <span className="font-semibold text-orange-500">
+              {editingMessage ? 'Editing message' : `↩ Replying to ${getDisplayName(replyToMessage!.fromDid)}`}
+            </span>
+            <button
+              onClick={() => { setReplyToMessage(null); setEditingMessage(null); setMessage(''); }}
+              className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {voiceActive ? (
           <div className="flex items-center gap-2">
             <VoiceRecorder
