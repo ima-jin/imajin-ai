@@ -276,6 +276,9 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMessage(e.target.value);
+    const el = e.target;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
     sendTyping();
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     typingTimerRef.current = setTimeout(() => {
@@ -522,8 +525,9 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
                 onChange={handleTextChange}
                 onKeyDown={handleKeyDown}
                 placeholder="Type a message..."
-                className="w-full bg-transparent resize-none outline-none text-sm max-h-32"
+                className="w-full bg-transparent resize-none outline-none text-sm"
                 rows={1}
+                style={{ minHeight: '24px', maxHeight: '160px' }}
               />
             </div>
 

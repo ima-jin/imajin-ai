@@ -892,11 +892,17 @@ function LegacyConversationView({ conversationId }: { conversationId: string }) 
               <div className="flex-1 min-w-0 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
                 <textarea
                   value={message}
-                  onChange={(e) => handleMessageChange(e.target.value)}
+                  onChange={(e) => {
+                    handleMessageChange(e.target.value);
+                    const el = e.target;
+                    el.style.height = 'auto';
+                    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+                  }}
                   onKeyDown={handleKeyDown}
                   placeholder="Type a message..."
-                  className="w-full bg-transparent resize-none outline-none text-sm max-h-32"
+                  className="w-full bg-transparent resize-none outline-none text-sm"
                   rows={1}
+                  style={{ minHeight: '24px', maxHeight: '160px' }}
                 />
               </div>
               <div className="relative flex-shrink-0">

@@ -148,7 +148,7 @@ export function Chat({
     setComposerText(e.target.value);
     const el = e.target;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
     sendTyping();
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     typingTimerRef.current = setTimeout(stopTyping, 3000);
@@ -359,7 +359,7 @@ export function Chat({
               placeholder="Message…"
               rows={1}
               className="flex-1 min-w-0 resize-none overflow-hidden rounded-2xl bg-slate-100 dark:bg-zinc-800 px-4 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none focus:ring-2 focus:ring-orange-500/50"
-              style={{ minHeight: '38px', maxHeight: '120px' }}
+              style={{ minHeight: '38px', maxHeight: '160px' }}
             />
             {enableLocation && (
               <button
