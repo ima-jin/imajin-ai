@@ -1,19 +1,27 @@
 # imajin-ai
 
-**A trust-gated service layer for sovereign communities.**
-
-Identity determines access. Your trust graph determines scope. Every action is signed and attributed.  
-No subscriptions. No cloud dependency. No platform lock-in.
+**Reference implementation of the [MJN Protocol](https://github.com/ima-jin/mjn-protocol).**
 
 📄 [Whitepaper](https://imajin.ai/whitepaper) · ☕ [Buy me a coffee](https://coffee.imajin.ai/b0b) · 📖 [Essays](https://imajin.ai/articles) · 🎫 [Jin's Launch Party](https://events.imajin.ai/jins-launch-party)
 
 ---
 
-## The Philosophy
+## What This Is
 
-This isn't a platform. It's exit infrastructure.
+MJN is an open application-layer protocol that carries what the internet never could: identity, attribution, consent, and value — natively, in every exchange. imajin-ai is the first working implementation.
 
-The core insight: build human-first infrastructure — identity, payments, connections, attribution — and the agent layer emerges naturally on top. Every API is already trust-scoped and DID-signed. An authenticated agent operates within the same boundaries as a human.
+The protocol is organized as a matrix of **four identity scopes** × **five primitives**:
+
+|  | Attestation | Communication | Attribution | Settlement | Discovery |
+|--|-------------|---------------|-------------|------------|-----------|
+| **Actor** | Credentials, reputation | Direct messaging | Personal .fair manifests | Payments, tips | Profile, presence |
+| **Family** | Custodial consent | Shared channels | Shared attribution | Shared resources | Family node |
+| **Community** | Governance weight | Scoped forums | Collective .fair | Quorum settlement | Federated registry |
+| **Business** | Reviews, compliance | Commercial messaging | Product attribution | Transaction fees | Marketplace listing |
+
+Every problem the protocol solves is a cell in this matrix. Every service in this repo implements cells.
+
+14 services. 37 days. $1,793 in API costs. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
 
 ```
 ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
@@ -27,24 +35,7 @@ The core insight: build human-first infrastructure — identity, payments, conne
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
-Each node is sovereign:
-- **Own your identity** — Ed25519 keypairs, you hold the private key
-- **Own your payments** — Your Stripe keys, your Solana wallet, your money
-- **Own your data** — Self-hosted, no platform dependency
-
-No subscriptions. No surveillance capitalism. No asking permission.
-
----
-
-## What This Is
-
-The core platform layer for the Imajin network. Everything that acts gets a DID (decentralized identifier):
-
-- **Humans** register, authenticate, and own their identity
-- **Agents** get the same primitives as humans (typed, not impersonating)
-- **Presences** — embodied AI (like [Jin](https://imajin.ai), living in an 8×8×8 LED cube)
-- **Events** are first-class entities that can sign tickets
-- **Orgs** — organizations and collectives
+Each node is sovereign. Own your identity (Ed25519 keypairs). Own your payments (your Stripe keys, your Solana wallet). Own your data (self-hosted, no platform dependency). No subscriptions. No surveillance capitalism. No asking permission.
 
 ---
 
