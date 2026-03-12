@@ -19,7 +19,7 @@ function getOverallPercent(): number {
 }
 
 function barColor(pct: number): string {
-  if (pct === 0) return 'bg-white/5';
+  if (pct === 0) return 'bg-transparent';
   if (pct < 20) return 'bg-amber-500/30';
   if (pct < 50) return 'bg-amber-500/50';
   if (pct < 75) return 'bg-amber-500/70';
@@ -68,26 +68,20 @@ export function PrimitiveMatrix() {
             <span className="text-xs font-medium">{scope}</span>
           </div>
 
-          {/* Cells */}
+          {/* Cells — horizontal fill left to right */}
           {PRIMITIVES.map((primitive, ci) => {
             const pct = getPercent(scope, primitive);
             return (
               <div
                 key={ci}
-                className={`relative h-14 rounded-sm overflow-hidden bg-white/5 border border-white/10 ${glowClass(pct)} group`}
+                className={`relative h-10 rounded-sm overflow-hidden bg-white/5 border border-white/10 ${glowClass(pct)}`}
                 title={`${scope} × ${primitive}: ${pct}%`}
               >
-                {/* Progress fill from bottom */}
+                {/* Progress fill from left */}
                 <div
-                  className={`absolute bottom-0 left-0 right-0 transition-all duration-700 ${barColor(pct)}`}
-                  style={{ height: `${pct}%` }}
+                  className={`absolute top-0 bottom-0 left-0 transition-all duration-700 ${barColor(pct)}`}
+                  style={{ width: `${pct}%` }}
                 />
-                {/* Percentage label */}
-                {pct > 0 && (
-                  <span className="absolute inset-0 flex items-center justify-center text-[9px] font-mono text-white/50 z-10">
-                    {pct}
-                  </span>
-                )}
               </div>
             );
           })}
@@ -96,20 +90,9 @@ export function PrimitiveMatrix() {
 
       {/* Legend — bottom right */}
       <div className="flex justify-end mt-3">
-        <div className="flex items-center gap-3 text-[10px] text-white/40">
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-sm bg-amber-500/90" />
-            <span>75%+</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-sm bg-amber-500/50" />
-            <span>20-74%</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-sm bg-white/5 border border-white/10" />
-            <span>0%</span>
-          </div>
-          <span className="ml-2 text-white/30">Overall: {overall}%</span>
+        <div className="flex items-center gap-2 text-[11px] text-white/40">
+          <div className="w-3 h-3 rounded-sm bg-amber-500/80" />
+          <span>{overall}% complete</span>
         </div>
       </div>
     </div>
