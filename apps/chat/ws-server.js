@@ -191,12 +191,15 @@ function setupWebSocket(server) {
           const msg = JSON.parse(raw.toString());
           if (msg.type === 'ping') {
             ws.send(JSON.stringify({ type: 'pong' }));
-          } else if (msg.type === 'subscribe' && msg.conversationId) {
-            meta.subscriptions.add(msg.conversationId);
-          } else if (msg.type === 'typing' && msg.conversationId) {
-            handleTyping(msg.conversationId, did, msg.name || null);
-          } else if (msg.type === 'stop_typing' && msg.conversationId) {
-            handleStopTyping(msg.conversationId, did);
+          } else if (msg.type === 'subscribe') {
+            if (msg.conversationId) meta.subscriptions.add(msg.conversationId);
+            if (msg.did) meta.subscriptions.add(msg.did);
+          } else if (msg.type === 'typing') {
+            const channel = msg.did || msg.conversationId;
+            if (channel) handleTyping(channel, did, msg.name || null);
+          } else if (msg.type === 'stop_typing') {
+            const channel = msg.did || msg.conversationId;
+            if (channel) handleStopTyping(channel, did);
           }
         } catch {
           ws.send(JSON.stringify({ type: 'error', message: 'Invalid message' }));
@@ -235,7 +238,8 @@ function setupWebSocket(server) {
 }
 
 /**
- * Broadcast a new message to all connected sockets subscribed to this conversation.
+ * Broadcast a new message to all connected sockets subscribed to this conversation or DID.
+ * conversationId may be a legacy UUID or a DID (did:imajin:...).
  */
 function broadcastMessage(conversationId, message) {
   if (!wss) return;
