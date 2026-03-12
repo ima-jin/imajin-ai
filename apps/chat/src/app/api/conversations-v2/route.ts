@@ -161,17 +161,22 @@ export async function PATCH(request: NextRequest) {
     });
 
     if (!conv) {
-      return errorResponse('Conversation not found', 404);
-    }
+      // Conversation doesn't exist yet (auto-created on first message) — create it now
+      await db.insert(conversationsV2).values({
+        did,
+        name,
+        createdBy: identity.id,
+      }).onConflictDoNothing();
+    } else {
+      if (conv.createdBy !== identity.id) {
+        return errorResponse('Only the creator can update the name', 403);
+      }
 
-    if (conv.createdBy !== identity.id) {
-      return errorResponse('Only the creator can update the name', 403);
+      await db
+        .update(conversationsV2)
+        .set({ name, updatedAt: new Date() })
+        .where(eq(conversationsV2.did, did));
     }
-
-    await db
-      .update(conversationsV2)
-      .set({ name, updatedAt: new Date() })
-      .where(eq(conversationsV2.did, did));
 
     return jsonResponse({ ok: true });
   } catch (error) {
