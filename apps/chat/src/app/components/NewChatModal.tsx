@@ -40,6 +40,7 @@ interface Connection {
 function displayName(conn: Connection): string {
   if (conn.name) return conn.name;
   if (conn.handle) return `@${conn.handle}`;
+  if (conn.did.startsWith('did:email:')) return conn.did.slice('did:email:'.length);
   return conn.did.slice(0, 24) + '...';
 }
 

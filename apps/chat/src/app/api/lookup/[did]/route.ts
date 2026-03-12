@@ -12,6 +12,12 @@ export async function GET(
 ) {
   const { did } = await params;
 
+  // Soft DID (did:email:user@example.com) — derive display name from email, no auth lookup needed
+  if (did.startsWith('did:email:')) {
+    const email = decodeURIComponent(did.slice('did:email:'.length));
+    return NextResponse.json({ did, name: email, handle: null });
+  }
+
   try {
     const res = await fetch(`${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(did)}`);
     if (!res.ok) {
