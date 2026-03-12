@@ -193,4 +193,4 @@ Come build that relationship on infrastructure nobody can pull.
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-17-how-to-save-journalism](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-17-how-to-save-journalism.md)
 
-This article was originally published on imajin.ai [imajin.ai/articles/how-to-save-journalism](https://www.imajin.ai/articles/how-to-save-journalism) on March 17, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/how-to-save-journalism](https://www.imajin.ai/articles/how-to-save-journalism) on March 17, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)

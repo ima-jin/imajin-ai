@@ -184,4 +184,4 @@ Walk in.
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-16-how-to-save-education](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-16-how-to-save-education.md)
 
-This article was originally published on imajin.ai [imajin.ai/articles/how-to-save-education](https://www.imajin.ai/articles/how-to-save-education) on March 16, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/how-to-save-education](https://www.imajin.ai/articles/how-to-save-education) on March 16, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)

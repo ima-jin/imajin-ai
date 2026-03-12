@@ -183,4 +183,4 @@ The infrastructure to honor it exists now.
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-14-honor-the-chain](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-14-honor-the-chain.md)
 
-This article was originally published on imajin.ai [imajin.ai/articles/honor-the-chain](https://www.imajin.ai/articles/honor-the-chain) on March 14, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/honor-the-chain](https://www.imajin.ai/articles/honor-the-chain) on March 14, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
