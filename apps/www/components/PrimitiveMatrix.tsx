@@ -40,7 +40,7 @@ export function PrimitiveMatrix() {
       {/* Column headers — vertical text */}
       <div
         className="grid gap-1 mb-2"
-        style={{ gridTemplateColumns: `72px repeat(${PRIMITIVES.length}, 1fr)` }}
+        style={{ gridTemplateColumns: `100px repeat(${PRIMITIVES.length}, 1fr)` }}
       >
         <div /> {/* empty corner */}
         {PRIMITIVES.map((col, ci) => (
@@ -60,12 +60,12 @@ export function PrimitiveMatrix() {
         <div
           key={ri}
           className="grid gap-1 mb-1"
-          style={{ gridTemplateColumns: `72px repeat(${PRIMITIVES.length}, 1fr)` }}
+          style={{ gridTemplateColumns: `100px repeat(${PRIMITIVES.length}, 1fr)` }}
         >
           {/* Row label */}
-          <div className="flex items-center gap-1.5 pr-1 text-white/60">
+          <div className="flex items-center gap-1.5 pr-2 text-white/60">
             <span className="text-xs opacity-40">{SCOPE_ICONS[ri]}</span>
-            <span className="text-[11px] font-medium truncate">{scope}</span>
+            <span className="text-xs font-medium">{scope}</span>
           </div>
 
           {/* Cells */}
@@ -74,7 +74,7 @@ export function PrimitiveMatrix() {
             return (
               <div
                 key={ci}
-                className={`relative aspect-square rounded-sm overflow-hidden bg-white/5 border border-white/10 ${glowClass(pct)} group`}
+                className={`relative h-14 rounded-sm overflow-hidden bg-white/5 border border-white/10 ${glowClass(pct)} group`}
                 title={`${scope} × ${primitive}: ${pct}%`}
               >
                 {/* Progress fill from bottom */}
