@@ -8,6 +8,8 @@
 
 *Ryan Veteze (b0b) · ryan@imajin.ai · imajin.ai · github.com/ima-jin/imajin-ai*
 
+**Developer?** Skip the philosophy → [Developer Guide](./developer-guide.md) (APIs, curl examples, 5-minute walkthrough)
+
 ---
 
 > You are not the customer. You are the inventory.
