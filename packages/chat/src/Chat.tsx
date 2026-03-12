@@ -63,7 +63,7 @@ export function Chat({
   className,
 }: ChatProps) {
   const access = useChatAccess(did);
-  const { messages, hasMore, loadMore, isLoading, pushMessage } = useChatMessages(did);
+  const { messages, hasMore, loadMore, isLoading, pushMessage, updateMessage } = useChatMessages(did);
   const { sendMessage, addReaction, removeReaction, editMessage, deleteMessage, isSending } =
     useChatActions(did);
   const { typingUsers, sendTyping, stopTyping, lastMessage } = useChatWebSocket(did);
@@ -91,12 +91,15 @@ export function Chat({
     }
   }, [access.isLoading, access.allowed, onAccessDenied]);
 
-  // Push new WebSocket messages into the list
+  // Push new WebSocket messages into the list; apply edits from other clients
   useEffect(() => {
     if (lastMessage?.type === 'new_message' && lastMessage.message) {
       pushMessage(lastMessage.message as ChatMessage);
+    } else if (lastMessage?.type === 'message_edited' && lastMessage.message) {
+      const edited = lastMessage.message as ChatMessage;
+      updateMessage(edited.id, { content: edited.content, editedAt: edited.editedAt });
     }
-  }, [lastMessage, pushMessage]);
+  }, [lastMessage, pushMessage, updateMessage]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -127,6 +130,7 @@ export function Chat({
     if (!text || isSending) return;
     if (editingMsg) {
       await editMessage(editingMsg.id, { type: 'text', text });
+      updateMessage(editingMsg.id, { content: { type: 'text', text }, editedAt: new Date().toISOString() });
       setEditingMsg(null);
     } else {
       await sendMessage({ type: 'text', text }, replyTo ? { replyTo: replyTo.id } : undefined);

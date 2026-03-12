@@ -21,6 +21,7 @@ interface UseChatMessagesResult {
   isLoading: boolean;
   error: Error | null;
   pushMessage: (message: ChatMessage) => void;
+  updateMessage: (id: string, updates: Partial<ChatMessage>) => void;
 }
 
 export function useChatMessages(did: string): UseChatMessagesResult {
@@ -113,5 +114,9 @@ export function useChatMessages(did: string): UseChatMessagesResult {
     });
   }, []);
 
-  return { messages, hasMore, loadMore, isLoading, error, pushMessage };
+  const updateMessage = useCallback((id: string, updates: Partial<ChatMessage>) => {
+    setMessages(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+  }, []);
+
+  return { messages, hasMore, loadMore, isLoading, error, pushMessage, updateMessage };
 }

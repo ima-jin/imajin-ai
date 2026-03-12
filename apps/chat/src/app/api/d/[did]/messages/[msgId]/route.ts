@@ -63,6 +63,16 @@ export async function PATCH(
       where: eq(messagesV2.id, msgId),
     });
 
+    // Broadcast so other connected clients see the edit immediately
+    if (updated) {
+      const port = process.env.PORT || '3007';
+      fetch(`http://localhost:${port}/__ws_broadcast`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: did, type: 'message_edited', message: updated }),
+      }).catch(() => {});
+    }
+
     return jsonResponse({ message: updated }, 200, cors);
   } catch (error) {
     console.error('Failed to edit message:', error);
