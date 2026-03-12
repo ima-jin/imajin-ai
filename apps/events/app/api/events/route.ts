@@ -3,7 +3,6 @@ import { db, events, ticketTypes } from '@/src/db';
 import { requireHardDID } from '@/src/lib/auth';
 import { and, asc, desc, eq, gt } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
-import { createEventPod } from '@/src/lib/pods';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL!;
 
@@ -82,14 +81,6 @@ export async function POST(request: NextRequest) {
     const regData = await regRes.json();
     const eventDid = regData.did;
 
-    // Create trust pod and group chat for the event
-    const { podId, conversationId, lobbyConversationId } = await createEventPod({
-      eventId,
-      eventDid,
-      eventTitle: title,
-      creatorDid: identity.id,
-    });
-
     // Auto-generate .fair attribution manifest
     const PLATFORM_DID = process.env.PLATFORM_DID || 'did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213';
     const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE || '0.015'); // 1.5%
@@ -126,8 +117,6 @@ export async function POST(request: NextRequest) {
       tags: tags || [],
       courseSlug: courseSlug || null,
       status: 'draft',
-      podId,
-      lobbyConversationId,
       metadata: { fair: fairManifest },
     }).returning();
 
@@ -155,9 +144,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       event,
       ticketTypes: createdTicketTypes,
-      podId,
-      conversationId,
-      lobbyConversationId,
       // Include keypair for ticket signing (creator responsibility to secure)
       eventKeypair: {
         publicKey: eventKeypair.publicKey,

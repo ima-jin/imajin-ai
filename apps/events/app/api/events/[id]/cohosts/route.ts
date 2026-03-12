@@ -159,15 +159,6 @@ export async function POST(
       ON CONFLICT (pod_id, did) DO NOTHING
     `;
 
-    // Add to lobby chat as participant
-    if (event.lobbyConversationId) {
-      await sql`
-        INSERT INTO chat.participants (conversation_id, did, role, joined_at, invited_by)
-        VALUES (${event.lobbyConversationId}, ${coHostDid}, 'member', NOW(), ${identity.id})
-        ON CONFLICT (conversation_id, did) DO NOTHING
-      `;
-    }
-
     const cohost = {
       did: coHostDid,
       name: profileData.name || null,
