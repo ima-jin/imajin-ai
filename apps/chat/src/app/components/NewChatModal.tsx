@@ -83,7 +83,18 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
           })
         );
 
-        setConnections(resolved);
+        // Deduplicate by DID (connections API may return one entry per pod)
+        // and filter out the current user
+        const seen = new Map<string, Connection>();
+        for (const conn of resolved) {
+          if (identity && conn.did === identity.did) continue; // exclude self
+          const existing = seen.get(conn.did);
+          // Keep the entry with the most profile info
+          if (!existing || (conn.name && !existing.name)) {
+            seen.set(conn.did, conn);
+          }
+        }
+        setConnections(Array.from(seen.values()));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load connections');
       } finally {
@@ -92,7 +103,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
     }
 
     loadConnections();
-  }, []);
+  }, [identity]);
 
   async function startDm(connection: Connection) {
     if (!identity) return;
