@@ -44,7 +44,17 @@ export function useChatMessages(did: string): UseChatMessagesResult {
       );
       if (!res.ok) throw new Error(`Failed to fetch messages: ${res.status}`);
       const data = await res.json();
-      const fetched: ChatMessage[] = data.messages ?? data;
+      const raw: Record<string, unknown>[] = data.messages ?? data;
+      // Map API field names to ChatMessage interface (API returns fromDid, we use senderDid)
+      const fetched: ChatMessage[] = raw.map((msg: any) => ({
+        ...msg,
+        senderDid: msg.senderDid ?? msg.fromDid,
+        did: msg.did ?? msg.conversationDid,
+        reactions: msg.reactions?.map((r: any) => ({
+          ...r,
+          senderDid: r.senderDid ?? r.fromDid,
+        })),
+      }));
       // Oldest first
       const sorted = [...fetched].sort(
         (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -91,9 +101,15 @@ export function useChatMessages(did: string): UseChatMessagesResult {
   }, [isLoading, hasMore, fetchMessages]);
 
   const pushMessage = useCallback((message: ChatMessage) => {
+    // Normalize field names (WebSocket messages use API naming)
+    const normalized: ChatMessage = {
+      ...message,
+      senderDid: message.senderDid ?? (message as any).fromDid,
+      did: message.did ?? (message as any).conversationDid,
+    };
     setMessages(prev => {
-      if (prev.some(m => m.id === message.id)) return prev;
-      return [...prev, message];
+      if (prev.some(m => m.id === normalized.id)) return prev;
+      return [...prev, normalized];
     });
   }, []);
 

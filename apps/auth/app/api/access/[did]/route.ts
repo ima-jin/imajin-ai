@@ -27,7 +27,7 @@ export async function OPTIONS(request: NextRequest) {
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { did: string } }
+  { params }: { params: Promise<{ did: string }> }
 ) {
   const cors = corsHeaders(request);
 
@@ -44,18 +44,22 @@ export async function GET(
   }
 
   const requesterDid = session.sub;
-  const targetDid = decodeURIComponent(params.did);
+  const { did } = await params;
+  const targetDid = decodeURIComponent(did);
 
   try {
-    // --- did:imajin:event:* ---
-    if (targetDid.startsWith('did:imajin:event:')) {
-      const eventSlug = targetDid.slice('did:imajin:event:'.length);
+    // --- Event DIDs ---
+    // Match both did:imajin:event:* (namespace format) and did:imajin:evt_* (actual DB format)
+    const isEventDid = targetDid.startsWith('did:imajin:event:') || targetDid.startsWith('did:imajin:evt_');
 
+    // Also check the DB directly for any DID that isn't dm/group — it might be an event
+    if (isEventDid || (!targetDid.startsWith('did:imajin:dm:') && !targetDid.startsWith('did:imajin:group:'))) {
+      // Try event access: ticket holder check
       const rows = await sql`
         SELECT t.id, t.status, e.id as event_id, e.creator_did
         FROM events.tickets t
         JOIN events.events e ON e.id = t.event_id
-        WHERE (e.id = ${eventSlug} OR e.did = ${targetDid})
+        WHERE e.did = ${targetDid}
           AND t.owner_did = ${requesterDid}
           AND t.status NOT IN ('cancelled', 'available')
         LIMIT 1
@@ -72,7 +76,7 @@ export async function GET(
       const orgRows = await sql`
         SELECT id, creator_did
         FROM events.events
-        WHERE (id = ${eventSlug} OR did = ${targetDid})
+        WHERE did = ${targetDid}
           AND creator_did = ${requesterDid}
         LIMIT 1
       `;
@@ -84,7 +88,12 @@ export async function GET(
         );
       }
 
-      return NextResponse.json({ allowed: false }, { headers: cors });
+      // If this was explicitly an event DID format, deny access
+      if (isEventDid) {
+        return NextResponse.json({ allowed: false }, { headers: cors });
+      }
+
+      // Otherwise fall through — might be a different DID type
     }
 
     // --- did:imajin:dm:* ---
