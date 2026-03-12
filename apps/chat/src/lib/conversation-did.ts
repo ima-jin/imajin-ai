@@ -45,6 +45,12 @@ export function parseConversationDid(did: string): ParsedConversationDid {
   }
 
   const rest = did.slice(prefix.length);
+
+  // Handle legacy event DID format: did:imajin:evt_xxx (no colon type separator)
+  if (rest.startsWith('evt_')) {
+    return { type: 'event', slug: rest };
+  }
+
   const colonIdx = rest.indexOf(':');
 
   if (colonIdx === -1) {

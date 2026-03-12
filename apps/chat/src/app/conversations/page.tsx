@@ -68,14 +68,21 @@ function formatTime(dateStr: string | null): string {
 function v2DisplayName(conv: V2Conversation): string {
   if (
     conv.name &&
+    !conv.name.startsWith('did:') &&   // skip raw DID stored as name (legacy)
     !conv.name.startsWith('dm:') &&
     !conv.name.startsWith('group:') &&
-    !conv.name.startsWith('event:')
+    !conv.name.startsWith('event:') &&
+    !conv.name.startsWith('evt_')
   ) {
     return conv.name;
   }
   if (conv.type === 'dm') return 'Direct Message';
-  if (conv.type === 'event') return 'Event Chat';
+  if (conv.type === 'event') {
+    if (conv.slug) return `Event: ${conv.slug}`;
+    // Legacy: name was stored as the raw DID (did:imajin:evt_xxx)
+    if (conv.name?.startsWith('did:imajin:evt_')) return `Event: ${conv.name.slice('did:imajin:'.length)}`;
+    return 'Event Chat';
+  }
   if (conv.type === 'group') return 'Group Chat';
   return 'Conversation';
 }
