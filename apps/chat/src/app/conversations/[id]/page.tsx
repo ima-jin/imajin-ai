@@ -30,7 +30,25 @@ function DIDConversationView({ did }: { did: string }) {
   const searchParams = useSearchParams();
   const [convName, setConvName] = useState<string | null>(null);
   const [nameSet, setNameSet] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
   const parsed = parseConvDid(did);
+
+  const handleNameSave = async () => {
+    const trimmed = nameInput.trim();
+    setEditingName(false);
+    if (!trimmed) return;
+    setConvName(trimmed); // optimistic update
+    try {
+      await fetch('/api/conversations-v2', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ did, name: trimmed }),
+      });
+    } catch {
+      // ignore
+    }
+  };
 
   // Display name from URL param (e.g., when creating a group)
   const nameParam = searchParams.get('name');
@@ -107,8 +125,36 @@ function DIDConversationView({ did }: { did: string }) {
         >
           ← Back
         </Link>
-        <div className="flex-1">
-          <h1 className="font-semibold">{displayName}</h1>
+        <div className="flex-1 min-w-0">
+          {parsed.type === 'group' && editingName ? (
+            <input
+              autoFocus
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              onBlur={handleNameSave}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); handleNameSave(); }
+                if (e.key === 'Escape') setEditingName(false);
+              }}
+              className="font-semibold bg-transparent border-b border-orange-500 outline-none w-full text-base"
+              placeholder="Untitled Group"
+            />
+          ) : (
+            <h1
+              className={`font-semibold truncate ${parsed.type === 'group' ? 'cursor-pointer hover:text-orange-500 transition-colors' : ''}`}
+              onClick={() => {
+                if (parsed.type === 'group') {
+                  setNameInput(convName || nameParam || '');
+                  setEditingName(true);
+                }
+              }}
+              title={parsed.type === 'group' ? 'Click to rename' : undefined}
+            >
+              {parsed.type === 'group' && !(convName || nameParam)
+                ? <span className="text-gray-400 italic font-normal">Untitled Group</span>
+                : displayName}
+            </h1>
+          )}
           {parsed.type === 'group' && (
             <p className="text-xs text-gray-500 mt-0.5">Group conversation</p>
           )}
