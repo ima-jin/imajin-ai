@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, tickets, ticketTypes, events } from '@/src/db';
 import { requireAuth } from '@/src/lib/auth';
 import { eq, and } from 'drizzle-orm';
-import { getEventPod } from '@/src/lib/pods';
 import { getClient } from '@imajin/db';
 
 const sql = getClient();
@@ -69,14 +68,6 @@ export async function GET(
     }
 
     const hasAccess = hasTicket || isOrganizer;
-    let conversationId: string | null = null;
-    let lobbyConversationId: string | null = null;
-
-    if (hasAccess) {
-      const pod = await getEventPod(eventId);
-      conversationId = pod?.conversationId ?? null;
-      lobbyConversationId = pod?.lobbyConversationId ?? null;
-    }
 
     return NextResponse.json({
       hasTicket,
@@ -95,8 +86,6 @@ export async function GET(
         } : null,
       })),
       ticketId: userTickets[0]?.ticket.id || null,
-      conversationId,
-      lobbyConversationId,
     });
   } catch (error) {
     console.error('Failed to check event access:', error);

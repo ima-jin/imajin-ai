@@ -12,7 +12,6 @@ import { sendEmail, ticketConfirmationEmail, generateQRCode } from '@/src/lib/em
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js';
-import { getEventPod, addEventParticipant } from '@/src/lib/pods';
 import { randomBytes } from 'crypto';
 import { getClient } from '@imajin/db';
 
@@ -332,31 +331,6 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
 
   console.log(`Created ${createdTickets.length} ticket(s) for ${customerEmail}`);
 
-  // Add buyer to event pod and group chat
-  if (ownerDid) {
-    const eventPod = await getEventPod(event.id);
-    if (eventPod) {
-      await addEventParticipant({
-        podId: eventPod.podId,
-        conversationId: eventPod.conversationId,
-        participantDid: ownerDid,
-        addedBy: event.did,
-        role: 'member',
-      });
-      // Also add to lobby conversation if it exists
-      if (eventPod.lobbyConversationId) {
-        await addEventParticipant({
-          podId: eventPod.podId,
-          conversationId: eventPod.lobbyConversationId,
-          participantDid: ownerDid,
-          addedBy: event.did,
-          role: 'member',
-        });
-      }
-      console.log(`Added ${ownerDid} to event pod ${eventPod.podId}, chat ${eventPod.conversationId}, lobby ${eventPod.lobbyConversationId}`);
-    }
-  }
-  
   // Send confirmation email with onboard verification link
   const eventDate = new Date(event.startsAt);
   const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
