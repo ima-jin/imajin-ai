@@ -75,7 +75,8 @@ function DIDConversationView({ did }: { did: string }) {
   }, [identity, nameParam, nameSet, did]);
 
   const chatUrl = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
-  const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3002';
+  // Use same-origin proxy for access checks (cross-origin cookie forwarding is unreliable)
+  const authUrl = '';  // empty = same origin, proxied via /api/access/[did]
   const inputUrl = process.env.NEXT_PUBLIC_INPUT_URL || 'http://localhost:3008';
   const mediaUrl = MEDIA_URL;
 

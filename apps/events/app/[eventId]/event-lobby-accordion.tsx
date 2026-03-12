@@ -5,7 +5,8 @@ import { ChatProvider, useChatWebSocket } from '@imajin/chat';
 import { EventChat } from './components/EventChat';
 
 const CHAT_URL = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
-const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3002';
+// Use same-origin proxy for access checks (cross-origin cookie forwarding is unreliable)
+const AUTH_URL = '';  // empty = same origin, proxied via /api/access/[did]
 const INPUT_URL = process.env.NEXT_PUBLIC_INPUT_URL || 'http://localhost:3008';
 
 interface AccordionContentProps {
