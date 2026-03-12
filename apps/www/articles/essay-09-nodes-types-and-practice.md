@@ -167,4 +167,4 @@ Come run a room.
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-09-nodes-types-and-practice.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-09-nodes-types-and-practice.md)
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/the-practice) on March 9, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/the-practice](https://www.imajin.ai/articles/the-practice) on March 9, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)

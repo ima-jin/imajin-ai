@@ -173,4 +173,4 @@ Not as audience. As operators.
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-06-the-guild.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-06-the-guild.md)
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-06-the-guild) on February 28, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/the-guild](https://www.imajin.ai/articles/the-guild) on February 28, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)

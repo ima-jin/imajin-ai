@@ -193,4 +193,4 @@ Come build on it.
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-05-you-dont-need-ads.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-05-you-dont-need-ads.md)
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-05-you-dont-need-ads) on February 27, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/you-dont-need-ads](https://www.imajin.ai/articles/you-dont-need-ads) on February 27, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)

@@ -187,4 +187,4 @@ The graph starts somewhere. It might as well start here.
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-04-the-internet-that-pays-you-back.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-04-the-internet-that-pays-you-back.md)
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-04-the-internet-that-pays-you-back) on February 26, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/the-internet-that-pays-you-back](https://www.imajin.ai/articles/the-internet-that-pays-you-back) on February 26, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
