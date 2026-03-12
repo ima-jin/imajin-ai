@@ -6,12 +6,19 @@ import { useChatMessages } from './hooks/useChatMessages';
 import type { ChatMessage } from './hooks/useChatMessages';
 import { useChatActions } from './hooks/useChatActions';
 import { useChatWebSocket } from './hooks/useChatWebSocket';
+import { useFileUpload } from './hooks/useFileUpload';
+import { useVoiceRecording } from './hooks/useVoiceRecording';
+import { useLocationShare } from './hooks/useLocationShare';
 import { MessageBubble } from './MessageBubble';
+import { VoiceRecorder } from './VoiceRecorder';
 
 interface ChatProps {
   did: string;
   currentUserDid?: string;
   mediaUrl?: string;
+  enableVoice?: boolean;
+  enableMedia?: boolean;
+  enableLocation?: boolean;
   onAccessDenied?: () => void;
   className?: string;
 }
@@ -45,22 +52,37 @@ function toMsgShape(msg: ChatMessage) {
   };
 }
 
-export function Chat({ did, currentUserDid, mediaUrl, onAccessDenied, className }: ChatProps) {
+export function Chat({
+  did,
+  currentUserDid,
+  mediaUrl,
+  enableVoice = false,
+  enableMedia = false,
+  enableLocation = false,
+  onAccessDenied,
+  className,
+}: ChatProps) {
   const access = useChatAccess(did);
   const { messages, hasMore, loadMore, isLoading, pushMessage } = useChatMessages(did);
   const { sendMessage, addReaction, removeReaction, editMessage, deleteMessage, isSending } =
     useChatActions(did);
   const { typingUsers, sendTyping, stopTyping, lastMessage } = useChatWebSocket(did);
+  const { uploadFile } = useFileUpload();
+  const { sendVoice } = useVoiceRecording();
+  const { shareLocation } = useLocationShare();
 
   const [composerText, setComposerText] = useState('');
   const [replyTo, setReplyTo] = useState<{ id: string; text: string } | null>(null);
   const [editingMsg, setEditingMsg] = useState<{ id: string; text: string } | null>(null);
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceSending, setVoiceSending] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevCountRef = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fire onAccessDenied when access resolves to denied
   useEffect(() => {
@@ -159,6 +181,48 @@ export function Chat({ did, currentUserDid, mediaUrl, onAccessDenied, className 
     setComposerText('');
   };
 
+  const handleVoiceComplete = useCallback(async (blob: Blob, durationMs: number) => {
+    setVoiceSending(true);
+    try {
+      const { assetId, transcript } = await sendVoice(blob);
+      await sendMessage({ type: 'voice', assetId, transcript, durationMs });
+    } catch {
+      // error tracked in hook
+    } finally {
+      setVoiceSending(false);
+      setVoiceActive(false);
+    }
+  }, [sendVoice, sendMessage]);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    try {
+      const { assetId, width, height } = await uploadFile(file);
+      await sendMessage({
+        type: 'media',
+        assetId,
+        filename: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        size: file.size,
+        width,
+        height,
+      });
+    } catch {
+      // error tracked in hook
+    }
+  };
+
+  const handleShareLocation = async () => {
+    try {
+      const { lat, lng, accuracy } = await shareLocation();
+      await sendMessage({ type: 'location', lat, lng, accuracy });
+    } catch {
+      // error tracked in hook
+    }
+  };
+
   const typingNames = Array.from(typingUsers.values())
     .map(u => u.name ?? u.did.slice(0, 8))
     .join(', ');
@@ -254,28 +318,79 @@ export function Chat({ did, currentUserDid, mediaUrl, onAccessDenied, className 
             </button>
           </div>
         )}
-        <div className="flex items-end gap-2">
-          <textarea
-            ref={textareaRef}
-            value={composerText}
-            onChange={handleTextChange}
-            onKeyDown={handleKeyDown}
-            placeholder="Message…"
-            rows={1}
-            className="flex-1 resize-none overflow-hidden rounded-2xl bg-slate-100 dark:bg-zinc-800 px-4 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none focus:ring-2 focus:ring-orange-500/50"
-            style={{ minHeight: '38px', maxHeight: '120px' }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={isSending || !composerText.trim()}
-            className="flex-shrink-0 w-9 h-9 rounded-full bg-orange-500 text-white flex items-center justify-center hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            aria-label="Send"
-          >
-            <svg className="w-4 h-4 translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
-            </svg>
-          </button>
-        </div>
+
+        {voiceActive && enableVoice ? (
+          <div className="flex items-center gap-2">
+            <VoiceRecorder
+              onRecordingStart={() => setVoiceActive(true)}
+              onRecordingComplete={handleVoiceComplete}
+              onCancel={() => setVoiceActive(false)}
+              disabled={voiceSending}
+            />
+            {voiceSending && (
+              <span className="text-xs text-slate-400 flex-shrink-0">Sending…</span>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-end gap-2">
+            {enableMedia && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isSending}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition disabled:opacity-50 flex-shrink-0"
+                  title="Attach file"
+                >
+                  {'\uD83D\uDCCE'}
+                </button>
+              </>
+            )}
+            <textarea
+              ref={textareaRef}
+              value={composerText}
+              onChange={handleTextChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Message…"
+              rows={1}
+              className="flex-1 resize-none overflow-hidden rounded-2xl bg-slate-100 dark:bg-zinc-800 px-4 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none focus:ring-2 focus:ring-orange-500/50"
+              style={{ minHeight: '38px', maxHeight: '120px' }}
+            />
+            {enableLocation && (
+              <button
+                onClick={handleShareLocation}
+                disabled={isSending}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition disabled:opacity-50 flex-shrink-0"
+                title="Share location"
+              >
+                {'\uD83D\uDCCD'}
+              </button>
+            )}
+            {enableVoice && (
+              <VoiceRecorder
+                onRecordingStart={() => setVoiceActive(true)}
+                onRecordingComplete={handleVoiceComplete}
+                onCancel={() => setVoiceActive(false)}
+                disabled={isSending}
+              />
+            )}
+            <button
+              onClick={handleSend}
+              disabled={isSending || !composerText.trim()}
+              className="flex-shrink-0 w-9 h-9 rounded-full bg-orange-500 text-white flex items-center justify-center hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              aria-label="Send"
+            >
+              <svg className="w-4 h-4 translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

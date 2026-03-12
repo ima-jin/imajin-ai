@@ -9,7 +9,7 @@ import { MessageBubble } from '@imajin/chat';
 import { TypingIndicator } from '@/app/components/TypingIndicator';
 import { FileUpload } from '@/app/components/FileUpload';
 import { MessageMedia } from '@/app/components/MessageMedia';
-import { VoiceRecorder } from '@/app/components/VoiceRecorder';
+import { VoiceRecorder } from '@imajin/chat';
 import { LocationPicker, LocationData } from '@/app/components/LocationPicker';
 import { sendVoiceMessage } from '@/lib/voice';
 
