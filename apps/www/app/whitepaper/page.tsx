@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import fs from 'fs';
 import path from 'path';
 import { remark } from 'remark';
+import remarkGfm from 'remark-gfm';
 import html from 'remark-html';
 
 export const metadata: Metadata = {
@@ -45,7 +46,7 @@ async function getWhitepaperHtml(): Promise<string> {
   // Remove the title line (we render it separately)
   content = content.replace(/^#\s+MJN\n/, '');
 
-  const result = await remark().use(html, { sanitize: false }).process(content);
+  const result = await remark().use(remarkGfm).use(html, { sanitize: false }).process(content);
   return result.toString();
 }
 

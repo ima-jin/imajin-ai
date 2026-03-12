@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
 import { remark } from 'remark';
+import remarkGfm from 'remark-gfm';
 import html from 'remark-html';
 
 // Articles directory - lives in apps/www/articles
@@ -179,6 +180,7 @@ export async function getArticleBySlug(slug: string): Promise<Article | null> {
   
   // Process markdown to HTML
   const processedContent = await remark()
+    .use(remarkGfm)
     .use(html, { sanitize: false })
     .process(contentWithoutTitle);
   const contentHtml = processedContent.toString();
