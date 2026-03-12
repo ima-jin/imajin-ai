@@ -566,7 +566,7 @@ export default async function EventPage({ params, searchParams }: Props) {
 
         {/* Event Lobby Accordion */}
         <div className="mb-6">
-          <EventLobbyAccordion eventId={event.id} />
+          <EventLobbyAccordion eventId={event.id} eventDid={event.did} />
         </div>
 
         {/* Event Surveys */}

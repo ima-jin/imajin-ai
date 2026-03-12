@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { VoiceMessage, MediaMessage, LocationMessage } from '@imajin/chat';
+import { VoiceMessage, MediaMessage, LocationMessage, useChatWebSocket } from '@imajin/chat';
 import type { MessageContent, VoiceContent, MediaContent, LocationContent, TextContent } from '@imajin/chat';
 
 interface Message {
@@ -78,17 +78,17 @@ function MessageContentRenderer({ msg, isOwn }: { msg: Message; isOwn: boolean }
 }
 
 interface EventChatProps {
-  eventId: string;
+  did: string;          // Event DID (conversation identifier)
+  eventId: string;      // Still needed for event-specific API calls
   compact?: boolean;
 }
 
-export function EventChat({ eventId, compact = false }: EventChatProps) {
+export function EventChat({ did, eventId, compact = false }: EventChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasTicket, setHasTicket] = useState<boolean | null>(null);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [currentUserDid, setCurrentUserDid] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -112,9 +112,13 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [capabilities, setCapabilities] = useState<Set<string>>(new Set(['send:text']));
 
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const CHAT_SERVICE_URL = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
   const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3002';
   const INPUT_URL = process.env.NEXT_PUBLIC_INPUT_URL || 'http://localhost:3008';
+
+  const { lastMessage, typingUsers, sendTyping, stopTyping } = useChatWebSocket(did);
 
   // Get current user's DID and resolve capabilities from session tier
   useEffect(() => {
@@ -164,74 +168,47 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
     fetchPolicy();
   }, [eventId]);
 
-  // Check ticket ownership
-  useEffect(() => {
-    async function checkTicket() {
-      try {
-        const res = await fetch(`/api/events/${eventId}/my-ticket`);
-        if (res.ok) {
-          const data = await res.json();
-          setHasTicket(data.hasAccess ?? data.hasTicket);
-          if (!data.hasAccess && !data.hasTicket) {
-            setLoading(false);
-          }
-        } else {
-          setHasTicket(false);
-          setLoading(false);
-        }
-      } catch {
-        setHasTicket(false);
-        setLoading(false);
-      }
-    }
-    checkTicket();
-  }, [eventId]);
-
-  // Fetch messages
+  // Initial message fetch (DID-based route)
   const fetchMessages = useCallback(async () => {
-    if (hasTicket === false) return;
-
     try {
-      const res = await fetch(`${CHAT_SERVICE_URL}/api/lobby/${eventId}/messages`, {
-        credentials: 'include',
-      });
+      const res = await fetch(
+        `${CHAT_SERVICE_URL}/api/d/${encodeURIComponent(did)}/messages`,
+        { credentials: 'include' }
+      );
 
       if (!res.ok) {
-        if (res.status === 403) {
-          setHasTicket(false);
-          setLoading(false);
-          return;
-        }
         throw new Error('Failed to load messages');
       }
 
       const data = await res.json();
-      const newMessages = data.messages || [];
-      const hadMessages = messages.length;
-      setMessages(newMessages);
+      setMessages(data.messages || []);
       setLoading(false);
-
-      // Only auto-scroll when new messages arrive, not on every poll
-      if (newMessages.length > hadMessages) {
-        setTimeout(() => {
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-          }
-        }, 100);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load messages');
       setLoading(false);
     }
-  }, [eventId, hasTicket, CHAT_SERVICE_URL]);
+  }, [did, CHAT_SERVICE_URL]);
 
-  // Initial fetch and polling
   useEffect(() => {
-    if (hasTicket === null) return;
     fetchMessages();
-    const interval = setInterval(fetchMessages, 3000);
-    return () => clearInterval(interval);
-  }, [fetchMessages, hasTicket]);
+  }, [fetchMessages]);
+
+  // Handle incoming WebSocket messages
+  useEffect(() => {
+    if (!lastMessage) return;
+    if (lastMessage.type === 'new_message') {
+      const msg = lastMessage.message as Message | undefined;
+      if (msg) {
+        setMessages(prev => {
+          if (prev.some(m => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+        }, 100);
+      }
+    }
+  }, [lastMessage]);
 
   // Resolve profiles for message senders
   useEffect(() => {
@@ -241,43 +218,45 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
     );
     if (!unknownDids.length) return;
 
-    unknownDids.forEach(async (did) => {
+    unknownDids.forEach(async (senderDid) => {
       try {
-        const res = await fetch(`${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(did)}`);
+        const res = await fetch(`${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(senderDid)}`);
         if (res.ok) {
           const data = await res.json();
           setProfiles(prev => ({
             ...prev,
-            [did]: { did, handle: data.handle, name: data.name },
+            [senderDid]: { did: senderDid, handle: data.handle, name: data.name },
           }));
         } else {
-          setProfiles(prev => ({ ...prev, [did]: { did } }));
+          setProfiles(prev => ({ ...prev, [senderDid]: { did: senderDid } }));
         }
       } catch {
-        setProfiles(prev => ({ ...prev, [did]: { did } }));
+        setProfiles(prev => ({ ...prev, [senderDid]: { did: senderDid } }));
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, AUTH_SERVICE_URL]);
 
-  // Send a message with arbitrary content
+  // Send a message with arbitrary content (DID-based route)
   const sendMessage = async (content: MessageContent) => {
     setSending(true);
     setError(null);
     try {
-      const res = await fetch(`${CHAT_SERVICE_URL}/api/lobby/${eventId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ content }),
-      });
+      const res = await fetch(
+        `${CHAT_SERVICE_URL}/api/d/${encodeURIComponent(did)}/messages`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ content }),
+        }
+      );
 
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Failed to send message');
       }
-
-      await fetchMessages();
+      // WebSocket will push the new message — no need to refetch
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message');
     } finally {
@@ -290,6 +269,8 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
     if (!message.trim() || sending) return;
     const text = message.trim();
     setMessage('');
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    stopTyping();
     await sendMessage({ type: 'text', text });
   };
 
@@ -298,6 +279,15 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setMessage(e.target.value);
+    sendTyping();
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      stopTyping();
+    }, 2000);
   };
 
   // Voice recording
@@ -380,19 +370,22 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
           const uploadData = await uploadRes.json();
           const transcript = transcribeRes.ok ? (await transcribeRes.json()).transcript ?? '' : '';
 
-          const res = await fetch(`${chatUrl}/api/lobby/${eventId}/messages`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              content: { type: 'voice', assetId: uploadData.assetId, transcript, durationMs },
-            }),
-          });
+          const res = await fetch(
+            `${chatUrl}/api/d/${encodeURIComponent(did)}/messages`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                content: { type: 'voice', assetId: uploadData.assetId, transcript, durationMs },
+              }),
+            }
+          );
           if (!res.ok) {
             const data = await res.json();
             throw new Error(data.error || 'Failed to send voice message');
           }
-          await fetchMessages();
+          // WebSocket will push the new message
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Failed to send voice message');
         } finally {
@@ -426,7 +419,7 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
       setRecordingState('idle');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordingState, eventId, fetchMessages]);
+  }, [recordingState, did]);
 
   const stopRecording = useCallback(() => {
     stopRecordingAnimation();
@@ -496,18 +489,17 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
     return () => {
       stopRecordingAnimation();
       streamRef.current?.getTracks().forEach(t => t.stop());
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     };
   }, []);
 
-  const getDisplayName = (did: string, msgIndex?: number): string => {
-    const profile = profiles[did];
+  const getDisplayName = (senderDid: string, msgIndex?: number): string => {
+    const profile = profiles[senderDid];
 
-    // Determine effective policy for this sender
-    const isOwnMessage = did === currentUserDid;
+    const isOwnMessage = senderDid === currentUserDid;
     let effectivePolicy: AttendeeDisplayPref;
 
     if (nameDisplayPolicy === 'attendee_choice') {
-      // For own messages use the user's stored pref; for others default to handle
       effectivePolicy = isOwnMessage ? myDisplayPref : 'handle';
     } else {
       effectivePolicy = nameDisplayPolicy as AttendeeDisplayPref;
@@ -517,17 +509,17 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
       return msgIndex !== undefined ? `Attendee #${msgIndex + 1}` : 'Attendee';
     }
 
-    if (!profile) return did.slice(0, 16) + '...';
+    if (!profile) return senderDid.slice(0, 16) + '...';
 
     if (effectivePolicy === 'handle') {
       if (profile.handle) return `@${profile.handle}`;
-      return did.slice(0, 16) + '...';
+      return senderDid.slice(0, 16) + '...';
     }
 
     // real_name
     if (profile.name) return profile.name;
     if (profile.handle) return `@${profile.handle}`;
-    return did.slice(0, 16) + '...';
+    return senderDid.slice(0, 16) + '...';
   };
 
   const handleSetDisplayPref = (pref: AttendeeDisplayPref) => {
@@ -539,28 +531,6 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
     return (
       <div className={`${compact ? 'h-[400px]' : 'flex-1'} flex items-center justify-center`}>
         <div className="text-gray-500">Loading...</div>
-      </div>
-    );
-  }
-
-  if (hasTicket === false) {
-    if (compact) return null;
-    return (
-      <div className="max-w-4xl mx-auto mt-20">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8 text-center">
-          <div className="text-6xl mb-4">{'\uD83C\uDFAB'}</div>
-          <h2 className="text-2xl font-bold mb-2">Get a Ticket to Join the Conversation</h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
-            You need a ticket to access the event lobby chat. Purchase a ticket to connect with
-            other attendees.
-          </p>
-          <Link
-            href={`/${eventId}#tickets`}
-            className="inline-block px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition"
-          >
-            View Tickets
-          </Link>
-        </div>
       </div>
     );
   }
@@ -596,7 +566,6 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
               !prevMsg ||
               new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
 
-            // For anonymous policy, compute a stable attendee number per unique sender
             const uniqueSenders = nameDisplayPolicy === 'anonymous'
               ? Array.from(new Set(messages.map(m => m.fromDid)))
               : [];
@@ -639,6 +608,21 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
             );
           })
         )}
+
+        {/* Typing indicators */}
+        {typingUsers.size > 0 && (
+          <div className="flex justify-start">
+            <div className="px-4 py-2 rounded-2xl bg-gray-100 dark:bg-gray-800 rounded-bl-md">
+              <p className="text-xs text-gray-400 italic">
+                {Array.from(typingUsers.values())
+                  .map(u => u.name || u.did.slice(0, 12) + '…')
+                  .join(', ')}{' '}
+                {typingUsers.size === 1 ? 'is' : 'are'} typing…
+              </p>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -713,7 +697,7 @@ export function EventChat({ eventId, compact = false }: EventChatProps) {
             <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
               <textarea
                 value={message}
-                onChange={(e) => setMessage(e.target.value)}
+                onChange={handleTextChange}
                 onKeyDown={handleKeyDown}
                 placeholder="Type a message..."
                 className="w-full bg-transparent resize-none outline-none text-sm max-h-32"
