@@ -4,12 +4,12 @@ const SCOPES = ['Actor', 'Family', 'Community', 'Business'];
 const PRIMITIVES = ['Attestation', 'Communication', 'Attribution', 'Settlement', 'Discovery'];
 const SCOPE_ICONS = ['◆', '◇', '○', '□'];
 
-function barColor(pct: number): string {
-  if (pct === 0) return 'bg-transparent';
-  if (pct < 20) return 'bg-amber-500/30';
-  if (pct < 50) return 'bg-amber-500/50';
-  if (pct < 75) return 'bg-amber-500/70';
-  return 'bg-amber-500/90';
+function barBg(pct: number): string {
+  if (pct === 0) return 'transparent';
+  if (pct < 20) return 'rgba(245,158,11,0.3)';
+  if (pct < 50) return 'rgba(245,158,11,0.5)';
+  if (pct < 75) return 'rgba(245,158,11,0.7)';
+  return 'rgba(245,158,11,0.9)';
 }
 
 function glowClass(pct: number): string {
@@ -70,8 +70,8 @@ export function PrimitiveMatrix({ cells, overall }: PrimitiveMatrixProps) {
                 {/* Progress fill from left */}
                 {pct > 0 && (
                   <div
-                    className={`h-full rounded-sm ${barColor(pct)}`}
-                    style={{ width: `${pct}%` }}
+                    className="h-full rounded-sm"
+                    style={{ width: `${pct}%`, background: barBg(pct) }}
                   />
                 )}
               </div>
