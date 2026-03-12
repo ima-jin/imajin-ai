@@ -1,22 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, profiles } from '@/db';
 import { eq } from 'drizzle-orm';
+import { corsHeaders, corsOptions } from '@/lib/utils';
+
+export async function OPTIONS(request: NextRequest) {
+  return corsOptions(request);
+}
 
 /**
  * GET /api/presence/:did
  * Get online status and last seen for a user
  */
 export async function GET(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: { did: string } }
 ) {
+  const cors = corsHeaders(request);
+
   try {
     const { did } = params;
 
     if (!did) {
       return NextResponse.json(
         { error: 'Missing DID' },
-        { status: 400 }
+        { status: 400, headers: cors }
       );
     }
 
@@ -31,7 +38,7 @@ export async function GET(
     if (profile.length === 0) {
       return NextResponse.json(
         { error: 'Profile not found' },
-        { status: 404 }
+        { status: 404, headers: cors }
       );
     }
 
@@ -44,12 +51,12 @@ export async function GET(
     return NextResponse.json({
       online: isOnline,
       lastSeen: lastSeen ? lastSeen.toISOString() : null,
-    });
+    }, { headers: cors });
   } catch (err) {
     console.error('[Presence] Get error:', err);
     return NextResponse.json(
       { error: 'Failed to get presence' },
-      { status: 500 }
+      { status: 500, headers: cors }
     );
   }
 }
