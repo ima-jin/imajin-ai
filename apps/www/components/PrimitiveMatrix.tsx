@@ -64,14 +64,16 @@ export function PrimitiveMatrix({ cells, overall }: PrimitiveMatrixProps) {
             return (
               <div
                 key={ci}
-                className={`relative h-10 rounded-sm overflow-hidden bg-white/5 border border-white/10 ${glowClass(pct)}`}
+                className={`h-10 rounded-sm bg-white/5 border border-white/10 ${glowClass(pct)}`}
                 title={`${scope} × ${primitive}: ${pct}%`}
               >
                 {/* Progress fill from left */}
-                <div
-                  className={`absolute top-0 bottom-0 left-0 ${barColor(pct)}`}
-                  style={{ width: `${pct}%` }}
-                />
+                {pct > 0 && (
+                  <div
+                    className={`h-full rounded-sm ${barColor(pct)}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                )}
               </div>
             );
           })}
