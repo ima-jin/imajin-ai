@@ -188,7 +188,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-1">
               {connections.map((conn) => (
                 <button
-                  key={conn.did}
+                  key={`dm-${conn.did}`}
                   onClick={() => startDm(conn)}
                   disabled={creatingDm !== null}
                   className="w-full flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition text-left"
@@ -221,7 +221,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
               <div className="space-y-1">
                 {connections.map((conn) => (
                   <label
-                    key={conn.did}
+                    key={`grp-${conn.did}`}
                     className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg cursor-pointer"
                   >
                     <input
