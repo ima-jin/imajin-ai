@@ -96,15 +96,32 @@ export async function GET(
       // Otherwise fall through — might be a different DID type
     }
 
-    // --- did:imajin:dm:* ---
-    if (targetDid.startsWith('did:imajin:dm:')) {
-      const targetHash = targetDid.slice('did:imajin:dm:'.length);
+    // --- did:imajin:dm:* and did:imajin:group:* ---
+    // DID-based conversations use deterministic DIDs derived from member lists.
+    // The DID itself is the access token — you can only navigate to it if you
+    // derived it from the member DIDs. Conversations auto-create on first message.
+    if (targetDid.startsWith('did:imajin:dm:') || targetDid.startsWith('did:imajin:group:')) {
+      const governance = targetDid.startsWith('did:imajin:dm:') ? 'dm' : 'group';
 
-      // Re-derive: requester must be one of the two parties.
-      // We look up the conversation and check participants.
-      // Since the hash is derived from sorted DIDs, we can verify by checking
-      // the chat schema for participants of this conversation.
-      const rows = await sql`
+      // Check if conversation exists yet
+      const convRows = await sql`
+        SELECT did FROM chat.conversations_v2
+        WHERE did = ${targetDid}
+        LIMIT 1
+      `;
+
+      // Conversation doesn't exist yet — allow access. The deterministic DID
+      // is proof of membership (derived from sorted member DIDs).
+      if (convRows.length === 0) {
+        return NextResponse.json(
+          { allowed: true, role: 'participant', governance },
+          { headers: cors }
+        );
+      }
+
+      // Conversation exists — check if requester has participated
+      // 1. Check conversation_reads_v2 (marks who has viewed/sent)
+      const readRows = await sql`
         SELECT conversation_did
         FROM chat.conversation_reads_v2
         WHERE conversation_did = ${targetDid}
@@ -112,59 +129,71 @@ export async function GET(
         LIMIT 1
       `;
 
-      if (rows.length > 0) {
+      if (readRows.length > 0) {
         return NextResponse.json(
-          { allowed: true, role: 'participant', governance: 'dm' },
+          { allowed: true, role: 'participant', governance },
           { headers: cors }
         );
       }
 
-      // Fall back: check legacy participants table by re-deriving hash with known counterpart
-      // This handles the case where the conversation exists but reads haven't been written yet.
-      // We check if any two-party combo including requesterDid yields the target hash.
-      const participantRows = await sql`
-        SELECT p.did
-        FROM chat.participants p
-        JOIN chat.conversations c ON c.id = p.conversation_id
-        WHERE c.type = 'direct'
-          AND p.conversation_id IN (
-            SELECT conversation_id FROM chat.participants WHERE did = ${requesterDid}
-          )
+      // 2. Check if requester has sent any messages in this conversation
+      const msgRows = await sql`
+        SELECT id FROM chat.messages_v2
+        WHERE conversation_did = ${targetDid}
+          AND from_did = ${requesterDid}
+        LIMIT 1
       `;
 
-      for (const row of participantRows) {
-        if (row.did !== requesterDid) {
-          const sorted = [requesterDid, row.did].sort();
-          const derived = sha256hex(sorted.join(':')).slice(0, 16);
-          if (derived === targetHash) {
-            return NextResponse.json(
-              { allowed: true, role: 'participant', governance: 'dm' },
-              { headers: cors }
-            );
+      if (msgRows.length > 0) {
+        return NextResponse.json(
+          { allowed: true, role: 'participant', governance },
+          { headers: cors }
+        );
+      }
+
+      // 3. For DMs, try hash re-derivation as fallback
+      if (governance === 'dm') {
+        const targetHash = targetDid.slice('did:imajin:dm:'.length);
+        const participantRows = await sql`
+          SELECT p.did
+          FROM chat.participants p
+          JOIN chat.conversations c ON c.id = p.conversation_id
+          WHERE c.type = 'direct'
+            AND p.conversation_id IN (
+              SELECT conversation_id FROM chat.participants WHERE did = ${requesterDid}
+            )
+        `;
+
+        for (const row of participantRows) {
+          if (row.did !== requesterDid) {
+            const sorted = [requesterDid, row.did].sort();
+            const derived = sha256hex(sorted.join(':')).slice(0, 16);
+            if (derived === targetHash) {
+              return NextResponse.json(
+                { allowed: true, role: 'participant', governance },
+                { headers: cors }
+              );
+            }
           }
         }
       }
 
-      return NextResponse.json({ allowed: false }, { headers: cors });
-    }
+      // 4. For groups, check legacy participants table
+      if (governance === 'group') {
+        const legacyRows = await sql`
+          SELECT p.role
+          FROM chat.participants p
+          WHERE p.conversation_id = ${targetDid}
+            AND p.did = ${requesterDid}
+          LIMIT 1
+        `;
 
-    // --- did:imajin:group:* ---
-    if (targetDid.startsWith('did:imajin:group:')) {
-      // Check chat.participants for group membership (conversation_id stores the group DID)
-      const rows = await sql`
-        SELECT p.role
-        FROM chat.participants p
-        WHERE p.conversation_id = ${targetDid}
-          AND p.did = ${requesterDid}
-        LIMIT 1
-      `;
-
-      if (rows.length > 0) {
-        const role = rows[0].role as string;
-        return NextResponse.json(
-          { allowed: true, role, governance: 'group' },
-          { headers: cors }
-        );
+        if (legacyRows.length > 0) {
+          return NextResponse.json(
+            { allowed: true, role: legacyRows[0].role as string, governance },
+            { headers: cors }
+          );
+        }
       }
 
       return NextResponse.json({ allowed: false }, { headers: cors });
