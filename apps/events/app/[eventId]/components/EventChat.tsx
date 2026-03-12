@@ -474,7 +474,7 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
       </div>
 
       {/* Input */}
-      <div className="bg-white dark:bg-gray-900 pt-4 border-t border-gray-200 dark:border-gray-700">
+      <div className="bg-white dark:bg-gray-900 pt-4 border-t border-gray-200 dark:border-gray-700 overflow-hidden">
         {voiceActive ? (
           <div className="flex items-center gap-2">
             <VoiceRecorder
@@ -516,7 +516,7 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
             )}
 
             {/* Text input */}
-            <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
+            <div className="flex-1 min-w-0 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
               <textarea
                 value={message}
                 onChange={handleTextChange}

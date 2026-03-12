@@ -858,7 +858,7 @@ function LegacyConversationView({ conversationId }: { conversationId: string }) 
           </div>
         )}
 
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-2 overflow-hidden">
           {voiceActive ? (
             <>
               <VoiceRecorder
@@ -889,7 +889,7 @@ function LegacyConversationView({ conversationId }: { conversationId: string }) 
                   🔒
                 </div>
               )}
-              <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
+              <div className="flex-1 min-w-0 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
                 <textarea
                   value={message}
                   onChange={(e) => handleMessageChange(e.target.value)}
