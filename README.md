@@ -5,6 +5,8 @@
 Identity determines access. Your trust graph determines scope. Every action is signed and attributed.  
 No subscriptions. No cloud dependency. No platform lock-in.
 
+📄 [Whitepaper](https://imajin.ai/whitepaper) · ☕ [Buy me a coffee](https://coffee.imajin.ai/b0b) · 📖 [Essays](https://imajin.ai/articles) · 🎫 [Jin's Launch Party](https://events.imajin.ai/jins-launch-party)
+
 ---
 
 ## The Philosophy
@@ -103,6 +105,7 @@ Shared libraries used across all apps.
 | [@imajin/fair](./packages/fair) | .fair attribution (types, validator, editor components) |
 | [@imajin/onboard](./packages/onboard) | Anonymous → soft DID onboarding (`<OnboardGate>`) |
 | [@imajin/email](./packages/email) | Email sending (SendGrid), templates, QR generation |
+| [@imajin/chat](./packages/chat) | Chat components (Chat orchestrator, MessageBubble, voice, media) |
 | [@imajin/trust-graph](./packages/trust-graph) | Trust graph queries (connection checks) |
 
 ---
@@ -217,6 +220,7 @@ imajin-ai/
 │   ├── pay/           # @imajin/pay — payments
 │   ├── config/        # @imajin/config — shared config
 │   ├── ui/            # @imajin/ui — shared components
+│   ├── chat/          # @imajin/chat — chat components
 │   ├── input/         # @imajin/input — input components
 │   └── media/         # @imajin/media — media components
 ├── articles/          # Essays & reference docs
@@ -253,6 +257,7 @@ See [articles/ARCHITECTURE.md](./apps/www/articles/ARCHITECTURE.md) for full dep
 
 | Document | Purpose |
 |----------|---------|
+| [MJN Whitepaper](./docs/mjn-whitepaper.md) | Protocol specification — 4 scopes × 5 primitives |
 | [THESIS.md](./apps/www/articles/THESIS.md) | Canonical concept definitions — what we mean |
 | [ARCHITECTURE.md](./apps/www/articles/ARCHITECTURE.md) | Technical architecture — how it works |
 | [essay-00-sequence.md](./apps/www/articles/essay-00-sequence.md) | Essay order & structure |
