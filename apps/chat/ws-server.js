@@ -19,16 +19,23 @@ function parseCookies(cookieHeader) {
   return cookies;
 }
 
+function getSessionCookieName() {
+  const env = process.env.IMAJIN_ENV === 'dev' || process.env.NODE_ENV === 'development'
+    ? 'dev' : 'prod';
+  return env === 'dev' ? 'imajin_session_dev' : 'imajin_session';
+}
+
 async function authenticateRequest(req) {
   const cookies = parseCookies(req.headers.cookie);
-  const token = cookies['imajin_session'];
-  console.log('[WS] Auth attempt, cookie present:', !!token);
+  const cookieName = getSessionCookieName();
+  const token = cookies[cookieName];
+  console.log('[WS] Auth attempt, cookie name:', cookieName, 'present:', !!token);
   if (!token) return null;
 
   const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
   try {
     const res = await fetch(`${authUrl}/api/session`, {
-      headers: { Cookie: `imajin_session=${token}` },
+      headers: { Cookie: `${cookieName}=${token}` },
     });
     console.log('[WS] Auth response:', res.status);
     if (!res.ok) return null;
