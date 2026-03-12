@@ -14,3 +14,8 @@ export type { ChatMessage } from './hooks/useChatMessages';
 export { useChatActions } from './hooks/useChatActions';
 export { useChatWebSocket } from './hooks/useChatWebSocket';
 export { useChatAccess } from './hooks/useChatAccess';
+
+export { VoiceRecorder } from './VoiceRecorder';
+export { useFileUpload } from './hooks/useFileUpload';
+export { useVoiceRecording } from './hooks/useVoiceRecording';
+export { useLocationShare } from './hooks/useLocationShare';

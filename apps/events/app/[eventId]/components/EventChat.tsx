@@ -2,7 +2,16 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { VoiceMessage, MediaMessage, LocationMessage, useChatWebSocket } from '@imajin/chat';
+import {
+  VoiceMessage,
+  MediaMessage,
+  LocationMessage,
+  VoiceRecorder,
+  useChatWebSocket,
+  useFileUpload,
+  useVoiceRecording,
+  useLocationShare,
+} from '@imajin/chat';
 import type { MessageContent, VoiceContent, MediaContent, LocationContent, TextContent } from '@imajin/chat';
 
 interface Message {
@@ -22,10 +31,6 @@ interface Profile {
 
 type NameDisplayPolicy = 'real_name' | 'handle' | 'anonymous' | 'attendee_choice';
 type AttendeeDisplayPref = 'real_name' | 'handle' | 'anonymous';
-
-type RecordingState = 'idle' | 'recording' | 'processing';
-
-const WAVEFORM_BARS = 20;
 
 function formatMessageTime(dateStr: string): string {
   return new Date(dateStr).toLocaleTimeString('en-US', {
@@ -47,12 +52,6 @@ function formatDateDivider(dateStr: string): string {
     month: 'short',
     day: 'numeric',
   });
-}
-
-function formatRecordingTime(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
 const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
@@ -97,17 +96,9 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
   const [nameDisplayPolicy, setNameDisplayPolicy] = useState<NameDisplayPolicy>('attendee_choice');
   const [myDisplayPref, setMyDisplayPref] = useState<AttendeeDisplayPref>('handle');
 
-  // Voice recording state
-  const [recordingState, setRecordingState] = useState<RecordingState>('idle');
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const [waveform, setWaveform] = useState<number[]>(Array(WAVEFORM_BARS).fill(0));
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const startTimeRef = useRef<number>(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const animFrameRef = useRef<number | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  // Voice state
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceSending, setVoiceSending] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [capabilities, setCapabilities] = useState<Set<string>>(new Set(['send:text']));
@@ -116,9 +107,11 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
 
   const CHAT_SERVICE_URL = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
   const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3002';
-  const INPUT_URL = process.env.NEXT_PUBLIC_INPUT_URL || 'http://localhost:3008';
 
   const { lastMessage, typingUsers, sendTyping, stopTyping } = useChatWebSocket(did);
+  const { uploadFile } = useFileUpload();
+  const { sendVoice } = useVoiceRecording();
+  const { shareLocation } = useLocationShare();
 
   // Get current user's DID and resolve capabilities from session tier
   useEffect(() => {
@@ -290,144 +283,20 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
     }, 2000);
   };
 
-  // Voice recording
-  const stopRecordingAnimation = () => {
-    if (animFrameRef.current !== null) {
-      cancelAnimationFrame(animFrameRef.current);
-      animFrameRef.current = null;
-    }
-    if (timerRef.current !== null) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  const cancelRecording = useCallback(() => {
-    stopRecordingAnimation();
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state !== 'inactive') {
-      recorder.ondataavailable = null;
-      recorder.onstop = null;
-      recorder.stop();
-    }
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-    setRecordingState('idle');
-    setElapsedMs(0);
-    setWaveform(Array(WAVEFORM_BARS).fill(0));
-  }, []);
-
-  const startRecording = useCallback(async () => {
-    if (recordingState !== 'idle') return;
+  // Voice recording complete handler
+  const handleVoiceComplete = useCallback(async (blob: Blob, durationMs: number) => {
+    setVoiceSending(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-
-      const audioCtx = new AudioContext();
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 64;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : '';
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      mediaRecorderRef.current = recorder;
-      chunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        streamRef.current = null;
-        const durationMs = Date.now() - startTimeRef.current;
-        const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' });
-        setRecordingState('processing');
-        setWaveform(Array(WAVEFORM_BARS).fill(0));
-
-        try {
-          const formData = new FormData();
-          formData.append('file', blob, 'voice.webm');
-
-          const transcribeForm = new FormData();
-          transcribeForm.append('file', blob, 'voice.webm');
-
-          const inputUrl = process.env.NEXT_PUBLIC_INPUT_URL || 'http://localhost:3008';
-          const chatUrl = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
-
-          const [uploadRes, transcribeRes] = await Promise.all([
-            fetch(`${inputUrl}/api/upload`, { method: 'POST', body: formData, credentials: 'include' }),
-            fetch(`${inputUrl}/api/transcribe`, { method: 'POST', body: transcribeForm, credentials: 'include' }),
-          ]);
-
-          if (!uploadRes.ok) throw new Error('Upload failed');
-          const uploadData = await uploadRes.json();
-          const transcript = transcribeRes.ok ? (await transcribeRes.json()).transcript ?? '' : '';
-
-          const res = await fetch(
-            `${chatUrl}/api/d/${encodeURIComponent(did)}/messages`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({
-                content: { type: 'voice', assetId: uploadData.assetId, transcript, durationMs },
-              }),
-            }
-          );
-          if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to send voice message');
-          }
-          // WebSocket will push the new message
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to send voice message');
-        } finally {
-          setRecordingState('idle');
-          setElapsedMs(0);
-        }
-      };
-
-      recorder.start(100);
-      startTimeRef.current = Date.now();
-      setRecordingState('recording');
-
-      timerRef.current = setInterval(() => {
-        setElapsedMs(Date.now() - startTimeRef.current);
-      }, 100);
-
-      const drawWaveform = () => {
-        if (!analyserRef.current) return;
-        const data = new Uint8Array(analyserRef.current.frequencyBinCount);
-        analyserRef.current.getByteFrequencyData(data);
-        const bars: number[] = [];
-        const step = Math.floor(data.length / WAVEFORM_BARS);
-        for (let i = 0; i < WAVEFORM_BARS; i++) {
-          bars.push(data[i * step] / 255);
-        }
-        setWaveform(bars);
-        animFrameRef.current = requestAnimationFrame(drawWaveform);
-      };
-      animFrameRef.current = requestAnimationFrame(drawWaveform);
-    } catch {
-      setRecordingState('idle');
+      const { assetId, transcript } = await sendVoice(blob);
+      await sendMessage({ type: 'voice', assetId, transcript, durationMs });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send voice message');
+    } finally {
+      setVoiceSending(false);
+      setVoiceActive(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordingState, did]);
-
-  const stopRecording = useCallback(() => {
-    stopRecordingAnimation();
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state !== 'inactive') {
-      recorder.stop();
-    }
-  }, []);
+  }, [sendVoice]);
 
   // File upload (media message)
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -438,24 +307,15 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
     setSending(true);
     setError(null);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch(`${INPUT_URL}/api/upload`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json();
-
+      const { assetId, width, height } = await uploadFile(file);
       await sendMessage({
         type: 'media',
-        assetId: data.assetId,
+        assetId,
         filename: file.name,
         mimeType: file.type || 'application/octet-stream',
         size: file.size,
-        width: data.width,
-        height: data.height,
+        width,
+        height,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upload file');
@@ -464,31 +324,18 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
   };
 
   // Location sharing
-  const handleShareLocation = () => {
-    if (!navigator.geolocation) {
-      setError('Geolocation is not supported by your browser');
-      return;
+  const handleShareLocation = async () => {
+    try {
+      const { lat, lng, accuracy } = await shareLocation();
+      await sendMessage({ type: 'location', lat, lng, accuracy });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to get your location');
     }
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        await sendMessage({
-          type: 'location',
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-        });
-      },
-      () => {
-        setError('Unable to get your location');
-      }
-    );
   };
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
-      stopRecordingAnimation();
-      streamRef.current?.getTracks().forEach(t => t.stop());
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     };
   }, []);
@@ -628,41 +475,16 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
 
       {/* Input */}
       <div className="bg-white dark:bg-gray-900 pt-4 border-t border-gray-200 dark:border-gray-700">
-        {recordingState !== 'idle' ? (
-          /* Voice recording UI */
-          <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
-            {recordingState === 'processing' ? (
-              <span className="text-sm text-gray-500 flex-1">Processing...</span>
-            ) : (
-              <>
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
-                <span className="text-sm font-mono text-red-500 flex-shrink-0 w-10">
-                  {formatRecordingTime(elapsedMs)}
-                </span>
-                <div className="flex items-center gap-px flex-1 h-8">
-                  {waveform.map((val, i) => (
-                    <div
-                      key={i}
-                      className="flex-1 bg-orange-500 dark:bg-orange-400 rounded-full transition-all duration-75"
-                      style={{ height: `${Math.max(4, val * 28)}px` }}
-                    />
-                  ))}
-                </div>
-                <button
-                  onClick={cancelRecording}
-                  className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-gray-500 flex-shrink-0"
-                  title="Cancel"
-                >
-                  {'\u2715'}
-                </button>
-                <button
-                  onClick={stopRecording}
-                  className="p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg flex-shrink-0"
-                  title="Send"
-                >
-                  {'\u23F9'}
-                </button>
-              </>
+        {voiceActive ? (
+          <div className="flex items-center gap-2">
+            <VoiceRecorder
+              onRecordingStart={() => setVoiceActive(true)}
+              onRecordingComplete={handleVoiceComplete}
+              onCancel={() => setVoiceActive(false)}
+              disabled={voiceSending}
+            />
+            {voiceSending && (
+              <span className="text-sm text-gray-500 flex-shrink-0">Processing...</span>
             )}
           </div>
         ) : (
@@ -726,14 +548,12 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
 
             {/* Voice record */}
             {capabilities.has('send:voice') ? (
-              <button
-                onClick={startRecording}
+              <VoiceRecorder
+                onRecordingStart={() => setVoiceActive(true)}
+                onRecordingComplete={handleVoiceComplete}
+                onCancel={() => setVoiceActive(false)}
                 disabled={sending}
-                className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition disabled:opacity-50 text-gray-500 flex-shrink-0"
-                title="Record voice message"
-              >
-                {'\uD83C\uDFA4'}
-              </button>
+              />
             ) : (
               <div
                 className="p-2.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"

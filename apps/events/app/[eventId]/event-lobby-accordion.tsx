@@ -6,6 +6,7 @@ import { EventChat } from './components/EventChat';
 
 const CHAT_URL = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3002';
+const INPUT_URL = process.env.NEXT_PUBLIC_INPUT_URL || 'http://localhost:3008';
 
 interface AccordionContentProps {
   eventId: string;
@@ -78,7 +79,7 @@ export function EventLobbyAccordion({ eventId, eventDid }: EventLobbyAccordionPr
   }
 
   return (
-    <ChatProvider chatUrl={CHAT_URL} authUrl={AUTH_URL}>
+    <ChatProvider chatUrl={CHAT_URL} authUrl={AUTH_URL} inputUrl={INPUT_URL}>
       <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg overflow-hidden">
         {/* Collapsed Header */}
         <button
