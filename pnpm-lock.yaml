@@ -825,6 +825,9 @@ importers:
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3
+      nanoid:
+        specifier: ^5.1.6
+        version: 5.1.6
       next:
         specifier: ^14.2.0
         version: 14.2.35(react-dom@18.3.1(react@18.3.1))(react@18.3.1)

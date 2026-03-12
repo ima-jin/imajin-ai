@@ -1,0 +1,252 @@
+{
+  "version": "2026-03-12",
+  "note": "Curated assessment of protocol implementation status. Updated manually.",
+  "scopes": ["Actor", "Family", "Community", "Business"],
+  "primitives": ["Attestation", "Communication", "Attribution", "Settlement", "Discovery"],
+  "cells": {
+    "Actor×Attestation": {
+      "percent": 55,
+      "done": [
+        "Ed25519 keypair generation + DID creation",
+        "Soft DID (did:email) + Hard DID (did:imajin)",
+        "JWT session tokens with tier",
+        "Profile service with display types",
+        "Challenge-response auth flow"
+      ],
+      "remaining": [
+        "Cryptographic identity attestations (signed social acts)",
+        "Standing computation from attestation history",
+        "Progressive trust (visitor/resident/host)",
+        "Vouch chain + accountability framework"
+      ]
+    },
+    "Actor×Communication": {
+      "percent": 70,
+      "done": [
+        "DID-based conversations (v2 schema)",
+        "WebSocket real-time messaging",
+        "Voice recording + file upload + location sharing",
+        "Group messaging with search/compose",
+        "Link preview cards",
+        "@imajin/chat shared package"
+      ],
+      "remaining": [
+        "End-to-end encryption",
+        "Message edit persistence",
+        "Offline message queue"
+      ]
+    },
+    "Actor×Attribution": {
+      "percent": 35,
+      "done": [
+        "@imajin/fair package (types, validator, editor, accordion)",
+        ".fair manifests on media uploads (auto-created sidecar)",
+        "Contributor shares with validation"
+      ],
+      "remaining": [
+        "Cryptographic signing of .fair manifests",
+        "Consent declarations embedded in manifests",
+        "derivedFrom chain tracking",
+        "On-chain hash anchoring"
+      ]
+    },
+    "Actor×Settlement": {
+      "percent": 75,
+      "done": [
+        "Stripe Connect checkout flow",
+        "Webhook-driven fulfillment",
+        "Ticket purchase end-to-end",
+        "Coffee/tipping payments",
+        "Closed-loop wallet balances (two-bucket)"
+      ],
+      "remaining": [
+        "Solana native settlement",
+        "Peer-to-peer ledger transfers",
+        ".fair-driven automatic distribution"
+      ]
+    },
+    "Actor×Discovery": {
+      "percent": 30,
+      "done": [
+        "Profile pages with handles",
+        "Connections/follow system",
+        "Registry service (node registration API)"
+      ],
+      "remaining": [
+        "Federated node discovery (heartbeat, DNS provisioning)",
+        "Exit credentials (portable context)",
+        "Queryable expertise/presence",
+        "Cross-node DID resolution"
+      ]
+    },
+    "Family×Attestation": {
+      "percent": 5,
+      "done": [
+        "Identity model acknowledges Family scope in whitepaper"
+      ],
+      "remaining": [
+        "Family DID type",
+        "Custodial consent for minors",
+        "Delegated authority attestations",
+        "Shared credential management"
+      ]
+    },
+    "Family×Communication": {
+      "percent": 5,
+      "done": [
+        "Group chat infrastructure exists (could be used for family)"
+      ],
+      "remaining": [
+        "Family-scoped channels",
+        "Parental controls on messaging",
+        "Shared family inbox"
+      ]
+    },
+    "Family×Attribution": {
+      "percent": 0,
+      "done": [],
+      "remaining": [
+        "Shared .fair attribution for family projects",
+        "Family-level content ownership"
+      ]
+    },
+    "Family×Settlement": {
+      "percent": 0,
+      "done": [],
+      "remaining": [
+        "Shared family wallet",
+        "Allowance/delegation model",
+        "Family-scoped transaction visibility"
+      ]
+    },
+    "Family×Discovery": {
+      "percent": 0,
+      "done": [],
+      "remaining": [
+        "Family node registration",
+        "Family profile/presence"
+      ]
+    },
+    "Community×Attestation": {
+      "percent": 20,
+      "done": [
+        "Event check-in model (EventDID)",
+        "Cultural DID RFC written (#247)",
+        "Progressive trust model specified (Discussion #271)"
+      ],
+      "remaining": [
+        "Cultural DID implementation",
+        "Community governance weight",
+        "Attestation-based membership tiers",
+        "Flag/accountability system"
+      ]
+    },
+    "Community×Communication": {
+      "percent": 50,
+      "done": [
+        "Event lobby chat (DID-based)",
+        "<Chat /> component works in event context",
+        "WebSocket per-conversation"
+      ],
+      "remaining": [
+        "Community-scoped forums/channels",
+        "Cross-community messaging",
+        "Moderation tools"
+      ]
+    },
+    "Community×Attribution": {
+      "percent": 15,
+      "done": [
+        ".fair on event assets",
+        "Media service with DID-pegged storage"
+      ],
+      "remaining": [
+        "Collective .fair manifests",
+        "Community-level attribution chains",
+        "Governance over shared creative works"
+      ]
+    },
+    "Community×Settlement": {
+      "percent": 55,
+      "done": [
+        "Event ticketing (virtual + physical)",
+        "Stripe checkout with webhook fulfillment",
+        "Ticket signed by event DID",
+        "Transfer rules in .fair manifest"
+      ],
+      "remaining": [
+        "Quorum settlement for community treasury",
+        "Revenue sharing via .fair distribution",
+        "Community-scoped marketplace"
+      ]
+    },
+    "Community×Discovery": {
+      "percent": 10,
+      "done": [
+        "Registry service exists",
+        "Node registration API"
+      ],
+      "remaining": [
+        "Community node federation",
+        "Cultural DID directory",
+        "Cross-community discovery",
+        "Event-based identity issuance network"
+      ]
+    },
+    "Business×Attestation": {
+      "percent": 5,
+      "done": [
+        "Org DID RFC written (#248)",
+        "Org DID vetting model specified (Greg)"
+      ],
+      "remaining": [
+        "Org DID implementation",
+        "Business reviews/attestations",
+        "Founding Person DID anchor",
+        "Soft-loading (community builds before owner claims)",
+        "Composite attestation model for vetting"
+      ]
+    },
+    "Business×Communication": {
+      "percent": 0,
+      "done": [],
+      "remaining": [
+        "Business-to-customer messaging",
+        "Commercial message typing/labeling",
+        "Trust-graph-scoped commercial reach"
+      ]
+    },
+    "Business×Attribution": {
+      "percent": 0,
+      "done": [],
+      "remaining": [
+        "Product/service .fair manifests",
+        "Business-level attribution chains",
+        "Supply chain attribution"
+      ]
+    },
+    "Business×Settlement": {
+      "percent": 10,
+      "done": [
+        "Declared-Intent Marketplace specified",
+        "Gas model ceiling specified (Greg)"
+      ],
+      "remaining": [
+        "Declared-Intent Marketplace implementation",
+        "Frequency-scaled gas",
+        "Business transaction fees",
+        "QR code point-of-sale flow"
+      ]
+    },
+    "Business×Discovery": {
+      "percent": 0,
+      "done": [],
+      "remaining": [
+        "Business directory/marketplace",
+        "Soft-loaded business profiles",
+        "Location-based discovery",
+        "k-anonymity for declaration matching"
+      ]
+    }
+  }
+}
