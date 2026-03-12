@@ -7,6 +7,7 @@ export { ReactionPicker } from './ReactionPicker';
 export { LinkPreviewCard } from './LinkPreviewCard';
 export type { MessageContent, TextContent, VoiceContent, MediaContent, LocationContent } from './message-types';
 
+export { Chat } from './Chat';
 export { ChatProvider, useChatConfig } from './ChatProvider';
 export { useChatMessages } from './hooks/useChatMessages';
 export type { ChatMessage } from './hooks/useChatMessages';
