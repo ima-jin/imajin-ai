@@ -119,5 +119,9 @@ With both Gas Model Ceiling (Proposal 11) and Declaration Granularity resolved, 
 - Sensitive category floor constants defined at protocol level
 - `@imajin/auth` signing utilities used for declaration signing
 
+### Roadmap Placement — 2026-03-13
+
+Assigned to **Phase 3** in Ryan's .fair Hardening Roadmap. Needs a dedicated upstream issue filed. Suggested home: `packages/declarations/` or as a Stream 2 sub-tracker. No blocking dependency on Phase 1 or 2, but the Ed25519 signing utilities from Phase 1 (#316) are a prerequisite for signed declarations.
+
 ---
 
