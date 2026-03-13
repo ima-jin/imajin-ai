@@ -52,8 +52,7 @@ export async function GET(request: NextRequest) {
       ...readRecords.map(r => r.conversationDid),
       ...sentMessages.map(m => m.conversationDid),
       ...createdConvs.map(c => c.did),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...podConvDids.map((r: any) => r.conversation_did as string),
+      ...podConvDids.map((r: Record<string, string>) => r.conversation_did),
     ]);
 
     if (specificDid) {
