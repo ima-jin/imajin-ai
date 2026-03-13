@@ -90,6 +90,7 @@ export function AssetGrid({
 
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("filename", file.name);
 
       try {
         const res = await fetch("/api/assets", {

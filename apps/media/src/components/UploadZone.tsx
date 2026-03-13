@@ -33,6 +33,7 @@ export const UploadZone = forwardRef<UploadZoneHandle, UploadZoneProps>(
 
         const formData = new FormData();
         formData.append("file", file);
+        formData.append("filename", file.name);
 
         try {
           const res = await fetch("/api/assets", {
@@ -83,7 +84,7 @@ export const UploadZone = forwardRef<UploadZoneHandle, UploadZoneProps>(
         type="file"
         className="hidden"
         onChange={handleFileChange}
-        accept="image/*,audio/*,video/*,application/pdf,text/*"
+        accept="image/*,audio/*,video/*,application/pdf,text/*,.md,.markdown,.json,.yaml,.yml,.csv"
       />
     );
 
