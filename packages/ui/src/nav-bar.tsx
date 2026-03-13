@@ -34,6 +34,7 @@ export interface NavBarProps {
   identity?: NavIdentity;
   unreadMessages?: number;
   serviceUrls?: ServiceUrls;
+  children?: React.ReactNode;
 }
 
 function buildUrl(service: string, prefix: string, domain: string, overrides?: ServiceUrls) {
@@ -131,6 +132,7 @@ export function NavBar({
   identity: identityProp,
   unreadMessages = 0,
   serviceUrls,
+  children,
 }: NavBarProps) {
   const userLinks = buildUserLinks(servicePrefix, domain, serviceUrls);
   const isDev = servicePrefix.includes('dev-');
@@ -191,16 +193,19 @@ export function NavBar({
           ⚠ DEVELOPMENT ENVIRONMENT
         </div>
       )}
-      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-2">
         {/* Logo */}
         <a
           href={buildUrl('www', servicePrefix, domain, serviceUrls)}
-          className="flex items-center hover:opacity-80 transition"
+          className="flex items-center hover:opacity-80 transition shrink-0"
         >
           <img src={`${buildUrl("www", servicePrefix, domain, serviceUrls)}/images/logo.svg`} alt="Imajin" className="h-8" />
         </a>
 
-        {/* Center - Launcher + Quick Access (desktop) */}
+        {/* Children slot (center, fills available space) */}
+        <div className="flex-1 min-w-0">{children}</div>
+
+        {/* Right - Launcher + Quick Access (desktop) */}
         <div className="hidden sm:flex items-center gap-1">
           <AppLauncher
             registryUrl={registryUrl}
@@ -352,6 +357,7 @@ export function NavBar({
       {/* Mobile menu */}
       {showMobileMenu && (
         <div className="sm:hidden border-t border-gray-200 dark:border-gray-800 px-4 py-3">
+          {children && <div className="mb-3">{children}</div>}
           <AppLauncher
             registryUrl={registryUrl}
             currentService={currentService}

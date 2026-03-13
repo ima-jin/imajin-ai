@@ -13,6 +13,7 @@ interface FolderWithCount extends Folder {
 
 interface MediaManagerProps {
   session: Identity;
+  search?: string;
 }
 
 type SortKey = "created" | "name" | "size";
@@ -29,13 +30,12 @@ function clientSort(assets: Asset[], sort: SortKey, order: "asc" | "desc"): Asse
   return order === "desc" ? sorted.reverse() : sorted;
 }
 
-export function MediaManager({ session: _session }: MediaManagerProps) {
+export function MediaManager({ session: _session, search = '' }: MediaManagerProps) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [allAssets, setAllAssets] = useState<Asset[]>([]);
   const [folders, setFolders] = useState<FolderWithCount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [sort, setSort] = useState<SortKey>("created");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
@@ -148,26 +148,16 @@ export function MediaManager({ session: _session }: MediaManagerProps) {
   );
 
   return (
-    <div className="h-screen flex flex-col bg-[#1a1a1a] text-white overflow-hidden">
-      {/* Header */}
-      <header className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 bg-[#1a1a1a] shrink-0">
-        {/* Mobile hamburger */}
+    <div className="h-full flex flex-col bg-[#1a1a1a] text-white overflow-hidden">
+      {/* Mobile header (hamburger only — search is in NavBar) */}
+      <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-gray-800 bg-[#1a1a1a] shrink-0">
         <button
-          className="md:hidden p-1.5 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+          className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
           onClick={() => setMobileSidebarOpen(true)}
           aria-label="Open folders"
         >
           ☰
         </button>
-
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Search files…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-52 bg-[#252525] border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500 transition-colors"
-        />
       </header>
 
       {/* Body */}
