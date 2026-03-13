@@ -288,11 +288,16 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
       {editingFair && fairManifest && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          role="button"
+          tabIndex={0}
           onClick={() => setEditingFair(false)}
+          onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setEditingFair(false); }}
         >
           <div
             className="bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl p-4 w-[480px] max-h-[80vh] overflow-y-auto"
+            role="dialog"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-medium text-gray-200">Edit .fair Manifest</p>

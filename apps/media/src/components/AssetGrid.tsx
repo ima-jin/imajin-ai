@@ -279,12 +279,15 @@ export function AssetGrid({
               return (
                 <div
                   key={asset.id}
+                  role="button"
+                  tabIndex={0}
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
                     asset.id === selectedAssetId
                       ? "border-orange-500 bg-orange-500/10"
                       : "border-transparent hover:bg-white/5"
                   }`}
                   onClick={() => onSelectAsset(asset.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectAsset(asset.id); } }}
                 >
                   <span className="text-lg shrink-0">{getMimeIcon(asset.mimeType)}</span>
                   <span className="text-sm text-gray-200 flex-1 truncate min-w-0">{asset.filename}</span>
