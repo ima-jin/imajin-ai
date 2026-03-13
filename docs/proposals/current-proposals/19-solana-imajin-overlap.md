@@ -206,6 +206,21 @@ The two pathways address different populations and are not in conflict. A tiered
 
 ---
 
+## Settlement Roadmap Update — 2026-03-13
+
+The Settlement & Economics Hardening Roadmap confirms the Solana provider status: `apps/pay/lib/providers/solana.ts` is **Scaffolded** — SOL/SPL transfers, unsigned transaction returned for client signing. The pluggable `PaymentProvider` interface is live. This has direct implications for Pathway 2:
+
+- **Pathway 2 infrastructure** is Settlement Phase 3 — the "Connect Wallet" UI and on-chain balance check require the embedded wallet surface work (Proposal 4) that is also Phase 3
+- Pathway 2 cannot be production-ready before Settlement Phase 3 ships
+- Pathway 1 (member invitation) remains the correct April 1 launch path
+
+**Connection to Fee Model (Proposal 20):** A Pathway 2 registrant who purchases MJN tokens is simultaneously:
+1. Getting their preliminary DID issued
+2. Making their first `financial_contribution` toward the Supporter Pool $100 cap (Track 1 or Track 2 depending on amount)
+3. Potentially becoming a Round 1 micro-founder if they contribute pre-revenue
+
+The Pathway 2 MJN purchase should carry an `intent.purpose: "identity-registration"` field (from Proposal 17) and log a `financial_contribution` attestation (from Proposal 20). These happen in the same transaction. Ryan's Fee Model explicitly notes that the `financial_contribution` attestation is how cap tracking works — Pathway 2 registrants feed directly into this system.
+
 ## Open Questions for Ryan
 
 1. **Minimum MJN threshold for Pathway 2** — fixed USD equivalent (e.g., $1) or governance-set? How is the price oracle sourced?
