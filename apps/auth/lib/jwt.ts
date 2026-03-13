@@ -68,7 +68,7 @@ export interface SessionPayload {
   handle?: string;  // @username
   type: string;     // identity type
   name?: string;
-  tier?: 'soft' | 'hard'; // identity tier
+  tier?: 'soft' | 'preliminary' | 'established'; // identity tier
 }
 
 /**
@@ -81,7 +81,7 @@ export async function createSessionToken(payload: SessionPayload): Promise<strin
     handle: payload.handle,
     type: payload.type,
     name: payload.name,
-    tier: payload.tier || 'hard', // default to 'hard' for existing sessions
+    tier: payload.tier || 'soft',
   })
     .setProtectedHeader({ alg: 'EdDSA' })
     .setSubject(payload.sub)
@@ -104,12 +104,14 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       issuer: JWT_ISSUER,
     });
 
+    const rawTier = payload.tier as string || 'soft';
+    const tier = rawTier === 'hard' ? 'preliminary' : rawTier as 'soft' | 'preliminary' | 'established';
     return {
       sub: payload.sub as string,
       handle: payload.handle as string | undefined,
       type: payload.type as string,
       name: payload.name as string | undefined,
-      tier: (payload.tier as 'soft' | 'hard') || 'hard', // default to 'hard' for existing tokens
+      tier,
     };
   } catch (error) {
     console.error('JWT verification failed:', error);

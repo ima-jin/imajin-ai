@@ -12,6 +12,7 @@ export const identities = authSchema.table('identities', {
   handle: text('handle').unique(),                // @username (unique, optional)
   name: text('name'),                             // Display name
   avatarUrl: text('avatar_url'),
+  tier: text('tier').notNull().default('soft'),
   metadata: jsonb('metadata').default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

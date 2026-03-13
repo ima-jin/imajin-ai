@@ -3,7 +3,7 @@ export interface Identity {
   type: "human" | "agent" | "presence";
   name?: string;
   handle?: string;
-  tier?: "soft" | "hard";
+  tier?: "soft" | "preliminary" | "established";
 }
 
 export interface AuthResult {
