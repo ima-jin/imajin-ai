@@ -76,9 +76,11 @@ One PR, three changes, zero risk.
 | Dual-write tier to auth + profile | Session/registration routes | Bridge path per Proposal 9 Option C |
 | Cut session route to read from `auth.identities` | `apps/auth/.../session/route.ts` | Eliminates cross-schema query |
 
-**Decisions needed:**
-- Tier column values: `soft` / `preliminary` / `established` (go ahead and add three now, even though we only use two initially?)
-- Keep `profile.profiles.identity_tier` for display, or deprecate?
+**Decisions locked (March 13):**
+- Tier column values: `soft` / `preliminary` / `established` — all three from day one
+- Migrate current `hard` → `preliminary`, current `soft` → `soft`
+- Deprecate `profile.profiles.identity_tier` entirely — auth owns access control
+- Preliminary can connect with existing profiles but **cannot invite new signups** (Sybil gate)
 
 ---
 
@@ -164,7 +166,7 @@ Turn the attestation layer into a real trust system. This is where the binary so
 | Vouch chain accountability | Standing computation | Vouched person flagged → voucher standing reviewed |
 | Demotion path | Standing computation | Established → Preliminary on sufficient flags |
 
-**Permission matrix (from Proposal 1):**
+**Permission matrix (refined March 13):**
 
 | Action | Soft (Visitor) | Preliminary (Resident) | Established (Host) |
 |--------|:-:|:-:|:-:|
@@ -174,9 +176,18 @@ Turn the attestation layer into a real trust system. This is where the binary so
 | Use apps (coffee, links, etc.) | ❌ | ✅ | ✅ |
 | Wallet / transact | ❌ | ✅ | ✅ |
 | Message direct connections | ❌ | ✅ | ✅ |
+| Connect with existing profiles | ❌ | ✅ | ✅ |
+| **Invite new people to the network** | ❌ | ❌ | ✅ |
 | Vouch for others | ❌ | ❌ | ✅ |
 | Create events / Cultural DIDs | ❌ | ❌ | ✅ |
 | Extended trust graph visibility | ❌ | ❌ | ✅ |
+
+**Key distinction:** Preliminary can send connection requests to *existing* profiles but **cannot invite new signups**. The invite gate is Established-only — this is the Sybil resistance layer. Automated onboarding abuse is blocked because you can't spray invites without earned standing.
+
+**Tier migration:**
+- Current `hard` → `preliminary`
+- Current `soft` → `soft`
+- Nobody is `established` yet — unlocks when vouch flow ships (Phase 2)
 
 ---
 
@@ -230,15 +241,14 @@ These are the pieces needed for multi-node federation and community governance.
 | **#152** — Public profile + trust indicators | Proposal 1 | 2 | Open |
 | **#246** — Check-ins (Foursquare-style) | Proposal 10 (soft-loading) | 3-4 | Open |
 
-### Issues That Need Creating
+### Created Issues
 
-| What | Phase | Content |
+| Issue | Phase | Content |
 |------|-------|---------|
-| **P1+P4: Fail-open fix + logging** | 0 | One-line security fix + observability |
-| **Tier migration to auth.identities** | 0 | P2 — move tier to auth, three-tier column |
-| **auth.attestations table + API** | 1 | The attestation data layer foundation |
-| **Progressive trust: three-tier model** | 2 | Vouch flow, onboarding milestones, standing computation |
-| **Flag system: yellow/amber/red** | 2 | Behavioral consequence tiers |
+| **#318** — P1+P4: Fail-open fix + logging | 0 | One-line security fix + observability |
+| **#319** — Tier migration to auth.identities | 0 | Move tier to auth, three-tier column, invite gate |
+| **#320** — auth.attestations table + API | 1 | Attestation data layer foundation |
+| **#321** — Progressive trust: vouch + flags | 2 | Vouch flow, onboarding milestones, flag system |
 
 ---
 
