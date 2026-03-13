@@ -11,6 +11,8 @@ Three new RFCs appeared in the upstream repo as articles since the March 10 revi
 
 **Proposals filed (March 11):** Proposals 15, 16, and 17 in `current-proposals.md` address all three RFCs with analysis and Greg's positions on all open questions.
 
+**Update (2026-03-13):** Proposals 15, 16, and 17 are now in upstream `docs/proposals/current-proposals/` alongside the RFCs (PR #282 merged March 12). The proposals are now part of the official repo record. Implementation of all three remains pending — P3 and P5 (the code-level gaps surfaced by this finding) are still open in `packages/fair/src/types.ts`.
+
 **New problem detected:** P5 — `FairManifest` missing `intent` field (`packages/fair/src/types.ts`). Should be fixed in the same PR as P3 (missing `signature` field).
 
 ---
