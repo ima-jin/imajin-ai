@@ -108,5 +108,14 @@ The `intent` field proposed in this RFC does not exist on `FairManifest` in `pac
 - Redistribution threshold monitoring and distribution chain declaration UI
 - Howey test legal review documented in `docs/decisions/` or equivalent
 
+### Roadmap Placement — 2026-03-13
+
+Split across phases in Ryan's .fair Hardening Roadmap:
+- **Phase 0** — `intent?` field added to `FairManifest` type (tracked under #317, no crypto required)
+- **Phase 2** — `intent` field enforcement: logged but not yet attestation-triggered
+- **Phase 3** — Contribution pools (`apps/pools/` or `apps/pay/`), mandatory redistribution, full intent enforcement
+
+Ryan noted this "needs issue" for the Phase 3 distribution scope. The Phase 0 type addition is covered under P5 / #317.
+
 ---
 
