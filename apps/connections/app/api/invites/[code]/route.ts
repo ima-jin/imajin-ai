@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, invites, profiles } from '../../../../src/db/index';
+import { corsHeaders, corsOptions } from '@/lib/cors';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
-function corsHeaders(request: NextRequest): Record<string, string> {
-  const origin = request.headers.get('origin') || '';
-  if (origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai') {
-    return {
-      'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Credentials': 'true',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    };
-  }
-  return {};
-}
-
 export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
+  return corsOptions(request);
 }
 
 async function getSession(request: NextRequest) {
