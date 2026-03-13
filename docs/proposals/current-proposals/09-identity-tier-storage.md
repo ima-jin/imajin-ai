@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Ryan's Identity & Attestation Hardening Roadmap (March 13) — Phase 0, issue #319 ("auth.identities tier column migration") and issue #318 ("Session route hardening")
+**Outcome:** The proposal is adopted exactly as written. Phase 0 (#319) adds `tier` to `auth.identities`, migrates from `profile.profiles.identity_tier`, and removes the cross-schema query. Phase 0 (#318) simultaneously fixes P1 (fail-open default) and P4 (silent catch). All three compounding problems (P1, P2, P4) are addressed in Phase 0.
+**Implementation:** Issues #318 and #319 created — not yet in code. Confirm by checking for migration adding `tier` to `auth.identities`.
+
+---
+
 ## 9. Identity Tier Storage — Security Fix and Auth Domain Consolidation
 
 **Author:** Greg Mulholland
