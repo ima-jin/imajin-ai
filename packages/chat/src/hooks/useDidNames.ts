@@ -39,7 +39,7 @@ export function useDidNames(dids: string[]): Record<string, string> {
   }, [chatUrl]);
 
   useEffect(() => {
-    const uniqueDids = [...new Set(dids)].filter(d => !cacheRef.current[d]);
+    const uniqueDids = Array.from(new Set(dids)).filter(d => !cacheRef.current[d]);
     uniqueDids.forEach(resolve);
   }, [dids, resolve]);
 
