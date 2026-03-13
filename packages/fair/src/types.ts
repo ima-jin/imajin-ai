@@ -1,3 +1,9 @@
+export interface FairSignature {
+  algorithm: 'ed25519';
+  value: string; // 128 hex chars (64 bytes)
+  publicKeyRef: string; // DID of the signer
+}
+
 export interface FairEntry {
   did: string;
   role: string; // creator, collaborator, producer, performer, platform, venue, etc.
@@ -42,8 +48,8 @@ export interface FairManifest {
   integrity?: FairIntegrity;
   terms?: string; // license URL or text
   intent?: FairIntent; // stated purpose and optional constraints
-  signature?: string; // creator signature (required in Phase 1)
-  platformSignature?: string; // platform endorsement signature
+  signature?: FairSignature; // creator signature (required in Phase 1)
+  platformSignature?: FairSignature; // platform endorsement signature
   // backward compat with existing events code
   version?: string;
   chain?: FairEntry[]; // alias for attribution
