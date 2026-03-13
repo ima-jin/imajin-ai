@@ -1,10 +1,24 @@
-# Proposal 19 — Solana / Imajin Hard DID Overlap: Architecture and Registration Pathways
+# Proposal 19 — Solana / Imajin DID Overlap: Architecture and Registration Pathways
 
 **Filed:** 2026-03-13
 **Author:** Greg Mulholland (Tonalith)
 **Relates to:** RFC #268 (Embedded Wallet), Proposal 01 (Progressive Trust Model), Proposal 04 (Embedded Wallet)
 **Affects:** `apps/auth`, `packages/auth`, `apps/pay/lib/providers/solana.ts`
 **Milestone:** April 1, 2026 launch — registration pathway must be decided before this date
+
+---
+
+## Three-Tier Model Update — 2026-03-13
+
+Ryan's Identity & Attestation Hardening Roadmap (March 13) confirmed the binary `soft/hard` tier is being replaced with a three-tier model: **soft → preliminary → established**. This affects the language throughout this document:
+
+- **"Hard DID"** → **"Preliminary DID"** — the first tier above soft, issued at keypair-based registration
+- **"Established DID"** — a new tier above preliminary, unlocked by the vouch flow (not yet in code)
+- Both pathways described below issue a `preliminary` DID, not a generic "hard DID"
+- Phase 0 of the roadmap (issue #319) adds the `tier` column to `auth.identities` — this is the same migration P2 requested, now formally committed
+- `requireHardDID()` in `packages/auth/src/require-hard-did.ts` may be renamed to `requirePreliminaryDID()` or `requireEstablishedDID()` when the three-tier model ships in code
+
+The open questions and comparison table below have been updated to use the new tier terminology.
 
 ---
 
@@ -22,7 +36,7 @@ export function didFromPublicKey(publicKeyHex: string): string {
 }
 ```
 
-A production Imajin hard DID looks like:
+A production Imajin preliminary DID looks like:
 
 ```
 did:imajin:7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
@@ -33,7 +47,7 @@ did:imajin:7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
 
 The DID suffix and the Solana address are the same 32 bytes in the same base58 encoding. `publicKeyFromDid()` exists and reverses this exactly — the full public key is recoverable from the DID string by design.
 
-**Consequence:** Every existing Imajin hard DID controls a Solana wallet address. The user who downloaded their `imajin-key-handle.json` backup file already holds a file that is, by its cryptographic content, a Solana wallet. This has not been communicated to users and no UI exposes it.
+**Consequence:** Every existing Imajin keypair-based DID (now called "preliminary DID" in the three-tier model) controls a Solana wallet address. The user who downloaded their `imajin-key-handle.json` backup file already holds a file that is, by its cryptographic content, a Solana wallet. This has not been communicated to users and no UI exposes it.
 
 ---
 
@@ -60,7 +74,7 @@ To use this keypair as a Solana wallet in Phantom or Solflare, the 32-byte priva
 
 ## Soft DIDs Are Not Affected
 
-Email-onboarded identities (`did:email:username_at_domain_com`) use a placeholder key: `soft_${nanoid(32)}`. This is not a real Ed25519 keypair. Soft DID holders do not have Solana wallets. The duality described in this proposal applies exclusively to hard DIDs.
+Email-onboarded identities (`did:email:username_at_domain_com`) use a placeholder key: `soft_${nanoid(32)}`. This is not a real Ed25519 keypair. Soft DID holders do not have Solana wallets. The duality described in this proposal applies exclusively to preliminary and established DIDs (keypair-based registrations).
 
 ---
 
@@ -90,19 +104,19 @@ The shared package function produces an 8-byte (64-bit) prefix of the key, not a
 
 ---
 
-## Two Registration Pathways to Hard DID
+## Two Registration Pathways to Preliminary DID
 
-The current system has one path to hard DID: invite code + browser keypair generation. The following two pathways represent a fork in the identity onboarding philosophy. They are not mutually exclusive — both can coexist as entry points to the same hard DID tier.
+The current system has one path to a keypair-based DID: invite code + browser keypair generation. The following two pathways represent a fork in the identity onboarding philosophy. They are not mutually exclusive — both can coexist as entry points to the same preliminary DID tier.
 
 ---
 
-### Pathway 1 — Member Invitation → Browser Keypair → Hard DID
+### Pathway 1 — Member Invitation → Browser Keypair → Preliminary DID
 
 **The existing flow, formalized and extended.**
 
-A member of the network issues an invite. The invitee receives a link, generates an Ed25519 keypair in the browser, signs a registration payload, and receives a hard DID. The invite establishes the initial trust connection.
+A member of the network issues an invite. The invitee receives a link, generates an Ed25519 keypair in the browser, signs a registration payload, and receives a preliminary DID. The invite establishes the initial trust connection.
 
-The soft DID → hard DID upgrade path (currently undefined in code) would follow the same ceremony: the user generates a keypair, signs a migration payload, and the `auth.identities` record is updated from `did:email:` to `did:imajin:`.
+The soft DID → preliminary DID upgrade path (currently undefined in code) would follow the same ceremony: the user generates a keypair, signs a migration payload, and the `auth.identities` record is updated from `did:email:` to `did:imajin:`. Phase 0 of the Identity Hardening Roadmap (#319) establishes the `tier` column in `auth.identities` that this upgrade path writes to.
 
 **What this requires that doesn't exist yet:**
 - A defined soft → hard DID upgrade flow (no code or spec exists)
@@ -126,11 +140,11 @@ The soft DID → hard DID upgrade path (currently undefined in code) would follo
 
 ---
 
-### Pathway 2 — Solana Wallet + MJN Token Purchase → Hard DID
+### Pathway 2 — Solana Wallet + MJN Token Purchase → Preliminary DID
 
 **A proposed inversion: economic proof-of-personhood precedes identity issuance.**
 
-The user creates a Solana wallet using any standard wallet application (Phantom, Solflare, Backpack). They purchase a minimum quantity of MJN tokens. They connect their wallet to the Imajin registration flow, which verifies the on-chain token balance, issues a challenge nonce, and receives a signature from the wallet. The DID is issued from the same keypair — `did:imajin:{base58(pubkey)}` — so the identity and the wallet are unified from the first moment.
+The user creates a Solana wallet using any standard wallet application (Phantom, Solflare, Backpack). They purchase a minimum quantity of MJN tokens. They connect their wallet to the Imajin registration flow, which verifies the on-chain token balance, issues a challenge nonce, and receives a signature from the wallet. The DID is issued from the same keypair — `did:imajin:{base58(pubkey)}` — so the identity and the wallet are unified from the first moment. The issued DID starts at `preliminary` tier; reaching `established` tier requires the vouch flow (Phase 2, #321).
 
 **What this requires that doesn't exist yet:**
 - A "Connect Wallet" UI path in `apps/auth/app/register/`
@@ -162,12 +176,14 @@ The user creates a Solana wallet using any standard wallet application (Phantom,
 | | Pathway 1 — Member Invitation | Pathway 2 — Solana + MJN |
 |---|---|---|
 | **Trust signal** | Social (vouched by a member) | Economic (on-chain token holding) |
+| **DID tier issued** | Preliminary | Preliminary |
+| **Path to Established** | Vouch flow (Phase 2, #321) | Vouch flow (Phase 2, #321) |
 | **Sybil resistance** | Invite-code social gate | Token purchase cost |
 | **Crypto knowledge required** | None | Moderate to high |
 | **MJN demand impact** | None | Direct: every DID = purchase |
 | **Key management literacy** | Imajin educates from scratch | Inherits Solana wallet practices |
 | **Wallet/identity unity** | Discovered after registration | Unified from first moment |
-| **Implementation complexity** | Low (soft→hard upgrade needed) | Higher (wallet connect + on-chain check) |
+| **Implementation complexity** | Low (soft→preliminary upgrade needed) | Higher (wallet connect + on-chain check) |
 | **Regulatory risk** | None | Requires legal review |
 | **Global accessibility** | High | Dependent on exchange availability |
 | **Invite gate dependency** | Yes | No |
@@ -180,7 +196,7 @@ The two pathways address different populations and are not in conflict. A tiered
 
 **For the launch:** Pathway 1 (member invitation) is the appropriate default. It requires the least new infrastructure, is accessible to everyone at the party regardless of crypto background, and preserves the social trust signal that is central to the platform's identity model.
 
-**For the post-launch roadmap:** Pathway 2 (Solana + MJN) should be built as an alternative entry point once MJN has sufficient liquidity and the regulatory question has been assessed. It strengthens sybil resistance and directly bootstraps the token economy. It does not replace Pathway 1 — it adds an additional route to the same hard DID tier.
+**For the post-launch roadmap:** Pathway 2 (Solana + MJN) should be built as an alternative entry point once MJN has sufficient liquidity and the regulatory question has been assessed. It strengthens sybil resistance and directly bootstraps the token economy. It does not replace Pathway 1 — it adds an additional route to the same preliminary DID tier.
 
 **Regardless of pathway chosen,** two actions should happen before April 1:
 
