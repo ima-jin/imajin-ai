@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile } from "fs/promises";
+import { readFile, unlink } from "fs/promises";
 import { db, assets } from "@/src/db";
 import { requireAuth } from "@/src/lib/auth";
 import { eq } from "drizzle-orm";
@@ -157,7 +157,7 @@ export async function GET(
 }
 
 // ---------------------------------------------------------------------------
-// DELETE /api/assets/[id] — soft-delete asset (owner only)
+// DELETE /api/assets/[id] — hard-delete asset + files (owner only)
 // ---------------------------------------------------------------------------
 export async function DELETE(
   request: NextRequest,
@@ -191,10 +191,14 @@ export async function DELETE(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  await db
-    .update(assets)
-    .set({ status: "deleted" })
-    .where(eq(assets.id, id));
+  // Remove files from disk (best-effort — don't fail if already gone)
+  try { await unlink(asset.storagePath); } catch {}
+  if (asset.fairPath) {
+    try { await unlink(asset.fairPath); } catch {}
+  }
+
+  // Delete DB row
+  await db.delete(assets).where(eq(assets.id, id));
 
   return NextResponse.json({ ok: true });
 }
