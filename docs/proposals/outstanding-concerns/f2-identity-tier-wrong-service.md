@@ -17,5 +17,7 @@ The Progressive Trust Model proposes adding a third tier (`preliminary`/`establi
 
 **Resolution requires:** A position on where standing/tier should canonically live. Options: move to `auth.identities` (single source of truth, correct fail-closed default), or formalize the profile service as the authoritative tier store with explicit service-dependency guarantees and a fail-closed default.
 
+**Partial mitigation (2026-03-13):** PR #307 — "fix: Service consistency — CORS + auth unification (#242)" — refactored `packages/auth` to export `requireHardDID()`, which explicitly gates routes against soft-tier identities at the handler level (`packages/auth/src/require-hard-did.ts`). This adds enforcement at the point of use but does not resolve the underlying storage problem: the cross-schema query `SELECT identity_tier FROM profile.profiles` is still in `apps/auth/app/api/session/route.ts` line 50, and the fail-open default (`session.tier || 'hard'`) is unchanged. P1 remains open. The core concern — tier data in the wrong service — is unresolved.
+
 ---
 
