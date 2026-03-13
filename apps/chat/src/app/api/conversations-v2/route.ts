@@ -1,9 +1,12 @@
 import { NextRequest } from 'next/server';
 import { eq, desc, and, gt, ne, inArray, sql } from 'drizzle-orm';
 import { db, conversationsV2, messagesV2, conversationReadsV2 } from '@/db';
+import { getClient } from '@imajin/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { parseConversationDid } from '@/lib/conversation-did';
+
+const rawSql = getClient();
 
 /**
  * GET /api/conversations-v2 - List DID-based conversations for authenticated user
@@ -21,7 +24,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Find all conversation DIDs this user participates in
-    const [readRecords, sentMessages, createdConvs] = await Promise.all([
+    const [readRecords, sentMessages, createdConvs, podConvDids] = await Promise.all([
       db
         .select()
         .from(conversationReadsV2)
@@ -34,12 +37,22 @@ export async function GET(request: NextRequest) {
         .select({ did: conversationsV2.did })
         .from(conversationsV2)
         .where(eq(conversationsV2.createdBy, identity.id)),
+      // Discover conversations via pod membership (connections layer)
+      rawSql`
+        SELECT p.conversation_did
+        FROM connections.pods p
+        JOIN connections.pod_members pm ON pm.pod_id = p.id
+        WHERE pm.did = ${identity.id}
+          AND pm.removed_at IS NULL
+          AND p.conversation_did IS NOT NULL
+      `,
     ]);
 
     const didSet = new Set<string>([
       ...readRecords.map(r => r.conversationDid),
       ...sentMessages.map(m => m.conversationDid),
       ...createdConvs.map(c => c.did),
+      ...podConvDids.map((r: { conversation_did: string }) => r.conversation_did),
     ]);
 
     if (specificDid) {

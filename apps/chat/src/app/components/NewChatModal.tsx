@@ -111,6 +111,21 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
     if (!identity) return;
     setCreatingDm(connection.did);
     const did = await dmDid(identity.did, connection.did);
+
+    // Set conversationDid on the personal pod so both parties can discover the DM
+    if (connection.podId) {
+      try {
+        await fetch(`${CONNECTIONS_URL}/api/groups/${connection.podId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ conversationDid: did }),
+        });
+      } catch {
+        // Best-effort
+      }
+    }
+
     router.push(`/conversations/${encodeURIComponent(did)}`);
     onClose();
   }
@@ -119,6 +134,24 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
     if (!identity || selectedDids.size === 0) return;
     const members = [identity.did, ...Array.from(selectedDids)];
     const did = await groupDid(members);
+    const name = groupName.trim() || 'Group Chat';
+
+    // Create a pod in connections with all members + conversation DID
+    try {
+      await fetch(`${CONNECTIONS_URL}/api/groups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name,
+          conversationDid: did,
+          memberDids: Array.from(selectedDids),
+        }),
+      });
+    } catch {
+      // Best-effort — conversation will still work via direct access
+    }
+
     const params = groupName ? `?name=${encodeURIComponent(groupName)}` : '';
     router.push(`/conversations/${encodeURIComponent(did)}${params}`);
     onClose();

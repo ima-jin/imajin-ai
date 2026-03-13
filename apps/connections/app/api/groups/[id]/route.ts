@@ -66,9 +66,39 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 
   const body = await request.json();
+
+  // Setting conversationDid only requires membership, not ownership
+  const isConversationDidOnly = Object.keys(body).length === 1 && body.conversationDid !== undefined;
+
+  if (isConversationDidOnly) {
+    // Verify requester is a member
+    const members = await db
+      .select()
+      .from(podMembers)
+      .where(and(eq(podMembers.podId, params.id), isNull(podMembers.removedAt)));
+    const isMember = members.some((m) => m.did === session.did);
+    if (!isMember) return NextResponse.json({ error: 'Not a member' }, { status: 403 });
+
+    // Only set if not already set (first-write wins)
+    const [pod] = await db.select().from(pods).where(eq(pods.id, params.id));
+    if (!pod) return NextResponse.json({ error: 'Pod not found' }, { status: 404 });
+
+    if (!pod.conversationDid) {
+      const [updated] = await db
+        .update(pods)
+        .set({ conversationDid: body.conversationDid, updatedAt: new Date() })
+        .where(eq(pods.id, params.id))
+        .returning();
+      return NextResponse.json({ pod: updated });
+    }
+    return NextResponse.json({ pod });
+  }
+
+  // All other updates require ownership
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (body.name !== undefined) updates.name = body.name.trim();
   if (body.description !== undefined) updates.description = body.description?.trim() || null;
+  if (body.conversationDid !== undefined) updates.conversationDid = body.conversationDid;
 
   const [updated] = await db
     .update(pods)

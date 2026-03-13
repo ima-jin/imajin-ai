@@ -178,7 +178,25 @@ export async function GET(
         }
       }
 
-      // 4. For groups, check legacy participants table
+      // 4. Check pod membership (conversation_did on pods)
+      const podRows = await sql`
+        SELECT pm.role
+        FROM connections.pods p
+        JOIN connections.pod_members pm ON pm.pod_id = p.id
+        WHERE p.conversation_did = ${targetDid}
+          AND pm.did = ${requesterDid}
+          AND pm.removed_at IS NULL
+        LIMIT 1
+      `;
+
+      if (podRows.length > 0) {
+        return NextResponse.json(
+          { allowed: true, role: podRows[0].role as string, governance },
+          { headers: cors }
+        );
+      }
+
+      // 5. For groups, check legacy participants table
       if (governance === 'group') {
         const legacyRows = await sql`
           SELECT p.role

@@ -83,10 +83,12 @@ export async function POST(request: NextRequest) {
     ownerDid: session.did,
     type: 'shared',
     visibility: 'private',
+    conversationDid: body.conversationDid || null,
     createdAt: now,
     updatedAt: now,
   }).returning();
 
+  // Add creator as owner
   await db.insert(podMembers).values({
     podId: id,
     did: session.did,
@@ -95,5 +97,21 @@ export async function POST(request: NextRequest) {
     joinedAt: now,
   });
 
-  return NextResponse.json({ pod: { ...pod, memberCount: 1 } }, { status: 201 });
+  // Add additional members if provided
+  const memberDids: string[] = body.memberDids || [];
+  for (const did of memberDids) {
+    if (did !== session.did) {
+      await db.insert(podMembers).values({
+        podId: id,
+        did,
+        role: 'member',
+        addedBy: session.did,
+        joinedAt: now,
+      });
+    }
+  }
+
+  const memberCount = 1 + memberDids.filter(d => d !== session.did).length;
+
+  return NextResponse.json({ pod: { ...pod, memberCount } }, { status: 201 });
 }

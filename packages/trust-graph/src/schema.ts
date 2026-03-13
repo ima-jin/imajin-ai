@@ -10,10 +10,12 @@ export const pods = connectionsSchema.table('pods', {
   ownerDid: text('owner_did').notNull(),
   type: text('type', { enum: ['personal', 'shared', 'event'] }).notNull().default('personal'),
   visibility: text('visibility', { enum: ['private', 'trust-bound'] }).notNull().default('private'),
+  conversationDid: text('conversation_did'),  // DID linking this pod to its chat conversation
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
   ownerIdx: index('trust_pods_owner_idx').on(table.ownerDid),
+  conversationDidIdx: index('trust_pods_conversation_did_idx').on(table.conversationDid),
 }));
 
 export const podMembers = connectionsSchema.table('pod_members', {
