@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Ryan's Identity & Attestation Hardening Roadmap (March 13) — Phase 2, issue #321; upstream discussion #273 (Trust Accountability Framework) open; whitepaper v0.3 credited
+**Outcome:** The behavioral category model and vouch chain accountability are adopted. Phase 2 (#321) implements the vouch flow that this proposal's standing tiers depend on. The `flag.yellow` / `flag.red` attestation types are included in the attestation schema (#320) as part of Phase 1. Ryan's roadmap uses the same Category A/B/C framing from this proposal without naming it explicitly.
+**Implementation:** Whitepaper v0.3 — concept credited. Phase 1 (#320, attestation schema) and Phase 2 (#321, vouch flow) — issues created, not yet in code.
+
+---
+
 ## 2. Trust Accountability Framework — Bad Actor Model
 
 **Author:** Greg Mulholland (concept), vouch chain accountability refined with Ryan Veteze
