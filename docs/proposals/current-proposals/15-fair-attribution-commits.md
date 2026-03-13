@@ -93,5 +93,9 @@ Greg's position: the attribution object schema needs a `signature` field from th
 - GitHub handle → DID claim flow in auth service
 - `derives_from` field on attribution objects referencing parent PR attribution
 
+### Roadmap Placement — 2026-03-13
+
+Assigned to **Phase 3** in Ryan's .fair Hardening Roadmap. Ryan noted this "needs issue" — no upstream issue exists yet. Phase 3 scope: PR merge → attribution object → .fair chain. Depends on Phase 1 signing infrastructure (#316, #317) being complete first.
+
 ---
 
