@@ -269,10 +269,11 @@ export function AssetGrid({
         ) : (
           <div className="flex flex-col gap-0.5">
             {assets.map((asset) => {
-              const hasFair =
+              const hasFair = !!(
                 asset.fairManifest &&
                 typeof asset.fairManifest === "object" &&
-                Object.keys(asset.fairManifest as object).length > 0;
+                Object.keys(asset.fairManifest as object).length > 0
+              );
               const date = asset.createdAt
                 ? new Date(asset.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                 : "—";
