@@ -14,7 +14,7 @@ export function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function getMimeIcon(mimeType: string): string {
+export function getMimeIcon(mimeType: string): string {
   if (mimeType.startsWith("image/")) return "🖼️";
   if (mimeType.startsWith("audio/")) return "🎵";
   if (mimeType.startsWith("video/")) return "🎬";
@@ -61,13 +61,9 @@ export function AssetCard({ asset, selected, onSelect }: AssetCardProps) {
         </p>
         <div className="flex items-center justify-between mt-0.5">
           <span className="text-xs text-gray-500">{formatSize(asset.size)}</span>
-          {hasFair ? (
-            <span className="text-xs text-green-400" title=".fair manifest present">
-              ✅
-            </span>
-          ) : (
-            <span className="text-xs text-gray-600" title="No .fair manifest">
-              ⚠️
+          {hasFair && (
+            <span className="text-xs text-green-400 font-medium bg-green-400/10 px-1.5 py-0.5 rounded">
+              .fair
             </span>
           )}
         </div>
