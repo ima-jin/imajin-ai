@@ -9,17 +9,18 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@imajin/auth": "workspace:*",
     "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
     "@imajin/fair": "workspace:*",
     "@imajin/ui": "workspace:^",
-    "next": "^14.2.0",
-    "react": "^18",
-    "react-dom": "^18",
     "drizzle-orm": "^0.45.1",
-    "postgres": "^3.4.5",
+    "exif-reader": "^2.0.1",
     "nanoid": "^5",
-    "exif-reader": "^2.0.1"
+    "next": "^14.2.0",
+    "postgres": "^3.4.5",
+    "react": "^18",
+    "react-dom": "^18"
   },
   "devDependencies": {
     "typescript": "^5",

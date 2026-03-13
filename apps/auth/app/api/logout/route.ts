@@ -1,18 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionCookieOptions } from '@/lib/jwt';
-
-function corsHeaders(request: NextRequest) {
-  const origin = request.headers.get('origin') || '';
-  const isImajin = origin.endsWith('.imajin.ai') || origin === 'https://imajin.ai';
-  const isLocalhost = origin.startsWith('http://localhost:');
-  const allowed = isImajin || isLocalhost;
-  return {
-    'Access-Control-Allow-Origin': allowed ? origin : '',
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-}
+import { corsHeaders } from '@imajin/config';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });

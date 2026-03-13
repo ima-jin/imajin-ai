@@ -12,6 +12,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@imajin/auth": "workspace:*",
     "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
     "@imajin/ui": "workspace:^",

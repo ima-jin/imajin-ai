@@ -10,6 +10,7 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@imajin/auth": "workspace:*",
     "@imajin/chat": "workspace:*",
     "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
