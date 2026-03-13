@@ -47,6 +47,12 @@ intent?: {
 - `packages/fair/src/types.ts` gains an `intent` field on `FairManifest`
 - Ideally in the same commit as P3 (`signature` field)
 
+### Status Update — 2026-03-13: Acknowledged, Implementation Planned
+
+Ryan's .fair Hardening Roadmap (March 13, 2026) assigns P5 to Phase 0: `intent?` field added to `FairManifest` as optional, alongside `signature?`. Tracked under issue **#317** (.fair cryptographic signing). Phase 2-3 wires `intent` to enforcement: intent declarations logged in Phase 1, attestation-triggered in Phase 2.
+
+Our recommendation to fix P3 + P5 in a single PR is reflected in the roadmap — both fields are Phase 0, same issue (#317). P5 is not yet resolved in code. Detection criteria above still apply.
+
 ---
 
 ## Notes on Scope
