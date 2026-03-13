@@ -109,7 +109,7 @@ async function main() {
 
       await sql`
         INSERT INTO media.assets (id, owner_did, filename, mime_type, size, storage_path, hash, fair_manifest, fair_path, status, metadata, created_at, updated_at)
-        VALUES (${assetId}, ${from_did}, ${filename}, ${mimeType}, ${size}, ${storagePath}, ${hash}, ${JSON.stringify(fairManifest)}::jsonb, ${fairPath}, 'active', '{}'::jsonb, NOW(), NOW())
+        VALUES (${assetId}, ${from_did}, ${filename}, ${mimeType}, ${size}, ${storagePath}, ${hash}, ${sql.json(fairManifest)}, ${fairPath}, 'active', ${sql.json({})}, NOW(), NOW())
         ON CONFLICT (id) DO NOTHING
       `;
 

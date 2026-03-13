@@ -818,7 +818,7 @@ function LegacyConversationView({ conversationId }: { conversationId: string }) 
       {/* Messages */}
       <div
         ref={chatAreaRef}
-        className="flex-1 overflow-y-auto py-4 space-y-4"
+        className="flex-1 min-h-0 overflow-y-auto py-4 space-y-4"
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
@@ -884,7 +884,7 @@ function LegacyConversationView({ conversationId }: { conversationId: string }) 
       </div>
 
       {/* Input */}
-      <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+      <div className="flex-shrink-0 pt-2 border-t border-gray-200 dark:border-gray-700">
         <TypingIndicator typingUsers={typingUsers} />
 
         {replyToMessage && (
@@ -1040,7 +1040,7 @@ function LegacyConversationView({ conversationId }: { conversationId: string }) 
             </>
           )}
         </div>
-        <p className="text-xs text-gray-400 text-center mt-2">🔒 End-to-end encrypted</p>
+
       </div>
     </div>
   );
