@@ -69,9 +69,35 @@ export const onboardTokens = authSchema.table('onboard_tokens', {
   emailIdx: index('idx_auth_onboard_tokens_email').on(table.email),
 }));
 
+/**
+ * Attestations - signed claims about identities
+ *
+ * Issued by one DID (issuer) about another DID (subject).
+ * Signature covers canonicalized: { subject_did, type, context_id, context_type, payload, issued_at }
+ */
+export const attestations = authSchema.table('attestations', {
+  id: text('id').primaryKey(),                         // att_xxx
+  issuerDid: text('issuer_did').notNull(),
+  subjectDid: text('subject_did').notNull(),
+  type: text('type').notNull(),                        // AttestationType
+  contextId: text('context_id'),                       // e.g. event DID
+  contextType: text('context_type'),                   // e.g. 'event'
+  payload: jsonb('payload'),
+  signature: text('signature').notNull(),              // Ed25519 hex (128 chars)
+  issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => ({
+  subjectIdx: index('idx_auth_attestations_subject').on(table.subjectDid),
+  issuerIdx: index('idx_auth_attestations_issuer').on(table.issuerDid),
+  typeIdx: index('idx_auth_attestations_type').on(table.type),
+}));
+
 // Types
 export type Identity = typeof identities.$inferSelect;
 export type NewIdentity = typeof identities.$inferInsert;
 export type Challenge = typeof challenges.$inferSelect;
 export type Token = typeof tokens.$inferSelect;
 export type OnboardToken = typeof onboardTokens.$inferSelect;
+export type Attestation = typeof attestations.$inferSelect;
+export type NewAttestation = typeof attestations.$inferInsert;

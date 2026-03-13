@@ -1,6 +1,11 @@
-export type { Identity, AuthResult, AuthError } from "./types";
+export type { Identity, AuthResult, AuthError, IdentityType, Keypair, SignedMessage, VerificationResult } from "./types";
 export { requireAuth } from "./require-auth";
 export { optionalAuth } from "./optional-auth";
 export { getSession } from "./session";
 export { requireHardDID } from "./require-hard-did";
 export { requireEstablishedDID } from "./require-established-did";
+export { canonicalize, sign, signSync } from "./sign";
+export { verify } from "./verify";
+export * as crypto from "./crypto";
+export type { Attestation, AttestationType } from "./types/attestation";
+export { ATTESTATION_TYPES } from "./types/attestation";
