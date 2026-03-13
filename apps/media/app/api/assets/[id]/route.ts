@@ -155,3 +155,46 @@ export async function GET(
 
   return new NextResponse(new Uint8Array(outputBuffer), { status: 200, headers });
 }
+
+// ---------------------------------------------------------------------------
+// DELETE /api/assets/[id] — soft-delete asset (owner only)
+// ---------------------------------------------------------------------------
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  const authResult = await requireAuth(request);
+  if ("error" in authResult) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+  const requesterDid = authResult.identity.id;
+
+  let asset;
+  try {
+    [asset] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.id, id))
+      .limit(1);
+  } catch (err) {
+    console.error("DB lookup failed:", err);
+    return NextResponse.json({ error: "Database failure" }, { status: 500 });
+  }
+
+  if (!asset || asset.status !== "active") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (asset.ownerDid !== requesterDid) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  await db
+    .update(assets)
+    .set({ status: "deleted" })
+    .where(eq(assets.id, id));
+
+  return NextResponse.json({ ok: true });
+}
