@@ -89,12 +89,23 @@ If a master key is compromised, the trust graph provides social recovery:
 ### Open Questions
 
 - Key derivation scheme — BIP-44 style paths or custom derivation?
-- Soft DIDs — do `did:email:` soft DIDs get wallet addresses? Probably not until upgrade to hard DID.
+- Soft DIDs — do `did:email:` soft DIDs get wallet addresses? Probably not until upgrade to preliminary DID.
 - Multi-device — spending key on phone, master key in cold storage. UX?
 - Regulatory — does an embedded wallet trigger money transmitter requirements?
 - Gas pool economics — how is the Foundation gas pool funded?
 - Social recovery threshold — how many attestations, at what trust weight, to rotate a master key?
 - Child key limits — how are spending caps enforced? On-chain program or client-side?
+
+### Roadmap Placement — 2026-03-13
+
+Assigned to **Phase 3** in the Settlement & Economics Hardening Roadmap:
+- Embedded wallet surface: Derive Solana address from DID keypair, show balance on profile (`apps/profile/`)
+- On-chain .fair settlement: Client-side signing, atomic .fair splits on Solana via existing `apps/pay/lib/providers/solana.ts`
+- Gas subsidization: Foundation pool covering SOL transaction fees for MJN settlements
+
+**Current state from Settlement Roadmap:** The Solana provider in `apps/pay/lib/providers/solana.ts` is "Scaffolded — SOL/SPL transfers, unsigned tx returned for client signing." The pluggable `PaymentProvider` interface is live. The wallet IS built at the infrastructure level — the gap is the UI surface and the wiring.
+
+**Connection to Proposal 19 (Solana/Imajin Overlap):** Pathway 2 in Proposal 19 (Solana wallet → preliminary DID) depends on exactly this infrastructure. Proposal 4's Phase 3 work is what surfaces that wallet to users post-registration.
 
 ---
 
