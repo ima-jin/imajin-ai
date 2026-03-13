@@ -14,6 +14,7 @@ export type { ChatMessage } from './hooks/useChatMessages';
 export { useChatActions } from './hooks/useChatActions';
 export { useChatWebSocket } from './hooks/useChatWebSocket';
 export { useChatAccess } from './hooks/useChatAccess';
+export { useDidNames } from './hooks/useDidNames';
 
 export { VoiceRecorder } from './VoiceRecorder';
 export { useFileUpload } from './hooks/useFileUpload';

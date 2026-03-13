@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useChatAccess } from './hooks/useChatAccess';
 import { useChatMessages } from './hooks/useChatMessages';
+import { useDidNames } from './hooks/useDidNames';
 import type { ChatMessage } from './hooks/useChatMessages';
 import { useChatActions } from './hooks/useChatActions';
 import { useChatWebSocket } from './hooks/useChatWebSocket';
@@ -147,6 +148,13 @@ export function Chat({
 
   const messageById = new Map(messages.map(m => [m.id, m]));
 
+  // Resolve sender DIDs to display names
+  const senderDids = useMemo(
+    () => [...new Set(messages.map(m => m.senderDid).filter(d => d !== currentUserDid))],
+    [messages, currentUserDid]
+  );
+  const didNames = useDidNames(senderDids);
+
   const handleSend = useCallback(async () => {
     const text = composerText.trim();
     if (!text || isSending) return;
@@ -287,7 +295,7 @@ export function Chat({
               <MessageBubble
                 message={toMsgShape(msg)}
                 isOwn={msg.senderDid === currentUserDid}
-                senderLabel={msg.senderDid.slice(-8)}
+                senderLabel={didNames[msg.senderDid] || msg.senderDid.slice(-8)}
                 showSenderLabel={showSenderLabel}
                 onReply={() => handleReply(msg)}
                 onEdit={() => handleEdit(msg)}

@@ -32,6 +32,9 @@ function DIDConversationView({ did }: { did: string }) {
   const [nameSet, setNameSet] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
+  const [memberCount, setMemberCount] = useState<number | null>(null);
+  const [members, setMembers] = useState<{ did: string; name?: string; handle?: string; role: string }[]>([]);
+  const [showMembers, setShowMembers] = useState(false);
   const parsed = parseConvDid(did);
 
   const handleNameSave = async () => {
@@ -71,6 +74,20 @@ function DIDConversationView({ did }: { did: string }) {
       })
       .catch(() => {});
   }, [identity, did]);
+
+  // Fetch members for group conversations
+  useEffect(() => {
+    if (!identity || parsed.type !== 'group') return;
+    fetch(`/api/d/${encodeURIComponent(did)}/members`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.members) {
+          setMembers(data.members);
+          setMemberCount(data.count);
+        }
+      })
+      .catch(() => {});
+  }, [identity, did, parsed.type]);
 
   // If a name was passed in the URL and we haven't stored a proper name yet,
   // save it via PATCH once the conversation exists (after the first message creates it).
@@ -156,13 +173,35 @@ function DIDConversationView({ did }: { did: string }) {
             </h1>
           )}
           {parsed.type === 'group' && (
-            <p className="text-xs text-gray-500 mt-0.5">Group conversation</p>
+            <button
+              onClick={() => setShowMembers(!showMembers)}
+              className="text-xs text-gray-500 mt-0.5 hover:text-orange-500 transition-colors text-left"
+            >
+              {memberCount ? `${memberCount} member${memberCount !== 1 ? 's' : ''}` : 'Group conversation'}
+            </button>
           )}
           {parsed.type === 'event' && (
             <p className="text-xs text-gray-500 mt-0.5">Event chat</p>
           )}
         </div>
       </div>
+
+      {/* Member list panel */}
+      {showMembers && members.length > 0 && (
+        <div className="border-b border-gray-200 dark:border-gray-700 py-2 px-4 bg-gray-50 dark:bg-zinc-800/50">
+          <div className="flex flex-wrap gap-2">
+            {members.map((m) => (
+              <span
+                key={m.did}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white dark:bg-zinc-700 text-xs text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-zinc-600"
+              >
+                {m.role === 'owner' && <span className="text-orange-500">★</span>}
+                {m.name || (m.handle ? `@${m.handle}` : m.did.slice(-8))}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Chat */}
       <div className="flex-1 overflow-hidden min-h-0">
