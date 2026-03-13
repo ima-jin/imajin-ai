@@ -13,6 +13,8 @@
  *   total_amount: number,
  *   service: string,
  *   type: string,
+ *   funded?: boolean,              // true = externally funded (e.g. Stripe), skip balance check/debit
+ *   funded_provider?: string,      // "stripe", "solana", etc. — logged for audit
  *   fair_manifest: {
  *     chain: Array<{ did: string, amount: number, role: string }>
  *   },
@@ -46,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { from_did, total_amount, service, type, fair_manifest, metadata = {} } = body;
+    const { from_did, total_amount, service, type, fair_manifest, funded = false, funded_provider, metadata = {} } = body;
 
     if (!from_did || !total_amount || !service || !type || !fair_manifest) {
       return NextResponse.json(
@@ -82,36 +84,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check sender has sufficient balance (cash + credit)
-    const senderBalanceRows = await db
-      .select()
-      .from(balances)
-      .where(eq(balances.did, from_did))
-      .limit(1);
+    let source: 'credit' | 'fiat' | 'mixed' | 'external';
+    let creditBurn = 0;
+    let cashBurn = 0;
 
-    const senderBalance = senderBalanceRows[0];
-    const currentCash = senderBalance ? parseFloat(senderBalance.cashAmount) : 0;
-    const currentCredit = senderBalance ? parseFloat(senderBalance.creditAmount) : 0;
-    const totalBalance = currentCash + currentCredit;
-
-    if (totalBalance < total_amount) {
-      return NextResponse.json(
-        { error: `Insufficient balance: ${totalBalance} < ${total_amount}` },
-        { status: 400, headers: cors }
-      );
-    }
-
-    // Determine how much to burn from each bucket (credits first)
-    const creditBurn = Math.min(currentCredit, total_amount);
-    const cashBurn = total_amount - creditBurn;
-
-    let source: 'credit' | 'fiat' | 'mixed';
-    if (cashBurn === 0) {
-      source = 'credit';
-    } else if (creditBurn === 0) {
-      source = 'fiat';
+    if (funded) {
+      // Externally funded (e.g. Stripe checkout) — no balance check, no debit
+      source = 'external';
     } else {
-      source = 'mixed';
+      // Internal balance settlement — check and debit
+      const senderBalanceRows = await db
+        .select()
+        .from(balances)
+        .where(eq(balances.did, from_did))
+        .limit(1);
+
+      const senderBalance = senderBalanceRows[0];
+      const currentCash = senderBalance ? parseFloat(senderBalance.cashAmount) : 0;
+      const currentCredit = senderBalance ? parseFloat(senderBalance.creditAmount) : 0;
+      const totalBalance = currentCash + currentCredit;
+
+      if (totalBalance < total_amount) {
+        return NextResponse.json(
+          { error: `Insufficient balance: ${totalBalance} < ${total_amount}` },
+          { status: 400, headers: cors }
+        );
+      }
+
+      creditBurn = Math.min(currentCredit, total_amount);
+      cashBurn = total_amount - creditBurn;
+
+      if (cashBurn === 0) {
+        source = 'credit';
+      } else if (creditBurn === 0) {
+        source = 'fiat';
+      } else {
+        source = 'mixed';
+      }
     }
 
     const batchId = genId('batch');
@@ -119,15 +128,17 @@ export async function POST(request: NextRequest) {
 
     // Atomic settlement
     await db.transaction(async (tx) => {
-      // Debit from_did (credits first, then cash)
-      await tx
-        .update(balances)
-        .set({
-          creditAmount: sql`${balances.creditAmount} - ${creditBurn}`,
-          cashAmount: sql`${balances.cashAmount} - ${cashBurn}`,
-          updatedAt: new Date(),
-        })
-        .where(eq(balances.did, from_did));
+      // Debit from_did (skip for externally funded)
+      if (!funded) {
+        await tx
+          .update(balances)
+          .set({
+            creditAmount: sql`${balances.creditAmount} - ${creditBurn}`,
+            cashAmount: sql`${balances.cashAmount} - ${cashBurn}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(balances.did, from_did));
+      }
 
       // Credit each recipient (earnings go to cash — real value created)
       for (const recipient of fair_manifest.chain) {
@@ -150,6 +161,7 @@ export async function POST(request: NextRequest) {
           metadata: {
             ...metadata,
             role: recipient.role,
+            ...(funded && { funded: true, funded_provider: funded_provider || 'unknown' }),
           },
         });
 

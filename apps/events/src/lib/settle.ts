@@ -74,6 +74,8 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
     total_amount: totalDollars,
     service: 'events',
     type: 'ticket_purchase',
+    funded: true,
+    funded_provider: 'stripe',
     fair_manifest: { chain },
     metadata: {
       ticketId: metadata.ticketId,
