@@ -613,81 +613,83 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
         ) : (
           /* Normal input */
           <div className="flex items-end gap-2">
-            {/* File upload */}
+            {/* Hidden file input */}
             <input
               ref={fileInputRef}
               type="file"
               className="hidden"
               onChange={handleFileChange}
             />
-            {capabilities.has('send:media') ? (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={sending}
-                className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition disabled:opacity-50 text-gray-500 flex-shrink-0"
-                title="Attach file"
-              >
-                {'\uD83D\uDCCE'}
-              </button>
-            ) : (
-              <div
-                className="p-2.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
-                title="Verify your identity to send files"
-              >
-                🔒
-              </div>
-            )}
+            {/* Input container */}
+            <div className="flex-1 flex items-end min-w-0 bg-gray-100 dark:bg-gray-800 rounded-2xl px-2 py-2">
+              {/* Attach (left, inside) */}
+              {capabilities.has('send:media') ? (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={sending}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 disabled:opacity-50 flex-shrink-0 transition-colors"
+                  title="Attach file"
+                >
+                  {'\uD83D\uDCCE'}
+                </button>
+              ) : (
+                <div
+                  className="p-1.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
+                  title="Verify your identity to send files"
+                >
+                  🔒
+                </div>
+              )}
 
-            {/* Text input */}
-            <div className="flex-1 min-w-0 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
+              {/* Text input */}
               <textarea
                 value={message}
                 onChange={handleTextChange}
                 onKeyDown={handleKeyDown}
                 placeholder="Type a message..."
-                className="w-full bg-transparent resize-none outline-none text-sm"
+                className="flex-1 min-w-0 bg-transparent resize-none outline-none text-sm px-2 py-0.5"
                 rows={1}
                 style={{ minHeight: '24px', maxHeight: '160px' }}
               />
+
+              {/* Location (right, inside) */}
+              {capabilities.has('send:location') ? (
+                <button
+                  onClick={handleShareLocation}
+                  disabled={sending}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 disabled:opacity-50 flex-shrink-0 transition-colors"
+                  title="Share location"
+                >
+                  {'\uD83D\uDCCD'}
+                </button>
+              ) : (
+                <div
+                  className="p-1.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
+                  title="Verify your identity to share location"
+                >
+                  🔒
+                </div>
+              )}
+
+              {/* Voice (right, inside) */}
+              {capabilities.has('send:voice') ? (
+                <VoiceRecorder
+                  onRecordingStart={() => setVoiceActive(true)}
+                  onRecordingComplete={handleVoiceComplete}
+                  onCancel={() => setVoiceActive(false)}
+                  disabled={sending}
+                />
+              ) : (
+                <div
+                  className="p-1.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
+                  title="Verify your identity to send voice messages"
+                >
+                  🔒
+                </div>
+              )}
             </div>
 
-            {/* Location */}
-            {capabilities.has('send:location') ? (
-              <button
-                onClick={handleShareLocation}
-                disabled={sending}
-                className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition disabled:opacity-50 text-gray-500 flex-shrink-0"
-                title="Share location"
-              >
-                {'\uD83D\uDCCD'}
-              </button>
-            ) : (
-              <div
-                className="p-2.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
-                title="Verify your identity to share location"
-              >
-                🔒
-              </div>
-            )}
-
-            {/* Voice record */}
-            {capabilities.has('send:voice') ? (
-              <VoiceRecorder
-                onRecordingStart={() => setVoiceActive(true)}
-                onRecordingComplete={handleVoiceComplete}
-                onCancel={() => setVoiceActive(false)}
-                disabled={sending}
-              />
-            ) : (
-              <div
-                className="p-2.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
-                title="Verify your identity to send voice messages"
-              >
-                🔒
-              </div>
-            )}
-
-            {/* Send */}
+            {/* Send (outside) */}
             <button
               onClick={handleSend}
               disabled={!message.trim() || sending}

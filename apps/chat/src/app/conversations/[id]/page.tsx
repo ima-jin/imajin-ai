@@ -961,21 +961,23 @@ function LegacyConversationView({ conversationId }: { conversationId: string }) 
             </>
           ) : (
             <>
-              {capabilities.has('send:media') ? (
-                <FileUpload
-                  conversationId={conversationId}
-                  onUploadComplete={handleUploadComplete}
-                  onUploadError={handleUploadError}
-                />
-              ) : (
-                <div
-                  className="p-2.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
-                  title="Verify your identity to send files"
-                >
-                  🔒
-                </div>
-              )}
-              <div className="flex-1 min-w-0 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2">
+              <div className="flex-1 flex items-end min-w-0 bg-gray-100 dark:bg-gray-800 rounded-2xl px-2 py-2">
+                {/* Attach (left, inside) */}
+                {capabilities.has('send:media') ? (
+                  <FileUpload
+                    conversationId={conversationId}
+                    onUploadComplete={handleUploadComplete}
+                    onUploadError={handleUploadError}
+                  />
+                ) : (
+                  <div
+                    className="p-1.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
+                    title="Verify your identity to send files"
+                  >
+                    🔒
+                  </div>
+                )}
+                {/* Text input */}
                 <textarea
                   value={message}
                   onChange={(e) => {
@@ -986,41 +988,44 @@ function LegacyConversationView({ conversationId }: { conversationId: string }) 
                   }}
                   onKeyDown={handleKeyDown}
                   placeholder="Type a message..."
-                  className="w-full bg-transparent resize-none outline-none text-sm"
+                  className="flex-1 min-w-0 bg-transparent resize-none outline-none text-sm px-2 py-0.5"
                   rows={1}
                   style={{ minHeight: '24px', maxHeight: '160px' }}
                 />
-              </div>
-              <div className="relative flex-shrink-0">
-                {capabilities.has('send:location') ? (
-                  <LocationPicker
-                    onLocationSelected={handleLocationSelected}
+                {/* Location (right, inside) */}
+                <div className="relative flex-shrink-0">
+                  {capabilities.has('send:location') ? (
+                    <LocationPicker
+                      onLocationSelected={handleLocationSelected}
+                      disabled={sending}
+                    />
+                  ) : (
+                    <div
+                      className="p-1.5 opacity-50 cursor-not-allowed text-gray-400"
+                      title="Verify your identity to share location"
+                    >
+                      🔒
+                    </div>
+                  )}
+                </div>
+                {/* Voice (right, inside) */}
+                {capabilities.has('send:voice') ? (
+                  <VoiceRecorder
+                    onRecordingStart={() => setVoiceActive(true)}
+                    onRecordingComplete={handleVoiceComplete}
+                    onCancel={() => setVoiceActive(false)}
                     disabled={sending}
                   />
                 ) : (
                   <div
-                    className="p-2.5 opacity-50 cursor-not-allowed text-gray-400"
-                    title="Verify your identity to share location"
+                    className="p-1.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
+                    title="Verify your identity to send voice messages"
                   >
                     🔒
                   </div>
                 )}
               </div>
-              {capabilities.has('send:voice') ? (
-                <VoiceRecorder
-                  onRecordingStart={() => setVoiceActive(true)}
-                  onRecordingComplete={handleVoiceComplete}
-                  onCancel={() => setVoiceActive(false)}
-                  disabled={sending}
-                />
-              ) : (
-                <div
-                  className="p-2.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
-                  title="Verify your identity to send voice messages"
-                >
-                  🔒
-                </div>
-              )}
+              {/* Send (outside) */}
               <button
                 onClick={handleSend}
                 disabled={(!message.trim() && !uploadedMedia) || sending}

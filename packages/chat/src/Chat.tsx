@@ -380,50 +380,52 @@ export function Chat({
         ) : (
           <div className="flex items-end gap-2">
             {enableMedia && (
-              <>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            )}
+            <div className="flex-1 flex items-end min-w-0 bg-slate-100 dark:bg-zinc-800 rounded-2xl px-2 py-2">
+              {enableMedia && (
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isSending}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition disabled:opacity-50 flex-shrink-0"
+                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 disabled:opacity-50 flex-shrink-0 transition-colors"
                   title="Attach file"
                 >
                   {'\uD83D\uDCCE'}
                 </button>
-              </>
-            )}
-            <textarea
-              ref={textareaRef}
-              value={composerText}
-              onChange={handleTextChange}
-              placeholder="Message…"
-              rows={1}
-              className="flex-1 min-w-0 resize-none overflow-hidden rounded-2xl bg-slate-100 dark:bg-zinc-800 px-4 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none focus:ring-2 focus:ring-orange-500/50"
-              style={{ minHeight: '38px', maxHeight: '160px' }}
-            />
-            {enableLocation && (
-              <button
-                onClick={handleShareLocation}
-                disabled={isSending}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition disabled:opacity-50 flex-shrink-0"
-                title="Share location"
-              >
-                {'\uD83D\uDCCD'}
-              </button>
-            )}
-            {enableVoice && (
-              <VoiceRecorder
-                onRecordingStart={() => setVoiceActive(true)}
-                onRecordingComplete={handleVoiceComplete}
-                onCancel={() => setVoiceActive(false)}
-                disabled={isSending}
+              )}
+              <textarea
+                ref={textareaRef}
+                value={composerText}
+                onChange={handleTextChange}
+                placeholder="Message…"
+                rows={1}
+                className="flex-1 min-w-0 resize-none overflow-hidden bg-transparent px-2 py-0.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none"
+                style={{ minHeight: '24px', maxHeight: '160px' }}
               />
-            )}
+              {enableLocation && (
+                <button
+                  onClick={handleShareLocation}
+                  disabled={isSending}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 disabled:opacity-50 flex-shrink-0 transition-colors"
+                  title="Share location"
+                >
+                  {'\uD83D\uDCCD'}
+                </button>
+              )}
+              {enableVoice && (
+                <VoiceRecorder
+                  onRecordingStart={() => setVoiceActive(true)}
+                  onRecordingComplete={handleVoiceComplete}
+                  onCancel={() => setVoiceActive(false)}
+                  disabled={isSending}
+                />
+              )}
+            </div>
             <button
               onClick={handleSend}
               disabled={isSending || !composerText.trim()}
