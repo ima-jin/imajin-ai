@@ -96,5 +96,17 @@ The most important property: if the platform and node operators both benefit mor
 - User rate limit configuration in profile or settings service
 - `.fair` compliance check in Stream 2 dispatch flow
 
+### Roadmap Placement — 2026-03-13
+
+Assigned to **Phase 3** in the Settlement & Economics Hardening Roadmap. Ryan notes: "Low (pre-Stream 2) — but design needed now."
+
+Phase 3 scope:
+- Frequency-scaled gas in Stream 2 routing
+- Cluster-aware gas (detect coordinated Org DID clusters sharing founding DID) — depends on Identity Phase 2 attestation layer
+
+**Current state:** Stream 2 (Declared-Intent Marketplace) is not yet implemented. The gas model cannot be implemented before Stream 2 exists. However, the frequency-scaled gas mechanism should be designed into the Stream 2 schema from the start — retrofitting it will be harder than building it in.
+
+The `.fair` compliance gate proposed in §6.1 of this document (Org DIDs with constraint violations pay higher gas) connects directly to Proposal 17's intent constraint model. Both should be designed in parallel.
+
 ---
 
