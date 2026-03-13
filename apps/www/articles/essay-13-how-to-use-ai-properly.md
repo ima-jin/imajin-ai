@@ -1,5 +1,5 @@
 ---
-title: "You Don't Need to Post About Your Emergent AI Discoveries. You Just Need a Professional Operator."
+title: "You Don't Need to Post About Your Emergent AI Discoveries."
 subtitle: "The LLM is not a product. It's a unit of compute. We need to start treating it like one."
 description: "AI replaces the commodity layer and amplifies the domain knowledge layer. Here's the difference, why it costs people when nobody explains it, and how to be on the right side of it."
 date: "2026-03-13"
@@ -99,7 +99,7 @@ Here's what happens when someone with domain knowledge uses the substrate proper
 
 I've been reading systems since 1985. Not formally trained. Pattern recognition. I look at a codebase and I see the shape of it before I read the specifics. I know when something is wrong architecturally before I can name the bug. That took forty years to build.
 
-When I sat down with AI tools in 2024 and 2025, every bottleneck I'd carried in my career dissolved. Not because the AI knew what I knew. Because the AI could handle the parts I didn't need to know.
+When I sat down with AI tools for the first time in April 2025, every bottleneck I'd carried in my career dissolved. Not because the AI knew what I knew. Because the AI could handle the parts I didn't need to know.
 
 I don't need to memorize the syntax of a language I've never used. The AI handles that. I don't need to remember every method in a framework's API. The AI handles that. What the AI cannot handle is the architectural decision — *should* this be built this way? Is this the right pattern? What are the downstream consequences of this choice that won't show up for six months?
 
@@ -169,6 +169,8 @@ That's not democratization. That's abdication.
 
 ## Your Refinements Are Their Training Data
 
+The professional shielding problem and the abdication problem share the same root: nobody built the infrastructure to make expertise sovereign. So the platforms stepped in and made themselves the home for it. And once your expertise lives in their house, you already know how this ends.
+
 Here's the part they definitely don't want you thinking about.
 
 When you get good at AI — really good — you develop a system. Boot documents. System prompts. Carefully constructed context files that encode your hard-won domain knowledge in a form the model can use. You build these over months. You refine them. They represent real intellectual work, the distillation of your expertise into a form that makes the substrate actually useful for your specific situation.
@@ -186,6 +188,8 @@ This isn't hypothetical. It's the business model. These companies need training 
 The social networks at least gave you distribution in exchange for your content. The AI platforms give you access to the raw substrate — which they're already selling — in exchange for training signal that makes the substrate better, which they sell again.
 
 The deal gets worse the more sophisticated your usage becomes.
+
+Own your data. Own your context. Own the refinements that encode who you are and what you know. If you don't, someone else will — and you will still be the inventory.
 
 ---
 
