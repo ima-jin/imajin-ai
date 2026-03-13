@@ -262,10 +262,10 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
             <p className="text-xs text-gray-500 uppercase tracking-widest">.fair</p>
             {fairManifest && (
               <button
-                onClick={() => setEditingFair((v) => !v)}
+                onClick={() => setEditingFair(true)}
                 className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
               >
-                {editingFair ? "Done" : "Edit ✏️"}
+                Edit ✏️
               </button>
             )}
           </div>
@@ -273,8 +273,7 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
           {fairManifest ? (
             <FairEditor
               manifest={fairManifest}
-              readOnly={!editingFair}
-              onChange={editingFair ? handleSaveFair : undefined}
+              readOnly={true}
               sections={["attribution", "access", "transfer"]}
             />
           ) : (
@@ -284,6 +283,48 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
           )}
         </div>
       </div>
+
+      {/* .fair edit modal */}
+      {editingFair && fairManifest && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          role="button"
+          tabIndex={0}
+          onClick={() => setEditingFair(false)}
+          onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setEditingFair(false); }}
+        >
+          <div
+            className="bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl p-4 w-[480px] max-h-[80vh] overflow-y-auto"
+            role="dialog"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-gray-200">Edit .fair Manifest</p>
+              <button
+                onClick={() => setEditingFair(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <FairEditor
+              manifest={fairManifest}
+              readOnly={false}
+              onChange={handleSaveFair}
+              sections={["attribution", "access", "transfer"]}
+            />
+            <div className="flex justify-end mt-3">
+              <button
+                onClick={() => setEditingFair(false)}
+                className="px-3 py-1 text-sm bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

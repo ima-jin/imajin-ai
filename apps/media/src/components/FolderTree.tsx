@@ -266,7 +266,7 @@ export function FolderTree({
         <div className="pt-2 border-t border-white/10">
           <button
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors"
-            onClick={() => onCreateFolder(null)}
+            onClick={() => onCreateFolder(selectedFolderId)}
           >
             <span>＋</span>
             <span>New Folder</span>
@@ -281,6 +281,14 @@ export function FolderTree({
           className="fixed z-50 min-w-36 bg-[#2a2a2a] border border-white/10 rounded-lg shadow-xl py-1"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
+          {onCreateFolder && (
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
+              onClick={() => { onCreateFolder(contextMenu.folderId); closeMenu(); }}
+            >
+              New Subfolder
+            </button>
+          )}
           {onRenameFolder && (
             <button
               className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
