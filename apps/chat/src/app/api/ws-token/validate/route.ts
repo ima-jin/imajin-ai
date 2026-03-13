@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { resolveWsToken } from '../route';
+import { resolveWsToken } from '@/lib/ws-tokens';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 
 /**
