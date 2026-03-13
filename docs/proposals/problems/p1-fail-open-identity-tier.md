@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Ryan's Identity & Attestation Hardening Roadmap — Phase 0 issue #318 ("Session route hardening")
+**Outcome:** Ryan adopted the fail-closed fix as Phase 0 of the Identity Hardening Roadmap. The `|| 'hard'` default and the silent catch block (P4) are both addressed in issue #318. Phase 0 also adds the `tier` column to `auth.identities` (#319), which permanently fixes the root cause (P2).
+**Implementation:** Roadmap commitment — issue created (#318), not yet in code. Check `apps/auth/app/api/session/route.ts` line 50 for `|| 'soft'` as confirmation.
+
+---
+
 ## P1 — Fail-Open Identity Tier Default
 
 **File:** `apps/auth/app/api/session/route.ts`
