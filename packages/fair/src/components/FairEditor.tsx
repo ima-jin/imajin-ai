@@ -282,7 +282,7 @@ function TransferSection({
               <input
                 type="range"
                 min={0}
-                max={50}
+                max={100}
                 step={0.5}
                 value={((t.resaleRoyalty ?? 0) * 100)}
                 disabled={readOnly}

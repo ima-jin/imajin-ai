@@ -148,13 +148,15 @@ export async function POST(request: NextRequest) {
   // .fair manifest — allow context to override access (public only)
   const accessLevel = context?.access === "public" ? "public" : "private";
   const fairManifest = {
-    version: "0.2.0",
-    asset: assetId,
+    fair: "1.0",
+    id: assetId,
+    type: mimeType,
     owner: ownerDid,
-    access: accessLevel,
-    attribution: [{ did: ownerDid, share: 100 }],
+    created: new Date().toISOString(),
+    source: "upload",
+    access: { type: accessLevel },
+    attribution: [{ did: ownerDid, role: "creator", share: 1.0 }],
     transfer: { allowed: false },
-    createdAt: new Date().toISOString(),
   };
 
   try {
