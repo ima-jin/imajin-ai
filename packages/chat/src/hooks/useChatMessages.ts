@@ -51,7 +51,7 @@ export function useChatMessages(did: string): UseChatMessagesResult {
       const raw: Record<string, unknown>[] = data.messages ?? data;
       // Map API field names to ChatMessage interface (API returns fromDid, we use senderDid)
       const fetched: ChatMessage[] = raw.map((msg: any) => {
-        const mapped: ChatMessage = {
+        return {
           ...msg,
           senderDid: msg.senderDid ?? msg.fromDid,
           did: msg.did ?? msg.conversationDid,
@@ -60,25 +60,6 @@ export function useChatMessages(did: string): UseChatMessagesResult {
             senderDid: r.senderDid ?? r.fromDid,
           })),
         };
-        // Normalize legacy media messages (stored with content_type "text" + mediaType/mediaPath fields)
-        if (
-          mapped.content.type === 'text' &&
-          !mapped.content.text?.trim() &&
-          msg.mediaType &&
-          msg.mediaPath
-        ) {
-          const meta = msg.mediaMeta || {};
-          mapped.content = {
-            type: 'media',
-            assetId: `__legacy_chat__/${msg.mediaPath}`,
-            filename: meta.originalName || msg.mediaPath.split('/').pop() || 'image',
-            mimeType: meta.mimeType || (msg.mediaType === 'image' ? 'image/jpeg' : 'application/octet-stream'),
-            size: meta.size || 0,
-            width: meta.width,
-            height: meta.height,
-          };
-        }
-        return mapped;
       });
       // Oldest first
       const sorted = [...fetched].sort(
@@ -133,24 +114,6 @@ export function useChatMessages(did: string): UseChatMessagesResult {
       senderDid: message.senderDid ?? raw.fromDid,
       did: message.did ?? raw.conversationDid,
     };
-    // Normalize legacy media messages coming via WebSocket
-    if (
-      normalized.content.type === 'text' &&
-      !normalized.content.text?.trim() &&
-      raw.mediaType &&
-      raw.mediaPath
-    ) {
-      const meta = raw.mediaMeta || {};
-      normalized.content = {
-        type: 'media',
-        assetId: `__legacy_chat__/${raw.mediaPath}`,
-        filename: meta.originalName || raw.mediaPath.split('/').pop() || 'image',
-        mimeType: meta.mimeType || (raw.mediaType === 'image' ? 'image/jpeg' : 'application/octet-stream'),
-        size: meta.size || 0,
-        width: meta.width,
-        height: meta.height,
-      };
-    }
     setMessages(prev => {
       if (prev.some(m => m.id === normalized.id)) return prev;
       return [...prev, normalized];

@@ -34,14 +34,8 @@ function getFileIcon(mimeType: string): string {
 export function MediaMessage({ assetId, filename, mimeType, size, width, height, caption, isOwn, mediaUrl = '' }: MediaMessageProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  const isLegacyChatMedia = assetId.startsWith('__legacy_chat__/');
-  const legacyPath = isLegacyChatMedia ? assetId.slice('__legacy_chat__/'.length) : '';
-  const thumbUrl = isLegacyChatMedia
-    ? `/api/media/chat/${legacyPath}`
-    : `${mediaUrl}/api/assets/${assetId}?w=400`;
-  const fullUrl = isLegacyChatMedia
-    ? `/api/media/chat/${legacyPath}`
-    : `${mediaUrl}/api/assets/${assetId}`;
+  const thumbUrl = `${mediaUrl}/api/assets/${assetId}?w=400`;
+  const fullUrl = `${mediaUrl}/api/assets/${assetId}`;
   const isImage = mimeType.startsWith('image/');
 
   const captionColor = isOwn ? 'text-white/80' : 'text-gray-600 dark:text-gray-400';

@@ -71,10 +71,10 @@ export const messages = chatSchema.table('messages', {
   content: jsonb('content').notNull(),                          // { encrypted, nonce } or { type: 'system', text }
   contentType: text('content_type').notNull().default('text'),  // 'text' | 'system' | 'invite' | 'trust-extended' | 'voice' | 'media' | 'location'
 
-  // Media attachments
+  // Legacy media attachments (deprecated — use content.type='media' with assetId instead)
   mediaType: text('media_type'),                                // 'image' | 'file' | null
-  mediaPath: text('media_path'),                                // Path to file in /mnt/media/chat/
-  mediaMeta: jsonb('media_meta'),                               // { width, height, size, originalName, mimeType, thumbnailPath }
+  mediaPath: text('media_path'),                                // Legacy path (migrated to media service)
+  mediaMeta: jsonb('media_meta'),                               // Legacy metadata
 
   // Threading
   replyTo: text('reply_to'),                                    // Message ID

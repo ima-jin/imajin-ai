@@ -28,9 +28,6 @@ interface Message {
   createdAt: string;
   editedAt: string | null;
   deletedAt: string | null;
-  mediaType?: 'image' | 'file' | null;
-  mediaPath?: string | null;
-  mediaMeta?: any;
 }
 
 interface Reaction {
@@ -53,8 +50,6 @@ export interface MessageBubbleProps {
   onScrollToMessage?: (messageId: string) => void;
   /** Base URL for the media service (e.g. process.env.NEXT_PUBLIC_MEDIA_URL). Passed down to VoiceMessage and MediaMessage. */
   mediaUrl?: string;
-  /** Optional renderer for legacy media attachments (mediaType/mediaPath/mediaMeta fields). Chat-app specific. */
-  renderLegacyMedia?: (props: { mediaType: 'image' | 'file'; mediaPath: string; mediaMeta: any }) => React.ReactNode;
 }
 
 function formatMessageTime(dateStr: string): string {
@@ -77,7 +72,6 @@ export function MessageBubble({
   replyToMessage,
   onScrollToMessage,
   mediaUrl = '',
-  renderLegacyMedia,
 }: MessageBubbleProps) {
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
@@ -267,17 +261,6 @@ export function MessageBubble({
               // Default: text rendering
               return text ? <p className="text-sm whitespace-pre-wrap">{text}</p> : null;
             })()}
-
-            {/* Legacy media attachments (chat-app specific, injected via prop) */}
-            {renderLegacyMedia && message.mediaType && message.mediaPath && message.mediaMeta && (
-              <div className="mt-2">
-                {renderLegacyMedia({
-                  mediaType: message.mediaType,
-                  mediaPath: message.mediaPath,
-                  mediaMeta: message.mediaMeta,
-                })}
-              </div>
-            )}
 
             {/* Link previews */}
             {message.linkPreviews && message.linkPreviews.length > 0 && (
