@@ -2,12 +2,15 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { FairManifest, FairEntry, FairAccess } from '../types';
+import type { FairTemplate } from '../templates';
+import { templates } from '../templates';
 
 export interface FairEditorProps {
   manifest: FairManifest;
   onChange?: (manifest: FairManifest) => void;
   readOnly?: boolean;
-  sections?: ('attribution' | 'access' | 'transfer' | 'integrity')[];
+  sections?: ('attribution' | 'access' | 'transfer' | 'integrity' | 'intent' | 'terms' | 'distributions')[];
+  template?: FairTemplate;
   resolveProfile?: (did: string) => Promise<{ name: string; avatar?: string }>;
 }
 
@@ -16,6 +19,7 @@ const ROLE_OPTIONS = [
   'platform', 'venue', 'distributor', 'label', 'other',
 ];
 
+const ALL_SECTIONS = ['attribution', 'access', 'transfer', 'integrity', 'intent', 'terms', 'distributions'] as const;
 const SECTION_DEFAULTS: NonNullable<FairEditorProps['sections']> = ['attribution', 'access', 'transfer', 'integrity'];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -222,7 +226,7 @@ function AccessSection({
   readOnly: boolean;
   onChange?: (access: FairAccess) => void;
 }) {
-  const types = ['public', 'private', 'trust-graph'] as const;
+  const types = ['public', 'private', 'trust-graph', 'conversation'] as const;
 
   return (
     <div className="space-y-3">
@@ -242,6 +246,23 @@ function AccessSection({
           </button>
         ))}
       </div>
+
+      {access.type === 'conversation' && (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500">Conversation DID</p>
+          {readOnly ? (
+            <span className="text-xs text-gray-400 truncate block">{access.conversationDid ?? '—'}</span>
+          ) : (
+            <input
+              type="text"
+              value={access.conversationDid ?? ''}
+              onChange={e => onChange?.({ ...access, conversationDid: e.target.value || undefined })}
+              placeholder="did:key:... (conversation)"
+              className="w-full bg-[#252525] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500"
+            />
+          )}
+        </div>
+      )}
 
       {(access.type === 'private' || access.type === 'trust-graph') && (
         <div className="space-y-2">
@@ -396,9 +417,14 @@ export function FairEditor({
   onChange,
   readOnly = false,
   sections: sectionsProp,
+  template,
   resolveProfile,
 }: FairEditorProps) {
-  const sections = sectionsProp ?? SECTION_DEFAULTS;
+  // Derive active sections: explicit prop > template config > defaults
+  const sections: NonNullable<FairEditorProps['sections']> = sectionsProp
+    ?? (template
+      ? ALL_SECTIONS.filter(s => templates[template].sections[s])
+      : SECTION_DEFAULTS);
   const [local, setLocal] = useState<FairManifest>(() => {
     // Normalize shares on init — handle DB storing 0-100 vs 0-1
     const rawAttribution = manifest.attribution?.length ? manifest.attribution : (manifest.chain ?? []);

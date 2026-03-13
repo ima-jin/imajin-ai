@@ -13,13 +13,19 @@ export interface FairTransfer {
 }
 
 export interface FairAccess {
-  type: "public" | "private" | "trust-graph";
+  type: "public" | "private" | "trust-graph" | "conversation";
   allowedDids?: string[]; // for private access
+  conversationDid?: string; // for conversation-scoped access
 }
 
 export interface FairIntegrity {
   hash: string; // sha256:...
   size: number; // bytes
+}
+
+export interface FairIntent {
+  purpose: string;
+  constraints?: Record<string, unknown>;
 }
 
 export interface FairManifest {
@@ -35,6 +41,9 @@ export interface FairManifest {
   distributions?: FairEntry[];
   integrity?: FairIntegrity;
   terms?: string; // license URL or text
+  intent?: FairIntent; // stated purpose and optional constraints
+  signature?: string; // creator signature (required in Phase 1)
+  platformSignature?: string; // platform endorsement signature
   // backward compat with existing events code
   version?: string;
   chain?: FairEntry[]; // alias for attribution
