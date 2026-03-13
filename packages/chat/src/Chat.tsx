@@ -150,7 +150,7 @@ export function Chat({
 
   // Resolve sender DIDs to display names
   const senderDids = useMemo(
-    () => [...new Set(messages.map(m => m.senderDid).filter(d => d !== currentUserDid))],
+    () => Array.from(new Set(messages.map(m => m.senderDid).filter(d => d !== currentUserDid))),
     [messages, currentUserDid]
   );
   const didNames = useDidNames(senderDids);
