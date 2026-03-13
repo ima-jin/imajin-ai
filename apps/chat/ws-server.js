@@ -25,26 +25,45 @@ function getSessionCookieName() {
   return env === 'dev' ? 'imajin_session_dev' : 'imajin_session';
 }
 
-async function authenticateRequest(req) {
+async function authenticateWithCookie(req) {
   const cookies = parseCookies(req.headers.cookie);
   const cookieName = getSessionCookieName();
   const token = cookies[cookieName];
-  console.log('[WS] Auth attempt, cookie name:', cookieName, 'present:', !!token, 'cookies received:', Object.keys(cookies).join(',') || 'none', 'raw:', (req.headers.cookie || '').substring(0, 100));
   if (!token) return null;
+  return authenticateToken(cookieName, token);
+}
 
+async function authenticateToken(cookieName, token) {
   const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
   try {
     const res = await fetch(`${authUrl}/api/session`, {
       headers: { Cookie: `${cookieName}=${token}` },
     });
-    console.log('[WS] Auth response:', res.status);
     if (!res.ok) return null;
     const data = await res.json();
-    const did = data.did || data.identity?.did || null;
-    console.log('[WS] Authenticated DID:', did);
-    return did;
+    return data.did || data.identity?.did || null;
   } catch (err) {
     console.error('[WS] Auth error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Validate a short-lived WS token via the local API endpoint
+ */
+async function authenticateWsToken(token) {
+  const port = process.env.PORT || '3007';
+  try {
+    const res = await fetch(`http://localhost:${port}/api/ws-token/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.did || null;
+  } catch (err) {
+    console.error('[WS] Token auth error:', err.message);
     return null;
   }
 }
@@ -177,25 +196,55 @@ function setupWebSocket(server) {
       return;
     }
 
-    const did = await authenticateRequest(req);
-    if (!did) {
-      console.log('[WS] Rejecting - no auth');
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-      socket.destroy();
-      return;
-    }
-    console.log('[WS] Accepting connection for:', did);
+    // Try cookie auth first, but allow deferred auth via first message
+    const did = await authenticateWithCookie(req);
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      // Track connection
-      const meta = { did, subscriptions: new Set() };
+      const meta = { did: did || null, subscriptions: new Set(), authenticated: !!did };
       socketMeta.set(ws, meta);
-      if (!didSockets.has(did)) didSockets.set(did, new Set());
-      didSockets.get(did).add(ws);
 
-      ws.on('message', (raw) => {
+      if (did) {
+        if (!didSockets.has(did)) didSockets.set(did, new Set());
+        didSockets.get(did).add(ws);
+        ws.send(JSON.stringify({ type: 'connected' }));
+        if (didSockets.get(did).size === 1) {
+          broadcastPresenceChange(did, true);
+        }
+      } else {
+        // Allow unauthenticated connection — must send 'auth' message first
+        ws.send(JSON.stringify({ type: 'auth_required' }));
+      }
+
+      ws.on('message', async (raw) => {
         try {
           const msg = JSON.parse(raw.toString());
+
+          // Handle deferred auth via WS token
+          if (msg.type === 'auth' && msg.token && !meta.authenticated) {
+            const authedDid = await authenticateWsToken(msg.token);
+            if (authedDid) {
+              meta.did = authedDid;
+              meta.authenticated = true;
+              if (!didSockets.has(authedDid)) didSockets.set(authedDid, new Set());
+              didSockets.get(authedDid).add(ws);
+              ws.send(JSON.stringify({ type: 'connected' }));
+              if (didSockets.get(authedDid).size === 1) {
+                broadcastPresenceChange(authedDid, true);
+              }
+              console.log('[WS] Deferred auth succeeded for:', authedDid);
+            } else {
+              ws.send(JSON.stringify({ type: 'error', message: 'Authentication failed' }));
+              ws.close(4001, 'Authentication failed');
+            }
+            return;
+          }
+
+          // Reject other messages if not authenticated
+          if (!meta.authenticated) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated. Send auth message first.' }));
+            return;
+          }
+
           if (msg.type === 'ping') {
             ws.send(JSON.stringify({ type: 'pong' }));
           } else if (msg.type === 'subscribe') {
@@ -203,10 +252,10 @@ function setupWebSocket(server) {
             if (msg.did) meta.subscriptions.add(msg.did);
           } else if (msg.type === 'typing') {
             const channel = msg.did || msg.conversationId;
-            if (channel) handleTyping(channel, did, msg.name || null);
+            if (channel) handleTyping(channel, meta.did, msg.name || null);
           } else if (msg.type === 'stop_typing') {
             const channel = msg.did || msg.conversationId;
-            if (channel) handleStopTyping(channel, did);
+            if (channel) handleStopTyping(channel, meta.did);
           }
         } catch {
           ws.send(JSON.stringify({ type: 'error', message: 'Invalid message' }));
@@ -214,32 +263,25 @@ function setupWebSocket(server) {
       });
 
       ws.on('close', async () => {
+        const closeDid = meta.did;
         socketMeta.delete(ws);
-        const sockets = didSockets.get(did);
-        if (sockets) {
-          sockets.delete(ws);
-          if (sockets.size === 0) {
-            didSockets.delete(did);
-            // User went offline, update last_seen_at
-            await updateLastSeen(did);
-            // Clear any typing indicators for this user
-            for (const [convId, typingUsers] of typingStatus.entries()) {
-              if (typingUsers.has(did)) {
-                handleStopTyping(convId, did);
+        if (closeDid) {
+          const sockets = didSockets.get(closeDid);
+          if (sockets) {
+            sockets.delete(ws);
+            if (sockets.size === 0) {
+              didSockets.delete(closeDid);
+              await updateLastSeen(closeDid);
+              for (const [convId, convTyping] of typingStatus.entries()) {
+                if (convTyping.has(closeDid)) {
+                  handleStopTyping(convId, closeDid);
+                }
               }
+              broadcastPresenceChange(closeDid, false);
             }
-            // Broadcast offline status to relevant conversations
-            broadcastPresenceChange(did, false);
           }
         }
       });
-
-      ws.send(JSON.stringify({ type: 'connected' }));
-
-      // If this is the first connection for this DID, broadcast online status
-      if (didSockets.get(did).size === 1) {
-        broadcastPresenceChange(did, true);
-      }
     });
   });
 }

@@ -57,20 +57,41 @@ export function useChatWebSocket(did: string): UseChatWebSocketResult {
 
     ws.onopen = () => {
       if (!mountedRef.current) { ws.close(); return; }
-      setIsConnected(true);
       reconnectDelay.current = 1000;
-      ws.send(JSON.stringify({ type: 'subscribe', did: didRef.current }));
-      pingTimer.current = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping' }));
-        }
-      }, 30000);
+      // Don't set connected yet — wait for 'connected' or handle 'auth_required'
     };
 
     ws.onmessage = (event) => {
       try {
         const data: WSMessage = JSON.parse(event.data as string);
-        if (data.type === 'pong' || data.type === 'connected') return;
+        if (data.type === 'pong') return;
+
+        // Handle deferred auth — fetch a WS token via same-origin API
+        if (data.type === 'auth_required') {
+          fetch(`${chatUrl}/api/ws-token`, { credentials: 'include' })
+            .then(res => res.ok ? res.json() : null)
+            .then(tokenData => {
+              if (tokenData?.token && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'auth', token: tokenData.token }));
+              }
+            })
+            .catch(() => {});
+          return;
+        }
+
+        // Server confirmed auth — now subscribe and set connected
+        if (data.type === 'connected') {
+          setIsConnected(true);
+          ws.send(JSON.stringify({ type: 'subscribe', did: didRef.current }));
+          if (!pingTimer.current) {
+            pingTimer.current = setInterval(() => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping' }));
+              }
+            }, 30000);
+          }
+          return;
+        }
 
         if (data.type === 'user_typing') {
           const senderDid = data.did as string;
