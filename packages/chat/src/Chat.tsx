@@ -101,13 +101,35 @@ export function Chat({
     }
   }, [lastMessage, pushMessage, updateMessage]);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages and initial load
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+
+  // Track whether user is near the bottom of the scroll container
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const threshold = 80; // px from bottom
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+  }, []);
+
+  // Scroll to bottom helper
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const el = scrollContainerRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior });
+  }, []);
+
+  // Scroll on new messages (if user is near bottom) or initial load
   useEffect(() => {
-    if (messages.length > prevCountRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messages.length === 0) return;
+    if (prevCountRef.current === 0) {
+      // Initial load — snap to bottom instantly
+      scrollToBottom('instant');
+    } else if (messages.length > prevCountRef.current && isNearBottomRef.current) {
+      scrollToBottom('smooth');
     }
     prevCountRef.current = messages.length;
-  }, [messages.length]);
+  }, [messages.length, scrollToBottom]);
 
   // Infinite scroll up via IntersectionObserver
   useEffect(() => {
@@ -141,12 +163,8 @@ export function Chat({
     stopTyping();
   }, [composerText, isSending, editingMsg, replyTo, editMessage, sendMessage, stopTyping]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  // Enter = newline (default behavior). No keyboard shortcut to send.
+  // Users send via the send button.
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setComposerText(e.target.value);
@@ -254,7 +272,7 @@ export function Chat({
   return (
     <div className={`flex flex-col h-full bg-white dark:bg-zinc-900 ${className ?? ''}`}>
       {/* Message list */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
         <div ref={sentinelRef} />
         {isLoading && (
           <p className="text-center text-xs text-slate-400 py-2 animate-pulse">Loading…</p>
@@ -359,7 +377,6 @@ export function Chat({
               ref={textareaRef}
               value={composerText}
               onChange={handleTextChange}
-              onKeyDown={handleKeyDown}
               placeholder="Message…"
               rows={1}
               className="flex-1 min-w-0 resize-none overflow-hidden rounded-2xl bg-slate-100 dark:bg-zinc-800 px-4 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none focus:ring-2 focus:ring-orange-500/50"
