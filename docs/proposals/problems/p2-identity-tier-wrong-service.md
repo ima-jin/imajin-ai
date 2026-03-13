@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Ryan's Identity & Attestation Hardening Roadmap — Phase 0 issue #319 ("auth.identities tier column migration")
+**Outcome:** P2 is adopted exactly as proposed. Phase 0 adds a `tier` column to `auth.identities`, migrates existing values from `profile.profiles.identity_tier`, and removes the cross-schema query from the session route. This is the precise fix described in this document.
+**Implementation:** Roadmap commitment — issue created (#319), not yet in code. Confirm by checking for a new migration adding `tier` to `auth.identities` and removal of `SELECT identity_tier FROM profile.profiles` from the session route.
+
+---
+
 ## P2 — Identity Tier Stored in Wrong Service
 
 **File:** `apps/auth/app/api/session/route.ts` (line 54), `apps/profile/src/db/schema.ts` (identity_tier column)
