@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Ryan's .fair Hardening Roadmap (March 13) — adopted as "Phase 1 keystone"; Ryan's Identity & Attestation Hardening Roadmap — issue #320 extends this to identity attestations; issue #316 created
+**Outcome:** The `sign()`/`verify()` Ed25519 utilities are adopted as the shared signing primitive across .fair, attestations, and distribution contracts. Ryan called this "the keystone." Issue #316 implements `packages/auth/src/crypto.ts` directly as proposed. Issue #320 (attestation schema) depends on #316.
+**Implementation:** Whitepaper v0.3 — credited. Issue #316 — not yet in code.
+
+---
+
 ## 7. Cryptographic Trust Layer — Unified Architecture
 
 **Author:** Greg Mulholland
@@ -5,6 +13,17 @@
 **Thread:** `current-threads/attestation-data-layer.md`
 **Related upstream:** RFC-001, Discussion #255, #268 (Embedded Wallet), #271 (Progressive Trust), #273 (Trust Accountability)
 **Addresses:** Attestation Data Layer (Flagged, blocks multiple proposals); synthesizes Proposals 5 and 6
+
+### Status Update — 2026-03-13: Adopted as Phase 1 Keystone
+
+Ryan's .fair Hardening Roadmap (March 13, 2026) identifies the `sign()`/`verify()` Ed25519 utilities proposed here as **"the keystone"** of Phase 1 — the shared primitive on which .fair signing, identity attestations, and distribution contracts all depend.
+
+> *"This is the single highest-priority .fair work... The keystone. `sign(payload, privateKey)` → Ed25519 signature, `verify(payload, signature, publicKey)` → boolean. Shared utility — used by attestations, .fair, distribution contracts."*
+
+**Issue #316** — Auth signing utilities — created March 13. Directly implements Phase 1 of this proposal: `sign()` and `verify()` in `packages/auth/src/crypto.ts`.
+**Issue #317** — .fair cryptographic signing — created March 13. Depends on #316. Implements `signManifest()` and `verifyManifest()` in `packages/fair/src/sign.ts`.
+
+The attestation data layer (the `auth.attestations` schema, standing computation, bilateral root records) is not addressed in the current roadmap — Phase 1 focuses on the primitive signing utilities. The attestation table remains a future dependency for Progressive Trust and Trust Accountability implementation.
 
 ### Executive Summary
 
