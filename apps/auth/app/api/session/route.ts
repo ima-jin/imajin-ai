@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken, getSessionCookieOptions } from '@/lib/jwt';
 import { db } from '@/src/db';
 import { identities } from '@/src/db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 
 export async function OPTIONS(request: NextRequest) {
@@ -45,18 +45,7 @@ export async function GET(request: NextRequest) {
     }
 
     const metadata = identity[0].metadata as Record<string, unknown> || {};
-
-    // Check profile tier as source of truth (profile DB shares same Postgres)
-    let profileTier = session.tier || 'hard';
-    try {
-      const profileRows = await db.execute(
-        sql`SELECT identity_tier FROM profile.profiles WHERE did = ${session.sub} LIMIT 1`
-      );
-      const row = (profileRows as any)?.[0];
-      if (row?.identity_tier) profileTier = row.identity_tier;
-    } catch {
-      // Profile schema may not be available
-    }
+    const tier = (identity[0] as any).tier || 'soft';
 
     return NextResponse.json({
       did: session.sub,
@@ -64,7 +53,7 @@ export async function GET(request: NextRequest) {
       type: identity[0].type || session.type,
       name: identity[0].name || session.name,
       role: metadata.role || 'member',
-      tier: profileTier,
+      tier,
     }, { headers: cors });
 
   } catch (error) {

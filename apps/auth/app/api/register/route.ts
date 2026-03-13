@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
           handle: existing[0].handle || undefined,
           type: existing[0].type,
           name: existing[0].name || undefined,
-          tier: 'hard', // registrations with public keys are hard DIDs
+          tier: 'preliminary', // registrations with public keys are preliminary DIDs
         });
 
         const cookieConfig = getSessionCookieOptions();
@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
       handle: identity.handle || undefined,
       type: identity.type,
       name: identity.name || undefined,
-      tier: 'hard', // registrations with public keys are hard DIDs
+      tier: 'preliminary', // registrations with public keys are preliminary DIDs
     });
 
     // Set cookie first so the accept call is authenticated

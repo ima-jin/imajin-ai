@@ -36,7 +36,7 @@ async function validateSessionCookie(
       type: data.type || data.identity?.type || "human",
       name: data.name || data.identity?.name,
       handle: data.handle || data.identity?.handle,
-      tier: data.tier || data.identity?.tier || "hard",
+      tier: data.tier || data.identity?.tier || "soft",
     };
 
     if (!identity.id) {

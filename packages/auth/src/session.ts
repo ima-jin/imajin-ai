@@ -32,7 +32,7 @@ export async function getSession(): Promise<Identity | null> {
       type: data.type || "human",
       name: data.name,
       handle: data.handle,
-      tier: data.tier || "hard",
+      tier: data.tier || "soft",
     };
   } catch (error) {
     console.error("[AUTH] Session fetch failed:", error);

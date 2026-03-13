@@ -3,3 +3,4 @@ export { requireAuth } from "./require-auth";
 export { optionalAuth } from "./optional-auth";
 export { getSession } from "./session";
 export { requireHardDID } from "./require-hard-did";
+export { requireEstablishedDID } from "./require-established-did";
