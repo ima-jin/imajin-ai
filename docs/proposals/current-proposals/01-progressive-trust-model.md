@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Ryan's Identity & Attestation Hardening Roadmap (March 13) — Phase 2 vouch flow, issue #321; whitepaper v0.3 — "Progressive Trust Model: Visitor/Resident/Host" section credited
+**Outcome:** The three-tier model (soft/preliminary/established) is adopted as the protocol standard. Ryan renamed the tiers from Visitor/Resident/Host → soft/preliminary/established but the structure is identical. Phase 2 implements the vouch flow (#321) that gates the preliminary→established upgrade. Phase 0 (#319) adds the `tier` column to `auth.identities` as the first code step.
+**Implementation:** Whitepaper v0.3 — concept adopted. Phase 0 (#319) and Phase 2 (#321) — issues created, not yet in code.
+
+---
+
 ## 1. Progressive Trust Model — Tiered Onboarding
 
 **Author:** Greg Mulholland (concept), refined with Ryan Veteze and Jin
