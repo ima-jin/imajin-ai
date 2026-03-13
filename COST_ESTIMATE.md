@@ -8,11 +8,11 @@
 
 | Metric | Traditional | Actual |
 |--------|------------|--------|
-| **Cost** | **$1,782,649** | **$52,251** |
+| **Cost** | **$1,782,649** | **$53,355** |
 | **Timeline** | 13.4 months | 40 days |
 | **Team** | 7.6 people | 1 person + AI |
 | **Hours** | 15,484 | 250 |
-| **Cost multiplier** | — | **34× cheaper** |
+| **Cost multiplier** | — | **33× cheaper** |
 | **Speed multiplier** | — | **10× faster** |
 | **Hour multiplier** | — | **62× fewer hours** |
 
@@ -20,9 +20,9 @@
 
 | Item | Amount |
 |------|--------|
-| AI/API inference spend | $2,251.03 |
+| AI/API inference spend | $3,355.13 |
 | Human hours (250h @ $200/hr) | $50,000.00 |
-| **Total** | **$52,251.03** |
+| **Total** | **$53,355.13** |
 
 ---
 
@@ -236,12 +236,12 @@ These are the costs a traditional team incurs that a solo AI-augmented builder s
 
 | | Traditional (COCOMO II) | AI-Augmented (Actual) |
 |--|------------------------|----------------------|
-| **Cost** | $1,782,649 | $52,251 |
+| **Cost** | $1,782,649 | $53,355 |
 | **Timeline** | 13.4 months | 40 days |
 | **Team** | 7.6 people | 1 person + AI |
 | **Hours** | 15,484 | 250 |
 | | | |
-| **Cost ratio** | — | **34× cheaper** |
+| **Cost ratio** | — | **33× cheaper** |
 | **Speed ratio** | — | **10× faster** |
 | **Hour ratio** | — | **62× fewer hours** |
 | | | |
@@ -255,7 +255,7 @@ At a growth-stage startup ($200K/yr fully loaded staff engineers):
 | Metric | Value |
 |--------|-------|
 | COCOMO estimate | $2,377,667 |
-| Cost multiplier vs actual | **46× cheaper** |
+| Cost multiplier vs actual | **45× cheaper** |
 
 ---
 
