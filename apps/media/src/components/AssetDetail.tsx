@@ -9,7 +9,7 @@ const PROFILE_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX
   : 'https://profile.imajin.ai';
 
 async function resolveProfile(did: string): Promise<{ name: string; avatar?: string }> {
-  const res = await fetch(`${PROFILE_URL}/api/profiles/${encodeURIComponent(did)}`, { credentials: 'include' });
+  const res = await fetch(`${PROFILE_URL}/api/profile/${encodeURIComponent(did)}`, { credentials: 'include' });
   if (!res.ok) throw new Error('Profile not found');
   const data = await res.json();
   return { name: data.handle || data.name || did.slice(0, 16), avatar: data.avatar };
