@@ -40,6 +40,9 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
   });
   const [movingTo, setMovingTo] = useState(false);
   const [shareLabel, setShareLabel] = useState("Copy URL");
+  const [savedFilename, setSavedFilename] = useState(asset.filename);
+  const [editingFilename, setEditingFilename] = useState(false);
+  const [filenameInput, setFilenameInput] = useState("");
 
   const isImage = asset.mimeType.startsWith("image/");
   const isAudio = asset.mimeType.startsWith("audio/");
@@ -61,6 +64,24 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
     navigator.clipboard.writeText(url).catch(() => {});
     setShareLabel("Copied!");
     setTimeout(() => setShareLabel("Copy URL"), 2000);
+  };
+
+  const handleRenameFile = async () => {
+    const trimmed = filenameInput.trim();
+    if (!trimmed || trimmed === savedFilename) {
+      setEditingFilename(false);
+      return;
+    }
+    const res = await fetch(`/api/assets/${asset.id}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: trimmed }),
+    });
+    if (res.ok) {
+      setSavedFilename(trimmed);
+    }
+    setEditingFilename(false);
   };
 
   const handleSaveFair = async (manifest: FairManifest) => {
@@ -102,7 +123,27 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
             ← Back
           </button>
           <span className="text-gray-700">/</span>
-          <span className="text-sm text-gray-200 truncate flex-1 min-w-0">{asset.filename}</span>
+          {editingFilename ? (
+            <input
+              className="flex-1 min-w-0 text-sm bg-[#252525] border border-orange-500 rounded px-1 py-0.5 text-gray-100 outline-none"
+              value={filenameInput}
+              onChange={(e) => setFilenameInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleRenameFile();
+                if (e.key === "Escape") setEditingFilename(false);
+              }}
+              onBlur={handleRenameFile}
+              autoFocus
+            />
+          ) : (
+            <span
+              className="text-sm text-gray-200 truncate flex-1 min-w-0 cursor-pointer hover:text-white"
+              onClick={() => { setFilenameInput(savedFilename); setEditingFilename(true); }}
+              title="Click to rename"
+            >
+              {savedFilename}
+            </span>
+          )}
         </div>
 
         {/* Preview */}

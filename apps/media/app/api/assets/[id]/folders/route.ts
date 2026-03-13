@@ -66,6 +66,9 @@ export async function PUT(
       }
     });
 
+    // Update the direct folderId column too (UI reads this for filtering)
+    await db.update(assets).set({ folderId: folderIds.length > 0 ? (folderIds as string[])[0] : null }).where(eq(assets.id, id));
+
     return NextResponse.json({ assetId: id, folderIds });
   } catch (err) {
     console.error("DB transaction failed:", err);
