@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Asset } from "@/src/db/schema";
 import { FairEditor } from "@imajin/fair";
+import type { FairManifest } from "@imajin/fair";
 
 const PROFILE_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX
   ? `${process.env.NEXT_PUBLIC_SERVICE_PREFIX}profile.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`
@@ -14,13 +15,79 @@ async function resolveProfile(did: string): Promise<{ name: string; avatar?: str
   const data = await res.json();
   return { name: data.handle || data.name || did.slice(0, 16), avatar: data.avatar };
 }
-import type { FairManifest } from "@imajin/fair";
 import { formatSize } from "./AssetCard";
 
 interface Folder {
   id: string;
   name: string;
   icon: string | null;
+}
+
+function FairEditModal({
+  manifest,
+  onSave,
+  onCancel,
+}: {
+  manifest: FairManifest;
+  onSave: (m: FairManifest) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState<FairManifest>(manifest);
+  const [saving, setSaving] = useState(false);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      role="button"
+      tabIndex={0}
+      onClick={onCancel}
+      onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
+    >
+      <div
+        className="bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl p-4 w-[480px] max-h-[80vh] overflow-y-auto"
+        role="dialog"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium text-gray-200">Edit .fair Manifest</p>
+          <button
+            onClick={onCancel}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+        <FairEditor
+          resolveProfile={resolveProfile}
+          manifest={draft}
+          readOnly={false}
+          onChange={setDraft}
+          sections={["attribution", "access", "transfer"]}
+        />
+        <div className="flex justify-end gap-2 mt-3">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-sm text-gray-400 hover:text-white rounded-md transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              await onSave(draft);
+              setSaving(false);
+              onCancel();
+            }}
+            className="px-4 py-1.5 text-sm bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-colors disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 interface AssetDetailProps {
@@ -338,44 +405,11 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
 
       {/* .fair edit modal */}
       {editingFair && fairManifest && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-          role="button"
-          tabIndex={0}
-          onClick={() => setEditingFair(false)}
-          onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setEditingFair(false); }}
-        >
-          <div
-            className="bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl p-4 w-[480px] max-h-[80vh] overflow-y-auto"
-            role="dialog"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-gray-200">Edit .fair Manifest</p>
-              <button
-                onClick={() => setEditingFair(false)}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-            <FairEditor resolveProfile={resolveProfile}
-              manifest={fairManifest}
-              readOnly={false}
-              onChange={handleSaveFair}
-              sections={["attribution", "access", "transfer"]}
-            />
-            <div className="flex justify-end mt-3">
-              <button
-                onClick={() => setEditingFair(false)}
-                className="px-3 py-1 text-sm bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-colors"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
+        <FairEditModal
+          manifest={fairManifest}
+          onSave={handleSaveFair}
+          onCancel={() => setEditingFair(false)}
+        />
       )}
     </div>
   );
