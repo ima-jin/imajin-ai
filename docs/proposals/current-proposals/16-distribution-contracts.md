@@ -92,5 +92,9 @@ The distribution contract schema has a `signature` field in the RFC. No `Distrib
 - Signed audit log for every routing decision
 - `ADR-002` document in `docs/decisions/`
 
+### Roadmap Placement — 2026-03-13
+
+Assigned to **Phase 3** in Ryan's .fair Hardening Roadmap. Ryan noted this "needs issue" — no upstream issue exists yet. Suggested home: new `packages/distribution/` or extended `@imajin/fair`. Depends on Phase 1 signing and Phase 2 settlement working end-to-end first.
+
 ---
 
