@@ -9,3 +9,5 @@ export { verify } from "./verify";
 export * as crypto from "./crypto";
 export type { Attestation, AttestationType } from "./types/attestation";
 export { ATTESTATION_TYPES } from "./types/attestation";
+export { resolvePublicKey, createDbResolver, createHttpResolver } from "./resolve";
+export type { ResolvedIdentity, PublicKeyResolver } from "./resolve";
