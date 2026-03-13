@@ -29,7 +29,7 @@ async function authenticateRequest(req) {
   const cookies = parseCookies(req.headers.cookie);
   const cookieName = getSessionCookieName();
   const token = cookies[cookieName];
-  console.log('[WS] Auth attempt, cookie name:', cookieName, 'present:', !!token);
+  console.log('[WS] Auth attempt, cookie name:', cookieName, 'present:', !!token, 'cookies received:', Object.keys(cookies).join(',') || 'none', 'raw:', (req.headers.cookie || '').substring(0, 100));
   if (!token) return null;
 
   const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
