@@ -78,24 +78,7 @@ export const conversationReadsV2 = chatSchema.table('conversation_reads_v2', {
   didIdx: index('idx_chat_reads_v2_did').on(table.did),
 }));
 
-/**
- * Conversation members v2 - tracks who belongs to a group conversation
- * For DMs this is implicit (both DIDs are in the hash), but groups need explicit tracking
- * so members can discover the conversation before sending/reading.
- */
-export const conversationMembersV2 = chatSchema.table('conversation_members_v2', {
-  conversationDid: text('conversation_did').references(() => conversationsV2.did, { onDelete: 'cascade' }).notNull(),
-  did: text('did').notNull(),
-  role: text('role').notNull().default('member'),  // 'owner' | 'member'
-  addedBy: text('added_by'),
-  joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.conversationDid, table.did] }),
-  didIdx: index('idx_chat_members_v2_did').on(table.did),
-}));
-
 // Types
-export type ConversationMemberV2 = typeof conversationMembersV2.$inferSelect;
 export type ConversationV2 = typeof conversationsV2.$inferSelect;
 export type NewConversationV2 = typeof conversationsV2.$inferInsert;
 export type MessageV2 = typeof messagesV2.$inferSelect;

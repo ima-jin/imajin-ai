@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { eq, and, desc, lt, isNull, inArray } from 'drizzle-orm';
-import { db, conversationsV2, messagesV2, messageReactionsV2, conversationMembersV2 } from '@/db';
+import { db, conversationsV2, messagesV2, messageReactionsV2 } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } from '@/lib/utils';
 import { parseConversationDid } from '@/lib/conversation-did';
@@ -174,14 +174,6 @@ export async function POST(
         createdBy: identity.id,
       }).onConflictDoNothing();
     }
-
-    // Ensure sender is registered as a member (idempotent)
-    await db.insert(conversationMembersV2).values({
-      conversationDid: did,
-      did: identity.id,
-      role: !existing ? 'owner' : 'member',
-      addedBy: identity.id,
-    }).onConflictDoNothing();
 
     // Validate reply if provided
     if (replyToMessageId) {
