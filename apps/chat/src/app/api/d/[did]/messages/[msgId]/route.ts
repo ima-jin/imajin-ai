@@ -117,6 +117,13 @@ export async function DELETE(
       .set({ deletedAt: new Date() })
       .where(eq(messagesV2.id, msgId));
 
+    const port = process.env.PORT || '3007';
+    fetch(`http://localhost:${port}/__ws_broadcast`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: did, type: 'message_deleted', messageId: msgId }),
+    }).catch(() => {});
+
     return new Response(null, { status: 204, headers: cors });
   } catch (error) {
     console.error('Failed to delete message:', error);

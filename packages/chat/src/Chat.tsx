@@ -64,7 +64,7 @@ export function Chat({
   className,
 }: ChatProps) {
   const access = useChatAccess(did);
-  const { messages, hasMore, loadMore, isLoading, pushMessage, updateMessage } = useChatMessages(did);
+  const { messages, hasMore, loadMore, isLoading, pushMessage, updateMessage, removeMessage, addReactionToMessage, removeReactionFromMessage } = useChatMessages(did);
   const { sendMessage, addReaction, removeReaction, editMessage, deleteMessage, isSending } =
     useChatActions(did);
   const { typingUsers, sendTyping, stopTyping, lastMessage } = useChatWebSocket(did);
@@ -92,15 +92,22 @@ export function Chat({
     }
   }, [access.isLoading, access.allowed, onAccessDenied]);
 
-  // Push new WebSocket messages into the list; apply edits from other clients
+  // Push new WebSocket messages into the list; apply edits/deletes/reactions from other clients
   useEffect(() => {
-    if (lastMessage?.type === 'new_message' && lastMessage.message) {
+    if (!lastMessage) return;
+    if (lastMessage.type === 'new_message' && lastMessage.message) {
       pushMessage(lastMessage.message as ChatMessage);
-    } else if (lastMessage?.type === 'message_edited' && lastMessage.message) {
+    } else if (lastMessage.type === 'message_edited' && lastMessage.message) {
       const edited = lastMessage.message as ChatMessage;
       updateMessage(edited.id, { content: edited.content, editedAt: edited.editedAt });
+    } else if (lastMessage.type === 'message_deleted' && lastMessage.messageId) {
+      removeMessage(lastMessage.messageId as string);
+    } else if (lastMessage.type === 'reaction_added') {
+      addReactionToMessage(lastMessage.messageId as string, lastMessage.emoji as string, lastMessage.senderDid as string);
+    } else if (lastMessage.type === 'reaction_removed') {
+      removeReactionFromMessage(lastMessage.messageId as string, lastMessage.emoji as string, lastMessage.senderDid as string);
     }
-  }, [lastMessage, pushMessage, updateMessage]);
+  }, [lastMessage, pushMessage, updateMessage, removeMessage, addReactionToMessage, removeReactionFromMessage]);
 
   // Auto-scroll to bottom on new messages and initial load
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -299,11 +306,20 @@ export function Chat({
                 showSenderLabel={showSenderLabel}
                 onReply={() => handleReply(msg)}
                 onEdit={() => handleEdit(msg)}
-                onDelete={() => deleteMessage(msg.id)}
+                onDelete={async () => {
+                  removeMessage(msg.id);
+                  deleteMessage(msg.id);
+                }}
                 reactions={computeReactions(msg.reactions, currentUserDid)}
-                onReactionToggle={(emoji, reacted) =>
-                  reacted ? removeReaction(msg.id, emoji) : addReaction(msg.id, emoji)
-                }
+                onReactionToggle={(emoji, reacted) => {
+                  if (reacted) {
+                    if (currentUserDid) removeReactionFromMessage(msg.id, emoji, currentUserDid);
+                    removeReaction(msg.id, emoji);
+                  } else {
+                    if (currentUserDid) addReactionToMessage(msg.id, emoji, currentUserDid);
+                    addReaction(msg.id, emoji);
+                  }
+                }}
                 replyToMessage={replyToMsg ? toMsgShape(replyToMsg) : undefined}
                 onScrollToMessage={handleScrollToMessage}
                 mediaUrl={mediaUrl}

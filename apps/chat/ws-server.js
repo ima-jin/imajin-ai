@@ -287,17 +287,24 @@ function setupWebSocket(server) {
 }
 
 /**
+ * Broadcast an arbitrary payload to all connected sockets subscribed to this conversation or DID.
+ */
+function broadcastEvent(conversationId, payload) {
+  if (!wss) return;
+  const payloadStr = JSON.stringify(payload);
+  Array.from(socketMeta).forEach(([ws, meta]) => {
+    if (meta.subscriptions.has(conversationId) && ws.readyState === 1) {
+      ws.send(payloadStr);
+    }
+  });
+}
+
+/**
  * Broadcast a new message to all connected sockets subscribed to this conversation or DID.
  * conversationId may be a legacy UUID or a DID (did:imajin:...).
  */
 function broadcastMessage(conversationId, message) {
-  if (!wss) return;
-  const payload = JSON.stringify({ type: 'new_message', message });
-  for (const [ws, meta] of socketMeta) {
-    if (meta.subscriptions.has(conversationId) && ws.readyState === 1) {
-      ws.send(payload);
-    }
-  }
+  broadcastEvent(conversationId, { type: 'new_message', message });
 }
 
 /**
@@ -314,8 +321,12 @@ function setupBroadcastRoute(server) {
       req.on('data', chunk => body += chunk);
       req.on('end', () => {
         try {
-          const { conversationId, message } = JSON.parse(body);
-          broadcastMessage(conversationId, message);
+          const { conversationId, type, ...rest } = JSON.parse(body);
+          if (type) {
+            broadcastEvent(conversationId, { type, ...rest });
+          } else {
+            broadcastMessage(conversationId, rest.message);
+          }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));
         } catch {
@@ -332,4 +343,4 @@ function setupBroadcastRoute(server) {
   });
 }
 
-module.exports = { setupWebSocket, broadcastMessage, setupBroadcastRoute };
+module.exports = { setupWebSocket, broadcastMessage, broadcastEvent, setupBroadcastRoute };

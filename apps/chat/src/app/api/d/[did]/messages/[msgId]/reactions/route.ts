@@ -71,6 +71,13 @@ export async function POST(
       emoji,
     }).onConflictDoNothing();
 
+    const port = process.env.PORT || '3007';
+    fetch(`http://localhost:${port}/__ws_broadcast`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: did, type: 'reaction_added', messageId: msgId, emoji, senderDid: identity.id }),
+    }).catch(() => {});
+
     return jsonResponse({ ok: true }, 201, cors);
   } catch (error) {
     console.error('Failed to add reaction:', error);
@@ -115,6 +122,13 @@ export async function DELETE(
         eq(messageReactionsV2.emoji, emoji)
       )
     );
+
+    const port = process.env.PORT || '3007';
+    fetch(`http://localhost:${port}/__ws_broadcast`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: did, type: 'reaction_removed', messageId: msgId, emoji, senderDid: identity.id }),
+    }).catch(() => {});
 
     return new Response(null, { status: 204, headers: cors });
   } catch (error) {

@@ -22,6 +22,9 @@ interface UseChatMessagesResult {
   error: Error | null;
   pushMessage: (message: ChatMessage) => void;
   updateMessage: (id: string, updates: Partial<ChatMessage>) => void;
+  removeMessage: (id: string) => void;
+  addReactionToMessage: (messageId: string, emoji: string, senderDid: string) => void;
+  removeReactionFromMessage: (messageId: string, emoji: string, senderDid: string) => void;
 }
 
 export function useChatMessages(did: string): UseChatMessagesResult {
@@ -118,5 +121,26 @@ export function useChatMessages(did: string): UseChatMessagesResult {
     setMessages(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
   }, []);
 
-  return { messages, hasMore, loadMore, isLoading, error, pushMessage, updateMessage };
+  const removeMessage = useCallback((id: string) => {
+    setMessages(prev => prev.filter(m => m.id !== id));
+  }, []);
+
+  const addReactionToMessage = useCallback((messageId: string, emoji: string, senderDid: string) => {
+    setMessages(prev => prev.map(m => {
+      if (m.id !== messageId) return m;
+      const reactions = m.reactions ? [...m.reactions] : [];
+      if (reactions.some(r => r.emoji === emoji && r.senderDid === senderDid)) return m;
+      return { ...m, reactions: [...reactions, { emoji, senderDid }] };
+    }));
+  }, []);
+
+  const removeReactionFromMessage = useCallback((messageId: string, emoji: string, senderDid: string) => {
+    setMessages(prev => prev.map(m => {
+      if (m.id !== messageId) return m;
+      const reactions = (m.reactions || []).filter(r => !(r.emoji === emoji && r.senderDid === senderDid));
+      return { ...m, reactions };
+    }));
+  }, []);
+
+  return { messages, hasMore, loadMore, isLoading, error, pushMessage, updateMessage, removeMessage, addReactionToMessage, removeReactionFromMessage };
 }
