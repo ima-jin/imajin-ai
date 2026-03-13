@@ -133,7 +133,7 @@ function DIDConversationView({ did }: { did: string }) {
   if (!identity) return <LoginPrompt />;
 
   return (
-    <div className="max-w-2xl mx-auto flex flex-col h-[calc(100vh-200px)]">
+    <div className="max-w-2xl mx-auto flex flex-col h-[calc(100dvh-200px)]">
       {/* Header */}
       <div className="flex items-center gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
         <Link
@@ -783,7 +783,7 @@ function LegacyConversationView({ conversationId }: { conversationId: string }) 
   if (!identity) return <LoginPrompt />;
 
   return (
-    <div className="max-w-2xl mx-auto flex flex-col h-[calc(100vh-200px)]">
+    <div className="max-w-2xl mx-auto flex flex-col h-[calc(100dvh-200px)]">
       {/* Header */}
       <div className="flex items-center gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
         <Link

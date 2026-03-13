@@ -287,7 +287,7 @@ export function Chat({
   return (
     <div className={`flex flex-col h-full bg-white dark:bg-zinc-900 ${className ?? ''}`}>
       {/* Message list */}
-      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-1">
         <div ref={sentinelRef} />
         {isLoading && (
           <p className="text-center text-xs text-slate-400 py-2 animate-pulse">Loading…</p>
@@ -346,7 +346,7 @@ export function Chat({
       </div>
 
       {/* Composer */}
-      <div className="border-t border-slate-200 dark:border-zinc-700 px-3 py-2 bg-white dark:bg-zinc-900 overflow-hidden">
+      <div className="flex-shrink-0 border-t border-slate-200 dark:border-zinc-700 px-3 py-2 bg-white dark:bg-zinc-900 overflow-hidden">
         {(replyTo || editingMsg) && (
           <div className="flex items-start justify-between mb-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 text-xs">
             <div className="min-w-0">
