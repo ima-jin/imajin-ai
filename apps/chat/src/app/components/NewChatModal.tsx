@@ -119,6 +119,22 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
     if (!identity || selectedDids.size === 0) return;
     const members = [identity.did, ...Array.from(selectedDids)];
     const did = await groupDid(members);
+
+    // Register the conversation and members on the server so all participants can see it
+    try {
+      await fetch('/api/conversations-v2', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          did,
+          name: groupName || null,
+          memberDids: members,
+        }),
+      });
+    } catch {
+      // Best-effort — conversation will still be auto-created on first message
+    }
+
     const params = groupName ? `?name=${encodeURIComponent(groupName)}` : '';
     router.push(`/conversations/${encodeURIComponent(did)}${params}`);
     onClose();
