@@ -9,9 +9,9 @@ const tokenStore = new Map<string, { did: string; expires: number }>();
 // Clean up expired tokens periodically
 setInterval(() => {
   const now = Date.now();
-  for (const [token, entry] of tokenStore) {
+  tokenStore.forEach((entry, token) => {
     if (entry.expires < now) tokenStore.delete(token);
-  }
+  });
 }, 60000);
 
 export function createWsToken(did: string): string {
