@@ -25,10 +25,11 @@ export function getMimeIcon(mimeType: string): string {
 
 export function AssetCard({ asset, selected, onSelect }: AssetCardProps) {
   const isImage = asset.mimeType.startsWith("image/");
-  const hasFair =
+  const hasFair = !!(
     asset.fairManifest &&
     typeof asset.fairManifest === "object" &&
-    Object.keys(asset.fairManifest as object).length > 0;
+    Object.keys(asset.fairManifest as object).length > 0
+  );
 
   return (
     <div
