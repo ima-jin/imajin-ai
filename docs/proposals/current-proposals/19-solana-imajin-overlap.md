@@ -1,0 +1,199 @@
+# Proposal 19 — Solana / Imajin Hard DID Overlap: Architecture and Registration Pathways
+
+**Filed:** 2026-03-13
+**Author:** Greg Mulholland (Tonalith)
+**Relates to:** RFC #268 (Embedded Wallet), Proposal 01 (Progressive Trust Model), Proposal 04 (Embedded Wallet)
+**Affects:** `apps/auth`, `packages/auth`, `apps/pay/lib/providers/solana.ts`
+**Milestone:** April 1, 2026 launch — registration pathway must be decided before this date
+
+---
+
+## The Cryptographic Fact
+
+Imajin and Solana both use **Ed25519** as their keypair curve. This is not incidental — it means the same 32-byte private key generates a valid identity in both systems simultaneously. There is no bridge, no derivation step, no conversion. The keypair is the same object.
+
+The production DID format (`apps/auth/lib/crypto.ts`) encodes this directly:
+
+```typescript
+export function didFromPublicKey(publicKeyHex: string): string {
+  const publicKeyBytes = hexToBytes(publicKeyHex);
+  const encoded = bs58.encode(publicKeyBytes);   // same base58 encoding Solana uses
+  return `did:imajin:${encoded}`;
+}
+```
+
+A production Imajin hard DID looks like:
+
+```
+did:imajin:7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+           └─────────────────────────────────────────┘
+           base58(32-byte Ed25519 public key)
+           identical bytes to a Solana wallet address
+```
+
+The DID suffix and the Solana address are the same 32 bytes in the same base58 encoding. `publicKeyFromDid()` exists and reverses this exactly — the full public key is recoverable from the DID string by design.
+
+**Consequence:** Every existing Imajin hard DID controls a Solana wallet address. The user who downloaded their `imajin-key-handle.json` backup file already holds a file that is, by its cryptographic content, a Solana wallet. This has not been communicated to users and no UI exposes it.
+
+---
+
+## What the Backup File Contains
+
+On hard DID registration, the auth app presents a key backup screen and downloads:
+
+```json
+{
+  "did": "did:imajin:7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "handle": "ryan",
+  "keypair": {
+    "publicKey": "a1b2c3...  (64 hex chars = 32 bytes)",
+    "privateKey": "d4e5f6...  (64 hex chars = 32 bytes)"
+  },
+  "exportedAt": "2026-03-13T...",
+  "warning": "This file contains your private key..."
+}
+```
+
+To use this keypair as a Solana wallet in Phantom or Solflare, the 32-byte private key and 32-byte public key are concatenated into a 64-byte `secretKey` and imported as a JSON byte array. This conversion is trivial but undocumented. No UI in Imajin currently performs or guides this step.
+
+---
+
+## Soft DIDs Are Not Affected
+
+Email-onboarded identities (`did:email:username_at_domain_com`) use a placeholder key: `soft_${nanoid(32)}`. This is not a real Ed25519 keypair. Soft DID holders do not have Solana wallets. The duality described in this proposal applies exclusively to hard DIDs.
+
+---
+
+## Security Model: Why Identity Theft via Public Key Is Not Possible
+
+A Solana wallet address is a public key — it is public by definition, broadcast on-chain, visible to anyone. Knowing Alice's Solana address does not allow registering as Alice in Imajin, because the registration route (`apps/auth/app/api/register/route.ts`) requires the client to sign a payload with the corresponding private key:
+
+```typescript
+const isValid = await verifySignature(payloadToSign, signature, publicKey);
+if (!isValid) { return 401; }
+```
+
+The server verifies the signature before creating the identity. Without the private key, the registration cannot be completed. The challenge-response is the security boundary, and it holds regardless of which registration pathway is used.
+
+---
+
+## Known Code Inconsistency
+
+Two DID construction functions exist in the codebase and produce incompatible output from the same key:
+
+| Location | Function | Output format | Used by |
+|---|---|---|---|
+| `apps/auth/lib/crypto.ts` | `didFromPublicKey()` | `did:imajin:{base58(full 32 bytes)}` | Register route — writes to DB |
+| `packages/auth/src/providers/keypair.ts` | `createDID()` | `did:imajin:{first 16 hex chars}` | Shared package — client consumers |
+
+The shared package function produces an 8-byte (64-bit) prefix of the key, not a full identifier. Any client library consumer calling `createDID()` generates DIDs that do not match what the server stores. This is an active inconsistency that should be resolved by updating `packages/auth/src/providers/keypair.ts` to match the server's `didFromPublicKey()` format before external consumers build on it.
+
+---
+
+## Two Registration Pathways to Hard DID
+
+The current system has one path to hard DID: invite code + browser keypair generation. The following two pathways represent a fork in the identity onboarding philosophy. They are not mutually exclusive — both can coexist as entry points to the same hard DID tier.
+
+---
+
+### Pathway 1 — Member Invitation → Browser Keypair → Hard DID
+
+**The existing flow, formalized and extended.**
+
+A member of the network issues an invite. The invitee receives a link, generates an Ed25519 keypair in the browser, signs a registration payload, and receives a hard DID. The invite establishes the initial trust connection.
+
+The soft DID → hard DID upgrade path (currently undefined in code) would follow the same ceremony: the user generates a keypair, signs a migration payload, and the `auth.identities` record is updated from `did:email:` to `did:imajin:`.
+
+**What this requires that doesn't exist yet:**
+- A defined soft → hard DID upgrade flow (no code or spec exists)
+- UI guidance that the downloaded backup file is also a Solana wallet
+
+**Pros:**
+
+- **No crypto prerequisite.** Users arrive with nothing but an email address and an invite. The keypair is generated for them in the browser using `crypto.getRandomValues()`. No wallet app, no token purchase, no exchange account.
+- **Consistent with the existing model.** The invite gate is already in production. Extending it to formalize the soft → hard upgrade is incremental work.
+- **Accessible globally.** No dependency on crypto on-ramps, exchange availability, or local regulations around digital asset purchases.
+- **The trust signal is social.** A person vouched for by an existing member starts with a real connection in the trust graph. The relationship exists before the identity is issued.
+- **Lower onboarding friction.** The path from "I received an invite" to "I have a hard DID" is a single browser session.
+
+**Cons:**
+
+- **Invite codes are a social gate, not an economic one.** They can be shared, distributed informally, or issued in bulk by early members. There is no cost to generating a fake identity if invite codes are obtainable.
+- **Sybil resistance is weak.** A single insider with invite privileges can create many identities at zero cost. The trust graph only limits this if connections are genuinely meaningful — which is not enforceable at the protocol level.
+- **Key management is unfamiliar.** Users generating a keypair in a browser and downloading a JSON file are not accustomed to the security implications. Loss of the file = permanent loss of identity, with no recovery path. This is explained in the UI but not internalized by most users until it's too late.
+- **The Solana wallet is invisible.** Users who registered via this path own a Solana wallet they don't know about. The backup file is not labeled as such. When the embedded wallet is surfaced, it will be a surprise — which can be positive or disorienting depending on implementation.
+- **No economic stake in the network.** The identity carries no financial commitment. There is no signal that this person intends to participate beyond the initial invite.
+
+---
+
+### Pathway 2 — Solana Wallet + MJN Token Purchase → Hard DID
+
+**A proposed inversion: economic proof-of-personhood precedes identity issuance.**
+
+The user creates a Solana wallet using any standard wallet application (Phantom, Solflare, Backpack). They purchase a minimum quantity of MJN tokens. They connect their wallet to the Imajin registration flow, which verifies the on-chain token balance, issues a challenge nonce, and receives a signature from the wallet. The DID is issued from the same keypair — `did:imajin:{base58(pubkey)}` — so the identity and the wallet are unified from the first moment.
+
+**What this requires that doesn't exist yet:**
+- A "Connect Wallet" UI path in `apps/auth/app/register/`
+- An on-chain MJN balance check in the register route using `connection.getTokenAccountsByOwner()` — the `Connection` and MJN token address (`12rXuUVzC71zoLrqVa3JYGRiXkKrezQLXB7gKkfq9AjK`) are already in `apps/pay/lib/providers/solana.ts`
+- A minimum balance threshold defined as a USD-equivalent value (not a fixed token count, to account for price movement)
+- MJN available to purchase via at least one accessible exchange or direct sale
+
+**Pros:**
+
+- **Sybil resistance is economic.** Creating a fake identity costs real money. The on-chain balance check is verifiable by the auth service without trusting the user's claim. Each hard DID represents a minimum financial commitment.
+- **MJN demand is bootstrapped by identity registration.** Every hard DID issued = at least one MJN purchase. At the April 1 launch, if this pathway is active, the first transactions on the network are the identity registrations themselves — not an artificial demo transaction.
+- **Key management is understood from day one.** Users arriving from Phantom understand that their private key controls real assets. They already have backup practices — seed phrase storage, hardware wallet support. The identity inherits those practices rather than requiring Imajin to educate users from scratch.
+- **The wallet and identity are unified without a discovery step.** There is no moment where the user learns "by the way, your Imajin identity is also a Solana wallet." It starts as a Solana wallet and becomes an Imajin identity — the order removes the conceptual gap.
+- **The on-chain balance is a continuous attestation.** After registration, the token holding is a public, verifiable fact. Unusual behavior (e.g., immediate sell-off of all tokens after registration) is visible on-chain and can inform trust scoring.
+- **Invite gate is not required.** The economic gate replaces the social gate. A user with MJN tokens does not need to know anyone in the network to register.
+
+**Cons:**
+
+- **Crypto onboarding is a real barrier.** Purchasing MJN tokens requires: a compatible exchange or DEX, a fiat on-ramp, passing KYC on the exchange, understanding gas fees, and understanding wallet security. This is inaccessible to a significant portion of the intended user base.
+- **MJN must have liquidity before this gate can be enforced.** If MJN is not available to purchase easily, requiring it blocks all registrations. The gate cannot precede the market.
+- **Price volatility makes the access cost unpredictable.** A threshold defined in token count (e.g., "hold 1 MJN") fluctuates in real-cost terms. The minimum should be defined as a USD-equivalent (e.g., "$1 of MJN at registration time") with an on-chain price oracle check — which adds implementation complexity.
+- **Regulatory exposure.** Conditioning identity access on token purchase in some jurisdictions may attract scrutiny regarding whether the token constitutes a security and whether the platform is operating as a token-gated service with associated licensing requirements. This warrants specific legal review before implementation.
+- **The balance check is a registration-time snapshot, not a continuous requirement.** After the DID is issued, the user can sell all MJN tokens. The economic stake is proof-of-purchase, not proof-of-holding. If continuous holding is required, that creates a lockup structure with its own regulatory and UX implications.
+
+---
+
+## Comparison
+
+| | Pathway 1 — Member Invitation | Pathway 2 — Solana + MJN |
+|---|---|---|
+| **Trust signal** | Social (vouched by a member) | Economic (on-chain token holding) |
+| **Sybil resistance** | Invite-code social gate | Token purchase cost |
+| **Crypto knowledge required** | None | Moderate to high |
+| **MJN demand impact** | None | Direct: every DID = purchase |
+| **Key management literacy** | Imajin educates from scratch | Inherits Solana wallet practices |
+| **Wallet/identity unity** | Discovered after registration | Unified from first moment |
+| **Implementation complexity** | Low (soft→hard upgrade needed) | Higher (wallet connect + on-chain check) |
+| **Regulatory risk** | None | Requires legal review |
+| **Global accessibility** | High | Dependent on exchange availability |
+| **Invite gate dependency** | Yes | No |
+
+---
+
+## Recommendation
+
+The two pathways address different populations and are not in conflict. A tiered approach is architecturally consistent and serves the April 1 milestone:
+
+**For the launch:** Pathway 1 (member invitation) is the appropriate default. It requires the least new infrastructure, is accessible to everyone at the party regardless of crypto background, and preserves the social trust signal that is central to the platform's identity model.
+
+**For the post-launch roadmap:** Pathway 2 (Solana + MJN) should be built as an alternative entry point once MJN has sufficient liquidity and the regulatory question has been assessed. It strengthens sybil resistance and directly bootstraps the token economy. It does not replace Pathway 1 — it adds an additional route to the same hard DID tier.
+
+**Regardless of pathway chosen,** two actions should happen before April 1:
+
+1. The `packages/auth/src/providers/keypair.ts:createDID()` function should be updated to match the server's `didFromPublicKey()` format, or removed. The current inconsistency produces DIDs that do not match what the database stores.
+
+2. The backup screen (`apps/auth/app/register/page.tsx`) should acknowledge that the downloaded file is also a Solana wallet and include the conversion format (64-byte `[privateKey || publicKey]` JSON array) for users who want to import it into Phantom or Solflare. This is not new functionality — it is documentation of what is already true.
+
+---
+
+## Open Questions for Ryan
+
+1. **Minimum MJN threshold for Pathway 2** — fixed USD equivalent (e.g., $1) or governance-set? How is the price oracle sourced?
+2. **Does the soft DID → hard DID upgrade follow Pathway 1, Pathway 2, or both?** The upgrade ceremony is currently undefined in code.
+3. **Is the invite gate replaced or supplemented by the MJN gate in Pathway 2?** If both are required (invite + MJN), that is a very high barrier. If MJN alone suffices, the invite gate is removed for Pathway 2 registrants.
+4. **Continuous holding vs. registration snapshot** — is the MJN balance re-checked at any point after DID issuance, and if so, what happens when it drops below threshold?
+5. **Regulatory review timeline** — who is assessing the token-gated registration model before it goes into production?
