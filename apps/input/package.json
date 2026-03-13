@@ -12,15 +12,16 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@imajin/auth": "workspace:*",
     "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
+    "@imajin/input": "workspace:*",
     "@imajin/ui": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "next": "^14.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "zod": "^3.22.0",
-    "@imajin/input": "workspace:*"
+    "zod": "^3.22.0"
   },
   "devDependencies": {
     "@types/node": "^20",
