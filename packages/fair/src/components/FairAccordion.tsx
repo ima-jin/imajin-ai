@@ -1,23 +1,69 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { FairManifest, FairEntry } from '../types';
+
+/** Normalize share values: if any > 1, assume percentages and divide by 100 */
+function normalizeShares(entries: FairEntry[]): FairEntry[] {
+  const hasPercentage = entries.some(e => e.share > 1);
+  if (!hasPercentage) return entries;
+  return entries.map(e => ({ ...e, share: e.share / 100 }));
+}
+
+function useDidNames(
+  dids: string[],
+  resolveProfile?: (did: string) => Promise<{ name: string; avatar?: string }>
+): Record<string, string> {
+  const [names, setNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!resolveProfile || dids.length === 0) return;
+    let cancelled = false;
+    const toResolve = dids.filter(d => d && !names[d]);
+    if (toResolve.length === 0) return;
+    Promise.all(
+      toResolve.map(async (did) => {
+        try {
+          const p = await resolveProfile(did);
+          return [did, p.name] as const;
+        } catch { return [did, null] as const; }
+      })
+    ).then(results => {
+      if (cancelled) return;
+      const updates: Record<string, string> = {};
+      for (const [did, name] of results) { if (name) updates[did] = name; }
+      if (Object.keys(updates).length > 0) setNames(prev => ({ ...prev, ...updates }));
+    });
+    return () => { cancelled = true; };
+  }, [dids.join(','), resolveProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+  return names;
+}
+
+function formatDid(did: string, names: Record<string, string>): string {
+  if (names[did]) return `@${names[did]}`;
+  if (did.length > 24) return did.slice(0, 12) + '…' + did.slice(-8);
+  return did;
+}
 
 interface FairAccordionProps {
   manifest: FairManifest | null;
+  resolveProfile?: (did: string) => Promise<{ name: string; avatar?: string }>;
 }
 
 function getAttribution(manifest: FairManifest): FairEntry[] {
   return manifest.attribution?.length ? manifest.attribution : (manifest.chain ?? []);
 }
 
-export function FairAccordion({ manifest }: FairAccordionProps) {
+export function FairAccordion({ manifest, resolveProfile }: FairAccordionProps) {
   const [open, setOpen] = useState(false);
 
   if (!manifest) return null;
 
-  const attribution = getAttribution(manifest);
+  const rawAttribution = getAttribution(manifest);
+  const attribution = normalizeShares(rawAttribution);
   if (!attribution.length) return null;
+
+  const allDids = attribution.map(e => e.did).filter(Boolean);
+  const didNames = useDidNames(allDids, resolveProfile);
 
   return (
     <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg overflow-hidden">
@@ -56,6 +102,11 @@ export function FairAccordion({ manifest }: FairAccordionProps) {
                       entry.role === 'platform' ? 'bg-blue-500' : 'bg-orange-500'
                     }`} />
                     <span className="text-sm font-medium capitalize">{entry.role}</span>
+                    {entry.did && (
+                      <span className="text-xs text-gray-500 truncate max-w-[140px]" title={entry.did}>
+                        {formatDid(entry.did, didNames)}
+                      </span>
+                    )}
                   </div>
                   <span className="text-sm font-bold">{(entry.share * 100).toFixed(1)}%</span>
                 </div>
