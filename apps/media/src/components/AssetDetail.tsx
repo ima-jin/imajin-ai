@@ -16,6 +16,7 @@ async function resolveProfile(did: string): Promise<{ name: string; avatar?: str
   return { name: data.handle || data.name || did.slice(0, 16), avatar: data.avatar };
 }
 import { formatSize } from "./AssetCard";
+import { FileEditor, isTextAsset } from "./FileEditor";
 
 interface Folder {
   id: string;
@@ -93,6 +94,7 @@ function FairEditModal({
 interface AssetDetailProps {
   asset: Asset;
   folders: Folder[];
+  currentDid?: string;
   onClose: () => void;
   onDeleted: () => void;
   onMoved: () => void;
@@ -107,7 +109,9 @@ function formatDate(d: Date | string | null): string {
   });
 }
 
-export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: AssetDetailProps) {
+export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, onMoved }: AssetDetailProps) {
+  const isOwner = !!currentDid && currentDid === asset.ownerDid;
+  const showFileEditor = isTextAsset(asset);
   const [editingFair, setEditingFair] = useState(false);
   const [fairManifest, setFairManifest] = useState<FairManifest | null>(() => {
     const m = asset.fairManifest;
@@ -225,7 +229,7 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
         </div>
 
         {/* Preview */}
-        <div className="flex-1 flex items-center justify-center bg-[#111] overflow-hidden">
+        <div className={`flex-1 overflow-hidden ${showFileEditor ? "flex" : "flex items-center justify-center bg-[#111]"}`}>
           {isImage && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -254,7 +258,10 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
               <source src={assetUrl} type={asset.mimeType} />
             </video>
           )}
-          {!isImage && !isAudio && !isVideo && (
+          {!isImage && !isAudio && !isVideo && showFileEditor && (
+            <FileEditor asset={asset} isOwner={isOwner} />
+          )}
+          {!isImage && !isAudio && !isVideo && !showFileEditor && (
             <div className="text-center space-y-4">
               <span className="text-8xl block">📄</span>
               <p className="text-gray-300 text-sm">{asset.filename}</p>
