@@ -10,7 +10,7 @@
   "dependencies": {
     "@imajin/config": "workspace:*",
     "@noble/ed25519": "^2.3.0",
-    "@noble/hashes": "^1.3.0"
+    "@noble/hashes": "^1.7.2"
   },
   "devDependencies": {
     "drizzle-orm": "^0.45.1"

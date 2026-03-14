@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
 import { db, invites, profiles, pods, podMembers } from '../../../../../src/db/index';
 import { generateId } from '../../../../../src/lib/id';
+import { emitAttestation } from '../../../../../src/lib/attestations';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 const INVITE_COOLDOWN_DAYS = 7;
@@ -118,6 +119,28 @@ export async function POST(
       .set({ nextInviteAvailableAt: cooldownEnd })
       .where(eq(profiles.did, session.did));
   }
+
+  emitAttestation({
+    issuer_did: session.did,
+    subject_did: invite.fromDid,
+    type: 'connection.accepted',
+    context_id: podId,
+    context_type: 'connection',
+    payload: { invite_id: invite.id },
+  }).catch((err: unknown) => {
+    console.error('Attestation (connection.accepted) error:', err);
+  });
+
+  emitAttestation({
+    issuer_did: invite.fromDid,
+    subject_did: session.did,
+    type: 'vouch',
+    context_id: podId,
+    context_type: 'connection',
+    payload: { invite_id: invite.id, delivery: invite.delivery },
+  }).catch((err: unknown) => {
+    console.error('Attestation (vouch) error:', err);
+  });
 
   return NextResponse.json({
     ok: true,
