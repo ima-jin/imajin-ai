@@ -7,6 +7,13 @@ author: "Ryan Veteze"
 status: "DRAFT"
 ---
 
+<!-- TODO: Add "$25 per pull request" stat. 167 PRs, $4K inference costs. The entire sovereign stack
+     (auth, pay, profile, registry, events, chat, connections, media, input, learn, coffee, .fair,
+     attestations, settlement) built for less than one month of a junior dev's salary.
+     Enterprise dev shops charge $5-10K per feature. This is the cost structure that makes
+     "revenue from day one" possible — when your build cost is this low, break-even is trivial.
+     Also reference: The AttMart (attention marketplace) as future revenue layer. -->
+
 *This is a follow-on to [The Business Case for Building on Human Trust](/articles/essay-23-imajin-business-case), which covers the market opportunity — $800B flowing through platforms that don't pay the people who create the value. This essay covers the part that follows: why the economics work before anyone else shows up.*
 
 ---
