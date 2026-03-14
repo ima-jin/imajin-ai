@@ -229,7 +229,7 @@ export default async function HistoryPage({
                       </div>
                       <div className="text-xs text-zinc-600">{tx.source}</div>
                     </div>
-                    {(hasChain || tx.metadata) && (
+                    {(hasChain || !!tx.metadata) && (
                       <svg
                         className="w-4 h-4 text-zinc-600 transition-transform group-open:rotate-180"
                         fill="none"
