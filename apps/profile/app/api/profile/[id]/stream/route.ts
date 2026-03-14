@@ -101,19 +101,25 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     `You are the presence of ${profile.displayName}. Answer questions helpfully and authentically.`;
 
   // 7. Parse body — convert useChat format to plain messages for streamText
+  //    useChat sends messages with toolInvocations[] on assistant messages.
+  //    We strip those and only keep user/assistant text for the model context.
   const body = await request.json();
   const rawMessages = body.messages ?? [{ role: 'user', content: body.message ?? '' }];
   const messages = rawMessages
     .filter((msg: any) => {
-      // Drop assistant messages that are tool-call-only (no text content)
-      if (msg.role === 'assistant' && (!msg.content || msg.content.trim() === '')) return false;
-      // Drop tool result messages
+      // Drop tool result messages entirely
       if (msg.role === 'tool') return false;
+      // Drop assistant messages that have no text content (tool-call-only)
+      if (msg.role === 'assistant') {
+        const text = typeof msg.content === 'string' ? msg.content.trim() : '';
+        if (!text) return false;
+      }
       return true;
     })
     .map((msg: any) => ({
-      role: msg.role,
-      content: msg.content,
+      role: msg.role as 'user' | 'assistant' | 'system',
+      content: typeof msg.content === 'string' ? msg.content : '',
+      // Explicitly exclude toolInvocations — streamText will re-invoke tools as needed
     }));
 
   // 8. Tools
@@ -138,6 +144,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     messages,
     tools,
     maxSteps: 5,
+    toolCallStreaming: true,
     onFinish: async ({ usage }) => {
       const promptTokens = usage?.promptTokens ?? 0;
       const completionTokens = usage?.completionTokens ?? 0;

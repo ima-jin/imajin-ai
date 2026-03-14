@@ -64,7 +64,13 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
             </div>
           )}
 
-          {messages.map((msg) => (
+          {messages
+            .filter((msg) => {
+              // Skip assistant messages with no text (tool-call-only intermediates)
+              if (msg.role === 'assistant' && !msg.content?.trim()) return false;
+              return true;
+            })
+            .map((msg) => (
             <div
               key={msg.id}
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -81,7 +87,7 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
             </div>
           ))}
 
-          {isLoading && messages[messages.length - 1]?.role === 'user' && (
+          {isLoading && (
             <div className="flex justify-start">
               <div className="bg-gray-800 text-gray-400 px-3 py-2 rounded-xl rounded-bl-sm text-sm">
                 <span className="animate-pulse">Thinking...</span>
