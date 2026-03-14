@@ -7,7 +7,7 @@ export function createEventTools(config: {
   requesterDid: string;
   apiKey?: string;
 }) {
-  const authHeaders = config.apiKey
+  const authHeaders: Record<string, string> = config.apiKey
     ? { Authorization: `Bearer ${config.apiKey}` }
     : {};
 
