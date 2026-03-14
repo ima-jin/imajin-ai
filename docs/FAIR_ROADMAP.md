@@ -94,22 +94,26 @@ This is the **single highest-priority .fair work**. Greg's right — without sig
 
 ---
 
-### Phase 2 — Settlement Integration *(making .fair DO something)*
+### Phase 2 — Universal Attribution + Settlement Integration *(every file gets .fair, and .fair settles)*
 
-Connect the signed manifests to actual money flow.
+Two tracks: (1) every piece of content that enters the system gets a .fair manifest, and (2) signed manifests connect to actual money flow.
 
-**Issues addressed:** #141 (settlement engine), #26 (essay manifests), #162 (auto-issue credentials)
+**Issues addressed:** #330 (universal attribution), #141 (settlement engine), #26 (essay manifests), #162 (auto-issue credentials)
 
 | Task | Location | Notes |
 |------|----------|-------|
+| **`createManifestFromTemplate()` factory** | `packages/fair/` | Single function: template + ownerDid → correctly-shaped manifest with defaults |
+| **Wire all upload paths** | `apps/chat/`, `apps/input/`, `apps/learn/` | Every ingestion point calls `createManifestFromTemplate()` — no unattributed content |
+| **Swap hardcoded sections to template prop** | `apps/events/`, `apps/media/` | FairEditor uses `template="ticket"` / `template="media"` instead of `sections={[...]}` |
+| **Replace hardcoded manifest creation** | `apps/media/api/assets/`, `apps/events/api/events/` | Use factory instead of raw objects |
 | Wire events webhook → `/api/settle` with .fair | `apps/events/`, `apps/pay/` | Ticket purchase triggers settlement with signed manifest |
 | Platform fee calculated + recorded | `apps/pay/` | Platform DID's share in every .fair chain |
 | Balance UI shows .fair-attributed earnings | `apps/profile/` | Per-DID earnings breakdown |
 | Essay .fair manifests | `apps/www/articles/` | Dog-food: all 20 essays carry .fair (#26) |
-| Auto-issue attestation on settlement | `apps/pay/` → `auth.attestations` | Transaction completion = signed attestation (#162) |
-| Coffee routing through pay | `apps/coffee/` → `apps/pay/` | Stop talking to Stripe directly |
+| Auto-issue attestation on settlement | `apps/pay/` → `auth.attestations` | ✅ SHIPPED (#329) |
+| Coffee routing through pay | `apps/coffee/` → `apps/pay/` | Stop talking to Stripe directly (#154) |
 
-**This is where .fair becomes real.** Phase 1 makes manifests trustworthy. Phase 2 makes them settle.
+**Principle:** Attribution is not optional — it IS the protocol. Phase 1 makes manifests trustworthy. Phase 2 makes them universal and settled.
 
 ---
 
