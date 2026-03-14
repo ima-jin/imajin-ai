@@ -34,7 +34,22 @@ export async function GET(request: NextRequest) {
       .limit(1);
 
     if (!record) {
-      return errorPage('Link Expired or Invalid', 'This verification link has expired or has already been used. Please try again.');
+      // Check if token exists but was already used (vs truly expired/invalid)
+      const [usedRecord] = await db
+        .select()
+        .from(onboardTokens)
+        .where(eq(onboardTokens.token, token))
+        .limit(1);
+
+      if (usedRecord?.usedAt) {
+        const redirectUrl = usedRecord.redirectUrl || 'https://events.imajin.ai';
+        return errorPage(
+          'Already Verified',
+          `This link was already used. You're probably already logged in — <a href="${redirectUrl}" style="color:#60a5fa;text-decoration:underline;">click here to continue</a>.<br><br>If that doesn't work, your browser may be blocking cookies. Try disabling your ad blocker or using a different browser, then request a new link.`
+        );
+      }
+
+      return errorPage('Link Expired', 'This verification link has expired. Please go back and request a new one.');
     }
 
     // Mark token as used
