@@ -4,6 +4,7 @@ import { eq, desc, and, sql, isNull } from 'drizzle-orm';
 import { db, invites, profiles, podMembers } from '../../../src/db/index';
 import { generateId } from '../../../src/lib/id';
 import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
+import { emitAttestation } from '../../../src/lib/attestations';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -151,6 +152,17 @@ export async function POST(request: NextRequest) {
       console.error('Failed to send invite email:', err);
     });
 
+    emitAttestation({
+      issuer_did: session.did,
+      subject_did: session.did,
+      type: 'connection.invited',
+      context_id: invite.id,
+      context_type: 'connection',
+      payload: { delivery: invite.delivery },
+    }).catch((err: unknown) => {
+      console.error('Attestation (connection.invited) error:', err);
+    });
+
     return NextResponse.json({ invite, url: inviteUrl }, { status: 201 });
   }
 
@@ -191,6 +203,17 @@ export async function POST(request: NextRequest) {
   }).returning();
 
   const inviteUrl = `${SERVICE_PREFIX}connections.${DOMAIN}/invite/${session.did}/${code}`;
+
+  emitAttestation({
+    issuer_did: session.did,
+    subject_did: session.did,
+    type: 'connection.invited',
+    context_id: invite.id,
+    context_type: 'connection',
+    payload: { delivery: invite.delivery },
+  }).catch((err: unknown) => {
+    console.error('Attestation (connection.invited) error:', err);
+  });
 
   return NextResponse.json({
     invite,
