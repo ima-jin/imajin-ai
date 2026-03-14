@@ -125,6 +125,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     system: systemPrompt,
     messages,
     tools,
+    maxSteps: 5,
     onFinish: async ({ usage }) => {
       const promptTokens = usage?.promptTokens ?? 0;
       const completionTokens = usage?.completionTokens ?? 0;
