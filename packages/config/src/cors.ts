@@ -19,6 +19,7 @@ export function corsHeaders(request: NextRequest): Record<string, string> {
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Caller-DID",
+    "Vary": "Origin",
   };
 }
 
