@@ -195,6 +195,7 @@ export async function POST(request: NextRequest) {
         hash,
         fairManifest,
         fairPath,
+        folderId,
         status: "active",
         metadata: { context: { app: "presence", feature: "seed" } },
       });
