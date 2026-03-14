@@ -2,7 +2,7 @@
 title: "The Cult of Good Times"
 subtitle: "Everyone is the Good Times Gang"
 description: "A personal interstitial. The crew, the platforms, and the specific way communities fail to honor what people make."
-date: "2026-03-15"
+date: "2026-03-14"
 author: "Ryan Veteze"
 status: "POSTED"
 ---
@@ -19,7 +19,7 @@ We are living through the loneliness epidemic in real time. Not as metaphor. As 
 
 ## The Good Times Gang
 
-My version of the story has a name. Kenny gave it to us around 2007. It stuck the way good names stick — not because anyone voted on it, but because it was true. We were people who knew how to have a good time together. Nightclubs all over Toronto. Then Vancouver. Then wherever any of us ended up. A few hundred at the edges, seventy in the core. People who notice everything and filter nothing — pattern recognizers, people who had found each other in the specific way that people find each other when the room is right and the music is good and something clicks.
+My version of the story has a name. Kenny gave it to us around 2007. It stuck the way good names stick — not because anyone voted on it, but because it was true. We were people who knew how to have a good time together. Nightclubs all over Toronto. Then Vancouver. Then wherever any of us ended up. A few hundred at the edges, seventy in the core. People who notice everything and filter nothing — who found each other in the specific way that people find each other when the room is right and the music is good and something clicks.
 
 We've been to each other's weddings. We've watched each other's kids grow up. We've held each other through losses. We've shown up at cottages and on dancefloors and in hospital waiting rooms. For more than twenty-five years, across Toronto and Vancouver and New York and scattered everywhere else, we've been the people who show up for each other.
 
@@ -44,6 +44,26 @@ Those two things are almost perfectly opposed.
 A platform that profits from your attention has no incentive to give you neutral ground for repair. No incentive to slow things down when the fast-moving dynamics of a group chat are doing damage. Every incentive to let the loudest voices dominate, to let performance substitute for presence, to let the appearance of connection replace the actual work of it.
 
 We were not given the tools we needed. And we were actively kept from building our own — not through conspiracy, but through the more mundane mechanism of capture. Everyone already on the platform. Everyone's history already there. The switching cost too high. The alternative not yet built.
+
+---
+
+## Good Times Aren't Enough
+
+Here is something I've taken a long time to say out loud.
+
+A group built on good times is built for one kind of weather. When the music is right and everyone shows up and the room is exactly what it's supposed to be — that's real. That mattered. It still does. But it is not connective tissue. It is not the thing that holds when things get hard.
+
+And things get hard.
+
+We showed up for the acute moments. Weddings. Hospitals. Losses. Those were real and they still are. What atrophied was everything in between — the maintenance, the hard conversations, the daily work of staying honest with each other.
+
+The losses came. The fractures came. The slow drift of people in different directions, the moments that needed naming, the conversations that never happened because the platform always offered an easier path — a like, a reaction, a silence that could pass for presence. The muscles for repair never got used. So they weakened. So some of us are feeling it now — the not-held part. The group that shows up for the good times and goes quiet when it counts.
+
+That is not entirely on the tools. But the tools made it easier to avoid than to address. Every hard conversation that could have been had in a room got routed around — by the feed, by the thread, by the option to simply not respond. Platforms are not designed for repair. They are designed for engagement. And discomfort doesn't engage.
+
+So we kept using the tools that were failing us. We keep using them. The Signal thread sits mostly quiet. The sub-threads carry conversations the main group never sees. The fracture that everyone feels and almost nobody names keeps widening — not because people don't care, but because the infrastructure we're on gives us no place to stand while we have the hard conversation.
+
+That's what I want to fix. Not the good times — those were always ours. The infrastructure for everything else.
 
 ---
 
@@ -78,5 +98,4 @@ On a platform, there's no mechanism to say: this person made this, and it matter
 We inherited that culture. We practice it on each other. And some of the damage in that community — the specific bitterness that accumulates when people give and give and feel invisible — comes from that gap. Not from bad intentions. From the absence of any infrastructure that makes contribution legible.
 
 There's a name for what was missing. It's called attribution. I'll show you what it looks like.
-
 *— Ryan VETEZE aka b0b*
