@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   const tier = identity.tier ?? 'preliminary';
 
   let inGraph = false;
-  if (tier === 'hard' || tier === 'preliminary' || tier === 'established') {
+  if (tier === 'preliminary' || tier === 'established') {
     inGraph = await isInGraph(identity.id);
   }
 
