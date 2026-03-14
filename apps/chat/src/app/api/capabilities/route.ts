@@ -13,10 +13,10 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
-  const tier = identity.tier ?? 'hard';
+  const tier = identity.tier ?? 'preliminary';
 
   let inGraph = false;
-  if (tier === 'hard') {
+  if (tier === 'hard' || tier === 'preliminary' || tier === 'established') {
     inGraph = await isInGraph(identity.id);
   }
 

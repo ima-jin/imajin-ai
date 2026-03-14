@@ -5,9 +5,19 @@ export { getSession } from "./session";
 export { requireHardDID } from "./require-hard-did";
 export { requireEstablishedDID } from "./require-established-did";
 export { canonicalize, sign, signSync } from "./sign";
-export { verify } from "./verify";
+export { verify, isValidMessageStructure } from "./verify";
 export * as crypto from "./crypto";
+export { hexToBytes, stringToBytes, bytesToHex } from "./crypto";
 export type { Attestation, AttestationType } from "./types/attestation";
 export { ATTESTATION_TYPES } from "./types/attestation";
 export { resolvePublicKey, createDbResolver, createHttpResolver } from "./resolve";
 export type { ResolvedIdentity, PublicKeyResolver } from "./resolve";
+export {
+  TOKEN_TTL,
+  CHALLENGE_TTL,
+  NODE_REGISTRATION_TTL,
+  NODE_HEARTBEAT_INTERVAL,
+  NODE_STALE_THRESHOLD,
+  NODE_UNREACHABLE_THRESHOLD,
+  NODE_GRACE_PERIOD,
+} from "./constants";

@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
     // Check if buyer is logged in (hard DID)
     const cookieHeader = request.headers.get('cookie');
     const session = await getSessionFromCookie(cookieHeader);
-    const buyerDid = session?.tier === 'hard' ? session.id : undefined;
+    const buyerDid = (session?.tier === 'preliminary' || session?.tier === 'established') ? session.id : undefined;
 
     // Check availability
     if (ticketType.quantity !== null) {

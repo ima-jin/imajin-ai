@@ -30,3 +30,4 @@ apps/www/.env.development
 # Personal
 *.raw.md
 scripts/launch-local.tsimajin-courses/
+apps/auth/tsconfig.tsbuildinfo
