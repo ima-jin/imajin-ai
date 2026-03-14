@@ -54,5 +54,23 @@ Enforce at settlement: reject manifests with missing or invalid signatures (afte
 - `packages/fair/src/index.ts` exports `sign` and `verifyManifest` functions
 - Any commit touching `apps/pay/` settlement routes to add signature validation
 
+### Status Update — 2026-03-13: Acknowledged, Implementation Planned
+
+Ryan's .fair Hardening Roadmap (March 13, 2026) directly addresses P3 across two phases:
+
+**Phase 0** — `signature?` field added to `FairManifest` as optional. No crypto required — type-level honesty. Tracked in issue **#317** (.fair cryptographic signing).
+
+**Phase 1** — `signManifest()` + `verifyManifest()` built in `packages/fair/src/sign.ts`, dependent on Ed25519 `sign()`/`verify()` utilities added to `packages/auth/src/crypto.ts` (issue **#316**). Platform signs manifests at event/asset creation. Settlement enforces signing — unsigned manifests rejected.
+
+**Decisions locked (resolves outstanding questions from Proposal 6):**
+- Unsigned manifests at settlement → **REJECT** (our recommendation adopted)
+- No legacy manifests → **No legacy concept** (Ryan overruled our legacy-tag position — we are pre-launch, no existing manifests worth preserving; every manifest signed from day one)
+- Edit behavior → **Resign on edit** (no version chain for MVP; transaction table is the audit trail)
+- Platform signature → **Separate field** (platform endorsement ✅ breaks on creator edit ⚠️; creator resigns with own key)
+
+**Also noted in P3's reference to legacy migration:** our recommendation was `{ signed: false, legacy: true }` tagging. Ryan's decision is no legacy concept at all — simpler, correct for a pre-launch platform.
+
+P3 is not yet resolved in code. Detection criteria above still apply.
+
 ---
 

@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Proposal 8 (Attestation Data Layer) — RESOLVED March 13, adopted via #320; the proposal explicitly referenced the NodeAttestation pattern as the design template
+**Outcome:** This was an informational concern — a design opportunity flag. It has been fully incorporated: Proposal 8 used the `NodeAttestation` architecture (signed, typed, timestamped, registry-stored) as the explicit template for `auth.attestations`. Ryan's roadmap (#320) implements this pattern for identity attestations. The concern has served its purpose.
+**Implementation:** Incorporated into Proposal 8 (now in resolved/) and committed as #320.
+
+---
+
 ### F4. Node Attestation Architecture Could Inform Identity Attestation Design
 
 **Flagged:** March 10, 2026

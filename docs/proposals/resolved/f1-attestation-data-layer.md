@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Ryan's Identity & Attestation Hardening Roadmap — Phase 1, issue #320 ("auth.attestations schema"); Settlement & Economics Hardening Roadmap — `financial_contribution` attestation type added to Phase 0
+**Outcome:** The `auth.attestations` schema is committed as Identity Phase 1 (#320). The concern that the table did not exist and that proposals were depending on a non-existent layer is resolved — Ryan has formally committed to the design and created the implementation issue. The controlled type vocabulary (`vouch.given`, `flag.yellow`, `checkin.verified`, `event.attendance`, `financial_contribution`) is now part of the plan.
+**Implementation:** Issue #320 created — not yet in code. Confirmed by checking for `auth.attestations` table in schema migrations.
+
+---
+
 ### F1. Attestation Data Layer Does Not Exist
 
 **Flagged:** March 10, 2026

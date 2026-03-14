@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Ryan's Identity & Attestation Hardening Roadmap — Phase 0, issue #319 ("auth.identities tier column migration")
+**Outcome:** The architectural violation this concern documented — `SELECT identity_tier FROM profile.profiles` inside the auth service, directly contradicting the architecture doc's "no cross-service joins" principle — is being fixed in Phase 0 (#319). The cross-schema query will be removed when tier is migrated to `auth.identities`. The documented principle will no longer be violated.
+**Implementation:** Issue #319 created — fix not yet in code.
+
+---
+
 ### F7. Architecture Doc Explicitly Contradicts P2 (March 11 Review)
 
 **Flagged:** March 11, 2026

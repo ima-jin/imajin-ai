@@ -70,3 +70,13 @@ None of these substitutes for the others. The consent primitive is the missing f
 - Architecture doc `grounding-03-ARCHITECTURE.md:151` updated from TODO to a specification
 - Settlement routes in `apps/pay/` check for a valid consent record before processing
 - Stream 2 opt-in migrated to a signed `consent.given` attestation
+
+### Roadmap Placement — 2026-03-13
+
+Assigned to **Phase 3** in the Settlement & Economics Hardening Roadmap. Ryan notes: "Medium — settlement doesn't prove both parties agreed."
+
+The Settlement Roadmap explicitly identifies the absence of consent verification as a gap at the settlement layer. Stream 3 (automated node-to-node settlement) in the settlement roadmap cannot ship without a consent primitive — automated settlement without a signed consent record is the exact structural problem this proposal identifies.
+
+The `consent.given` and `consent.revoked` attestation types should be added to the `auth.attestations` schema (#320) vocabulary when Phase 1 of the Identity Roadmap ships, making them available before the Phase 3 consent enforcement layer.
+
+**Connection to Stream 2:** The current database-flag opt-in for Stream 2 (Declared-Intent Marketplace) should be migrated to a signed `consent.given` attestation when the attestation schema (#320) ships. This is a Phase 1 migration, not Phase 3 — it uses existing infrastructure once the table exists.

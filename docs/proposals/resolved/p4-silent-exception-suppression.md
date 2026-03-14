@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Ryan's Identity & Attestation Hardening Roadmap — Phase 0 issue #318 ("Session route hardening")
+**Outcome:** P4 (silent catch block) is addressed alongside P1 in issue #318. Both are Phase 0 items. The fix (adding `console.error('[session] Failed to fetch profile tier:', err)`) is adopted as stated.
+**Implementation:** Roadmap commitment — issue created (#318), not yet in code. Check the catch block in `apps/auth/app/api/session/route.ts` for a logging call as confirmation.
+
+---
+
 ## P4 — Silent Exception Suppression in Session Route
 
 **File:** `apps/auth/app/api/session/route.ts`

@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Ryan's Identity & Attestation Hardening Roadmap — Phase 0 issue #319 ("auth.identities tier column migration")
+**Outcome:** P2 is adopted exactly as proposed. Phase 0 adds a `tier` column to `auth.identities`, migrates existing values from `profile.profiles.identity_tier`, and removes the cross-schema query from the session route. This is the precise fix described in this document.
+**Implementation:** Roadmap commitment — issue created (#319), not yet in code. Confirm by checking for a new migration adding `tier` to `auth.identities` and removal of `SELECT identity_tier FROM profile.profiles` from the session route.
+
+---
+
 ## P2 — Identity Tier Stored in Wrong Service
 
 **File:** `apps/auth/app/api/session/route.ts` (line 54), `apps/profile/src/db/schema.ts` (identity_tier column)
@@ -31,6 +39,20 @@ P1 (fail-open default) is a one-line fix that should happen immediately. P2 (wro
 - New migration adding `tier` column to `auth.identities`
 - `apps/auth/app/api/session/route.ts` no longer contains `SELECT identity_tier FROM profile.profiles`
 - `apps/profile/src/db/schema.ts` removes `identity_tier` column (or it's marked deprecated)
+
+### Status Update — 2026-03-13
+
+**Still open.** Checked against upstream HEAD `e80f6be`.
+
+PR #307 ("fix: Service consistency — CORS + auth unification", merged March 13) introduced `requireHardDID()` in `packages/auth/src/require-hard-did.ts` — a new route-level guard that rejects `tier === 'soft'` with a 403. This adds enforcement at the point of use.
+
+However, P2's core problem is unchanged:
+- `SELECT identity_tier FROM profile.profiles` is still in `apps/auth/app/api/session/route.ts` at line 50
+- No migration has been added to `auth.identities`
+- `identity_tier` column still exists in `profile.profiles`
+- The fail-open default `session.tier || 'hard'` (P1) is still on line 50
+
+`requireHardDID` enforces the tier contract at route boundaries; it does not fix where the tier is stored or what happens when the profile schema is unavailable. The structural concern remains.
 
 ---
 

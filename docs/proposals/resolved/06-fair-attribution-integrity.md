@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Ryan's .fair Hardening Roadmap (March 13) — all blocking decisions locked; issues #316 and #317 created
+**Outcome:** All core decisions adopted or overruled. Q1 (reject unsigned) ✅ adopted. Q2 (owner-only MVP) ✅ adopted. Q4 (no legacy concept) ⚠️ overruled — correct call for pre-launch. Cultural DID treasury signing still open (Phase 3+). Implementation path fully defined via #317.
+**Implementation:** Whitepaper v0.3 — credited. Issues #316 and #317 — not yet in code.
+
+---
+
 ## 6. .fair Attribution Integrity — Cryptographic Signing for Automated Node Settlement
 
 **Author:** Greg Mulholland
@@ -5,6 +13,26 @@
 **Thread:** `current-threads/fair-attribution-automated-nodes.md`
 **Related upstream:** `packages/fair/`, Discussion #268 (Embedded Wallet), MJN whitepaper v0.2
 **Addresses:** .fair Attribution Integrity for Automated Nodes (Critical)
+
+### Decisions Locked — 2026-03-13
+
+Ryan's .fair Hardening Roadmap (March 13, 2026) resolved the blocking questions from this proposal. Implementation assigned to issues **#316** (auth signing utilities) and **#317** (.fair cryptographic signing), across four phases.
+
+| Decision | Ryan's Answer | Our Position | Status |
+|----------|--------------|--------------|--------|
+| Unsigned manifests at settlement | **REJECT** | Reject | ✅ Adopted |
+| Multi-contributor signing | **Owner-only MVP** (multi-party Phase 3) | Owner-only MVP | ✅ Adopted |
+| Legacy manifests | **No legacy concept** — pre-launch, every manifest signed | Legacy tag (`signed: false, legacy: true`) | ⚠️ Overruled — Ryan's call is correct for pre-launch |
+| Edit behavior | **Resign on edit** — no version chain for MVP | Not specified | ✅ New decision, noted |
+| Platform signature | **Separate field** — endorsement ✅ breaks on creator edit ⚠️ | Not specified | ✅ New decision, noted |
+| Cultural DID treasury signing | Not yet addressed | Designated treasury key + quorum auth | 🔲 Open |
+| Agent scope encoding | Not yet addressed | Key derivation path | 🔲 Open (blocks Stream 3) |
+
+**Build order per roadmap:**
+1. Phase 0 — `signature?` + `intent?` fields added to `FairManifest` type (no crypto yet)
+2. Phase 1 — `sign()`/`verify()` in `packages/auth/src/crypto.ts` (#316), then `signManifest()`/`verifyManifest()` in `packages/fair/src/sign.ts` (#317). Platform signs at event/asset creation. Settlement rejects unsigned.
+3. Phase 2 — Wire to actual money flow (events → pay with signed manifests)
+4. Phase 3 — Multi-party signing, distribution contracts, agent DIDs
 
 ### Executive Summary
 

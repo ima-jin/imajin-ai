@@ -108,5 +108,23 @@ The `intent` field proposed in this RFC does not exist on `FairManifest` in `pac
 - Redistribution threshold monitoring and distribution chain declaration UI
 - Howey test legal review documented in `docs/decisions/` or equivalent
 
+### Roadmap Placement — 2026-03-13
+
+Split across both the .fair Hardening Roadmap and the Settlement & Economics Hardening Roadmap:
+
+**.fair Roadmap:**
+- **Phase 0** — `intent?` field added to `FairManifest` type (tracked under #317, no crypto required)
+- **Phase 2** — `intent` field enforcement: logged but not yet attestation-triggered
+- **Phase 3** — Contribution pools (`apps/pools/` or `apps/pay/`), mandatory redistribution, full intent enforcement
+
+**Settlement Roadmap:**
+- **Phase 3** — Contribution pools with mandatory redistribution; intent-bearing transactions with constraint enforcement
+
+**New connection — Fee Model (Proposal 20):** The `intent` field is the mechanism the Fee Model uses to tag membership investment transactions: `intent.purpose: "membership-investment"`. The fee chain's `financial_contribution` attestation is the tracking record. Both roadmaps converge at the Phase 3 contribution pool model.
+
+The `purpose: "infrastructure | living | grant | sponsorship | charitable"` vocabulary in the intent field should be extended to include `"membership-investment"` to cover Fee Model Track 1 transactions.
+
+Ryan noted this "needs issue" for the Phase 3 distribution scope. The Phase 0 type addition is covered under P5 / #317.
+
 ---
 

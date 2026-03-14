@@ -1,3 +1,17 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Settlement & Economics Hardening Roadmap (March 13) — Phase 2 "Distribution Contracts"; Ryan explicitly cites Greg's analysis for key decisions
+**Outcome:** All major positions adopted in the Settlement Roadmap Phase 2:
+- Q4 (Circular distributions): "max depth 5 hops, reject circular chains" ✅ adopted exactly
+- Q7 (Graceful degradation): `on_failure` per allocation, `overflow` as default ✅ adopted
+- Q1 (Minimum viable distribution): `overflow` accumulates locally ✅ adopted
+- Q3 (Contract versioning): version at initiation governs ✅ adopted
+- Package: new `packages/distribution/` (separate from pay/fair) ✅ adopted
+Ryan notes "needs issue" — no upstream issue yet, but Phase 2 is the committed plan. Distribution contracts are the first production use case proposed for disbursing Supporter Pool returns (Proposal 20).
+**Implementation:** Roadmap commitment — issue to be created. Depends on Settlement Phase 1 (signed manifests, #316/#317).
+
+---
+
 ## 16. Programmable Distribution Contracts — ADR-002
 
 **Author:** Ryan Veteze (RFC + Bounty, open for community input)
@@ -91,6 +105,10 @@ The distribution contract schema has a `signature` field in the RFC. No `Distrib
 - Distribution contract execution endpoint in `apps/pay/` or new `apps/distribution/`
 - Signed audit log for every routing decision
 - `ADR-002` document in `docs/decisions/`
+
+### Roadmap Placement — 2026-03-13
+
+Assigned to **Phase 3** in Ryan's .fair Hardening Roadmap. Ryan noted this "needs issue" — no upstream issue exists yet. Suggested home: new `packages/distribution/` or extended `@imajin/fair`. Depends on Phase 1 signing and Phase 2 settlement working end-to-end first.
 
 ---
 

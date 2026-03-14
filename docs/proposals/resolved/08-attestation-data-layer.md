@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** Ryan's Identity & Attestation Hardening Roadmap (March 13) — Phase 1, issue #320 ("auth.attestations schema"); whitepaper v0.3 — "Attestation Data Layer" new section credited
+**Outcome:** The `auth.attestations` schema is adopted as Phase 1 of the Identity Hardening Roadmap (issue #320). The naming collision (NodeAttestation vs identity attestation) is resolved by creating a new table rather than repurposing the existing build attestation. The bilateral root record pattern and signed attestation types (`vouch.given`, `flag.yellow`, `checkin.verified`, `event.attendance`) are included in the schema specification. Phase 1 also shares the `sign()`/`verify()` keystone (#316) with the .fair hardening roadmap.
+**Implementation:** Whitepaper v0.3 — concept credited. Issue #320 created — schema migration and types not yet in code.
+
+---
+
 ## 8. Attestation Data Layer — Full Architecture Review
 
 **Author:** Greg Mulholland

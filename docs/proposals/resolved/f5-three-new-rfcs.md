@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-13
+**Evidence:** PR #282 (merged March 12) — Proposals 15, 16, 17 in upstream `docs/proposals/current-proposals/`; Settlement & Economics Hardening Roadmap (March 13) phases all three
+**Outcome:** The original concern — that three new RFCs appeared without corresponding proposals — is fully resolved. Proposals 15 (RFC-01 attribution), 16 (RFC-02 distribution contracts), and 17 (RFC-05 intent transactions) are in upstream docs and in the Settlement Roadmap (Phase 2 for Proposal 16, Phase 3 for 15 and 17). P3 and P5 (code-level gaps surfaced by this finding) are tracked as #317. Proposal 16 is itself RESOLVED (all positions adopted in Settlement Phase 2).
+**Implementation:** Proposals in upstream docs via PR #282. Settlement roadmap places implementation. P3+P5 tracked as #317.
+
+---
+
 ### F5. Three New RFCs in Upstream Repo — Not Yet in Proposals (March 11 Review)
 
 **Flagged:** March 11, 2026
@@ -10,6 +18,8 @@ Three new RFCs appeared in the upstream repo as articles since the March 10 revi
 - **RFC-05** (Intent-Bearing Transactions and Contribution Pools): `intent` field extension to `.fair` manifest; contribution pool mechanism with mandatory redistribution; Howey test analysis. **Authors: Ryan Veteze and Jin.** RFC-05 is the most complete spec; it has clear implementation phases and was co-authored by the project leads.
 
 **Proposals filed (March 11):** Proposals 15, 16, and 17 in `current-proposals.md` address all three RFCs with analysis and Greg's positions on all open questions.
+
+**Update (2026-03-13):** Proposals 15, 16, and 17 are now in upstream `docs/proposals/current-proposals/` alongside the RFCs (PR #282 merged March 12). The proposals are now part of the official repo record. Implementation of all three remains pending — P3 and P5 (the code-level gaps surfaced by this finding) are still open in `packages/fair/src/types.ts`.
 
 **New problem detected:** P5 — `FairManifest` missing `intent` field (`packages/fair/src/types.ts`). Should be fixed in the same PR as P3 (missing `signature` field).
 
