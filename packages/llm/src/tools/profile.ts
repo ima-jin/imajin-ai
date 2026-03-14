@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import { tool } from 'ai';
 
-export function createProfileTools(config: { profileUrl: string; apiKey?: string }) {
+export function createProfileTools(config: {
+  profileUrl: string;
+  targetDid: string;
+  requesterDid: string;
+  apiKey?: string;
+}) {
   const authHeaders = config.apiKey
     ? { Authorization: `Bearer ${config.apiKey}` }
     : {};
@@ -10,11 +15,11 @@ export function createProfileTools(config: { profileUrl: string; apiKey?: string
     getProfile: tool({
       description: 'Get a profile by DID or handle',
       parameters: z.object({
-        id: z.string().describe('DID or handle of the profile to fetch'),
+        didOrHandle: z.string().describe('DID or handle to look up'),
       }),
-      execute: async ({ id }) => {
+      execute: async ({ didOrHandle }) => {
         const res = await fetch(
-          `${config.profileUrl}/api/profile/${encodeURIComponent(id)}`,
+          `${config.profileUrl}/api/profile/${encodeURIComponent(didOrHandle)}`,
           { headers: authHeaders }
         );
         return res.json();
@@ -27,7 +32,7 @@ export function createProfileTools(config: { profileUrl: string; apiKey?: string
         query: z.string().describe('Search query'),
       }),
       execute: async ({ query }) => {
-        const url = new URL('/api/profile', config.profileUrl);
+        const url = new URL('/api/profile/search', config.profileUrl);
         url.searchParams.set('q', query);
         const res = await fetch(url.toString(), { headers: authHeaders });
         return res.json();
