@@ -136,7 +136,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     internalApiKey: TRUST_INTERNAL_API_KEY,
   });
 
-  // 9. Stream
+  // 9. Stream with custom SSE that includes tool call metadata
   const queryId = nanoid();
   const result = streamText({
     model,
@@ -144,10 +144,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     messages,
     tools,
     maxSteps: 5,
-    // Server handles all tool execution internally via maxSteps.
-    // Client receives plain text only via toTextStreamResponse().
     onStepFinish: ({ stepType, toolCalls, toolResults, text }) => {
       console.log(`[stream] step=${stepType} tools=${toolCalls?.length ?? 0} resultLen=${JSON.stringify(toolResults ?? []).length} textLen=${text?.length ?? 0}`);
+      if (toolCalls?.length) {
+        console.log(`[stream] toolCalls:`, JSON.stringify(toolCalls).slice(0, 300));
+      }
       if (toolResults?.length) {
         console.log(`[stream] toolResults:`, JSON.stringify(toolResults).slice(0, 500));
       }
@@ -209,5 +210,47 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     },
   });
 
-  return result.toTextStreamResponse();
+  // Custom stream: newline-delimited JSON events
+  // { type: "text", text: "..." } — text chunk to render
+  // { type: "tool_call", name: "...", args: {...} } — tool was called
+  // { type: "tool_result", name: "...", result: {...} } — tool returned
+  // { type: "done" } — stream complete
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const part of result.fullStream) {
+          if (part.type === 'text-delta' && part.textDelta) {
+            controller.enqueue(encoder.encode(
+              JSON.stringify({ type: 'text', text: part.textDelta }) + '\n'
+            ));
+          } else if (part.type === 'tool-call') {
+            controller.enqueue(encoder.encode(
+              JSON.stringify({ type: 'tool_call', name: part.toolName, args: part.args }) + '\n'
+            ));
+          } else if (part.type === 'tool-result') {
+            controller.enqueue(encoder.encode(
+              JSON.stringify({ type: 'tool_result', name: part.toolName, result: part.result }) + '\n'
+            ));
+          }
+        }
+        controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'));
+      } catch (err) {
+        console.error('[stream] error:', err);
+        controller.enqueue(encoder.encode(
+          JSON.stringify({ type: 'error', message: String(err) }) + '\n'
+        ));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Transfer-Encoding': 'chunked',
+      'Cache-Control': 'no-cache',
+    },
+  });
 }

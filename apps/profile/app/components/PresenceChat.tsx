@@ -8,6 +8,13 @@ interface Message {
   content: string;
 }
 
+interface ToolEvent {
+  type: 'tool_call' | 'tool_result';
+  name: string;
+  data: unknown;
+  timestamp: number;
+}
+
 interface PresenceChatProps {
   targetDid: string;
   targetName: string;
@@ -20,27 +27,26 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Auto-scroll on new messages
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, toolEvents]);
 
   const sendMessage = useCallback(async (userText: string) => {
     const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: userText };
-    const assistantMsg: Message = { id: crypto.randomUUID(), role: 'assistant', content: '' };
+    const assistantId = crypto.randomUUID();
 
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
     setError(null);
 
-    // Build conversation history for the API (only role + content, no SDK metadata)
     const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }));
-
     abortRef.current = new AbortController();
 
     try {
@@ -55,34 +61,62 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Request failed (${res.status})`);
       }
-
       if (!res.body) throw new Error('No response body');
 
-      // Add empty assistant message, then stream into it
-      setMessages(prev => [...prev, assistantMsg]);
+      // Add empty assistant message
+      setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // keep incomplete line in buffer
 
-        setMessages(prev =>
-          prev.map(m =>
-            m.id === assistantMsg.id
-              ? { ...m, content: m.content + chunk }
-              : m
-          )
-        );
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line);
+
+            if (event.type === 'text') {
+              setMessages(prev =>
+                prev.map(m =>
+                  m.id === assistantId
+                    ? { ...m, content: m.content + event.text }
+                    : m
+                )
+              );
+            } else if (event.type === 'tool_call') {
+              setToolEvents(prev => [...prev, {
+                type: 'tool_call',
+                name: event.name,
+                data: event.args,
+                timestamp: Date.now(),
+              }]);
+            } else if (event.type === 'tool_result') {
+              setToolEvents(prev => [...prev, {
+                type: 'tool_result',
+                name: event.name,
+                data: event.result,
+                timestamp: Date.now(),
+              }]);
+            } else if (event.type === 'error') {
+              setError(event.message);
+            }
+          } catch {
+            // skip malformed lines
+          }
+        }
       }
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       setError(err.message || 'Something went wrong');
-      // Remove the empty assistant message on error
-      setMessages(prev => prev.filter(m => m.id !== assistantMsg.id));
+      setMessages(prev => prev.filter(m => m.id !== assistantId));
     } finally {
       setIsLoading(false);
       abortRef.current = null;
@@ -99,10 +133,8 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
 
-      {/* Chat panel */}
       <div className="relative w-full max-w-lg h-[600px] max-h-[85vh] bg-gray-950 border border-gray-800 rounded-t-2xl sm:rounded-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
@@ -114,14 +146,25 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
               AI representation · not {targetHandle ? `@${targetHandle}` : targetName}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition p-1"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowDebug(d => !d)}
+              className={`text-xs px-2 py-1 rounded transition ${
+                showDebug ? 'bg-amber-600 text-white' : 'text-gray-500 hover:text-gray-300'
+              }`}
+              title="Toggle tool debug"
+            >
+              🔧
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-white transition p-1"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Messages */}
@@ -169,6 +212,23 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
             </div>
           )}
         </div>
+
+        {/* Debug panel */}
+        {showDebug && toolEvents.length > 0 && (
+          <div className="border-t border-gray-800 bg-gray-900/80 max-h-[200px] overflow-y-auto px-4 py-2">
+            <p className="text-gray-500 text-xs font-mono mb-1">Tool Activity</p>
+            {toolEvents.map((evt, i) => (
+              <div key={i} className="text-xs font-mono mb-2">
+                <span className={evt.type === 'tool_call' ? 'text-blue-400' : 'text-green-400'}>
+                  {evt.type === 'tool_call' ? '→' : '←'} {evt.name}
+                </span>
+                <pre className="text-gray-500 mt-0.5 overflow-x-auto whitespace-pre-wrap break-all">
+                  {JSON.stringify(evt.data, null, 2).slice(0, 1000)}
+                </pre>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Input */}
         <form onSubmit={handleSubmit} className="px-4 py-3 border-t border-gray-800">
