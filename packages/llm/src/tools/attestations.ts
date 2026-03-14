@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { tool } from 'ai';
+import { safeFetch } from './utils';
 
 export function createAttestationTools(config: {
   authUrl: string;
@@ -19,14 +20,12 @@ export function createAttestationTools(config: {
         type: z.string().optional().describe('Filter by attestation type (e.g. vouch, transaction.settled, session.created)'),
       }),
       execute: async ({ did, type }) => {
-        // Scope: only conversation participants
         if (did !== config.targetDid && did !== config.requesterDid) {
           return { error: 'Can only view attestations for conversation participants' };
         }
         const url = new URL(`/api/attestations/${encodeURIComponent(did)}`, config.authUrl);
         if (type) url.searchParams.set('type', type);
-        const res = await fetch(url.toString(), { headers: authHeaders });
-        return res.json();
+        return safeFetch(url.toString(), authHeaders);
       },
     }),
   };

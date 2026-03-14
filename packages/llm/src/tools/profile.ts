@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { tool } from 'ai';
+import { safeFetch } from './utils';
 
 export function createProfileTools(config: {
   profileUrl: string;
@@ -18,11 +19,10 @@ export function createProfileTools(config: {
         didOrHandle: z.string().describe('DID or handle to look up'),
       }),
       execute: async ({ didOrHandle }) => {
-        const res = await fetch(
+        return safeFetch(
           `${config.profileUrl}/api/profile/${encodeURIComponent(didOrHandle)}`,
-          { headers: authHeaders }
+          authHeaders,
         );
-        return res.json();
       },
     }),
 
@@ -34,8 +34,7 @@ export function createProfileTools(config: {
       execute: async ({ query }) => {
         const url = new URL('/api/profile/search', config.profileUrl);
         url.searchParams.set('q', query);
-        const res = await fetch(url.toString(), { headers: authHeaders });
-        return res.json();
+        return safeFetch(url.toString(), authHeaders);
       },
     }),
   };

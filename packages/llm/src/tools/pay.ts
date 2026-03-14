@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { tool } from 'ai';
+import { safeFetch } from './utils';
 
 export function createPayTools(config: {
   payUrl: string;
@@ -18,15 +19,13 @@ export function createPayTools(config: {
         did: z.string().describe('DID to check balance for (must be a conversation participant)'),
       }),
       execute: async ({ did }) => {
-        // Scope: only self (pay tools are already self-query only, but defense in depth)
         if (did !== config.targetDid && did !== config.requesterDid) {
           return { error: 'Can only view balance for conversation participants' };
         }
-        const res = await fetch(
+        return safeFetch(
           `${config.payUrl}/api/balance/${encodeURIComponent(did)}`,
-          { headers: authHeaders }
+          authHeaders,
         );
-        return res.json();
       },
     }),
 
@@ -39,11 +38,10 @@ export function createPayTools(config: {
         if (did !== config.targetDid && did !== config.requesterDid) {
           return { error: 'Can only view transactions for conversation participants' };
         }
-        const res = await fetch(
+        return safeFetch(
           `${config.payUrl}/api/transactions/${encodeURIComponent(did)}`,
-          { headers: authHeaders }
+          authHeaders,
         );
-        return res.json();
       },
     }),
   };

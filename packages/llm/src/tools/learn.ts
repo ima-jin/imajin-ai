@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { tool } from 'ai';
+import { safeFetch } from './utils';
 
 export function createLearnTools(config: {
   learnUrl: string;
@@ -20,8 +21,7 @@ export function createLearnTools(config: {
       execute: async ({ query }) => {
         const url = new URL('/api/courses', config.learnUrl);
         if (query) url.searchParams.set('q', query);
-        const res = await fetch(url.toString(), { headers: authHeaders });
-        return res.json();
+        return safeFetch(url.toString(), authHeaders);
       },
     }),
 
@@ -36,8 +36,7 @@ export function createLearnTools(config: {
         }
         const url = new URL('/api/my/courses', config.learnUrl);
         url.searchParams.set('did', did);
-        const res = await fetch(url.toString(), { headers: authHeaders });
-        return res.json();
+        return safeFetch(url.toString(), authHeaders);
       },
     }),
   };

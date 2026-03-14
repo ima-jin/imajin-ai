@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { tool } from 'ai';
+import { safeFetch } from './utils';
 
 export function createConnectionTools(config: {
   connectionsUrl: string;
@@ -16,21 +17,24 @@ export function createConnectionTools(config: {
       description: 'Find connections shared between you and the person you\'re talking to',
       parameters: z.object({}),
       execute: async () => {
-        // Fetch both connection lists and intersect
-        const [targetRes, requesterRes] = await Promise.all([
-          fetch(`${config.connectionsUrl}/api/connections?did=${encodeURIComponent(config.targetDid)}`, { headers: authHeaders }),
-          fetch(`${config.connectionsUrl}/api/connections?did=${encodeURIComponent(config.requesterDid)}`, { headers: authHeaders }),
+        const [targetData, requesterData] = await Promise.all([
+          safeFetch(`${config.connectionsUrl}/api/connections?did=${encodeURIComponent(config.targetDid)}`, authHeaders),
+          safeFetch(`${config.connectionsUrl}/api/connections?did=${encodeURIComponent(config.requesterDid)}`, authHeaders),
         ]);
-        const targetConns = await targetRes.json();
-        const requesterConns = await requesterRes.json();
 
-        // Extract DIDs from both sides
+        // If either errored, return the error
+        if (typeof targetData === 'object' && targetData && 'error' in targetData) return targetData;
+        if (typeof requesterData === 'object' && requesterData && 'error' in requesterData) return requesterData;
+
+        const targetConns = (targetData as any).connections ?? [];
+        const requesterConns = (requesterData as any).connections ?? [];
+
         const targetDids = new Set(
-          (targetConns.connections ?? []).map((c: { toDid: string; fromDid: string }) =>
+          targetConns.map((c: { toDid: string; fromDid: string }) =>
             c.toDid === config.targetDid ? c.fromDid : c.toDid
           )
         );
-        const mutual = (requesterConns.connections ?? []).filter(
+        const mutual = requesterConns.filter(
           (c: { toDid: string; fromDid: string }) => {
             const otherDid = c.toDid === config.requesterDid ? c.fromDid : c.toDid;
             return targetDids.has(otherDid);
@@ -48,7 +52,6 @@ export function createConnectionTools(config: {
         to: z.string().describe('Target DID'),
       }),
       execute: async ({ from, to }) => {
-        // Scope: only allow queries involving the conversation participants
         if (from !== config.targetDid && from !== config.requesterDid) {
           return { error: 'Can only check distance from conversation participants' };
         }
@@ -58,8 +61,7 @@ export function createConnectionTools(config: {
         const url = new URL('/api/trust/distance', config.connectionsUrl);
         url.searchParams.set('from', from);
         url.searchParams.set('to', to);
-        const res = await fetch(url.toString(), { headers: authHeaders });
-        return res.json();
+        return safeFetch(url.toString(), authHeaders);
       },
     }),
   };
