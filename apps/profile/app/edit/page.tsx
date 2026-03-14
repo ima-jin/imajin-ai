@@ -26,6 +26,7 @@ const SERVICES = [
   { key: 'coffee', label: 'Coffee', description: 'Accept coffee tips' },
   { key: 'dykil', label: 'Dykil', description: 'Your Dykil profile' },
   { key: 'learn', label: 'Learn', description: 'Learning content' },
+  { key: 'inference', label: 'Ask Me', description: 'Let people query your presence' },
 ];
 
 export default function EditProfilePage() {
@@ -79,10 +80,14 @@ export default function EditProfilePage() {
       setPhone(profile.phone || '');
       setVisibility((profile.visibility as 'public' | 'incognito') || 'public');
 
-      // Set service toggles from metadata
+      // Set service toggles from metadata + dedicated columns
       const toggles: Record<string, boolean> = {};
       for (const svc of SERVICES) {
-        toggles[svc.key] = !!(profile.metadata && profile.metadata[svc.key]);
+        if (svc.key === 'inference') {
+          toggles[svc.key] = !!profile.inference_enabled;
+        } else {
+          toggles[svc.key] = !!(profile.metadata && profile.metadata[svc.key]);
+        }
       }
       setServiceToggles(toggles);
 
@@ -109,6 +114,7 @@ export default function EditProfilePage() {
     try {
       const metadata: Record<string, string> = {};
       for (const svc of SERVICES) {
+        if (svc.key === 'inference') continue; // handled separately
         if (serviceToggles[svc.key] && handle) {
           metadata[svc.key] = handle;
         }
@@ -122,6 +128,7 @@ export default function EditProfilePage() {
         phone: phone || null,
         visibility,
         metadata,
+        inferenceEnabled: !!serviceToggles['inference'],
       });
 
       // Sign the request body with the user's Ed25519 private key
