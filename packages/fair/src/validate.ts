@@ -84,12 +84,24 @@ export function validateManifest(manifest: unknown): { valid: boolean; errors: s
     }
   }
 
-  // Signature validation (optional fields — will be required in Phase 1)
-  if (m.signature !== undefined && typeof m.signature !== "string") {
-    errors.push("signature must be a string");
-  }
-  if (m.platformSignature !== undefined && typeof m.platformSignature !== "string") {
-    errors.push("platformSignature must be a string");
+  // Signature validation (Phase 1 — validate structure when present)
+  for (const field of ["signature", "platformSignature"] as const) {
+    if (m[field] !== undefined) {
+      const sig = m[field] as Record<string, unknown>;
+      if (typeof sig !== "object" || sig === null) {
+        errors.push(`${field} must be an object`);
+      } else {
+        if (sig.algorithm !== "ed25519") {
+          errors.push(`${field}.algorithm must be "ed25519"`);
+        }
+        if (typeof sig.value !== "string" || !/^[0-9a-f]{128}$/.test(sig.value)) {
+          errors.push(`${field}.value must be a 128 hex character string`);
+        }
+        if (typeof sig.publicKeyRef !== "string" || !sig.publicKeyRef.startsWith("did:")) {
+          errors.push(`${field}.publicKeyRef must start with "did:"`);
+        }
+      }
+    }
   }
 
   // Intent validation (optional)

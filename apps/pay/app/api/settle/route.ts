@@ -84,6 +84,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate signature structure if present on non-funded settlements.
+    // TODO: full cryptographic verification once resolvePublicKey is wired.
+    if (!funded && fair_manifest.signature !== undefined) {
+      const sig = fair_manifest.signature;
+      const isValidSig =
+        typeof sig === 'object' &&
+        sig !== null &&
+        sig.algorithm === 'ed25519' &&
+        typeof sig.value === 'string' &&
+        /^[0-9a-f]{128}$/.test(sig.value) &&
+        typeof sig.publicKeyRef === 'string' &&
+        sig.publicKeyRef.startsWith('did:');
+      if (!isValidSig) {
+        return NextResponse.json(
+          { error: 'fair_manifest.signature has invalid structure' },
+          { status: 400, headers: cors }
+        );
+      }
+    }
+
     let source: 'credit' | 'fiat' | 'mixed' | 'external';
     let creditBurn = 0;
     let cashBurn = 0;
