@@ -147,29 +147,74 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   // 10. Calculate cost
   const cost = calculateCost(modelId, promptTokens, completionTokens);
 
-  // 11. Log to query_logs
+  // 11. Settle cost via pay (non-fatal)
+  const queryId = nanoid();
+  let settled = false;
+  if (cost > 0 && !isSelf) {
+    const payUrl = process.env.PAY_SERVICE_URL;
+    const payKey = process.env.PAY_SERVICE_API_KEY;
+    const platformDid = process.env.PLATFORM_DID;
+    const platformFee = parseFloat(process.env.PLATFORM_FEE_PERCENT ?? '0.2'); // 20% default
+
+    if (payUrl && payKey && platformDid) {
+      const platformAmount = +(cost * platformFee).toFixed(6);
+      const targetAmount = +(cost - platformAmount).toFixed(6);
+
+      try {
+        const settleRes = await fetch(`${payUrl}/api/settle`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${payKey}`,
+          },
+          body: JSON.stringify({
+            from_did: requesterDid,
+            total_amount: cost,
+            service: 'inference',
+            type: 'query',
+            fair_manifest: {
+              chain: [
+                { did: resolvedTargetDid, amount: targetAmount, role: 'presence-owner' },
+                { did: platformDid, amount: platformAmount, role: 'infrastructure' },
+              ],
+            },
+            metadata: { queryId, model: modelId, promptTokens, completionTokens },
+          }),
+        });
+        settled = settleRes.ok;
+        if (!settled) {
+          console.error('[Query] Settlement failed:', await settleRes.text().catch(() => ''));
+        }
+      } catch (err) {
+        console.error('[Query] Settlement error (non-fatal):', err);
+      }
+    }
+  }
+
+  // 12. Log to query_logs
   try {
     await db.insert(queryLogs).values({
-      id: nanoid(),
+      id: queryId,
       requesterDid,
       targetDid: resolvedTargetDid,
       model: modelId,
       promptTokens,
       completionTokens,
       costUsd: cost.toFixed(6),
+      settled,
     });
   } catch (err) {
     console.error('Failed to log query:', err);
-    // Non-fatal: don't fail the request
   }
 
-  // 12. Return response
+  // 13. Return response
   return NextResponse.json({
     response: result.text,
     usage: {
       promptTokens,
       completionTokens,
       cost,
+      settled,
     },
     model: modelId,
   });
