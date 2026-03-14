@@ -30,6 +30,30 @@ const MAX_SIZE = 50 * 1024 * 1024; // 50 MB
 const ALLOWED_MIME_PREFIXES = ["image/", "audio/", "video/", "text/"];
 const ALLOWED_MIME_EXACT = ["application/pdf"];
 
+/** Map file extensions to MIME types for files browsers send as octet-stream */
+const EXT_TO_MIME: Record<string, string> = {
+  ".md": "text/markdown",
+  ".markdown": "text/markdown",
+  ".txt": "text/plain",
+  ".csv": "text/csv",
+  ".json": "application/json",
+  ".yaml": "text/yaml",
+  ".yml": "text/yaml",
+  ".xml": "text/xml",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+};
+
+function inferMime(browserMime: string, filename: string): string {
+  // If the browser gave us a real type, trust it
+  if (browserMime && browserMime !== "application/octet-stream") {
+    return browserMime;
+  }
+  // Infer from extension
+  const ext = filename.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? "";
+  return EXT_TO_MIME[ext] || browserMime || "application/octet-stream";
+}
+
 function isAllowedMime(mime: string): boolean {
   if (ALLOWED_MIME_EXACT.includes(mime)) return true;
   return ALLOWED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix));
@@ -83,19 +107,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // MIME check
-  const mimeType = file.type || "application/octet-stream";
+  // Extract original filename first (needed for MIME inference)
+  const originalName =
+    (formData.get("filename") as string | null) ??
+    (file as File).name ??
+    "upload";
+
+  // MIME check — infer from extension if browser sent octet-stream
+  const mimeType = inferMime(file.type, originalName);
   if (!isAllowedMime(mimeType)) {
     return NextResponse.json(
       { error: `MIME type ${mimeType} is not allowed` },
       { status: 415 }
     );
   }
-
-  const originalName =
-    (file as File).name ??
-    (formData.get("filename") as string | null) ??
-    "upload";
 
   // Parse optional context (for auto-folder assignment + access override)
   let context: { app?: string; feature?: string; entityId?: string; access?: string } | null = null;
@@ -123,13 +148,15 @@ export async function POST(request: NextRequest) {
   // .fair manifest — allow context to override access (public only)
   const accessLevel = context?.access === "public" ? "public" : "private";
   const fairManifest = {
-    version: "0.2.0",
-    asset: assetId,
+    fair: "1.0",
+    id: assetId,
+    type: mimeType,
     owner: ownerDid,
-    access: accessLevel,
-    attribution: [{ did: ownerDid, share: 100 }],
+    created: new Date().toISOString(),
+    source: "upload",
+    access: { type: accessLevel },
+    attribution: [{ did: ownerDid, role: "creator", share: 1.0 }],
     transfer: { allowed: false },
-    createdAt: new Date().toISOString(),
   };
 
   try {

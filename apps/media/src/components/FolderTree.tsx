@@ -106,20 +106,18 @@ function FolderRow({
             {count}
           </span>
         )}
-        {!node.isSystem && (
-          <button
-            className={`opacity-0 group-hover:opacity-100 p-0.5 rounded text-xs transition-opacity ${
-              isSelected ? "text-white hover:bg-white/20" : "text-gray-400 hover:bg-white/10"
-            }`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onContextMenu(e as unknown as React.MouseEvent, node);
-            }}
-            title="Folder options"
-          >
-            ···
-          </button>
-        )}
+        <button
+          className={`opacity-0 group-hover:opacity-100 p-0.5 rounded text-xs transition-opacity ${
+            isSelected ? "text-white hover:bg-white/20" : "text-gray-400 hover:bg-white/10"
+          }`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onContextMenu(e as unknown as React.MouseEvent, node);
+          }}
+          title="Folder options"
+        >
+          ···
+        </button>
       </div>
       {isExpanded &&
         node.children.map((child) => (
@@ -266,7 +264,7 @@ export function FolderTree({
         <div className="pt-2 border-t border-white/10">
           <button
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors"
-            onClick={() => onCreateFolder(null)}
+            onClick={() => onCreateFolder(selectedFolderId)}
           >
             <span>＋</span>
             <span>New Folder</span>
@@ -275,13 +273,21 @@ export function FolderTree({
       )}
 
       {/* Context menu */}
-      {contextMenu && !contextMenu.isSystem && (
+      {contextMenu && (
         <div
           ref={menuRef}
           className="fixed z-50 min-w-36 bg-[#2a2a2a] border border-white/10 rounded-lg shadow-xl py-1"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
-          {onRenameFolder && (
+          {onCreateFolder && (
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
+              onClick={() => { onCreateFolder(contextMenu.folderId); closeMenu(); }}
+            >
+              New Subfolder
+            </button>
+          )}
+          {!contextMenu.isSystem && onRenameFolder && (
             <button
               className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
               onClick={() => startRename(contextMenu.folderId)}
@@ -289,7 +295,7 @@ export function FolderTree({
               Rename
             </button>
           )}
-          {onDeleteFolder && (
+          {!contextMenu.isSystem && onDeleteFolder && (
             <button
               className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-white/10 transition-colors"
               onClick={() => handleDelete(contextMenu.folderId)}

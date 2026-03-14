@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes, tickets } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
 import { sendEmail, ticketConfirmationEmail, generateQRCode } from '@/src/lib/email';
+import { settleTicketPurchase } from '@/src/lib/settle';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js';
@@ -330,6 +331,26 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     .where(eq(ticketTypes.id, ticketType.id));
 
   console.log(`Created ${createdTickets.length} ticket(s) for ${customerEmail}`);
+
+  // After ticket creation, trigger .fair settlement (non-fatal)
+  const eventMetadata = (event.metadata || {}) as Record<string, any>;
+  try {
+    await settleTicketPurchase({
+      eventId: event.id,
+      eventDid: event.did,
+      buyerDid: ownerDid,
+      amount: amountTotal, // cents from Stripe
+      currency,
+      fairManifest: eventMetadata.fair || null,
+      metadata: {
+        ticketId: createdTickets[0].id,
+        ticketTypeId: ticketType.id,
+        stripeSessionId: sessionId,
+      },
+    });
+  } catch (settleError) {
+    console.error('[settle] Unexpected settlement error (non-fatal):', settleError);
+  }
 
   // Send confirmation email with onboard verification link
   const eventDate = new Date(event.startsAt);

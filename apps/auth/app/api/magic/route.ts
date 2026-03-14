@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { identities } from '@/src/db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { createSessionToken, getSessionCookieOptions } from '@/lib/jwt';
 
 const EVENTS_SERVICE_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:3006';
@@ -154,19 +154,7 @@ export async function GET(request: NextRequest) {
         .returning();
     }
 
-    // Check profile tier (profile DB shares same Postgres)
-    let identityTier: 'soft' | 'hard' = 'soft';
-    try {
-      const [profileRow] = await db.execute(
-        sql`SELECT identity_tier FROM profile.profiles WHERE did = ${ownerDid} LIMIT 1`
-      );
-      if (profileRow && (profileRow as any).identity_tier === 'hard') {
-        identityTier = 'hard';
-      }
-    } catch {
-      // Profile table may not exist — fall back to identity metadata
-      if ((identity.metadata as any)?.tier === 'hard') identityTier = 'hard';
-    }
+    const identityTier = (identity.tier || 'soft') as 'soft' | 'preliminary' | 'established';
 
     // Create session token
     const sessionToken = await createSessionToken({

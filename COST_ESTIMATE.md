@@ -1,6 +1,6 @@
 # Build Cost Estimate — Imajin Platform
 
-*Generated 2026-03-10 · Updated with COCOMO II + issue-based validation*
+*Generated 2026-03-13 · Updated with COCOMO II + issue-based validation*
 
 ---
 
@@ -8,21 +8,21 @@
 
 | Metric | Traditional | Actual |
 |--------|------------|--------|
-| **Cost** | **$1,671,304** | **$43,793** |
-| **Timeline** | 14.8 months | 37 days |
-| **Team** | 6.4 people | 1 person + AI |
-| **Hours** | 14,516 | 210 |
-| **Cost multiplier** | — | **38× cheaper** |
-| **Speed multiplier** | — | **15× faster** |
-| **Hour multiplier** | — | **69× fewer hours** |
+| **Cost** | **$1,782,649** | **$53,355** |
+| **Timeline** | 13.4 months | 40 days |
+| **Team** | 7.6 people | 1 person + AI |
+| **Hours** | 15,484 | 250 |
+| **Cost multiplier** | — | **33× cheaper** |
+| **Speed multiplier** | — | **10× faster** |
+| **Hour multiplier** | — | **62× fewer hours** |
 
 ### Actual Cost Breakdown
 
 | Item | Amount |
 |------|--------|
-| AI/API inference spend | $1,793.09 |
-| Human hours (210h @ $200/hr) | $42,000.00 |
-| **Total** | **$43,793.09** |
+| AI/API inference spend | $3,355.13 |
+| Human hours (250h @ $200/hr) | $50,000.00 |
+| **Total** | **$53,355.13** |
 
 ---
 
@@ -34,14 +34,15 @@ The Constructive Cost Model II is the industry standard for estimating software 
 
 | Language | Files | Blank | Comment | Code |
 |----------|------:|------:|--------:|-----:|
-| TypeScript | 493 | 6,672 | 4,873 | 47,203 |
-| YAML | 18 | 2,312 | 0 | 13,969 |
-| JSON | 57 | 0 | 0 | 12,647 |
-| Markdown | 82 | 5,712 | 29 | 11,442 |
-| JavaScript | 19 | 45 | 58 | 347 |
-| SQL | 11 | 25 | 51 | 273 |
+| TypeScript | 530 | 6,972 | 5,022 | 49,991 |
+| YAML | 18 | 2,330 | 0 | 14,120 |
+| JSON | 59 | 0 | 0 | 12,909 |
+| Markdown | 119 | 6,703 | 29 | 13,651 |
+| JavaScript | 20 | 75 | 71 | 513 |
+| SQL | 15 | 53 | 112 | 324 |
 | CSS | 8 | 21 | 3 | 122 |
-| **Total** | **699** | **14,835** | **5,024** | **86,331** |
+| Shell | 3 | 33 | 22 | 148 |
+| **Total** | **781** | **16,220** | **5,261** | **92,037** |
 
 ### COCOMO II Weighting
 
@@ -49,12 +50,12 @@ Not all lines are equal. COCOMO weights by type:
 
 | Category | Raw SLOC | Weight | Effective SLOC |
 |----------|------:|-------:|------:|
-| Source code (TS/JS/SQL/CSS) | 47,945 | 1.0× | 47,945 |
-| Config (JSON/YAML) | 26,616 | 0.3× | 7,985 |
-| Documentation (MD) | 11,442 | 0.2× | 2,288 |
-| **Total** | **86,003** | — | **58,218** |
+| Source code (TS/JS/SQL/CSS/Shell) | 51,098 | 1.0× | 51,098 |
+| Config (JSON/YAML) | 27,029 | 0.3× | 8,109 |
+| Documentation (MD) | 13,651 | 0.2× | 2,730 |
+| **Total** | **91,778** | — | **61,937** |
 
-**Effective KSLOC: 58.2**
+**Effective KSLOC: 61.9**
 
 ### COCOMO II Parameters
 
@@ -89,19 +90,19 @@ Not all lines are equal. COCOMO weights by type:
 
 | Metric | Value |
 |--------|-------|
-| Effort | 95.5 person-months |
-| Hours | 14,516 |
-| Duration | 14.8 months |
-| Average team size | 6.4 people |
+| Effort | 101.9 person-months |
+| Hours | 15,484 |
+| Duration | 13.4 months |
+| Average team size | 7.6 people |
 
 ### Cost at Market Rates
 
 | Rate Tier | Annual | Fully Loaded (1.4×) | Project Cost |
 |-----------|-------:|--------------------:|-------------:|
-| Mid-level ($120K) | $120,000 | $168,000 | $1,337,043 |
-| **Blended ($150K)** | **$150,000** | **$210,000** | **$1,671,304** |
-| Senior ($160K) | $160,000 | $224,000 | $1,782,724 |
-| Staff ($200K) | $200,000 | $280,000 | $2,228,405 |
+| Mid-level ($120K) | $120,000 | $168,000 | $1,426,600 |
+| **Blended ($150K)** | **$150,000** | **$210,000** | **$1,782,649** |
+| Senior ($160K) | $160,000 | $224,000 | $1,902,133 |
+| Staff ($200K) | $200,000 | $280,000 | $2,377,667 |
 
 *Fully loaded = salary × 1.4 (benefits, equipment, tools, office, management overhead)*
 
@@ -109,26 +110,26 @@ Not all lines are equal. COCOMO weights by type:
 
 ## Angle 2: Issue-Based Estimate (Delivered Work)
 
-127 closed GitHub issues, tiered by complexity using title, labels, and scope signals.
+152 closed GitHub issues, tiered by complexity using title, labels, and scope signals.
 
 ### Tiering Model
 
 | Tier | Hours | Equivalent | Count | Total Hours |
 |------|------:|------------|------:|------------:|
 | Epic | 160h | 4 weeks | 1 | 160 |
-| Large | 80h | 2 weeks | 7 | 560 |
-| Medium | 40h | 1 week | 106 | 4,240 |
-| Small | 16h | 2 days | 8 | 128 |
-| Trivial | 4h | ½ day | 5 | 20 |
-| **Total** | | | **127** | **5,108** |
+| Large | 80h | 2 weeks | 8 | 640 |
+| Medium | 40h | 1 week | 125 | 5,000 |
+| Small | 16h | 2 days | 12 | 192 |
+| Trivial | 4h | ½ day | 6 | 24 |
+| **Total** | | | **152** | **6,016** |
 
 ### Delivered Work Cost
 
 | Metric | Value |
 |--------|-------|
-| Total hours | 5,108 |
-| Cost (fully loaded @ $150K/yr) | $515,712 |
-| Timeline (3-person team) | 11.2 months |
+| Total hours | 6,016 |
+| Cost (fully loaded @ $150K/yr) | $692,632 |
+| Timeline (3-person team) | 13.2 months |
 
 ### Notable Delivered Epics & Large Tickets
 
@@ -146,7 +147,7 @@ Not all lines are equal. COCOMO weights by type:
 
 ## Angle 3: Issue-Based Estimate (Scoped Roadmap)
 
-98 open GitHub issues with defined scope — the work ahead.
+99 open GitHub issues with defined scope — the work ahead.
 
 ### Tiering Breakdown
 
@@ -156,15 +157,15 @@ Not all lines are equal. COCOMO weights by type:
 | Large | 80h | 27 | 2,160 |
 | Medium | 40h | 46 | 1,840 |
 | Small | 16h | 14 | 224 |
-| **Total** | | **98** | **5,984** |
+| **Total** | | **99** | **6,024** |
 
 ### Scoped Roadmap Cost
 
 | Metric | Value |
 |--------|-------|
-| Total hours | 5,984 |
-| Cost (fully loaded @ $150K/yr) | $604,154 |
-| Timeline (3-person team) | 13.1 months |
+| Total hours | 6,024 |
+| Cost (fully loaded @ $150K/yr) | $608,194 |
+| Timeline (3-person team) | 13.2 months |
 
 ### Major Scoped Epics
 
@@ -207,10 +208,10 @@ Three independent estimates converge:
 
 | Method | Delivered | Scoped | Total |
 |--------|----------|--------|-------|
-| **COCOMO II** (code-based) | — | — | **$1,671,304** |
-| **Issue-based** (delivered + scoped) | $515,712 | $604,154 | **$1,119,866** |
+| **COCOMO II** (code-based) | — | — | **$1,782,649** |
+| **Issue-based** (delivered + scoped) | $692,632 | $608,194 | **$1,300,826** |
 
-The issue-based total ($1.12M) is lower than COCOMO ($1.67M) because:
+The issue-based total ($1.30M) is lower than COCOMO ($1.78M) because:
 - Heuristic tiering underestimates multi-day "medium" tickets
 - COCOMO includes overhead (PM, QA, meetings, ramp-up) that issues don't capture
 - Issues don't account for infrastructure work not tracked in tickets
@@ -219,13 +220,13 @@ The issue-based total ($1.12M) is lower than COCOMO ($1.67M) because:
 
 | Overhead | % of Base | Hours | Cost |
 |----------|----------:|------:|-----:|
-| Project Management | 15% | 1,434 | $144,761 |
-| Code Review | 10% | 956 | $96,507 |
-| Meetings & Communication | 12% | 1,148 | $115,809 |
-| QA & Testing | 15% | 1,434 | $144,761 |
-| Deployment & Ops | 8% | 765 | $77,206 |
-| Documentation | 5% | 478 | $48,254 |
-| Onboarding & Ramp-up | 10% | 956 | $96,507 |
+| Project Management | 15% | 2,322 | $267,397 |
+| Code Review | 10% | 1,548 | $178,264 |
+| Meetings & Communication | 12% | 1,858 | $213,917 |
+| QA & Testing | 15% | 2,322 | $267,397 |
+| Deployment & Ops | 8% | 1,238 | $142,611 |
+| Documentation | 5% | 774 | $89,132 |
+| Onboarding & Ramp-up | 10% | 1,548 | $178,264 |
 
 These are the costs a traditional team incurs that a solo AI-augmented builder skips entirely.
 
@@ -235,17 +236,17 @@ These are the costs a traditional team incurs that a solo AI-augmented builder s
 
 | | Traditional (COCOMO II) | AI-Augmented (Actual) |
 |--|------------------------|----------------------|
-| **Cost** | $1,671,304 | $43,793 |
-| **Timeline** | 14.8 months | 37 days |
-| **Team** | 6.4 people | 1 person + AI |
-| **Hours** | 14,516 | 210 |
+| **Cost** | $1,782,649 | $53,355 |
+| **Timeline** | 13.4 months | 40 days |
+| **Team** | 7.6 people | 1 person + AI |
+| **Hours** | 15,484 | 250 |
 | | | |
-| **Cost ratio** | — | **38× cheaper** |
-| **Speed ratio** | — | **15× faster** |
-| **Hour ratio** | — | **69× fewer hours** |
+| **Cost ratio** | — | **33× cheaper** |
+| **Speed ratio** | — | **10× faster** |
+| **Hour ratio** | — | **62× fewer hours** |
 | | | |
-| **Scoped ahead** | $604,154 (98 tickets) | At current pace: weeks |
-| **Total platform value** | **~$2.3M** (built + scoped) | — |
+| **Scoped ahead** | $608,194 (99 tickets) | At current pace: weeks |
+| **Total platform value** | **~$2.4M** (built + scoped) | — |
 
 ### At Growth Company Rates
 
@@ -253,8 +254,8 @@ At a growth-stage startup ($200K/yr fully loaded staff engineers):
 
 | Metric | Value |
 |--------|-------|
-| COCOMO estimate | $2,228,405 |
-| Cost multiplier vs actual | **51× cheaper** |
+| COCOMO estimate | $2,377,667 |
+| Cost multiplier vs actual | **45× cheaper** |
 
 ---
 
@@ -265,7 +266,7 @@ At a growth-stage startup ($200K/yr fully loaded staff engineers):
 - **Fully loaded rate:** Salary × 1.4 (industry standard for benefits + overhead)
 - **Issue tiering:** Heuristic classification by title keywords, labels, and scope signals
 - **Human rate:** $200/hr (senior/staff contractor rate, Toronto market)
-- **AI spend:** Cumulative API costs across all inference providers as of 2026-03-10
+- **AI spend:** Cumulative API costs across all inference providers as of 2026-03-13
 
 ---
 

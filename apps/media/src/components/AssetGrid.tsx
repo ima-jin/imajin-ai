@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback } from "react";
 import type { Asset } from "@/src/db/schema";
-import { AssetCard } from "./AssetCard";
+import { AssetCard, formatSize, getMimeIcon } from "./AssetCard";
 import { UploadZone, type UploadZoneHandle } from "./UploadZone";
 
 interface AssetGridProps {
@@ -33,6 +33,7 @@ export function AssetGrid({
   onUploaded,
 }: AssetGridProps) {
   const [dragging, setDragging] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const uploadRef = useRef<UploadZoneHandle>(null);
   const dragCounter = useRef(0);
 
@@ -90,6 +91,7 @@ export function AssetGrid({
 
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("filename", file.name);
 
       try {
         const res = await fetch("/api/assets", {
@@ -175,6 +177,26 @@ export function AssetGrid({
         >
           + Upload
         </button>
+
+        {/* View toggle */}
+        <div className="flex items-center border border-gray-700 rounded overflow-hidden ml-1">
+          <button
+            onClick={() => setViewMode("grid")}
+            className={`p-1.5 text-xs transition-colors ${viewMode === "grid" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-200 hover:bg-white/10"}`}
+            title="Grid view"
+            aria-label="Grid view"
+          >
+            ⊞
+          </button>
+          <button
+            onClick={() => setViewMode("list")}
+            className={`p-1.5 text-xs transition-colors ${viewMode === "list" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-200 hover:bg-white/10"}`}
+            title="List view"
+            aria-label="List view"
+          >
+            ☰
+          </button>
+        </div>
       </div>
 
       {/* Upload zone progress (from file picker) */}
@@ -233,7 +255,7 @@ export function AssetGrid({
               Upload your first file
             </button>
           </div>
-        ) : (
+        ) : viewMode === "grid" ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {assets.map((asset) => (
               <AssetCard
@@ -243,6 +265,42 @@ export function AssetGrid({
                 onSelect={() => onSelectAsset(asset.id)}
               />
             ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            {assets.map((asset) => {
+              const hasFair = !!(
+                asset.fairManifest &&
+                typeof asset.fairManifest === "object" &&
+                Object.keys(asset.fairManifest as object).length > 0
+              );
+              const date = asset.createdAt
+                ? new Date(asset.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                : "—";
+              return (
+                <div
+                  key={asset.id}
+                  role="button"
+                  tabIndex={0}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
+                    asset.id === selectedAssetId
+                      ? "border-orange-500 bg-orange-500/10"
+                      : "border-transparent hover:bg-white/5"
+                  }`}
+                  onClick={() => onSelectAsset(asset.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectAsset(asset.id); } }}
+                >
+                  <span className="text-lg shrink-0">{getMimeIcon(asset.mimeType)}</span>
+                  <span className="text-sm text-gray-200 flex-1 truncate min-w-0">{asset.filename}</span>
+                  <span className="text-xs text-gray-500 shrink-0 w-16 text-right hidden sm:block">{formatSize(asset.size)}</span>
+                  <span className="text-xs text-gray-600 shrink-0 w-16 hidden md:block">{asset.mimeType.split("/")[0]}</span>
+                  <span className="text-xs text-gray-600 shrink-0 w-24 text-right hidden lg:block">{date}</span>
+                  <span className="w-8 shrink-0 text-right">
+                    {hasFair && <span className="text-xs text-green-400 font-medium">.fair</span>}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

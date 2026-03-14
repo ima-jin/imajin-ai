@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getSession } from "@/src/lib/auth";
-import { MediaManager } from "@/src/components/MediaManager";
+import { MediaPageClient } from "@/src/components/MediaPageClient";
 
 export const dynamic = "force-dynamic";
 
@@ -19,5 +19,5 @@ export default async function Page() {
     redirect(loginUrl);
   }
 
-  return <MediaManager session={session} />;
+  return <MediaPageClient session={session} />;
 }

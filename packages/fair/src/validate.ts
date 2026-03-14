@@ -25,9 +25,14 @@ export function validateManifest(manifest: unknown): { valid: boolean; errors: s
     }
   } else if (typeof m.access === "object") {
     const access = m.access as Record<string, unknown>;
-    const validTypes = ["public", "private", "trust-graph"];
+    const validTypes = ["public", "private", "trust-graph", "conversation"];
     if (!validTypes.includes(access.type as string)) {
-      errors.push('access.type must be "public", "private", or "trust-graph"');
+      errors.push('access.type must be "public", "private", "trust-graph", or "conversation"');
+    }
+    if (access.type === "conversation") {
+      if (typeof access.conversationDid !== "string" || !access.conversationDid) {
+        errors.push('access.conversationDid must be a non-empty string when access.type is "conversation"');
+      }
     }
     if (access.allowedDids !== undefined) {
       if (!Array.isArray(access.allowedDids)) {
@@ -76,6 +81,34 @@ export function validateManifest(manifest: unknown): { valid: boolean; errors: s
       if (typeof t.resaleRoyalty !== "number" || t.resaleRoyalty < 0 || t.resaleRoyalty > 1) {
         errors.push("transfer.resaleRoyalty must be a number between 0 and 1");
       }
+    }
+  }
+
+  // Signature validation (Phase 1 — validate structure when present)
+  for (const field of ["signature", "platformSignature"] as const) {
+    if (m[field] !== undefined) {
+      const sig = m[field] as Record<string, unknown>;
+      if (typeof sig !== "object" || sig === null) {
+        errors.push(`${field} must be an object`);
+      } else {
+        if (sig.algorithm !== "ed25519") {
+          errors.push(`${field}.algorithm must be "ed25519"`);
+        }
+        if (typeof sig.value !== "string" || !/^[0-9a-f]{128}$/.test(sig.value)) {
+          errors.push(`${field}.value must be a 128 hex character string`);
+        }
+        if (typeof sig.publicKeyRef !== "string" || !sig.publicKeyRef.startsWith("did:")) {
+          errors.push(`${field}.publicKeyRef must start with "did:"`);
+        }
+      }
+    }
+  }
+
+  // Intent validation (optional)
+  if (m.intent !== undefined) {
+    const intent = m.intent as Record<string, unknown>;
+    if (typeof intent.purpose !== "string" || !intent.purpose) {
+      errors.push("intent.purpose must be a non-empty string");
     }
   }
 

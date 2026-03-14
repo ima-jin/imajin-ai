@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { FolderTree } from "./FolderTree";
 import { AssetGrid } from "./AssetGrid";
 import { AssetDetail } from "./AssetDetail";
-import { UploadZone } from "./UploadZone";
 import type { Asset, Folder } from "@/src/db/schema";
 import type { Identity } from "@/src/lib/auth";
 
@@ -14,6 +13,7 @@ interface FolderWithCount extends Folder {
 
 interface MediaManagerProps {
   session: Identity;
+  search?: string;
 }
 
 type SortKey = "created" | "name" | "size";
@@ -30,13 +30,12 @@ function clientSort(assets: Asset[], sort: SortKey, order: "asc" | "desc"): Asse
   return order === "desc" ? sorted.reverse() : sorted;
 }
 
-export function MediaManager({ session }: MediaManagerProps) {
+export function MediaManager({ session: _session, search = '' }: MediaManagerProps) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [allAssets, setAllAssets] = useState<Asset[]>([]);
   const [folders, setFolders] = useState<FolderWithCount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [sort, setSort] = useState<SortKey>("created");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
@@ -101,10 +100,6 @@ export function MediaManager({ session }: MediaManagerProps) {
 
   const selectedAsset = allAssets.find((a) => a.id === selectedAssetId) ?? null;
 
-  const did = session.id;
-  const shortDid =
-    did.length > 24 ? `${did.slice(0, 10)}…${did.slice(-6)}` : did;
-
   const handleFolderSelect = useCallback((id: string | null) => {
     setSelectedFolderId(id);
     setSelectedAssetId(null);
@@ -153,48 +148,16 @@ export function MediaManager({ session }: MediaManagerProps) {
   );
 
   return (
-    <div className="h-screen flex flex-col bg-[#1a1a1a] text-white overflow-hidden">
-      {/* Header */}
-      <header className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 bg-[#1a1a1a] shrink-0">
-        {/* Mobile hamburger */}
+    <div className="h-full flex flex-col bg-[#1a1a1a] text-white overflow-hidden">
+      {/* Mobile header (hamburger only — search is in NavBar) */}
+      <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-gray-800 bg-[#1a1a1a] shrink-0">
         <button
-          className="md:hidden p-1.5 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+          className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
           onClick={() => setMobileSidebarOpen(true)}
           aria-label="Open folders"
         >
           ☰
         </button>
-
-        <span className="text-orange-500 font-bold tracking-tight">imajin</span>
-        <span className="text-gray-600 text-xs">media</span>
-
-        <div className="flex-1" />
-
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Search files…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="hidden md:block w-52 bg-[#252525] border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500 transition-colors"
-        />
-
-        {/* DID + tier */}
-        <span className="hidden md:block text-xs text-gray-600 font-mono">{shortDid}</span>
-        {session.tier && (
-          <span
-            className={`hidden md:block text-xs px-2 py-0.5 rounded-full font-medium ${
-              session.tier === "hard"
-                ? "bg-orange-500/20 text-orange-400"
-                : "bg-gray-700 text-gray-400"
-            }`}
-          >
-            {session.tier}
-          </span>
-        )}
-
-        {/* Upload button (header) */}
-        <UploadZone buttonOnly onUploaded={loadAssets} />
       </header>
 
       {/* Body */}

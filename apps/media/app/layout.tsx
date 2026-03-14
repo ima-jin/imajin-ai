@@ -13,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="h-screen overflow-hidden bg-[#1a1a1a] text-white">
+      <body className="h-screen flex flex-col overflow-hidden bg-[#1a1a1a] text-white">
         {children}
       </body>
     </html>

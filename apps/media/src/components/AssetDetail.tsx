@@ -4,12 +4,90 @@ import { useState } from "react";
 import type { Asset } from "@/src/db/schema";
 import { FairEditor } from "@imajin/fair";
 import type { FairManifest } from "@imajin/fair";
+
+const PROFILE_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX
+  ? `${process.env.NEXT_PUBLIC_SERVICE_PREFIX}profile.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`
+  : 'https://profile.imajin.ai';
+
+async function resolveProfile(did: string): Promise<{ name: string; avatar?: string }> {
+  const res = await fetch(`${PROFILE_URL}/api/profile/${encodeURIComponent(did)}`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Profile not found');
+  const data = await res.json();
+  return { name: data.handle || data.name || did.slice(0, 16), avatar: data.avatar };
+}
 import { formatSize } from "./AssetCard";
 
 interface Folder {
   id: string;
   name: string;
   icon: string | null;
+}
+
+function FairEditModal({
+  manifest,
+  onSave,
+  onCancel,
+}: {
+  manifest: FairManifest;
+  onSave: (m: FairManifest) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState<FairManifest>(manifest);
+  const [saving, setSaving] = useState(false);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      role="button"
+      tabIndex={0}
+      onClick={onCancel}
+      onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
+    >
+      <div
+        className="bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl p-4 w-[480px] max-h-[80vh] overflow-y-auto"
+        role="dialog"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium text-gray-200">Edit .fair Manifest</p>
+          <button
+            onClick={onCancel}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+        <FairEditor
+          resolveProfile={resolveProfile}
+          manifest={draft}
+          readOnly={false}
+          onChange={setDraft}
+          sections={["attribution", "access", "transfer"]}
+        />
+        <div className="flex justify-end gap-2 mt-3">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-sm text-gray-400 hover:text-white rounded-md transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              await onSave(draft);
+              setSaving(false);
+              onCancel();
+            }}
+            className="px-4 py-1.5 text-sm bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-colors disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 interface AssetDetailProps {
@@ -40,6 +118,9 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
   });
   const [movingTo, setMovingTo] = useState(false);
   const [shareLabel, setShareLabel] = useState("Copy URL");
+  const [savedFilename, setSavedFilename] = useState(asset.filename);
+  const [editingFilename, setEditingFilename] = useState(false);
+  const [filenameInput, setFilenameInput] = useState("");
 
   const isImage = asset.mimeType.startsWith("image/");
   const isAudio = asset.mimeType.startsWith("audio/");
@@ -61,6 +142,24 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
     navigator.clipboard.writeText(url).catch(() => {});
     setShareLabel("Copied!");
     setTimeout(() => setShareLabel("Copy URL"), 2000);
+  };
+
+  const handleRenameFile = async () => {
+    const trimmed = filenameInput.trim();
+    if (!trimmed || trimmed === savedFilename) {
+      setEditingFilename(false);
+      return;
+    }
+    const res = await fetch(`/api/assets/${asset.id}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: trimmed }),
+    });
+    if (res.ok) {
+      setSavedFilename(trimmed);
+    }
+    setEditingFilename(false);
   };
 
   const handleSaveFair = async (manifest: FairManifest) => {
@@ -102,7 +201,27 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
             ← Back
           </button>
           <span className="text-gray-700">/</span>
-          <span className="text-sm text-gray-200 truncate flex-1 min-w-0">{asset.filename}</span>
+          {editingFilename ? (
+            <input
+              className="flex-1 min-w-0 text-sm bg-[#252525] border border-orange-500 rounded px-1 py-0.5 text-gray-100 outline-none"
+              value={filenameInput}
+              onChange={(e) => setFilenameInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleRenameFile();
+                if (e.key === "Escape") setEditingFilename(false);
+              }}
+              onBlur={handleRenameFile}
+              autoFocus
+            />
+          ) : (
+            <span
+              className="text-sm text-gray-200 truncate flex-1 min-w-0 cursor-pointer hover:text-white"
+              onClick={() => { setFilenameInput(savedFilename); setEditingFilename(true); }}
+              title="Click to rename"
+            >
+              {savedFilename}
+            </span>
+          )}
         </div>
 
         {/* Preview */}
@@ -262,19 +381,18 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
             <p className="text-xs text-gray-500 uppercase tracking-widest">.fair</p>
             {fairManifest && (
               <button
-                onClick={() => setEditingFair((v) => !v)}
+                onClick={() => setEditingFair(true)}
                 className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
               >
-                {editingFair ? "Done" : "Edit ✏️"}
+                Edit ✏️
               </button>
             )}
           </div>
 
           {fairManifest ? (
-            <FairEditor
+            <FairEditor resolveProfile={resolveProfile}
               manifest={fairManifest}
-              readOnly={!editingFair}
-              onChange={editingFair ? handleSaveFair : undefined}
+              readOnly={true}
               sections={["attribution", "access", "transfer"]}
             />
           ) : (
@@ -284,6 +402,15 @@ export function AssetDetail({ asset, folders, onClose, onDeleted, onMoved }: Ass
           )}
         </div>
       </div>
+
+      {/* .fair edit modal */}
+      {editingFair && fairManifest && (
+        <FairEditModal
+          manifest={fairManifest}
+          onSave={handleSaveFair}
+          onCancel={() => setEditingFair(false)}
+        />
+      )}
     </div>
   );
 }

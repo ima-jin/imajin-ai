@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile } from "fs/promises";
+import { readFile, unlink, rename } from "fs/promises";
+import path from "path";
 import { db, assets } from "@/src/db";
 import { requireAuth } from "@/src/lib/auth";
 import { eq } from "drizzle-orm";
@@ -154,4 +155,109 @@ export async function GET(
   }
 
   return new NextResponse(new Uint8Array(outputBuffer), { status: 200, headers });
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /api/assets/[id] — hard-delete asset + files (owner only)
+// ---------------------------------------------------------------------------
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  const authResult = await requireAuth(request);
+  if ("error" in authResult) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+  const requesterDid = authResult.identity.id;
+
+  let asset;
+  try {
+    [asset] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.id, id))
+      .limit(1);
+  } catch (err) {
+    console.error("DB lookup failed:", err);
+    return NextResponse.json({ error: "Database failure" }, { status: 500 });
+  }
+
+  if (!asset || asset.status !== "active") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (asset.ownerDid !== requesterDid) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Remove files from disk (best-effort — don't fail if already gone)
+  try { await unlink(asset.storagePath); } catch {}
+  if (asset.fairPath) {
+    try { await unlink(asset.fairPath); } catch {}
+  }
+
+  // Delete DB row
+  await db.delete(assets).where(eq(assets.id, id));
+
+  return NextResponse.json({ ok: true });
+}
+
+// ---------------------------------------------------------------------------
+// PATCH /api/assets/[id] — rename asset filename (owner only)
+// ---------------------------------------------------------------------------
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  const authResult = await requireAuth(request);
+  if ("error" in authResult) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+  const requesterDid = authResult.identity.id;
+
+  let body: { filename?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { filename } = body;
+  if (!filename || typeof filename !== "string" || !filename.trim()) {
+    return NextResponse.json({ error: "filename is required" }, { status: 400 });
+  }
+
+  let asset;
+  try {
+    [asset] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
+  } catch (err) {
+    console.error("DB lookup failed:", err);
+    return NextResponse.json({ error: "Database failure" }, { status: 500 });
+  }
+
+  if (!asset || asset.status !== "active") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (asset.ownerDid !== requesterDid) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const newFilename = filename.trim();
+  const newStoragePath = path.join(path.dirname(asset.storagePath), newFilename);
+
+  try {
+    await rename(asset.storagePath, newStoragePath);
+  } catch (err) {
+    console.error("File rename failed:", err);
+    return NextResponse.json({ error: "File rename failed" }, { status: 500 });
+  }
+
+  await db.update(assets).set({ filename: newFilename, storagePath: newStoragePath }).where(eq(assets.id, id));
+
+  return NextResponse.json({ ok: true, filename: newFilename });
 }

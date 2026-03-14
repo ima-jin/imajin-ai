@@ -4,8 +4,9 @@
  * Tiers:
  * - none: unauthenticated
  * - soft: soft DID (session-based, no keypair)
- * - hard: hard DID (keypair-based)
- * - hard+graph: hard DID + at least one accepted connection in trust graph
+ * - preliminary: keypair-based DID (registered, not yet established)
+ * - established: established DID (keypair-based, fully onboarded)
+ * - established+graph: established DID + at least one accepted connection in trust graph
  */
 
 export type Action =
@@ -13,34 +14,37 @@ export type Action =
   | 'edit_profile' | 'create_event'
   | 'dm' | 'pod_chat' | 'send_invite' | 'create_pod' | 'connections';
 
-export type Tier = 'none' | 'soft' | 'hard' | 'hard+graph';
+export type Tier = 'none' | 'soft' | 'preliminary' | 'established' | 'established+graph';
 
 /**
  * Returns the minimum tier required for an action
  */
 export function requiredTier(action: Action): Tier {
   switch (action) {
-    // Anyone authenticated (soft or hard DID)
+    // Anyone authenticated (any DID)
     case 'event_lobby_chat':
     case 'view_tickets':
     case 'buy_ticket':
       return 'soft';
 
-    // Hard DID required
+    // Preliminary DID required
     case 'edit_profile':
-    case 'create_event':
-      return 'hard';
+      return 'preliminary';
 
-    // Hard DID + trust graph membership required
+    // Established DID required
+    case 'create_event':
+    case 'send_invite':
+      return 'established';
+
+    // Established DID + trust graph membership required
     case 'dm':
     case 'pod_chat':
-    case 'send_invite':
     case 'create_pod':
     case 'connections':
-      return 'hard+graph';
+      return 'established+graph';
 
     default:
-      return 'hard';
+      return 'established';
   }
 }
 
@@ -49,40 +53,39 @@ export function requiredTier(action: Action): Tier {
  *
  * @param did - The user's DID
  * @param action - The action they want to perform
- * @param currentTier - The user's current identity tier ('soft' | 'hard')
+ * @param currentTier - The user's current identity tier
  * @param connectionsServiceUrl - URL of the connections service (optional, required for graph checks)
  * @returns Promise<boolean> - true if user can perform the action
  */
 export async function canDo(
   did: string,
   action: Action,
-  currentTier: 'soft' | 'hard',
+  currentTier: 'soft' | 'preliminary' | 'established',
   connectionsServiceUrl?: string
 ): Promise<boolean> {
   const required = requiredTier(action);
 
-  // Check tier requirements
   if (required === 'none') {
     return true;
   }
 
   if (required === 'soft') {
-    // Any authenticated user (soft or hard)
-    return currentTier === 'soft' || currentTier === 'hard';
+    return true; // any authenticated user
   }
 
-  if (required === 'hard') {
-    // Hard DID required
-    return currentTier === 'hard';
+  if (required === 'preliminary') {
+    return currentTier === 'preliminary' || currentTier === 'established';
   }
 
-  if (required === 'hard+graph') {
-    // Must be hard DID
-    if (currentTier !== 'hard') {
+  if (required === 'established') {
+    return currentTier === 'established';
+  }
+
+  if (required === 'established+graph') {
+    if (currentTier !== 'established') {
       return false;
     }
 
-    // Must be in trust graph (have at least one connection)
     if (!connectionsServiceUrl) {
       throw new Error('connectionsServiceUrl is required for graph membership checks');
     }
@@ -108,13 +111,14 @@ export async function canDo(
  * Checks if a user has the minimum tier required for an action
  * Does not check graph membership
  */
-export function hasTier(currentTier: 'none' | 'soft' | 'hard', required: Tier): boolean {
-  const tierLevels: Record<Tier, number> = {
+export function hasTier(currentTier: 'none' | 'soft' | 'preliminary' | 'established', required: Tier): boolean {
+  const tierLevels: Record<string, number> = {
     'none': 0,
     'soft': 1,
-    'hard': 2,
-    'hard+graph': 2, // tier check only, graph check is separate
+    'preliminary': 2,
+    'established': 3,
+    'established+graph': 3, // tier check only, graph check is separate
   };
 
-  return tierLevels[currentTier] >= tierLevels[required];
+  return (tierLevels[currentTier] ?? 0) >= (tierLevels[required] ?? 0);
 }

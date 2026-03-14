@@ -6,7 +6,9 @@ const LOCAL_PATTERN = /^http:\/\/localhost:\d+$/;
 
 export function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
-  return ORIGIN_PATTERN.test(origin) || LOCAL_PATTERN.test(origin);
+  if (ORIGIN_PATTERN.test(origin)) return true;
+  if (process.env.NODE_ENV !== "production" && LOCAL_PATTERN.test(origin)) return true;
+  return false;
 }
 
 export function corsHeaders(request: NextRequest): Record<string, string> {

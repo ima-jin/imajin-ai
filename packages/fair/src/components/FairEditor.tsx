@@ -1,13 +1,16 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { FairManifest, FairEntry, FairAccess } from '../types';
+import type { FairTemplate } from '../templates';
+import { templates } from '../templates';
 
 export interface FairEditorProps {
   manifest: FairManifest;
   onChange?: (manifest: FairManifest) => void;
   readOnly?: boolean;
-  sections?: ('attribution' | 'access' | 'transfer' | 'integrity')[];
+  sections?: ('attribution' | 'access' | 'transfer' | 'integrity' | 'intent' | 'terms' | 'distributions')[];
+  template?: FairTemplate;
   resolveProfile?: (did: string) => Promise<{ name: string; avatar?: string }>;
 }
 
@@ -16,15 +19,74 @@ const ROLE_OPTIONS = [
   'platform', 'venue', 'distributor', 'label', 'other',
 ];
 
+const ALL_SECTIONS = ['attribution', 'access', 'transfer', 'integrity', 'intent', 'terms', 'distributions'] as const;
 const SECTION_DEFAULTS: NonNullable<FairEditorProps['sections']> = ['attribution', 'access', 'transfer', 'integrity'];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Normalize share values: DB may store as 0-100 (percentage) or 0-1 (decimal).
+ * Editor expects 0-1. If any share > 1, assume all are percentages and divide by 100.
+ */
+function normalizeShares(entries: FairEntry[]): FairEntry[] {
+  const hasPercentage = entries.some(e => e.share > 1);
+  if (!hasPercentage) return entries;
+  return entries.map(e => ({ ...e, share: e.share / 100 }));
+}
 
 function resolveAccess(manifest: FairManifest): FairAccess {
   if (typeof manifest.access === 'string') {
     return { type: manifest.access };
   }
   return manifest.access;
+}
+
+/**
+ * Hook to resolve DIDs to display names via resolveProfile callback.
+ */
+function useDidNames(
+  dids: string[],
+  resolveProfile?: (did: string) => Promise<{ name: string; avatar?: string }>
+): Record<string, string> {
+  const [names, setNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!resolveProfile || dids.length === 0) return;
+    let cancelled = false;
+    const toResolve = dids.filter(d => d && !names[d]);
+    if (toResolve.length === 0) return;
+
+    Promise.all(
+      toResolve.map(async (did) => {
+        try {
+          const profile = await resolveProfile(did);
+          return [did, profile.name] as const;
+        } catch {
+          return [did, null] as const;
+        }
+      })
+    ).then(results => {
+      if (cancelled) return;
+      const updates: Record<string, string> = {};
+      for (const [did, name] of results) {
+        if (name) updates[did] = name;
+      }
+      if (Object.keys(updates).length > 0) {
+        setNames(prev => ({ ...prev, ...updates }));
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [dids.join(','), resolveProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return names;
+}
+
+/** Format a DID for display — show handle if resolved, otherwise truncate DID */
+function formatDid(did: string, names: Record<string, string>): string {
+  if (names[did]) return `@${names[did]}`;
+  if (did.length > 24) return did.slice(0, 12) + '…' + did.slice(-8);
+  return did;
 }
 
 function shareBar(share: number, role: string) {
@@ -46,7 +108,7 @@ function shareBar(share: number, role: string) {
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function AttributionView({ entries }: { entries: FairEntry[] }) {
+function AttributionView({ entries, didNames }: { entries: FairEntry[]; didNames: Record<string, string> }) {
   return (
     <div className="space-y-3">
       {entries.map((entry, i) => (
@@ -54,7 +116,9 @@ function AttributionView({ entries }: { entries: FairEntry[] }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-orange-400 capitalize">{entry.role}</span>
-              <span className="text-xs text-gray-500 truncate max-w-[180px]">{entry.did}</span>
+              <span className="text-xs text-gray-500 truncate max-w-[180px]" title={entry.did}>
+                {formatDid(entry.did, didNames)}
+              </span>
             </div>
           </div>
           {shareBar(entry.share, entry.role)}
@@ -162,7 +226,7 @@ function AccessSection({
   readOnly: boolean;
   onChange?: (access: FairAccess) => void;
 }) {
-  const types = ['public', 'private', 'trust-graph'] as const;
+  const types = ['public', 'private', 'trust-graph', 'conversation'] as const;
 
   return (
     <div className="space-y-3">
@@ -182,6 +246,23 @@ function AccessSection({
           </button>
         ))}
       </div>
+
+      {access.type === 'conversation' && (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500">Conversation DID</p>
+          {readOnly ? (
+            <span className="text-xs text-gray-400 truncate block">{access.conversationDid ?? '—'}</span>
+          ) : (
+            <input
+              type="text"
+              value={access.conversationDid ?? ''}
+              onChange={e => onChange?.({ ...access, conversationDid: e.target.value || undefined })}
+              placeholder="did:key:... (conversation)"
+              className="w-full bg-[#252525] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500"
+            />
+          )}
+        </div>
+      )}
 
       {(access.type === 'private' || access.type === 'trust-graph') && (
         <div className="space-y-2">
@@ -282,7 +363,7 @@ function TransferSection({
               <input
                 type="range"
                 min={0}
-                max={50}
+                max={100}
                 step={0.5}
                 value={((t.resaleRoyalty ?? 0) * 100)}
                 disabled={readOnly}
@@ -336,9 +417,23 @@ export function FairEditor({
   onChange,
   readOnly = false,
   sections: sectionsProp,
+  template,
+  resolveProfile,
 }: FairEditorProps) {
-  const sections = sectionsProp ?? SECTION_DEFAULTS;
-  const [local, setLocal] = useState<FairManifest>(manifest);
+  // Derive active sections: explicit prop > template config > defaults
+  const sections: NonNullable<FairEditorProps['sections']> = sectionsProp
+    ?? (template
+      ? ALL_SECTIONS.filter(s => templates[template].sections[s])
+      : SECTION_DEFAULTS);
+  const [local, setLocal] = useState<FairManifest>(() => {
+    // Normalize shares on init — handle DB storing 0-100 vs 0-1
+    const rawAttribution = manifest.attribution?.length ? manifest.attribution : (manifest.chain ?? []);
+    const normalized = normalizeShares(rawAttribution);
+    if (normalized !== rawAttribution) {
+      return { ...manifest, attribution: normalized, chain: normalized };
+    }
+    return manifest;
+  });
 
   const update = useCallback(
     (patch: Partial<FairManifest>) => {
@@ -351,6 +446,10 @@ export function FairEditor({
 
   const access = resolveAccess(local);
   const attribution = local.attribution?.length ? local.attribution : (local.chain ?? []);
+
+  // Resolve DIDs to handles
+  const allDids = attribution.map(e => e.did).filter(Boolean);
+  const didNames = useDidNames(allDids, resolveProfile);
 
   const totalShare = attribution.reduce((sum, e) => sum + e.share, 0);
   const shareWarning = totalShare > 1.0001;
@@ -375,7 +474,7 @@ export function FairEditor({
             </p>
           )}
           {readOnly ? (
-            <AttributionView entries={attribution} />
+            <AttributionView entries={attribution} didNames={didNames} />
           ) : (
             <AttributionEdit
               entries={attribution}

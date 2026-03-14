@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, integer, numeric, index, primaryKey, pgSchema } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, integer, numeric, boolean, index, primaryKey, pgSchema } from 'drizzle-orm/pg-core';
 
 export const paySchema = pgSchema('pay');
 
@@ -19,6 +19,7 @@ export const transactions = paySchema.table('transactions', {
   metadata: jsonb('metadata').default({}),
   fairManifest: jsonb('fair_manifest'),                  // .fair attribution chain
   batchId: text('batch_id'),                             // for batched settlements
+  credentialIssued: boolean('credential_issued').default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   fromDidIdx: index('idx_transactions_from_did').on(table.fromDid),
