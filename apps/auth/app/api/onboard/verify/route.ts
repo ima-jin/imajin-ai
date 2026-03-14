@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { onboardTokens, identities } from '@/src/db/schema';
-import { createSessionToken, getSessionCookieOptions } from '@/lib/jwt';
+import { createSessionToken, getSessionCookieOptions, verifySessionToken } from '@/lib/jwt';
 import { emitSessionAttestation } from '@/lib/emit-session-attestation';
 import { eq, and, gt, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
@@ -18,6 +18,15 @@ export async function GET(request: NextRequest) {
 
     if (!token) {
       return errorPage('Invalid Link', 'This link is missing a verification token.');
+    }
+
+    // Check if user already has a valid session — if so, skip token validation
+    // and just redirect. Handles double-clicks, email prefetchers, and re-visits.
+    const cookieConfig = getSessionCookieOptions();
+    const existingCookie = request.cookies.get(cookieConfig.name)?.value;
+    let existingSession: Awaited<ReturnType<typeof verifySessionToken>> | null = null;
+    if (existingCookie) {
+      existingSession = await verifySessionToken(existingCookie).catch(() => null);
     }
 
     // Look up token
@@ -34,6 +43,17 @@ export async function GET(request: NextRequest) {
       .limit(1);
 
     if (!record) {
+      // Token is used or expired — but if user already has a session, just redirect
+      if (existingSession) {
+        const [anyRecord] = await db
+          .select()
+          .from(onboardTokens)
+          .where(eq(onboardTokens.token, token))
+          .limit(1);
+        const redirectUrl = anyRecord?.redirectUrl || 'https://events.imajin.ai';
+        return NextResponse.redirect(redirectUrl);
+      }
+
       // Check if token exists but was already used (vs truly expired/invalid)
       const [usedRecord] = await db
         .select()
@@ -42,6 +62,40 @@ export async function GET(request: NextRequest) {
         .limit(1);
 
       if (usedRecord?.usedAt) {
+        // Grace window: if token was used within the last 60 seconds, re-issue session.
+        // Handles email security scanners (Outlook Safe Links, Proofpoint, etc.)
+        // that consume the token via GET before the user clicks.
+        const usedAgo = Date.now() - new Date(usedRecord.usedAt).getTime();
+        const GRACE_MS = 60_000;
+
+        if (usedAgo < GRACE_MS) {
+          // Re-issue session — the token already proved email ownership
+          const emailSlug = usedRecord.email.replace(/@/g, '_at_').replace(/\./g, '_');
+          const did = `did:email:${emailSlug}`;
+
+          let [identity] = await db
+            .select()
+            .from(identities)
+            .where(eq(identities.id, did))
+            .limit(1);
+
+          if (identity) {
+            const sessionToken = await createSessionToken({
+              sub: did,
+              type: 'human',
+              tier: 'soft',
+              handle: identity.handle || undefined,
+              name: identity.name || undefined,
+            });
+
+            const cookieOptions = getSessionCookieOptions();
+            const redirectUrl = usedRecord.redirectUrl || 'https://events.imajin.ai';
+            const response = NextResponse.redirect(redirectUrl);
+            response.cookies.set(cookieOptions.name, sessionToken, cookieOptions.options);
+            return response;
+          }
+        }
+
         const redirectUrl = usedRecord.redirectUrl || 'https://events.imajin.ai';
         return errorPage(
           'Already Verified',
