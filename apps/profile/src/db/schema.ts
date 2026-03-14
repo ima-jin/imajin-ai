@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, index, real, boolean, pgSchema, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, index, integer, real, boolean, pgSchema, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const profileSchema = pgSchema('profile');
 
@@ -97,6 +97,24 @@ export const didMigrations = profileSchema.table('did_migrations', {
   newDidIdx: index('idx_did_migrations_new').on(table.newDid),
 }));
 
+/**
+ * Query logs - tracks inference requests for cost accounting
+ */
+export const queryLogs = profileSchema.table('query_logs', {
+  id: text('id').primaryKey(),
+  requesterDid: text('requester_did').notNull(),
+  targetDid: text('target_did').notNull(),
+  model: text('model').notNull(),
+  promptTokens: integer('prompt_tokens').notNull().default(0),
+  completionTokens: integer('completion_tokens').notNull().default(0),
+  costUsd: text('cost_usd').notNull().default('0'),
+  settled: boolean('settled').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  requesterIdx: index('idx_query_logs_requester').on(table.requesterDid),
+  targetIdx: index('idx_query_logs_target').on(table.targetDid),
+}));
+
 // Types
 export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
@@ -108,3 +126,5 @@ export type DidMigration = typeof didMigrations.$inferSelect;
 export type NewDidMigration = typeof didMigrations.$inferInsert;
 export type Follow = typeof follows.$inferSelect;
 export type NewFollow = typeof follows.$inferInsert;
+export type QueryLog = typeof queryLogs.$inferSelect;
+export type NewQueryLog = typeof queryLogs.$inferInsert;
