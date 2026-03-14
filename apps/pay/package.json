@@ -11,7 +11,9 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@imajin/auth": "workspace:*",
     "@imajin/config": "workspace:*",
+    "@imajin/fair": "workspace:*",
     "@imajin/db": "workspace:^",
     "@imajin/ui": "workspace:^",
     "@solana/spl-token": "^0.4.0",

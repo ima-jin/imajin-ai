@@ -27,6 +27,8 @@ import { db, balances, transactions } from '@/src/db';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { genId } from '@/src/lib/id';
 import { corsHeaders } from '@/src/lib/cors';
+import { verifyManifest } from '@imajin/fair';
+import { createHttpResolver } from '@imajin/auth';
 
 async function emitAttestations(
   from_did: string,
@@ -181,23 +183,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate signature structure if present on non-funded settlements.
-    // TODO: full cryptographic verification once resolvePublicKey is wired.
-    if (!funded && fair_manifest.signature !== undefined) {
-      const sig = fair_manifest.signature;
-      const isValidSig =
-        typeof sig === 'object' &&
-        sig !== null &&
-        sig.algorithm === 'ed25519' &&
-        typeof sig.value === 'string' &&
-        /^[0-9a-f]{128}$/.test(sig.value) &&
-        typeof sig.publicKeyRef === 'string' &&
-        sig.publicKeyRef.startsWith('did:');
-      if (!isValidSig) {
-        return NextResponse.json(
-          { error: 'fair_manifest.signature has invalid structure' },
-          { status: 400, headers: cors }
-        );
+    // Cryptographic signature verification for non-funded settlements.
+    // Funded (external/Stripe) settlements skip verification — manifest came from our own service.
+    let signatureVerified = false;
+
+    if (!funded) {
+      if (fair_manifest.signature !== undefined) {
+        const resolver = createHttpResolver(process.env.AUTH_SERVICE_URL!);
+        const wrappedResolver = async (did: string): Promise<string> => {
+          const identity = await resolver(did);
+          if (!identity) throw new Error(`Could not resolve public key for DID: ${did}`);
+          return identity.publicKey;
+        };
+
+        const result = await verifyManifest(fair_manifest, wrappedResolver);
+        if (result.valid) {
+          signatureVerified = true;
+        } else {
+          // Signed but invalid — reject
+          return NextResponse.json(
+            { error: `fair_manifest signature verification failed: ${result.error}` },
+            { status: 400, headers: cors }
+          );
+        }
+      } else {
+        // Unsigned manifest — allow but warn (transitional period)
+        console.warn(`Settlement received unsigned fair_manifest from ${from_did} (service: ${service})`);
       }
     }
 
@@ -279,6 +290,7 @@ export async function POST(request: NextRequest) {
             ...metadata,
             role: recipient.role,
             ...(funded && { funded: true, funded_provider: funded_provider || 'unknown' }),
+            signature_verified: funded ? false : signatureVerified,
           },
         });
 
