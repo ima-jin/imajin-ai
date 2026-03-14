@@ -122,7 +122,7 @@ export async function POST(
     // Determine contentType early for capability check
     const earlyContentType = body.contentType || body.content?.type || 'text';
     const required = requiredCapability(earlyContentType);
-    const tier = identity.tier ?? 'hard';
+    const tier = identity.tier ?? 'preliminary';
     if (!hasCapability({ tier }, required)) {
       return Response.json(
         { error: CAPABILITY_MESSAGES[required], code: 'CAPABILITY_DENIED', required },

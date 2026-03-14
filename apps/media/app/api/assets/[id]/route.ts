@@ -8,7 +8,7 @@ import type { FairManifest } from "@imajin/fair";
 
 function getAccessType(
   access: FairManifest["access"]
-): "public" | "private" | "trust-graph" {
+): "public" | "private" | "trust-graph" | "conversation" {
   if (!access) return "private";
   if (access === "public") return "public";
   if (access === "private") return "private";
