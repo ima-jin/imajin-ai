@@ -126,6 +126,17 @@ export async function POST(request: NextRequest) {
 
     const profile = Array.isArray(result) ? result[0] : result;
 
+    // Fire-and-forget presence seed (non-fatal)
+    const mediaUrl = process.env.MEDIA_SERVICE_URL;
+    const mediaKey = process.env.MEDIA_INTERNAL_API_KEY;
+    if (mediaUrl && mediaKey) {
+      fetch(`${mediaUrl}/api/seed/presence`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${mediaKey}` },
+        body: JSON.stringify({ did, handle: handle || undefined }),
+      }).catch(err => console.error('[Presence] Seed failed (non-fatal):', err));
+    }
+
     return jsonResponse({
       did: profile.did,
       handle: profile.handle,

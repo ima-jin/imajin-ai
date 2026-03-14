@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, index, real, pgSchema, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, index, real, boolean, pgSchema, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const profileSchema = pgSchema('profile');
 
@@ -20,6 +20,7 @@ export const profiles = profileSchema.table('profiles', {
   nextInviteAvailableAt: timestamp('next_invite_available_at', { withTimezone: true }), // NULL = can invite now
   metadata: jsonb('metadata').default({}),                    // location, website, etc.
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }), // Online presence tracking
+  inferenceEnabled: boolean('inference_enabled').notNull().default(false), // Presence queryable
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
