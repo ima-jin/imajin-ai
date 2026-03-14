@@ -1,7 +1,12 @@
 'use client';
 
-import { useChat } from '@ai-sdk/react';
-import { useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, FormEvent } from 'react';
+
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 interface PresenceChatProps {
   targetDid: string;
@@ -11,18 +16,86 @@ interface PresenceChatProps {
 }
 
 export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: PresenceChatProps) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
-    api: `/api/profile/${encodeURIComponent(targetDid)}/stream`,
-  });
-
-  // Auto-scroll to bottom
+  // Auto-scroll on new messages
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  const sendMessage = useCallback(async (userText: string) => {
+    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: userText };
+    const assistantMsg: Message = { id: crypto.randomUUID(), role: 'assistant', content: '' };
+
+    setMessages(prev => [...prev, userMsg]);
+    setIsLoading(true);
+    setError(null);
+
+    // Build conversation history for the API (only role + content, no SDK metadata)
+    const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }));
+
+    abortRef.current = new AbortController();
+
+    try {
+      const res = await fetch(`/api/profile/${encodeURIComponent(targetDid)}/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history }),
+        signal: abortRef.current.signal,
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+
+      if (!res.body) throw new Error('No response body');
+
+      // Add empty assistant message, then stream into it
+      setMessages(prev => [...prev, assistantMsg]);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === assistantMsg.id
+              ? { ...m, content: m.content + chunk }
+              : m
+          )
+        );
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      setError(err.message || 'Something went wrong');
+      // Remove the empty assistant message on error
+      setMessages(prev => prev.filter(m => m.id !== assistantMsg.id));
+    } finally {
+      setIsLoading(false);
+      abortRef.current = null;
+    }
+  }, [messages, targetDid]);
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text || isLoading) return;
+    setInput('');
+    sendMessage(text);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
@@ -53,7 +126,7 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
 
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-          {messages.length === 0 && (
+          {messages.length === 0 && !isLoading && (
             <div className="text-center text-gray-600 text-sm mt-8">
               <p className="text-2xl mb-2">🟠</p>
               <p>Ask {targetName} anything.</p>
@@ -63,13 +136,7 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
             </div>
           )}
 
-          {messages
-            .filter((msg) => {
-              // Skip assistant messages with no text (tool-call-only intermediates)
-              if (msg.role === 'assistant' && !msg.content?.trim()) return false;
-              return true;
-            })
-            .map((msg) => (
+          {messages.map((msg) => (
             <div
               key={msg.id}
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -81,12 +148,12 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
                     : 'bg-gray-800 text-gray-100 rounded-bl-sm'
                 }`}
               >
-                <p className="whitespace-pre-wrap">{msg.content}</p>
+                <p className="whitespace-pre-wrap">{msg.content || '\u200B'}</p>
               </div>
             </div>
           ))}
 
-          {isLoading && (
+          {isLoading && messages[messages.length - 1]?.role === 'user' && (
             <div className="flex justify-start">
               <div className="bg-gray-800 text-gray-400 px-3 py-2 rounded-xl rounded-bl-sm text-sm">
                 <span className="animate-pulse">Thinking...</span>
@@ -97,7 +164,7 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
           {error && (
             <div className="flex justify-center">
               <p className="text-red-400 text-xs bg-red-950/50 px-3 py-1 rounded">
-                {error.message || 'Something went wrong'}
+                {error}
               </p>
             </div>
           )}
@@ -108,7 +175,7 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
           <div className="flex gap-2">
             <input
               value={input}
-              onChange={handleInputChange}
+              onChange={(e) => setInput(e.target.value)}
               placeholder={`Ask ${targetName}...`}
               className="flex-1 bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-700 focus:border-gray-500 focus:outline-none placeholder-gray-500"
               disabled={isLoading}

@@ -144,7 +144,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     messages,
     tools,
     maxSteps: 5,
-    toolCallStreaming: true,
+    // Server handles all tool execution internally via maxSteps.
+    // Client receives plain text only via toTextStreamResponse().
     onFinish: async ({ usage }) => {
       const promptTokens = usage?.promptTokens ?? 0;
       const completionTokens = usage?.completionTokens ?? 0;
@@ -200,5 +201,5 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     },
   });
 
-  return result.toDataStreamResponse();
+  return result.toTextStreamResponse();
 }
