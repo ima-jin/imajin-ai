@@ -128,7 +128,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   });
 
   // 9. Generate response
-  let result: Awaited<ReturnType<typeof generateText>>;
+  let result;
   try {
     result = await generateText({
       model,

@@ -21,3 +21,4 @@ export {
   NODE_UNREACHABLE_THRESHOLD,
   NODE_GRACE_PERIOD,
 } from "./constants";
+export type { NodeHeartbeat, NodeRegistration, NodeRegistrationRequest, NodeRegistrationResponse, NodeAttestation } from "./types/node";
