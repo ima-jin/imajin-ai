@@ -15,6 +15,7 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
     api: `/api/profile/${encodeURIComponent(targetDid)}/stream`,
+    maxSteps: 5,
   });
 
   // Auto-scroll to bottom
