@@ -10,6 +10,8 @@ export const ATTESTATION_TYPES = [
   'vouch.received',
   'flag.yellow',
   'flag.cleared',
+  'transaction.settled',
+  'customer',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];

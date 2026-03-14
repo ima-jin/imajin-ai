@@ -24,9 +24,106 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, balances, transactions } from '@/src/db';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { genId } from '@/src/lib/id';
 import { corsHeaders } from '@/src/lib/cors';
+
+async function emitAttestations(
+  from_did: string,
+  fair_manifest: { chain: Array<{ did: string; amount: number; role: string }> },
+  batchId: string,
+  txIds: string[],
+  total_amount: number,
+  source: string,
+) {
+  const authServiceUrl = process.env.AUTH_SERVICE_URL;
+  const internalApiKey = process.env.AUTH_INTERNAL_API_KEY;
+
+  if (!authServiceUrl || !internalApiKey) {
+    console.warn('Attestation emission skipped: AUTH_SERVICE_URL or AUTH_INTERNAL_API_KEY not set');
+    return;
+  }
+
+  const url = `${authServiceUrl}/api/attestations/internal`;
+
+  const attestationCalls: Promise<void>[] = [];
+
+  // One "customer" attestation per recipient
+  for (const recipient of fair_manifest.chain) {
+    attestationCalls.push(
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${internalApiKey}`,
+        },
+        body: JSON.stringify({
+          issuer_did: recipient.did,
+          subject_did: from_did,
+          type: 'customer',
+          context_id: batchId,
+          context_type: 'service',
+          payload: { role: recipient.role },
+        }),
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            console.error(`Attestation (customer) failed for ${recipient.did}: ${res.status} ${text}`);
+          }
+        })
+        .catch((err) => {
+          console.error(`Attestation (customer) error for ${recipient.did}:`, err);
+        })
+    );
+  }
+
+  // One "transaction.settled" attestation from the platform
+  const platformDid = process.env.PLATFORM_DID;
+  if (platformDid) {
+    attestationCalls.push(
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${internalApiKey}`,
+        },
+        body: JSON.stringify({
+          issuer_did: platformDid,
+          subject_did: from_did,
+          type: 'transaction.settled',
+          context_id: batchId,
+          context_type: 'service',
+          payload: { total_amount, recipients: fair_manifest.chain.length, source },
+        }),
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            console.error(`Attestation (transaction.settled) failed: ${res.status} ${text}`);
+          }
+        })
+        .catch((err) => {
+          console.error('Attestation (transaction.settled) error:', err);
+        })
+    );
+  } else {
+    console.warn('Attestation (transaction.settled) skipped: PLATFORM_DID not set');
+  }
+
+  await Promise.all(attestationCalls);
+
+  // Mark transactions as credential_issued
+  if (txIds.length > 0) {
+    await db
+      .update(transactions)
+      .set({ credentialIssued: true })
+      .where(inArray(transactions.id, txIds))
+      .catch((err) => {
+        console.error('Failed to mark credential_issued on transactions:', err);
+      });
+  }
+}
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -203,6 +300,11 @@ export async function POST(request: NextRequest) {
             },
           });
       }
+    });
+
+    // Fire attestations asynchronously — don't block settlement response
+    emitAttestations(from_did, fair_manifest, batchId, txIds, total_amount, source).catch((err) => {
+      console.error('Attestation emission error:', err);
     });
 
     return NextResponse.json(
