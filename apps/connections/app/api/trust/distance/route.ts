@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, trustDistance } from '../../../src/db/index';
+import { db, trustDistance } from '../../../../src/db/index';
 
 export async function GET(request: NextRequest) {
   // Internal API key auth
