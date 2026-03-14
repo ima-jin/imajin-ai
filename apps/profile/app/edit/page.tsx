@@ -129,7 +129,6 @@ export default function EditProfilePage() {
         phone: phone || null,
         visibility,
         metadata,
-        inferenceEnabled: !!serviceToggles['inference'],
       });
 
       // Sign the request body with the user's Ed25519 private key
@@ -161,6 +160,13 @@ export default function EditProfilePage() {
         const data = await response.json();
         throw new Error(data.error || 'Update failed');
       }
+
+      // Toggle inference via dedicated endpoint (handles .imajin folder seeding)
+      await fetch('/api/profile/inference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...signedHeaders },
+        body: JSON.stringify({ enabled: !!serviceToggles['inference'] }),
+      }).catch(() => {}); // non-fatal
 
       setSuccess(true);
       await refreshProfile();
