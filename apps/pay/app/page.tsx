@@ -1,112 +1,114 @@
-export default function Home() {
+import { redirect } from 'next/navigation';
+import { getSession } from '@imajin/auth';
+import { db, balances, transactions } from '@/src/db';
+import { eq, or, desc } from 'drizzle-orm';
+import Link from 'next/link';
+import { BalanceCard } from './components/BalanceCard';
+
+const SERVICE_ICONS: Record<string, string> = {
+  coffee: '☕',
+  events: '🎟',
+  inference: '🤖',
+  shop: '🛍',
+  transfer: '↔',
+  topup: '💳',
+};
+
+export default async function Home() {
+  const session = await getSession();
+
+  if (!session) {
+    const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
+    const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+    redirect(`${authUrl}/login?next=${encodeURIComponent(payUrl)}`);
+  }
+
+  const [balanceRows, recentTxs] = await Promise.all([
+    db.select().from(balances).where(eq(balances.did, session.id)).limit(1),
+    db
+      .select()
+      .from(transactions)
+      .where(or(eq(transactions.fromDid, session.id), eq(transactions.toDid, session.id))!)
+      .orderBy(desc(transactions.createdAt))
+      .limit(5),
+  ]);
+
+  const balance = balanceRows[0];
+  const cashAmount = balance ? parseFloat(balance.cashAmount) : 0;
+  const creditAmount = balance ? parseFloat(balance.creditAmount) : 0;
+
   return (
-    <div className="max-w-2xl mx-auto text-center">
-      <div className="text-6xl mb-4">💰</div>
-      <h1 className="text-4xl font-bold mb-4 text-white">
-        pay.imajin.ai
-      </h1>
-      
-      <p className="text-xl text-gray-400 mb-8">
-        Unified payment infrastructure for the sovereign stack.
-        <br />
-        Stripe + Solana. Your keys, your money.
-      </p>
-
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-xl p-8 mb-8">
-        <h2 className="text-2xl font-semibold mb-4 text-white">API Endpoints</h2>
-        
-        <div className="text-left space-y-3 font-mono text-sm">
-          <div className="p-3 bg-black/50 border border-gray-800 rounded">
-            <span className="text-blue-500 font-bold">GET</span> /api/health
-            <span className="text-gray-500 ml-2">— Health check for all providers</span>
-          </div>
-          
-          <div className="p-3 bg-black/50 border border-gray-800 rounded">
-            <span className="text-green-500 font-bold">POST</span> /api/checkout
-            <span className="text-gray-500 ml-2">— Create hosted Stripe Checkout</span>
-          </div>
-          
-          <div className="p-3 bg-black/50 border border-gray-800 rounded">
-            <span className="text-green-500 font-bold">POST</span> /api/charge
-            <span className="text-gray-500 ml-2">— Direct payment (Stripe or Solana)</span>
-          </div>
-          
-          <div className="p-3 bg-black/50 border border-gray-800 rounded">
-            <span className="text-green-500 font-bold">POST</span> /api/escrow
-            <span className="text-gray-500 ml-2">— Create escrow (hold funds)</span>
-          </div>
-          
-          <div className="p-3 bg-black/50 border border-gray-800 rounded">
-            <span className="text-yellow-500 font-bold">PUT</span> /api/escrow
-            <span className="text-gray-500 ml-2">— Release or refund escrow</span>
-          </div>
-          
-          <div className="p-3 bg-black/50 border border-gray-800 rounded">
-            <span className="text-green-500 font-bold">POST</span> /api/webhook
-            <span className="text-gray-500 ml-2">— Stripe webhook handler</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-xl p-8 mb-8">
-        <h2 className="text-2xl font-semibold mb-4 text-white">Providers</h2>
-        
-        <div className="grid grid-cols-2 gap-4 text-left">
-          <div className="p-4 bg-gray-900 border border-gray-800 rounded">
-            <div className="text-lg font-semibold mb-2">💳 Stripe</div>
-            <p className="text-gray-500 text-sm">USD, CAD, EUR, GBP (fiat)</p>
-          </div>
-          <div className="p-4 bg-gray-900 border border-gray-800 rounded">
-            <div className="text-lg font-semibold mb-2">◎ Solana</div>
-            <p className="text-gray-500 text-sm">SOL, USDC, MJN (crypto)</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-xl p-8 mb-8 text-left">
-        <h2 className="text-2xl font-semibold mb-4 text-center text-white">Example: Create Checkout</h2>
-        
-        <pre className="p-4 bg-black/50 border border-gray-800 rounded text-sm overflow-auto">
-{`POST /api/checkout
-Content-Type: application/json
-
-{
-  "items": [
-    { "name": "Unit 8×8×8", "amount": 49900, "quantity": 1 }
-  ],
-  "currency": "USD",
-  "successUrl": "https://example.com/success",
-  "cancelUrl": "https://example.com/cancel"
-}
-
-→ { "id": "cs_xxx", "url": "https://checkout.stripe.com/..." }`}
-        </pre>
-      </div>
-
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-xl p-8 mb-8 text-left">
-        <h2 className="text-2xl font-semibold mb-4 text-center text-white">Example: Direct Charge</h2>
-        
-        <pre className="p-4 bg-black/50 border border-gray-800 rounded text-sm overflow-auto">
-{`POST /api/charge
-Content-Type: application/json
-
-{
-  "amount": 100000000,
-  "currency": "SOL",
-  "to": { "solanaAddress": "xxx..." }
-}
-
-→ { "id": "sol-pending-xxx", "status": "requires_action", ... }`}
-        </pre>
-      </div>
-
-      <div className="text-gray-500 text-sm">
-        <p>Part of the <a href="https://imajin.ai" className="text-[#F59E0B] hover:underline">Imajin</a> sovereign stack</p>
-        <p className="mt-2">
-          <a href="https://github.com/ima-jin/imajin-ai" className="hover:underline text-gray-400">GitHub</a>
-          {' · '}
-          <a href="https://docs.imajin.ai" className="hover:underline text-gray-400">Docs</a>
+    <div className="max-w-4xl mx-auto space-y-8">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-white">Payment Dashboard</h1>
+        <p className="text-zinc-400 mt-1">
+          {session.handle ? `@${session.handle}` : session.name || session.id}
         </p>
+      </div>
+
+      {/* Balance */}
+      <BalanceCard
+        cashAmount={cashAmount}
+        creditAmount={creditAmount}
+        currency={balance?.currency || 'USD'}
+        updatedAt={balance?.updatedAt ?? null}
+      />
+
+      {/* Recent Transactions */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-white">Recent Transactions</h2>
+          <Link href="/history" className="text-orange-500 hover:text-orange-400 text-sm transition-colors">
+            View all →
+          </Link>
+        </div>
+
+        {recentTxs.length === 0 ? (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center text-zinc-500">
+            No transactions yet
+          </div>
+        ) : (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800">
+            {recentTxs.map((tx) => {
+              const isIncoming = tx.toDid === session.id;
+              const amount = parseFloat(tx.amount);
+              const icon = SERVICE_ICONS[tx.service] || '💳';
+              return (
+                <div key={tx.id} className="px-5 py-4 flex items-center gap-4">
+                  <span className="text-xl w-6 text-center shrink-0">{icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-white capitalize">
+                      {tx.type.replace(/_/g, ' ')}
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      {tx.service}
+                      {tx.createdAt
+                        ? ' · ' +
+                          new Date(tx.createdAt).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })
+                        : ''}
+                    </div>
+                  </div>
+                  <div
+                    className={`text-base font-semibold shrink-0 ${
+                      isIncoming ? 'text-green-400' : 'text-red-400'
+                    }`}
+                  >
+                    {isIncoming ? '+' : '-'}
+                    {new Intl.NumberFormat('en-US', {
+                      style: 'currency',
+                      currency: tx.currency,
+                    }).format(amount)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
