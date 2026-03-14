@@ -1,10 +1,11 @@
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha512';
+import { concatBytes } from '@noble/hashes/utils';
 import type { FairManifest, FairSignature } from './types';
 import { canonicalizeForSigning } from './canonical';
 
 // Provide synchronous sha512 so @noble/ed25519 works in all environments
-ed.etc.sha512Sync = (...m) => sha512(...m);
+ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(concatBytes(...m));
 
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
