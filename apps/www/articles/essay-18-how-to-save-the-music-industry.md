@@ -255,4 +255,4 @@ Come bring your music.
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-15-how-to-save-the-music-industry.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-15-how-to-save-the-music-industry.md)
 
-This article was originally published on [imajin.ai/articles/how-to-save-the-music-industry](https://www.imajin.ai/articles/how-to-save-the-music-industry) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/how-to-save-the-music-industry](https://www.imajin.ai/articles/how-to-save-the-music-industry) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)
