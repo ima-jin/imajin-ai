@@ -100,13 +100,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const systemPrompt = [soulMd, contextMd].filter(Boolean).join('\n\n') ||
     `You are the presence of ${profile.displayName}. Answer questions helpfully and authentically.`;
 
-  // 7. Parse body — strip tool invocations from useChat history
+  // 7. Parse body — convert useChat format to plain messages for streamText
   const body = await request.json();
   const rawMessages = body.messages ?? [{ role: 'user', content: body.message ?? '' }];
-  const messages = rawMessages.map((msg: any) => {
-    const { toolInvocations, parts, ...rest } = msg;
-    return rest;
-  }).filter((msg: any) => msg.content || msg.role === 'user');
+  const messages = rawMessages
+    .filter((msg: any) => {
+      // Drop assistant messages that are tool-call-only (no text content)
+      if (msg.role === 'assistant' && (!msg.content || msg.content.trim() === '')) return false;
+      // Drop tool result messages
+      if (msg.role === 'tool') return false;
+      return true;
+    })
+    .map((msg: any) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
 
   // 8. Tools
   const tools = createPresenceTools({
