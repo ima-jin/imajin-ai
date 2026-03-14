@@ -15,10 +15,13 @@
     "@imajin/auth": "workspace:*",
     "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
+    "@imajin/llm": "workspace:*",
     "@imajin/ui": "workspace:^",
     "@noble/ed25519": "^3.0.0",
     "@noble/hashes": "^2.0.1",
+    "ai": "^4.3",
     "drizzle-orm": "^0.45.1",
+    "nanoid": "^5.0.0",
     "next": "^14.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
