@@ -8,6 +8,7 @@ import { getClient } from '@imajin/db';
 import { eq, count } from 'drizzle-orm';
 import { Avatar } from '../components/Avatar';
 import { FollowButton } from '../components/FollowButton';
+import { AskButton } from '../components/AskButton';
 
 interface PageProps {
   params: Promise<{ handle: string }>;
@@ -23,6 +24,7 @@ interface Profile {
   email?: string;
   phone?: string;
   identityTier?: 'soft' | 'hard';
+  inferenceEnabled?: boolean;
   createdAt: string;
   metadata?: {
     links?: string;
@@ -316,12 +318,13 @@ export default async function ProfilePage({ params }: PageProps) {
 
         {/* Ask button */}
         <div className="mb-6">
-          <button
-            disabled
-            className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg text-gray-500 text-sm cursor-not-allowed"
-          >
-            Ask {profile.displayName} <span className="text-gray-600">(coming soon)</span>
-          </button>
+          <AskButton
+            targetDid={profile.did}
+            targetName={profile.displayName}
+            targetHandle={profile.handle}
+            inferenceEnabled={!!profile.inferenceEnabled}
+            canAsk={!!viewerDid}
+          />
         </div>
 
         {/* Links from service or fallback button */}
