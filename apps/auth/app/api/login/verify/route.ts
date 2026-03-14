@@ -3,6 +3,7 @@ import { db, identities, challenges } from '@/src/db';
 import { eq, and, isNull, gt } from 'drizzle-orm';
 import { verifySignature } from '@/lib/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/lib/jwt';
+import { emitSessionAttestation } from '@/lib/emit-session-attestation';
 
 /**
  * POST /api/login/verify
@@ -108,6 +109,14 @@ export async function POST(request: NextRequest) {
     });
 
     response.cookies.set(cookieConfig.name, token, cookieConfig.options);
+
+    emitSessionAttestation({
+      did: identity.id,
+      method: "keypair",
+      tier: identity.tier || "preliminary",
+      userAgent: request.headers.get("user-agent"),
+    }).catch(err => console.error("Session attestation error:", err));
+
     return response;
 
   } catch (error) {

@@ -12,6 +12,7 @@ import { db } from '@/src/db';
 import { identities } from '@/src/db/schema';
 import { eq } from 'drizzle-orm';
 import { createSessionToken, getSessionCookieOptions } from '@/lib/jwt';
+import { emitSessionAttestation } from '@/lib/emit-session-attestation';
 
 const EVENTS_SERVICE_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:3006';
 const EVENTS_URL = process.env.EVENTS_URL || 'https://events.imajin.ai';
@@ -175,6 +176,13 @@ export async function GET(request: NextRequest) {
       sessionToken,
       cookieOptions.options
     );
+
+    emitSessionAttestation({
+      did: ownerDid,
+      method: "magic_link",
+      tier: identityTier,
+      userAgent: request.headers.get("user-agent"),
+    }).catch(err => console.error("Session attestation error:", err));
 
     return response;
 
