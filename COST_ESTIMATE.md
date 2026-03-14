@@ -20,9 +20,24 @@
 
 | Item | Amount |
 |------|--------|
+| AI tokens consumed | 5,500,000 |
 | AI/API inference spend | $3,600.00 |
 | Human hours (280h @ $200/hr) | $56,000.00 |
 | **Total** | **$59,600.00** |
+
+### Token Efficiency
+
+| Metric | Value |
+|--------|-------|
+| Tokens consumed | 5.5M |
+| Lines of code produced | 97,267 |
+| **Tokens per line of code** | **~57** |
+| Issues closed | 168 |
+| **Tokens per issue** | **~32,738** |
+| Services shipped | 14 |
+| **Tokens per service** | **~393K** |
+
+5.5 million tokens is the raw computational effort — every architectural decision, code review, debug session, and refactor. At traditional rates, the equivalent human thinking time would be ~16,586 hours of senior engineering work.
 
 ---
 
