@@ -146,7 +146,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     maxSteps: 5,
     // Server handles all tool execution internally via maxSteps.
     // Client receives plain text only via toTextStreamResponse().
-    onFinish: async ({ usage }) => {
+    onStepFinish: ({ stepType, toolCalls, toolResults, text }) => {
+      console.log(`[stream] step=${stepType} tools=${toolCalls?.length ?? 0} resultLen=${JSON.stringify(toolResults ?? []).length} textLen=${text?.length ?? 0}`);
+      if (toolResults?.length) {
+        console.log(`[stream] toolResults:`, JSON.stringify(toolResults).slice(0, 500));
+      }
+    },
+    onFinish: async ({ usage, steps }) => {
+      console.log(`[stream] finished steps=${steps?.length ?? 0}`);
+
       const promptTokens = usage?.promptTokens ?? 0;
       const completionTokens = usage?.completionTokens ?? 0;
       const cost = calculateCost(modelId, promptTokens, completionTokens);
