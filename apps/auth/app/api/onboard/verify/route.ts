@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { onboardTokens, identities } from '@/src/db/schema';
 import { createSessionToken, getSessionCookieOptions } from '@/lib/jwt';
+import { emitSessionAttestation } from '@/lib/emit-session-attestation';
 import { eq, and, gt, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
@@ -94,6 +95,13 @@ export async function GET(request: NextRequest) {
       sessionToken,
       cookieOptions.options,
     );
+
+    emitSessionAttestation({
+      did,
+      method: "email_onboard",
+      tier: "soft",
+      userAgent: request.headers.get("user-agent"),
+    }).catch(err => console.error("Session attestation error:", err));
 
     return response;
 

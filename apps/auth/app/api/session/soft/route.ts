@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSessionToken, getSessionCookieOptions } from '@/lib/jwt';
+import { emitSessionAttestation } from '@/lib/emit-session-attestation';
 import { db } from '@/src/db';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 import { identities } from '@/src/db/schema';
@@ -111,6 +112,14 @@ export async function POST(request: NextRequest) {
     }, { headers: cors });
 
     response.cookies.set(cookieConfig.name, token, cookieConfig.options);
+
+    emitSessionAttestation({
+      did: identity[0].id,
+      method: "email_soft",
+      tier: "soft",
+      userAgent: request.headers.get("user-agent"),
+    }).catch(err => console.error("Session attestation error:", err));
+
     return response;
 
   } catch (error) {
