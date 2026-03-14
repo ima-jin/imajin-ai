@@ -17,6 +17,7 @@ interface Profile {
   phone?: string;
   visibility?: string;
   metadata?: Record<string, string>;
+  inference_enabled?: boolean;
 }
 
 type AvatarMode = 'emoji' | 'image';
