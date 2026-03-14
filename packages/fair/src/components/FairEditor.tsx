@@ -77,7 +77,7 @@ function useDidNames(
     });
 
     return () => { cancelled = true; };
-  }, [dids.join(','), resolveProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dids.join(','), resolveProfile]);
 
   return names;
 }
