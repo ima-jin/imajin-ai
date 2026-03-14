@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ["@imajin/db", "@imajin/ui", "@imajin/fair"],
+  transpilePackages: ['@imajin/auth','@imajin/config','@imajin/db','@imajin/fair','@imajin/ui'],
   experimental: {
     serverActions: { bodySizeLimit: "50mb" },
   },

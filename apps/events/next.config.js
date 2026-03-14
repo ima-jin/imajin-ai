@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ['@imajin/ui', '@imajin/fair'],
+  transpilePackages: ['@imajin/auth','@imajin/chat','@imajin/config','@imajin/db','@imajin/email','@imajin/fair','@imajin/onboard','@imajin/ui'],
 };
 
 module.exports = nextConfig;

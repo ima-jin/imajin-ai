@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Enable experimental features for workspace packages
-  transpilePackages: ['@imajin/pay'],
+  transpilePackages: ['@imajin/auth','@imajin/config','@imajin/db','@imajin/fair','@imajin/pay','@imajin/ui'],
 };
 
 module.exports = nextConfig;

@@ -4,7 +4,7 @@ const nextConfig = {
   output: 'standalone',
   
   // Transpile workspace packages
-  transpilePackages: ['@imajin/auth', '@imajin/db'],
+  transpilePackages: ['@imajin/auth','@imajin/config','@imajin/db','@imajin/ui'],
 };
 
 module.exports = nextConfig;
