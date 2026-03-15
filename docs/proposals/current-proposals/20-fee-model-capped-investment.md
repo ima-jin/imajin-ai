@@ -1,7 +1,15 @@
-## STATUS: SPEC ADOPTED
+## STATUS: CORE SPEC ADOPTED — ANALYSIS EXTENDS UPSTREAM DOC
 **Adopted:** 2026-03-15
-**Evidence:** `docs/design/FEE_MODEL.md` published in upstream main (HEAD eacad35). Content is identical to this proposal. Ryan published it as an official internal design doc.
-**Implementation:** in spec only — implementation blocked on legal review (7 open questions for counsel: securities classification, dividend treatment, Reg CF vs. OSC, token conversion, early-adopter weighting, co-op governance, non-transferability)
+**Evidence:** `docs/design/FEE_MODEL.md` published in upstream main (HEAD eacad35). Ryan adopted the core fee mechanics verbatim: two-track model, 0.75% split, $100 cap, Supporter Pool structure, early-adopter weighting, MJN token conversion, corporate structure options, and 7 legal questions.
+**What this proposal adds (not in upstream doc):**
+- Positions on all 7 legal questions (co-op framing, patronage returns vs. dividends, dual OSC+Reg CF strategy, token conversion as exchange, round-based pricing vs. share classes, Ontario multi-stakeholder co-op analysis, non-transferability argument)
+- Fee layer clarification: the 0.75% protocol-layer split vs. the 3% platform gross fee in the Settlement Roadmap operate at different stack levels — needs Ryan's explicit ruling before implementation
+- Cap detection analysis: attestation history as the cap tracker (not a dedicated counter) — the `.fair` chain IS the ledger
+- 6 code-level implementation gaps with phased resolution
+- Connection to Proposal 19: Pathway 2 MJN purchase as compound act (identity + first fee contribution + Round 1 timestamp)
+- Connection to Proposal 16: Supporter Pool quarterly disbursement as first production use case for distribution contracts
+- 5 additional open questions for Ryan beyond the 7 legal questions
+**Implementation:** in spec only — implementation blocked on legal review. The `.fair` fee chain split (Phase 0) can ship without Supporter Pool mechanics.
 ---
 
 ## 20. Fee Model — Capped Micro-Investment and Voluntary Equity
