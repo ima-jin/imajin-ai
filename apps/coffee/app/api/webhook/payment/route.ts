@@ -2,19 +2,13 @@ import { NextRequest } from 'next/server';
 import { db, tips, coffeePages } from '@/db';
 import { eq } from 'drizzle-orm';
 import { settleTip } from '@/lib/settle';
+import { sendEmail, tipReceivedEmail, tipSentEmail } from '@/lib/email';
+
+const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL || 'http://localhost:3005';
+const COFFEE_URL = process.env.NEXT_PUBLIC_COFFEE_URL || 'https://coffee.imajin.ai';
 
 /**
  * POST /api/webhook/payment - Receives payment callbacks from pay service
- *
- * Body:
- * - type: 'payment.succeeded' | 'payment.failed' | 'checkout.completed'
- * - tipId: string
- * - pageId: string
- * - amount: number
- * - paymentId: string
- * - fromDid: string
- * - to_did: string
- * - status: string
  */
 export async function POST(request: NextRequest) {
   const webhookSecret = process.env.WEBHOOK_SECRET;
@@ -28,7 +22,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { type, tipId, paymentId, amount, fromDid, to_did, pageId, stripeSessionId } = await request.json();
+    const {
+      type, tipId, paymentId, amount, fromDid, fromName, fromEmail,
+      to_did, pageId, pageHandle, message, stripeSessionId,
+    } = await request.json();
 
     if (!tipId) {
       return Response.json({ received: true }); // Not a tip event
@@ -44,16 +41,22 @@ export async function POST(request: NextRequest) {
           .where(eq(tips.id, tipId));
         console.log(`Tip ${tipId} completed`);
 
-        // Resolve recipient DID — prefer webhook payload, fall back to page lookup
+        // Resolve page info for emails and settlement
         let recipientDid = to_did;
-        if (!recipientDid && pageId) {
+        let handle = pageHandle;
+        let pageTitle: string | undefined;
+        if (pageId) {
           const page = await db.query.coffeePages.findFirst({
             where: (pages, { eq }) => eq(pages.id, pageId),
           });
-          recipientDid = page?.did;
+          if (page) {
+            recipientDid = recipientDid || page.did;
+            handle = handle || page.handle;
+            pageTitle = page.title || page.handle;
+          }
         }
 
-        // Resolve amount — prefer webhook payload, fall back to tip record
+        // Resolve tip amount — prefer webhook payload, fall back to tip record
         let tipAmount = amount;
         if (!tipAmount) {
           const tip = await db.query.tips.findFirst({
@@ -62,8 +65,8 @@ export async function POST(request: NextRequest) {
           tipAmount = tip?.amount;
         }
 
+        // Settle the .fair split
         if (recipientDid && tipAmount) {
-          // Settle the .fair split
           await settleTip({
             tipId,
             recipientDid,
@@ -74,6 +77,51 @@ export async function POST(request: NextRequest) {
           });
         } else {
           console.warn(`[webhook] Cannot settle tip ${tipId} — missing recipientDid or amount`);
+        }
+
+        // Format amount for display
+        const displayAmount = tipAmount ? `$${(tipAmount / 100).toFixed(2)}` : 'a tip';
+        const displayFrom = fromName || 'Anonymous';
+        const pageUrl = handle ? `${COFFEE_URL}/${handle}` : COFFEE_URL;
+
+        // Email the recipient
+        if (recipientDid) {
+          try {
+            const recipientEmail = await resolveEmailForDid(recipientDid);
+            if (recipientEmail) {
+              await sendEmail({
+                to: recipientEmail,
+                subject: `☕ ${displayFrom} just tipped you ${displayAmount}`,
+                html: tipReceivedEmail({
+                  recipientName: pageTitle || 'there',
+                  fromName: displayFrom,
+                  amount: displayAmount,
+                  message: message || undefined,
+                  pageUrl,
+                }),
+              });
+            }
+          } catch (emailErr) {
+            console.error('[webhook] Recipient email failed (non-fatal):', emailErr);
+          }
+        }
+
+        // Email the sender
+        if (fromEmail) {
+          try {
+            await sendEmail({
+              to: fromEmail,
+              subject: `🧡 Thanks for tipping ${pageTitle || 'a creator'} ${displayAmount}`,
+              html: tipSentEmail({
+                fromName: displayFrom,
+                recipientName: pageTitle || 'a creator',
+                amount: displayAmount,
+                pageUrl,
+              }),
+            });
+          } catch (emailErr) {
+            console.error('[webhook] Sender email failed (non-fatal):', emailErr);
+          }
         }
 
         break;
@@ -96,5 +144,28 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Coffee webhook handler error:', error);
     return Response.json({ error: 'Webhook handler failed' }, { status: 500 });
+  }
+}
+
+/**
+ * Look up email for a DID via profile service.
+ */
+async function resolveEmailForDid(did: string): Promise<string | null> {
+  // For soft DIDs, extract email directly
+  if (did.startsWith('did:email:')) {
+    return did.replace('did:email:', '').replace(/_at_/g, '@').replace(/_/g, '.');
+  }
+
+  // For hard DIDs, query profile service
+  try {
+    const res = await fetch(`${PROFILE_SERVICE_URL}/api/profile/${encodeURIComponent(did)}`, {
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const profile = await res.json();
+    return profile.email || null;
+  } catch {
+    return null;
   }
 }

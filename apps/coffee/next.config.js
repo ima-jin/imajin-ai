@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ['@imajin/auth','@imajin/db','@imajin/ui'],
+  transpilePackages: ['@imajin/auth','@imajin/config','@imajin/db','@imajin/email','@imajin/ui'],
   typescript: { ignoreBuildErrors: true },
   reactStrictMode: true,
 };

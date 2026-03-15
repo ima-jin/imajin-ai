@@ -15,6 +15,7 @@
     "@imajin/auth": "workspace:*",
     "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
+    "@imajin/email": "workspace:*",
     "@imajin/ui": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "next": "^14.2.0",
