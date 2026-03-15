@@ -299,6 +299,9 @@ async function notifyCoffeeService(
         pageId: paymentIntent.metadata.pageId,
         amount: paymentIntent.amount,
         paymentId: paymentIntent.id,
+        to_did: paymentIntent.metadata.to_did,
+        fromDid: paymentIntent.metadata.fromDid,
+        stripeSessionId: paymentIntent.id,
         status: type === 'payment.succeeded' ? 'completed' : 'failed',
       }),
     });

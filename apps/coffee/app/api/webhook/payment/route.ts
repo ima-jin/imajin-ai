@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
-import { db, tips } from '@/db';
+import { db, tips, coffeePages } from '@/db';
 import { eq } from 'drizzle-orm';
+import { settleTip } from '@/lib/settle';
 
 /**
  * POST /api/webhook/payment - Receives payment callbacks from pay service
@@ -11,6 +12,8 @@ import { eq } from 'drizzle-orm';
  * - pageId: string
  * - amount: number
  * - paymentId: string
+ * - fromDid: string
+ * - to_did: string
  * - status: string
  */
 export async function POST(request: NextRequest) {
@@ -25,7 +28,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { type, tipId, paymentId } = await request.json();
+    const { type, tipId, paymentId, amount, fromDid, to_did, pageId, stripeSessionId } = await request.json();
 
     if (!tipId) {
       return Response.json({ received: true }); // Not a tip event
@@ -34,11 +37,45 @@ export async function POST(request: NextRequest) {
     switch (type) {
       case 'payment.succeeded':
       case 'checkout.completed': {
+        // Update tip status
         await db
           .update(tips)
           .set({ status: 'completed', ...(paymentId && { paymentId }) })
           .where(eq(tips.id, tipId));
         console.log(`Tip ${tipId} completed`);
+
+        // Resolve recipient DID — prefer webhook payload, fall back to page lookup
+        let recipientDid = to_did;
+        if (!recipientDid && pageId) {
+          const page = await db.query.coffeePages.findFirst({
+            where: (pages, { eq }) => eq(pages.id, pageId),
+          });
+          recipientDid = page?.did;
+        }
+
+        // Resolve amount — prefer webhook payload, fall back to tip record
+        let tipAmount = amount;
+        if (!tipAmount) {
+          const tip = await db.query.tips.findFirst({
+            where: (t, { eq }) => eq(t.id, tipId),
+          });
+          tipAmount = tip?.amount;
+        }
+
+        if (recipientDid && tipAmount) {
+          // Settle the .fair split
+          await settleTip({
+            tipId,
+            recipientDid,
+            fromDid: fromDid || null,
+            amount: tipAmount,
+            currency: 'USD',
+            stripeSessionId,
+          });
+        } else {
+          console.warn(`[webhook] Cannot settle tip ${tipId} — missing recipientDid or amount`);
+        }
+
         break;
       }
 
