@@ -1,6 +1,7 @@
 ### 8. Dark Graph Clustering
 
 **From:** Trust Accountability Framework §2, Presence Boundary Enforcement #344
+**Filed upstream:** March 15, 2026 (docs/proposals/outstanding-concerns/c08-dark-graph-clustering.md)
 
 **The concern:**
 
@@ -64,8 +65,8 @@ Maybe this is the part where we all finally learn that we're exactly the same an
 
 **Related:**
 - #344 — Presence Boundary Enforcement + Abuse Attestations
-- Progressive Trust Model (Proposal 01)
-- Trust Accountability Framework (Proposal 02)
+- Progressive Trust Model (resolved, Proposal 01)
+- Trust Accountability Framework (resolved, Proposal 02)
 - Governance Equity (c03)
 - Greg's bad actor behavioral categories (yellow → amber → red → removal)
 
