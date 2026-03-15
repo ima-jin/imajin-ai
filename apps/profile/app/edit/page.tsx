@@ -18,6 +18,7 @@ interface Profile {
   visibility?: string;
   metadata?: Record<string, string>;
   inference_enabled?: boolean;
+  inferenceEnabled?: boolean;
 }
 
 type AvatarMode = 'emoji' | 'image';
@@ -85,7 +86,7 @@ export default function EditProfilePage() {
       const toggles: Record<string, boolean> = {};
       for (const svc of SERVICES) {
         if (svc.key === 'inference') {
-          toggles[svc.key] = !!profile.inference_enabled;
+          toggles[svc.key] = !!(profile.inferenceEnabled ?? profile.inference_enabled);
         } else {
           toggles[svc.key] = !!(profile.metadata && profile.metadata[svc.key]);
         }

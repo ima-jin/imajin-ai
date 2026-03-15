@@ -191,7 +191,7 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
                     : 'bg-gray-800 text-gray-100 rounded-bl-sm'
                 }`}
               >
-                <p className="whitespace-pre-wrap">{msg.content || '\u200B'}</p>
+                <p className="whitespace-pre-wrap text-left">{msg.content || '\u200B'}</p>
               </div>
             </div>
           ))}
