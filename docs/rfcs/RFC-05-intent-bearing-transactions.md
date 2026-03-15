@@ -1,8 +1,9 @@
 # RFC-05: Intent-Bearing Transactions and Contribution Pools
 
-**Status:** Draft  
-**Authors:** Ryan Veteze, Jin  
-**Created:** 2026-03-03  
+**Status:** Draft
+**Authors:** Ryan Veteze, Jin
+**Created:** 2026-03-03
+**Discussion:** none
 **Requires:** RFC-01 (.fair attribution), RFC-02 (runtime modules), RFC-04 (settlement protocol)
 
 ---

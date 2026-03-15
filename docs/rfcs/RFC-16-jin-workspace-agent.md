@@ -1,8 +1,9 @@
-# RFC-002: Jin Workspace Agent Architecture
+# RFC-16: Jin Workspace Agent Architecture
 
-**Author:** Ryan Veteze + Jin  
-**Date:** March 15, 2026  
-**Status:** Draft  
+**Author:** Ryan Veteze + Jin
+**Date:** March 15, 2026
+**Status:** Draft
+**Discussion:** none
 **Scope:** Presence system, workspace UI, agent runtime, memory, identity
 
 ---

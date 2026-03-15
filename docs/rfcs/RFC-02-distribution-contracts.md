@@ -1,8 +1,11 @@
-# RFC + Bounty: Programmable Distribution Contracts
+# RFC-02: Programmable Distribution Contracts
 
-**Category:** RFC / Architecture / Bounty  
-**Status:** Open for discussion  
-**Related:** [RFC: .fair Attribution from Commit History](#) *(link when live)*  
+**Status:** Open for discussion
+**Authors:** TBD
+**Created:** TBD
+**Discussion:** https://github.com/ima-jin/imajin-ai/discussions/16
+**Category:** RFC / Architecture / Bounty
+**Related:** [RFC-01: .fair Attribution from Commit History](./RFC-01-fair-attribution.md)
 **Attribution:** Financial contributors to this bounty are logged in the .fair chain. When the network generates value, the chain pays back.
 
 ---
