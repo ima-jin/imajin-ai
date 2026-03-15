@@ -1,3 +1,9 @@
+## STATUS: SPEC ADOPTED
+**Adopted:** 2026-03-15
+**Evidence:** `docs/design/FEE_MODEL.md` published in upstream main (HEAD eacad35). Content is identical to this proposal. Ryan published it as an official internal design doc.
+**Implementation:** in spec only — implementation blocked on legal review (7 open questions for counsel: securities classification, dividend treatment, Reg CF vs. OSC, token conversion, early-adopter weighting, co-op governance, non-transferability)
+---
+
 ## 20. Fee Model — Capped Micro-Investment and Voluntary Equity
 
 **Author:** Ryan Veteze (design doc, internal spec)
