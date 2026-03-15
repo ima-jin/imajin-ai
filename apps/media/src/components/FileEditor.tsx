@@ -11,12 +11,11 @@ async function getHighlighter() {
   // Use main prismjs entry (has @types/prismjs declarations)
   const Prism = (await import("prismjs")).default;
   // Side-effect imports to register language grammars — no type declarations for subpaths
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  /* eslint-disable */
   require("prismjs/components/prism-markup");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   require("prismjs/components/prism-json");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   require("prismjs/components/prism-markdown");
+  /* eslint-enable */
   highlightCode = (code, lang) => {
     if (lang === "json" && Prism.languages.json) return Prism.highlight(code, Prism.languages.json, "json");
     if (lang === "markdown" && Prism.languages.markdown) return Prism.highlight(code, Prism.languages.markdown, "markdown");
