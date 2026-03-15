@@ -4,6 +4,7 @@ import { createAttestationTools } from './attestations';
 import { createProfileTools } from './profile';
 import { createPayTools } from './pay';
 import { createLearnTools } from './learn';
+import { createMediaTools } from './media';
 
 export { createEventTools } from './events';
 export { createConnectionTools } from './connections';
@@ -11,6 +12,7 @@ export { createAttestationTools } from './attestations';
 export { createProfileTools } from './profile';
 export { createPayTools } from './pay';
 export { createLearnTools } from './learn';
+export { createMediaTools } from './media';
 
 export interface ToolConfig {
   // Service URLs
@@ -20,6 +22,8 @@ export interface ToolConfig {
   payUrl: string;
   profileUrl: string;
   learnUrl: string;
+  mediaUrl?: string;
+  mediaApiKey?: string;
   // Conversation scope — every tool is bounded to these two participants
   targetDid: string;
   requesterDid: string;
@@ -52,6 +56,9 @@ export function createPresenceTools(config: ToolConfig) {
     Object.assign(tools, createConnectionTools({ connectionsUrl: config.connectionsUrl, ...scope, apiKey: config.internalApiKey }));
     Object.assign(tools, createAttestationTools({ authUrl: config.authUrl, ...scope, apiKey: config.internalApiKey }));
     Object.assign(tools, createLearnTools({ learnUrl: config.learnUrl, ...scope, apiKey: config.internalApiKey }));
+    if (config.mediaUrl && config.mediaApiKey) {
+      Object.assign(tools, createMediaTools({ mediaUrl: config.mediaUrl, apiKey: config.mediaApiKey, ...scope }));
+    }
   }
 
   // Self-query: full access (still scoped to self)
