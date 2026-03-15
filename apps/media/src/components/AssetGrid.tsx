@@ -1,9 +1,11 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
-import type { Asset } from "@/src/db/schema";
-import { AssetCard, formatSize, getMimeIcon } from "./AssetCard";
+import { useRef, useState, useCallback, useEffect } from "react";
+import type { Asset, Folder } from "@/src/db/schema";
+import { AssetCard, formatSize, getMimeIcon, getFairAccess, FairBadge } from "./AssetCard";
 import { UploadZone, type UploadZoneHandle } from "./UploadZone";
+
+type ViewMode = "large-grid" | "small-grid" | "list";
 
 interface AssetGridProps {
   assets: Asset[];
@@ -12,6 +14,7 @@ interface AssetGridProps {
   order: string;
   typeFilter: string;
   selectedAssetId: string | null;
+  folders?: Folder[];
   onSortChange: (sort: string) => void;
   onOrderChange: (order: string) => void;
   onTypeFilterChange: (type: string) => void;
@@ -26,6 +29,7 @@ export function AssetGrid({
   order,
   typeFilter,
   selectedAssetId,
+  folders = [],
   onSortChange,
   onOrderChange,
   onTypeFilterChange,
@@ -33,9 +37,25 @@ export function AssetGrid({
   onUploaded,
 }: AssetGridProps) {
   const [dragging, setDragging] = useState(false);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [viewMode, setViewMode] = useState<ViewMode>("large-grid");
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
+  const [moveFolderId, setMoveFolderId] = useState<string>("");
+  const lastClickIdx = useRef<number | null>(null);
   const uploadRef = useRef<UploadZoneHandle>(null);
   const dragCounter = useRef(0);
+
+  // Init viewMode from localStorage after mount (avoids SSR mismatch)
+  useEffect(() => {
+    const stored = localStorage.getItem("imajin-media-view");
+    if (stored === "small-grid" || stored === "list" || stored === "large-grid") {
+      setViewMode(stored);
+    }
+  }, []);
+
+  const handleSetViewMode = useCallback((mode: ViewMode) => {
+    setViewMode(mode);
+    localStorage.setItem("imajin-media-view", mode);
+  }, []);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -59,18 +79,6 @@ export function AssetGrid({
       setDragging(false);
       const files = Array.from(e.dataTransfer.files);
       if (files.length === 0) return;
-      // Trigger upload via a synthetic file input change using DataTransfer
-      const dt = new DataTransfer();
-      files.forEach((f) => dt.items.add(f));
-      // Create a temporary input and dispatch change
-      const input = document.createElement("input");
-      input.type = "file";
-      input.files = dt.files;
-      const event = new Event("change", { bubbles: true });
-      Object.defineProperty(event, "target", { value: input });
-      // We call openPicker which opens the real file input; instead, manually trigger via upload
-      // Since UploadZone exposes openPicker only, we use a hidden form trick:
-      // Upload directly from dropped files
       uploadDroppedFile(files[0]);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,6 +131,88 @@ export function AssetGrid({
     },
     [onUploaded]
   );
+
+  // Multi-select handlers
+  const handleCardClick = useCallback(
+    (e: React.MouseEvent, asset: Asset, idx: number) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        setSelectedAssetIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(asset.id)) next.delete(asset.id);
+          else next.add(asset.id);
+          return next;
+        });
+        lastClickIdx.current = idx;
+      } else if (e.shiftKey && lastClickIdx.current !== null) {
+        e.preventDefault();
+        const start = Math.min(lastClickIdx.current, idx);
+        const end = Math.max(lastClickIdx.current, idx);
+        setSelectedAssetIds(() => {
+          const next = new Set<string>();
+          for (let i = start; i <= end; i++) {
+            next.add(assets[i].id);
+          }
+          return next;
+        });
+      } else {
+        setSelectedAssetIds(new Set());
+        lastClickIdx.current = idx;
+        onSelectAsset(asset.id);
+      }
+    },
+    [assets, onSelectAsset]
+  );
+
+  const handleCheckClick = useCallback((e: React.MouseEvent, assetId: string, idx: number) => {
+    e.stopPropagation();
+    setSelectedAssetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
+    lastClickIdx.current = idx;
+  }, []);
+
+  const handleBatchDelete = useCallback(async () => {
+    if (!window.confirm(`Delete ${selectedAssetIds.size} file(s)? This cannot be undone.`)) return;
+    await Promise.all(
+      Array.from(selectedAssetIds).map((id) =>
+        fetch(`/api/assets/${id}`, { method: "DELETE", credentials: "include" })
+      )
+    );
+    setSelectedAssetIds(new Set());
+    onUploaded();
+  }, [selectedAssetIds, onUploaded]);
+
+  const handleBatchDownload = useCallback(() => {
+    Array.from(selectedAssetIds).forEach((id) => {
+      const a = document.createElement("a");
+      a.href = `/api/assets/${id}`;
+      a.download = "";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+  }, [selectedAssetIds]);
+
+  const handleBatchMove = useCallback(async () => {
+    if (!moveFolderId) return;
+    await Promise.all(
+      Array.from(selectedAssetIds).map((id) =>
+        fetch(`/api/assets/${id}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folderId: moveFolderId }),
+        })
+      )
+    );
+    setSelectedAssetIds(new Set());
+    setMoveFolderId("");
+    onUploaded();
+  }, [selectedAssetIds, moveFolderId, onUploaded]);
 
   return (
     <div
@@ -178,18 +268,26 @@ export function AssetGrid({
           + Upload
         </button>
 
-        {/* View toggle */}
+        {/* View toggle — large grid | small grid | list */}
         <div className="flex items-center border border-gray-700 rounded overflow-hidden ml-1">
           <button
-            onClick={() => setViewMode("grid")}
-            className={`p-1.5 text-xs transition-colors ${viewMode === "grid" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-200 hover:bg-white/10"}`}
-            title="Grid view"
-            aria-label="Grid view"
+            onClick={() => handleSetViewMode("large-grid")}
+            className={`p-1.5 text-xs transition-colors ${viewMode === "large-grid" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-200 hover:bg-white/10"}`}
+            title="Large grid"
+            aria-label="Large grid view"
           >
             ⊞
           </button>
           <button
-            onClick={() => setViewMode("list")}
+            onClick={() => handleSetViewMode("small-grid")}
+            className={`p-1.5 text-xs transition-colors ${viewMode === "small-grid" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-200 hover:bg-white/10"}`}
+            title="Small grid"
+            aria-label="Small grid view"
+          >
+            ⊠
+          </button>
+          <button
+            onClick={() => handleSetViewMode("list")}
             className={`p-1.5 text-xs transition-colors ${viewMode === "list" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-200 hover:bg-white/10"}`}
             title="List view"
             aria-label="List view"
@@ -229,7 +327,59 @@ export function AssetGrid({
         </div>
       )}
 
-      {/* Grid */}
+      {/* Batch action bar — visible when >1 selected */}
+      {selectedAssetIds.size > 1 && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-orange-500/10 border-b border-orange-500/30 shrink-0 flex-wrap">
+          <span className="text-xs text-orange-400 font-medium">
+            {selectedAssetIds.size} selected
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={handleBatchDownload}
+            className="text-xs px-2.5 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition-colors"
+          >
+            ↓ Download
+          </button>
+          {folders.length > 0 && (
+            <div className="flex items-center gap-1">
+              <select
+                value={moveFolderId}
+                onChange={(e) => setMoveFolderId(e.target.value)}
+                className="bg-[#252525] border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-orange-500"
+              >
+                <option value="">Move to folder…</option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+              {moveFolderId && (
+                <button
+                  onClick={handleBatchMove}
+                  className="text-xs px-2.5 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition-colors"
+                >
+                  Move
+                </button>
+              )}
+            </div>
+          )}
+          <button
+            onClick={handleBatchDelete}
+            className="text-xs px-2.5 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+          >
+            Delete
+          </button>
+          <button
+            onClick={() => setSelectedAssetIds(new Set())}
+            className="text-xs px-2 py-1 rounded text-gray-500 hover:text-gray-300 hover:bg-white/10 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
         {loading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
@@ -255,48 +405,81 @@ export function AssetGrid({
               Upload your first file
             </button>
           </div>
-        ) : viewMode === "grid" ? (
+        ) : viewMode === "large-grid" ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-            {assets.map((asset) => (
+            {assets.map((asset, idx) => (
               <AssetCard
                 key={asset.id}
                 asset={asset}
                 selected={asset.id === selectedAssetId}
-                onSelect={() => onSelectAsset(asset.id)}
+                checked={selectedAssetIds.has(asset.id)}
+                onSelect={(e) => handleCardClick(e, asset, idx)}
+                onCheck={(e) => handleCheckClick(e, asset.id, idx)}
+              />
+            ))}
+          </div>
+        ) : viewMode === "small-grid" ? (
+          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
+            {assets.map((asset, idx) => (
+              <AssetCard
+                key={asset.id}
+                asset={asset}
+                selected={asset.id === selectedAssetId}
+                checked={selectedAssetIds.has(asset.id)}
+                compact
+                onSelect={(e) => handleCardClick(e, asset, idx)}
+                onCheck={(e) => handleCheckClick(e, asset.id, idx)}
               />
             ))}
           </div>
         ) : (
           <div className="flex flex-col gap-0.5">
-            {assets.map((asset) => {
-              const hasFair = !!(
-                asset.fairManifest &&
-                typeof asset.fairManifest === "object" &&
-                Object.keys(asset.fairManifest as object).length > 0
-              );
+            {assets.map((asset, idx) => {
+              const fairAccess = getFairAccess(asset.fairManifest);
               const date = asset.createdAt
                 ? new Date(asset.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                 : "—";
+              const isChecked = selectedAssetIds.has(asset.id);
               return (
                 <div
                   key={asset.id}
                   role="button"
                   tabIndex={0}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
-                    asset.id === selectedAssetId
+                  className={`group flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
+                    asset.id === selectedAssetId || isChecked
                       ? "border-orange-500 bg-orange-500/10"
                       : "border-transparent hover:bg-white/5"
                   }`}
-                  onClick={() => onSelectAsset(asset.id)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectAsset(asset.id); } }}
+                  onClick={(e) => handleCardClick(e, asset, idx)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelectAsset(asset.id);
+                    }
+                  }}
                 >
+                  {/* Checkbox */}
+                  <div
+                    className={`shrink-0 transition-opacity ${isChecked ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                    onClick={(e) => handleCheckClick(e, asset.id, idx)}
+                  >
+                    <div
+                      className={`w-4 h-4 rounded border-2 flex items-center justify-center text-[9px] font-bold transition-colors ${
+                        isChecked
+                          ? "bg-orange-500 border-orange-500 text-white"
+                          : "bg-black/60 border-gray-400 text-transparent"
+                      }`}
+                    >
+                      ✓
+                    </div>
+                  </div>
                   <span className="text-lg shrink-0">{getMimeIcon(asset.mimeType)}</span>
                   <span className="text-sm text-gray-200 flex-1 truncate min-w-0">{asset.filename}</span>
                   <span className="text-xs text-gray-500 shrink-0 w-16 text-right hidden sm:block">{formatSize(asset.size)}</span>
                   <span className="text-xs text-gray-600 shrink-0 w-16 hidden md:block">{asset.mimeType.split("/")[0]}</span>
                   <span className="text-xs text-gray-600 shrink-0 w-24 text-right hidden lg:block">{date}</span>
-                  <span className="w-8 shrink-0 text-right">
-                    {hasFair && <span className="text-xs text-green-400 font-medium">.fair</span>}
+                  <span className="w-10 shrink-0 text-right">
+                    {fairAccess !== null && <FairBadge access={fairAccess} />}
                   </span>
                 </div>
               );

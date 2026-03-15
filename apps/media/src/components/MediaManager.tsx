@@ -39,6 +39,14 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
   const [typeFilter, setTypeFilter] = useState("");
   const [sort, setSort] = useState<SortKey>("created");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
+
+  // Persist sort/order to localStorage after mount
+  useEffect(() => {
+    const s = localStorage.getItem("imajin-media-sort");
+    const o = localStorage.getItem("imajin-media-order");
+    if (s === "name" || s === "size" || s === "created") setSort(s);
+    if (o === "asc" || o === "desc") setOrder(o);
+  }, []);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const loadFolders = useCallback(async () => {
@@ -202,8 +210,15 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
               order={order}
               typeFilter={typeFilter}
               selectedAssetId={selectedAssetId}
-              onSortChange={(s) => setSort(s as SortKey)}
-              onOrderChange={(o) => setOrder(o as "asc" | "desc")}
+              folders={folders}
+              onSortChange={(s) => {
+                setSort(s as SortKey);
+                localStorage.setItem("imajin-media-sort", s);
+              }}
+              onOrderChange={(o) => {
+                setOrder(o as "asc" | "desc");
+                localStorage.setItem("imajin-media-order", o);
+              }}
               onTypeFilterChange={setTypeFilter}
               onSelectAsset={setSelectedAssetId}
               onUploaded={loadAssets}
