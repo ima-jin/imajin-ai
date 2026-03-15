@@ -177,12 +177,24 @@ export function AssetGrid({
 
   const handleBatchDelete = useCallback(async () => {
     if (!window.confirm(`Delete ${selectedAssetIds.size} file(s)? This cannot be undone.`)) return;
-    await Promise.all(
-      Array.from(selectedAssetIds).map((id) =>
-        fetch(`/api/assets/${id}`, { method: "DELETE", credentials: "include" })
-      )
+    const results = await Promise.allSettled(
+      Array.from(selectedAssetIds).map(async (id) => {
+        const res = await fetch(`/api/assets/${id}`, { method: "DELETE", credentials: "include" });
+        if (!res.ok) throw new Error(`${id}: ${res.status}`);
+        return id;
+      })
     );
-    setSelectedAssetIds(new Set());
+    const failed = results.filter((r) => r.status === "rejected");
+    const succeeded = results.filter((r) => r.status === "fulfilled").map((r) => (r as PromiseFulfilledResult<string>).value);
+    // Clear only successfully deleted assets from selection
+    setSelectedAssetIds((prev) => {
+      const next = new Set(prev);
+      for (const id of succeeded) next.delete(id);
+      return next;
+    });
+    if (failed.length > 0) {
+      alert(`${failed.length} of ${results.length} file(s) failed to delete. The rest were removed.`);
+    }
     onUploaded();
   }, [selectedAssetIds, onUploaded]);
 
