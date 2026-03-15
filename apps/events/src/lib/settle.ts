@@ -18,6 +18,7 @@ interface FairAttribution {
 
 interface FairManifest {
   attribution?: FairAttribution[];
+  distributions?: FairAttribution[];
   [key: string]: unknown;
 }
 
@@ -38,7 +39,9 @@ interface SettleTicketPurchaseParams {
 export async function settleTicketPurchase(params: SettleTicketPurchaseParams): Promise<void> {
   const { eventId, buyerDid, amount, fairManifest, metadata } = params;
 
-  if (!fairManifest || !fairManifest.attribution?.length) {
+  // Support both field names: "distributions" (current .fair format) and "attribution" (legacy)
+  const recipients = fairManifest?.distributions || fairManifest?.attribution;
+  if (!fairManifest || !recipients?.length) {
     console.warn(`[settle] No .fair manifest for event ${eventId} — skipping settlement`);
     return;
   }
@@ -49,7 +52,7 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
 
   // Build chain: attribution shares apply to the remaining (non-platform) portion
   // Use rounding with remainder correction to avoid penny drift
-  const attributionChain = fairManifest.attribution.map((entry) => ({
+  const attributionChain = recipients.map((entry) => ({
     did: entry.did,
     amount: parseFloat((remainingDollars * entry.share).toFixed(2)),
     role: entry.role,
