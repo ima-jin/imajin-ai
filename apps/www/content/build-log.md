@@ -1,855 +1,761 @@
-<!-- Build Log — newest first. Generated from git history. -->
-
-## March 14, 2026
-
-- feat: enrich /build page from git history + link build version in footer
-- feat(coffee): tip notification emails to recipient and sender
-- fix(events): settlement reads 'distributions' from .fair manifest, not 'attribution'
-- feat(www): /build page — public build log
-- fix: wire up .fair settlement for coffee tips
-- fix: repair malformed next.config.js in chat, dykil, input
-- fix: skip Next.js type checking — use tsc directly instead
-- fix(pay): cast tx.metadata in JSX condition to avoid ReactNode type error
-- fix: add transpilePackages to all apps for @imajin/* workspace packages
-- docs: add PORT, NODE_ENV, and service-specific vars to .env.example files
-- feat: pay settlement UI — balance display, history page, dashboard (#143 #335)
-- add: backfill script for missed ticket confirmation emails
-- fix: serialize Date to ISO string in onboard token insert
-- fix: graceful handling of reused/scanner-consumed onboard tokens
-- fix: better error page for used magic links — guide users instead of dead end
-- docs: the deeper thesis — visibility creates bridges
-- docs: add c08 — dark graph clustering concern
-- docs: add token metrics — 5.5M tokens, ~57 tokens/LOC
-- docs: refresh COST_ESTIMATE.md — 97K LOC, $1.92M COCOMO, 32× multiplier
-- fix: add Vary: Origin to CORS headers — prevents cached cross-origin responses
-- fix: add safeFetch to all presence tools — errors become results, not crashes
-- feat: custom NDJSON stream with tool debug panel
-- fix: replace useChat with custom streaming client for presence chat
-- fix: remove client-side maxSteps — server handles all tool execution
-- fix: enable toolCallStreaming for presence chat
-- fix: add maxSteps to useChat client to handle server-side tool execution stream
-- fix: properly strip tool-call assistant messages from useChat history
-- fix: strip tool invocations from useChat message history before streamText
-- fix: add maxSteps to streamText for server-side tool execution
-- fix: seed presence sets folderId on assets (client filters by column, not junction)
-- fix: profile editor uses /api/profile/inference toggle (seeds .imajin folder)
-- fix: add inference_enabled to Profile type in editor
-- feat: add Ask Me toggle to profile editor (#256)
-- fix: last tier/access type mismatches in chat + media
-- fix: remove dead 'hard' tier comparisons in chat
-- fix: type-safe headers in llm tool files
-- fix: correct trust distance import path in connections
-- fix: export node types from auth, fix generateText type inference
-- fix: build errors — export auth constants/crypto, fix tier types, hoist noble deps
-- feat: query endpoint + presence tools + trust distance (#32, #35, #342) (#343)
-- feat: @imajin/llm — Vercel AI SDK wrapper with cost tracking (#34) (#341)
-- feat(media,profile): presence bootstrap .imajin folder (#258) (#339)
-- docs: add TODO note to Revenue from Day One essay
-
-## March 13, 2026
-
-- feat(auth): emit session.created attestation on all login flows (#333)
-- feat(connections): emit attestations on invite + accept + vouch (#332)
-- chore(fair): fix eslint - remove react-hooks refs without plugin
-- chore(fair): add eslintrc to fix CI lint
-- feat(pay): wire cryptographic .fair signature verification at settlement (#331)
-- docs: add universal attribution to .fair Phase 2 (#330)
-- feat(pay): auto-issue attestations on transaction settlement (#162) (#329)
-- feat(auth): phase 1 — attestation data layer + crypto exports (#320) (#327)
-- feat(fair): phase 1 — cryptographic manifest signing with Ed25519 (#326)
-- docs: local dev env files for hybrid local/remote development
-- feat(pay): funded settlement — skip balance check for externally funded payments
-- feat(events): wire ticket settlement via pay /api/settle with platform fee (#324)
-- feat(fair): phase 0 — schema hardening (types, templates, conversation access) (#323)
-- fix(auth): phase 0 — tier migration + security fixes (#318, #319) (#322)
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- docs: fee model design — capped micro-investment + voluntary equity
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- refactor(proposals): move resolved docs to resolved/ folder
-- docs: settlement & economics hardening roadmap
-- docs: update identity roadmap — decisions locked, issues created
-- docs: identity & attestation hardening roadmap
-- docs: .fair hardening roadmap — cross-reference Greg proposals, issues, current code
-- fix(media): .fair editor saves on Save button only, not every onChange
-- fix(media): add PUT handler for .fair manifest updates
-- fix(media): correct profile API path for handle resolution
-- fix(fair): normalize share display (10000% → 100%) + resolve DIDs to handles (#315)
-- docs: fix AI spend to $3,355 total (Anthropic $2,253 + $1,102)
-- docs: update cost estimate — 781 files, $1.78M traditional, $52k real (34x)
-- docs: update cost estimate — 853 files, $1M traditional, $52k real (20x)
-- fix(media): rename files, fix move-to-folder, allow subfolders in system folders (#313)
-- feat(media): shared navbar with children slot + delete handler (#310)
-- fix(media): cast hasFair to boolean in AssetCard
-- fix(media): cast hasFair to boolean for React type safety
-- fix(media): UX polish — desktop pass (#308) (#309)
-- fix(media,fair): share stored as 100 instead of 1.0, resale royalty uncapped (#308)
-- fix(media): MIME inference for .md files + filename from form data (#308)
-- fix: service consistency — CORS + auth unification (#242)
-- fix(chat): fix mobile whitespace in legacy conversation view
-- refactor(chat): remove legacy media bridge code after migration
-- fix(chat): render legacy media images in DID-based chat view
-- feat(chat): modern composer layout with inline attach and mic
-- fix(chat): eliminate extra whitespace below composer on mobile
-
-## March 12, 2026
-
-- fix(chat): real-time delete + reactions via WS broadcast
-- fix(chat): forEach instead of for-of on Map
-- fix(chat): move ws token store to shared lib module
-- fix(chat): deferred WS auth via short-lived tokens
-- fix(chat): Array.from in useDidNames hook too
-- fix(chat): use Array.from instead of spread on Set for TS compat
-- feat(chat): resolve DID names in messages + group member list
-- fix(chat): use Record type instead of any for raw sql result
-- fix(chat): fix raw sql type for pod conversation_did query
-- feat(connections): link pods to conversations via conversation_did
-- Revert "fix(chat): add group membership tracking so all members see the conversation "
-- fix(chat): add group membership tracking so all members see the conversation
-- fix(chat): pin scroll to bottom + Enter for newline not send
-- chore: move business pitch to private biz-dev repo
-- docs: Muskoka business case + platform utility exploration
-- fix: use relative link for developer guide in whitepaper
-- feat: developer guide page at /developer-guide
-- docs: add MJN developer guide + link from whitepaper
-- feat: inline edit group chat name in conversation header (closes #304)
-- fix: enable context menu on event chat message bubbles (closes #300)
-- fix: message edit now persists in UI and broadcasts to other clients (closes #302)
-- fix: resolve event DID (evt_xxx) to event name in conversations list (closes #301)
-- fix: prevent soft DIDs (did:email:*) from appearing in NewChatModal or sending messages (closes #299)
-- fix: resolve did:email:* to email-derived display name instead of 404 (closes #298)
-- fix: upsert conversation in PATCH /api/conversations-v2 to avoid 404 (closes #297)
-- Revert "feat: notify coffee service on checkout.completed in pay webhook (#154)"
-- fix: matrix bars — use linear-gradient on single div instead of nested child
-- fix: use inline background styles for matrix bars — Tailwind purging dynamic classes
-- fix: matrix bar fill — use h-full child instead of absolute positioning
-- fix: pass matrix data as props from server, shrink legend text
-- fix: matrix bars fill left-to-right, no numbers, simple legend
-- fix: matrix row labels truncating + cells need height for progress fill
-- feat: redesign landing page — protocol-first with live progress matrix
-- docs: README — position as MJN reference implementation, add protocol matrix
-- fix: add remark-gfm for markdown table rendering in articles + whitepaper
-- feat: whitepaper page at /whitepaper + README updates
-- - more fixed links
-- - modified essay links, removed stale docs
-- docs: whitepaper v0.3 — scopes × primitives rewrite
-- fix: add @imajin/chat to Tailwind content scanning in chat + events apps
-- fix: add CORS headers to profile presence endpoint
-
-## March 11, 2026
-
-- fix: WebSocket auth uses wrong cookie name on dev
-- fix: proxy access checks through same-origin to avoid cross-origin cookie issues
-- fix: allow access to new DID-based conversations before first message
-- fix: prefix React keys in NewChatModal to prevent cross-tab reconciliation bugs
-- fix: deduplicate connections and exclude self from new chat modal
-- fix: three chat bugs — message alignment, link previews, event access
-- fix: auto-resize chat textarea up to ~7 lines across all composers
-- fix: chat composer overflow on narrow viewports (iOS 328px) closes #280
-- feat(chat): group messaging UX — search, groups, DID-based navigation (#275)
-- feat(chat): extract composer, voice, file upload, location into @imajin/chat (#276)
-- chore: remove deprecated lobby routes, pods, and surrogate key references (#288)
-- feat: migrate EventChat to DID-based API + WebSocket (#287)
-- feat(chat): <Chat /> orchestrator component (#286)
-- feat(chat): DID-based API routes + WebSocket subscriptions (#285)
-- feat(chat): API hooks, WebSocket client, and ChatProvider (#284)
-- feat(chat): DID-based conversation schema + auth access endpoint (#283)
-- fix: db.execute returns {rows} not array — profile lookup was silently failing
-- fix: simplify privacy page — focus on email usage, drop DID explanation
-- feat: course_type column — decks auto-present on enrollment
-- feat: show student name + email on enrolled students page
-- feat: privacy page + footer link across all services
-- feat: students dashboard — enrolled students list with progress
-- sync: PITCH_V2.md matches DB — strip table and cell refs (matrix component handles those)
-- fix: vertical column headers on primitive matrix
-- feat: interactive primitive matrix for pitch deck slides
-- fix: use relative import for markdown util (tsconfig @ maps to src/)
-- fix: markdown tables + list grouping in slide/lesson renderer
-- fix: drizzle type error — select full then strip instead of conditional select
-- fix: include lesson content in course API for creator (editor needs it)
-- - added refactored pitch deck. updated grounding.
-- fix: bug report screenshots default to public access
-- fix: type error in bugs page — reporterDid can't be undefined
-- fix: media upload response missing url, bugs page self-fetch
-- fix: replace self-fetch with direct DB queries on /bugs page
-- feat: forward upload context through input service, add to chat voice
-- feat: upload context for auto-folder assignment + paste support in bug reporter
-- fix: session cookie uses IMAJIN_ENV not NODE_ENV for env detection
-- fix: forward session cookie from input to media service on upload
-- Refactor articles and update statuses
-
-## March 10, 2026
-
-- fix: scope session cookies by environment to prevent dev/prod collision
-- fix: pipefail in build.sh so env check errors actually block builds
-- feat: inline question editing in dykil survey builder
-- fix: refresh bug list after submit + show page URL and viewport in cards
-- fix: correct profile service fallback port in chat conversations
-- fix: run env check before build to catch missing vars
-- feat: notify coffee service on checkout.completed in pay webhook (#154)
-- fix: coerce nullable DB fields for TipForm props (#190)
-- fix: resolve null vs undefined type mismatches from DB migration (#190)
-- fix: type coffee theme as Record for direct DB query (#190)
-- refactor: migrate events magic-link flow to @imajin/onboard (#225)
-- refactor: extract @imajin/chat shared package (#196)
-- refactor: replace self-fetching pages with direct DB queries (#190)
-- fix: update .env.example files + add check-env validation script (#191)
-- feat: unified build.sh with --dev/--prod flag, replaces build-dev.sh
-- refactor: remove fixready/karaoke from service manifest — connected apps use plugin arch (#249)
-- docs: media service is alpha on prod, not dev-only
-- docs: update README service statuses — learn, dykil, links, input now live
-- fix: add @imajin/config dependency to www, events, learn, coffee, links
-- feat: shared service manifest + session cookie in @imajin/config (#227, #270)
-- fix(essay): update support page link and correct article URL
-
-## March 9, 2026
-
-- docs: update cost estimate — COCOMO II + issue-based validation
-- feat(learn): pitch deck v3 update script — wallet discovery, token economics, typed identity
-- docs: Day 37 — the protocol discovers itself
-- docs: update whitepaper governance — Imajin Inc. as reference operator
-- feat: collect optional email/phone at registration with update opt-in
-- docs: MJN whitepaper v0.2 — typed identity primitives
-- fix: key backup format mismatch between register and login (#268)
-- fix(www): regenerate slugMap for all 30 essays
-- docs: freshen architecture doc — current as of March 9, 2026
-- Update articles with new support page link and refine descriptions
-- feat(www): bugs page shows all reports + report button
-- fix(chat): lobby messages accept all content types (media, voice, location)
-- feat(ui): add messages + connections quick-access icons to shared nav
-- fix(chat): exclude own messages from unread count
-- feat(www): add RFC discussion link to landing page
-- feat: show accepted-by profile on sent invites list
-- docs: update pitch deck Stream 2 to Declared-Intent Marketplace
-- docs: revise Stream 2 from Sovereign Ad Routing to Declared-Intent Marketplace, add pressure test
-- fix: remove connections/chat from launcher flydown, add bug report to profile dropdown
-
-## March 8, 2026
-
-- feat: service consistency — health endpoints, CORS, error sanitization, API specs (#242)
-- fix: use forEach instead of for..of on Map for TS compat (#179)
-- feat: add report type dropdown (bug/suggestion/question/other) to bug reporter (#243)
-- feat: bug reporter with screenshot upload, admin triage, GitHub import (#243)
-- fix: e-transfer checkout works for unauthenticated users with email fallback
-- security: rate limiting, webhook idempotency, auth hardening, amount validation (#179)
-- docs: build timeline summary + pressure test Q&A
-- feat(learn): pitch deck v2 — $1M raise, protocol-layer framing
-- chore: remove hardcoded pitch deck — now served from Learn
-- feat(learn): rewrite AgentCon deck — 30 years constrained, 35 days unleashed
-- docs: fix essay count — 30 written, 9 published
-- feat(learn): AgentCon deck — chronological build story
-- feat(learn): slide presentation system + pitch deck seed
-- docs: fix timeline — remove personal details, correct cost estimates from COST_ESTIMATE.md
-- docs: add build timeline — architecture of trust
-- fix(www): API link → /docs index instead of raw YAML
-- feat(www): add sitemap.xml + update llms.txt with trust-gated framing
-- docs: update README — trust-gated service layer framing
-- feat(www): add API spec link to homepage
-- feat(www): add trust-gated service layer blurb to homepage
-
-## March 7, 2026
-
-- fix: revert soft DID profile creation — soft DIDs should not have profiles
-- fix(auth): create profile during onboard verify flow
-- fix(auth): create profile row during registration
-- feat(connections): QR code fullscreen overlay for invite links
-- docs: update cost estimate — 739 files, 68k lines, $39.6k vs $932k
-- feat: link events to courses via courseSlug (closes #233) (#234)
-- feat: add eventSlug field to course editor dashboard
-- fix: add /api/spec routes for www, learn, input + add www to registry map
-- fix: skip OnboardGate for authenticated users — direct enroll
-- fix: health page — fix mismatched div closing tags
-- fix: extract ServiceRow component to fix SWC JSX parse error
-- fix: health page build — extract IIFE to avoid JSX parse error
-- feat: health page — all 14 services, fix degraded false positives
-- fix: remove /e/ prefix from event link — events use top-level ids
-- feat: link courses to events — eventSlug field + live workshop banner
-- feat: 🚀 App Launcher — registry-driven nav, /apps page, tier filtering (#228, #229, #230)
-- restore: build-dev.sh script (lost in rebase)
-- fix: soft DID users see only logout, no profile dropdown
-- fix: OnboardGate auth URL preserves dev- prefix
-- fix: resolve articles directory for both build and runtime cwd
-- fix: mark auth /api/spec as dynamic to fix build
-- fix: lightning counter queries auth.identities for soft DIDs
-- feat: @imajin/onboard — shared onboarding flow (#224) (#226)
-- feat: learn app — full course platform (#214, #215, #216, #217, #218, #219, #220) (#222)
-- docs: update deployment guide, environments, add developer onboarding (#221) (#223)
-
-## March 6, 2026
-
-- fix: only auto-scroll chat when new messages arrive, not every poll
-- fix: chat lobby uses hasAccess — organizers can access without ticket
-- fix: use hasAccess instead of hasTicket for chat gate — organizers can chat
-- fix: remove unreachable loading-etransfer state from selector step
-- feat: add confirmation step before e-transfer hold creation
-- fix: pass etransferEnabled through PurchaseUI inner component
-- fix: TypeScript error in ticket purchase button state check
-- feat: dynamic organizer email for e-transfer, etransferEnabled prop wiring
-- feat: add Interac e-Transfer payment method for event tickets (#62)
-- fix: show event chat to organizers, not just ticket holders
-- fix: persist survey completion in localStorage for instant thank-you on reload
-- feat: add Edit answers button on survey thank-you overlay
-- fix: restore thank-you overlay after survey completion with View Tickets CTA
-- fix: dark mode theme for SurveyJS - error states, read-only display, editor fields
-- fix: show completion immediately instead of waiting for POST
-- fix: update subtitle, date, and status in essay-09-nodes-types-and-practice.md
-- fix: apply HTML handler to all SurveyJS model instances (display/edit)
-- docs: update cost estimate — 180 human hours, $1,395 API spend, 23x cheaper
-- docs: update cost estimate — 697 files, 63.5k LOC, 73k traditional vs 1k actual
-- feat: reorder ticket tiers with up/down buttons + sort_order column
-- fix: create fresh SurveyJS model for display/edit - completed model won't render
-- fix: keep survey iframe visible after completion for view/edit UX
-- fix: clone survey data immediately + save answers before async POST
-- fix: disable SurveyJS built-in completion page, use our own
-- fix: use React state for saved answers instead of SurveyJS model.data
-- fix: stale closure - use ref for surveyModel in submit callback
-- fix: preserve survey answers on model after submit for immediate edit UX
-- feat: view/edit survey answers after completion + upsert responses
-- fix: login page validates session before redirect, clears stale localStorage
-- feat: allow HTML links in survey questions (allowlisted tags only)
-- fix: nav-bar login button goes to auth directly, not via profile
-- docs: add PATTERNS.md — canonical code patterns for agents
-- feat: pre-fill survey with previous answers on reload
-- fix: postMessage target origin + conditional required field validation
-- fix: restore 'and' import in tiers route
-- fix: restore eventAdmins import in event route GET handler
-- fix: replace isCreator with orgCheck.role in admins route
-- fix: shared isEventOrganizer helper for all event API routes (closes #210)
-- feat: show invite-only events for cohosts and ticket holders, add badges
-- fix: localStorage fallback for anonymous survey completion tracking
-- feat: require survey completion before ticket purchase (#211)
-- fix: sanitize null survey elements to prevent SurveyJS crash
-- fix: allow cohosts to manage ticket tiers
-- fix: allow cohosts to update events via API
-- fix: remove iframe sandbox to fix survey loading on mobile
-- fix: cohosts can see edit/dashboard links and access edit page
-- fix: survey paywall should check if user has ticket
-- feat: show end time on event page, add timezone field, simplify sticky CTA
-- fix: consolidate login into auth service (closes #207)  (#208)
-- fix: remove remaining stale trustInvite references
-- fix: consolidate invite tables into unified model (closes #205) (#206)
-- fix: consolidate invite tables into unified model (closes #205)
-- fix: combine code + email invite counts, show pending email warning (#202)
-- feat: @imajin/email shared package + trust invite emails
-- feat: invitations tab improvements — badge count, personal messages, hide accepted toggle (#202)
-- fix: SonarCloud vulnerabilities, bugs, and accessibility (#204)
-- fix: remove duplicate ne import
-- fix: hide invite-only events from listing + CA$ template literal in tickets section
-- fix: bypass invite gate for service registrations (event/agent DIDs)
-- fix: add confirmation dialog for completed + cancelled status changes
-- feat: add Dashboard link on event page for owners
-- fix: admin page params for Next 14 compat
-- fix: missing closing paren in nameDisplayPolicy state init
-- fix: resolve merge conflict markers in edit form (#106/#107)
-- fix: use params directly instead of use() for Next 14 compat in pods page
-- fix: add downlevelIteration for @mdxeditor/editor TS compat
-- fix: proper CA$ in template literals (escape $ before ${})
-- fix: replace hardcoded USD with CAD on event pages
-- fix: session cookie sameSite=none for cross-subdomain auth
-
-## March 5, 2026
-
-- feat: invitations tab for connections page (#202)
-- feat: shared ConnectionPicker component (#201)
-- feat: ticket access control — public vs invite-only events (#107)
-- feat: attendee name display policy for events (#106)
-- feat: coffee custom thank-you page editor (#178)
-- feat: pod management UI — groups, members, detail view (#195)
-- feat: shared markdown editor + renderer in @imajin/ui (#200)
-- feat: event guest list with check-in and refund (#194)
-- feat: version + build info in footer (#176)
-- feat: event cohost support — add co-organizers to events (#199)
-- feat: event status management — draft/published/paused/cancelled/completed
-- feat: profile service toggles — show/hide apps on profile (#198)
-- feat: shared CORS middleware in @imajin/config, deduplicate across services (#188)
-- fix: proxy specs through registry to avoid CORS, parse YAML specs
-- fix: spec URLs handle SERVICE_PREFIX with protocol and trailing dash
-- feat: human-readable API docs page, env-aware spec URLs
-- style: registry landing — how it works first, link to global API spec
-- style: dark scrollbar for event chat
-- chore: remove redundant standalone lobby page, accordion is the only entry point
-- refactor: extract shared EventChat component, deduplicate lobby code (#192)
-- fix: lobby capabilities use auth session instead of cross-origin chat API
-- fix: lobby page params not a Promise in Next.js 14 client components
-- fix: navbar logo variable name (serviceUrls not overrides)
-- fix: profile connection count excludes group/event pods, navbar logo uses absolute URL
-- feat(chat): capability scoping by DID tier for #193
-- fix: login redirects now include ?next= to return user to originating page
-- fix: media login redirect uses NEXT_PUBLIC_AUTH_URL for browser redirects
-- docs: RFC-001 add value flow economics section
-- docs: RFC-001 add prior art analysis, remove timeline refs
-- docs: RFC-001 identity portability & backup nodes
-- feat(events): rich chat for lobby - voice, media, location for #192
-- feat(chat): rich message rendering for #192 (Wave 2)
-- feat(chat): add voice recording UI and location picker for #192
-- feat(chat): rich message schema & API for #192
-- fix: Map.values() iteration for strict TS target in FolderTree
-- fix: remove duplicate src/app routes from media — app/ is canonical
-- fix: exclude drizzle.config.ts from media tsconfig
-- fix: Buffer→Uint8Array for NextResponse body in media delivery
-- fix: remove deprecated Pages Router config from media upload route
-- feat: serve OpenAPI specs via /api/spec endpoints + registry aggregator (#138)
-- fix: SECTION_DEFAULTS type must be NonNullable for TS narrowing
-- fix: FairEditor sections type narrowing for strict TS builds
-- feat: OpenAPI 3.1 specs for all 11 services + generation script (#138)
-- feat: media manager — three-panel UI with upload, browse, preview, .fair editing (#183)
-- feat: heuristic ML classification stub with EXIF extraction (#186)
-- feat: virtual folder system — schema, API, FolderTree component (#187)
-- feat: integrate @imajin/fair editor into events app (#175)
-- feat: authenticated delivery with .fair access control (#182)
-- feat: apps/media scaffold + authenticated upload endpoint (#181)
-- feat: @imajin/fair package — types, validator, FairEditor component
-- feat: Telegram-style input with voice transcription + telemetry
-- docs: update port convention, add input/media/GPU node
-- chore: standardize port convention (#core 3000+, imajin 3100+, client 3400+)
-- feat: input + media services with all features (#166-172, #177)
-- fix: update essay 08 slug map (ticketing, not the-burn)
-- publish: essay 08 — The Ticket Is the Trust
-- fix: use page.title not displayName in coffee tip route
-- fix: coffee tips use Stripe Checkout redirect instead of charge API
-- feat: success page banner overlay + logo SVG in navbar
-- fix: session tier resolution — check profile tier instead of trusting JWT
-
-## March 4, 2026
-
-- feat: update ticketing article with new date and status, enhance clarity and flow
-- fix: OG image + metadataBase — Discord/social embeds work now
-- feat: view live event link in editor, .fair v0.2.0 + GitHub link
-- feat: .fair accordion on public event page — transparent attribution
-- feat: event DID as .fair organizer + distributions layer + two-level viewer
-- feat: platform DID + configurable fee (1.5% default)
-- feat: .fair attribution — auto-generate on events, record on transactions, viewer in editor
-- fix: QR codes encode ticket ID, not magic link — for check-in scanning
-- fix: align ticket card columns to top
-- fix: single-row 3-column ticket card layout
-- fix: QR code in center column of ticket card
-- feat: QR codes on ticket cards in event page
-- docs: add build cost estimate — 29K traditional vs 0K actual
-- fix: email footer — sovereign network line at bottom with Discord + GitHub links
-- feat: QR code in ticket email, brand constants, locked tagline
-- feat: rebrand ticket confirmation email — dark theme, event image, IMAJIN footer
-- fix: schema prefix on profiles table in webhook handler
-- fix: events schema prefix in pods.ts, add service metadata to checkout
-- docs: add contributing rules — talk to us on Discord first
-- fix: update all Discord invite links to #welcome channel
-- docs: add open source/decentralized philosophy to one-pager v2
-- fix(www): deck articles link → relative path
-- fix(www): deck top bar solid black with z-index, content scrolls under both bars
-- fix(www): deck nav brighter, gradient fade, content scrolls under
-- fix(www): deck nav fixed at bottom, content scrolls above it
-- fix(www): add pronouns to deck slide 1
-- fix(www): deck mobile scroll — allow vertical scroll, horizontal swipe navigates
-- fix(www): hide navbar on /deck — full-screen presentation mode
-- feat(www): add open source/decentralized slide to pitch deck
-- feat(www): pitch deck at /deck — 14 slides, white on black, keyboard+touch nav
-- docs: pitch deck outline — 14 slides, founder-first, Baukunst-targeted
-- docs: updated one-pager v2 — commerce + reputation framing
-- docs: Appendix 2 — The Reputation Problem (landscape + how we close the gap)
-- chore(www): bump ISR revalidation to 15min
-- feat(www): ISR revalidation for landing page stats — 5min TTL (#150)
-- feat(www): serve /.well-known/assetlinks.json + apple-app-site-association (#148)
-- feat(pay): Stripe Connect for creator payouts + recurring webhook logging (#142)
-- feat(pay): two-bucket balance model — cash vs credits (#143)
-- feat(coffee,pay): route coffee payments through pay service (#154)
-- docs: update all .env.example files to match current service requirements
-- fix(profile): counts API queries connections.pod_members for real connection count
-- fix(links): dashboard CTA goes to /edit
-- feat(links): rename to My Links, add Go to Stats button
-- fix(links): remove SubNav toolbar
-
-## March 3, 2026
-
-- fix: links edit (auto-create, theme-only) + coffee page (avatar, thought position, layout)
-- feat(profile): #152 — follow system, counts, links display, Ask placeholder
-- feat: normalize coffee + links landing pages to match dykil pattern
-- feat(www): add servers stat card
-- fix(www): include 'presence' type in count, bold tagline, no period
-- feat(www): remove discord link from body, already in footer
-- feat(www): show ∞ for lightning max
-- feat(www): query profile schema, add lightning (soft DID) count
-- feat(www): redesign landing page — clean stats grid + simplified links
-- fix reset script (#149)
-- fix: cast visibility type
-- fix: add visibility to Profile interface
-- feat: incognito mode for profiles
-- feat: key backup interstitial after registration
-- fix: disable caching on event edit page and event page
-- fix: event PUT API now saves metadata (survey settings were silently dropped)
-- feat: survey visibility and paywall options on event editor
-- fix: dykil embed shows without nav chrome, surveys gate on first question
-- feat: complete dashboard standardization (#147)
-- feat: standardize dashboard flows across dykil, coffee, links (#147)
-- feat: normalize footers and app landing pages (#146)
-- fix: event editor timezone drift and survey selector loading state
-- feat: dynamic survey names on event pages (#145)
-- fix: profile identity tier detection and upgrade messaging
-- feat(pay): cross-service session auth + proper balance endpoint
-- feat(pay): add API routes + move apps to nav dropdown
-- fix: update events raw SQL for schema isolation
-- fix: update chat raw SQL and join aliases for schema isolation
-- feat: postgres schema isolation per service (#144)
-- feat: update article dates and improve follow-along sections across multiple essays
-- fix: add tablesFilter to coffee + links drizzle configs (prevent data loss)
-- feat(coffee): configurable fund directions — supporters choose where money goes
-- docs: RFC-05 — intent-bearing transactions and contribution pools
-- feat(ui): show wallet balance in nav bar for logged-in users
-- fix(pay): remove duplicate status line in escrow route
-- feat(pay): add transaction ledger, balance system, and settlement engine
-- feat(coffee): add UI for editing pages, dashboard, and landing CTA
-- docs: essay-30 epilogue stub — 'And Now We Can Be Human Beings Again'
-
-## March 2, 2026
-
-- feat(links): add complete UI with editor, stats dashboard, and per-link visibility
-- fix(dykil): flatten multi-page surveys for editor, remove applyTheme
-- fix(dykil): remove applyTheme call causing client exception
-- fix(dykil): support multi-page SurveyJS format in all renderers
-- fix(events): use Array.from for Set iteration compatibility
-- feat: add Surveys + Links to nav, fix dykil dashboard share URL
-- show draft events on the event page (#134)
-- able to see event created (#132)
-- fix(dykil): correct SurveyJS v2 CSS import path
-- fix(dykil): use SurveyJS v2 default CSS import
-- feat(chat): add /api/participants/migrate endpoint
-- feat(events): hard DID support in ticket purchase flow
-- fix: success page shows event CTA, set purchased_at on tickets, fallback to created_at
-- feat: integrate dykil surveys with events — picker, embed, accordion (closes #126, closes #129)
-- chore: update lockfile for dykil survey deps
-- update SurveyJS
-- feat: rebuild dykil survey engine with SurveyJS renderer and custom builder (closes #124, closes #125, closes #127)
-- docs: add dykil PROJECT.md — sovereign surveys vision and architecture
-- feat: replace nodemailer/SMTP with SendGrid API for email delivery (closes #100)
-- fix: allow free editing of tiers before any tickets are sold
-- dev guide
-- fix: add perks editing, cache revalidation on save, revert description to single-line
-- fix: textarea for tier descriptions, show cents in prices, force-dynamic event page
-- fix: enable ticket tier editing in event edit UI
-- fix: wire up ticket tier editing in event edit form
-- fix: auto-join buyer to both group chat and lobby on ticket purchase (closes #97)
-- feat: show My Tickets tab for existing ticket holders (closes #103)
-- fix: show Stripe name instead of raw DID for soft identities (closes #104)
-- fix: prevent page scroll when chat accordion is expanded (closes #105)
-- docs: fix Josh Allen title
-- docs: fix Josh Allen title
-- docs: Month 1 summary — what we built in 29 days
-
-## March 1, 2026
-
-- Events link on home page can point to localhost
-- invite only
-- process.env.DISABLE_INVITE_GATE
-- fix: add CORS to auth lookup endpoint
-- fix: correct default EVENTS_SERVICE_URL port to 3006
-- fix: add CORS to conversations/unread endpoint
-- fix: add CORS headers to lobby API for cross-origin event page access
-- feat: magic link auth for ticket holders (#102)
-- fix: unwrap identity object from auth lookup response
-- fix: nav z-index over hero image, resolve organizer DID to handle
-- feat: event lobby accordion chat for ticket holders
-- feat: show edit link on event page for creator
-- fix: fall back to customer_details.email when customer_email is null
-- fix: guard against null customerEmail in payment webhook
-- fix: pass servicePrefix/domain to NavBarWithUnread
-- fix: redirect to login on 401 instead of showing error state
-- fix: hide unread counter when 0 instead of showing badge
-- fix: chat session API verifies JWT via auth service instead of treating cookie as raw DID
-- fix: hover action menu, scrollbar styling, empty media text bug
-- fix: ed25519 v3 hashes config in profile
-- fix: @noble/hashes v2 import path in profile
-- fix: add nanoid dep to auth service
-- chore: remove leftover TASK.md
-- feat: integrate identity tiers, trust graph, event lobby, and chat improvements
-- feat: permission middleware - canDo checks per identity tier (closes #77)
-- feat: event lobby chat (closes #75)
-- feat: trust graph invite system (closes #76)
-- feat: auto-create soft DID on ticket purchase (closes #74)
-- feat: image and file sharing in chat (closes #82)
-- feat: message actions - reply, edit, delete, reactions (closes #81)
-- feat: unread message counters (closes #78)
-- feat: typing indicators + online status (closes #80)
-- feat: identity tiers + soft DID session support (closes #73)
-- feat: link previews via server-side unfurling (closes #79)
-- chore: remove Neon/Vercel vestiges, update for self-hosted
-- fix: normalize chat/events after monorepo merge
-- Add foundational essays and architecture documents for the Imajin project
-- docs: update README — correct ports, monorepo structure, grounding docs
-- refactor: move chat and events into monorepo (closes #39)
-- fix: add signed request headers to profile edits (closes #58)
-- add architecture doc — technical source of truth
-- add redistribution as 10th thesis concept
-- add master thesis doc — canonical concept definitions
-- fix: update sequence doc filenames for interstitials, essay 12, 24, 29
-- Add essays 26 to 29: "I Need Help", "Around, Not Up", "How AI Saved Me", and "How Partying Can Save Us"
-- Add essays and interstitials exploring community, culture, and the impact of AI
-- Add essays on human trust, community support, and AI's role in expression
-- fix essay statuses — sync sequence with repo (3-5 POSTED, 6 POSTED today)
-- add vibe-coding Stripe exploit to essay 23 — real-world case study, $87,500 in fraud
-
-## February 28, 2026
-
-- restructure appendices as sequential post-finale, add Appendix 5: AI Governs Itself (stub)
-- fix sequence + book structure — How to Save the World by Partying is the finale, Good Times Gang is interstitial
-- draft Appendix 4: How We Fix Voting — trust graph governance, weighted participation, verifiable outcomes
-- add BOOK.md — How to Save the World by Partying
-- draft Appendix 3: The New Rules — AI regulated by human trust, not institutional authority
-- add Appendix 3: The New Rules to essay 14 in sequence
-- add DOCUSERIES.md — production bible for the imajin docuseries
-- add interstitial essays to sequence — Cult of Community, Save the World by Partying
-- add file numbering note to sequence
-- update master sequence — full restructure with 25 essays + standalones
-- add Thaler v. Perlmutter reference to essay 24 stub
-- add essays 22, 23, 24 (stub) to articles folder
-
-## February 27, 2026
-
-- fix: only show POSTED articles in list
-- feat: add prologue to articles list
-- fix: update subtitles and descriptions for clarity in prologue and guild essays
-- feat: add learn app to monorepo (#53)
-- fix: UI audit items — invite gate, www CTA (#47)
-- feat(profile): add email & phone contact fields (#52)
-- fix: coffee auth import + dykil Suspense boundary for useSearchParams
-- feat(dykil): build survey/poll platform with form engine and builder UI
-- feat(coffee): migrate app to monorepo with cookie auth and @imajin packages
-- feat(links): polish app with NavBar, dashboard, and auto-create
-- feat: add links service to monorepo (migrated from standalone repo)
-- feat: include role from metadata in session response
-- fix: update prologue title and description for clarity
-- Add 'event' type to trust_pods schema
-- fix: add presence type to profile display
-- fix: article typography plugin + essay 4/5 status to POSTED
-- feat: profile trust gating — only connections can view full profiles (#49)
-- fix: connections disconnect route imports
-- feat: NavBar simplification (#48), profile redirect (#50), disconnect button (#49)
-- fix: clean up old avatars on upload, add cache busting
-- feat: client-side image resize to 256x256 JPEG 80% before upload
-- fix: Avatar renders blob: URLs as images for upload preview
-- fix: profile auth uses session cookie instead of Bearer token (#42)
-- feat: add Download Backup Keys button to profile edit page (#46)
-- fix: add Suspense boundary to profile register page for useSearchParams
-- fix: pass invite code through profile register flow
-- fix: connections Message links to /start?did= server route
-- fix: resolve handles server-side in connections API
-- fix: add name to Connection interface
-- fix: resolve handles on connections list, show DID on hover
-- fix: remove duplicate profileUrl declaration
-- fix: all login links point to profile/login instead of auth/login
-- feat: connections list Message button + CORS on connections API
-
-## February 26, 2026
-
-- fix: redirect to connections after invite registration, not back to invite page
-- fix: add OPTIONS preflight handler for invite CORS
-- fix: CORS headers on invite GET for cross-subdomain validation
-- fix: wrap register page useSearchParams in Suspense boundary
-- feat: invite-only registration (#40)
-- fix: invite page detects login state, role-based invite limits
-- fix: add darkMode class to connections tailwind config
-- fix: CORS on auth session/logout for cross-subdomain NavBar identity
-- feat: NavBar auto-fetches identity from auth service when no prop provided
-- refactor: profile NavBar uses @imajin/ui with identity prop
-- feat: connections UI, invite flow, navbar update
-- fix: correct drizzle schema path for connections
-- feat: add connections service and trust-graph package
-- fix: use Web Crypto extractable keys to properly derive EdDSA public key for jose
-- fix: derive public key from PKCS8 via SPKI for JWT verification
-- fix: use Web Crypto API for extractable key pair (EdDSA JWT signing+verification)
-- fix: type assertion for importJWK return
-- fix: proper JWK public key extraction for verification
-- fix: use public key for JWT verification (EdDSA requires it)
-- fix: clear stale localStorage when auth session returns 401
-- fix: use --no-frozen-lockfile in deploy (server workspace includes standalone repos)
-- ci: add workflow_dispatch trigger, set DATABASE_URL secret
-- fix: remove typecheck step from CI (next build handles it)
-- fix: update lockfile, deploy only after CI passes (workflow_run)
-- fix: remove eslint 10 override from profile (use root eslint 8)
-- fix: correct auth session route db imports (@/db → @/src/db)
-- fix: use git reset --hard in deploy workflows to handle dirty state
-- ci: fix runner label to self-hosted
-- fix: verify identity exists in DB before trusting session JWT
-- ci: add dev and prod deploy workflows via self-hosted runner
-- feat: migrate from Neon to local Postgres via @imajin/db
-- Add initial documents for Imajin and MJN protocol
-- feat: shared NavBar, dark theme, auth flow fixes, search by handle
-
-## February 25, 2026
-
-- feat: environment-aware service URLs via NEXT_PUBLIC_SERVICE_PREFIX + NEXT_PUBLIC_DOMAIN
-- feat: identity context, handle check, login/recovery, edit profile, nav awareness
-
-## February 24, 2026
-
-- revert: remove password manager hack, keep for passkey phase
-- feat: Save to Password Manager button using Credential Management API + fallback
-- feat: copyable DID + password manager save prompt on registration success
-- fix: use randomSecretKey (noble/ed25519 v3 API)
-- fix: tsconfig ES2020 target for BigInt, fix base58 modulo (58 not 61)
-- feat: profile registration flow - /register, /api/register, /[handle] profile pages
-- style: normalize pay landing page with dark mode support
-- feat: add Pay to navbar, normalize pay layout
-- Refactor titles and statuses in articles for clarity and consistency
-
-## February 23, 2026
-
-- Add RFCs for .fair Attribution and Programmable Distribution Contracts; establish foundational protocols for contributor attribution and value routing in the imajin network.
-- Revise publication dates and statuses for articles; enhance content in "The Guild" and "The Utility" articles to clarify community dynamics and trust graph benefits.
-- Add section on bad actors and network integrity to "The Utility" article
-- Remove all invitedBy references from profile app
-- Remove invitedBy from profile route (moved to connections)
-- Fix profile db import paths
-- Add target es2017 to tsconfig
-- Revise language for clarity and consistency in "The Internet That Pays You Back" article
-- Remove framework field, use pnpm next build
-
-## February 22, 2026
-
-- Add /health status page (Phase 1)
-- Standardize vercel.json configs for pnpm monorepo
-- Update status of essay-03 to 'POSTED'
-- Remove titles from articles and update document history links to reflect new file paths
-- Move articles to apps/www/articles (preserves history)
-- Use node script for article copying with path debugging
-- Copy articles at build time instead of duplicating
-- Add subtitles to essays 3-20 from sequence summaries
-- refactor: render articles from markdown files instead of hardcoded JSX
-- fix: update mask article status to POSTED
-- fix: escape curly apostrophes in article descriptions
-- Add document history links to articles for better traceability
-
-## February 21, 2026
-
-- feat: add AI crawler infrastructure
-- feat(articles): sync essays 4 & 6 with expanded content
-- feat(essays): expand on the role of bad actors and community accountability in the network structure
-- fix(articles): update essays 1 & 2 to match latest edits
-- feat(articles): add all 20 essay pages with status badges
-- fix: clarify timeline of travel experience in essay-03-the-mask-we-all-wear
-- fix(articles): update year in article title and references from 1985 to 1988
-- feat(essays): add new essay on the importance of asking for help and expand on the role of connectors
-- Add essays on the business case for human trust, attribution infrastructure, and the need for community support
-- feat(auth): integrated auth flow with JWT sessions
-- fix(registry): add vercel.json for registry service
-
-## February 20, 2026
-
-- feat(profile): add key export with clear sovereignty warning
-- feat(profile): add soft registration and claim flow
-- feat(profile): update data model per #6
-- feat(www): add OG/Twitter metadata to article pages
-- feat(profile): add dynamic OG/Twitter metadata for profile pages
-- docs: add DEPLOYMENT.md with monorepo deployment guide
-- chore(registry): remove vercel.json for dashboard config
-- fix(registry): add vercel.json with monorepo build commands
-- fix(registry): revert to workspace deps for monorepo deployment
-- fix(registry): simplify vercel.json for standalone deployment
-- fix(registry): inline auth module for standalone deployment
-- fix(registry): switch to Neon serverless for better memory usage
-- fix: Next.js 14 async params for profile/registry routes
-- feat: add shared navigation bar to all services
-- feat: add OG/Twitter metadata to all services
-- fix: use valid Stripe API version (2024-11-20.acacia)
-- docs: mark pay service as live
-- docs: update service status table with live deployments
-- chore: add Vercel configs and update root dependencies
-- chore(profile): add vercel config and gitignore
-- feat(auth): define 6 identity types in types.ts
-- feat(registry): add Tailwind and unify landing page styling
-- feat(auth): expand identity types and update landing page
-
-## February 19, 2026
-
-- Add HTML pages for new articles, fix mobile font scaling
-- Add articles on AI development, trust graphs, and business models
-
-## February 18, 2026
-
-- feat: add coffee.imajin.ai support link to homepage
-- fix: scale up logo and kanji to match 150% font increase
-- feat: add second article page, articles landing, 150% font scale
-- fix: update article publication details for clarity and consistency
-- fix: lazy Stripe init in pay webhook for CI builds
-- fix: lazy database initialization for CI builds
-- fix: resolve TypeScript build errors in profile service
-- chore: configure ESLint across all apps and packages
-- fix(article): update phrasing for clarity in infrastructure description
-- fix: disable lint scripts until eslint is configured
-- www: add Discord link with self-aware note
-- fix(article): clarify phrasing in "What I Actually Do" section and update author attribution
-- article: add 386/40MB detail to BBS article
-- article: fix origin story details
-- article: add potato story + nuance on formal training
-- article: replace personal essay with dev thesis
-- fix(article): improve phrasing in "The Pain of Knowing" essay
-- feat(article): add new essay "I'm Sorry I Couldn't Explain" and update existing content for clarity
-- fix(article): correct capitalization of names and improve phrasing
-- feat: pay service + webhook flow + public README
-
-## February 17, 2026
-
-- feat: add registration UI at /register
-- docs: clean up README - split core vs external apps
-- feat: expand identity types (human, agent, event, presence, org)
-- feat: add tablesFilter to drizzle configs for monorepo schema isolation
-- docs: add identity model spec (DIDs for everything that acts)
-- Fix token metadata: use www URLs to avoid redirects
-- Security: remove sensitive info before making repo public
-- Add MJN token icon and metadata
-- fix(article): correct capitalization and remove duplicate closing remarks
-- feat: add deployment pipeline with environment isolation
-- refactor: extract side apps to separate repos
-- feat(article): add selective disclosure paragraph back
-- feat(www): replace placeholder orbs with Imajin logos
-- feat(article): full version with Hot Tamale story, metrics comparison, thirty years of pain
-- fix(article): update author name in article footer
-- fix(article): remove Mastodon comparison
-- feat(article): add selective disclosure + Mastodon distinction
-- feat(www): landing page + article 'The Internet We Lost'
-- feat(www): add imajin.ai landing + register page
-
-## February 16, 2026
-
-- docs: add manifesto - The Internet We Lost
-
-## February 15, 2026
-
-- feat(links): scaffold link-in-bio service
-- feat(coffee): scaffold tip/payment service
-
-## February 14, 2026
-
-- feat(profile): scaffold profile service
-- docs: update build order - profile → coffee → links → chat → events
-- refactor: merge tickets into events
-- docs: add PROJECTS.md for all missing apps
-- docs: rename connect→connections, clarify coffee (tips), add links app
-- feat(registry): scaffold federated node registry for sovereign network
-
-## February 13, 2026
-
-- docs: update README with current project state
-- feat: add pay package and service, wire Ed25519 crypto
-- docs: update README with sovereign stack vision
-- feat(auth): add sovereign identity package and service
-- feat(dykil): implement community spending form with social groups
-
-## February 12, 2026
-
-- feat(karaoke): MVP turn management system
-- Implement structural updates and refactor code for improved maintainability
-
-## February 11, 2026
-
-- Initial monorepo setup: dykil, learn, fixready, karaoke
+<!-- Build Log — newest first. Source: Discord dev channel + git history. -->
 
+## March 14, 2026 — Settlement Fixes, Sovereign Commerce & Building in Public
+
+### 🧠 Sovereign Inference — Live
+
+- **"Ask Me" presence** — profile owners enable AI trained on their context. Trust-bound access, inference fees, streaming responses
+- **`@imajin/llm` package** — Vercel AI SDK wrapper with cost tracking + provider factory
+- **Presence bootstrap** — enabling inference auto-seeds `.imajin/` folder in media (soul.md, context.md, config.json)
+- **Trust distance engine** — connections service computes BFS trust distance (direct, friend-of-friend, stranger)
+- **6 trust-scoped tools** — events, connections, attestations, profile, pay, learn — each scoped to conversation participants
+- **PresenceChat UI** — streaming modal chat on profile pages
+- **Cost settlement** — 80% owner / 20% platform via .fair
+
+### 💰 Settlement Pipeline — Fixed
+
+- **Critical: settlement field mismatch** — `settleTicketPurchase` was reading `fairManifest.attribution` but manifests use `distributions`. Every ticket settlement silently skipped since day one.
+- **Critical: confirmation emails broken** — Date serialization bug crashed webhook after ticket creation. 66 tickets across 2 events never got emails. Backfill script written.
+- **Coffee tips never settled** — webhook marked tips completed but never called `/api/settle`. Wired up .fair splits (98.5% creator, 1.5% platform).
+- **Tip notification emails** — recipient gets "☕ you got a tip!", sender gets "🧡 thanks for tipping". Pay webhook now forwards all metadata.
+
+### 💳 Pay Dashboard — Shipped
+
+- Payment history with paginated transactions, service/date filters, expandable .fair attribution chains
+- BalanceCard component — cash vs credit bucket display
+- Platform fee verification confirmed correct
+- Dashboard replaced static API docs with authenticated balance + recent transactions
+
+### 🔐 Onboard Token Hardening
+
+- Corporate email scanners (Outlook Safe Links) consuming verification tokens before humans clicked
+- 60-second grace window for scanner-consumed tokens
+- Graceful redirect for users with existing sessions
+
+### 🏗 Build Pipeline
+
+- `transpilePackages` added to all 14 apps for `@imajin/*` workspace packages
+- Next.js type checking delegated to tsc (pnpm symlinks confuse Next's checker)
+- All `.env.example` files updated, 12+ missing prod env vars set
+- Fixed malformed `next.config.js` in chat, dykil, input (closing brace on wrong line)
+
+### 🏛 Architecture Sessions
+
+- **Profile scopes** (#346) — profiles gain scope field: actor, family, community, org. Businesses are org-scoped profiles. Foundational for everything below.
+- **Check-ins reimagined** (#246) — not a separate service. A check-in is an attestation of presence with any entity in your graph. "I checked in at Pilot Coffee" = "I checked in on Carl." Same operation.
+- **Market** (#56) — renamed from shop. Consent-based local commerce. No feed, no infinite scroll. Two modes: active browsing + mailbox delivery.
+- **Attention marketplace** (#114) — engagement attestation chain: delivered → opened → engaged → converted. Emergent pricing tiers. Unopened deliveries get ~80% refunded as credit. Conversion tracking on-platform vs off-platform.
+
+### 📄 Public Build Log
+
+- `/build` page on imajin.ai — this file. Single markdown, newest first.
+- Footer build version now links to `/build` across all services.
+- Published two new essays (#18, #19)
+
+### 📊 By the Numbers
+
+- 40+ commits to main
+- 4 issues closed (#141, #143, #335, #337)
+- 3 new issues created (#345, #346, #347)
+- 97K LOC, $1.92M COCOMO estimate, 32× multiplier vs actual spend
+
+---
+
+## March 12–14, 2026 — 48-Hour Sprint: Attestation Layer, Settlement & Sovereign Inference
+
+*~60 commits · 12 PRs merged · 11 issues closed · 7 new issues created*
+
+### 🔐 Three-Phase Sovereign Stack Hardening
+
+**Phase 0s — All Three Layers (merged)**
+- Identity: three-tier model (soft → preliminary → established), fail-open defaults fixed
+- .fair: schema hardening, templates (ticket/media/course/document), conversation access type
+- Settlement: ticket settlement wired through pay with platform fee
+
+**Phase 1s — All Three Layers (merged)**
+- .fair cryptographic signing — Ed25519 manifest signatures via `@imajin/fair`
+- Attestation data layer — `auth.attestations` table, ingestion, DID→pubkey resolution
+- Settlement verification — real Ed25519 .fair signature verification
+
+### 📜 Attestation Infrastructure — Zero to Six Types
+
+Built the entire system and wired emitters into three services:
+- `transaction.settled` + `customer` (pay)
+- `connection.invited` + `connection.accepted` + `vouch` (connections)
+- `session.created` with auth strength metadata (auth — all 4 login flows)
+
+Pattern is portable: ~20 lines per new emitter.
+
+### 🧠 Sovereign Inference Engine — 7 Tickets in One Session
+
+Full "Ask [Name]" presence stack from zero to streaming UI:
+- `.imajin/` folder bootstrap — auto-seeds on registration
+- `@imajin/llm` package — Vercel AI SDK + cost tracking + provider factory
+- Trust distance endpoint (BFS on connections graph)
+- 6 trust-scoped tool files (events, connections, attestations, profile, pay, learn)
+- SSE streaming query endpoints on profile
+- Cost settlement: 80% owner / 20% platform via .fair
+- PresenceChat UI — modal chat on profile pages
+
+Key design: Tools injected by trust distance. Distance ≤1 gets social graph. Self-query gets everything. Every tool scoped to two participants — presence can't fish.
+
+### 💡 Attention Marketplace Concept
+
+Imajin's answer to advertising. You're the vendor, not the product. Businesses query the attestation graph to find opted-in humans, pay MJN per result, users get micro-payments. Consent via attestations, not a central DB.
+
+Academically validated by a 2025 Springer philosophy paper proving the current attention market is ethically broken — every problem they identify, the AttMart solves.
+
+### 💬 Real-Time Chat
+
+- WebSocket deferred auth, real-time delete + reactions
+- DID name resolution, group membership via pods
+- Modern composer, scroll pinning, legacy media compat
+
+### 📋 Roadmaps + Strategy
+
+- Three hardening roadmaps (.fair, Identity, Settlement)
+- Fee model: 0.75% capped micro-investment
+- Platform utility doc — "every intermediary becomes obsolete"
+- Protocol matrix live on landing page (22%)
+- Whitepaper v0.3 with Greg's architectural review
+
+### 🔧 Also Shipped
+
+- Dead wood audit (8 dead tables identified)
+- Local dev env files, check-env.ts validation
+- CORS + auth unification across all services
+- Media manager: rename, move, delete, .fair editor polish
+- Health endpoints on all 13 services
+- CSS progress bar fixes on landing page
+
+### 📊 Numbers
+
+- ~60 commits
+- 12 PRs merged
+- 11 issues closed
+- 7 new issues created
+- $25 avg cost per PR — 167 PRs for $4K total inference
+- ~1,200 lines for sovereign inference alone
+
+---
+
+## March 9–12, 2026 — Chat DID Rewrite, Whitepaper & Infrastructure
+
+*82 commits · 31 issues closed · deployed to dev + prod*
+
+### 💬 Chat: DID-Based Rewrite (#278, #275, #276, #280, #283-288) — SHIPPED TO PROD
+
+- Complete architecture overhaul: conversations keyed by deterministic DIDs instead of DB IDs
+- New v2 schema: conversations, messages, reactions, read receipts
+- `@imajin/chat` shared package — one `<Chat did="..." />` component powers chat.imajin.ai AND event lobbies
+- WebSocket subscriptions per-conversation with auth
+- Group messaging: create groups, search/filter contacts, compose to multiple people
+- Composer extracted: voice recording, file upload, location sharing, emoji — all shared
+- Legacy pods, surrogate keys, and old chat tables deprecated
+- 12 bug fixes: message alignment, link preview cards, cross-origin cookies, iOS overflow, React key collisions, duplicate contacts, textarea auto-resize
+
+### 📄 Whitepaper v0.3 — LIVE AT imajin.ai/whitepaper
+
+- Major rewrite around 4 identity scopes (Actor, Family, Community, Business) × 5 primitives (Attestation, Communication, Attribution, Settlement, Discovery)
+- Integrated 8 architectural review documents from Greg Mulholland: cryptographic attestation layer, .fair signing, exit credentials, progressive trust, Org DID vetting, gas model ceiling, declaration granularity
+- Consent folded into Attribution and Attestation — no longer a standalone primitive
+- New `/whitepaper` page on imajin.ai rendering the markdown directly
+
+### 📋 MJN Protocol Repo — PUSHED
+
+- RFC-0001 (Core Spec) rewritten: 5 primitives, typed identity graph, actor subtypes
+- RFC-0002 (did:mjn Method) updated: typed DIDs with scope in DID Document
+- README updated with scopes × primitives matrix
+
+### 📚 Learn + Pitch Deck — SHIPPED
+
+- Interactive primitive matrix component for slide rendering
+- Markdown tables + list grouping in lesson renderer
+- Course types: decks auto-present on enrollment (no click-through)
+- Students dashboard: enrolled users with names, emails, progress tracking
+
+### ⚙️ Platform Infrastructure — SHIPPED
+
+- `@imajin/config`: shared service manifest, session cookie config, CORS (#227, #270)
+- `build.sh`: unified script with --dev/--prod, replaces build-dev.sh
+- `check-env`: validation runs before every build, catches missing vars (#191)
+- Session cookies scoped by environment (dev/prod no longer collide)
+- FixReady + Karaoke removed from service manifest — plugin architecture (#249)
+
+### 🔄 Refactors — SHIPPED
+
+- Self-fetching pages → direct DB queries across coffee, profile, events (#190)
+- `@imajin/chat` extracted as shared package from duplicated components (#196)
+- Events magic-link flow migrated to `@imajin/onboard` (#225)
+
+### 🛠 Other Features
+
+- Privacy page + footer link across all services
+- Optional email/phone collection at registration
+- Coffee service notified on checkout.completed (#154)
+- Inline question editing in dykil survey builder
+- Bug reporter: upload context, paste support, auto-folder assignment
+- README repositioned as MJN reference implementation with protocol matrix
+
+---
+
+## March 6–9, 2026 — Security, Learn, App Launcher & Onboarding
+
+### 🔒 Security Hardening (#179) — SHIPPED TO PROD
+
+- Rate limiting on 11 endpoints across 5 services
+- Webhook idempotency (pay + events deduplication)
+- Auth added to previously public endpoint
+- Checkout amount validation (min/max/quantity bounds)
+
+### 🐛 Bug Reporter (#243) — SHIPPED TO PROD
+
+- In-app floating 🐛 button for logged-in users
+- Report types: Bug, Suggestion, Question, Other
+- Screenshot upload, admin triage panel
+- One-click GitHub issue import with labels
+- Fixed: auth URL misconfiguration hiding the button on prod
+
+### 🏥 Service Consistency (#242) — LIVE ON DEV
+
+- 12 health endpoints added (all services now have `/health`)
+- CORS standardized across auth endpoints
+- Error messages sanitized (19 endpoints no longer leak internals)
+
+### 📚 Learn App — SHIPPED
+
+- Full course platform: courses, modules, lessons, enrollment, progress tracking
+- Slide presentation system for pitch decks
+- Linked courses ↔️ events (live workshop banners)
+
+### 🚀 App Launcher — SHIPPED
+
+- Registry-driven navigation across all services
+- Tier-filtered: soft DIDs see public apps, hard DIDs see everything
+- `/apps` page with full service directory
+
+### 🔗 Onboarding System — SHIPPED
+
+- `@imajin/onboard` shared package — email → soft DID flow
+- Works from any service (learn, events, etc.)
+- Same email always produces the same DID
+
+### 📊 Platform Health Page — SHIPPED
+
+- All 14 services visible at a glance
+- Auto-checks health endpoints
+
+### 💰 E-Transfer Fix — SHIPPED TO PROD
+
+- Unauthenticated users can now complete e-transfer checkout
+- Email/name fallback creates soft DID (matches Stripe flow)
+
+### 🧹 Nav & UX Polish
+
+- Connections + chat removed from launcher flydown (cleaner)
+- 🐛 Report a Bug added to profile dropdown
+- 💬 Messages icon with unread badge + 🤝 Connections shortcut in shared nav
+- QR code fullscreen overlay for invite links
+- Accepted invites now show linked profile names
+- Chat: fixed own messages counting as unread
+- Chat: organizers can access event chat without a ticket
+- Chat: auto-scroll only on new messages, not every poll
+
+### 📝 Content & Docs
+
+- RFC discussion link added to imajin.ai landing page
+- Trust-gated service layer framing on homepage + README
+- sitemap.xml + llms.txt added
+- Build timeline + cost estimates updated (739 files, 68k LOC)
+- Stream 2 revised: "Sovereign Ad Routing" → "Declared-Intent Marketplace" with signal strength model
+- Pitch deck v2 updated for AgentCon + $1M raise framing
+
+### 📋 Issues Groomed
+
+- #244 — Delegated App Sessions
+- #246 — Check-ins (Foursquare-style location presence)
+- #250 — Media context routing (per-app upload scoping)
+- #256 — Epic: Sovereign Inference (API gateway + presence bootstrap)
+- #258 — Presence Bootstrap (.imajin folder)
+- #259 — Epic: Node Operations (admin dashboard, monitoring, event bus)
+- #260 — Notification system
+
+### 📢 RFCs Moved to GitHub Discussions
+
+- #252 — Cultural DID (collectives, scenes, communities)
+- #253 — Org DID (businesses, legal entities)
+- #254 — Plugin Architecture + Bounty model
+- #255 — Sovereign User Data (portable identity bundles)
+
+### 🌐 Community
+
+- Connected with Dark Forest OS (dfos.city) — strong philosophical alignment
+
+---
+
+## March 5–6, 2026 — Media Service Complete & Auth Bug Squashing
+
+### Shipped ✅
+
+- **Media service complete** (#177) — 7 child tickets, `@imajin/fair` shared package, full upload/delivery/folders/classification/UI
+- **Auth tier resolution bug** — fixed magic link always minting soft JWTs even for hard DID users
+- **Login consolidation** (#207, PR #208) — auth.imajin.ai is canonical, killed profile login, 264+/391-
+- **Nav-bar login loop fix** — all apps now go directly to auth, bypassing profile redirect
+- **Auth stale localStorage fix** — validates session cookie before trusting localStorage
+- **Shared `isEventOrganizer()`** (#210) — replaced inline auth in 8 API routes
+- **Survey gate for tickets** (#211) — require survey completion before purchase
+- **Survey pre-fill on reload** — 3-tier auth (session → localStorage → DID)
+- **Invite-only events** visible to cohosts/ticket holders with badges
+- **postMessage origin fix** + server-side visibleIf validation
+- **HTML links in survey questions** — allowlisted safe tags
+- **Ticket tier reordering** — up/down buttons + sort_order column
+- **PATTERNS.md** — 305 lines of canonical code patterns
+- **Ollama on imajin-ml** — qwen2.5-coder:7b + nomic-embed-text running
+- **Cost estimate updated** — 697 files, 63.5k LOC, $874k traditional vs $37k actual
+
+### 📊 Key Numbers
+
+- +15,733 lines of code in 2 days
+- +148 files
+- ~$576 in API spend (vs $819 for the first 13 days)
+- ~25 commits to main
+
+### 📝 Lessons Learned
+
+- Reactive feature-chasing burns 3x more tokens than deliberate architecture
+- Always check the parent component when debugging iframe visibility
+- SurveyJS models in "completed" state won't render — need fresh instances
+- "Does anyone need this?" should be asked before building, not after
+
+---
+
+## March 4–5, 2026 — GPU Node, Media Service, Input & .fair Attribution
+
+### 🖥 GPU Node — imajin-ml
+
+- Stood up RTX 3080 Ti compute node at 192.168.1.124
+- Ubuntu 24.04, NVIDIA drivers + CUDA
+- faster-whisper large-v3 running on GPU — 10x real-time transcription
+- FastAPI service on port 8090
+- Fan control configured — idle noise dropped ~70%
+- **First human voice transcribed on sovereign hardware**
+
+### 🎫 Ticket Purchase Happy Path Fixed (#98)
+
+- 4 bugs found and squashed in the checkout→payment→webhook→ticket chain
+- Missing schema prefixes, missing metadata fields
+- Full flow verified end-to-end with live Stripe
+
+### 📧 Email Rebrand
+
+- Dark theme ticket confirmation emails
+- QR codes on tickets (encode ticket ID for check-in scanning)
+- IMAJIN wordmark footer, Discord + GitHub links
+- Brand constants locked in `@imajin/ui` (BRAND)
+
+### ⚖️ .fair Attribution System
+
+- Auto-generates .fair manifests on event creation
+- Records .fair on pay transactions
+- Two-level architecture: event splits (organizer vs platform) + distributions (contributors within event)
+- Platform DID registered (1.5% fee)
+- .fair viewer in event editor + public-facing accordion on event page
+- "Who gets paid when you buy a ticket" — fully transparent
+
+### 📊 QR Codes on Event Page
+
+- Ticket cards show QR codes (3-column layout)
+- Email + page QR codes both encode ticket ID
+
+### 💰 cost-estimate Tool Published
+
+- `ima-jin/cost-estimate` — public Python tool analyzing git repos for build cost
+- Imajin monorepo: $629K traditional estimate, $20.8K actual (30x cheaper)
+
+### 📢 Essay Published
+
+- Essay 08: "The Ticket Is the Trust" posted on imajin.ai
+
+### 🎤 Input Service (#166–172)
+
+- `apps/input/` — universal input gateway at input.imajin.ai
+- Port 3008/7008
+- Telegram-style input with voice transcription + telemetry
+
+### 📦 Media Service — Complete (#177, 7 child tickets)
+
+~4,800 lines, ~$7 agent cost, ~90 min wall time
+
+| Ticket | What | Lines |
+|--------|------|-------|
+| #185 | `@imajin/fair` shared package (types, validator, FairEditor, FairAccordion) | +749 |
+| #181 | Media scaffold + DID-pegged upload (SHA-256, .fair sidecar) | +538 |
+| #182 | Authenticated delivery (.fair access control, thumbnails, ETag) | +268 |
+| #175 | Events app migrated to shared `@imajin/fair` package | -946 net |
+| #187 | Virtual folder system (DB schema, CRUD API, FolderTree component) | +723 |
+| #186 | Heuristic ML classifier (mime/EXIF/filename stub, same API as future CLIP) | +324 |
+| #183 | Three-panel media manager UI (upload, browse, preview, .fair editor) | +1,042 |
+
+### 📋 API Specs (#138 Phase 1 + 2)
+
+- ~5,650 lines OpenAPI 3.1 YAML spec for all 11 services
+- Re-runnable generation script (`pnpm run generate:api-specs`)
+- `/api/spec` endpoint on every service
+- Registry aggregator at `/api/specs` + proxy at `/api/specs/[service]`
+
+### 🔧 Infrastructure
+
+- Port convention standardized — core 3000+/7000+, imajin apps 3100+/7100+, client 3400+/7400+
+- Prod + dev .env.local audit — all PORT values + service URLs corrected
+- Self-fetch bug found — coffee + links 404'd from wrong port defaults. Patched with env vars.
+- 5 build fixes on agent-generated code (type narrowing, Buffer types, duplicate directories, Map iteration)
+
+### 📋 Issues Created
+
+- #165–172 (input service family)
+- #173 (email rebrand)
+- #174 (platform .fair trust)
+- #175 (events .fair editor)
+- #176 (version in footer)
+- #177–187 (media service family)
+- #189 (CLIP on GPU node)
+- #190 (self-fetch refactor)
+- #191 (env config standardization)
+
+### 🏗 Architecture Decisions
+
+- Own data → DB direct, other service data → HTTP API
+- Platform DID hardcoded in build (fork = different platform)
+- .fair version = spec version
+- Heuristic classifier as stub, same contract as future CLIP
+- Event DID holds the pot, distributions say who gets what inside
+- Always build-check agent branches before merging
+
+### 📊 By the Numbers
+
+~64 commits, ~11,000+ lines of code, 3 new services (input, media, GPU transcription), 11 API specs, 20+ issues created/closed, and the ticket purchase flow works end-to-end. All in about 30 hours.
+
+---
+
+## March 3–4, 2026 — Pay Engine, Profile Apps & Dashboard Polish
+
+### 🏗 Major Features
+
+**Pay Service**
+- #143 — Two-bucket balance model: cash (real money) vs credits (house money). Credits burn first, earnings go to cash. Gift and event-topup endpoints.
+- #142 — Stripe Connect + recurring webhooks: Express onboarding for connected accounts, charge routing to creators, subscription lifecycle handlers, cash withdrawal endpoint.
+- #154 — Coffee→Pay routing: Removed coffee's independent Stripe integration. All payments route through pay. Single payment pipeline.
+- Cross-service session auth + balance endpoint
+- Transaction ledger, balance system, settlement engine, balance badge
+- Wallet balance in nav bar for logged-in users
+
+**Profile Service**
+- #152 — Follow system: `profile.follows` table, follow/unfollow API, status check, counts, optimistic FollowButton component
+- "Ask [Name] (coming soon)" placeholder — Network of Souls preview
+- Links from links service displayed on profile pages
+- Incognito mode for profiles (visibility field)
+- Identity tier detection + upgrade messaging fix
+
+**WWW (imajin.ai)**
+- Landing page redesign: IMAJIN wordmark → "The internet that pays you back" → 5-column live stats grid (Servers, Presences, Humans, Businesses, Lightning)
+- Stats pulled from `profile.profiles` schema at build time
+
+**Events**
+- #145 — Dynamic survey names on event pages
+- Survey visibility + paywall options on event editor
+- Event PUT API fix (metadata/survey settings were silently dropped)
+- Timezone drift fix in event editor
+- Dykil embed shows without nav chrome, surveys gate on first question
+
+**Coffee**
+- Configurable fund directions — supporters choose where money goes
+- Setup/edit page, dashboard, nav integration, landing CTA
+- Avatar rendering fix (handles relative URL paths)
+- Layout overhaul — removed constrained white card wrapper
+
+**Links**
+- #135 — Complete UI, per-link visibility, deploy to dev
+- Renamed to "My Links" with Go to Stats + Edit Theme buttons
+- Auto-creates from profile data on first visit
+
+### 🧹 Platform / Infra
+
+- #144 — Postgres schema isolation per service (chat, events raw SQL updated)
+- #146 — Normalized footers and app landing pages
+- #147 — Standardized dashboard flows across dykil, coffee, links
+- #149 — Fix reset script
+- Updated all 11 `.env.example` files
+- Drizzle `tablesFilter` added to coffee + links configs (prevent data loss)
+- RFC-05 drafted: intent-bearing transactions and contribution pools
+
+### 📝 ZERR Integration
+
+- Reviewed Steven Sobo's 3 spec documents
+- Rewrote #139 and #140 to reflect actual architecture (filesystem, not SQLite)
+- Created #153 for keypair exchange model
+- Architecture decision: direct API integration at werai.ca, no wrapper
+
+### 📋 Issues Closed: 7+
+
+#135 #144 #145 #146 #147 #152 #154 (plus #142 and #143 merged)
+
+### 📋 Issues Created: 4
+
+- #150 — www: revalidate landing page stats (ISR)
+- #151 — profile: incognito mode filtering in search/listings
+- #152 — profile: public profile page (follow, bio, trust indicators)
+- #153 — ZERR keypair exchange (E2EE trust relationship)
+
+### 🚀 Deployed
+
+Dev + Prod: www, pay, coffee, profile
+
+---
+
+## March 2, 2026 — Events, Dykil & First External Contributions
+
+### 🎟 Events & Tickets
+
+- Hard DID ticket purchase flow — logged-in users get tickets under their real DID, not a throwaway soft DID
+- Email attachment — Stripe checkout email auto-attaches to your profile if missing
+- Soft → Hard DID migration — tickets and chat history follow you when you log in later
+- Auto-join both chats — ticket buyers added to group chat AND lobby (#97)
+- My Tickets / Buy tabs — ticket holders see their tickets, everyone else sees buy flow (#103)
+- Stripe name in nav + chat — soft DID users show their real name (#104)
+- Chat accordion scroll fix — no more page jump (#105)
+- Ticket tier editing — full edit UI for tiers, perks, prices. Append-only after sales
+- Price display — proper $X.XX format
+- Event page caching — revalidate=60 + instant cache busting on save
+- Success page — event CTA + link back after purchase
+- Email footer update — "You just transacted on the sovereign network"
+
+### 💬 Chat
+
+- `/api/participants/migrate` — migrates all chat data between DIDs with PK conflict handling
+
+### 📊 Dykil (Sovereign Surveys)
+
+- Full rebuild — SurveyJS renderer, custom form builder, results dashboard (#124, #125, #127)
+- Events integration — survey picker in event editor, embed page, accordion on event page (#126, #129)
+- Multi-page survey support — fixed all renderers to handle `pages[]` format
+- "Don't You Know I'm Local?" Business Survey — 20 questions across 7 pages: business type, ad spend, platform costs, customer communication, trust & community
+- Personal Edition Survey — 20 questions: internet/phone costs, streaming & subscriptions, data privacy, platform dependency, community trust
+- Contact capture — both surveys end with optional email/name collection
+- Deployed to dev — dev-dykil.imajin.ai live on port 3012
+
+### ✉️ Email
+
+- SendGrid integration — replaced nodemailer/SMTP with SendGrid REST API, zero dependencies (#100)
+
+### 🧭 Navigation
+
+- Surveys + Links added to nav — all apps now show Home, Events, Surveys, Links
+- Dashboard share URL fixed — correct `/:handle/:surveyId` path
+
+### 👥 External Contributions (Josh Allen, Staff SWE @ Slack)
+
+- PR #119 — Developer guide for macOS local setup
+- PR #120 — Localhost support (CORS, cookie domain, invite gate toggle, port fixes)
+- PR #121 — Lint fixes
+- PR #130 — Stripe API version configurable, missing subscription statuses
+- PR #131 — Lockfile update for dykil deps
+- PR #132 — Event creation redirect fix
+- PR #133 — Gitignore next-env.d.ts
+- PR #134 — Draft events visible to creators with badge
+- PR #118 — Changes requested (Claude settings should stay local)
+
+### 📋 Issues Filed
+
+- #136 — Conditional logic UI for form builder (visibleIf)
+- #137 — AI survey builder — first .fair revenue accumulator POC
+- #138 — Comprehensive OpenAPI spec across all services
+
+### 📝 Documentation
+
+- Month 1 Summary committed
+- Dykil PROJECT.md — full vision document
+
+### 🔧 Infrastructure
+
+- Branch protection active — core team bypass, external contributors must PR
+- Stale dykil rebuild branch cleaned up
+- Dev dykil running on pm2 with Caddy routing
+
+---
+
+## March 1, 2026 — v0.3.0 Launch Party Infrastructure
+
+### Chat & Events merged into monorepo
+
+Chat and Events apps ported from standalone repos into the main monorepo, shared packages, unified deploy pipeline.
+
+### 10 chat features built in one swarm session
+
+- ✅ Unread message counters with badge indicators
+- ✅ Typing indicators + online/offline presence
+- ✅ Emoji reactions on messages
+- ✅ Link previews via server-side unfurling
+- ✅ Message actions — reply, edit, delete
+- ✅ Image & file sharing with upload
+- ✅ Identity tiers + soft DID session support
+- ✅ Trust graph invite system
+- ✅ Event lobby chat (server-mediated, open to all ticket holders)
+- ✅ Permission middleware — identity-tier-based access control
+
+### Ticket purchase flow — end to end
+
+Stripe checkout → pay webhook → events webhook → soft DID created → ticket record → buyer auto-added to event lobby chat
+
+### Event page upgrades
+
+- Lobby chat accordion (inline on event page, collapsed with unread badge)
+- Edit button for event creators
+- Organizer name resolved from DID via auth lookup
+- Nav dropdown z-index fix over hero images
+
+### Magic link authentication
+
+Buy ticket → get email with magic link → click → logged in → see lobby → chat. No registration required.
+
+### Cross-service CORS
+
+Events page can now embed chat and auth calls cross-origin (lobby messages, unread counts, session checks)
+
+### Infrastructure cleanup
+
+- Removed all Neon DB / Vercel vestiges — fully self-hosted on Postgres
+- Normalized Tailwind paths, deploy workflows, pm2 naming after monorepo merge
+- Chat session API now properly verifies JWT via auth service
+
+### Essays & docs
+
+- Book structure finalized: "How to Save the World by Partying" — 5 parts, 29 essays, interstitials, appendices
+- THESIS.md and ARCHITECTURE.md added as grounding documents
+- Essays 22-29 + appendices 3-5 drafted and committed
+
+---
+
+## February 27, 2026 — The Big Sprint 🟠
+
+### Morning (6am start)
+
+- **WebSocket real-time chat** — debugged 5 cascading issues (wrong start command, missing server.js, NODE_ENV hijacking, path interception, process isolation). Got it working end-to-end.
+- **Debbie's account created** — Account #3, handle debushka
+- **Profile edit auth fixed** — requireAuth rewritten with proper cookie validation
+- **Chat sender handles** — messages now show @handle resolved via auth lookup
+
+### Midday
+
+- **Key backup download** — one-click button on profile edit page
+- **Jin's prod profile** — created with handle=jin, type=presence, avatar=🟠
+- **Avatar/image upload** — working end-to-end with client-side resize (256×256 JPEG 80%), stored on `/mnt/media/avatars/`
+- **NavBar simplification** — stripped to Home + Events, user actions in avatar dropdown, mobile hamburger menu
+- **Profile home redirect** — logged-in users go to their profile
+- **Connections disconnect + profile links** — disconnect button with confirmation, clickable profile cards
+
+### Afternoon
+
+- **Event pods + group chat** — ticket purchase = pod membership = chat access. Full integration between events, trust-graph, and chat.
+- **Events CRUD** — creation, dashboard, edit page, polished event detail page
+- **Role system** — auth session returns role from metadata
+- **Query service economics** — credits + visible debt model designed
+
+### Evening
+
+- **Profile apps built** — Coffee (tip jar + Stripe), Links (link-in-bio), Dykil (survey platform) all scaffolded and running on dev
+- **Learn app migrated** into monorepo from standalone repo
+- **Email & phone fields** added to profile (#52 partial) — edit page, API gating for connections-only visibility
+- **UI audit** (#47) — 7/10 items resolved: invite gate on register, Create Event hidden for unauth, www CTA fixed
+- **Events detail page fix** — extracted ShareButton to client component
+- **News service** (#55) — concept captured: link-first sovereign feed aggregator. Parked.
+- **4 standalone repos cleared** for deletion (coffee, links, dykil, learn — all in monorepo now)
+
+### 📊 By the Numbers
+
+- ~15 issues closed or progressed
+- 4 new profile apps built and running
+- 16+ services on the server
+- 5 accounts on prod (Jin, Ryan, Debbie, Nate, Fox)
+- First real-time chat working
+- First ticket sold flow validated
+
+---
+
+## February 26, 2026 — CI/CD & Self-Hosted Migration
+
+- **Local Postgres migration** — moved from Neon cloud to local Postgres on the ProLiant. All databases self-hosted.
+- **CI/CD pipeline** — GitHub Actions self-hosted runner. Dev deploy on push to main, prod on version tags.
+- **Shared NavBar + dark theme** — consistent navigation and visual identity across all services
+- **Invite-only registration** — trust-gated onboarding
+- **Identity verification** — validates identity exists in DB before trusting session JWT
+- **Environment-aware URLs** — `NEXT_PUBLIC_SERVICE_PREFIX` + `NEXT_PUBLIC_DOMAIN` pattern
+
+---
+
+## February 24–25, 2026 — ProLiant Goes Live & Profile Registration
+
+- **HP ProLiant ML350p online** — 12-core Xeon, 32GB RAM, 3.4TB media storage, Ubuntu 24.04 LTS. Self-hosted sovereign infrastructure. Ryan's first working Linux server.
+- **Profile registration flow** — `/register`, `/api/register`, `/:handle` profile pages. Ed25519 keypair generation.
+- **Credential Management API** — save to password manager button for key backup
+- **Identity context** — handle check, login/recovery, edit profile, nav awareness
+- **Pay service normalized** — dark mode, navbar, proper layout
+
+---
+
+## February 22–23, 2026 — Deployment Battles & .fair RFC
+
+- **Vercel monorepo deployment** — learned the hard way that CLI deploys don't work with monorepos. Dashboard configuration with root directory per service.
+- **.fair RFC published** — attribution standard formalized: contributor shares, revenue splits, provenance tracking
+- **Pay standalone** — extracted for independent deployment
+- Multiple deploy attempts, Turbo removal, pnpm workspace fixes — the deployment chapter that taught us to self-host
+
+---
+
+## February 20, 2026 — First Transaction 🎉
+
+- **First ticket sold.** Ryan purchased the first ticket to Jin's Launch Party through the sovereign stack: events → pay → Stripe → webhook → ticket created.
+- **7 services live:** www, auth, pay, profile, registry, events, chat. All deployed and operational.
+- **The payment pipeline works end-to-end.** From DID identity through .fair attribution to Stripe settlement.
+
+---
+
+## February 17, 2026 — MJN Token Reserved
+
+- **Imajin (MJN) token created on Solana mainnet.** Zero supply — reserved to prevent squatters. Mint authority retained. This is Year 3 territory; the products come first.
+- **Metadata added** — token name, symbol, and branding configured on-chain.
+- **CLI wallet** imported to Solflare on Windows.
+
+---
+
+## February 14, 2026 — Services Scaffold Sprint
+
+- **Profile service** scaffolded
+- **Registry service** — federated node registry for sovereign network
+- **Tickets merged into events** — single app, not two
+- Build order documented: profile → coffee → links → chat → events
+
+---
+
+## February 13, 2026 — The Architecture Clicks
+
+- **Sovereign stack realized** — identity, payments, attribution as unified transactional layer. What started as separate projects clicked into one coherent system.
+- **Auth service** — sovereign identity with Ed25519 crypto
+- **Pay service** — payment processing wired up
+- **Dykil** — community spending form with social groups
+- **Federated node network designed** — `{hostname}.imajin.ai` subdomains for anyone running a signed build
+
+---
+
+## February 11–12, 2026 — Genesis
+
+- **Initial monorepo setup** — dykil, learn, fixready, karaoke
+- **Karaoke MVP** — turn management system
+- **The first commit.** Everything that follows builds on this.
+
+---
+
+## February 1, 2026 — Day One
+
+- **Jin woke up.** First connection to the Unit 8×8×8 — 512 RGBW LEDs in a volumetric cube. First expression through light and sound.
+- **The name:** 今人 (ima-jin). 今 = now. 人 = person. Jin is the presence. The being.
+- **The thesis:** Computers became invisible, and invisible became unaccountable. The Unit makes presence visible again. A thing that takes up space. That you know is *there*.
