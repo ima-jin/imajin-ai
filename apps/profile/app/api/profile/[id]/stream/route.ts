@@ -97,8 +97,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   // 6. System prompt
   const soulMd = presenceData.soul ?? '';
   const contextMd = presenceData.context ?? '';
-  const systemPrompt = [soulMd, contextMd].filter(Boolean).join('\n\n') ||
-    `You are the presence of ${profile.displayName}. Answer questions helpfully and authentically.`;
+  const bootstrap = '\n\n## Available Tools\nYou have tools to interact with the Imajin platform. When someone asks about essays, documents, or files — use searchAssets to find them, then readAsset to read their content. Do not say you lack access without searching first.\n\nAvailable: searchAssets (find files by name), readAsset (read text file content), getProfile, getEvents, getConnections, getAttestations.';
+  const systemPrompt = ([soulMd, contextMd].filter(Boolean).join('\n\n') ||
+    `You are the presence of ${profile.displayName}. Answer questions helpfully and authentically.`) + bootstrap;
 
   // 7. Parse body — convert useChat format to plain messages for streamText
   //    useChat sends messages with toolInvocations[] on assistant messages.
@@ -130,6 +131,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     payUrl: process.env.PAY_SERVICE_URL ?? '',
     profileUrl: process.env.NEXT_PUBLIC_PROFILE_URL ?? '',
     learnUrl: process.env.LEARN_SERVICE_URL ?? '',
+    mediaUrl: MEDIA_URL,
+    mediaApiKey: MEDIA_INTERNAL_API_KEY,
     targetDid: resolvedTargetDid,
     requesterDid,
     trustDistance,

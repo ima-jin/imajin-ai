@@ -264,19 +264,34 @@ export async function POST(request: NextRequest) {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/assets — list assets for authenticated user
+// GET /api/assets — list assets for authenticated user (or via internal API key)
 // ---------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
-  const authResult = await requireAuth(request);
-  if ("error" in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+
+  // Internal API key auth: Bearer token + X-Owner-DID header
+  const internalApiKey = process.env.MEDIA_INTERNAL_API_KEY;
+  const authHeader = request.headers.get("Authorization");
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  let ownerDid: string;
+  if (bearerToken && internalApiKey && bearerToken === internalApiKey) {
+    const ownerDidHeader = request.headers.get("X-Owner-DID");
+    if (!ownerDidHeader) {
+      return NextResponse.json({ error: "X-Owner-DID header required" }, { status: 400, headers: cors });
+    }
+    ownerDid = ownerDidHeader;
+  } else {
+    const authResult = await requireAuth(request);
+    if ("error" in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+    }
+    ownerDid = authResult.identity.id;
   }
-  const { identity } = authResult;
-  const ownerDid = identity.id;
 
   const { searchParams } = new URL(request.url);
-  const type = searchParams.get("type");         // e.g. "image"
+  const search = searchParams.get("search");      // filename search
+  const type = searchParams.get("type");          // e.g. "image"
   const sort = searchParams.get("sort") || "created";
   const order = searchParams.get("order") || "desc";
   const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200);
@@ -288,7 +303,6 @@ export async function GET(request: NextRequest) {
     // Build where conditions
     const conditions = [eq(assets.ownerDid, ownerDid), eq(assets.status, "active")];
 
-    // Type filter (mime prefix match)
     let rows = await db
       .select()
       .from(assets)
@@ -301,9 +315,15 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    // Post-filter by MIME prefix (simple; can be pushed to DB if needed)
+    // Post-filter by MIME prefix
     if (type) {
       rows = rows.filter((r) => r.mimeType.startsWith(`${type}/`));
+    }
+
+    // Post-filter by filename search
+    if (search) {
+      const q = search.toLowerCase();
+      rows = rows.filter((r) => r.filename.toLowerCase().includes(q));
     }
 
     return NextResponse.json({ assets: rows, limit, offset, count: rows.length }, { headers: cors });

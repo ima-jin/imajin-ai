@@ -24,5 +24,5 @@ export { generateText, streamText } from 'ai';
 export type { LanguageModelV1 } from 'ai';
 
 // Presence tools
-export { createPresenceTools, createEventTools, createConnectionTools, createAttestationTools, createProfileTools, createPayTools, createLearnTools } from './tools/index';
+export { createPresenceTools, createEventTools, createConnectionTools, createAttestationTools, createProfileTools, createPayTools, createLearnTools, createMediaTools } from './tools/index';
 export type { ToolConfig } from './tools/index';
