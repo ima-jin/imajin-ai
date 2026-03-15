@@ -1,4 +1,4 @@
-# RFC-001: Jin Workspace Agent Architecture
+# RFC-002: Jin Workspace Agent Architecture
 
 **Author:** Ryan Veteze + Jin  
 **Date:** March 15, 2026  
