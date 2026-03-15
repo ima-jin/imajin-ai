@@ -1,8 +1,9 @@
-# RFC-001: Identity Portability & Backup Nodes
+# RFC-06: Identity Portability & Backup Nodes
 
-**Status:** Draft  
-**Author:** Ryan Veteze, Jin  
-**Date:** 2026-03-05  
+**Status:** Draft
+**Author:** Ryan Veteze, Jin
+**Date:** 2026-03-05
+**Discussion:** none
 **Related:** Federation (#registry), MJN Token, Network of Souls
 
 ---

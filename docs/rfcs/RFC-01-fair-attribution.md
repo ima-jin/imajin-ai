@@ -1,7 +1,10 @@
-# RFC: .fair Attribution from Commit History
+# RFC-01: .fair Attribution from Commit History
 
-**Category:** RFC / Architecture  
-**Status:** Open for discussion  
+**Status:** Open for discussion
+**Authors:** TBD
+**Created:** TBD
+**Discussion:** https://github.com/ima-jin/imajin-ai/discussions/15
+**Category:** RFC / Architecture
 **Related:** [Bounty: imajin Syndication Service](#) *(link when live)*
 
 ---
