@@ -75,3 +75,32 @@ A community-anchored issuance network means:
 ## Credit
 
 Core concept from Greg Mulholland's "The Commons Layer" (March 2026). Architectural grounding from Imajin's existing federated node model and MJN Foundation plans.
+
+## Prior Art: Protocol-Level Redistribution
+
+The idea of building wealth redistribution into a systems rules — rather than leaving it to voluntary charity — has deep historical precedent.
+
+
+## Prior Art: Protocol-Level Redistribution
+
+The idea of building wealth redistribution into a system's rules — rather than leaving it to voluntary charity — has deep historical precedent.
+
+### Zakat (Islamic finance, ~624 CE)
+An obligatory 2.5% levy on net assets held for one year. Not charity — a structural mechanism. Key properties that align with MJN:
+- **Formulaic, not discretionary** — clear rates on specific asset classes, no committee debates
+- **Individual accountability** — assessed and distributed by the holder, not a central authority
+- **Penalizes idle wealth** — only applies to assets held without productive use, incentivizing circulation
+- **Directed to specific categories** — the poor, debtors, travelers, new community members (8 defined categories in Quran 9:60)
+
+### Waqf (Islamic endowments, ~7th century)
+Permanent assets (land, buildings, funds) whose revenue is directed to community benefit in perpetuity. The asset itself cannot be sold or inherited — only the yield flows. Structurally similar to protocol-level fee pools where the protocol is the permanent asset and micro-fees are the yield.
+
+### Potlatch (Pacific Northwest Indigenous, pre-contact)
+Ceremonial redistribution where status is earned by *giving away* wealth, not accumulating it. Leadership through generosity. Analogous to the trust graph model where reputation is built through contributions and attestations, not extraction.
+
+### Tithe (Judeo-Christian, ~1500 BCE)
+10% of produce directed to community infrastructure (temples, priests, the poor). Evolved into the first "subscription model" — but originally a protocol-level community funding mechanism.
+
+### The Pattern
+
+Every major civilization independently discovered that sustainable communities require **structural redistribution** — wealth circulation baked into the rules, not dependent on goodwill. MJN's fee model (capped micro-fees, attention marketplace, community-directed flow via trust graph) is the same pattern with protocol-level tooling. The mechanism is 1,400+ years old. The implementation is new.
