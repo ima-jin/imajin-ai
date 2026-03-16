@@ -13,19 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { eq } from 'drizzle-orm';
 import { db, connectedAccounts } from '@/src/db';
-
-let _stripe: Stripe | null = null;
-function getStripe(): Stripe {
-  if (!_stripe) {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error('STRIPE_SECRET_KEY not configured');
-    }
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2024-11-20.acacia' as Stripe.LatestApiVersion,
-    });
-  }
-  return _stripe;
-}
+import { getStripe } from '@/lib/stripe';
 
 export async function POST(request: NextRequest) {
   const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;

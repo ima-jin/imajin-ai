@@ -10,25 +10,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import Stripe from 'stripe';
 import { eq } from 'drizzle-orm';
 import { authenticateRequest } from '@/lib/session-auth';
 import { corsHeaders } from '@/src/lib/cors';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 import { db, connectedAccounts } from '@/src/db';
-
-let _stripe: Stripe | null = null;
-function getStripe(): Stripe {
-  if (!_stripe) {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error('STRIPE_SECRET_KEY not configured');
-    }
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2024-11-20.acacia' as Stripe.LatestApiVersion,
-    });
-  }
-  return _stripe;
-}
+import { getStripe } from '@/lib/stripe';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -47,7 +34,7 @@ export async function GET(request: NextRequest) {
   }
 
   const auth = await authenticateRequest(request);
-  if (!auth.authenticated) {
+  if (!auth.authenticated || !auth.identity) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401, headers: cors }
@@ -61,6 +48,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { error: 'did query parameter is required' },
       { status: 400, headers: cors }
+    );
+  }
+
+  if (auth.identity.did !== did) {
+    return NextResponse.json(
+      { error: 'Not authorized to access this account' },
+      { status: 403, headers: cors }
     );
   }
 

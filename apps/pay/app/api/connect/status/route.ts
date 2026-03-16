@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   }
 
   const auth = await authenticateRequest(request);
-  if (!auth.authenticated) {
+  if (!auth.authenticated || !auth.identity) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401, headers: cors }
@@ -45,6 +45,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { error: 'did query parameter is required' },
       { status: 400, headers: cors }
+    );
+  }
+
+  if (auth.identity.did !== did) {
+    return NextResponse.json(
+      { error: 'Not authorized to access this account' },
+      { status: 403, headers: cors }
     );
   }
 
@@ -62,7 +69,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(rows[0], { headers: cors });
+    const account = rows[0];
+    return NextResponse.json({
+      did: account.did,
+      stripeAccountId: account.stripeAccountId,
+      chargesEnabled: account.chargesEnabled,
+      payoutsEnabled: account.payoutsEnabled,
+      detailsSubmitted: account.detailsSubmitted,
+      onboardingComplete: account.onboardingComplete,
+      defaultCurrency: account.defaultCurrency,
+    }, { headers: cors });
   } catch (error) {
     console.error('Connect status error:', error);
     return NextResponse.json(
