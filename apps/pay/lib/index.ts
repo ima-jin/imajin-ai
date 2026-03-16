@@ -20,6 +20,9 @@
  * await pay.charge({ amount: 100000000, currency: 'SOL', to: { solanaAddress: 'xxx' } });
  */
 
+// Constants
+export const DEFAULT_PLATFORM_FEE_BPS = 100; // 1%
+
 // Main service
 export { PaymentService } from './service';
 

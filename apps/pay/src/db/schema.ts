@@ -57,6 +57,30 @@ export const balanceRollups = paySchema.table('balance_rollups', {
   dateIdx: index('idx_balance_rollups_date').on(table.date),
 }));
 
+/**
+ * Connected Accounts - Stripe Connect accounts linked to DIDs
+ * SQL: CREATE TABLE pay.connected_accounts (...)
+ */
+export const connectedAccounts = paySchema.table('connected_accounts', {
+  id: text('id').primaryKey(),                                                    // ca_xxx
+  did: text('did').notNull().unique(),                                            // owner DID
+  stripeAccountId: text('stripe_account_id').notNull().unique(),                  // acct_xxx
+  chargesEnabled: boolean('charges_enabled').notNull().default(false),
+  payoutsEnabled: boolean('payouts_enabled').notNull().default(false),
+  detailsSubmitted: boolean('details_submitted').notNull().default(false),
+  onboardingComplete: boolean('onboarding_complete').notNull().default(false),
+  currentlyDue: jsonb('currently_due').default([]),
+  eventuallyDue: jsonb('eventually_due').default([]),
+  defaultCurrency: text('default_currency').default('CAD'),
+  platformFeeBps: integer('platform_fee_bps'),                                    // null = use default (100 = 1%)
+  metadata: jsonb('metadata').default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  didIdx: index('idx_connected_accounts_did').on(table.did),
+  stripeIdx: index('idx_connected_accounts_stripe').on(table.stripeAccountId),
+}));
+
 // Types
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
@@ -64,3 +88,5 @@ export type Balance = typeof balances.$inferSelect;
 export type NewBalance = typeof balances.$inferInsert;
 export type BalanceRollup = typeof balanceRollups.$inferSelect;
 export type NewBalanceRollup = typeof balanceRollups.$inferInsert;
+export type ConnectedAccount = typeof connectedAccounts.$inferSelect;
+export type NewConnectedAccount = typeof connectedAccounts.$inferInsert;
