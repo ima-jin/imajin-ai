@@ -14,3 +14,5 @@ export { MarkdownContent } from './MarkdownContent';
 export type { MarkdownContentProps } from './MarkdownContent';
 export { ConnectionPicker } from './connection-picker';
 export type { ConnectionPickerProps } from './connection-picker';
+
+export { PayoutSetupBanner } from './PayoutSetupBanner';

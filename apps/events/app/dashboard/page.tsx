@@ -3,6 +3,9 @@ import { getSession } from '@/src/lib/auth';
 import { db, events, ticketTypes } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import Link from 'next/link';
+import { PayoutSetupBanner } from '@imajin/ui';
+
+const PAY_URL = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
 import { EventCard } from './event-card';
 
 interface EventWithStats {
@@ -40,6 +43,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto">
+      <PayoutSetupBanner
+        did={session.id}
+        payUrl={PAY_URL}
+        message="Connect your bank account to receive ticket revenue"
+      />
       {/* Header */}
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
