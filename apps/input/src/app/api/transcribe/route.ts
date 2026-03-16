@@ -2,6 +2,10 @@ import { SESSION_COOKIE_NAME } from "@imajin/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/metering';
 import { corsHeaders, corsOptions } from '@/lib/cors';
+import { writeFile, unlink } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { randomBytes } from 'crypto';
 
 const GPU_NODE_URL = process.env.GPU_NODE_URL || 'http://192.168.1.124:8765';
 const GPU_AUTH_TOKEN = process.env.GPU_AUTH_TOKEN || '';
@@ -58,24 +62,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Relay to GPU node — convert to File with explicit bytes to fix Node.js FormData relay
+  // Relay to GPU node — write to temp file then use undici for reliable multipart upload
   const fileBytes = Buffer.from(await file.arrayBuffer());
   const fileName = (file as File).name || 'audio.webm';
   const fileType = file.type || 'audio/webm';
-  const gpuFile = new File([fileBytes], fileName, { type: fileType });
-  const gpuFormData = new FormData();
-  gpuFormData.append('file', gpuFile);
+  const tmpPath = join(tmpdir(), `input-${randomBytes(8).toString('hex')}-${fileName}`);
 
   // Pass through optional language param
   const language = formData.get('language');
-  if (language && typeof language === 'string') {
-    gpuFormData.append('language', language);
-  }
 
   try {
+    await writeFile(tmpPath, fileBytes);
+
+    // Use undici (Node built-in) for reliable multipart — Web API FormData + fetch drops bytes
+    const { FormData: UndiciFormData } = await import('undici');
+    const { Blob: UndiciBlob } = await import('node:buffer');
+    const uForm = new UndiciFormData();
+    const blob = new UndiciBlob([fileBytes], { type: fileType });
+    uForm.append('file', blob, fileName);
+    if (language && typeof language === 'string') {
+      uForm.append('language', language);
+    }
+
     const gpuRes = await fetch(`${GPU_NODE_URL}/api/whisper/transcribe`, {
       method: 'POST',
-      body: gpuFormData,
+      // @ts-ignore - undici FormData is compatible
+      body: uForm,
       headers: {
         ...(GPU_AUTH_TOKEN ? { Authorization: `Bearer ${GPU_AUTH_TOKEN}` } : {}),
         'X-Caller-DID': callerDid,
@@ -102,5 +114,7 @@ export async function POST(request: NextRequest) {
       { error: 'Transcription service unavailable' },
       { status: 503, headers: cors }
     );
+  } finally {
+    await unlink(tmpPath).catch(() => {});
   }
 }
