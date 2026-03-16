@@ -37,7 +37,7 @@ Then the web came.
 
 I remember the exact feeling. Not nostalgia - I had that in real-time. Watching the BBS networks dissolve into web forums. Watching web forums get absorbed into social networks. Watching social networks become algorithmic feeds optimized for engagement.
 
-Every step - every single one - was celebrated as innovation. 
+Every step - every single one - was celebrated as innovation.
 
 Every step was wrong.
 
@@ -77,7 +77,7 @@ But when venture capital got involved, the plumbing had to become the profit cen
 
 This is why every platform follows the same trajectory:
 - Start by being useful and free
-- Get users hooked on network effects  
+- Get users hooked on network effects
 - Introduce ads
 - Reduce organic reach
 - Make people pay to reach their own followers
@@ -86,25 +86,7 @@ This is why every platform follows the same trajectory:
 
 It's not a bug. It's the only possible outcome when you monetize the rails.
 
-## The Extraction Model is Fatally Flawed
-
-Here's what makes it fatal: **the extraction model destroys the thing it's extracting from.**
-
-Social platforms need authentic human connection to function. But optimizing for engagement over connection destroys authenticity. People stop posting what matters and start posting what performs. The algorithm learns to serve rage and anxiety because those drive clicks. The town square becomes a dopamine casino.
-
-Think about the metrics:
-
-Three nodes. 300 users. Marriages. Lifelong friendships. International collaborations. A community that persists thirty years later.
-
-Versus:
-
-Billions of users. Trillions of connections. Record rates of loneliness, anxiety, and depression. Friendships that exist only as follower counts. People who can't remember the last time social media made them feel genuinely connected to another human.
-
-The extraction model optimizes for scale and engagement, but it destroys depth and meaning. And then users burn out. They quit, or they stay but disengage. The well runs dry.
-
-We're watching it happen in real-time. Every platform is struggling with the same problem: users are tired of being the product. They're tired of algorithmic manipulation. They're tired of watching their genuine human need for connection get optimized into an addiction they're ashamed of.
-
-The model is collapsing under its own contradictions.
+And here's what makes it fatal: **the model destroys the thing it's extracting from.** Social platforms need authentic human connection to function. Optimize for engagement instead of connection and you destroy authenticity. People stop posting what matters and start posting what performs. The algorithm learns to serve rage and anxiety because those drive clicks. The town square becomes a dopamine casino. Users burn out, quit, or stay and disengage. The well runs dry.
 
 ## Thirty Years of Being Right
 
@@ -128,7 +110,7 @@ I wasn't some genius with unlimited resources. I was a teenager with modems and 
 
 And now I watch platforms with unlimited capital, the world's best engineers, decades of research into human psychology, billions of dollars in VC funding... and they produce loneliness, addiction, and rage.
 
-Not because they're incompetent. 
+Not because they're incompetent.
 
 Because the extraction model makes it *impossible* to do what I did.
 
@@ -136,17 +118,9 @@ When you optimize for scale and engagement, you destroy intimacy and meaning. Wh
 
 They can't build what I built because their business model won't allow it.
 
-That's the pain. Not nostalgia. Not bitterness. The pain of knowing that the solution has always been obvious, but the architecture of modern capitalism makes it impossible to implement at the scale where money can be made.
-
-So we're stuck in this loop: platforms launch with good intentions, attract users, take VC money, optimize for growth, enshittify, collapse, repeat.
-
-And every cycle, I watch people discover what I've known since 1992: **the extraction model is fundamentally incompatible with human flourishing.**
-
 This is why I get so invested. Why I manifest with all my energy. Why I can't let it go.
 
-Because I'm not theorizing. I *lived* the better way. I ran b0bby's World. I know what connection without extraction feels like. I've spent thirty years watching the industry optimize away the thing that mattered most.
-
-And now, finally, the tools exist to build it again.
+Because I'm not theorizing. I *lived* the better way. I ran b0bby's World. I know what connection without extraction feels like. And now, finally, the tools exist to build it again.
 
 ## What the BBS Would Have Become
 
@@ -160,7 +134,7 @@ Here's how it works:
 
 **You own your identity.** Not Facebook. Not Google. You. Cryptographically. A decentralized identifier (DID) that no platform can revoke or control.
 
-**You own your data.** It lives on your node. Not in someone's cloud. Not being harvested for ad targeting.
+**You own your data.** It lives on your profile. Not in someone's cloud. Not being harvested for ad targeting.
 
 **Payments are plumbing.** Built in, frictionless, direct. Stripe or Solana, your choice. No platform taking 30%. Money flows from person to person for value exchanged.
 
@@ -168,7 +142,7 @@ Here's how it works:
 
 **Connections are intentional.** One by one. Invitation chains so you know who vouched for whom. No algorithmic suggestion of "people you may know."
 
-**Discovery is passive.** You post to your node when you have something to share. People's agents check your node when they want to. No feed algorithm. No notification anxiety. Just: Mark posted a picture of his cat. Sarah shared an article that three people are discussing. Leah's having a party in three days.
+**Discovery is passive.** You post to your profile when you have something to share. People's agents check your profile when they want to. No feed algorithm. No notification anxiety. Just: Mark posted a picture of his cat. Sarah shared an article that three people are discussing. Leah's having a party in three days.
 
 It's the BBS model, rebuilt for 2026.
 
@@ -190,8 +164,7 @@ This is what the internet could have been.
 
 This is what it still can be.
 
-The inversion: platforms currently take everything by default, and you beg for privacy settings. Sovereign infrastructure means you own everything by default, and you selectively 
-grant access. Prove you're over 18 without revealing your birthdate. Share your email with one service but not another. Your call, every time.
+The inversion: platforms currently take everything by default, and you beg for privacy settings. Sovereign infrastructure means you own everything by default, and you selectively grant access. Prove you're over 18 without revealing your birthdate. Share your email with one service but not another. Your call, every time.
 
 ## April 1st, 2026
 
