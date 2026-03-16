@@ -151,6 +151,9 @@ export class StripeProvider implements PaymentProvider {
       // Route funds to connected account if provided
       ...(request.connectedAccountId && !isSubscription && {
         payment_intent_data: {
+          ...(request.applicationFeeAmount != null && {
+            application_fee_amount: request.applicationFeeAmount,
+          }),
           transfer_data: { destination: request.connectedAccountId },
         },
       }),
