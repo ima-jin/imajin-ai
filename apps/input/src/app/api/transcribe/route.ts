@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
   if (!rateCheck.allowed) {
     return NextResponse.json(
       { error: 'Rate limit exceeded', retryAfterMs: rateCheck.retryAfterMs },
-      { status: 429, headers: { 'Retry-After': String(Math.ceil(rateCheck.retryAfterMs / 1000)) } }
+      { status: 429, headers: { ...cors, 'Retry-After': String(Math.ceil(rateCheck.retryAfterMs / 1000)) } }
     );
   }
 
@@ -54,13 +54,16 @@ export async function POST(request: NextRequest) {
   if (!file || !(file instanceof Blob)) {
     return NextResponse.json(
       { error: 'Audio file is required (multipart field "file")' },
-      { status: 400 }
+      { status: 400, headers: cors }
     );
   }
 
-  // Relay to GPU node
+  // Relay to GPU node — read bytes explicitly to avoid Node.js FormData relay issues
+  const fileBytes = await file.arrayBuffer();
+  const fileName = (file as File).name || 'audio.webm';
+  const fileBlob = new Blob([fileBytes], { type: file.type || 'audio/webm' });
   const gpuFormData = new FormData();
-  gpuFormData.append('file', file);
+  gpuFormData.append('file', fileBlob, fileName);
 
   // Pass through optional language param
   const language = formData.get('language');
