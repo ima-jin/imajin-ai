@@ -5,23 +5,15 @@
  *
  * Events handled:
  * - account.updated
+ * - payout.paid
+ * - payout.failed
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-
-let _stripe: Stripe | null = null;
-function getStripe(): Stripe {
-  if (!_stripe) {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error('STRIPE_SECRET_KEY not configured');
-    }
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2024-11-20.acacia' as Stripe.LatestApiVersion,
-    });
-  }
-  return _stripe;
-}
+import { eq } from 'drizzle-orm';
+import { db, connectedAccounts } from '@/src/db';
+import { getStripe } from '@/lib/stripe';
 
 export async function POST(request: NextRequest) {
   const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
@@ -60,17 +52,53 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case 'account.updated': {
         const account = event.data.object as Stripe.Account;
-        console.log('Connect account updated:', {
-          id: account.id,
-          chargesEnabled: account.charges_enabled,
-          payoutsEnabled: account.payouts_enabled,
-          detailsSubmitted: account.details_submitted,
-          did: account.metadata?.did,
-        });
 
-        if (account.charges_enabled && account.payouts_enabled) {
-          console.log('Account fully onboarded:', account.id, 'did:', account.metadata?.did);
+        const rows = await db
+          .select()
+          .from(connectedAccounts)
+          .where(eq(connectedAccounts.stripeAccountId, account.id))
+          .limit(1);
+
+        if (rows.length > 0) {
+          const chargesEnabled = account.charges_enabled ?? false;
+          const payoutsEnabled = account.payouts_enabled ?? false;
+          const detailsSubmitted = account.details_submitted ?? false;
+
+          await db
+            .update(connectedAccounts)
+            .set({
+              chargesEnabled,
+              payoutsEnabled,
+              detailsSubmitted,
+              onboardingComplete: chargesEnabled && payoutsEnabled && detailsSubmitted,
+              currentlyDue: account.requirements?.currently_due ?? [],
+              eventuallyDue: account.requirements?.eventually_due ?? [],
+              updatedAt: new Date(),
+            })
+            .where(eq(connectedAccounts.stripeAccountId, account.id));
         }
+        break;
+      }
+
+      case 'payout.paid': {
+        const payout = event.data.object as Stripe.Payout;
+        console.log('Connect payout.paid:', {
+          account: (event as Stripe.Event & { account?: string }).account,
+          payoutId: payout.id,
+          amount: payout.amount,
+          currency: payout.currency,
+        });
+        break;
+      }
+
+      case 'payout.failed': {
+        const payout = event.data.object as Stripe.Payout;
+        console.log('Connect payout.failed:', {
+          account: (event as Stripe.Event & { account?: string }).account,
+          payoutId: payout.id,
+          amount: payout.amount,
+          currency: payout.currency,
+        });
         break;
       }
 

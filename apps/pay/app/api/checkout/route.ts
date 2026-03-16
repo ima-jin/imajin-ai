@@ -26,7 +26,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/lib/pay';
 import { extractToken, validateToken } from '@/lib/auth';
 import type { CheckoutRequest, FiatCurrency } from '@/lib';
-import { db, transactions } from '@/src/db';
+import { DEFAULT_PLATFORM_FEE_BPS } from '@/lib';
+import { db, transactions, connectedAccounts } from '@/src/db';
+import { eq } from 'drizzle-orm';
 import { genId } from '@/src/lib/id';
 import { corsHeaders } from '@/src/lib/cors';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
@@ -47,6 +49,7 @@ interface CheckoutBody {
   metadata?: Record<string, string>;
   fairManifest?: Record<string, any>;
   connectedAccountId?: string;
+  sellerDid?: string;
 }
 
 export async function OPTIONS(request: NextRequest) {
@@ -129,7 +132,32 @@ export async function POST(request: NextRequest) {
     }
     
     const pay = getPaymentService();
-    
+
+    // Resolve connected account from sellerDid if provided
+    const sellerDid = body.sellerDid || body.metadata?.sellerDid;
+    let resolvedConnectedAccountId = body.connectedAccountId;
+    let applicationFeeAmount: number | undefined;
+
+    if (sellerDid) {
+      const [account] = await db
+        .select()
+        .from(connectedAccounts)
+        .where(eq(connectedAccounts.did, sellerDid))
+        .limit(1);
+
+      if (account) {
+        if (!account.chargesEnabled) {
+          return NextResponse.json(
+            { error: "Seller hasn't completed payment setup" },
+            { status: 400, headers: cors }
+          );
+        }
+        resolvedConnectedAccountId = account.stripeAccountId;
+        const totalAmount = body.items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
+        applicationFeeAmount = Math.round(totalAmount * (account.platformFeeBps || DEFAULT_PLATFORM_FEE_BPS) / 10000);
+      }
+    }
+
     const checkoutRequest: CheckoutRequest = {
       items: body.items,
       currency: body.currency || 'USD',
@@ -142,7 +170,8 @@ export async function POST(request: NextRequest) {
         // Add identity if authenticated
         ...(identity && { identity_id: identity.id }),
       },
-      connectedAccountId: body.connectedAccountId,
+      connectedAccountId: resolvedConnectedAccountId,
+      applicationFeeAmount,
     };
     
     const result = await pay.checkout(checkoutRequest);

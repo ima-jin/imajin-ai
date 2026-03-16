@@ -1,18 +1,21 @@
 /**
- * GET /api/connect/status?did=xxx
+ * GET /api/connect/dashboard?did=xxx
  *
- * Returns the connected account status for a DID (from DB, kept fresh by webhook).
+ * Generate a Stripe Express Dashboard login link for the connected account.
+ *
+ * Auth: required
  *
  * Response:
- * { id, did, stripeAccountId, chargesEnabled, payoutsEnabled, detailsSubmitted, onboardingComplete, ... }
+ * { url: string }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
+import { authenticateRequest } from '@/lib/session-auth';
 import { corsHeaders } from '@/src/lib/cors';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
-import { authenticateRequest } from '@/lib/session-auth';
 import { db, connectedAccounts } from '@/src/db';
+import { getStripe } from '@/lib/stripe';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -70,19 +73,22 @@ export async function GET(request: NextRequest) {
     }
 
     const account = rows[0];
-    return NextResponse.json({
-      did: account.did,
-      stripeAccountId: account.stripeAccountId,
-      chargesEnabled: account.chargesEnabled,
-      payoutsEnabled: account.payoutsEnabled,
-      detailsSubmitted: account.detailsSubmitted,
-      onboardingComplete: account.onboardingComplete,
-      defaultCurrency: account.defaultCurrency,
-    }, { headers: cors });
+
+    if (!account.onboardingComplete) {
+      return NextResponse.json(
+        { error: 'Onboarding not complete for this account' },
+        { status: 400, headers: cors }
+      );
+    }
+
+    const stripe = getStripe();
+    const loginLink = await stripe.accounts.createLoginLink(account.stripeAccountId);
+
+    return NextResponse.json({ url: loginLink.url }, { headers: cors });
   } catch (error) {
-    console.error('Connect status error:', error);
+    console.error('Connect dashboard error:', error);
     return NextResponse.json(
-      { error: 'Status check failed' },
+      { error: 'Dashboard link generation failed' },
       { status: 500, headers: cors }
     );
   }

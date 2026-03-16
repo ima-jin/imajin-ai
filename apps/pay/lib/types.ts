@@ -174,6 +174,10 @@ export interface CheckoutRequest {
   metadata?: Record<string, string>;
   /** Stripe Connect account ID to route funds to */
   connectedAccountId?: string;
+  /** DID of the seller, pay resolves to connected account */
+  sellerDid?: string;
+  /** Platform fee in cents */
+  applicationFeeAmount?: number;
 }
 
 /** Result of checkout creation */
