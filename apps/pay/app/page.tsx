@@ -4,6 +4,7 @@ import { db, balances, transactions } from '@/src/db';
 import { eq, or, desc } from 'drizzle-orm';
 import Link from 'next/link';
 import { BalanceCard } from './components/BalanceCard';
+import { PayoutSetupBanner } from './components/PayoutSetupBanner';
 
 const SERVICE_ICONS: Record<string, string> = {
   coffee: '☕',
@@ -47,6 +48,9 @@ export default async function Home() {
         </p>
       </div>
 
+      {/* Payout Setup Banner */}
+      <PayoutSetupBanner did={session.id} />
+
       {/* Balance */}
       <BalanceCard
         cashAmount={cashAmount}
@@ -54,6 +58,34 @@ export default async function Home() {
         currency={balance?.currency || 'USD'}
         updatedAt={balance?.updatedAt ?? null}
       />
+
+      {/* Quick Navigation */}
+      <div className="flex gap-4">
+        <Link
+          href="/payouts"
+          className="flex-1 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 text-center transition-colors group"
+        >
+          <div className="text-2xl mb-2">💰</div>
+          <div className="text-sm font-medium text-white group-hover:text-orange-400 transition-colors">
+            Payouts
+          </div>
+          <div className="text-xs text-zinc-500 mt-1">
+            Bank account & withdrawals
+          </div>
+        </Link>
+        <Link
+          href="/history"
+          className="flex-1 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 text-center transition-colors group"
+        >
+          <div className="text-2xl mb-2">📊</div>
+          <div className="text-sm font-medium text-white group-hover:text-orange-400 transition-colors">
+            History
+          </div>
+          <div className="text-xs text-zinc-500 mt-1">
+            All transactions
+          </div>
+        </Link>
+      </div>
 
       {/* Recent Transactions */}
       <div>
