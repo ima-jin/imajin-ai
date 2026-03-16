@@ -58,12 +58,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Relay to GPU node — read bytes explicitly to avoid Node.js FormData relay issues
-  const fileBytes = await file.arrayBuffer();
+  // Relay to GPU node — convert to File with explicit bytes to fix Node.js FormData relay
+  const fileBytes = Buffer.from(await file.arrayBuffer());
   const fileName = (file as File).name || 'audio.webm';
-  const fileBlob = new Blob([fileBytes], { type: file.type || 'audio/webm' });
+  const fileType = file.type || 'audio/webm';
+  const gpuFile = new File([fileBytes], fileName, { type: fileType });
   const gpuFormData = new FormData();
-  gpuFormData.append('file', fileBlob, fileName);
+  gpuFormData.append('file', gpuFile);
 
   // Pass through optional language param
   const language = formData.get('language');
