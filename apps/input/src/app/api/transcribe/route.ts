@@ -74,21 +74,32 @@ export async function POST(request: NextRequest) {
   try {
     await writeFile(tmpPath, fileBytes);
 
-    // Use undici (Node built-in) for reliable multipart — Web API FormData + fetch drops bytes
-    const { FormData: UndiciFormData } = await import('undici');
-    const { Blob: UndiciBlob } = await import('node:buffer');
-    const uForm = new UndiciFormData();
-    const blob = new UndiciBlob([fileBytes], { type: fileType });
-    uForm.append('file', blob, fileName);
+    // Build multipart body manually — Web API FormData + fetch drops bytes in Node.js
+    const boundary = `----formdata-${randomBytes(16).toString('hex')}`;
+    const parts: Buffer[] = [];
+
+    // File part
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: ${fileType}\r\n\r\n`
+    ));
+    parts.push(fileBytes);
+    parts.push(Buffer.from('\r\n'));
+
+    // Language part (optional)
     if (language && typeof language === 'string') {
-      uForm.append('language', language);
+      parts.push(Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n${language}\r\n`
+      ));
     }
+
+    parts.push(Buffer.from(`--${boundary}--\r\n`));
+    const body = Buffer.concat(parts);
 
     const gpuRes = await fetch(`${GPU_NODE_URL}/api/whisper/transcribe`, {
       method: 'POST',
-      // @ts-ignore - undici FormData is compatible
-      body: uForm,
+      body,
       headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
         ...(GPU_AUTH_TOKEN ? { Authorization: `Bearer ${GPU_AUTH_TOKEN}` } : {}),
         'X-Caller-DID': callerDid,
       },
