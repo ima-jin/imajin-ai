@@ -10,13 +10,16 @@
  * { return_url: string, refresh_url: string }
  *
  * Response:
- * { accountId: string, onboardingUrl: string }
+ * { accountId: string, onboardingUrl: string, isNew: boolean }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { eq } from 'drizzle-orm';
 import { authenticateRequest } from '@/lib/session-auth';
 import { corsHeaders } from '@/src/lib/cors';
+import { db, connectedAccounts } from '@/src/db';
+import { genId } from '@/src/lib/id';
 
 let _stripe: Stripe | null = null;
 function getStripe(): Stripe {
@@ -66,12 +69,39 @@ export async function POST(request: NextRequest) {
     }
 
     const stripe = getStripe();
+    const did = auth.identity.did;
+
+    // Check if DID already has a connected account
+    const existing = await db
+      .select()
+      .from(connectedAccounts)
+      .where(eq(connectedAccounts.did, did))
+      .limit(1);
+
+    if (existing.length > 0) {
+      // Re-onboard: generate a new Account Link for the existing Stripe account
+      const accountLink = await stripe.accountLinks.create({
+        account: existing[0].stripeAccountId,
+        return_url,
+        refresh_url,
+        type: 'account_onboarding',
+      });
+
+      return NextResponse.json(
+        {
+          accountId: existing[0].stripeAccountId,
+          onboardingUrl: accountLink.url,
+          isNew: false,
+        },
+        { headers: cors }
+      );
+    }
 
     // Create a Stripe Connect Express account for this DID
     const account = await stripe.accounts.create({
       type: 'express',
       metadata: {
-        did: auth.identity.did,
+        did,
       },
     });
 
@@ -83,10 +113,18 @@ export async function POST(request: NextRequest) {
       type: 'account_onboarding',
     });
 
+    // Persist to DB
+    await db.insert(connectedAccounts).values({
+      id: genId('ca'),
+      did,
+      stripeAccountId: account.id,
+    });
+
     return NextResponse.json(
       {
         accountId: account.id,
         onboardingUrl: accountLink.url,
+        isNew: true,
       },
       { headers: cors }
     );

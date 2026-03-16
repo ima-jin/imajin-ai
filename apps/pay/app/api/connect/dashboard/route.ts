@@ -1,18 +1,34 @@
 /**
- * GET /api/connect/status?did=xxx
+ * GET /api/connect/dashboard?did=xxx
  *
- * Returns the connected account status for a DID (from DB, kept fresh by webhook).
+ * Generate a Stripe Express Dashboard login link for the connected account.
+ *
+ * Auth: required
  *
  * Response:
- * { id, did, stripeAccountId, chargesEnabled, payoutsEnabled, detailsSubmitted, onboardingComplete, ... }
+ * { url: string }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import Stripe from 'stripe';
 import { eq } from 'drizzle-orm';
+import { authenticateRequest } from '@/lib/session-auth';
 import { corsHeaders } from '@/src/lib/cors';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
-import { authenticateRequest } from '@/lib/session-auth';
 import { db, connectedAccounts } from '@/src/db';
+
+let _stripe: Stripe | null = null;
+function getStripe(): Stripe {
+  if (!_stripe) {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error('STRIPE_SECRET_KEY not configured');
+    }
+    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: '2024-11-20.acacia' as Stripe.LatestApiVersion,
+    });
+  }
+  return _stripe;
+}
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -62,11 +78,23 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(rows[0], { headers: cors });
+    const account = rows[0];
+
+    if (!account.onboardingComplete) {
+      return NextResponse.json(
+        { error: 'Onboarding not complete for this account' },
+        { status: 400, headers: cors }
+      );
+    }
+
+    const stripe = getStripe();
+    const loginLink = await stripe.accounts.createLoginLink(account.stripeAccountId);
+
+    return NextResponse.json({ url: loginLink.url }, { headers: cors });
   } catch (error) {
-    console.error('Connect status error:', error);
+    console.error('Connect dashboard error:', error);
     return NextResponse.json(
-      { error: 'Status check failed' },
+      { error: 'Dashboard link generation failed' },
       { status: 500, headers: cors }
     );
   }
