@@ -322,7 +322,7 @@ export default async function EventPage({ params, searchParams }: Props) {
 
   // Check if any surveys are required before ticket purchase
   const requiredSurveyIds = eventSurveys
-    .filter((s: any) => s.requiredForTickets || linkedSurveySettings[s.id]?.requiredForTickets)
+    .filter((s: any) => linkedSurveySettings[s.id]?.requiredForTickets)
     .map((s: any) => s.id);
 
   let surveysCompleted = requiredSurveyIds.length === 0; // No required surveys = completed
