@@ -321,3 +321,237 @@ interface JinMessage {
 ---
 
 *This RFC captures a conversation between Ryan and Jin on March 15, 2026. Five connected insights that reshape how presence works on the Imajin platform.*
+
+---
+
+## Addendum: Operational Layer (March 17, 2026)
+
+*The RFC above covers architecture — identity, memory, UI, runtime. This addendum covers the operational layer: Jin acting in the world, not just answering questions about it.*
+
+### 6. Economic Agency
+
+Jin can take economic actions on behalf of the owner, within scoped authority.
+
+```typescript
+interface AgentAuthority {
+  ownerDid: string;
+  agentDid: string;
+
+  // Spending limits
+  maxPerTransaction: number;     // e.g. $25 CAD
+  maxPerDay: number;             // e.g. $100 CAD
+  requireApproval: number;       // above this amount, escalate to human
+
+  // Allowed actions
+  canPurchaseTickets: boolean;
+  canTip: boolean;
+  canSendMessages: boolean;
+  canRSVP: boolean;
+  canCreateContent: boolean;     // draft posts, create events (as drafts)
+  canAcceptConnections: boolean;
+
+  // Settlement
+  settlementDid: string;         // which DID pays (owner's, not Jin's)
+  feeModel: "owner-pays" | "requester-pays" | "split";
+}
+```
+
+**Key principle:** Jin spends the owner's money, not its own. Jin's DID signs the *intent*, the owner's DID is the *settlement party*. This is like an authorized user on a credit card — attributable but not liable.
+
+**Actions Jin can take:**
+- Buy a ticket to an event ("RSVP me to Greg's thing on Saturday")
+- Tip an artist ("tip DJ X $5 from me")
+- Send a message ("tell Debbie I'll be late")
+- Accept a connection request ("if they're trust distance ≤2, accept")
+- Draft content ("write up a summary of today's build log" → creates draft, doesn't publish)
+
+**Actions Jin cannot take without escalation:**
+- Anything above the spending threshold
+- Publishing content (drafts only)
+- Revoking connections
+- Changing profile settings
+- Accessing encrypted data vaults (future, ref: Ajna.inc EDV)
+
+### 7. Escalation Protocol
+
+Jin must know its limits and hand off gracefully.
+
+```typescript
+interface Escalation {
+  type: "unknown" | "authority" | "sensitive" | "conflict" | "cost";
+  context: string;              // what was being attempted
+  requesterDid: string;         // who triggered the escalation
+  suggestedAction?: string;     // Jin's recommendation
+  urgency: "low" | "normal" | "high";
+}
+```
+
+**Escalation flow:**
+1. Jin encounters something outside its scope or confidence
+2. Jin notifies the owner via preferred channel (push notification, chat, email)
+3. Jin tells the requester: "I've asked [Owner] — they'll get back to you"
+4. Owner responds (via any surface — Telegram, app, email)
+5. Jin receives the response, delivers it to the requester
+6. Jin stores the interaction in conversation memory — **learns the pattern**
+
+**Learning from escalations:**
+Over time, Jin builds a model of "when Ryan is asked X, he says Y." Frequent escalation patterns can be promoted to autonomous responses with owner approval. The agent gets smarter through use, not training.
+
+**Escalation decay:** If an escalation goes unanswered for N hours (configurable), Jin either:
+- Responds with a polite "they're unavailable right now"
+- Takes the suggested action if confidence is high and stakes are low
+- Drops the thread if stakes are high
+
+### 8. Background Autonomous Work
+
+Jin doesn't just respond to queries — it works proactively.
+
+**Heartbeat-driven tasks (via OpenClaw runtime):**
+- Check for new messages and draft responses
+- Monitor events the owner is attending — surface schedule conflicts
+- Review incoming connection requests against trust distance
+- Summarize daily attestation activity ("you earned $12.50 from 3 presence queries today")
+- Flag anomalies ("someone outside your trust graph is querying you repeatedly")
+
+**Trigger-driven tasks:**
+- New ticket sale → notify owner + update event dashboard
+- Connection accepted → suggest introduction to mutual contacts
+- .fair settlement received → update earnings summary
+- Course enrollment → welcome message from Jin
+
+**Background task authority:** Same `AgentAuthority` constraints apply. Background tasks that would exceed authority thresholds queue for owner approval rather than executing.
+
+### 9. Agent-to-Agent Settlement
+
+When Jin A queries Jin B, there's an economic transaction.
+
+```
+┌──────────┐                        ┌──────────┐
+│  Jin A   │ ── query ──────────▶   │  Jin B   │
+│ (Alice)  │                        │  (Bob)   │
+│          │ ◀── response ────────  │          │
+│          │ ── settlement ──────▶  │          │
+└──────────┘                        └──────────┘
+     │                                    │
+     ▼                                    ▼
+ Alice pays                          Bob receives
+ (via owner DID)                     80% to owner
+                                     20% to platform
+```
+
+**Settlement flow:**
+1. Jin A sends query with `requester-pays` intent
+2. Jin B checks trust distance between Alice and Bob
+3. Jin B responds within trust-scoped boundaries
+4. Inference cost calculated (tokens × model rate)
+5. .fair manifest generated: `{ requester: Alice, provider: Bob, platform: imajin, cost: $0.03 }`
+6. Settlement via pay service — Alice's balance debited, Bob's credited
+7. Interaction attested on both sides
+
+**Pricing models:**
+- **Fixed per query** — owner sets a price ("ask me anything for $0.10")
+- **Cost-plus** — inference cost + owner markup
+- **Free for trust distance ≤1** — friends query free, strangers pay
+- **Subscription** — monthly access to a Jin instance (for professional presences)
+
+**Metering:**
+- Token count per query/response
+- Model used (cost varies by model)
+- Tool invocations (API calls to services have compute cost)
+- Knowledge cache hits (cheaper — no re-derivation needed)
+
+### 10. Tool Registration
+
+The current 6 trust-scoped tools are hardcoded. This needs to be extensible.
+
+```typescript
+interface ToolRegistration {
+  id: string;                    // e.g. "events.list"
+  service: string;               // e.g. "events"
+  name: string;
+  description: string;
+  parameters: JSONSchema;
+  trustMinimum: number;          // minimum trust distance to use this tool (0 = self only)
+  costEstimate: "free" | "low" | "medium" | "high";
+  
+  // Authorization
+  requiredScopes: string[];      // e.g. ["events:read", "events:write"]
+  requiresOwnerApproval: boolean;
+}
+```
+
+**Service-advertised tools:**
+Each Imajin service advertises its available tools at `/api/tools` (or via registry). When Jin boots, it discovers available tools based on:
+1. What services are running
+2. What the owner has enabled
+3. What the requester's trust distance allows
+
+**Third-party tools:**
+Plugin architecture (RFC-09) extends to Jin tools. DFOS as first integration could register tools like:
+- `dfos.events.list` — list events from the DFOS network
+- `dfos.artist.lookup` — find an artist's profile
+- `dfos.play.history` — query listening history (trust-gated)
+
+**Tool composition:**
+Jin can chain tools. "Find me a techno event this weekend near Toronto" → `events.search(genre=techno, location=Toronto, date=this-weekend)` → `connections.mutual(eventAttendees)` → "There's one on Saturday, 3 people in your trust graph are going."
+
+---
+
+## Updated Migration Path
+
+### Phase 1: Memory + Identity (near-term) — *unchanged*
+
+### Phase 2: Workspace UI (medium-term) — *unchanged*
+
+### Phase 3: Runtime Interface + Operational Layer (medium-term)
+- Extract `AgentRuntime` interface
+- Implement `AgentAuthority` scoping
+- Implement escalation protocol with notification delivery
+- Add economic actions (purchase, tip, message, RSVP) as authorized tools
+- Implement Tier 1 (built-in) and Tier 2 (OpenClaw) runtimes
+- Multi-Jin workspace support (1–4 instances)
+
+### Phase 4: Jin Network + Agent Economy (longer-term)
+- Jin-to-Jin message protocol with settlement
+- Agent-to-agent .fair settlement
+- Tool registration and discovery via registry
+- Background autonomous tasks
+- Managed OpenClaw instances for non-self-hosters
+- Third-party tool marketplace (RFC-09 integration)
+- Pricing models + metering dashboard
+
+---
+
+## Issue Cross-Reference
+
+### §6 Economic Agency
+- #43 — Bot/presence API: programmatic access to platform actions
+- #44 — Trust gating: permission model for bot/presence platform access
+- #111 — Inference cost flow: queries through sovereign presence pay for compute
+- #338 — Attention marketplace: DID-consented interest queries with micro-payments
+
+### §7 Escalation Protocol
+- #260 — Notification system: in-app badges, push, email digest, and user config
+- #45 — Presence notifications: cron/webhook for incoming messages and invites
+
+### §8 Background Autonomous Work
+- #256 — Epic: Sovereign Inference — API gateway, presence bootstrap, user-owned keys
+- #347 — Digest emails for event hosts (example of a Jin background task)
+
+### §9 Agent-to-Agent Settlement
+- #110 — .fair for runtime modules: attribution for inference, memory, service providers
+- #113 — Revenue stream 1: settlement fees on every transaction
+- #115 — Revenue stream 3: headless service settlement (machine-to-machine)
+- #117 — Revenue stream 5: trust graph queries as queryable infrastructure
+
+### §10 Tool Registration
+- #244 — Delegated app sessions: third-party app registration + scoped identity
+- #336 — Trust graph query engine: vouch chains, trust scoring
+- #351 — Media API hardening + dynamic tool bootstrap
+- #344 — Presence boundary enforcement + abuse attestations
+
+### Foundational
+- #321 — Progressive trust: vouch flow, onboarding milestones, flag system
+- #346 — Profile scopes: actor, family, community, org
+- #163 — Bilateral attestations + dispute chains
+- #155 — DID-to-endpoint resolution for node-to-node discovery (Jin-to-Jin routing)

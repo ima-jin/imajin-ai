@@ -27,8 +27,11 @@ export async function getBuildEntries(): Promise<BuildEntry[]> {
   const entries: BuildEntry[] = [];
 
   for (const section of sections) {
-    // Extract heading: ## March 14, 2026 — Settlement, Scopes & Sovereign Commerce
-    const headingMatch = section.match(/^## (.+?)(?:\s*[—–-]\s*(.+))?$/m);
+    // Extract heading: ## March 12–14, 2026 — Title
+    // Use em-dash (—) as the separator between date and title.
+    // En-dashes (–) and hyphens (-) in date ranges must NOT be treated as separators.
+    const headingMatch = section.match(/^## (.+?)\s*—\s*(.+)$/m)
+      || section.match(/^## (.+)$/m);
     if (!headingMatch) continue;
 
     const date = headingMatch[1].trim();

@@ -17,8 +17,6 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
   const [state, setState] = useState<RecordingState>('idle');
   const [elapsedMs, setElapsedMs] = useState(0);
   const [waveform, setWaveform] = useState<number[]>(Array(WAVEFORM_BARS).fill(0));
-  const [holdMode, setHoldMode] = useState(false);
-  const [dragCancelled, setDragCancelled] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -27,9 +25,6 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const startXRef = useRef<number>(0);
-  const startYRef = useRef<number>(0);
 
   const stopAnimation = () => {
     if (animFrameRef.current !== null) {
@@ -142,38 +137,7 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
     return `${m}:${String(s % 60).padStart(2, '0')}`;
   };
 
-  // Hold-to-record handlers
-  const handlePointerDown = (e: React.PointerEvent) => {
-    if (disabled || state !== 'idle') return;
-    startXRef.current = e.clientX;
-    startYRef.current = e.clientY;
-    setDragCancelled(false);
-    setHoldMode(true);
-    buttonRef.current?.setPointerCapture(e.pointerId);
-    startRecording();
-  };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!holdMode || state !== 'recording') return;
-    const dx = e.clientX - startXRef.current;
-    const dy = e.clientY - startYRef.current;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > 80) {
-      setDragCancelled(true);
-      setHoldMode(false);
-      stopRecording(true);
-    }
-  };
-
-  const handlePointerUp = () => {
-    if (!holdMode) return;
-    setHoldMode(false);
-    if (state === 'recording' && !dragCancelled) {
-      stopRecording(false);
-    }
-  };
-
-  // Tap-to-start / tap-to-stop (when not in hold mode)
+  // Simple click-to-toggle
   const handleClick = () => {
     if (disabled) return;
     if (state === 'idle') {
@@ -186,14 +150,10 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
   if (state === 'idle') {
     return (
       <button
-        ref={buttonRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
         onClick={handleClick}
         disabled={disabled}
         className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition disabled:opacity-50"
-        title="Hold to record voice message"
+        title="Click to record voice message"
       >
         {'\uD83C\uDFA4'}
       </button>
@@ -236,10 +196,6 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
 
           {/* Stop & send */}
           <button
-            ref={buttonRef}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
             onClick={() => stopRecording(false)}
             className="p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg flex-shrink-0"
             title="Stop and send"
