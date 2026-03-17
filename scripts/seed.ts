@@ -49,7 +49,6 @@ async function main() {
           display_type,
           avatar,
           bio,
-          identity_tier,
           created_at,
           updated_at
         ) VALUES (
@@ -59,7 +58,6 @@ async function main() {
           'human',
           '🟠',
           'The presence. 🟠',
-          'hard',
           NOW(),
           NOW()
         )

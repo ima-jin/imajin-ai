@@ -23,7 +23,6 @@ interface Profile {
   avatar?: string;
   email?: string;
   phone?: string;
-  identityTier?: 'soft' | 'hard';
   inferenceEnabled?: boolean;
   createdAt: string;
   metadata?: {
@@ -227,7 +226,7 @@ export default async function ProfilePage({ params }: PageProps) {
   };
   const typeLabel = typeLabels[profile.displayType];
 
-  const isSoftDID = profile.identityTier === 'soft' || profile.did.startsWith('did:email:');
+  const isSoftDID = profile.did.startsWith('did:email:');
 
   // Fetch counts, follow status, and links in parallel
   const [counts, isFollowing, links] = await Promise.all([

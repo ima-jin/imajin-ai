@@ -58,7 +58,6 @@ export async function POST(request: NextRequest) {
       did: identity.id,
       displayName,
       displayType,
-      identityTier: identity.id.startsWith('did:email:') ? 'soft' : 'hard',
       avatar: avatar || null,
       bio: bio || null,
       handle: handle || null,

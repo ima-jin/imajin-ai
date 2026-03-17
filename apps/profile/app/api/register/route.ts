@@ -117,7 +117,6 @@ export async function POST(request: NextRequest) {
       did,
       displayName,
       displayType: 'human',
-      identityTier: 'hard', // profiles with public keys are hard DIDs
       avatar: avatar || null,
       bio: bio || null,
       handle: handle || null,

@@ -23,10 +23,10 @@ async function main() {
   console.log('👤 Creating test profiles...');
   try {
     await sql`
-      INSERT INTO profile.profiles (did, handle, display_name, display_type, bio, identity_tier)
+      INSERT INTO profile.profiles (did, handle, display_name, display_type, bio)
       VALUES
-        ('did:imajin:alice', 'alice', 'Alice', 'human', 'Test user', 'hard'),
-        ('did:imajin:bob', 'bob', 'Bob', 'human', 'Another test user', 'hard')
+        ('did:imajin:alice', 'alice', 'Alice', 'human', 'Test user'),
+        ('did:imajin:bob', 'bob', 'Bob', 'human', 'Another test user')
       ON CONFLICT (did) DO NOTHING
     `;
     console.log('  ✅ Test profiles created');

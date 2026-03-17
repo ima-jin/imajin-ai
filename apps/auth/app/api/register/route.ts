@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
           handle: existing[0].handle || undefined,
           type: existing[0].type,
           name: existing[0].name || undefined,
-          tier: 'preliminary', // registrations with public keys are preliminary DIDs
+          tier: (existing[0].tier as 'soft' | 'preliminary' | 'established') || 'preliminary',
         });
 
         const cookieConfig = getSessionCookieOptions();
@@ -189,6 +189,7 @@ export async function POST(request: NextRequest) {
         publicKey,
         handle: handle || null,
         name: name?.trim().slice(0, 100) || null,
+        tier: 'preliminary',
       })
       .returning();
 

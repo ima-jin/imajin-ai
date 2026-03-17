@@ -15,7 +15,8 @@ export const profiles = profileSchema.table('profiles', {
   email: text('email'),                                       // contact email (plaintext for now)
   phone: text('phone'),                                       // contact phone (plaintext for now)
   // invitedBy moved to connections service
-  identityTier: text('identity_tier').notNull().default('soft'), // 'soft' | 'hard'
+  // identity_tier DEPRECATED — auth.identities.tier is source of truth (#319)
+  // Column kept in DB for now but removed from schema to surface all references at compile time
   visibility: text('visibility').notNull().default('public'),   // 'public' | 'incognito'
   nextInviteAvailableAt: timestamp('next_invite_available_at', { withTimezone: true }), // NULL = can invite now
   metadata: jsonb('metadata').default({}),                    // location, website, etc.
