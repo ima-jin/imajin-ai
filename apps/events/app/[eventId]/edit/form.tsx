@@ -696,15 +696,28 @@ export default function EventEditForm({ event, existingTickets }: Props) {
               {tier.requiresRegistration && (
                 <div className="mt-2">
                   <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">
-                    Dykil Form ID <span className="font-normal text-gray-400">(optional)</span>
+                    Registration Form <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    value={tier.registrationFormId}
-                    onChange={(e) => updateTier(index, 'registrationFormId', e.target.value)}
-                    placeholder="e.g. form_abc123"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
-                  />
+                  {loadingSurveys ? (
+                    <p className="text-xs text-gray-400">Loading forms…</p>
+                  ) : surveys.length === 0 ? (
+                    <p className="text-xs text-gray-400">No forms found. Create one in Dykil first.</p>
+                  ) : (
+                    <select
+                      value={tier.registrationFormId}
+                      onChange={(e) => updateTier(index, 'registrationFormId', e.target.value)}
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
+                    >
+                      <option value="">Select a form…</option>
+                      {surveys.map((survey) => (
+                        <option key={survey.id} value={survey.id}>
+                          {survey.title}
+                          {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               )}
             </div>
