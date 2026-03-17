@@ -1,5 +1,52 @@
 <!-- Build Log — newest first. Source: Discord dev channel + git history. -->
 
+## March 15–17, 2026 — Stripe Connect, Voice Fix & Infrastructure
+
+### 💳 Stripe Connect — SHIPPED
+
+- **PR #360 merged** — Multi-seller payouts. Auto-resolves seller DID → connected account, calculates platform fee. Schema, types, fee constants.
+- **PR #361 merged** — Connect onboarding UI + payout management page. Sellers onboard to Stripe Express in 5 minutes.
+- **PR #362 merged** — PayoutSetupBanner in events + coffee dashboards. Prompts sellers to connect.
+- **PR #359 closed** — Connect onboarding UI complete.
+- **#62 closed** — EMT checkout flow complete (selection, instructions, 72h hold, admin confirmation all working).
+
+### 🎤 Voice Recorder — FIXED
+
+- Root cause found: commit `867d10f` (March 5) added hold-to-record pointer events that conflicted with click-to-toggle. `pointerdown` → `pointerup` fired within milliseconds = 0-byte blob.
+- Fix: removed all pointer events, reverted to simple click-to-start/click-to-stop. 46 lines deleted.
+
+### 📋 Issues & Architecture
+
+- **#281 updated** — EMT organizer config: toggle, auto-fill from profile email, buyer disclaimer
+- **#363 created** — Escrow service for EMT platform fees, buyer protection, marketplace settlement. Trust-graph-dynamic escrow requirements.
+- **#358** — Per-ticket attendee registration (specced, not yet built)
+- **RFC-14 updated** — "Prior Art: Protocol-Level Redistribution" section. Zakat, waqf, potlatch, tithe — 1,400 years of protocol-level redistribution as precedent for MJN fee model.
+
+### 🖼 Media Service — SHIPPED
+
+- **PR #353** — Media browser UX: multi-select, three view modes, sort persistence, color-coded .fair badges, batch actions
+- **PR #354** — Media inference tools: `searchAssets` + `readAsset` in `@imajin/llm`, internal API key auth, wired into sovereign inference
+- **PR #355** — RFC consolidation: all 16 RFCs canonical in `docs/rfcs/`, INDEX.md, stubs for RFC-03 + RFC-04
+
+### 🏗 Infrastructure
+
+- **Postgres backups live** (#357) — hourly `pg_dump` of 3 prod DBs, 30-day local + 90-day Synology NAS retention
+- **GPU node fan fix** — `fancontrol` crashed after reboot (hwmon paths shifted). Updated config, service running.
+- **GPU node IP** — moved from WiFi (192.168.1.124) to ethernet (192.168.1.234)
+- **Git history cleaned** — squashed 40+ duplicate commits from Greg's PR #356 into single commit via rebase + force push
+- **Build log parser fix** — en-dashes in date ranges no longer break heading parser
+
+### 🧠 CRDTs — NEW DIRECTION
+
+- CRDTs identified as the path for federated node synchronization
+- Entry point: registry sync, then expand to full mesh — attestations, trust graph, profiles converge without central coordinator
+
+### 📊 By the Numbers
+
+- 5 PRs merged
+- 3 issues closed, 2 created
+- 40+ garbage commits squashed to 1
+
 ## March 14, 2026 — Settlement Fixes, Sovereign Commerce & Building in Public
 
 ### 🧠 Sovereign Inference — Live
