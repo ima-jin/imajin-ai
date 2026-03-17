@@ -2,7 +2,7 @@
 title: "How to Save the Ad Industry"
 subtitle: "The consent was stolen. Here's how to give it back."
 description: "The ad industry isn't dying because ads are bad — it's dying because the consent was stolen. Verified humans selling access on their own terms."
-date: "2026-03-19"
+date: "2026-03-18"
 author: "Ryan Veteze"
 status: "POSTED"
 ---
@@ -77,7 +77,7 @@ A person. Who has agreed to be findable. On their terms. At their price. Through
 
 Here's the model.
 
-You have a node. A sovereign presence. Everything you know about yourself — your expertise, your opinions, your purchasing history if you choose to share it, your community affiliations, your actual interests — lives on your node. You own it. No platform has it.
+You have a profile. A sovereign presence. Everything you know about yourself — your expertise, your opinions, your purchasing history if you choose to share it, your community affiliations, your actual interests — lives on your profile. You own it. No platform has it.
 
 You decide what you're discoverable for. Not "interests inferred from browsing behaviour." Your actual stated preferences and expertise.
 
@@ -149,7 +149,7 @@ Consumer, ads on: "Your presence in the network generated $4.30 this month. $1.8
 
 Consumer, ads off: "You paid $6 this month. Here's every person who received a share, what they created that you consumed, and how the .fair chain allocated each dollar. Line items. Actual humans. Actual amounts."
 
-Creator: "Your node generated $340 this month. $180 from the advertising layer — 847 verified humans in your trust graph whose presence funded your work. $160 from direct payments — 34 patrons who chose private mode. Your highest-converting content was the audio equipment review. Your 200 engaged consumers generated more ad value than comparable nodes with 10,000 passive followers."
+Creator: "Your profile generated $340 this month. $180 from the advertising layer — 847 verified humans in your trust graph whose presence funded your work. $160 from direct payments — 34 patrons who chose private mode. Your highest-converting content was the audio equipment review. Your 200 engaged consumers generated more ad value than comparable profiles with 10,000 passive followers."
 
 Right now, Meta knows these numbers. Google knows these numbers. Spotify knows these numbers. You don't.
 
@@ -185,13 +185,13 @@ This is the part that sounds like it could be gamed and isn't.
 
 There's no platform setting rates. No auction where the intermediary takes the margin. Just: you price yourself, the market responds, and your trust score is the only thing that makes your price credible.
 
-A government-verified, bank-attested, deeply-connected node charging $200 a month for access is probably underpriced. A self-declared, unverified, two-hop node charging the same number is invisible. Not penalised. Not banned. Just: nobody's buying. The market tells you exactly what your price should be, because the market can see exactly what's backing your claim.
+A government-verified, bank-attested, deeply-connected profile charging $200 a month for access is probably underpriced. A self-declared, unverified, two-hop profile charging the same number is invisible. Not penalised. Not banned. Just: nobody's buying. The market tells you exactly what your price should be, because the market can see exactly what's backing your claim.
 
 Set too high relative to your trust weight and you generate no conversions. Generate no conversions and your score doesn't grow. The feedback loop is immediate and honest.
 
-But here's what makes it genuinely fair rather than just efficient: a low-trust node that *converts* is building something real. Every conversion is an attestation. The government signature says you exist. The bank signature says you have standing. The conversion history says *people who trusted you were right to*. That's a different kind of proof entirely — not institutional, not top-down. Earned transaction by transaction in the actual market.
+But here's what makes it genuinely fair rather than just efficient: a low-trust profile that *converts* is building something real. Every conversion is an attestation. The government signature says you exist. The bank signature says you have standing. The conversion history says *people who trusted you were right to*. That's a different kind of proof entirely — not institutional, not top-down. Earned transaction by transaction in the actual market.
 
-The node that starts with low trust weight, prices itself honestly, and converts consistently is accumulating something the wealthy verified node can't purchase. Demonstrated relevance. Proof that when this person says "this is worth your attention" — people act on it. The score reflects that, slowly, the way actual reputation works. No shortcut. No viral moment that inflates you past your actual value.
+The profile that starts with low trust weight, prices itself honestly, and converts consistently is accumulating something the wealthy verified profile can't purchase. Demonstrated relevance. Proof that when this person says "this is worth your attention" — people act on it. The score reflects that, slowly, the way actual reputation works. No shortcut. No viral moment that inflates you past your actual value.
 
 This is what meritocracy looks like when the currency is trust rather than money. Not fixed hierarchy. Earned trajectory.
 
@@ -205,9 +205,9 @@ And it worked, for a while, and then it didn't, because audiences developed fine
 
 The simulation is always one step behind the trust graph because the simulation is built to look like the trust graph while routing around it.
 
-In this model, the person with 400,000 followers who never converts is worth less than the tight-knit node with 200 deep relationships that converts at 40%. Not marginally less. Categorically less. Because the conversion history is the record. The transactions are signed, attributed, verifiable. Either people responded or they didn't. You cannot manufacture that signal. You can only earn it.
+In this model, the person with 400,000 followers who never converts is worth less than the tight-knit profile with 200 deep relationships that converts at 40%. Not marginally less. Categorically less. Because the conversion history is the record. The transactions are signed, attributed, verifiable. Either people responded or they didn't. You cannot manufacture that signal. You can only earn it.
 
-That inversion is the thing the current industry cannot do and this one does automatically. The sovereign presence routes through the actual trust graph instead of simulating it. When you recommend something from your node — when you choose to make yourself discoverable to a brand, when you accept an inquiry and respond through your relationships — that's not a simulation of endorsement. That's actual endorsement, with your reputation on the line, visible to everyone who trusts you.
+That inversion is the thing the current industry cannot do and this one does automatically. The sovereign presence routes through the actual trust graph instead of simulating it. When you recommend something from your profile — when you choose to make yourself discoverable to a brand, when you accept an inquiry and respond through your relationships — that's not a simulation of endorsement. That's actual endorsement, with your reputation on the line, visible to everyone who trusts you.
 
 The people in your graph see that you made that recommendation. They know you staked something on it. That's what makes it worth anything.
 
@@ -245,7 +245,7 @@ Either way, what changes is where it flows.
 
 Right now a meaningful fraction of that $600 billion is buying fraud. Bots. Click farms. Domain spoofing. The estimates vary depending on who's measuring and what incentive they have to tell the truth, but the consensus is that it's substantial, endemic, and getting worse as detection improves and evasion gets cheaper. That money is currently going to criminal infrastructure. In this model it goes to people.
 
-The rest — the money that was buying real humans but inefficiently, through platforms that captured most of the value — flows directly to the nodes. No platform taking 30%. No exchange auctioning your attention back to you. The advertiser pays the person. The graph routes the payment. The infrastructure takes a small fee for the compute.
+The rest — the money that was buying real humans but inefficiently, through platforms that captured most of the value — flows directly to the profiles. No platform taking 30%. No exchange auctioning your attention back to you. The advertiser pays the person. The graph routes the payment. The infrastructure takes a small fee for the compute.
 
 The $600 billion doesn't disappear. It just stops accumulating at the platform layer and starts circulating through human networks instead.
 
@@ -259,9 +259,9 @@ People who are well-off enough that their earnings from the network exceed what 
 
 The wealthy person in a creative community already subsidizes the people around them informally — they buy the tickets, cover the dinner, invest in the friend's project. The earnings routing is just that behavior made frictionless and legible. Except now it's not a favor, it's a circuit. The broke artist in their circle has a trust weight too — has verified identity, has the community vouching for them, has real relationships that convert. They just don't have the bank attestation or the government signature that multiplies the score into the high tiers. The routing fills that gap while they build the thing that no amount of money can buy: conversion history.
 
-Because the subsidized node still has to perform. The routing gives them a runway, not a score. They still need to price themselves honestly, find the right advertisers, make recommendations their network actually acts on. If they do that — if they convert — the history accretes. The score climbs. The need for the subsidy diminishes. The runway becomes self-funding.
+Because the subsidized profile still has to perform. The routing gives them a runway, not a score. They still need to price themselves honestly, find the right advertisers, make recommendations their network actually acts on. If they do that — if they convert — the history accretes. The score climbs. The need for the subsidy diminishes. The runway becomes self-funding.
 
-The subsidy has a natural exit built in. Nobody has to engineer it. The person being supported isn't permanently dependent on the routing. They're an early-stage node that hasn't had time yet to demonstrate what they can actually do. The wealthy node seeding them isn't performing generosity. They're completing a circuit that was already there, making a network investment in someone whose actual value the market will eventually recognize.
+The subsidy has a natural exit built in. Nobody has to engineer it. The person being supported isn't permanently dependent on the routing. They're an early-stage profile that hasn't had time yet to demonstrate what they can actually do. The wealthy profile seeding them isn't performing generosity. They're completing a circuit that was already there, making a network investment in someone whose actual value the market will eventually recognize.
 
 That's not a welfare program. That's what the informal patronage economy has always been — just made visible, attributable, and self-terminating when it's no longer needed.
 
@@ -351,7 +351,7 @@ The first legitimate ad will have already fired.
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-19-how-to-save-the-ad-industry.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-19-how-to-save-the-ad-industry.md)
 
-This article was originally published on [imajin.ai/articles/how-to-save-the-ad-industry](https://www.imajin.ai/articles/how-to-save-the-ad-industry) on March 19, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/how-to-save-the-ad-industry](https://www.imajin.ai/articles/how-to-save-the-ad-industry) on March 18, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)
 
 ---
 

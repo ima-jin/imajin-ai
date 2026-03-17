@@ -1,8 +1,8 @@
 ---
 title: "The Press Isn't Free. It's Owned."
 subtitle: "An open letter to the journalists still fighting"
-description: "Open letter to journalists still fighting, billionaires who broke it, and communities who never got it. What a sovereign press node looks like."
-date: "2026-03-17"
+description: "Open letter to journalists still fighting, billionaires who broke it, and communities who never got it. What a sovereign press profile looks like."
+date: "2026-03-16"
 author: "Ryan Veteze"
 status: "POSTED"
 ---
@@ -127,17 +127,17 @@ The beat reporter's twenty years of city hall relationships is a trust graph. Ev
 
 That accumulated relationship is the most valuable thing in journalism. It is also the thing that currently has no economic model, no platform, no infrastructure that treats it as the asset it is.
 
-A sovereign node for a journalist isn't a Substack. It's their actual product — their knowledge, their source relationships, their curation judgment — made queryable by the community that depends on it.
+A sovereign profile for a journalist isn't a Substack. It's their actual product — their knowledge, their source relationships, their curation judgment — made queryable by the community that depends on it.
 
-The city hall reporter's node is the place where a community member can say: I saw something at the planning meeting last week that felt wrong. And the reporter's presence — built from twenty years of coverage, trained on the institutional memory, connected to the source network — responds: here's what that connects to, here's who you should talk to, here's whether this fits a pattern I've been watching.
+The city hall reporter's profile is the place where a community member can say: I saw something at the planning meeting last week that felt wrong. And the reporter's presence — built from twenty years of coverage, trained on the institutional memory, connected to the source network — responds: here's what that connects to, here's who you should talk to, here's whether this fits a pattern I've been watching.
 
 That's not AI replacing journalists. That's the reporter's accumulated knowledge made available to the community in real time, at scale, without requiring every interaction to be a published article.
 
-The mesh problem gets solved at the infrastructure layer. A story that begins in Hamilton connects to Mississauga connects to Windsor not because an algorithm decided it was trending but because the reporters in those cities are nodes in a trust graph that routes relevant information between them. The Hamilton reporter's note about a contractor reaches the Mississauga reporter whose source network includes someone who recognizes the pattern. The connection is human. The routing is sovereign. No platform owns it. No billionaire can make it disappear.
+The mesh problem gets solved at the infrastructure layer. A story that begins in Hamilton connects to Mississauga connects to Windsor not because an algorithm decided it was trending but because the reporters in those cities are profiles in a trust graph that routes relevant information between them. The Hamilton reporter's note about a contractor reaches the Mississauga reporter whose source network includes someone who recognizes the pattern. The connection is human. The routing is sovereign. No platform owns it. No billionaire can make it disappear.
 
 You cannot make a mesh disappear by pulling a country's news from a feed. The mesh has no single feed to pull.
 
-And the money finally follows the chain. Every query that travels through the mesh — a reader reaching a reporter, a reporter reaching a source network, a community member connecting to twenty years of institutional knowledge — generates a micro-flow back through the relationships it traveled through. The reporter earns from their knowledge. The community node that funded the beat earns from the traffic it routes. The editor whose curation judgment surfaces the right story earns from that judgment.
+And the money finally follows the chain. Every query that travels through the mesh — a reader reaching a reporter, a reporter reaching a source network, a community member connecting to twenty years of institutional knowledge — generates a micro-flow back through the relationships it traveled through. The reporter earns from their knowledge. The community that funded the beat earns from the traffic it routes. The editor whose curation judgment surfaces the right story earns from that judgment.
 
 This is not a subsidy model. Not grant funding or public broadcasting or the benevolence of billionaires who have decided journalism matters this quarter. It is the natural economic consequence of making human trust relationships the infrastructure instead of the product being harvested.
 
@@ -175,7 +175,7 @@ One event. Sovereign infrastructure. Real transactions visible all the way down 
 
 That's the proof of concept for journalism too. Not an article. Not a newsletter. A live demonstration that information can travel through human trust rather than through platforms owned by people who have never attended a city council meeting in your town.
 
-The beat reporter whose twenty years of relationships is finally a node instead of a sacrifice. The community that finally has infrastructure for its own information needs — not dependent on whether a billionaire finds it profitable to serve them. The mesh that finally routes stories to the people positioned to add the context that makes them true.
+The beat reporter whose twenty years of relationships is finally a profile instead of a sacrifice. The community that finally has infrastructure for its own information needs — not dependent on whether a billionaire finds it profitable to serve them. The mesh that finally routes stories to the people positioned to add the context that makes them true.
 
 The feed is a product. It always was.
 
@@ -193,4 +193,4 @@ Come build that relationship on infrastructure nobody can pull.
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-17-how-to-save-journalism](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-17-how-to-save-journalism.md)
 
-This article was originally published on [imajin.ai/articles/how-to-save-journalism](https://www.imajin.ai/articles/how-to-save-journalism) on March 17, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/how-to-save-journalism](https://www.imajin.ai/articles/how-to-save-journalism) on March 16, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)

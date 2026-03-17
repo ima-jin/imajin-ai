@@ -2,7 +2,7 @@
 title: "You Don't Need Streams. You Need the Relationship Back."
 subtitle: "An open letter to the people streaming artists into poverty"
 description: "Open letter to Daniel Ek, Lucian Grainge, and the artists they're both failing. What the direct relationship looks like when the trust graph replaces the platform."
-date: "2026-02-22"
+date: "2026-03-17"
 author: "Ryan Veteze"
 status: "REVIEW"
 ---
@@ -151,7 +151,7 @@ The platform is the landlord. The artists are the sharecroppers. The listeners a
 
 I know a music streaming platform called WeR1, built by people who understood that listeners had profound connections to specific DJ sets heard at specific festivals — experiences that meant something because of when they happened, who you were with, what state you were in when the music hit.
 
-They were right about the problem. The connection people feel to a set heard at Boom Festival or AfrikaBurn or a warehouse party at 4am isn't about the tracks in isolation. It's about the moment. The context. The felt sense that a specific human was reading the room and playing exactly what the room needed. It's the griot tradition, updated. A trusted human in the room, carrying something specifically for you.
+They were right about the problem. The connection people feel to a set heard at Boom Festival or AfrikaBurn or a warehouse party at 4am isn't about the tracks in isolation. It's about the moment. The context. The felt sense that a specific human was reading the room and playing exactly what the room needed. A trusted human in the room, carrying something specifically for you.
 
 WeR1 tried to honour that. To let people find and relive those sets, to connect to the DJs who created them, to build something that understood why a recorded set from a festival carries the memory of who you were when you heard it.
 
@@ -171,7 +171,7 @@ The problem was building on rails that someone else owns.
 
 Here's what changes when you give artists sovereign infrastructure.
 
-The artist's presence isn't a profile on someone else's platform. It's their node — an AI surface trained on their context, their catalog, their values, how they think about music and why they make what they make. Queryable by the people in their trust network. Controlled by them.
+The artist's presence isn't an account on someone else's platform. It's their profile — an AI surface trained on their context, their catalog, their values, how they think about music and why they make what they make. Queryable by the people in their trust network. Controlled by them.
 
 The listener doesn't get an algorithm's guess at what they might engage with next. They get the artist's actual perspective — here's what I've been listening to, here's why this record matters, here's what was happening in my life when I wrote this, here's the set I played the night everything clicked. The context travels with the music again. The griot is back in the room.
 
@@ -215,7 +215,7 @@ The mixtape is still the model.
 
 Not as a format. As an architecture. One human, curating with context, for a specific person, with specific intent. The meaning inseparable from the relationship.
 
-The griot didn't need a label. They needed a community that valued what they carried. The troubadour didn't need a platform. They needed a network of places that welcomed them and a body of people who trusted their ear.
+The troubadour didn't need a platform. They needed a network of places that welcomed them and a body of people who trusted their ear.
 
 You already know how to do this. You've been doing it your whole career — in your sets, in your liner notes, in the way you talk to audiences between songs, in the text threads where you send your friends the record you can't stop listening to at 2am.
 
@@ -223,7 +223,7 @@ The infrastructure to make that sustainable — to let it generate income withou
 
 The streaming platforms want your catalog. The trust network wants *you*. What you know. Why you made what you made. The context that makes the music mean something when it lands.
 
-The person who hands something across a counter and says *you need to hear this* — and is right, because they know you — that person has always been the most valuable node in the music ecosystem.
+The person who hands something across a counter and says *you need to hear this* — and is right, because they know you — that person has always been the most valuable presence in the music ecosystem.
 
 That's you.
 
@@ -253,6 +253,6 @@ Come bring your music.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
-- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-15-how-to-save-the-music-industry.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-15-how-to-save-the-music-industry.md)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-18-how-to-save-the-music-industry.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-18-how-to-save-the-music-industry.md)
 
-This article was originally published on [imajin.ai/articles/how-to-save-the-music-industry](https://www.imajin.ai/articles/how-to-save-the-music-industry) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/how-to-save-the-music-industry](https://www.imajin.ai/articles/how-to-save-the-music-industry) on March 17, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)

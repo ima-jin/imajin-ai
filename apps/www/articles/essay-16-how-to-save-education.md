@@ -2,7 +2,7 @@
 title: "How to Save Education"
 subtitle: "The credential was always a receipt for time served. Here's what replaces it."
 description: "A $6 trillion industry built on selling proof you sat in a room. Domain knowledge is the last defensible asset on earth, and the people who have the most of it are getting paid the least for it."
-date: "2026-03-16"
+date: "2026-03-15"
 author: "Ryan Veteze"
 status: "POSTED"
 ---
@@ -184,4 +184,4 @@ Walk in.
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-16-how-to-save-education](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-16-how-to-save-education.md)
 
-This article was originally published on [imajin.ai/articles/how-to-save-education](https://www.imajin.ai/articles/how-to-save-education) on March 16, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/how-to-save-education](https://www.imajin.ai/articles/how-to-save-education) on March 15, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
