@@ -519,3 +519,39 @@ Jin can chain tools. "Find me a techno event this weekend near Toronto" → `eve
 - Managed OpenClaw instances for non-self-hosters
 - Third-party tool marketplace (RFC-09 integration)
 - Pricing models + metering dashboard
+
+---
+
+## Issue Cross-Reference
+
+### §6 Economic Agency
+- #43 — Bot/presence API: programmatic access to platform actions
+- #44 — Trust gating: permission model for bot/presence platform access
+- #111 — Inference cost flow: queries through sovereign presence pay for compute
+- #338 — Attention marketplace: DID-consented interest queries with micro-payments
+
+### §7 Escalation Protocol
+- #260 — Notification system: in-app badges, push, email digest, and user config
+- #45 — Presence notifications: cron/webhook for incoming messages and invites
+
+### §8 Background Autonomous Work
+- #256 — Epic: Sovereign Inference — API gateway, presence bootstrap, user-owned keys
+- #347 — Digest emails for event hosts (example of a Jin background task)
+
+### §9 Agent-to-Agent Settlement
+- #110 — .fair for runtime modules: attribution for inference, memory, service providers
+- #113 — Revenue stream 1: settlement fees on every transaction
+- #115 — Revenue stream 3: headless service settlement (machine-to-machine)
+- #117 — Revenue stream 5: trust graph queries as queryable infrastructure
+
+### §10 Tool Registration
+- #244 — Delegated app sessions: third-party app registration + scoped identity
+- #336 — Trust graph query engine: vouch chains, trust scoring
+- #351 — Media API hardening + dynamic tool bootstrap
+- #344 — Presence boundary enforcement + abuse attestations
+
+### Foundational
+- #321 — Progressive trust: vouch flow, onboarding milestones, flag system
+- #346 — Profile scopes: actor, family, community, org
+- #163 — Bilateral attestations + dispute chains
+- #155 — DID-to-endpoint resolution for node-to-node discovery (Jin-to-Jin routing)
