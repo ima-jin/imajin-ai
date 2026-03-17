@@ -41,6 +41,10 @@ export const events = eventsSchema.table('events', {
   tags: jsonb('tags').default([]),
   metadata: jsonb('metadata').default({}),
 
+  // Registration config
+  // Shape: { enforce_unique_emails?: boolean, registration_deadline?: string }
+  registrationConfig: jsonb('registration_config').notNull().default({}),
+
   // Name display policy
   nameDisplayPolicy: text('name_display_policy').notNull().default('attendee_choice'), // real_name, handle, anonymous, attendee_choice
 
@@ -75,13 +79,16 @@ export const ticketTypes = eventsSchema.table('ticket_types', {
   currency: text('currency').notNull().default('USD'),
   quantity: integer('quantity'),                            // null = unlimited
   sold: integer('sold').default(0),
-  
+
   // Perks/metadata
   perks: jsonb('perks').default([]),
   metadata: jsonb('metadata').default({}),
 
   sortOrder: integer('sort_order').notNull().default(0),
-  
+
+  requiresRegistration: boolean('requires_registration').notNull().default(false),
+  registrationFormId: text('registration_form_id'),         // Dykil form ID
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   eventIdx: index('idx_ticket_types_event').on(table.eventId),
@@ -146,6 +153,9 @@ export const tickets = eventsSchema.table('tickets', {
   // SQL: ALTER TABLE events.tickets ADD COLUMN IF NOT EXISTS payment_confirmed_at TIMESTAMPTZ;
   paymentConfirmedAt: timestamp('payment_confirmed_at', { withTimezone: true }),
 
+  // Registration status: not_required | pending | complete
+  registrationStatus: text('registration_status').notNull().default('not_required'),
+
   metadata: jsonb('metadata').default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -154,6 +164,7 @@ export const tickets = eventsSchema.table('tickets', {
   statusIdx: index('idx_tickets_status').on(table.status),
   heldByIdx: index('idx_tickets_held_by').on(table.heldBy),
   magicTokenIdx: index('idx_tickets_magic_token').on(table.magicToken),
+  registrationStatusIdx: index('idx_tickets_registration_status').on(table.registrationStatus),
 }));
 
 /**
@@ -218,6 +229,25 @@ export const eventInvites = eventsSchema.table('event_invites', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
+/**
+ * Ticket Registrations - attendee registration data per ticket
+ */
+export const ticketRegistrations = eventsSchema.table('ticket_registrations', {
+  id: text('id').primaryKey(),                              // reg_xxx
+  ticketId: text('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+  eventId: text('event_id').notNull().references(() => events.id),
+  name: text('name').notNull(),
+  email: text('email').notNull(),
+  formId: text('form_id').notNull(),                        // Dykil form ID
+  responseId: text('response_id'),                          // Dykil response ID
+  registeredByDid: text('registered_by_did'),
+  registeredAt: timestamp('registered_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  ticketUniq: index('idx_ticket_registrations_ticket').on(table.ticketId),  // actually UNIQUE constraint
+  eventIdx: index('idx_ticket_registrations_event').on(table.eventId),
+  emailIdx: index('idx_ticket_registrations_email').on(table.email),
+}));
+
 // Types
 export type Event = typeof events.$inferSelect;
 export type NewEvent = typeof events.$inferInsert;
@@ -228,3 +258,5 @@ export type TicketTransfer = typeof ticketTransfers.$inferSelect;
 export type TicketQueueEntry = typeof ticketQueue.$inferSelect;
 export type EventInvite = typeof eventInvites.$inferSelect;
 export type NewEventInvite = typeof eventInvites.$inferInsert;
+export type TicketRegistration = typeof ticketRegistrations.$inferSelect;
+export type NewTicketRegistration = typeof ticketRegistrations.$inferInsert;

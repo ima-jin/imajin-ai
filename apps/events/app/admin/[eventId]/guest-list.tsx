@@ -20,6 +20,8 @@ interface Guest {
   paymentMethod: string | null;
   holdExpiresAt: string | null;
   profile: Profile | null;
+  registrationStatus: string | null;
+  attendeeName: string | null;
 }
 
 interface GuestListProps {
@@ -310,6 +312,9 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                   Checked In
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Registration
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                   Actions
                 </th>
               </tr>
@@ -334,6 +339,12 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                     {guest.usedAt ? formatDateTime(guest.usedAt) : '—'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <RegistrationCell
+                      status={guest.registrationStatus}
+                      attendeeName={guest.attendeeName}
+                    />
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <ActionsCell
@@ -409,6 +420,32 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
       )}
     </div>
   );
+}
+
+function RegistrationCell({ status, attendeeName }: { status: string | null; attendeeName: string | null }) {
+  if (!status || status === 'not_required') {
+    return <span className="text-xs text-gray-400">—</span>;
+  }
+  if (status === 'complete') {
+    return (
+      <div>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400">
+          ✅ Registered
+        </span>
+        {attendeeName && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{attendeeName}</p>
+        )}
+      </div>
+    );
+  }
+  if (status === 'pending') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300">
+        ⏳ Pending
+      </span>
+    );
+  }
+  return <span className="text-xs text-gray-400">{status}</span>;
 }
 
 function StatusBadge({ status, paymentMethod }: { status: string; paymentMethod?: string | null }) {

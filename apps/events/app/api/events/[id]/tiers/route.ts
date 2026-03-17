@@ -57,7 +57,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { name, description, price, currency = 'USD', quantity, perks, sortOrder } = body;
+    const { name, description, price, currency = 'USD', quantity, perks, sortOrder, requiresRegistration, registrationFormId } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
@@ -78,6 +78,8 @@ export async function POST(
       quantity,
       perks: perks || [],
       sortOrder: sortOrder ?? 0,
+      requiresRegistration: requiresRegistration ?? false,
+      registrationFormId: registrationFormId || null,
     }).returning();
 
     revalidatePath(`/${id}`);
@@ -111,7 +113,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { tierId, name, description, price, quantity, perks, sortOrder } = body;
+    const { tierId, name, description, price, quantity, perks, sortOrder, requiresRegistration, registrationFormId } = body;
 
     if (!tierId) {
       return NextResponse.json({ error: 'tierId is required' }, { status: 400 });
@@ -134,10 +136,12 @@ export async function PUT(
     const updates: Record<string, any> = {};
     const violations: string[] = [];
 
-    // Name, description, sort order - freely editable
+    // Name, description, sort order, registration fields - freely editable
     if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
     if (sortOrder !== undefined) updates.sortOrder = sortOrder;
+    if (requiresRegistration !== undefined) updates.requiresRegistration = requiresRegistration;
+    if (registrationFormId !== undefined) updates.registrationFormId = registrationFormId || null;
 
     // Price - freely editable if no tickets sold, can only decrease after sales
     if (price !== undefined) {

@@ -48,10 +48,12 @@ export async function GET(
 
     const ticketRows = await sql`
       SELECT t.id, t.status, t.owner_did, t.price_paid, t.currency, t.purchased_at, t.used_at,
-             t.payment_method, t.hold_expires_at,
-             tt.name as ticket_type
+             t.payment_method, t.hold_expires_at, t.registration_status,
+             tt.name as ticket_type,
+             tr.name as attendee_name
       FROM events.tickets t
       JOIN events.ticket_types tt ON t.ticket_type_id = tt.id
+      LEFT JOIN events.ticket_registrations tr ON tr.ticket_id = t.id
       WHERE t.event_id = ${id}
       ORDER BY t.created_at DESC
     `;
@@ -81,6 +83,8 @@ export async function GET(
         paymentMethod: t.payment_method ?? null,
         holdExpiresAt: t.hold_expires_at ?? null,
         profile,
+        registrationStatus: t.registration_status ?? null,
+        attendeeName: t.attendee_name ?? null,
       };
     });
 

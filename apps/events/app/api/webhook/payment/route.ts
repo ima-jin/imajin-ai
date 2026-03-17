@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes, tickets } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
-import { sendEmail, ticketConfirmationEmail, generateQRCode } from '@/src/lib/email';
+import { sendEmail, ticketConfirmationEmail, purchaseReceiptEmail, generateQRCode } from '@/src/lib/email';
 import { settleTicketPurchase } from '@/src/lib/settle';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
@@ -315,6 +315,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       purchasedAt: new Date(),
       signature,
       magicToken: null,
+      registrationStatus: ticketType.requiresRegistration ? 'pending' : 'not_required',
       metadata: {
         stripeSessionId: sessionId,
         purchaseEmail: customerEmail,
@@ -377,44 +378,75 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
 
   const magicLink = `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`;
 
-  // Generate QR code from ticket ID (for check-in scanning)
-  const qrCodeDataUri = await generateQRCode(createdTickets[0].id);
-
   // Build absolute event image URL
   const eventImageUrl = event.imageUrl
     ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
     : undefined;
 
+  const formattedEventDate = eventDate.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  const formattedEventTime = eventDate.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  });
+  const formattedTotal = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency.toUpperCase(),
+  }).format(amountTotal / 100);
+  const unitPrice = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency.toUpperCase(),
+  }).format(amountTotal / 100 / quantity);
+
+  const registrationUrl = `${EVENTS_URL}/${event.id}/my-tickets`;
+
+  // Always send a purchase receipt to the buyer
   await sendEmail({
     to: customerEmail,
-    subject: `You're in — ${event.title}`,
-    html: ticketConfirmationEmail({
+    subject: `Purchase receipt — ${event.title}`,
+    html: purchaseReceiptEmail({
+      buyerName: customerName || undefined,
       eventTitle: event.title,
-      ticketType: ticketType.name,
-      ticketId: createdTickets[0].id + (quantity > 1 ? ` (+${quantity - 1} more)` : ''),
-      eventDate: eventDate.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      }),
-      eventTime: eventDate.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        timeZoneName: 'short',
-      }),
-      isVirtual: event.isVirtual ?? false,
-      venue: event.venue ?? undefined,
-      price: new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: currency.toUpperCase(),
-      }).format(amountTotal / 100),
-      magicLink,
+      eventDate: formattedEventDate,
+      eventTime: formattedEventTime,
+      ticketSummary: [{ typeName: ticketType.name, quantity, unitPrice }],
+      totalPaid: formattedTotal,
+      paymentMethod: paymentId ? 'Credit Card' : 'E-Transfer',
+      registrationUrl,
       eventImageUrl,
-      eventUrl: `${EVENTS_URL}/${event.id}`,
-      qrCodeDataUri,
+      hasRegistrationRequired: ticketType.requiresRegistration,
     }),
   });
+
+  // Only send the ticket confirmation (with QR) immediately for non-registration tickets
+  if (!ticketType.requiresRegistration) {
+    // Generate QR code from ticket ID (for check-in scanning)
+    const qrCodeDataUri = await generateQRCode(createdTickets[0].id);
+
+    await sendEmail({
+      to: customerEmail,
+      subject: `You're in — ${event.title}`,
+      html: ticketConfirmationEmail({
+        eventTitle: event.title,
+        ticketType: ticketType.name,
+        ticketId: createdTickets[0].id + (quantity > 1 ? ` (+${quantity - 1} more)` : ''),
+        eventDate: formattedEventDate,
+        eventTime: formattedEventTime,
+        isVirtual: event.isVirtual ?? false,
+        venue: event.venue ?? undefined,
+        price: formattedTotal,
+        magicLink,
+        eventImageUrl,
+        eventUrl: `${EVENTS_URL}/${event.id}`,
+        qrCodeDataUri,
+      }),
+    });
+  }
 }
 
 async function handlePaymentFailed(payload: PaymentWebhookPayload) {
