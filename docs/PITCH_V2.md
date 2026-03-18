@@ -23,8 +23,6 @@ You pick up your phone to check one thing and lose an hour. You delete the app, 
 
 3.5 hours a day. That's the average. Most people know their number is higher.
 
-They don't sell your attention. They sell the power to shape what you attend to — which shapes what you learn, what you prefer, what you choose, and ultimately who you become. (Browne & Watzl, 2026)
-
 You are not the customer. You are the inventory.
 
 ---
@@ -75,9 +73,9 @@ On Day 37 we discovered: every keypair we'd generated was already a valid Solana
 
 ## Slide 6 — Asset hostage 2: Attention
 
-**The problem:** Meta makes ~$272/year from every North American user. You get: an app designed to keep you scrolling. They're not selling your eyeballs — they're selling the power to shape your attentional environment. Every ad placement is an act of attentional landscaping you never consented to.
+**The problem:** Meta makes ~$272/year from every North American user. You get: an app designed to keep you scrolling.
 
-**The fix:** Consent-to-influence architecture. You author a signed declaration of what you're willing to attend to. Companies pay to match your declared interests — answering an invitation you wrote, not infiltrating your sensory environment. You set the price. You keep the revenue. You revoke anytime. The declaration is cryptographic proof that the process of influence was self-authored.
+**The fix:** Declared-intent marketplace. Your attention profile lives on your node. Companies pay to match your declared interests. You set the price. You keep the revenue. You revoke access anytime.
 
 $272 is Meta's ceiling. On Imajin, attention is the floor.
 
@@ -255,23 +253,7 @@ Open source. Self-hostable. Federated. No kill switch.
 
 ---
 
-## Slide 17 — Not a better attention market.
-
-MJN is the architectural abolition of the attention market as currently constituted — and its replacement with infrastructure for attentional self-determination.
-
-| Failure Mode | Current Attention Market | MJN Architecture |
-|---|---|---|
-| **Opacity** | You can't see who shapes your attention or how | Signed declarations, attestation history, identity archaeology — every process is legible |
-| **Cumulative manipulation** | Influence accumulates below your threshold of notice | Gas model imposes exponential cost on repetition — accumulation is structurally deterred |
-| **Unendorsable processes** | Shaped by actors whose interests are misaligned with yours | You author declarations, sign them, revoke them — the process of influence is self-authored |
-| **Inescapable** | Leave and lose your relationship graph | BaggageDID, portable keypair, federated nodes — sovereignty is guaranteed at exit |
-
-Academic grounding: Browne & Watzl (2026), "The Attention Market — and What Is Wrong with It," *Philosophical Studies* Vol. 183. Their diagnosis. Our architecture.
-
----
-
-## Slide 18 — The go-to-market is physical.
-*[was Slide 17]*
+## Slide 17 — The go-to-market is physical.
 
 One node, one community, one city at a time.
 
@@ -281,7 +263,7 @@ One node, one community, one city at a time.
 
 ---
 
-## Slide 19 — $1.5M
+## Slide 18 — $1.5M
 
 Not a round. A milestone. First institutional capital into working infrastructure.
 
@@ -303,7 +285,7 @@ Not a round. A milestone. First institutional capital into working infrastructur
 
 ---
 
-## Slide 20 — Sovereignty is a spectrum.
+## Slide 19 — Sovereignty is a spectrum.
 
 Not everyone runs a server. That's the point.
 
@@ -316,19 +298,19 @@ The BBS model rebuilt — except now you take your posts with you when you leave
 
 ---
 
-## Slide 21 — The thesis.
+## Slide 20 — The thesis.
 
 The internet was built to move documents. Then packets. Neither carried the human.
 
-Platforms filled the gap — and captured everything. Not just your data — the power to shape what you attend to, what you learn, what you prefer, what you choose, and who you become.
+Platforms filled the gap — and captured everything.
 
 Imajin carries the human. Identity, trust, attribution, settlement — all in one protocol. For humans and agents alike.
 
-Start from the human — sovereign, present, with the right to understand and govern the processes that shape them — and you will find the protocol underneath.
+Start from the human and you will find the protocol.
 
 ---
 
-## Slide 22 — Start from the human.
+## Slide 21 — Start from the human.
 
 30 years of vision. 30 essays. 37 days of execution.
 
