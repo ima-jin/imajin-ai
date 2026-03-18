@@ -23,9 +23,18 @@ export async function POST(
     const body = await request.json();
     const { name, email, formId, responseId, registeredByDid } = body;
 
-    if (!name || !email || !formId) {
+    if (!formId) {
       return NextResponse.json(
-        { error: 'name, email, and formId are required' },
+        { error: 'formId is required' },
+        { status: 400 }
+      );
+    }
+
+    // Name/email required only for simple forms (no Dykil survey)
+    const isDykilForm = formId.startsWith('survey_');
+    if (!isDykilForm && (!name || !email)) {
+      return NextResponse.json(
+        { error: 'name and email are required' },
         { status: 400 }
       );
     }
@@ -76,7 +85,7 @@ export async function POST(
     }
 
     // Check email uniqueness across event
-    if (regConfig.enforce_unique_emails) {
+    if (regConfig.enforce_unique_emails && email) {
       const [existing] = await db
         .select({ id: ticketRegistrations.id })
         .from(ticketRegistrations)
@@ -104,8 +113,8 @@ export async function POST(
         id: registrationId,
         ticketId: ticket.id,
         eventId: event.id,
-        name: name.trim(),
-        email: email.toLowerCase().trim(),
+        name: name?.trim() || null,
+        email: email?.toLowerCase().trim() || null,
         formId,
         responseId: responseId || null,
         registeredByDid: registeredByDid || null,
@@ -117,8 +126,8 @@ export async function POST(
       .set({ registrationStatus: 'complete' })
       .where(eq(tickets.id, ticket.id));
 
-    // Send ticket confirmation email to the registered attendee
-    try {
+    // Send ticket confirmation email to the registered attendee (skip if no email, e.g. Dykil form)
+    if (registration.email) try {
       const [ticketType] = await db
         .select()
         .from(ticketTypes)

@@ -206,9 +206,9 @@ export default function SurveyEmbedPage() {
       surveyModelRef.current.data = data;
     }
     setSubmitted(true);
-    // Notify parent iframe immediately — include answers so host can extract name/email
+    // Notify parent iframe immediately
     window.parent.postMessage(
-      { type: 'survey-completed', surveyId, answers: data },
+      { type: 'survey-completed', surveyId },
       '*'
     );
 

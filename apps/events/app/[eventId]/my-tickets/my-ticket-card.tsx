@@ -188,42 +188,39 @@ function InlineRegForm({ ticketId, registrationFormId, onSuccess }: InlineRegFor
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [iframeHeight, setIframeHeight] = useState(400);
+  const [iframeHeight, setIframeHeight] = useState(600);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const dykilUrl = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
+  const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
 
-  // If there's a Dykil form, embed it and listen for completion
+  // Listen for Dykil iframe messages
   useEffect(() => {
     if (!registrationFormId) return;
 
-    function handleMessage(e: MessageEvent) {
-      if (e.data?.type === 'survey-height') {
-        setIframeHeight(e.data.height + 20);
+    const handleMessage = (event: MessageEvent) => {
+      if (!event.origin.includes('dykil')) return;
+
+      if (event.data.type === 'survey-height') {
+        setIframeHeight(event.data.height + 40);
+      } else if (event.data.type === 'survey-completed') {
+        // Survey completed — mark ticket as registered
+        markRegistered();
       }
-      if (e.data?.type === 'survey-completed' && e.data?.surveyId === registrationFormId) {
-        const answers = e.data.answers || {};
-        // Extract name/email from survey answers
-        const surveyName = answers.full_name || answers.name || '';
-        const surveyEmail = answers.email || '';
-        if (surveyName && surveyEmail) {
-          completeRegistration(surveyName, surveyEmail);
-        }
-      }
-    }
+    };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registrationFormId]);
 
-  async function completeRegistration(regName: string, regEmail: string) {
+  async function markRegistered() {
     setLoading(true);
     setError('');
     try {
       const res = await fetch(`/api/register/${ticketId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: regName.trim(), email: regEmail.trim(), formId: registrationFormId || 'none' }),
+        body: JSON.stringify({ formId: registrationFormId }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -238,23 +235,20 @@ function InlineRegForm({ ticketId, registrationFormId, onSuccess }: InlineRegFor
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    await completeRegistration(name, email);
-  }
-
-  // Dykil form embed
+  // Dykil form embed — same pattern as EventSurveyAccordion
   if (registrationFormId) {
     return (
-      <div className="space-y-3">
+      <div>
         <iframe
-          src={`${dykilUrl}/embed/${registrationFormId}`}
-          className="w-full border-0 rounded-lg"
-          style={{ height: iframeHeight, minHeight: 300 }}
+          ref={iframeRef}
+          src={`${DYKIL_URL}/embed/${registrationFormId}`}
+          className="w-full border-0"
+          style={{ height: `${iframeHeight}px`, minHeight: '400px' }}
           title="Registration form"
+          allow="clipboard-write"
         />
         {loading && (
-          <div className="text-center text-sm text-orange-500 font-medium">
+          <div className="text-center text-sm text-orange-500 font-medium py-2">
             Completing registration...
           </div>
         )}
@@ -267,9 +261,30 @@ function InlineRegForm({ ticketId, registrationFormId, onSuccess }: InlineRegFor
     );
   }
 
-  // Fallback: simple name/email form
+  // Fallback: simple name/email form (no Dykil form linked)
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form onSubmit={async (e) => {
+      e.preventDefault();
+      setLoading(true);
+      setError('');
+      try {
+        const res = await fetch(`/api/register/${ticketId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim(), email: email.trim(), formId: 'none' }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || 'Registration failed.');
+          return;
+        }
+        onSuccess();
+      } catch {
+        setError('Something went wrong.');
+      } finally {
+        setLoading(false);
+      }
+    }} className="space-y-3">
       <div>
         <label className="block text-sm font-medium mb-1" htmlFor={`name-${ticketId}`}>
           Full Name *
