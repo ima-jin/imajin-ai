@@ -1,0 +1,1 @@
+ALTER TABLE events.events ADD COLUMN IF NOT EXISTS emt_email TEXT;

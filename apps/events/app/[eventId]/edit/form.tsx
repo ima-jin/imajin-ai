@@ -11,6 +11,7 @@ import type { Event, TicketType } from '@/src/db/schema';
 interface Props {
   event: Event;
   existingTickets: TicketType[];
+  creatorEmail?: string | null;
 }
 
 interface TicketTier {
@@ -33,7 +34,7 @@ interface Survey {
 
 type ActiveTab = 'details' | 'fair';
 
-export default function EventEditForm({ event, existingTickets }: Props) {
+export default function EventEditForm({ event, existingTickets, creatorEmail }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -69,6 +70,10 @@ export default function EventEditForm({ event, existingTickets }: Props) {
     (event.accessMode as 'public' | 'invite_only') || 'public'
   );
   const [courseSlug, setCourseSlug] = useState((event as any).courseSlug || '');
+
+  // Payment settings
+  const [emtEnabled, setEmtEnabled] = useState(!!(event as any).emtEmail);
+  const [emtEmail, setEmtEmail] = useState((event as any).emtEmail || creatorEmail || '');
 
   // Dykil integration
   const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
@@ -187,6 +192,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           nameDisplayPolicy,
           accessMode,
           courseSlug: courseSlug || null,
+          emtEmail: emtEnabled ? (emtEmail.trim() || null) : null,
           metadata: {
             ...(event.metadata as any || {}),
             linkedSurveys,
@@ -873,6 +879,41 @@ export default function EventEditForm({ event, existingTickets }: Props) {
             </label>
           ))}
         </div>
+      </div>
+
+      {/* Payment Settings */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-4">
+        <div>
+          <h2 className="text-xl font-semibold">Payment Settings</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Configure how attendees can pay for tickets.
+          </p>
+        </div>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={emtEnabled}
+            onChange={(e) => setEmtEnabled(e.target.checked)}
+            className="w-4 h-4 text-orange-500 focus:ring-orange-500 rounded"
+          />
+          <span className="text-sm font-medium">Accept e-Transfer payments</span>
+        </label>
+        {emtEnabled && (
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              e-Transfer Email <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="email"
+              value={emtEmail}
+              onChange={(e) => setEmtEmail(e.target.value)}
+              placeholder="payments@example.com"
+              required={emtEnabled}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">Interac e-Transfer payments will be sent to this email address.</p>
+          </div>
+        )}
       </div>
 
       {error && (

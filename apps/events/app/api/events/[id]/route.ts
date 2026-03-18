@@ -203,6 +203,7 @@ export async function PUT(
     }
     if (body.accessMode !== undefined) updates.accessMode = body.accessMode;
     if (body.courseSlug !== undefined) updates.courseSlug = body.courseSlug || null;
+    if (body.emtEmail !== undefined) updates.emtEmail = body.emtEmail || null;
 
     const [updated] = await db
       .update(events)

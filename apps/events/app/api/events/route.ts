@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       tags,
       tickets: ticketTypesInput,
       courseSlug,
+      emtEmail,
     } = body;
 
     // Validate required fields
@@ -116,6 +117,7 @@ export async function POST(request: NextRequest) {
       imageUrl,
       tags: tags || [],
       courseSlug: courseSlug || null,
+      emtEmail: emtEmail || null,
       status: 'draft',
       metadata: { fair: fairManifest },
     }).returning();

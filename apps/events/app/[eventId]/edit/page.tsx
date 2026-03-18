@@ -78,6 +78,13 @@ export default async function EditEventPage({ params }: Props) {
 
   const tickets = await getTicketTypes(eventId);
 
+  // Fetch creator profile email for EMT auto-fill
+  let creatorEmail: string | null = null;
+  try {
+    const [profile] = await sql`SELECT email FROM profile.profiles WHERE did = ${event.creatorDid}`;
+    creatorEmail = profile?.email || null;
+  } catch {}
+
   return (
     <div className="min-h-screen">
       <div className="max-w-2xl mx-auto px-4 py-8">
@@ -96,7 +103,7 @@ export default async function EditEventPage({ params }: Props) {
           </p>
         </div>
 
-        <EventEditForm event={event} existingTickets={tickets} />
+        <EventEditForm event={event} existingTickets={tickets} creatorEmail={creatorEmail} />
       </div>
     </div>
   );

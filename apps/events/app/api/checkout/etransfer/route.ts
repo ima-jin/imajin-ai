@@ -9,10 +9,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
 import { eq, and, lt } from 'drizzle-orm';
 import { getSessionFromCookie } from '@/src/lib/auth';
-import { getClient } from '@imajin/db';
 import { randomBytes } from 'crypto';
 
-const sql = getClient();
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const HOLD_HOURS = 72;
 
@@ -89,11 +87,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Tickets are not available for this event' }, { status: 400 });
     }
 
-    // Look up organizer's e-transfer email from their profile
-    const [creatorProfile] = await sql`
-      SELECT email FROM profile.profiles WHERE did = ${event.creatorDid}
-    `;
-    const etransferEmail = creatorProfile?.email;
+    const etransferEmail = (event as any).emtEmail;
     if (!etransferEmail) {
       return NextResponse.json({ error: 'e-Transfer is not available for this event' }, { status: 400 });
     }

@@ -53,6 +53,9 @@ export const events = eventsSchema.table('events', {
   // SQL: CREATE INDEX IF NOT EXISTS idx_events_course_slug ON events.events(course_slug);
   courseSlug: text('course_slug'),                          // Links to learn.courses.slug
 
+  // Payment config
+  emtEmail: text('emt_email'),                              // Interac e-Transfer email for this event (null = disabled)
+
   // Trust pod integration
   podId: text('pod_id'),                                    // Links to trust_pods.id
   lobbyConversationId: text('lobby_conversation_id'),       // Event lobby chat (open to ticket holders)
