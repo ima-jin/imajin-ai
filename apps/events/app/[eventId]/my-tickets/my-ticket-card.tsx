@@ -184,8 +184,6 @@ interface InlineRegFormProps {
 }
 
 function InlineRegForm({ ticketId, registrationFormId, onSuccess }: InlineRegFormProps) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [iframeHeight, setIframeHeight] = useState(600);
@@ -193,7 +191,6 @@ function InlineRegForm({ ticketId, registrationFormId, onSuccess }: InlineRegFor
 
   const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
 
-  // Listen for Dykil iframe messages
   useEffect(() => {
     if (!registrationFormId) return;
 
@@ -203,7 +200,6 @@ function InlineRegForm({ ticketId, registrationFormId, onSuccess }: InlineRegFor
       if (event.data.type === 'survey-height') {
         setIframeHeight(event.data.height + 40);
       } else if (event.data.type === 'survey-completed') {
-        // Survey completed — mark ticket as registered
         markRegistered();
       }
     };
@@ -235,96 +231,28 @@ function InlineRegForm({ ticketId, registrationFormId, onSuccess }: InlineRegFor
     }
   }
 
-  // Dykil form embed — same pattern as EventSurveyAccordion
-  if (registrationFormId) {
-    return (
-      <div>
-        <iframe
-          ref={iframeRef}
-          src={`${DYKIL_URL}/embed/${registrationFormId}`}
-          className="w-full border-0"
-          style={{ height: `${iframeHeight}px`, minHeight: '400px' }}
-          title="Registration form"
-          allow="clipboard-write"
-        />
-        {loading && (
-          <div className="text-center text-sm text-orange-500 font-medium py-2">
-            Completing registration...
-          </div>
-        )}
-        {error && (
-          <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
-            {error}
-          </div>
-        )}
-      </div>
-    );
-  }
+  if (!registrationFormId) return null;
 
-  // Fallback: simple name/email form (no Dykil form linked)
   return (
-    <form onSubmit={async (e) => {
-      e.preventDefault();
-      setLoading(true);
-      setError('');
-      try {
-        const res = await fetch(`/api/register/${ticketId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name.trim(), email: email.trim(), formId: 'none' }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.error || 'Registration failed.');
-          return;
-        }
-        onSuccess();
-      } catch {
-        setError('Something went wrong.');
-      } finally {
-        setLoading(false);
-      }
-    }} className="space-y-3">
-      <div>
-        <label className="block text-sm font-medium mb-1" htmlFor={`name-${ticketId}`}>
-          Full Name *
-        </label>
-        <input
-          id={`name-${ticketId}`}
-          type="text"
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Jane Smith"
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:outline-none text-sm"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-1" htmlFor={`email-${ticketId}`}>
-          Email *
-        </label>
-        <input
-          id={`email-${ticketId}`}
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="jane@example.com"
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:outline-none text-sm"
-        />
-      </div>
+    <div>
+      <iframe
+        ref={iframeRef}
+        src={`${DYKIL_URL}/embed/${registrationFormId}`}
+        className="w-full border-0"
+        style={{ height: `${iframeHeight}px`, minHeight: '400px' }}
+        title="Registration form"
+        allow="clipboard-write"
+      />
+      {loading && (
+        <div className="text-center text-sm text-orange-500 font-medium py-2">
+          Completing registration...
+        </div>
+      )}
       {error && (
         <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
           {error}
         </div>
       )}
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full py-2.5 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-semibold rounded-lg transition text-sm"
-      >
-        {loading ? 'Registering...' : 'Complete Registration'}
-      </button>
-    </form>
+    </div>
   );
 }
