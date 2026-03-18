@@ -231,11 +231,11 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
     return (
       <div className="space-y-2">
         {error && <p className="text-red-500 text-xs">{error}</p>}
-        <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex flex-col gap-2 w-full">
           <button
             onClick={handleCardPayment}
             disabled={step === 'loading-card'}
-            className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${
+            className={`w-full px-4 py-2.5 rounded-lg font-semibold transition text-center ${
               step === 'loading-card'
                 ? 'bg-orange-400 text-white cursor-wait'
                 : 'bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50'
@@ -247,7 +247,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
             <button
               onClick={() => setStep('etransfer-confirm')}
               disabled={step === 'loading-card'}
-              className="px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap bg-orange-500/20 text-orange-500 border border-orange-500/40 hover:bg-orange-500/30 disabled:opacity-50"
+              className="w-full px-4 py-2.5 rounded-lg font-semibold transition text-center bg-orange-500/20 text-orange-500 border border-orange-500/40 hover:bg-orange-500/30 disabled:opacity-50"
             >
               🏦 Pay by e-Transfer
             </button>
@@ -258,7 +258,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
           <button
             onClick={() => { setStep('button'); setError(null); }}
             disabled={step === 'loading-card'}
-            className="px-3 py-2.5 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition disabled:opacity-50"
+            className="px-3 py-2.5 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition"
           >
             Cancel
           </button>
