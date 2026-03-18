@@ -102,6 +102,10 @@ export async function POST(
 
     const ticketId = `tkt_${randomBytes(12).toString('hex')}`;
 
+    // Look up ticket type to check requiresRegistration
+    const [tt] = await db.select({ requiresRegistration: ticketTypes.requiresRegistration })
+      .from(ticketTypes).where(eq(ticketTypes.id, ticketTypeId));
+
     const [ticket] = await db.insert(tickets).values({
       id: ticketId,
       eventId: id,
@@ -109,6 +113,7 @@ export async function POST(
       status: 'held',
       heldBy: identity.id,
       heldUntil: holdUntil,
+      registrationStatus: tt?.requiresRegistration ? 'pending' : 'not_required',
     }).returning();
 
     return NextResponse.json({ 

@@ -201,6 +201,7 @@ export async function POST(request: NextRequest) {
         heldUntil: holdUntil,
         holdExpiresAt: holdUntil,
         paymentMethod: 'etransfer',
+        registrationStatus: ticketType.requiresRegistration ? 'pending' : 'not_required',
         magicToken,
         metadata: {},
       })
