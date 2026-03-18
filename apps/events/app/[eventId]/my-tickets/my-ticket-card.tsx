@@ -188,16 +188,42 @@ function InlineRegForm({ ticketId, registrationFormId, onSuccess }: InlineRegFor
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [iframeHeight, setIframeHeight] = useState(400);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const dykilUrl = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
+
+  // If there's a Dykil form, embed it and listen for completion
+  useEffect(() => {
+    if (!registrationFormId) return;
+
+    function handleMessage(e: MessageEvent) {
+      if (e.data?.type === 'survey-height') {
+        setIframeHeight(e.data.height + 20);
+      }
+      if (e.data?.type === 'survey-completed' && e.data?.surveyId === registrationFormId) {
+        const answers = e.data.answers || {};
+        // Extract name/email from survey answers
+        const surveyName = answers.full_name || answers.name || '';
+        const surveyEmail = answers.email || '';
+        if (surveyName && surveyEmail) {
+          completeRegistration(surveyName, surveyEmail);
+        }
+      }
+    }
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registrationFormId]);
+
+  async function completeRegistration(regName: string, regEmail: string) {
     setLoading(true);
     setError('');
     try {
       const res = await fetch(`/api/register/${ticketId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), formId: registrationFormId || 'none' }),
+        body: JSON.stringify({ name: regName.trim(), email: regEmail.trim(), formId: registrationFormId || 'none' }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -212,6 +238,36 @@ function InlineRegForm({ ticketId, registrationFormId, onSuccess }: InlineRegFor
     }
   }
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await completeRegistration(name, email);
+  }
+
+  // Dykil form embed
+  if (registrationFormId) {
+    return (
+      <div className="space-y-3">
+        <iframe
+          src={`${dykilUrl}/embed/${registrationFormId}`}
+          className="w-full border-0 rounded-lg"
+          style={{ height: iframeHeight, minHeight: 300 }}
+          title="Registration form"
+        />
+        {loading && (
+          <div className="text-center text-sm text-orange-500 font-medium">
+            Completing registration...
+          </div>
+        )}
+        {error && (
+          <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Fallback: simple name/email form
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div>
@@ -242,13 +298,6 @@ function InlineRegForm({ ticketId, registrationFormId, onSuccess }: InlineRegFor
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:outline-none text-sm"
         />
       </div>
-      {registrationFormId && (
-        <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-600">
-          <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-            Additional registration questions will appear here.
-          </p>
-        </div>
-      )}
       {error && (
         <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
           {error}
