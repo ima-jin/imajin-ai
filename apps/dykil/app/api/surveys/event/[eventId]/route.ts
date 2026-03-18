@@ -46,7 +46,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           description: survey.description,
           type: survey.type,
           handle: survey.handle,
-          requiredForTickets: survey.requiredForTickets || false,
           responseCount: Number(countResult?.count || 0),
         };
       })

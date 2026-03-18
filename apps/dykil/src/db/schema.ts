@@ -13,9 +13,8 @@ export const surveys = dykil_schema.table('surveys', {
   description: text('description'),
   fields: jsonb('fields').notNull(),                          // SurveyJS JSON schema (elements array)
   settings: jsonb('settings').default({}),                    // Survey settings
-  eventId: text('event_id'),                                  // Optional event link
+  eventId: text('event_id'),                                  // Denormalized lookup — event metadata is source of truth
   type: text('type').notNull().default('survey'),             // survey, pre-event, post-event, form
-  requiredForTickets: boolean('required_for_tickets').default(false), // Must complete before ticket purchase
   status: text('status').notNull().default('draft'),          // draft, published, closed
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -24,6 +23,7 @@ export const surveys = dykil_schema.table('surveys', {
   handleIdx: index('idx_surveys_handle').on(table.handle),
   statusIdx: index('idx_surveys_status').on(table.status),
   eventIdx: index('idx_surveys_event').on(table.eventId),
+
 }));
 
 /**

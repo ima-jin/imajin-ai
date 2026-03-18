@@ -203,7 +203,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         throw new Error(data.error || 'Failed to update event');
       }
 
-      // Update survey event_id and requiredForTickets for all linked surveys
+      // Update survey event_id for all linked surveys (for Dykil lookup)
       for (const survey of linkedSurveys) {
         await fetch(`${DYKIL_URL}/api/surveys/${survey.id}`, {
           method: 'PUT',
@@ -211,7 +211,6 @@ export default function EventEditForm({ event, existingTickets }: Props) {
           credentials: 'include',
           body: JSON.stringify({
             eventId: event.id,
-            requiredForTickets: survey.requiredForTickets,
           }),
         });
       }
