@@ -203,17 +203,7 @@ export default function EventEditForm({ event, existingTickets }: Props) {
         throw new Error(data.error || 'Failed to update event');
       }
 
-      // Update survey event_id for all linked surveys (for Dykil lookup)
-      for (const survey of linkedSurveys) {
-        await fetch(`${DYKIL_URL}/api/surveys/${survey.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            eventId: event.id,
-          }),
-        });
-      }
+
 
       // Update ticket tiers
       for (let i = 0; i < tiers.length; i++) {

@@ -74,7 +74,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { title, description, fields, settings, eventId, type, status } = body;
+    const { title, description, fields, settings, type, status } = body;
 
     const updates: Record<string, any> = {
       updatedAt: new Date(),
@@ -84,7 +84,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (description !== undefined) updates.description = description;
     if (fields !== undefined) updates.fields = fields;
     if (settings !== undefined) updates.settings = settings;
-    if (eventId !== undefined) updates.eventId = eventId;
     if (type !== undefined) updates.type = type;
     if (status !== undefined) updates.status = status;
     const [updated] = await db

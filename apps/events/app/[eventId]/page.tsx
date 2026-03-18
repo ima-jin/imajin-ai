@@ -298,26 +298,27 @@ export default async function EventPage({ params, searchParams }: Props) {
   const isOngoing = eventDate <= now && (!eventEndDate || eventEndDate > now);
   const isCompleted = eventEndDate ? eventEndDate < now : false;
 
-  // Fetch surveys for this event
+  // Fetch surveys from event metadata (source of truth for linked surveys)
   const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
-  let eventSurveys: any[] = [];
-  try {
-    const surveysRes = await fetch(`${DYKIL_URL}/api/surveys/event/${event.id}`, {
-      cache: 'no-store',
-    });
-    if (surveysRes.ok) {
-      const surveysData = await surveysRes.json();
-      eventSurveys = surveysData.surveys || [];
-    }
-  } catch (err) {
-    console.error('Failed to fetch event surveys:', err);
-  }
-
-  // Get survey visibility settings from event metadata
+  const linkedSurveysMeta: Array<{ id: string; visibility: string; paywall: boolean; requiredForTickets: boolean }> = (event.metadata as any)?.linkedSurveys || [];
   const linkedSurveySettings: Record<string, { visibility: string; paywall: boolean; requiredForTickets: boolean }> = {};
-  const linkedSurveysMeta = (event.metadata as any)?.linkedSurveys || [];
   for (const ls of linkedSurveysMeta) {
     linkedSurveySettings[ls.id] = { visibility: ls.visibility || 'always', paywall: ls.paywall || false, requiredForTickets: ls.requiredForTickets || false };
+  }
+
+  // Fetch survey details by ID from event metadata
+  let eventSurveys: any[] = [];
+  if (linkedSurveysMeta.length > 0) {
+    const surveyResults = await Promise.allSettled(
+      linkedSurveysMeta.map(async (ls) => {
+        const res = await fetch(`${DYKIL_URL}/api/surveys/${ls.id}`, { cache: 'no-store' });
+        if (!res.ok) return null;
+        return res.json();
+      })
+    );
+    eventSurveys = surveyResults
+      .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value !== null)
+      .map(r => r.value);
   }
 
   // Check if any surveys are required before ticket purchase

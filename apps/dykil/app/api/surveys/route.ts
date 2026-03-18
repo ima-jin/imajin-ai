@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { title, description, fields, settings, eventId, status, type } = body;
+    const { title, description, fields, settings, status, type } = body;
 
     if (!title) {
       return errorResponse('title is required');
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       description: description || null,
       fields: surveyFields,
       settings: settings || {},
-      eventId: eventId || null,
+
       type: type || 'survey',
       status: status || 'draft',
     }).returning();
