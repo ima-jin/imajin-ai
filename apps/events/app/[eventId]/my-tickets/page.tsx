@@ -3,38 +3,19 @@ import Link from 'next/link';
 import { getSession } from '@/src/lib/auth';
 import { db, tickets, ticketTypes, ticketRegistrations, events } from '@/src/db';
 import { eq, and, or } from 'drizzle-orm';
-import { CopyLinkButton } from './copy-link-button';
+import { generateQRCode } from '@/src/lib/email';
+import { MyTicketCard } from './my-ticket-card';
 
 interface Props {
   params: Promise<{ eventId: string }>;
+  searchParams: Promise<{ ticket?: string }>;
 }
 
 export const dynamic = 'force-dynamic';
 
-function RegistrationBadge({ status }: { status: string }) {
-  if (status === 'complete') {
-    return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400">
-        ✅ Registered
-      </span>
-    );
-  }
-  if (status === 'pending') {
-    return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400">
-        ⏳ Pending
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
-      —
-    </span>
-  );
-}
-
-export default async function MyTicketsPage({ params }: Props) {
+export default async function MyTicketsPage({ params, searchParams }: Props) {
   const { eventId } = await params;
+  const { ticket: ticketParam } = await searchParams;
 
   const session = await getSession();
   if (!session) {
@@ -91,7 +72,16 @@ export default async function MyTicketsPage({ params }: Props) {
     });
   }
 
-  const eventsUrl = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+  // Generate QR codes for non-pending tickets
+  const qrMap = new Map<string, string | undefined>();
+  await Promise.all(
+    userTicketRows.map(async ({ ticket }) => {
+      if (ticket.registrationStatus !== 'pending') {
+        const qr = await generateQRCode(ticket.id);
+        qrMap.set(ticket.id, qr || undefined);
+      }
+    })
+  );
 
   return (
     <div className="max-w-2xl mx-auto py-8 px-4">
@@ -116,54 +106,22 @@ export default async function MyTicketsPage({ params }: Props) {
         </div>
       ) : (
         <div className="space-y-4">
-          {userTicketRows.map(({ ticket, ticketType }) => {
-            const registration = registrationMap.get(ticket.id);
-            const isPending = ticket.registrationStatus === 'pending';
-            const regPath = `/${eventId}/register/${ticket.id}${ticket.magicToken ? `?token=${ticket.magicToken}` : ''}`;
-            const copyUrl = `${eventsUrl}/${eventId}/register/${ticket.id}${ticket.magicToken ? `?token=${ticket.magicToken}` : ''}`;
-
-            return (
-              <div
-                key={ticket.id}
-                className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700"
-              >
-                <div className="flex items-start justify-between gap-4 mb-3">
-                  <div>
-                    <h2 className="font-semibold text-lg">{ticketType?.name || 'Ticket'}</h2>
-                    {ticket.pricePaid != null && (
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {new Intl.NumberFormat('en-CA', {
-                          style: 'currency',
-                          currency: ticket.currency || 'CAD',
-                        }).format(ticket.pricePaid / 100)}
-                      </p>
-                    )}
-                    <p className="text-xs text-gray-400 font-mono mt-0.5">{ticket.id}</p>
-                  </div>
-                  <RegistrationBadge status={ticket.registrationStatus} />
-                </div>
-
-                {ticket.registrationStatus === 'complete' && registration && (
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-sm mt-2">
-                    <p className="font-medium">{registration.name}</p>
-                    <p className="text-gray-500 dark:text-gray-400">{registration.email}</p>
-                  </div>
-                )}
-
-                {isPending && (
-                  <div className="mt-4 flex flex-col sm:flex-row gap-3">
-                    <Link
-                      href={regPath}
-                      className="flex-1 text-center px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-lg transition"
-                    >
-                      Register
-                    </Link>
-                    <CopyLinkButton url={copyUrl} />
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {userTicketRows.map(({ ticket, ticketType }) => (
+            <MyTicketCard
+              key={ticket.id}
+              ticketId={ticket.id}
+              eventId={eventId}
+              ticketTypeName={ticketType?.name || 'Ticket'}
+              pricePaid={ticket.pricePaid}
+              currency={ticket.currency}
+              purchasedAt={(ticket.purchasedAt || ticket.createdAt)?.toISOString() || null}
+              registrationStatus={ticket.registrationStatus || 'not_required'}
+              registrationFormId={ticketType?.registrationFormId || null}
+              registration={registrationMap.get(ticket.id) || null}
+              qrCodeDataUri={qrMap.get(ticket.id)}
+              autoExpand={ticketParam === ticket.id}
+            />
+          ))}
         </div>
       )}
 

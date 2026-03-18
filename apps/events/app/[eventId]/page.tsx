@@ -151,12 +151,15 @@ async function getUserTickets(eventId: string, userDid: string) {
     );
 
   return Promise.all(userTickets.map(async ({ ticket, ticketType }) => {
-    // Generate QR code from ticket ID (for check-in scanning)
-    const qrCodeDataUri = await generateQRCode(ticket.id) || undefined;
+    // Don't generate QR for pending-registration tickets — they can't check in yet
+    const qrCodeDataUri = ticket.registrationStatus !== 'pending'
+      ? (await generateQRCode(ticket.id) || undefined)
+      : undefined;
 
     return {
       id: ticket.id,
       status: ticket.status,
+      registrationStatus: ticket.registrationStatus || 'not_required',
       purchasedAt: (ticket.purchasedAt || ticket.createdAt)?.toISOString() || null,
       pricePaid: ticket.pricePaid,
       currency: ticket.currency,

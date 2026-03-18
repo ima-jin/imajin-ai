@@ -8,6 +8,7 @@ import { OnboardGate } from '@imajin/onboard';
 interface UserTicket {
   id: string;
   status: string;
+  registrationStatus?: string;
   purchasedAt: string | null;
   pricePaid: number | null;
   currency: string | null;
@@ -79,7 +80,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
 
       {/* Tab Content */}
       {activeTab === 'my-tickets' ? (
-        <MyTicketsTab userTickets={userTickets} />
+        <MyTicketsTab userTickets={userTickets} eventId={eventId} />
       ) : (
         <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} />
       )}
@@ -87,7 +88,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
   );
 }
 
-function MyTicketsTab({ userTickets }: { userTickets: UserTicket[] }) {
+function MyTicketsTab({ userTickets, eventId }: { userTickets: UserTicket[]; eventId: string }) {
   return (
     <div className="space-y-4">
       {userTickets.map((ticket) => {
@@ -142,25 +143,41 @@ function MyTicketsTab({ userTickets }: { userTickets: UserTicket[] }) {
                 )}
               </div>
 
-              {/* Center: QR code + status */}
+              {/* Center: QR code / registration prompt */}
               <div className="flex flex-col items-center">
-                <div className="bg-gray-900 dark:bg-[#0a0a0a] border border-gray-700 dark:border-gray-800 rounded-lg p-3 text-center">
-                  {ticket.qrCodeDataUri && (
-                    <img
-                      src={ticket.qrCodeDataUri}
-                      alt="Ticket QR Code"
-                      width={140}
-                      height={140}
-                      className="mx-auto mb-2"
-                    />
-                  )}
-                  <div className="font-mono text-[10px] text-gray-400">
-                    {ticket.id}
+                {ticket.registrationStatus === 'pending' ? (
+                  <div className="text-center max-w-[160px]">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400">
+                      ⏳ Registration Required
+                    </span>
+                    <a
+                      href={`/${eventId}/my-tickets?ticket=${ticket.id}`}
+                      className="mt-2 block text-xs text-orange-500 hover:text-orange-400 font-medium underline underline-offset-2"
+                    >
+                      Complete Registration →
+                    </a>
                   </div>
-                </div>
-                <div className="mt-2 text-sm font-medium capitalize text-gray-600 dark:text-gray-400">
-                  🎟️ {ticket.status}
-                </div>
+                ) : (
+                  <>
+                    <div className="bg-gray-900 dark:bg-[#0a0a0a] border border-gray-700 dark:border-gray-800 rounded-lg p-3 text-center">
+                      {ticket.qrCodeDataUri && (
+                        <img
+                          src={ticket.qrCodeDataUri}
+                          alt="Ticket QR Code"
+                          width={140}
+                          height={140}
+                          className="mx-auto mb-2"
+                        />
+                      )}
+                      <div className="font-mono text-[10px] text-gray-400">
+                        {ticket.id}
+                      </div>
+                    </div>
+                    <div className="mt-2 text-sm font-medium capitalize text-gray-600 dark:text-gray-400">
+                      🎟️ {ticket.status}
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Right: price */}

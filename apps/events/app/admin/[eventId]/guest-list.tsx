@@ -18,6 +18,7 @@ interface Guest {
   usedAt: string | null;
   ticketType: string;
   paymentMethod: string | null;
+  paymentId: string | null;
   holdExpiresAt: string | null;
   profile: Profile | null;
   registrationStatus: string | null;
@@ -57,9 +58,19 @@ function truncateDid(did: string): string {
   return `${did.slice(0, 16)}…`;
 }
 
-function ProfileCell({ ownerDid, profile }: { ownerDid: string | null; profile: Profile | null }) {
+function ProfileCell({ ownerDid, profile, paymentMethod, paymentId }: {
+  ownerDid: string | null;
+  profile: Profile | null;
+  paymentMethod?: string | null;
+  paymentId?: string | null;
+}) {
   const display = profile?.name || profile?.handle || (ownerDid ? truncateDid(ownerDid) : '—');
   const initials = display.charAt(0).toUpperCase();
+
+  const paymentLabel =
+    paymentMethod === 'stripe' ? '💳 Card'
+    : paymentMethod === 'etransfer' ? '🏦 e-Transfer'
+    : null;
 
   return (
     <div className="flex items-center gap-2 min-w-0">
@@ -83,6 +94,20 @@ function ProfileCell({ ownerDid, profile }: { ownerDid: string | null; profile: 
         )}
         {!profile?.name && !profile?.handle && (
           <p className="text-xs text-gray-400 font-mono truncate">{ownerDid ? truncateDid(ownerDid) : '—'}</p>
+        )}
+        {paymentLabel && (
+          paymentMethod === 'stripe' && paymentId ? (
+            <a
+              href={`https://dashboard.stripe.com/payments/${paymentId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-gray-400 hover:text-gray-300 transition"
+            >
+              {paymentLabel}
+            </a>
+          ) : (
+            <p className="text-xs text-gray-400">{paymentLabel}</p>
+          )
         )}
       </div>
     </div>
@@ -323,7 +348,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
               {filteredGuests.map(guest => (
                 <tr key={guest.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                   <td className="px-4 py-3">
-                    <ProfileCell ownerDid={guest.ownerDid} profile={guest.profile} />
+                    <ProfileCell ownerDid={guest.ownerDid} profile={guest.profile} paymentMethod={guest.paymentMethod} paymentId={guest.paymentId} />
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
                     {guest.ticketType}
