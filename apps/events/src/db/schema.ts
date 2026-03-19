@@ -141,9 +141,6 @@ export const tickets = eventsSchema.table('tickets', {
   // Signature (event signs ticket issuance)
   signature: text('signature'),
 
-  // Magic link authentication
-  magicToken: text('magic_token').unique(),
-
   // Payment method: 'stripe' | 'etransfer' (null for legacy tickets)
   // SQL: ALTER TABLE events.tickets ADD COLUMN IF NOT EXISTS payment_method TEXT;
   paymentMethod: text('payment_method'),
@@ -166,7 +163,7 @@ export const tickets = eventsSchema.table('tickets', {
   ownerIdx: index('idx_tickets_owner').on(table.ownerDid),
   statusIdx: index('idx_tickets_status').on(table.status),
   heldByIdx: index('idx_tickets_held_by').on(table.heldBy),
-  magicTokenIdx: index('idx_tickets_magic_token').on(table.magicToken),
+
   registrationStatusIdx: index('idx_tickets_registration_status').on(table.registrationStatus),
 }));
 

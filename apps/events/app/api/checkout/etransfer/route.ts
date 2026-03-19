@@ -184,7 +184,6 @@ export async function POST(request: NextRequest) {
     holdUntil.setHours(holdUntil.getHours() + HOLD_HOURS);
 
     const ticketId = `tkt_${Date.now().toString(36)}_0`;
-    const magicToken = randomBytes(32).toString('hex');
 
     const [ticket] = await db
       .insert(tickets)
@@ -202,7 +201,6 @@ export async function POST(request: NextRequest) {
         holdExpiresAt: holdUntil,
         paymentMethod: 'etransfer',
         registrationStatus: ticketType.requiresRegistration ? 'pending' : 'not_required',
-        magicToken,
         metadata: {},
       })
       .returning();

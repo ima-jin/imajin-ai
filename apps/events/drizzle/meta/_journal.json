@@ -15,6 +15,13 @@
       "when": 1773897244168,
       "tag": "0001_amusing_quasar",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773940242473,
+      "tag": "0002_clumsy_korg",
+      "breakpoints": true
     }
   ]
 }
