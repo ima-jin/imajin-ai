@@ -1,46 +1,39 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 /**
  * Programmatic drizzle migrator with per-service migration tables.
  *
- * All services share one Postgres database (imajin_prod / imajin_dev),
- * so each service needs its own migration tracking table to avoid
- * drizzle thinking migrations are already applied when they aren't.
- *
- * Usage: tsx scripts/migrate-service.ts <app-name>
- *   e.g. tsx scripts/migrate-service.ts events
- *
- * Reads DATABASE_URL from apps/<app>/.env.local
- * Migrations from apps/<app>/drizzle/
- * Tracks in drizzle.__drizzle_migrations_<app>
+ * Usage: node scripts/migrate-service.mjs <app-name>
  */
 
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 async function main() {
   const app = process.argv[2];
   if (!app) {
-    console.error('Usage: tsx scripts/migrate-service.ts <app-name>');
+    console.error('Usage: node scripts/migrate-service.mjs <app-name>');
     process.exit(1);
   }
 
-  const scriptDir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
-  const baseDir = resolve(scriptDir, '..');
+  const baseDir = resolve(__dirname, '..');
   const appDir = resolve(baseDir, 'apps', app);
   const migrationsFolder = resolve(appDir, 'drizzle');
 
   // Read DATABASE_URL from .env.local
   const envPath = resolve(appDir, '.env.local');
-  let databaseUrl: string | undefined;
+  let databaseUrl;
   try {
     const envContent = readFileSync(envPath, 'utf-8');
     const match = envContent.match(/^DATABASE_URL=["']?(.+?)["']?\s*$/m);
     databaseUrl = match?.[1];
   } catch {
-    // fall through — check env
+    // fall through
   }
 
   databaseUrl = databaseUrl || process.env.DATABASE_URL;
@@ -70,7 +63,4 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main();
