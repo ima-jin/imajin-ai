@@ -37,7 +37,7 @@ for app in "${APPS[@]}"; do
     continue
   fi
 
-  if npx tsx "$BASE_DIR/scripts/migrate-service.ts" "$app"; then
+  if node --experimental-strip-types --no-warnings "$BASE_DIR/scripts/migrate-service.ts" "$app"; then
     SUCCEEDED+=("$app")
   else
     FAILED+=("$app")
