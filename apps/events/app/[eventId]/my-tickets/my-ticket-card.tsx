@@ -237,7 +237,7 @@ function InlineRegForm({ ticketId, registrationFormId, onSuccess }: InlineRegFor
     <div>
       <iframe
         ref={iframeRef}
-        src={`${DYKIL_URL}/embed/${registrationFormId}`}
+        src={`${DYKIL_URL}/embed/${registrationFormId}?ticketId=${ticketId}`}
         className="w-full border-0"
         style={{ height: `${iframeHeight}px`, minHeight: '400px' }}
         title="Registration form"

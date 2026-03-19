@@ -66,6 +66,7 @@ export default function SurveyEmbedPage() {
   const searchParams = useSearchParams();
   const { surveyId } = params;
   const respondentDid = searchParams.get('respondentDid');
+  const ticketId = searchParams.get('ticketId');
 
   const [loading, setLoading] = useState(true);
   const [submitted, setSubmitted] = useState(false);
@@ -151,34 +152,36 @@ export default function SurveyEmbedPage() {
         // Allow HTML in question titles/descriptions (for links etc.)
         applyHtmlHandler(model);
 
-        // Check for existing response and pre-fill
-        try {
-          const storedResponseId = localStorage.getItem(`survey_${surveyId}_responseId`);
-          const checkUrl = new URL(`/api/surveys/${surveyId}/responses/check`, window.location.origin);
-          checkUrl.searchParams.set('include', 'answers');
-          if (storedResponseId) checkUrl.searchParams.set('responseId', storedResponseId);
+        // Check for existing response and pre-fill (skip when ticketId is set — each ticket gets a fresh form)
+        if (!ticketId) {
+          try {
+            const storedResponseId = localStorage.getItem(`survey_${surveyId}_responseId`);
+            const checkUrl = new URL(`/api/surveys/${surveyId}/responses/check`, window.location.origin);
+            checkUrl.searchParams.set('include', 'answers');
+            if (storedResponseId) checkUrl.searchParams.set('responseId', storedResponseId);
 
-          const checkRes = await fetch(checkUrl.toString(), { credentials: 'include' });
-          if (checkRes.ok) {
-            const checkData = await checkRes.json();
-            if (checkData.completed && checkData.answers) {
-              model.data = checkData.answers;
-              if (checkData.responseId) {
-                localStorage.setItem(`survey_${surveyId}_responseId`, checkData.responseId);
+            const checkRes = await fetch(checkUrl.toString(), { credentials: 'include' });
+            if (checkRes.ok) {
+              const checkData = await checkRes.json();
+              if (checkData.completed && checkData.answers) {
+                model.data = checkData.answers;
+                if (checkData.responseId) {
+                  localStorage.setItem(`survey_${surveyId}_responseId`, checkData.responseId);
+                }
+                // Show as already completed with pre-filled data
+                setSavedAnswers(checkData.answers);
+                setSubmitted(true);
+                setSurveyData(data);
+                surveyModelRef.current = model;
+                setSurveyModel(model);
+                // Notify parent that survey is already done
+                window.parent.postMessage({ type: 'survey-completed', surveyId }, '*');
+                return;
               }
-              // Show as already completed with pre-filled data
-              setSavedAnswers(checkData.answers);
-              setSubmitted(true);
-              setSurveyData(data);
-              surveyModelRef.current = model;
-              setSurveyModel(model);
-              // Notify parent that survey is already done
-              window.parent.postMessage({ type: 'survey-completed', surveyId }, '*');
-              return;
             }
+          } catch (e) {
+            // Non-fatal — just proceed without pre-fill
           }
-        } catch (e) {
-          // Non-fatal — just proceed without pre-fill
         }
 
         // Handle completion — clone data immediately since SurveyJS may mutate the reference
@@ -223,9 +226,10 @@ export default function SurveyEmbedPage() {
 
       if (res.ok) {
         const result = await res.json();
-        // Store response ID for anonymous pre-fill on reload
+        // Store response ID for pre-fill on reload (ticket-scoped when applicable)
         if (result.response?.id) {
-          localStorage.setItem(`survey_${surveyId}_responseId`, result.response.id);
+          const storageKey = ticketId ? `survey_${surveyId}_${ticketId}_responseId` : `survey_${surveyId}_responseId`;
+          localStorage.setItem(storageKey, result.response.id);
         }
       } else {
         const error = await res.json();
