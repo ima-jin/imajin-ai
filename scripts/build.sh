@@ -85,7 +85,9 @@ for app in "${APPS[@]}"; do
   if [ -f "apps/$app/drizzle.config.ts" ]; then
     echo "--- Migrating $app ---" | tee -a "$REPORT"
     cd "apps/$app"
-    export DATABASE_URL="$(grep '^DATABASE_URL=' .env.local 2>/dev/null | head -1 | cut -d= -f2-)"
+    _raw="$(grep '^DATABASE_URL=' .env.local 2>/dev/null | head -1 | cut -d= -f2-)"
+    export DATABASE_URL="${_raw%\"}"    # strip trailing quote
+    DATABASE_URL="${DATABASE_URL#\"}"   # strip leading quote
     if npx drizzle-kit migrate >> "$REPORT" 2>&1; then
       echo "✅ $app migrations" | tee -a "$REPORT"
     else

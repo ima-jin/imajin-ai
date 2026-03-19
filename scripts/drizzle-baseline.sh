@@ -40,7 +40,9 @@ for app in "${APPS[@]}"; do
 
   # Load DATABASE_URL from .env.local (grep instead of source — env files have unquoted special chars)
   if [ -f .env.local ]; then
-    export DATABASE_URL="$(grep '^DATABASE_URL=' .env.local | head -1 | cut -d= -f2-)"
+    _raw="$(grep '^DATABASE_URL=' .env.local | head -1 | cut -d= -f2-)"
+    export DATABASE_URL="${_raw%\"}"    # strip trailing quote
+    DATABASE_URL="${DATABASE_URL#\"}"   # strip leading quote
   else
     echo "⚠️  $app — no .env.local found, DATABASE_URL must already be set"
   fi

@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "drizzle-kit": "^0.31.9",
     "@types/prismjs": "^1.26.6",
     "@types/react": "^18",
     "autoprefixer": "^10",
