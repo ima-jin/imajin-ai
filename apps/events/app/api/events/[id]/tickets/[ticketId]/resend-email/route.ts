@@ -87,12 +87,21 @@ export async function POST(
       .where(eq(ticketRegistrations.ticketId, ticketId))
       .limit(1);
 
-    // Determine email: registration.email > decode from owner_did
+    // Determine email: registration.email > profile.email > decode from did:email:*
     let customerEmail: string | null = null;
     if (registration?.email) {
       customerEmail = registration.email;
     } else if (ticket.ownerDid) {
-      customerEmail = decodeEmailFromDid(ticket.ownerDid);
+      // Try profile service for hard DID email
+      const profileSql = getClient();
+      const profileRows = await profileSql`
+        SELECT email FROM profile.profiles WHERE did = ${ticket.ownerDid} LIMIT 1
+      `;
+      if (profileRows.length > 0 && profileRows[0].email) {
+        customerEmail = profileRows[0].email;
+      } else {
+        customerEmail = decodeEmailFromDid(ticket.ownerDid);
+      }
     }
 
     if (!customerEmail) {
