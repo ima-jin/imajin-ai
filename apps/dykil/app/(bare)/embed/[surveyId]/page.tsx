@@ -152,13 +152,22 @@ export default function SurveyEmbedPage() {
         // Allow HTML in question titles/descriptions (for links etc.)
         applyHtmlHandler(model);
 
-        // Check for existing response and pre-fill (skip when ticketId is set — each ticket gets a fresh form)
-        if (!ticketId) {
-          try {
-            const storedResponseId = localStorage.getItem(`survey_${surveyId}_responseId`);
+        // Check for existing response and pre-fill
+        // When ticketId is set, use ticket-scoped localStorage key (so each ticket has its own response)
+        // When no ticketId, use the default survey-scoped key + session DID check
+        try {
+          const storageKey = ticketId ? `survey_${surveyId}_${ticketId}_responseId` : `survey_${surveyId}_responseId`;
+          const storedResponseId = localStorage.getItem(storageKey);
+          
+          // For ticket-scoped embeds, only check by responseId (not session DID — that would find other tickets' responses)
+          if (ticketId && !storedResponseId) {
+            // No stored response for this ticket — show fresh form
+          } else {
             const checkUrl = new URL(`/api/surveys/${surveyId}/responses/check`, window.location.origin);
             checkUrl.searchParams.set('include', 'answers');
             if (storedResponseId) checkUrl.searchParams.set('responseId', storedResponseId);
+            // Skip DID-based lookup for ticket-scoped embeds
+            if (ticketId) checkUrl.searchParams.set('skipDid', 'true');
 
             const checkRes = await fetch(checkUrl.toString(), { credentials: 'include' });
             if (checkRes.ok) {
@@ -166,7 +175,7 @@ export default function SurveyEmbedPage() {
               if (checkData.completed && checkData.answers) {
                 model.data = checkData.answers;
                 if (checkData.responseId) {
-                  localStorage.setItem(`survey_${surveyId}_responseId`, checkData.responseId);
+                  localStorage.setItem(storageKey, checkData.responseId);
                 }
                 // Show as already completed with pre-filled data
                 setSavedAnswers(checkData.answers);
@@ -179,9 +188,9 @@ export default function SurveyEmbedPage() {
                 return;
               }
             }
-          } catch (e) {
-            // Non-fatal — just proceed without pre-fill
           }
+        } catch (e) {
+          // Non-fatal — just proceed without pre-fill
         }
 
         // Handle completion — clone data immediately since SurveyJS may mutate the reference

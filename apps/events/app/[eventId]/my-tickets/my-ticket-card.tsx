@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 
 interface Props {
   ticketId: string;
@@ -24,15 +23,15 @@ export function MyTicketCard({
   pricePaid,
   currency,
   purchasedAt,
-  registrationStatus,
+  registrationStatus: initialStatus,
   registrationFormId,
   registration,
   qrCodeDataUri,
   autoExpand,
 }: Props) {
   const [formOpen, setFormOpen] = useState(autoExpand);
+  const [regStatus, setRegStatus] = useState(initialStatus);
   const ref = useRef<HTMLDivElement>(null);
-  const router = useRouter();
 
   useEffect(() => {
     if (autoExpand && ref.current) {
@@ -57,8 +56,8 @@ export function MyTicketCard({
       })
     : null;
 
-  const isPending = registrationStatus === 'pending';
-  const isComplete = registrationStatus === 'complete';
+  const isPending = regStatus === 'pending';
+  const isComplete = regStatus === 'complete';
 
   const borderClass = isPending
     ? 'border-yellow-400 dark:border-yellow-500'
@@ -89,7 +88,7 @@ export function MyTicketCard({
             </div>
             <p className="font-mono text-[10px] text-gray-400 mt-0.5">{ticketId}</p>
           </div>
-          <RegistrationBadge status={registrationStatus} />
+          <RegistrationBadge status={regStatus} />
         </div>
 
         {/* Completed: show attendee info + QR */}
@@ -134,24 +133,28 @@ export function MyTicketCard({
           </div>
         )}
 
-        {/* Pending: Complete Registration button */}
-        {isPending && (
+        {/* Registration form toggle */}
+        {registrationFormId && (
           <button
             onClick={() => setFormOpen(!formOpen)}
-            className="mt-2 w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition text-sm"
+            className={`mt-2 w-full py-2.5 font-semibold rounded-xl transition text-sm ${
+              isPending
+                ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
+            }`}
           >
-            {formOpen ? '✕ Close' : '📝 Complete Registration'}
+            {formOpen ? '✕ Close' : isPending ? '📝 Complete Registration' : '📋 View Registration'}
           </button>
         )}
       </div>
 
-      {/* Inline registration form */}
-      {isPending && formOpen && (
-        <div className="border-t border-yellow-200 dark:border-yellow-900/30 px-6 pb-6 pt-4 bg-white/50 dark:bg-gray-800/50">
+      {/* Inline registration form — stays visible after completion so user can view/edit response */}
+      {formOpen && registrationFormId && (
+        <div className="border-t border-gray-200 dark:border-gray-700/30 px-6 pb-6 pt-4 bg-white/50 dark:bg-gray-800/50">
           <InlineRegForm
             ticketId={ticketId}
             registrationFormId={registrationFormId}
-            onSuccess={() => router.refresh()}
+            onSuccess={() => setRegStatus('complete')}
           />
         </div>
       )}
