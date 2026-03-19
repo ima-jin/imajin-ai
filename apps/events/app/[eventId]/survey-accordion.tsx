@@ -2,23 +2,27 @@
 
 import { useState, useEffect, useRef } from 'react';
 
-interface EventSurveyAccordionProps {
+interface SurveyAccordionProps {
   eventId: string;
   surveyId: string;
   surveyTitle: string;
   surveyType?: 'pre-event' | 'post-event' | 'survey' | 'form';
   requiresTicket?: boolean;
+  defaultExpanded?: boolean;
+  onComplete?: () => void;
 }
 
-export function EventSurveyAccordion({
+export function SurveyAccordion({
   eventId,
   surveyId,
   surveyTitle,
   surveyType,
   requiresTicket = false,
-}: EventSurveyAccordionProps) {
+  defaultExpanded = false,
+  onComplete,
+}: SurveyAccordionProps) {
   const storageKey = `survey_completed_${surveyId}`;
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [iframeHeight, setIframeHeight] = useState(600);
   const [isCompleted, setIsCompleted] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
@@ -47,6 +51,7 @@ export function EventSurveyAccordion({
       } else if (event.data.type === 'survey-completed') {
         setIsCompleted(true);
         try { localStorage.setItem(storageKey, 'true'); } catch {}
+        onComplete?.();
       }
     };
 

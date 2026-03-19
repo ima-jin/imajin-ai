@@ -31,14 +31,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const didParam = request.nextUrl.searchParams.get('did');
   const responseIdParam = request.nextUrl.searchParams.get('responseId');
   const includeAnswers = request.nextUrl.searchParams.get('include') === 'answers';
-  const skipDid = request.nextUrl.searchParams.get('skipDid') === 'true';
 
   try {
     let existing: any = null;
 
-    // Priority 1: session cookie (most secure) — skip when ticket-scoped to avoid cross-ticket matches
+    // Priority 1: session cookie (most secure)
     const session = await getSession();
-    if (session?.id && !skipDid) {
+    if (session?.id) {
       existing = await db.query.surveyResponses.findFirst({
         where: (r, { eq, and }) => and(eq(r.surveyId, id), eq(r.respondentDid, session.id)),
         columns: includeAnswers ? { id: true, answers: true } : { id: true },

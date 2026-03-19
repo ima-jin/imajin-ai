@@ -11,7 +11,7 @@ const sql = getClient();
 export const revalidate = 0; // always fresh — event data changes frequently during editing
 import { Countdown } from './countdown';
 import { EventLobbyAccordion } from './event-lobby-accordion';
-import { EventSurveyAccordion } from './event-survey-accordion';
+import { SurveyAccordion } from './survey-accordion';
 import { FairAccordion } from '@imajin/fair';
 import { TicketsGate } from './tickets-gate';
 import { ShareButton } from './share-button';
@@ -576,7 +576,7 @@ export default async function EventPage({ params, searchParams }: Props) {
           const settings = linkedSurveySettings[survey.id];
           return (
             <div key={survey.id} className="mb-6">
-              <EventSurveyAccordion
+              <SurveyAccordion
                 eventId={event.id}
                 surveyId={survey.id}
                 surveyTitle={survey.title}

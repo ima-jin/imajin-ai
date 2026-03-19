@@ -66,7 +66,6 @@ export default function SurveyEmbedPage() {
   const searchParams = useSearchParams();
   const { surveyId } = params;
   const respondentDid = searchParams.get('respondentDid');
-  const ticketId = searchParams.get('ticketId');
 
   const [loading, setLoading] = useState(true);
   const [submitted, setSubmitted] = useState(false);
@@ -153,40 +152,29 @@ export default function SurveyEmbedPage() {
         applyHtmlHandler(model);
 
         // Check for existing response and pre-fill
-        // When ticketId is set, use ticket-scoped localStorage key (so each ticket has its own response)
-        // When no ticketId, use the default survey-scoped key + session DID check
         try {
-          const storageKey = ticketId ? `survey_${surveyId}_${ticketId}_responseId` : `survey_${surveyId}_responseId`;
-          const storedResponseId = localStorage.getItem(storageKey);
-          
-          // For ticket-scoped embeds, only check by responseId (not session DID — that would find other tickets' responses)
-          if (ticketId && !storedResponseId) {
-            // No stored response for this ticket — show fresh form
-          } else {
-            const checkUrl = new URL(`/api/surveys/${surveyId}/responses/check`, window.location.origin);
-            checkUrl.searchParams.set('include', 'answers');
-            if (storedResponseId) checkUrl.searchParams.set('responseId', storedResponseId);
-            // Skip DID-based lookup for ticket-scoped embeds
-            if (ticketId) checkUrl.searchParams.set('skipDid', 'true');
+          const storedResponseId = localStorage.getItem(`survey_${surveyId}_responseId`);
+          const checkUrl = new URL(`/api/surveys/${surveyId}/responses/check`, window.location.origin);
+          checkUrl.searchParams.set('include', 'answers');
+          if (storedResponseId) checkUrl.searchParams.set('responseId', storedResponseId);
 
-            const checkRes = await fetch(checkUrl.toString(), { credentials: 'include' });
-            if (checkRes.ok) {
-              const checkData = await checkRes.json();
-              if (checkData.completed && checkData.answers) {
-                model.data = checkData.answers;
-                if (checkData.responseId) {
-                  localStorage.setItem(storageKey, checkData.responseId);
-                }
-                // Show as already completed with pre-filled data
-                setSavedAnswers(checkData.answers);
-                setSubmitted(true);
-                setSurveyData(data);
-                surveyModelRef.current = model;
-                setSurveyModel(model);
-                // Notify parent that survey is already done
-                window.parent.postMessage({ type: 'survey-completed', surveyId }, '*');
-                return;
+          const checkRes = await fetch(checkUrl.toString(), { credentials: 'include' });
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            if (checkData.completed && checkData.answers) {
+              model.data = checkData.answers;
+              if (checkData.responseId) {
+                localStorage.setItem(`survey_${surveyId}_responseId`, checkData.responseId);
               }
+              // Show as already completed with pre-filled data
+              setSavedAnswers(checkData.answers);
+              setSubmitted(true);
+              setSurveyData(data);
+              surveyModelRef.current = model;
+              setSurveyModel(model);
+              // Notify parent that survey is already done
+              window.parent.postMessage({ type: 'survey-completed', surveyId }, '*');
+              return;
             }
           }
         } catch (e) {
@@ -218,9 +206,9 @@ export default function SurveyEmbedPage() {
       surveyModelRef.current.data = data;
     }
     setSubmitted(true);
-    // Notify parent iframe immediately
+    // Notify parent iframe immediately — include answers so host can extract name/email
     window.parent.postMessage(
-      { type: 'survey-completed', surveyId },
+      { type: 'survey-completed', surveyId, answers: data },
       '*'
     );
 
@@ -235,10 +223,9 @@ export default function SurveyEmbedPage() {
 
       if (res.ok) {
         const result = await res.json();
-        // Store response ID for pre-fill on reload (ticket-scoped when applicable)
+        // Store response ID for anonymous pre-fill on reload
         if (result.response?.id) {
-          const storageKey = ticketId ? `survey_${surveyId}_${ticketId}_responseId` : `survey_${surveyId}_responseId`;
-          localStorage.setItem(storageKey, result.response.id);
+          localStorage.setItem(`survey_${surveyId}_responseId`, result.response.id);
         }
       } else {
         const error = await res.json();

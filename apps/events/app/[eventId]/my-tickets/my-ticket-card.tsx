@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { SurveyAccordion } from '../survey-accordion';
 
 interface Props {
   ticketId: string;
@@ -29,7 +30,6 @@ export function MyTicketCard({
   qrCodeDataUri,
   autoExpand,
 }: Props) {
-  const [formOpen, setFormOpen] = useState(autoExpand);
   const [regStatus, setRegStatus] = useState(initialStatus);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -70,6 +70,19 @@ export function MyTicketCard({
     : isComplete
     ? 'bg-green-50/30 dark:bg-green-900/5'
     : 'bg-orange-50/30 dark:bg-orange-900/5';
+
+  async function markRegistered() {
+    try {
+      await fetch(`/api/register/${ticketId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formId: registrationFormId }),
+      });
+      setRegStatus('complete');
+    } catch {
+      // Non-fatal — survey is already saved in Dykil
+    }
+  }
 
   return (
     <div ref={ref} className={`rounded-2xl border-2 overflow-hidden ${borderClass} ${bgClass}`}>
@@ -132,31 +145,18 @@ export function MyTicketCard({
             </div>
           </div>
         )}
-
-        {/* Registration form toggle */}
-        {registrationFormId && (
-          <button
-            onClick={() => setFormOpen(!formOpen)}
-            className={`mt-2 w-full py-2.5 font-semibold rounded-xl transition text-sm ${
-              isPending
-                ? 'bg-orange-500 hover:bg-orange-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
-            }`}
-          >
-            {formOpen ? '✕ Close' : isPending ? '📝 Complete Registration' : '📋 View Registration'}
-          </button>
-        )}
       </div>
 
-      {/* Inline registration form — stays visible after completion so user can view/edit response */}
-      {formOpen && registrationFormId && (
-        <div className="border-t border-gray-200 dark:border-gray-700/30 px-6 pb-6 pt-4 bg-white/50 dark:bg-gray-800/50">
-          <InlineRegForm
-            ticketId={ticketId}
-            registrationFormId={registrationFormId}
-            onSuccess={() => setRegStatus('complete')}
-          />
-        </div>
+      {/* Registration survey — reuses SurveyAccordion */}
+      {registrationFormId && (
+        <SurveyAccordion
+          eventId={eventId}
+          surveyId={registrationFormId}
+          surveyTitle={isPending ? 'Complete Registration' : 'Registration'}
+          surveyType="form"
+          defaultExpanded={autoExpand}
+          onComplete={markRegistered}
+        />
       )}
     </div>
   );
@@ -178,84 +178,4 @@ function RegistrationBadge({ status }: { status: string }) {
     );
   }
   return null;
-}
-
-interface InlineRegFormProps {
-  ticketId: string;
-  registrationFormId: string | null;
-  onSuccess: () => void;
-}
-
-function InlineRegForm({ ticketId, registrationFormId, onSuccess }: InlineRegFormProps) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [iframeHeight, setIframeHeight] = useState(600);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
-
-  useEffect(() => {
-    if (!registrationFormId) return;
-
-    const handleMessage = (event: MessageEvent) => {
-      if (!event.origin.includes('dykil')) return;
-
-      if (event.data.type === 'survey-height') {
-        setIframeHeight(event.data.height + 40);
-      } else if (event.data.type === 'survey-completed') {
-        markRegistered();
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registrationFormId]);
-
-  async function markRegistered() {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await fetch(`/api/register/${ticketId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formId: registrationFormId }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Registration failed. Please try again.');
-        return;
-      }
-      onSuccess();
-    } catch {
-      setError('Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (!registrationFormId) return null;
-
-  return (
-    <div>
-      <iframe
-        ref={iframeRef}
-        src={`${DYKIL_URL}/embed/${registrationFormId}?ticketId=${ticketId}`}
-        className="w-full border-0"
-        style={{ height: `${iframeHeight}px`, minHeight: '400px' }}
-        title="Registration form"
-        allow="clipboard-write"
-      />
-      {loading && (
-        <div className="text-center text-sm text-orange-500 font-medium py-2">
-          Completing registration...
-        </div>
-      )}
-      {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
-          {error}
-        </div>
-      )}
-    </div>
-  );
 }
