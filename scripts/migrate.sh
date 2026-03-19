@@ -1,5 +1,8 @@
 #!/bin/bash
-# Run pending drizzle-kit migrations for all (or specified) services.
+# Run pending drizzle migrations for all (or specified) services.
+#
+# Uses per-service migration tables (__drizzle_migrations_<app>) so that
+# services sharing the same database don't interfere with each other.
 #
 # Usage: ./scripts/migrate.sh [app1 app2 ...]
 # If no apps specified, runs for all apps with drizzle.config.ts
@@ -29,35 +32,16 @@ for app in "${APPS[@]}"; do
     continue
   fi
 
-  echo ""
-  echo "=== Migrating $app ==="
-  cd "$APP_DIR"
-
-  # Load DATABASE_URL from .env.local (grep instead of source — env files have unquoted special chars)
-  if [ -f .env.local ]; then
-    _raw="$(grep '^DATABASE_URL=' .env.local | head -1 | cut -d= -f2-)"
-    export DATABASE_URL="${_raw%\"}"    # strip trailing quote
-    DATABASE_URL="${DATABASE_URL#\"}"   # strip leading quote
-  else
-    echo "⚠️  $app — no .env.local found, DATABASE_URL must already be set"
-  fi
-
-  if [ -z "$DATABASE_URL" ]; then
-    echo "❌ $app — DATABASE_URL is not set, skipping"
-    FAILED+=("$app")
-    cd "$BASE_DIR"
+  if [ ! -d "$APP_DIR/drizzle" ]; then
+    echo "⚠️  $app — no drizzle/ directory, skipping"
     continue
   fi
 
-  if npx drizzle-kit migrate; then
+  if npx tsx "$BASE_DIR/scripts/migrate-service.ts" "$app"; then
     SUCCEEDED+=("$app")
-    echo "✅ $app"
   else
     FAILED+=("$app")
-    echo "❌ $app — migration failed"
   fi
-
-  cd "$BASE_DIR"
 done
 
 echo ""
