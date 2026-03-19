@@ -239,8 +239,8 @@ export const ticketRegistrations = eventsSchema.table('ticket_registrations', {
   id: text('id').primaryKey(),                              // reg_xxx
   ticketId: text('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
   eventId: text('event_id').notNull().references(() => events.id),
-  name: text('name').notNull(),
-  email: text('email').notNull(),
+  name: text('name'),
+  email: text('email'),
   formId: text('form_id').notNull(),                        // Dykil form ID
   responseId: text('response_id'),                          // Dykil response ID
   registeredByDid: text('registered_by_did'),
