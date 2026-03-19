@@ -38,9 +38,9 @@ for app in "${APPS[@]}"; do
   echo "=== Baselining $app ==="
   cd "$APP_DIR"
 
-  # Load DATABASE_URL from .env.local
+  # Load DATABASE_URL from .env.local (grep instead of source — env files have unquoted special chars)
   if [ -f .env.local ]; then
-    set -a; source .env.local; set +a
+    export DATABASE_URL="$(grep '^DATABASE_URL=' .env.local | head -1 | cut -d= -f2-)"
   else
     echo "⚠️  $app — no .env.local found, DATABASE_URL must already be set"
   fi
