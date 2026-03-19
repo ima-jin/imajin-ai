@@ -192,6 +192,7 @@ function MyTicketsTab({ userTickets, eventId }: { userTickets: UserTicket[]; eve
                 surveyTitle={ticket.registrationStatus === 'pending' ? 'Complete Registration' : 'Registration'}
                 surveyType="form"
                 defaultExpanded={ticket.registrationStatus === 'pending'}
+                ticketId={ticket.id}
               />
             )}
           </div>

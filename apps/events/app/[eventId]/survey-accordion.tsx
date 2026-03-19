@@ -10,6 +10,7 @@ interface SurveyAccordionProps {
   requiresTicket?: boolean;
   defaultExpanded?: boolean;
   onComplete?: () => void;
+  ticketId?: string;
 }
 
 export function SurveyAccordion({
@@ -20,6 +21,7 @@ export function SurveyAccordion({
   requiresTicket = false,
   defaultExpanded = false,
   onComplete,
+  ticketId,
 }: SurveyAccordionProps) {
   const storageKey = `survey_completed_${surveyId}`;
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -29,7 +31,7 @@ export function SurveyAccordion({
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
-  const embedUrl = `${DYKIL_URL}/embed/${surveyId}`;
+  const embedUrl = `${DYKIL_URL}/embed/${surveyId}${ticketId ? `?ticketId=${ticketId}` : ''}`;
 
   // Restore completion state from localStorage on mount
   useEffect(() => {

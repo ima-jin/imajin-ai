@@ -97,6 +97,7 @@ export default function SurveyEmbedPage() {
   const searchParams = useSearchParams();
   const { surveyId } = params;
   const respondentDid = searchParams.get('respondentDid');
+  const ticketId = searchParams.get('ticketId');
 
   const [loading, setLoading] = useState(true);
   const [submitted, setSubmitted] = useState(false);
@@ -183,11 +184,20 @@ export default function SurveyEmbedPage() {
         applyHtmlHandler(model);
 
         // Check for existing response and pre-fill
+        // When ticketId is set, only check by ticket-scoped responseId (not session DID)
         try {
-          const storedResponseId = localStorage.getItem(`survey_${surveyId}_responseId`);
+          const storageKey = ticketId ? `survey_${surveyId}_${ticketId}_responseId` : `survey_${surveyId}_responseId`;
+          const storedResponseId = localStorage.getItem(storageKey);
+
+          // Ticket-scoped: no stored response means fresh form
+          if (ticketId && !storedResponseId) {
+            // Skip check — show fresh form for this ticket
+          } else {
+
           const checkUrl = new URL(`/api/surveys/${surveyId}/responses/check`, window.location.origin);
           checkUrl.searchParams.set('include', 'answers');
           if (storedResponseId) checkUrl.searchParams.set('responseId', storedResponseId);
+          if (ticketId) checkUrl.searchParams.set('skipDid', 'true');
 
           const checkRes = await fetch(checkUrl.toString(), { credentials: 'include' });
           if (checkRes.ok) {
@@ -195,7 +205,7 @@ export default function SurveyEmbedPage() {
             if (checkData.completed && checkData.answers) {
               model.data = checkData.answers;
               if (checkData.responseId) {
-                localStorage.setItem(`survey_${surveyId}_responseId`, checkData.responseId);
+                localStorage.setItem(storageKey, checkData.responseId);
               }
               // Show as already completed with pre-filled data
               setSavedAnswers(checkData.answers);
@@ -208,6 +218,8 @@ export default function SurveyEmbedPage() {
               return;
             }
           }
+
+          } // end else (has storedResponseId or no ticketId)
         } catch (e) {
           // Non-fatal — just proceed without pre-fill
         }
@@ -256,7 +268,7 @@ export default function SurveyEmbedPage() {
         const result = await res.json();
         // Store response ID for anonymous pre-fill on reload
         if (result.response?.id) {
-          localStorage.setItem(`survey_${surveyId}_responseId`, result.response.id);
+          localStorage.setItem(ticketId ? `survey_${surveyId}_${ticketId}_responseId` : `survey_${surveyId}_responseId`, result.response.id);
         }
       } else {
         const error = await res.json();
