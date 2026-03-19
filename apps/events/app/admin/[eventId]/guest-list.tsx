@@ -23,6 +23,7 @@ interface Guest {
   profile: Profile | null;
   registrationStatus: string | null;
   attendeeName: string | null;
+  lastEmailSentAt: string | null;
 }
 
 interface GuestListProps {
@@ -125,6 +126,11 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmRefund, setConfirmRefund] = useState<string | null>(null);
   const [confirmETransfer, setConfirmETransfer] = useState<string | null>(null);
+  const [surveyModalTicketId, setSurveyModalTicketId] = useState<string | null>(null);
+  const [surveyQuestions, setSurveyQuestions] = useState<Array<{ question: string; answer: unknown }>>([]);
+  const [surveyLoading, setSurveyLoading] = useState(false);
+  const [resendState, setResendState] = useState<Record<string, 'sending' | 'sent'>>({});
+  const [resendToast, setResendToast] = useState<{ email: string } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -178,6 +184,50 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
       alert('Confirmation failed');
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleResendEmail = async (ticketId: string) => {
+    setResendState(prev => ({ ...prev, [ticketId]: 'sending' }));
+    const minWait = new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      const [res] = await Promise.all([
+        fetch(`/api/events/${eventId}/tickets/${ticketId}/resend-email`, { method: 'POST' }),
+        minWait,
+      ]);
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to resend email');
+        setResendState(prev => { const n = { ...prev }; delete n[ticketId]; return n; });
+        return;
+      }
+      // Update the guest's lastEmailSentAt locally
+      setGuests(prev => prev.map(g =>
+        g.id === ticketId ? { ...g, lastEmailSentAt: data.lastEmailSentAt || new Date().toISOString() } : g
+      ));
+      setResendState(prev => ({ ...prev, [ticketId]: 'sent' }));
+      setResendToast({ email: data.email });
+      setTimeout(() => setResendToast(null), 4000);
+    } catch {
+      alert('Failed to resend email');
+      setResendState(prev => { const n = { ...prev }; delete n[ticketId]; return n; });
+    }
+  };
+
+  const handleViewSurvey = async (ticketId: string) => {
+    setSurveyModalTicketId(ticketId);
+    setSurveyQuestions([]);
+    setSurveyLoading(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}/tickets/${ticketId}/registration`);
+      const data = await res.json();
+      if (res.ok) {
+        setSurveyQuestions(data.questions || []);
+      }
+    } catch {
+      // silently fail — modal still shows with empty state
+    } finally {
+      setSurveyLoading(false);
     }
   };
 
@@ -350,8 +400,9 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                   <td className="px-4 py-3">
                     <ProfileCell ownerDid={guest.ownerDid} profile={guest.profile} paymentMethod={guest.paymentMethod} paymentId={guest.paymentId} />
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                    {guest.ticketType}
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="text-sm text-gray-700 dark:text-gray-300">{guest.ticketType}</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5">{guest.id}</div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <StatusBadge status={guest.status} paymentMethod={guest.paymentMethod} />
@@ -369,6 +420,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                     <RegistrationCell
                       status={guest.registrationStatus}
                       attendeeName={guest.attendeeName}
+                      onViewSurvey={guest.registrationStatus === 'complete' ? () => handleViewSurvey(guest.id) : undefined}
                     />
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
@@ -376,12 +428,14 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                       guest={guest}
                       isOwner={isOwner}
                       loading={actionLoading === guest.id}
+                      resendState={resendState[guest.id]}
                       confirmRefund={confirmRefund === guest.id}
                       onCheckIn={() => handleCheckIn(guest.id)}
                       onRefundRequest={() => setConfirmRefund(guest.id)}
                       onRefundConfirm={() => handleRefund(guest.id)}
                       onRefundCancel={() => setConfirmRefund(null)}
                       onConfirmETransfer={() => setConfirmETransfer(guest.id)}
+                      onResendEmail={() => handleResendEmail(guest.id)}
                     />
                   </td>
                 </tr>
@@ -418,6 +472,63 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
         </div>
       )}
 
+      {/* Survey answers modal */}
+      {surveyModalTicketId && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-lg w-full max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Registration Answers</h3>
+              <button
+                onClick={() => setSurveyModalTicketId(null)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition text-xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {surveyLoading ? (
+                <p className="text-sm text-gray-500">Loading...</p>
+              ) : surveyQuestions.length === 0 ? (
+                <p className="text-sm text-gray-500">No survey answers recorded.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {surveyQuestions.map((qa, i) => (
+                      <tr key={i}>
+                        <td className="py-2 pr-4 font-medium text-gray-700 dark:text-gray-300 w-2/5 align-top">{qa.question}</td>
+                        <td className="py-2 text-gray-600 dark:text-gray-400 break-words">
+                          {qa.answer === null || qa.answer === undefined
+                            ? <span className="text-gray-400">—</span>
+                            : typeof qa.answer === 'object'
+                              ? JSON.stringify(qa.answer)
+                              : String(qa.answer)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => setSurveyModalTicketId(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resend email success toast */}
+      {resendToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-gray-900 text-white px-4 py-3 rounded-lg shadow-lg text-sm flex items-center gap-2">
+          <span className="text-green-400">✓</span>
+          Email resent to {resendToast.email}
+        </div>
+      )}
+
       {/* Refund confirmation dialog */}
       {confirmRefund && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -447,16 +558,20 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   );
 }
 
-function RegistrationCell({ status, attendeeName }: { status: string | null; attendeeName: string | null }) {
+function RegistrationCell({ status, attendeeName, onViewSurvey }: { status: string | null; attendeeName: string | null; onViewSurvey?: () => void }) {
   if (!status || status === 'not_required') {
     return <span className="text-xs text-gray-400">—</span>;
   }
   if (status === 'complete') {
     return (
       <div>
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400">
+        <button
+          onClick={onViewSurvey}
+          disabled={!onViewSurvey}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/60 transition disabled:cursor-default"
+        >
           ✅ Registered
-        </span>
+        </button>
         {attendeeName && (
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{attendeeName}</p>
         )}
@@ -513,20 +628,75 @@ interface ActionsCellProps {
   guest: Guest;
   isOwner: boolean;
   loading: boolean;
+  resendState?: 'sending' | 'sent';
   confirmRefund: boolean;
   onCheckIn: () => void;
   onRefundRequest: () => void;
   onRefundConfirm: () => void;
   onRefundCancel: () => void;
   onConfirmETransfer: () => void;
+  onResendEmail: () => void;
 }
 
-function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onConfirmETransfer }: ActionsCellProps) {
+function timeAgo(dateStr: string): string {
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
+
+function ResendEmailButton({ loading, resendState, lastEmailSentAt, onResendEmail }: {
+  loading: boolean;
+  resendState?: 'sending' | 'sent';
+  lastEmailSentAt: string | null;
+  onResendEmail: () => void;
+}) {
+  const onCooldown = lastEmailSentAt && (Date.now() - new Date(lastEmailSentAt).getTime()) < COOLDOWN_MS;
+  const isSending = resendState === 'sending';
+  const isSent = resendState === 'sent';
+  const disabled = loading || isSending || !!onCooldown;
+
+  if (isSent && lastEmailSentAt) {
+    return (
+      <span className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-green-600 dark:text-green-400">
+        ✓ Sent {timeAgo(lastEmailSentAt)}
+      </span>
+    );
+  }
+
+  if (onCooldown && lastEmailSentAt) {
+    return (
+      <span className="inline-flex items-center gap-1 px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500" title={`Last sent ${new Date(lastEmailSentAt).toLocaleString()}`}>
+        Sent {timeAgo(lastEmailSentAt)}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      onClick={onResendEmail}
+      disabled={disabled}
+      className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg transition disabled:opacity-50"
+    >
+      {isSending ? 'Sending…' : lastEmailSentAt ? `Resend (${timeAgo(lastEmailSentAt)})` : 'Resend Email'}
+    </button>
+  );
+}
+
+function ActionsCell({ guest, isOwner, loading, resendState, onCheckIn, onRefundRequest, onConfirmETransfer, onResendEmail }: ActionsCellProps) {
   const isValid = guest.status === 'valid';
   const isCheckedIn = !!guest.usedAt;
   const isRefunded = guest.status === 'refunded';
   const isFree = !guest.pricePaid || guest.pricePaid === 0;
   const isPendingETransfer = guest.status === 'held' && guest.paymentMethod === 'etransfer';
+
+  const resendBtn = <ResendEmailButton loading={loading} resendState={resendState} lastEmailSentAt={guest.lastEmailSentAt} onResendEmail={onResendEmail} />;
 
   if (isRefunded) {
     return (
@@ -546,22 +716,29 @@ function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onCo
 
   if (isPendingETransfer) {
     return (
-      <button
-        onClick={onConfirmETransfer}
-        disabled={loading}
-        className="px-3 py-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition disabled:opacity-50"
-      >
-        {loading ? '…' : 'Confirm e-Transfer'}
-      </button>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={onConfirmETransfer}
+          disabled={loading}
+          className="px-3 py-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition disabled:opacity-50"
+        >
+          {loading ? '…' : 'Confirm e-Transfer'}
+        </button>
+        {resendBtn}
+      </div>
     );
   }
 
   if (!isValid) {
-    return <span className="text-xs text-gray-400">—</span>;
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        {resendBtn}
+      </div>
+    );
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 flex-wrap">
       <button
         onClick={onCheckIn}
         disabled={loading}
@@ -569,6 +746,7 @@ function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onCo
       >
         {loading ? '…' : 'Check In'}
       </button>
+      {resendBtn}
       {isOwner && !isFree && (
         <button
           onClick={onRefundRequest}

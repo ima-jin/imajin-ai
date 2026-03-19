@@ -1,0 +1,1 @@
+ALTER TABLE "events"."tickets" ADD COLUMN "last_email_sent_at" timestamp with time zone;

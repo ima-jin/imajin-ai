@@ -156,6 +156,10 @@ export const tickets = eventsSchema.table('tickets', {
   // Registration status: not_required | pending | complete
   registrationStatus: text('registration_status').notNull().default('not_required'),
 
+  // Last time a confirmation/reminder email was (re)sent by an admin
+  // SQL: ALTER TABLE events.tickets ADD COLUMN IF NOT EXISTS last_email_sent_at TIMESTAMPTZ;
+  lastEmailSentAt: timestamp('last_email_sent_at', { withTimezone: true }),
+
   metadata: jsonb('metadata').default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
