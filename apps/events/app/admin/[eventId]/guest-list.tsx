@@ -390,8 +390,9 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                   <td className="px-4 py-3">
                     <ProfileCell ownerDid={guest.ownerDid} profile={guest.profile} paymentMethod={guest.paymentMethod} paymentId={guest.paymentId} />
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                    {guest.ticketType}
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="text-sm text-gray-700 dark:text-gray-300">{guest.ticketType}</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5">{guest.id}</div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <StatusBadge status={guest.status} paymentMethod={guest.paymentMethod} />
@@ -627,6 +628,18 @@ interface ActionsCellProps {
   onResendEmail: () => void;
 }
 
+function ResendEmailButton({ loading, resendLoading, onResendEmail }: { loading: boolean; resendLoading: boolean; onResendEmail: () => void }) {
+  return (
+    <button
+      onClick={onResendEmail}
+      disabled={loading || resendLoading}
+      className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg transition disabled:opacity-50"
+    >
+      {resendLoading ? '…' : 'Resend Email'}
+    </button>
+  );
+}
+
 function ActionsCell({ guest, isOwner, loading, resendLoading, onCheckIn, onRefundRequest, onConfirmETransfer, onResendEmail }: ActionsCellProps) {
   const isValid = guest.status === 'valid';
   const isCheckedIn = !!guest.usedAt;
@@ -644,26 +657,36 @@ function ActionsCell({ guest, isOwner, loading, resendLoading, onCheckIn, onRefu
 
   if (isCheckedIn) {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
-        ✓ Checked In
-      </span>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
+          ✓ Checked In
+        </span>
+        <ResendEmailButton loading={loading} resendLoading={resendLoading} onResendEmail={onResendEmail} />
+      </div>
     );
   }
 
   if (isPendingETransfer) {
     return (
-      <button
-        onClick={onConfirmETransfer}
-        disabled={loading}
-        className="px-3 py-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition disabled:opacity-50"
-      >
-        {loading ? '…' : 'Confirm e-Transfer'}
-      </button>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={onConfirmETransfer}
+          disabled={loading}
+          className="px-3 py-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition disabled:opacity-50"
+        >
+          {loading ? '…' : 'Confirm e-Transfer'}
+        </button>
+        <ResendEmailButton loading={loading} resendLoading={resendLoading} onResendEmail={onResendEmail} />
+      </div>
     );
   }
 
   if (!isValid) {
-    return <span className="text-xs text-gray-400">—</span>;
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        <ResendEmailButton loading={loading} resendLoading={resendLoading} onResendEmail={onResendEmail} />
+      </div>
+    );
   }
 
   return (
@@ -675,13 +698,7 @@ function ActionsCell({ guest, isOwner, loading, resendLoading, onCheckIn, onRefu
       >
         {loading ? '…' : 'Check In'}
       </button>
-      <button
-        onClick={onResendEmail}
-        disabled={loading || resendLoading}
-        className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg transition disabled:opacity-50"
-      >
-        {resendLoading ? '…' : 'Resend Email'}
-      </button>
+      <ResendEmailButton loading={loading} resendLoading={resendLoading} onResendEmail={onResendEmail} />
       {isOwner && !isFree && (
         <button
           onClick={onRefundRequest}
