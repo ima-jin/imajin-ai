@@ -406,6 +406,15 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <StatusBadge status={guest.status} paymentMethod={guest.paymentMethod} />
+                    {guest.status === 'held' && guest.paymentMethod === 'etransfer' && (
+                      <button
+                        onClick={() => setConfirmETransfer(guest.id)}
+                        disabled={actionLoading === guest.id}
+                        className="mt-1 px-2 py-1 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition disabled:opacity-50 block"
+                      >
+                        {actionLoading === guest.id ? '…' : 'Confirm'}
+                      </button>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
                     {formatCurrency(guest.pricePaid, guest.currency)}
@@ -422,20 +431,24 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                       attendeeName={guest.attendeeName}
                       onViewSurvey={guest.registrationStatus === 'complete' ? () => handleViewSurvey(guest.id) : undefined}
                     />
+                    {guest.status !== 'refunded' && guest.status !== 'cancelled' && !guest.usedAt && (
+                      <div className="mt-1">
+                        <ResendEmailButton
+                          loading={actionLoading === guest.id}
+                          resendState={resendState[guest.id]}
+                          lastEmailSentAt={guest.lastEmailSentAt}
+                          onResendEmail={() => handleResendEmail(guest.id)}
+                        />
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <ActionsCell
                       guest={guest}
                       isOwner={isOwner}
                       loading={actionLoading === guest.id}
-                      resendState={resendState[guest.id]}
-                      confirmRefund={confirmRefund === guest.id}
                       onCheckIn={() => handleCheckIn(guest.id)}
                       onRefundRequest={() => setConfirmRefund(guest.id)}
-                      onRefundConfirm={() => handleRefund(guest.id)}
-                      onRefundCancel={() => setConfirmRefund(null)}
-                      onConfirmETransfer={() => setConfirmETransfer(guest.id)}
-                      onResendEmail={() => handleResendEmail(guest.id)}
                     />
                   </td>
                 </tr>
@@ -628,14 +641,8 @@ interface ActionsCellProps {
   guest: Guest;
   isOwner: boolean;
   loading: boolean;
-  resendState?: 'sending' | 'sent';
-  confirmRefund: boolean;
   onCheckIn: () => void;
   onRefundRequest: () => void;
-  onRefundConfirm: () => void;
-  onRefundCancel: () => void;
-  onConfirmETransfer: () => void;
-  onResendEmail: () => void;
 }
 
 function timeAgo(dateStr: string): string {
@@ -689,14 +696,11 @@ function ResendEmailButton({ loading, resendState, lastEmailSentAt, onResendEmai
   );
 }
 
-function ActionsCell({ guest, isOwner, loading, resendState, onCheckIn, onRefundRequest, onConfirmETransfer, onResendEmail }: ActionsCellProps) {
+function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest }: ActionsCellProps) {
   const isValid = guest.status === 'valid';
   const isCheckedIn = !!guest.usedAt;
   const isRefunded = guest.status === 'refunded';
   const isFree = !guest.pricePaid || guest.pricePaid === 0;
-  const isPendingETransfer = guest.status === 'held' && guest.paymentMethod === 'etransfer';
-
-  const resendBtn = <ResendEmailButton loading={loading} resendState={resendState} lastEmailSentAt={guest.lastEmailSentAt} onResendEmail={onResendEmail} />;
 
   if (isRefunded) {
     return (
@@ -714,31 +718,12 @@ function ActionsCell({ guest, isOwner, loading, resendState, onCheckIn, onRefund
     );
   }
 
-  if (isPendingETransfer) {
-    return (
-      <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={onConfirmETransfer}
-          disabled={loading}
-          className="px-3 py-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition disabled:opacity-50"
-        >
-          {loading ? '…' : 'Confirm e-Transfer'}
-        </button>
-        {resendBtn}
-      </div>
-    );
-  }
-
   if (!isValid) {
-    return (
-      <div className="flex items-center gap-2 flex-wrap">
-        {resendBtn}
-      </div>
-    );
+    return <span className="text-xs text-gray-400">—</span>;
   }
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-2">
       <button
         onClick={onCheckIn}
         disabled={loading}
@@ -746,7 +731,6 @@ function ActionsCell({ guest, isOwner, loading, resendState, onCheckIn, onRefund
       >
         {loading ? '…' : 'Check In'}
       </button>
-      {resendBtn}
       {isOwner && !isFree && (
         <button
           onClick={onRefundRequest}
