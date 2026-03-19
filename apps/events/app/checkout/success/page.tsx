@@ -82,7 +82,7 @@ export default async function SuccessPage({ searchParams }: Props) {
                 One or more of your ticket types require registration. Complete registration to confirm your spot.
               </p>
               <Link
-                href={`/${event.id}/my-tickets`}
+                href={`/${event.id}`}
                 className="inline-block px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-lg transition"
               >
                 Register My Tickets →

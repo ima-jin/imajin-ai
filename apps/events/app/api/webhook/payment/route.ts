@@ -403,7 +403,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     currency: currency.toUpperCase(),
   }).format(amountTotal / 100 / quantity);
 
-  const registrationUrl = `${EVENTS_URL}/${event.id}/my-tickets`;
+  const registrationUrl = `${EVENTS_URL}/${event.id}`;
 
   // Always send a purchase receipt to the buyer
   await sendEmail({
