@@ -25,7 +25,7 @@ export function SurveyAccordion({
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [iframeHeight, setIframeHeight] = useState(600);
   const [isCompleted, setIsCompleted] = useState(false);
-  const [showEditForm, setShowEditForm] = useState(false);
+
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
@@ -96,28 +96,6 @@ export function SurveyAccordion({
               <p className="text-gray-600 dark:text-gray-400">
                 Purchase a ticket to access this survey.
               </p>
-            </div>
-          ) : isCompleted && !showEditForm ? (
-            <div className="p-8 text-center">
-              <div className="text-6xl mb-4">✓</div>
-              <h3 className="text-2xl font-bold mb-2">Thank you!</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">
-                Your response has been recorded. You can now purchase tickets below.
-              </p>
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  onClick={() => setIsExpanded(false)}
-                  className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition text-sm font-medium"
-                >
-                  View Tickets ↓
-                </button>
-                <button
-                  onClick={() => setShowEditForm(true)}
-                  className="px-4 py-2 text-gray-500 hover:text-gray-300 transition text-sm"
-                >
-                  Edit answers
-                </button>
-              </div>
             </div>
           ) : (
             <div className="p-0">

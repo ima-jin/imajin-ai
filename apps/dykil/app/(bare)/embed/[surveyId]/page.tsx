@@ -57,33 +57,9 @@ function applyHtmlHandler(model: Model) {
  * ReadOnlySurvey — renders a SurveyJS model in display mode with pre-filled answers.
  * Own component so the Model is created once on mount, not on every parent render.
  */
-function ReadOnlySurvey({ fields, answers }: { fields: any; answers: Record<string, any> }) {
-  const modelRef = useRef<Model | null>(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    const m = new Model(fields);
-    applyDarkTheme(m);
-    applyHtmlHandler(m);
-    m.mode = 'display';
-    m.showCompleteButton = false;
-    m.mergeData(answers);
-    modelRef.current = m;
-    setReady(true);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (modelRef.current && answers) {
-      modelRef.current.mergeData(answers);
-    }
-  }, [answers]);
-
-  if (!ready || !modelRef.current) return null;
-  return <Survey model={modelRef.current} />;
-}
-
 /**
  * EditableSurvey — renders a SurveyJS model pre-filled with answers for editing.
+ * Own component so the Model is created once on mount, not on every parent render.
  */
 function EditableSurvey({ fields, answers, onSubmit }: { fields: any; answers: Record<string, any>; onSubmit: (answers: Record<string, any>) => Promise<void> }) {
   const modelRef = useRef<Model | null>(null);
@@ -336,33 +312,20 @@ export default function SurveyEmbedPage() {
       );
     }
 
-    // Show pre-filled read-only survey if we have saved answers
-    if (surveyData && savedAnswers && Object.keys(savedAnswers).length > 0) {
-      return (
-        <div ref={containerRef} className="p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-              <span className="text-xl">✓</span>
-              <span className="font-semibold">Response submitted</span>
-            </div>
-            <button
-              onClick={() => setEditing(true)}
-              className="text-sm px-3 py-1 rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 transition"
-            >
-              Edit answers
-            </button>
-          </div>
-          <ReadOnlySurvey fields={surveyData.fields} answers={savedAnswers} />
-        </div>
-      );
-    }
+    // Show completion message with option to edit
     return (
-      <div ref={containerRef} className="p-8 text-center">
-        <div className="text-6xl mb-4">✓</div>
-        <h1 className="text-2xl font-bold mb-2">Thank you!</h1>
-        <p className="text-gray-600 dark:text-gray-400">
+      <div ref={containerRef} className="p-6 text-center">
+        <div className="text-5xl mb-3">✓</div>
+        <h2 className="text-xl font-bold mb-1">Response submitted</h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-4">
           Your response has been recorded.
         </p>
+        <button
+          onClick={() => setEditing(true)}
+          className="px-4 py-2 text-sm rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 transition"
+        >
+          Edit answers
+        </button>
       </div>
     );
   }
