@@ -37,7 +37,7 @@ for app in "${APPS[@]}"; do
     continue
   fi
 
-  if pnpm --filter "$app" exec node "$BASE_DIR/scripts/migrate-service.mjs" "$app"; then
+  if node "$BASE_DIR/scripts/migrate-service.mjs" "$app"; then
     SUCCEEDED+=("$app")
   else
     FAILED+=("$app")
