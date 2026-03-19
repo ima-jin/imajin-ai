@@ -78,6 +78,30 @@ if [ "$ENV_CHECK_FAILED" = true ]; then
 fi
 echo "" >> "$REPORT"
 
+# Run pending migrations before building — stop if any fail
+echo "=== Running migrations ===" | tee -a "$REPORT"
+MIGRATION_FAILED=false
+for app in "${APPS[@]}"; do
+  if [ -f "apps/$app/drizzle.config.ts" ]; then
+    echo "--- Migrating $app ---" | tee -a "$REPORT"
+    cd "apps/$app"
+    set -a; source .env.local 2>/dev/null; set +a
+    if npx drizzle-kit migrate >> "$REPORT" 2>&1; then
+      echo "✅ $app migrations" | tee -a "$REPORT"
+    else
+      echo "❌ $app migrations FAILED" | tee -a "$REPORT"
+      MIGRATION_FAILED=true
+    fi
+    cd "$BASE_DIR"
+  fi
+done
+if [ "$MIGRATION_FAILED" = true ]; then
+  echo "" | tee -a "$REPORT"
+  echo "❌ Migration failures detected. Aborting build." | tee -a "$REPORT"
+  exit 1
+fi
+echo "" >> "$REPORT"
+
 for app in "${APPS[@]}"; do
   echo "=== Building $app ===" | tee -a "$REPORT"
   cd "apps/$app"
