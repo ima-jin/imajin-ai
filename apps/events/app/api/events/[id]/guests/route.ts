@@ -49,6 +49,7 @@ export async function GET(
     const ticketRows = await sql`
       SELECT t.id, t.status, t.owner_did, t.price_paid, t.currency, t.purchased_at, t.used_at,
              t.payment_method, t.payment_id, t.hold_expires_at, t.registration_status,
+             t.last_email_sent_at,
              tt.name as ticket_type,
              tr.name as attendee_name
       FROM events.tickets t
@@ -86,6 +87,7 @@ export async function GET(
         profile,
         registrationStatus: t.registration_status ?? null,
         attendeeName: t.attendee_name ?? null,
+        lastEmailSentAt: t.last_email_sent_at ?? null,
       };
     });
 

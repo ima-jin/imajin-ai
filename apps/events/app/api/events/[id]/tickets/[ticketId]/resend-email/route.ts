@@ -54,6 +54,19 @@ export async function POST(
       return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
     }
 
+    // Rate limit: 3-day cooldown between resends
+    const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
+    if (ticket.lastEmailSentAt) {
+      const elapsed = Date.now() - new Date(ticket.lastEmailSentAt).getTime();
+      if (elapsed < COOLDOWN_MS) {
+        const hoursLeft = Math.ceil((COOLDOWN_MS - elapsed) / (60 * 60 * 1000));
+        return NextResponse.json(
+          { error: `Email was recently sent. Try again in ~${hoursLeft}h.`, lastEmailSentAt: ticket.lastEmailSentAt },
+          { status: 429 }
+        );
+      }
+    }
+
     const [event] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
@@ -168,7 +181,14 @@ export async function POST(
       });
     }
 
-    return NextResponse.json({ success: true, email: redactEmail(customerEmail) });
+    // Record the send timestamp
+    const sentAt = new Date().toISOString();
+    await db
+      .update(tickets)
+      .set({ lastEmailSentAt: new Date(sentAt) })
+      .where(eq(tickets.id, ticketId));
+
+    return NextResponse.json({ success: true, email: redactEmail(customerEmail), lastEmailSentAt: sentAt });
   } catch (error) {
     console.error('Failed to resend ticket email:', error);
     return NextResponse.json({ error: 'Failed to resend email' }, { status: 500 });

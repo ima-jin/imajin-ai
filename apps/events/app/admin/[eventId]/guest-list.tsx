@@ -23,6 +23,7 @@ interface Guest {
   profile: Profile | null;
   registrationStatus: string | null;
   attendeeName: string | null;
+  lastEmailSentAt: string | null;
 }
 
 interface GuestListProps {
@@ -128,7 +129,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   const [surveyModalTicketId, setSurveyModalTicketId] = useState<string | null>(null);
   const [surveyQuestions, setSurveyQuestions] = useState<Array<{ question: string; answer: unknown }>>([]);
   const [surveyLoading, setSurveyLoading] = useState(false);
-  const [resendLoading, setResendLoading] = useState<string | null>(null);
+  const [resendState, setResendState] = useState<Record<string, 'sending' | 'sent'>>({});
   const [resendToast, setResendToast] = useState<{ email: string } | null>(null);
 
   const load = useCallback(() => {
@@ -187,20 +188,29 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   };
 
   const handleResendEmail = async (ticketId: string) => {
-    setResendLoading(ticketId);
+    setResendState(prev => ({ ...prev, [ticketId]: 'sending' }));
+    const minWait = new Promise(resolve => setTimeout(resolve, 500));
     try {
-      const res = await fetch(`/api/events/${eventId}/tickets/${ticketId}/resend-email`, { method: 'POST' });
+      const [res] = await Promise.all([
+        fetch(`/api/events/${eventId}/tickets/${ticketId}/resend-email`, { method: 'POST' }),
+        minWait,
+      ]);
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || 'Failed to resend email');
+        setResendState(prev => { const n = { ...prev }; delete n[ticketId]; return n; });
         return;
       }
+      // Update the guest's lastEmailSentAt locally
+      setGuests(prev => prev.map(g =>
+        g.id === ticketId ? { ...g, lastEmailSentAt: data.lastEmailSentAt || new Date().toISOString() } : g
+      ));
+      setResendState(prev => ({ ...prev, [ticketId]: 'sent' }));
       setResendToast({ email: data.email });
       setTimeout(() => setResendToast(null), 4000);
     } catch {
       alert('Failed to resend email');
-    } finally {
-      setResendLoading(null);
+      setResendState(prev => { const n = { ...prev }; delete n[ticketId]; return n; });
     }
   };
 
@@ -418,7 +428,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                       guest={guest}
                       isOwner={isOwner}
                       loading={actionLoading === guest.id}
-                      resendLoading={resendLoading === guest.id}
+                      resendState={resendState[guest.id]}
                       confirmRefund={confirmRefund === guest.id}
                       onCheckIn={() => handleCheckIn(guest.id)}
                       onRefundRequest={() => setConfirmRefund(guest.id)}
@@ -618,7 +628,7 @@ interface ActionsCellProps {
   guest: Guest;
   isOwner: boolean;
   loading: boolean;
-  resendLoading: boolean;
+  resendState?: 'sending' | 'sent';
   confirmRefund: boolean;
   onCheckIn: () => void;
   onRefundRequest: () => void;
@@ -628,24 +638,65 @@ interface ActionsCellProps {
   onResendEmail: () => void;
 }
 
-function ResendEmailButton({ loading, resendLoading, onResendEmail }: { loading: boolean; resendLoading: boolean; onResendEmail: () => void }) {
+function timeAgo(dateStr: string): string {
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
+
+function ResendEmailButton({ loading, resendState, lastEmailSentAt, onResendEmail }: {
+  loading: boolean;
+  resendState?: 'sending' | 'sent';
+  lastEmailSentAt: string | null;
+  onResendEmail: () => void;
+}) {
+  const onCooldown = lastEmailSentAt && (Date.now() - new Date(lastEmailSentAt).getTime()) < COOLDOWN_MS;
+  const isSending = resendState === 'sending';
+  const isSent = resendState === 'sent';
+  const disabled = loading || isSending || !!onCooldown;
+
+  if (isSent && lastEmailSentAt) {
+    return (
+      <span className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-green-600 dark:text-green-400">
+        ✓ Sent {timeAgo(lastEmailSentAt)}
+      </span>
+    );
+  }
+
+  if (onCooldown && lastEmailSentAt) {
+    return (
+      <span className="inline-flex items-center gap-1 px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500" title={`Last sent ${new Date(lastEmailSentAt).toLocaleString()}`}>
+        Sent {timeAgo(lastEmailSentAt)}
+      </span>
+    );
+  }
+
   return (
     <button
       onClick={onResendEmail}
-      disabled={loading || resendLoading}
+      disabled={disabled}
       className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg transition disabled:opacity-50"
     >
-      {resendLoading ? '…' : 'Resend Email'}
+      {isSending ? 'Sending…' : lastEmailSentAt ? `Resend (${timeAgo(lastEmailSentAt)})` : 'Resend Email'}
     </button>
   );
 }
 
-function ActionsCell({ guest, isOwner, loading, resendLoading, onCheckIn, onRefundRequest, onConfirmETransfer, onResendEmail }: ActionsCellProps) {
+function ActionsCell({ guest, isOwner, loading, resendState, onCheckIn, onRefundRequest, onConfirmETransfer, onResendEmail }: ActionsCellProps) {
   const isValid = guest.status === 'valid';
   const isCheckedIn = !!guest.usedAt;
   const isRefunded = guest.status === 'refunded';
   const isFree = !guest.pricePaid || guest.pricePaid === 0;
   const isPendingETransfer = guest.status === 'held' && guest.paymentMethod === 'etransfer';
+
+  const resendBtn = <ResendEmailButton loading={loading} resendState={resendState} lastEmailSentAt={guest.lastEmailSentAt} onResendEmail={onResendEmail} />;
 
   if (isRefunded) {
     return (
@@ -657,12 +708,9 @@ function ActionsCell({ guest, isOwner, loading, resendLoading, onCheckIn, onRefu
 
   if (isCheckedIn) {
     return (
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
-          ✓ Checked In
-        </span>
-        <ResendEmailButton loading={loading} resendLoading={resendLoading} onResendEmail={onResendEmail} />
-      </div>
+      <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
+        ✓ Checked In
+      </span>
     );
   }
 
@@ -676,7 +724,7 @@ function ActionsCell({ guest, isOwner, loading, resendLoading, onCheckIn, onRefu
         >
           {loading ? '…' : 'Confirm e-Transfer'}
         </button>
-        <ResendEmailButton loading={loading} resendLoading={resendLoading} onResendEmail={onResendEmail} />
+        {resendBtn}
       </div>
     );
   }
@@ -684,7 +732,7 @@ function ActionsCell({ guest, isOwner, loading, resendLoading, onCheckIn, onRefu
   if (!isValid) {
     return (
       <div className="flex items-center gap-2 flex-wrap">
-        <ResendEmailButton loading={loading} resendLoading={resendLoading} onResendEmail={onResendEmail} />
+        {resendBtn}
       </div>
     );
   }
@@ -698,7 +746,7 @@ function ActionsCell({ guest, isOwner, loading, resendLoading, onCheckIn, onRefu
       >
         {loading ? '…' : 'Check In'}
       </button>
-      <ResendEmailButton loading={loading} resendLoading={resendLoading} onResendEmail={onResendEmail} />
+      {resendBtn}
       {isOwner && !isFree && (
         <button
           onClick={onRefundRequest}
