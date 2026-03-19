@@ -3,10 +3,10 @@ import { generateQRCode } from '@/src/lib/email';
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { ticketId: string } }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const qrCodeDataUri = await generateQRCode(params.ticketId);
+    const qrCodeDataUri = await generateQRCode(params.id);
     if (!qrCodeDataUri) {
       return NextResponse.json({ error: 'Failed to generate QR code' }, { status: 500 });
     }
