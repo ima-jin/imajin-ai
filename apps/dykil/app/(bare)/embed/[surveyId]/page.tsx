@@ -58,44 +58,54 @@ function applyHtmlHandler(model: Model) {
  * Own component so the Model is created once on mount, not on every parent render.
  */
 function ReadOnlySurvey({ fields, answers }: { fields: any; answers: Record<string, any> }) {
-  const [model] = useState(() => {
+  const modelRef = useRef<Model | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
     const m = new Model(fields);
     applyDarkTheme(m);
     applyHtmlHandler(m);
-    m.data = answers;
     m.mode = 'display';
     m.showCompleteButton = false;
-    return m;
-  });
+    m.mergeData(answers);
+    modelRef.current = m;
+    setReady(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update data if answers change (e.g. after re-submit)
   useEffect(() => {
-    model.data = answers;
-  }, [model, answers]);
+    if (modelRef.current && answers) {
+      modelRef.current.mergeData(answers);
+    }
+  }, [answers]);
 
-  return <Survey model={model} />;
+  if (!ready || !modelRef.current) return null;
+  return <Survey model={modelRef.current} />;
 }
 
 /**
  * EditableSurvey — renders a SurveyJS model pre-filled with answers for editing.
- * Own component so the Model is created once on mount.
  */
 function EditableSurvey({ fields, answers, onSubmit }: { fields: any; answers: Record<string, any>; onSubmit: (answers: Record<string, any>) => Promise<void> }) {
-  const [model] = useState(() => {
+  const modelRef = useRef<Model | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
     const m = new Model(fields);
     applyDarkTheme(m);
     applyHtmlHandler(m);
-    m.data = answers;
     m.showCompleteButton = true;
     m.showCompletedPage = false;
+    m.mergeData(answers);
     m.onComplete.add(async (sender) => {
       const data = JSON.parse(JSON.stringify(sender.data));
       await onSubmit(data);
     });
-    return m;
-  });
+    modelRef.current = m;
+    setReady(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <Survey model={model} />;
+  if (!ready || !modelRef.current) return null;
+  return <Survey model={modelRef.current} />;
 }
 
 interface SurveyData {
