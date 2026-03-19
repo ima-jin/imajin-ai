@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
     const holdUntil = new Date();
     holdUntil.setHours(holdUntil.getHours() + HOLD_HOURS);
 
-    const ticketId = `tkt_${randomBytes(12).toString('hex')}`;
+    const ticketId = `tkt_${Date.now().toString(36)}_0`;
     const magicToken = randomBytes(32).toString('hex');
 
     const [ticket] = await db

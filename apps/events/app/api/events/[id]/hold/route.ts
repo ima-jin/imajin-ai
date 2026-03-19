@@ -100,7 +100,7 @@ export async function POST(
     const holdUntil = new Date();
     holdUntil.setHours(holdUntil.getHours() + holdHours);
 
-    const ticketId = `tkt_${randomBytes(12).toString('hex')}`;
+    const ticketId = `tkt_${Date.now().toString(36)}_0`;
 
     // Look up ticket type to check requiresRegistration
     const [tt] = await db.select({ requiresRegistration: ticketTypes.requiresRegistration })

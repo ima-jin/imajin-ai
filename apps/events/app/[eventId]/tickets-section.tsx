@@ -93,111 +93,142 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
 function MyTicketsTab({ userTickets, eventId }: { userTickets: UserTicket[]; eventId: string }) {
   return (
     <div className="space-y-4">
-      {userTickets.map((ticket) => {
-        const purchaseDate = ticket.purchasedAt
-          ? new Date(ticket.purchasedAt).toLocaleDateString('en-US', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })
-          : 'N/A';
+      {userTickets.map((ticket) => (
+        <MyTicketCard key={ticket.id} ticket={ticket} eventId={eventId} />
+      ))}
+    </div>
+  );
+}
 
-        const formattedPrice = ticket.pricePaid !== null && ticket.currency
-          ? ticket.pricePaid === 0
-            ? 'Free'
-            : new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: ticket.currency,
-              }).format(ticket.pricePaid / 100)
-          : 'N/A';
+function MyTicketCard({ ticket, eventId }: { ticket: UserTicket; eventId: string }) {
+  const [regStatus, setRegStatus] = useState(ticket.registrationStatus || 'not_required');
+  const [qrCode, setQrCode] = useState(ticket.qrCodeDataUri);
 
-        const perks = ticket.ticketType?.perks;
-        const perksArray = Array.isArray(perks) ? perks : [];
+  const purchaseDate = ticket.purchasedAt
+    ? new Date(ticket.purchasedAt).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : 'N/A';
 
-        return (
-          <div
-            key={ticket.id}
-            className="border-2 border-orange-500 dark:border-orange-500 rounded-xl p-6 bg-orange-50/50 dark:bg-orange-900/10"
-          >
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-6 items-start">
-              {/* Left: ticket info */}
-              <div>
-                <h3 className="text-2xl font-bold mb-1">
-                  {ticket.ticketType?.name || 'Ticket'}
-                </h3>
-                {ticket.ticketType?.description && (
-                  <p className="text-gray-600 dark:text-gray-400 mb-2">
-                    {ticket.ticketType.description}
-                  </p>
-                )}
-                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                  <span>📅 {purchaseDate}</span>
-                </div>
-                {perksArray.length > 0 && (
-                  <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                    {perksArray.map((perk, i) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <span className="text-orange-500 mt-0.5">✓</span>
-                        <span>{String(perk)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+  const formattedPrice = ticket.pricePaid !== null && ticket.currency
+    ? ticket.pricePaid === 0
+      ? 'Free'
+      : new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: ticket.currency,
+        }).format(ticket.pricePaid / 100)
+    : 'N/A';
 
-              {/* Center: QR code or registration badge */}
-              <div className="flex flex-col items-center">
-                {ticket.registrationStatus === 'pending' ? (
-                  <div className="text-center max-w-[160px]">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400">
-                      ⏳ Registration Required
-                    </span>
-                  </div>
-                ) : (
-                  <>
-                    <div className="bg-gray-900 dark:bg-[#0a0a0a] border border-gray-700 dark:border-gray-800 rounded-lg p-3 text-center">
-                      {ticket.qrCodeDataUri && (
-                        <img
-                          src={ticket.qrCodeDataUri}
-                          alt="Ticket QR Code"
-                          width={140}
-                          height={140}
-                          className="mx-auto mb-2"
-                        />
-                      )}
-                      <div className="font-mono text-[10px] text-gray-400">
-                        {ticket.id}
-                      </div>
-                    </div>
-                    <div className="mt-2 text-sm font-medium capitalize text-gray-600 dark:text-gray-400">
-                      🎟️ {ticket.status}
-                    </div>
-                  </>
-                )}
-              </div>
+  const perks = ticket.ticketType?.perks;
+  const perksArray = Array.isArray(perks) ? perks : [];
+  const isPending = regStatus === 'pending';
 
-              {/* Right: price */}
-              <div className="text-right">
-                <div className="text-3xl font-bold text-orange-500">
-                  {formattedPrice}
-                </div>
-              </div>
-            </div>
+  async function handleRegistrationComplete() {
+    try {
+      const res = await fetch(`/api/register/${ticket.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formId: ticket.ticketType?.registrationFormId }),
+      });
+      if (res.ok) {
+        setRegStatus('complete');
+        // Fetch QR code for the newly registered ticket
+        try {
+          const qrRes = await fetch(`/api/tickets/${ticket.id}/qr`);
+          if (qrRes.ok) {
+            const data = await qrRes.json();
+            setQrCode(data.qrCodeDataUri);
+          }
+        } catch {
+          // Non-fatal — QR will show on next page load
+        }
+      }
+    } catch {
+      // Non-fatal — survey is saved in Dykil
+    }
+  }
 
-            {/* Inline registration survey */}
-            {ticket.ticketType?.registrationFormId && (
-              <SurveyAccordion
-                eventId={eventId}
-                surveyId={ticket.ticketType.registrationFormId}
-                surveyTitle={ticket.registrationStatus === 'pending' ? 'Complete Registration' : 'Registration'}
-                surveyType="form"
-                defaultExpanded={ticket.registrationStatus === 'pending'}
-                ticketId={ticket.id}
-              />
-            )}
+  return (
+    <div className="border-2 border-orange-500 dark:border-orange-500 rounded-xl p-6 bg-orange-50/50 dark:bg-orange-900/10">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-6 items-start">
+        {/* Left: ticket info */}
+        <div>
+          <h3 className="text-2xl font-bold mb-1">
+            {ticket.ticketType?.name || 'Ticket'}
+          </h3>
+          {ticket.ticketType?.description && (
+            <p className="text-gray-600 dark:text-gray-400 mb-2">
+              {ticket.ticketType.description}
+            </p>
+          )}
+          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+            <span>📅 {purchaseDate}</span>
           </div>
-        );
-      })}
+          {perksArray.length > 0 && (
+            <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-400">
+              {perksArray.map((perk, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="text-orange-500 mt-0.5">✓</span>
+                  <span>{String(perk)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Center: QR code or registration badge */}
+        <div className="flex flex-col items-center">
+          {isPending ? (
+            <div className="text-center max-w-[160px]">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400">
+                ⏳ Registration Required
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="bg-gray-900 dark:bg-[#0a0a0a] border border-gray-700 dark:border-gray-800 rounded-lg p-3 text-center">
+                {qrCode && (
+                  <img
+                    src={qrCode}
+                    alt="Ticket QR Code"
+                    width={140}
+                    height={140}
+                    className="mx-auto mb-2"
+                  />
+                )}
+                <div className="font-mono text-[10px] text-gray-400">
+                  {ticket.id}
+                </div>
+              </div>
+              <div className="mt-2 text-sm font-medium capitalize text-gray-600 dark:text-gray-400">
+                🎟️ {ticket.status}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Right: price */}
+        <div className="text-right">
+          <div className="text-3xl font-bold text-orange-500">
+            {formattedPrice}
+          </div>
+        </div>
+      </div>
+
+      {/* Inline registration survey */}
+      {ticket.ticketType?.registrationFormId && (
+        <SurveyAccordion
+          eventId={eventId}
+          surveyId={ticket.ticketType.registrationFormId}
+          surveyTitle={isPending ? 'Complete Registration' : 'Registration'}
+          surveyType="form"
+          defaultExpanded={isPending}
+          ticketId={ticket.id}
+          onComplete={handleRegistrationComplete}
+        />
+      )}
     </div>
   );
 }
