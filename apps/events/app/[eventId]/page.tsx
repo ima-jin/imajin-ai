@@ -168,6 +168,7 @@ async function getUserTickets(eventId: string, userDid: string) {
         name: ticketType.name,
         description: ticketType.description,
         perks: ticketType.perks,
+        registrationFormId: ticketType.registrationFormId,
       } : null,
     };
   }));

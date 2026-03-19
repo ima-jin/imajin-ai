@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { TicketType } from '@/src/db/schema';
 import { TicketPurchase } from './ticket-purchase';
 import { OnboardGate } from '@imajin/onboard';
+import { SurveyAccordion } from './survey-accordion';
 
 interface UserTicket {
   id: string;
@@ -17,6 +18,7 @@ interface UserTicket {
     name: string;
     description: string | null;
     perks: unknown;
+    registrationFormId?: string | null;
   } | null;
 }
 
@@ -143,19 +145,13 @@ function MyTicketsTab({ userTickets, eventId }: { userTickets: UserTicket[]; eve
                 )}
               </div>
 
-              {/* Center: QR code / registration prompt */}
+              {/* Center: QR code or registration badge */}
               <div className="flex flex-col items-center">
                 {ticket.registrationStatus === 'pending' ? (
                   <div className="text-center max-w-[160px]">
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400">
                       ⏳ Registration Required
                     </span>
-                    <a
-                      href={`/${eventId}/my-tickets?ticket=${ticket.id}`}
-                      className="mt-2 block text-xs text-orange-500 hover:text-orange-400 font-medium underline underline-offset-2"
-                    >
-                      Complete Registration →
-                    </a>
                   </div>
                 ) : (
                   <>
@@ -187,6 +183,17 @@ function MyTicketsTab({ userTickets, eventId }: { userTickets: UserTicket[]; eve
                 </div>
               </div>
             </div>
+
+            {/* Inline registration survey */}
+            {ticket.ticketType?.registrationFormId && (
+              <SurveyAccordion
+                eventId={eventId}
+                surveyId={ticket.ticketType.registrationFormId}
+                surveyTitle={ticket.registrationStatus === 'pending' ? 'Complete Registration' : 'Registration'}
+                surveyType="form"
+                defaultExpanded={ticket.registrationStatus === 'pending'}
+              />
+            )}
           </div>
         );
       })}
