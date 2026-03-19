@@ -34,18 +34,7 @@ export default async function RegisterPage({ params, searchParams }: Props) {
     notFound();
   }
 
-  // Validate magic token if provided
-  if (token && ticket.magicToken && ticket.magicToken !== token) {
-    return (
-      <div className="max-w-md mx-auto py-16 px-4 text-center">
-        <div className="text-5xl mb-4">🔒</div>
-        <h1 className="text-2xl font-bold mb-2">Invalid Link</h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          This registration link is not valid. Please use the link from your email.
-        </p>
-      </div>
-    );
-  }
+  // Magic token validation removed — auth handled via onboard session + DID match
 
   // Check registration status
   if (ticket.registrationStatus === 'complete') {
