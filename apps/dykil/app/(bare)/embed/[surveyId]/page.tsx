@@ -53,6 +53,51 @@ function applyHtmlHandler(model: Model) {
   });
 }
 
+/**
+ * ReadOnlySurvey — renders a SurveyJS model in display mode with pre-filled answers.
+ * Own component so the Model is created once on mount, not on every parent render.
+ */
+function ReadOnlySurvey({ fields, answers }: { fields: any; answers: Record<string, any> }) {
+  const [model] = useState(() => {
+    const m = new Model(fields);
+    applyDarkTheme(m);
+    applyHtmlHandler(m);
+    m.data = answers;
+    m.mode = 'display';
+    m.showCompleteButton = false;
+    return m;
+  });
+
+  // Update data if answers change (e.g. after re-submit)
+  useEffect(() => {
+    model.data = answers;
+  }, [model, answers]);
+
+  return <Survey model={model} />;
+}
+
+/**
+ * EditableSurvey — renders a SurveyJS model pre-filled with answers for editing.
+ * Own component so the Model is created once on mount.
+ */
+function EditableSurvey({ fields, answers, onSubmit }: { fields: any; answers: Record<string, any>; onSubmit: (answers: Record<string, any>) => Promise<void> }) {
+  const [model] = useState(() => {
+    const m = new Model(fields);
+    applyDarkTheme(m);
+    applyHtmlHandler(m);
+    m.data = answers;
+    m.showCompleteButton = true;
+    m.showCompletedPage = false;
+    m.onComplete.add(async (sender) => {
+      const data = JSON.parse(JSON.stringify(sender.data));
+      await onSubmit(data);
+    });
+    return m;
+  });
+
+  return <Survey model={model} />;
+}
+
 interface SurveyData {
   id: string;
   title: string;
@@ -255,16 +300,6 @@ export default function SurveyEmbedPage() {
   if (submitted) {
     // Editing mode: show editable survey with pre-filled data
     if (editing && surveyData) {
-      const editModel = new Model(surveyData.fields);
-      applyDarkTheme(editModel);
-      applyHtmlHandler(editModel);
-      editModel.data = savedAnswers || {};
-      editModel.showCompleteButton = true;
-      editModel.onComplete.add(async (sender) => {
-        const answers = JSON.parse(JSON.stringify(sender.data));
-        await submitResponse(answers);
-        setEditing(false);
-      });
       return (
         <div ref={containerRef} className="p-6">
           <div className="mb-4 flex items-center justify-between">
@@ -279,20 +314,20 @@ export default function SurveyEmbedPage() {
               Cancel
             </button>
           </div>
-          <Survey model={editModel} />
+          <EditableSurvey
+            fields={surveyData.fields}
+            answers={savedAnswers || {}}
+            onSubmit={async (answers) => {
+              await submitResponse(answers);
+              setEditing(false);
+            }}
+          />
         </div>
       );
     }
 
     // Show pre-filled read-only survey if we have saved answers
-    // Create a fresh model — the original one is in "completed" state and won't render
     if (surveyData && savedAnswers && Object.keys(savedAnswers).length > 0) {
-      const displayModel = new Model(surveyData.fields);
-      applyDarkTheme(displayModel);
-      applyHtmlHandler(displayModel);
-      displayModel.data = savedAnswers;
-      displayModel.mode = 'display';
-      displayModel.showCompleteButton = false;
       return (
         <div ref={containerRef} className="p-6">
           <div className="mb-4 flex items-center justify-between">
@@ -307,7 +342,7 @@ export default function SurveyEmbedPage() {
               Edit answers
             </button>
           </div>
-          <Survey model={displayModel} />
+          <ReadOnlySurvey fields={surveyData.fields} answers={savedAnswers} />
         </div>
       );
     }
