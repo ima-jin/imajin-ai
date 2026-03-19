@@ -314,7 +314,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       status: 'valid',
       purchasedAt: new Date(),
       signature,
-      magicToken: null,
+      magicToken: randomBytes(32).toString('hex'),
       registrationStatus: ticketType.requiresRegistration ? 'pending' : 'not_required',
       metadata: {
         stripeSessionId: sessionId,
