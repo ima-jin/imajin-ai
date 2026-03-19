@@ -9,7 +9,7 @@
  * Usage: tsx scripts/migrate-service.ts <app-name>
  *   e.g. tsx scripts/migrate-service.ts events
  *
- * Reads DATABASE_URL from apps/<app>/. env.local
+ * Reads DATABASE_URL from apps/<app>/.env.local
  * Migrations from apps/<app>/drizzle/
  * Tracks in drizzle.__drizzle_migrations_<app>
  */
@@ -20,50 +20,54 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-const app = process.argv[2];
-if (!app) {
-  console.error('Usage: tsx scripts/migrate-service.ts <app-name>');
-  process.exit(1);
+async function main() {
+  const app = process.argv[2];
+  if (!app) {
+    console.error('Usage: tsx scripts/migrate-service.ts <app-name>');
+    process.exit(1);
+  }
+
+  const scriptDir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
+  const baseDir = resolve(scriptDir, '..');
+  const appDir = resolve(baseDir, 'apps', app);
+  const migrationsFolder = resolve(appDir, 'drizzle');
+
+  // Read DATABASE_URL from .env.local
+  const envPath = resolve(appDir, '.env.local');
+  let databaseUrl: string | undefined;
+  try {
+    const envContent = readFileSync(envPath, 'utf-8');
+    const match = envContent.match(/^DATABASE_URL=["']?(.+?)["']?\s*$/m);
+    databaseUrl = match?.[1];
+  } catch {
+    // fall through — check env
+  }
+
+  databaseUrl = databaseUrl || process.env.DATABASE_URL;
+
+  if (!databaseUrl) {
+    console.error(`❌ ${app} — no DATABASE_URL found in ${envPath} or environment`);
+    process.exit(1);
+  }
+
+  const sql = postgres(databaseUrl, { max: 1 });
+  const db = drizzle(sql);
+
+  try {
+    console.log(`=== Migrating ${app} ===`);
+    await migrate(db, {
+      migrationsFolder,
+      migrationsTable: `__drizzle_migrations_${app}`,
+      migrationsSchema: 'drizzle',
+    });
+    console.log(`✅ ${app}`);
+  } catch (err) {
+    console.error(`❌ ${app} — migration failed`);
+    console.error(err);
+    process.exit(1);
+  } finally {
+    await sql.end();
+  }
 }
 
-const scriptDir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
-const baseDir = resolve(scriptDir, '..');
-const appDir = resolve(baseDir, 'apps', app);
-const migrationsFolder = resolve(appDir, 'drizzle');
-
-// Read DATABASE_URL from .env.local
-const envPath = resolve(appDir, '.env.local');
-let databaseUrl: string | undefined;
-try {
-  const envContent = readFileSync(envPath, 'utf-8');
-  const match = envContent.match(/^DATABASE_URL=["']?(.+?)["']?\s*$/m);
-  databaseUrl = match?.[1];
-} catch {
-  // fall through — check env
-}
-
-databaseUrl = databaseUrl || process.env.DATABASE_URL;
-
-if (!databaseUrl) {
-  console.error(`❌ ${app} — no DATABASE_URL found in ${envPath} or environment`);
-  process.exit(1);
-}
-
-const sql = postgres(databaseUrl, { max: 1 });
-const db = drizzle(sql);
-
-try {
-  console.log(`=== Migrating ${app} ===`);
-  await migrate(db, {
-    migrationsFolder,
-    migrationsTable: `__drizzle_migrations_${app}`,
-    migrationsSchema: 'drizzle',
-  });
-  console.log(`✅ ${app}`);
-} catch (err) {
-  console.error(`❌ ${app} — migration failed`);
-  console.error(err);
-  process.exit(1);
-} finally {
-  await sql.end();
-}
+main();
