@@ -37,7 +37,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { answers } = body;
+    const { answers, forceNew } = body;
 
     if (!answers || typeof answers !== 'object') {
       return errorResponse('answers object is required', 400, cors);
@@ -77,8 +77,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check for existing response (upsert: update if exists, create if not)
+    // Skip upsert when forceNew is set (ticket-scoped: each ticket gets its own response)
     let existing: any = null;
-    if (session?.id) {
+    if (session?.id && !forceNew) {
       existing = await db.query.surveyResponses.findFirst({
         where: (r, { eq, and }) => and(eq(r.surveyId, survey.id), eq(r.respondentDid, session.id)),
       });

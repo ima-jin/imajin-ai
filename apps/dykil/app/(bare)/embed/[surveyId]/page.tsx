@@ -261,7 +261,7 @@ export default function SurveyEmbedPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ answers: data }),
+        body: JSON.stringify({ answers: data, ...(ticketId ? { forceNew: true } : {}) }),
       });
 
       if (res.ok) {
