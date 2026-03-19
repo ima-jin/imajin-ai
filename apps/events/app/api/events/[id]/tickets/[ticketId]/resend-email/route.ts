@@ -1,0 +1,176 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { randomBytes } from 'crypto';
+import { eq, and } from 'drizzle-orm';
+import { requireAuth } from '@/src/lib/auth';
+import { isEventOrganizer } from '@/src/lib/organizer';
+import { db, tickets, events, ticketTypes, ticketRegistrations } from '@/src/db';
+import { getClient } from '@imajin/db';
+import { sendEmail, generateQRCode, ticketConfirmationEmail, registrationReminderEmail } from '@/src/lib/email';
+
+const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
+const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+
+function decodeEmailFromDid(did: string): string | null {
+  // did:email:user_at_domain_com -> user@domain.com
+  if (!did.startsWith('did:email:')) return null;
+  return did.slice('did:email:'.length).replace('_at_', '@');
+}
+
+function redactEmail(email: string): string {
+  const atIdx = email.indexOf('@');
+  if (atIdx < 0) return '***';
+  const local = email.slice(0, atIdx);
+  const domain = email.slice(atIdx + 1);
+  const redacted = local.length > 2
+    ? `${local[0]}***${local[local.length - 1]}`
+    : '***';
+  return `${redacted}@${domain}`;
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string; ticketId: string }> }
+) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+  }
+
+  const { identity } = authResult;
+  const { id: eventId, ticketId } = await params;
+
+  try {
+    const orgCheck = await isEventOrganizer(eventId, identity.id);
+    if (!orgCheck.authorized) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const [ticket] = await db
+      .select()
+      .from(tickets)
+      .where(and(eq(tickets.id, ticketId), eq(tickets.eventId, eventId)))
+      .limit(1);
+    if (!ticket) {
+      return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
+    }
+
+    const [event] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
+    if (!event) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    }
+
+    const [ticketType] = await db
+      .select()
+      .from(ticketTypes)
+      .where(eq(ticketTypes.id, ticket.ticketTypeId))
+      .limit(1);
+    if (!ticketType) {
+      return NextResponse.json({ error: 'Ticket type not found' }, { status: 404 });
+    }
+
+    const [registration] = await db
+      .select()
+      .from(ticketRegistrations)
+      .where(eq(ticketRegistrations.ticketId, ticketId))
+      .limit(1);
+
+    // Determine email: registration.email > decode from owner_did
+    let customerEmail: string | null = null;
+    if (registration?.email) {
+      customerEmail = registration.email;
+    } else if (ticket.ownerDid) {
+      customerEmail = decodeEmailFromDid(ticket.ownerDid);
+    }
+
+    if (!customerEmail) {
+      return NextResponse.json(
+        { error: 'Could not determine email address for this ticket' },
+        { status: 422 }
+      );
+    }
+
+    // Mint a fresh onboard token in auth schema
+    const authSql = getClient();
+    const onboardToken = randomBytes(36).toString('hex');
+    const onboardId = `obt_${randomBytes(8).toString('hex')}`;
+    const redirectUrl = `${EVENTS_URL}/${event.id}`;
+
+    await authSql`
+      INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
+      VALUES (
+        ${onboardId},
+        ${customerEmail.toLowerCase().trim()},
+        ${registration?.name || null},
+        ${onboardToken},
+        ${redirectUrl},
+        ${'access your ticket for ' + event.title},
+        ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()}
+      )
+    `;
+
+    const magicLink = `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`;
+
+    const eventDate = new Date(event.startsAt);
+    const eventImageUrl = event.imageUrl
+      ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
+      : undefined;
+    const formattedEventDate = eventDate.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const formattedEventTime = eventDate.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    });
+
+    if (ticket.registrationStatus === 'pending') {
+      await sendEmail({
+        to: customerEmail,
+        subject: `Don't forget to register — ${event.title}`,
+        html: registrationReminderEmail({
+          eventTitle: event.title,
+          eventDate: formattedEventDate,
+          pendingCount: 1,
+          registrationUrl: magicLink,
+          eventImageUrl,
+        }),
+      });
+    } else {
+      const qrCodeDataUri = await generateQRCode(ticket.id);
+      const formattedPrice =
+        ticket.pricePaid !== null
+          ? new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency: (ticket.currency || 'USD').toUpperCase(),
+            }).format(ticket.pricePaid / 100)
+          : 'Free';
+
+      await sendEmail({
+        to: customerEmail,
+        subject: `You're in — ${event.title}`,
+        html: ticketConfirmationEmail({
+          eventTitle: event.title,
+          ticketType: ticketType.name,
+          ticketId: ticket.id,
+          eventDate: formattedEventDate,
+          eventTime: formattedEventTime,
+          isVirtual: event.isVirtual ?? false,
+          venue: event.venue ?? undefined,
+          price: formattedPrice,
+          magicLink,
+          eventImageUrl,
+          eventUrl: `${EVENTS_URL}/${event.id}`,
+          qrCodeDataUri,
+        }),
+      });
+    }
+
+    return NextResponse.json({ success: true, email: redactEmail(customerEmail) });
+  } catch (error) {
+    console.error('Failed to resend ticket email:', error);
+    return NextResponse.json({ error: 'Failed to resend email' }, { status: 500 });
+  }
+}
