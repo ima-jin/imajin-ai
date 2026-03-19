@@ -23,7 +23,7 @@ export function SurveyAccordion({
   onComplete,
   ticketId,
 }: SurveyAccordionProps) {
-  const storageKey = `survey_completed_${surveyId}`;
+  const storageKey = ticketId ? `survey_completed_${surveyId}_${ticketId}` : `survey_completed_${surveyId}`;
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [iframeHeight, setIframeHeight] = useState(600);
   const [isCompleted, setIsCompleted] = useState(false);
