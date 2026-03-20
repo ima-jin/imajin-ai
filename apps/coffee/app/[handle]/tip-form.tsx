@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useToast } from '@imajin/ui';
 
 interface FundDirection {
   id: string;
@@ -24,6 +25,7 @@ interface TipFormProps {
 }
 
 export default function TipForm({ page, primaryColor }: TipFormProps) {
+  const { toast } = useToast();
   const [selectedAmount, setSelectedAmount] = useState<number | null>(page.presets?.[1] || 500);
   const [customAmount, setCustomAmount] = useState('');
   const [message, setMessage] = useState('');
@@ -92,7 +94,7 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
         window.location.href = data.url;
       } else if (paymentMethod === 'solana' && data.solanaAddress) {
         // Show Solana address for payment
-        alert(`Send ${amount / 100} USD worth of SOL to:\n${data.solanaAddress}`);
+        toast.info(`Send ${amount / 100} USD worth of SOL to: ${data.solanaAddress}`);
       }
     } catch (err: any) {
       setError(err.message);

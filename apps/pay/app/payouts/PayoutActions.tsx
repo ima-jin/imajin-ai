@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useToast } from '@imajin/ui';
 
 interface PayoutActionsProps {
   status: 'not_connected' | 'incomplete_onboarding' | 'connected';
@@ -8,6 +9,7 @@ interface PayoutActionsProps {
 }
 
 export function PayoutActions({ status, did }: PayoutActionsProps) {
+  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
   const handleOnboard = async () => {
@@ -38,7 +40,7 @@ export function PayoutActions({ status, did }: PayoutActionsProps) {
       window.location.href = data.onboardingUrl;
     } catch (error) {
       console.error('Error starting onboarding:', error);
-      alert('Failed to start onboarding process. Please try again.');
+      toast.error('Failed to start onboarding process. Please try again.');
       setLoading(false);
     }
   };
@@ -62,7 +64,7 @@ export function PayoutActions({ status, did }: PayoutActionsProps) {
       window.open(data.url, '_blank', 'noopener,noreferrer');
     } catch (error) {
       console.error('Error opening dashboard:', error);
-      alert('Failed to open dashboard. Please try again.');
+      toast.error('Failed to open dashboard. Please try again.');
     } finally {
       setLoading(false);
     }

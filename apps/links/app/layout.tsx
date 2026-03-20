@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { NavBar } from '@imajin/ui';
 import { LayoutWrapper } from '@/components/LayoutWrapper';
 import './globals.css';
+import { Providers } from './providers';
 
 export const metadata: Metadata = {
   title: 'Links | Imajin',
@@ -24,9 +25,11 @@ export default function RootLayout({
           servicePrefix={servicePrefix}
           domain={domain}
         />
-        <LayoutWrapper>
-          {children}
-        </LayoutWrapper>
+        <Providers>
+          <LayoutWrapper>
+            {children}
+          </LayoutWrapper>
+        </Providers>
       </body>
     </html>
   );

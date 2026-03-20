@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { NavBar } from './components/NavBar';
+import { Providers } from './providers';
 
 const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -43,9 +44,11 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className="min-h-screen bg-[#0a0a0a] text-white">
         <NavBar currentService="Events" />
-        <main className="container mx-auto px-4 py-8">
-          {children}
-        </main>
+        <Providers>
+          <main className="container mx-auto px-4 py-8">
+            {children}
+          </main>
+        </Providers>
       </body>
     </html>
   );

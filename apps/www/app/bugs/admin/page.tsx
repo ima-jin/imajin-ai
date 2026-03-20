@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useToast } from '@imajin/ui';
 import type { BugReport } from '@/db/schema';
 
 const STATUSES = ['all', 'new', 'reviewed', 'imported', 'ignored', 'duplicate'] as const;
@@ -39,6 +40,7 @@ interface DuplicateState {
 }
 
 export default function AdminBugsPage() {
+  const { toast } = useToast();
   const [reports, setReports] = useState<BugReport[]>([]);
   const [filter, setFilter] = useState<StatusFilter>('new');
   const [loading, setLoading] = useState(true);
@@ -78,7 +80,7 @@ export default function AdminBugsPage() {
       }
       await fetchReports(filter);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Import failed');
+      toast.error(err instanceof Error ? err.message : 'Import failed');
     } finally {
       setActionLoading(null);
     }
@@ -98,7 +100,7 @@ export default function AdminBugsPage() {
       }
       await fetchReports(filter);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Update failed');
+      toast.error(err instanceof Error ? err.message : 'Update failed');
     } finally {
       setActionLoading(null);
       setIgnoreState(null);

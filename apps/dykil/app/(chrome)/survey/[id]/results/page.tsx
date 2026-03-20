@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useToast } from '@imajin/ui';
 import type { SurveyJSElement } from '@/db/schema';
 
 interface SurveyData {
@@ -33,6 +34,7 @@ interface Aggregation {
 export default function ResultsPage() {
   const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
   const surveyId = params.id as string;
 
   const [loading, setLoading] = useState(true);
@@ -71,12 +73,12 @@ export default function ResultsPage() {
         const agg = aggregateResponses(normalizedSurvey.fields.elements, responsesData.responses || []);
         setAggregation(agg);
       } else {
-        alert('Failed to load survey results');
+        toast.error('Failed to load survey results');
         router.push('/dashboard');
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
-      alert('Failed to load results');
+      toast.error('Failed to load results');
     } finally {
       setLoading(false);
     }

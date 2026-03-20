@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useToast } from '@imajin/ui';
 
 interface Course {
   id: string;
@@ -23,6 +24,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function DashboardPage() {
+  const { toast } = useToast();
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -68,10 +70,10 @@ export default function DashboardPage() {
         window.location.href = `/dashboard/${course.slug}`;
       } else {
         const err = await res.json();
-        alert(err.error || 'Failed to create course');
+        toast.error(err.error || 'Failed to create course');
       }
     } catch (e) {
-      alert('Failed to create course');
+      toast.error('Failed to create course');
     } finally {
       setCreating(false);
     }

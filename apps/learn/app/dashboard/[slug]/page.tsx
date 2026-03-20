@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useToast } from '@imajin/ui';
 
 interface Lesson {
   id: string;
@@ -37,6 +38,7 @@ interface Course {
 export default function CourseEditorPage() {
   const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
   const slug = params.slug as string;
 
   const [course, setCourse] = useState<Course | null>(null);
@@ -97,7 +99,7 @@ export default function CourseEditorPage() {
       });
       await loadCourse();
     } catch (e) {
-      alert('Failed to save');
+      toast.error('Failed to save');
     } finally {
       setSaving(false);
     }

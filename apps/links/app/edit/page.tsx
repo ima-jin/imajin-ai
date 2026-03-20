@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useToast } from '@imajin/ui';
 
 interface Link {
   id: string;
@@ -70,6 +71,7 @@ const THEME_PRESETS = {
 };
 
 export default function EditPage() {
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState<LinkPage | null>(null);
   const [autoCreateError, setAutoCreateError] = useState(false);
@@ -162,11 +164,11 @@ export default function EditPage() {
         setShowEditForm(false);
       } else {
         const error = await res.json();
-        alert(error.error || 'Failed to update page');
+        toast.error(error.error || 'Failed to update page');
       }
     } catch (error) {
       console.error('Failed to update page:', error);
-      alert('Failed to update page');
+      toast.error('Failed to update page');
     }
   };
 
@@ -196,11 +198,11 @@ export default function EditPage() {
         setLinkFormData({ title: '', url: '', icon: '', visibility: 'public', isActive: true });
       } else {
         const error = await res.json();
-        alert(error.error || 'Failed to add link');
+        toast.error(error.error || 'Failed to add link');
       }
     } catch (error) {
       console.error('Failed to add link:', error);
-      alert('Failed to add link');
+      toast.error('Failed to add link');
     }
   };
 
@@ -228,11 +230,11 @@ export default function EditPage() {
         setLinkFormData({ title: '', url: '', icon: '', visibility: 'public', isActive: true });
       } else {
         const error = await res.json();
-        alert(error.error || 'Failed to update link');
+        toast.error(error.error || 'Failed to update link');
       }
     } catch (error) {
       console.error('Failed to update link:', error);
-      alert('Failed to update link');
+      toast.error('Failed to update link');
     }
   };
 
@@ -249,11 +251,11 @@ export default function EditPage() {
         await fetchPage();
       } else {
         const error = await res.json();
-        alert(error.error || 'Failed to delete link');
+        toast.error(error.error || 'Failed to delete link');
       }
     } catch (error) {
       console.error('Failed to delete link:', error);
-      alert('Failed to delete link');
+      toast.error('Failed to delete link');
     }
   };
 
@@ -287,7 +289,7 @@ export default function EditPage() {
       await fetchPage();
     } catch (error) {
       console.error('Failed to reorder links:', error);
-      alert('Failed to reorder links');
+      toast.error('Failed to reorder links');
     }
   };
 

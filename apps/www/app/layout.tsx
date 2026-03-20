@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { NavBar } from './components/NavBar';
 import { BugReportButton } from '@/components/bug-report-button';
+import { Providers } from './providers';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 import { SESSION_COOKIE_NAME as SESSION_COOKIE } from '@imajin/config';
@@ -74,7 +75,7 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className="min-h-screen antialiased bg-[#0a0a0a] text-white">
         <NavBar currentService="Home" />
-        {children}
+        <Providers>{children}</Providers>
         <BugReportWidget />
       </body>
     </html>

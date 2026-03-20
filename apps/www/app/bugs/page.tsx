@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { db, bugReports } from '@/db';
 import type { BugReport } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
+import { BugReporterOpenButton } from '@/components/BugReporterOpenButton';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 import { SESSION_COOKIE_NAME as SESSION_COOKIE } from '@imajin/config';
@@ -126,22 +127,8 @@ export default async function BugsPage() {
             {allReports.length} total report{allReports.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <button
-          id="open-bug-reporter"
-          className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          🐛 Report a Bug
-        </button>
+        <BugReporterOpenButton />
       </div>
-
-      {/* Script to trigger the floating bug reporter */}
-      <script dangerouslySetInnerHTML={{ __html: `
-        document.getElementById('open-bug-reporter')?.addEventListener('click', function() {
-          var btn = document.querySelector('[data-bug-reporter-trigger]');
-          if (btn) btn.click();
-          else alert('Bug reporter is loading — try again in a moment.');
-        });
-      `}} />
 
       {/* My Reports */}
       <section className="mb-10">

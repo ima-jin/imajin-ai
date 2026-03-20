@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@imajin/ui';
 
 interface Survey {
   id: string;
@@ -16,6 +17,7 @@ interface Survey {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [surveys, setSurveys] = useState<Survey[]>([]);
 
@@ -74,11 +76,11 @@ export default function DashboardPage() {
         await fetchSurveys();
       } else {
         const error = await res.json();
-        alert(error.error || 'Failed to delete survey');
+        toast.error(error.error || 'Failed to delete survey');
       }
     } catch (error) {
       console.error('Failed to delete survey:', error);
-      alert('Failed to delete survey');
+      toast.error('Failed to delete survey');
     }
   };
 
@@ -175,7 +177,7 @@ export default function DashboardPage() {
                           const handle = survey.handle || 'survey';
                           const url = `${window.location.origin}/${handle}/${survey.id}`;
                           navigator.clipboard.writeText(url);
-                          alert('Survey link copied to clipboard!');
+                          toast.success('Survey link copied!');
                         }}
                         className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
                         title="Copy survey link"

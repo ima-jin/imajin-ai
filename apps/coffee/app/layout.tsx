@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { NavBar } from '@imajin/ui';
 import './globals.css';
+import { Providers } from './providers';
 
 export const metadata: Metadata = {
   title: 'Coffee | Imajin',
@@ -23,7 +24,7 @@ export default function RootLayout({
           servicePrefix={servicePrefix}
           domain={domain}
         />
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
