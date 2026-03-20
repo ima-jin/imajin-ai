@@ -40,7 +40,7 @@ async function getNetworkStats() {
     const [lightningProfiles] = await sql`
       SELECT COUNT(*)::int as count
       FROM auth.identities
-      WHERE id LIKE 'did:email:%'
+      WHERE tier = 'soft'
     `;
 
     return {
