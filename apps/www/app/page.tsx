@@ -190,6 +190,10 @@ export default async function Home() {
             <span>API Docs</span>
             <span className="text-gray-700">→</span>
           </a>
+          <a href={`${PREFIX}market.${DOMAIN}`} className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
+            <span>Market</span>
+            <span className="text-gray-700">→</span>
+          </a>
         </div>
       </section>
 

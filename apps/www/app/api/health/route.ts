@@ -30,6 +30,7 @@ const SERVICES = [
   { name: 'dykil', label: 'Surveys' },
   { name: 'links', label: 'Links' },
   { name: 'learn', label: 'Learn' },
+  { name: 'market', label: 'Market' },
 ];
 
 async function checkService(service: { name: string; label: string }): Promise<ServiceCheck> {
