@@ -22,3 +22,4 @@ export {
   NODE_GRACE_PERIOD,
 } from "./constants";
 export type { NodeHeartbeat, NodeRegistration, NodeRegistrationRequest, NodeRegistrationResponse, NodeAttestation } from "./types/node";
+export { getEmailForDid, getDidForEmail } from "./credentials";
