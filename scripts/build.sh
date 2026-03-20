@@ -79,22 +79,19 @@ fi
 echo "" >> "$REPORT"
 
 # Run pending migrations before building — stop if any fail
+# Uses migrate-service.mjs for per-service tracking tables (__drizzle_migrations_<app>)
+# to avoid conflicts from shared __drizzle_migrations table across 14+ services.
 echo "=== Running migrations ===" | tee -a "$REPORT"
 MIGRATION_FAILED=false
 for app in "${APPS[@]}"; do
   if [ -f "apps/$app/drizzle.config.ts" ]; then
     echo "--- Migrating $app ---" | tee -a "$REPORT"
-    cd "apps/$app"
-    _raw="$(grep '^DATABASE_URL=' .env.local 2>/dev/null | head -1 | cut -d= -f2-)"
-    export DATABASE_URL="${_raw%\"}"    # strip trailing quote
-    DATABASE_URL="${DATABASE_URL#\"}"   # strip leading quote
-    if npx drizzle-kit migrate >> "$REPORT" 2>&1; then
+    if node scripts/migrate-service.mjs "$app" >> "$REPORT" 2>&1; then
       echo "✅ $app migrations" | tee -a "$REPORT"
     else
       echo "❌ $app migrations FAILED" | tee -a "$REPORT"
       MIGRATION_FAILED=true
     fi
-    cd "$BASE_DIR"
   fi
 done
 if [ "$MIGRATION_FAILED" = true ]; then
