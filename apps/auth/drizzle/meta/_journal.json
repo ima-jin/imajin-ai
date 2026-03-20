@@ -15,6 +15,13 @@
       "when": 1773897221989,
       "tag": "0001_certain_mauler",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773969631635,
+      "tag": "0002_special_gargoyle",
+      "breakpoints": true
     }
   ]
 }
