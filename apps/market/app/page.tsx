@@ -94,11 +94,19 @@ function MarketPageContent() {
       <div className="container mx-auto px-4 py-8 max-w-6xl">
 
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Browse Listings</h1>
-          <p className="text-gray-500 dark:text-gray-400">
-            Local commerce with trust.{total > 0 && ` ${total} listing${total !== 1 ? 's' : ''} available.`}
-          </p>
+        <div className="flex items-start justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Browse Listings</h1>
+            <p className="text-gray-500 dark:text-gray-400">
+              Local commerce with trust.{total > 0 && ` ${total} listing${total !== 1 ? 's' : ''} available.`}
+            </p>
+          </div>
+          <a
+            href="/listings/new"
+            className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-medium whitespace-nowrap"
+          >
+            Create Listing
+          </a>
         </div>
 
         {/* Search + Filters */}
