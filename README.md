@@ -21,7 +21,7 @@ The protocol is organized as a matrix of **four identity scopes** × **five prim
 
 Every problem the protocol solves is a cell in this matrix. Every service in this repo implements cells.
 
-14 services. 37 days. $1,793 in API costs. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
+15 services. 37 days. $1,793 in API costs. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
 
 ```
 ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
@@ -68,6 +68,7 @@ Account-based apps tied to a user's DID, accessible at `{service}.imajin.ai/{han
 | [dykil](./apps/dykil) | 3101 | 7101 | Surveys & polls (event integration) | ✅ Live |
 | [links](./apps/links) | 3102 | 7102 | Curated link collection | ✅ Live |
 | [learn](./apps/learn) | 3103 | 7103 | Courses, lessons, and learning progress | ✅ Live |
+| [market](./apps/market) | 3104 | 7104 | Local commerce, trust-based discovery | 🧪 Alpha |
 
 ### Client Apps (3400+/7400+)
 

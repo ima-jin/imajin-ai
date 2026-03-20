@@ -31,6 +31,7 @@ Each service owns a schema within the shared database:
 | `input` | input |
 | `media` | media |
 | `learn` | learn |
+| `market` | market |
 
 Connection string format:
 ```
@@ -66,6 +67,7 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | Imajin | dykil | 3101 | 7101 | dykil.imajin.ai |
 | Imajin | links | 3102 | 7102 | links.imajin.ai |
 | Imajin | learn | 3103 | 7103 | learn.imajin.ai |
+| Imajin | market | 3104 | 7104 | market.imajin.ai |
 | Client | fixready | 3400 | 7400 | fixready.imajin.ai |
 | Client | karaoke | 3401 | 7401 | karaoke.imajin.ai |
 

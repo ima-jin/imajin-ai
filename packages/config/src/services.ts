@@ -49,6 +49,7 @@ export const SERVICES: readonly ServiceDefinition[] = [
   { name: "dykil",       label: "Surveys",     icon: "📋", description: "Surveys and do-you-know-if-I-like polls",          devPort: 3101, prodPort: 7101, schema: "dykil",       tier: "imajin", visibility: "creator",       category: "creator" },
   { name: "links",       label: "Links",       icon: "🔗", description: "Link-in-bio pages and click tracking",             devPort: 3102, prodPort: 7102, schema: "links",       tier: "imajin", visibility: "creator",       category: "creator" },
   { name: "learn",       label: "Learn",       icon: "📚", description: "Courses, lessons, and learning progress",          devPort: 3103, prodPort: 7103, schema: "learn",       tier: "imajin", visibility: "public",        category: "core" },
+  { name: "market",      label: "Market",      icon: "🏪", description: "Local commerce — buy and sell with trust",           devPort: 3104, prodPort: 7104, schema: "market",      tier: "imajin", visibility: "public",        category: "core" },
 
   // Connected apps (separate repos) will use the plugin architecture (#249).
   // Not included here — they authenticate via delegated sessions, not the monorepo manifest.

@@ -15,6 +15,13 @@
       "when": 1773897272370,
       "tag": "0001_small_mephistopheles",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773984605072,
+      "tag": "0002_whole_gambit",
+      "breakpoints": true
     }
   ]
 }

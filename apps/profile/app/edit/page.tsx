@@ -19,6 +19,8 @@ interface Profile {
   metadata?: Record<string, string>;
   inference_enabled?: boolean;
   inferenceEnabled?: boolean;
+  show_market_items?: boolean;
+  showMarketItems?: boolean;
 }
 
 type AvatarMode = 'emoji' | 'image';
@@ -49,6 +51,7 @@ export default function EditProfilePage() {
   const [visibility, setVisibility] = useState<'public' | 'incognito'>('public');
   const [avatarMode, setAvatarMode] = useState<AvatarMode>('emoji');
   const [serviceToggles, setServiceToggles] = useState<Record<string, boolean>>({});
+  const [showMarketItems, setShowMarketItems] = useState(false);
 
   useEffect(() => {
     // Don't redirect until the session check has completed
@@ -92,6 +95,7 @@ export default function EditProfilePage() {
         }
       }
       setServiceToggles(toggles);
+      setShowMarketItems(!!(profile.showMarketItems ?? profile.show_market_items));
 
       // Detect avatar mode based on current avatar
       if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.startsWith('/'))) {
@@ -130,6 +134,7 @@ export default function EditProfilePage() {
         phone: phone || null,
         visibility,
         metadata,
+        show_market_items: showMarketItems,
       });
 
       // Sign the request body with the user's Ed25519 private key
@@ -366,6 +371,26 @@ export default function EditProfilePage() {
                   </button>
                 </div>
               ))}
+              {/* Market toggle */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-white font-medium">Market</p>
+                  <p className="text-xs text-gray-500">Show your active listings on your profile</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMarketItems((prev) => !prev)}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                    showMarketItems ? 'bg-orange-500' : 'bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                      showMarketItems ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
           </div>
 

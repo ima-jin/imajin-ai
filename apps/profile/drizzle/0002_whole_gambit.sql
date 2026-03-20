@@ -1,0 +1,1 @@
+ALTER TABLE "profile"."profiles" ADD COLUMN "show_market_items" boolean DEFAULT false NOT NULL;
