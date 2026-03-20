@@ -61,7 +61,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
       window.location.href = url;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
-      setStep('selector');
+      setStep(etransferEnabled ? 'selector' : 'button');
     }
   };
 
@@ -243,18 +243,20 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
           >
             {step === 'loading-card' ? 'Loading...' : '💳 Pay with Card'}
           </button>
-          <div className="flex flex-col gap-1">
-            <button
-              onClick={() => setStep('etransfer-confirm')}
-              disabled={step === 'loading-card'}
-              className="w-full px-4 py-2.5 rounded-lg font-semibold transition text-center bg-orange-500/20 text-orange-500 border border-orange-500/40 hover:bg-orange-500/30 disabled:opacity-50"
-            >
-              🏦 Pay by e-Transfer
-            </button>
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              e-Transfer payments go directly to the event organizer. Refunds are handled between you and the organizer.
-            </p>
-          </div>
+          {etransferEnabled && (
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={() => setStep('etransfer-confirm')}
+                disabled={step === 'loading-card'}
+                className="w-full px-4 py-2.5 rounded-lg font-semibold transition text-center bg-orange-500/20 text-orange-500 border border-orange-500/40 hover:bg-orange-500/30 disabled:opacity-50"
+              >
+                🏦 Pay by e-Transfer
+              </button>
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                e-Transfer payments go directly to the event organizer. Refunds are handled between you and the organizer.
+              </p>
+            </div>
+          )}
           <button
             onClick={() => { setStep('button'); setError(null); }}
             disabled={step === 'loading-card'}
