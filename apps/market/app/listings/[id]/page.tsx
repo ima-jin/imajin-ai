@@ -50,6 +50,32 @@ export default function ListingDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState(0);
+  const [buyLoading, setBuyLoading] = useState(false);
+  const [buyError, setBuyError] = useState<string | null>(null);
+
+  async function handleBuyNow() {
+    if (!listing) return;
+    setBuyLoading(true);
+    setBuyError(null);
+    try {
+      const res = await fetch(`/api/listings/${listing.id}/purchase`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quantity: 1 }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setBuyError(data.error || 'Purchase failed. Please try again.');
+        return;
+      }
+      window.location.href = data.url;
+    } catch {
+      setBuyError('Purchase failed. Please try again.');
+    } finally {
+      setBuyLoading(false);
+    }
+  }
 
   const servicePrefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
   const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -241,12 +267,18 @@ export default function ListingDetailPage() {
 
             {/* Tier 2: Buy Now */}
             {listing.sellerTier === 'public_onplatform' && (
-              <a
-                href={`/checkout/${listing.id}`}
-                className="inline-block text-center px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg"
-              >
-                Buy Now
-              </a>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleBuyNow}
+                  disabled={buyLoading}
+                  className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {buyLoading ? 'Processing…' : 'Buy Now'}
+                </button>
+                {buyError && (
+                  <p className="text-sm text-red-500">{buyError}</p>
+                )}
+              </div>
             )}
 
             {/* Metadata */}
