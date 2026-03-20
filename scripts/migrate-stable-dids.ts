@@ -120,7 +120,7 @@ async function main() {
         continue;
       }
 
-      const newDid = `did:imajin:${secureId(16)}`;
+      const newDid = `did:imajin:${secureId(44)}`;
       const credId = `cred_${secureId(16)}`;
       const migrationId = `migration_${secureId(16)}`;
 

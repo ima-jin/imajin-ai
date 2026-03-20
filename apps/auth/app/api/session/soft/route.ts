@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // Mint a new stable DID
-      const did = `did:imajin:${nanoid(16)}`;
+      const did = `did:imajin:${nanoid(44)}`;
       const placeholderKey = `soft_${nanoid(32)}`;
 
       const [newIdentity] = await db

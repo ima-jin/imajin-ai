@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
       }
     } else {
       // Mint a new stable DID
-      did = `did:imajin:${nanoid(16)}`;
+      did = `did:imajin:${nanoid(44)}`;
       const placeholderKey = `soft_${nanoid(32)}`;
       [identity] = await db
         .insert(identities)
