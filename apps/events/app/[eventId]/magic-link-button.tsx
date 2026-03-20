@@ -7,7 +7,8 @@ const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
 export function MagicLinkButton({ eventId }: { eventId: string }) {
   const [showForm, setShowForm] = useState(false);
   const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error' | 'hard-did'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,12 +26,28 @@ export function MagicLinkButton({ eventId }: { eventId: string }) {
         }),
       });
 
-      if (!response.ok) throw new Error('Failed');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 403) {
+          setErrorMessage(data.error || 'This account requires private key authentication.');
+          setStatus('hard-did');
+          return;
+        }
+        throw new Error('Failed');
+      }
       setStatus('sent');
     } catch {
       setStatus('error');
     }
   };
+
+  if (status === 'hard-did') {
+    return (
+      <p className="text-sm text-amber-400">
+        🔐 {errorMessage}
+      </p>
+    );
+  }
 
   if (status === 'sent') {
     return (

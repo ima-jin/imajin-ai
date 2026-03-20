@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { onboardTokens, credentials } from '@/src/db/schema';
+import { onboardTokens, credentials, identities } from '@/src/db/schema';
 import { sendEmail } from '@imajin/email';
 import { getClient } from '@imajin/db';
 import { eq, and } from 'drizzle-orm';
@@ -64,21 +64,24 @@ export async function POST(request: NextRequest) {
 
     let did = cred?.did;
 
-    // Fallback: check profile.profiles.email for hard DIDs without a credential row
-    if (!did) {
-      const sql = getClient();
-      const profileRows = await sql`
-        SELECT did FROM profile.profiles WHERE email = ${normalizedEmail} LIMIT 1
-      `;
-      if (profileRows.length > 0) {
-        did = profileRows[0].did;
-      }
-    }
-
     if (!did) {
       // No account found — return success anyway to prevent enumeration
       console.log(`Magic link requested for unknown email: ${normalizedEmail}`);
       return NextResponse.json({ sent: true }, { headers: cors });
+    }
+
+    // Check if this is a hard DID — magic links only work for soft DIDs
+    const [identity] = await db
+      .select({ tier: identities.tier })
+      .from(identities)
+      .where(eq(identities.id, did))
+      .limit(1);
+
+    if (identity && identity.tier !== 'soft') {
+      return NextResponse.json(
+        { error: 'This account requires private key authentication. Use your backup key file to log in.' },
+        { status: 403, headers: cors }
+      );
     }
 
     // Mint onboard token
