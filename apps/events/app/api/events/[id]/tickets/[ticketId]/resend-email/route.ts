@@ -143,8 +143,10 @@ export async function POST(
       timeZoneName: 'short',
     });
 
+    let emailResult;
+
     if (ticket.registrationStatus === 'pending') {
-      await sendEmail({
+      emailResult = await sendEmail({
         to: customerEmail,
         subject: `Don't forget to register — ${event.title}`,
         html: registrationReminderEmail({
@@ -165,7 +167,7 @@ export async function POST(
             }).format(ticket.pricePaid / 100)
           : 'Free';
 
-      await sendEmail({
+      emailResult = await sendEmail({
         to: customerEmail,
         subject: `You're in — ${event.title}`,
         html: ticketConfirmationEmail({
@@ -183,6 +185,14 @@ export async function POST(
           qrCodeDataUri,
         }),
       });
+    }
+
+    if (!emailResult?.success) {
+      console.error('SendGrid delivery failed:', emailResult?.error);
+      return NextResponse.json(
+        { error: 'Failed to deliver email. Check SendGrid configuration.' },
+        { status: 502 }
+      );
     }
 
     // Record the send timestamp
