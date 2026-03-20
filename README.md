@@ -21,7 +21,7 @@ The protocol is organized as a matrix of **four identity scopes** × **five prim
 
 Every problem the protocol solves is a cell in this matrix. Every service in this repo implements cells.
 
-14 services. 37 days. $1,793 in API costs. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
+15 services. 37 days. $1,793 in API costs. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
 
 ```
 ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
@@ -57,6 +57,7 @@ Core services that make up the sovereign stack.
 | [chat](./apps/chat) | 3007 | 7007 | [chat.imajin.ai](https://chat.imajin.ai) | E2EE messaging, trust-bound | ✅ Live |
 | [input](./apps/input) | 3008 | 7008 | [input.imajin.ai](https://input.imajin.ai) | Input processing (voice, files) | ✅ Live |
 | [media](./apps/media) | 3009 | 7009 | [media.imajin.ai](https://media.imajin.ai) | Asset storage, .fair attribution | 🧪 Alpha |
+| [market](./apps/market) | 3010 | 7010 | [market.imajin.ai](https://market.imajin.ai) | Local commerce, trust-based discovery | 🧪 Alpha |
 
 ### Imajin Apps (3100+/7100+)
 
