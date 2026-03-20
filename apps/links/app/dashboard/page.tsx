@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@imajin/ui';
 
 interface LinkStats {
   id: string;
@@ -29,6 +30,7 @@ interface Stats {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
   const [handle, setHandle] = useState<string>('');
@@ -125,7 +127,7 @@ export default function DashboardPage() {
             <button
               onClick={() => {
                 navigator.clipboard.writeText(`${window.location.origin}/${handle}`);
-                alert('Link copied!');
+                toast.success('Link copied!');
               }}
               className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
             >

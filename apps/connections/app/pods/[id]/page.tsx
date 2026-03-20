@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useIdentity } from '../../context/IdentityContext';
-import { ConnectionPicker } from '@imajin/ui';
+import { ConnectionPicker, useToast } from '@imajin/ui';
 
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
@@ -35,6 +35,7 @@ interface Pod {
 export default function PodDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
   const { did, isLoggedIn, loading } = useIdentity();
+  const { toast } = useToast();
   const [pod, setPod] = useState<Pod | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [loadingPod, setLoadingPod] = useState(true);
@@ -102,7 +103,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
         fetchPod();
       } else {
         const data = await res.json();
-        alert(data.error || 'Failed to add member');
+        toast.error(data.error || 'Failed to add member');
       }
     } catch {} finally {
       setAdding(false);
@@ -124,7 +125,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
         fetchPod();
       } else {
         const data = await res.json();
-        alert(data.error || 'Failed to remove member');
+        toast.error(data.error || 'Failed to remove member');
       }
     } catch {}
   }
@@ -136,7 +137,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
       if (res.ok) {
         window.location.href = '/?tab=groups';
       } else {
-        alert('Failed to delete group.');
+        toast.error('Failed to delete group');
       }
     } catch {}
   }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { useToast } from '@imajin/ui';
 
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
@@ -61,6 +62,7 @@ function statusBadge(status: string) {
 }
 
 export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pending: number, remaining: number | null) => void }) {
+  const { toast } = useToast();
   const [invitedBy, setInvitedBy] = useState<InvitedBy | null | 'loading'>('loading');
   const [sentInvites, setSentInvites] = useState<SentInvite[]>([]);
   const [quota, setQuota] = useState<Quota | null>(null);
@@ -132,7 +134,7 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
         fetchSentInvites();
       } else {
         const err = await res.json();
-        alert(err.error || 'Failed to generate invite');
+        toast.error(err.error || 'Failed to generate invite');
       }
     } catch {} finally {
       setGenerating(false);

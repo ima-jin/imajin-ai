@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useToast } from '@imajin/ui';
 import { Model } from 'survey-core';
 import { Survey } from 'survey-react-ui';
 import 'survey-core/survey-core.min.css';
@@ -17,6 +18,7 @@ interface SurveyData {
 export default function SurveyResponsePage() {
   const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
   const { handle, surveyId } = params;
 
   const [loading, setLoading] = useState(true);
@@ -55,12 +57,12 @@ export default function SurveyResponsePage() {
 
         setSurveyModel(model);
       } else {
-        alert('Survey not found');
+        toast.error('Survey not found');
         router.push('/');
       }
     } catch (error) {
       console.error('Failed to fetch survey:', error);
-      alert('Failed to load survey');
+      toast.error('Failed to load survey');
     } finally {
       setLoading(false);
     }
@@ -80,12 +82,12 @@ export default function SurveyResponsePage() {
         setSubmitted(true);
       } else {
         const error = await res.json();
-        alert(error.error || 'Failed to submit response');
+        toast.error(error.error || 'Failed to submit response');
         setSubmitting(false);
       }
     } catch (error) {
       console.error('Failed to submit response:', error);
-      alert('Failed to submit response');
+      toast.error('Failed to submit response');
       setSubmitting(false);
     }
   };

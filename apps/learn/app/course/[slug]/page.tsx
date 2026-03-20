@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { OnboardGate } from '@imajin/onboard';
+import { useToast } from '@imajin/ui';
 
 interface Lesson {
   id: string;
@@ -60,6 +61,7 @@ const contentTypeIcons: Record<string, string> = {
 export default function CourseDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
   const slug = params.slug as string;
 
   const [course, setCourse] = useState<Course | null>(null);
@@ -131,7 +133,7 @@ export default function CourseDetailPage() {
 
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || 'Enrollment failed');
+        toast.error(err.error || 'Enrollment failed');
         return;
       }
 
@@ -146,7 +148,7 @@ export default function CourseDetailPage() {
         window.location.reload();
       }
     } catch (e) {
-      alert('Enrollment failed');
+      toast.error('Enrollment failed');
     } finally {
       setEnrolling(false);
     }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@imajin/ui';
 
 interface Profile {
   name: string | null;
@@ -118,6 +119,7 @@ function ProfileCell({ ownerDid, profile, paymentMethod, paymentId }: {
 type FilterKey = 'type' | 'status' | null;
 
 export function GuestList({ eventId, isOwner }: GuestListProps) {
+  const { toast } = useToast();
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -154,14 +156,14 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
       const res = await fetch(`/api/events/${eventId}/tickets/${ticketId}/check-in`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || 'Check-in failed');
+        toast.error(data.error || 'Check-in failed');
         return;
       }
       setGuests(prev => prev.map(g =>
         g.id === ticketId ? { ...g, usedAt: data.ticket.usedAt } : g
       ));
     } catch {
-      alert('Check-in failed');
+      toast.error('Check-in failed');
     } finally {
       setActionLoading(null);
     }
@@ -174,14 +176,14 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
       const res = await fetch(`/api/tickets/${ticketId}/confirm-payment`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || 'Confirmation failed');
+        toast.error(data.error || 'Confirmation failed');
         return;
       }
       setGuests(prev => prev.map(g =>
         g.id === ticketId ? { ...g, status: 'valid', purchasedAt: data.ticket.purchasedAt } : g
       ));
     } catch {
-      alert('Confirmation failed');
+      toast.error('Confirmation failed');
     } finally {
       setActionLoading(null);
     }
@@ -197,7 +199,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
       ]);
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || 'Failed to resend email');
+        toast.error(data.error || 'Failed to resend email');
         setResendState(prev => { const n = { ...prev }; delete n[ticketId]; return n; });
         return;
       }
@@ -209,7 +211,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
       setResendToast({ email: data.email });
       setTimeout(() => setResendToast(null), 4000);
     } catch {
-      alert('Failed to resend email');
+      toast.error('Failed to resend email');
       setResendState(prev => { const n = { ...prev }; delete n[ticketId]; return n; });
     }
   };
@@ -238,14 +240,14 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
       const res = await fetch(`/api/events/${eventId}/tickets/${ticketId}/refund`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || 'Refund failed');
+        toast.error(data.error || 'Refund failed');
         return;
       }
       setGuests(prev => prev.map(g =>
         g.id === ticketId ? { ...g, status: 'refunded' } : g
       ));
     } catch {
-      alert('Refund failed');
+      toast.error('Refund failed');
     } finally {
       setActionLoading(null);
     }

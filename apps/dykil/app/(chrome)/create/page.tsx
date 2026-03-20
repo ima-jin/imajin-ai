@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useToast } from '@imajin/ui';
 import { Model } from 'survey-core';
 import { Survey } from 'survey-react-ui';
 import 'survey-core/survey-core.min.css';
@@ -162,6 +163,7 @@ function FieldFormPanel({
 function CreateSurveyContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { toast } = useToast();
   const editId = searchParams.get('id');
 
   const [loading, setLoading] = useState(!!editId);
@@ -216,12 +218,12 @@ function CreateSurveyContent() {
           fields: { elements }
         });
       } else {
-        alert('Failed to load survey');
+        toast.error('Failed to load survey');
         router.push('/dashboard');
       }
     } catch (error) {
       console.error('Failed to fetch survey:', error);
-      alert('Failed to load survey');
+      toast.error('Failed to load survey');
     } finally {
       setLoading(false);
     }
@@ -262,13 +264,13 @@ function CreateSurveyContent() {
 
   const saveField = () => {
     if (!fieldForm.title.trim()) {
-      alert('Question title is required');
+      toast.warning('Question title is required');
       return;
     }
 
     if ((fieldForm.type === 'radiogroup' || fieldForm.type === 'checkbox' || fieldForm.type === 'dropdown') &&
         (!fieldForm.choices || fieldForm.choices.length === 0 || !fieldForm.choices.some(c => typeof c === 'string' ? c.trim() : c.text?.trim()))) {
-      alert('Multiple choice questions must have at least one option');
+      toast.warning('Multiple choice questions must have at least one option');
       return;
     }
 
@@ -307,12 +309,12 @@ function CreateSurveyContent() {
 
   const saveSurvey = async (publish: boolean = false) => {
     if (!survey.title.trim()) {
-      alert('Survey title is required');
+      toast.warning('Survey title is required');
       return;
     }
 
     if (survey.fields.elements.length === 0) {
-      alert('Survey must have at least one question');
+      toast.warning('Survey must have at least one question');
       return;
     }
 
@@ -337,11 +339,11 @@ function CreateSurveyContent() {
         router.push('/dashboard');
       } else {
         const error = await res.json();
-        alert(error.error || 'Failed to save survey');
+        toast.error(error.error || 'Failed to save survey');
       }
     } catch (error) {
       console.error('Failed to save survey:', error);
-      alert('Failed to save survey');
+      toast.error('Failed to save survey');
     } finally {
       setSaving(false);
     }

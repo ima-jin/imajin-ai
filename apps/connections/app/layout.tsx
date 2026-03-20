@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { NavBar } from '@imajin/ui';
 import { IdentityProvider } from './context/IdentityContext';
 import './globals.css';
+import { Providers } from './providers';
 
 const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -18,11 +19,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="dark">
       <body className="min-h-screen bg-[#0a0a0a] text-white">
         <NavBar currentService="Connections" servicePrefix={prefix} domain={domain} />
-        <IdentityProvider>
-          <main className="container mx-auto px-4 py-8">
-            {children}
-          </main>
-        </IdentityProvider>
+        <Providers>
+          <IdentityProvider>
+            <main className="container mx-auto px-4 py-8">
+              {children}
+            </main>
+          </IdentityProvider>
+        </Providers>
       </body>
     </html>
   );

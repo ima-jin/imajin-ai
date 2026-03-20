@@ -16,3 +16,6 @@ export { ConnectionPicker } from './connection-picker';
 export type { ConnectionPickerProps } from './connection-picker';
 
 export { PayoutSetupBanner } from './PayoutSetupBanner';
+
+export { ToastProvider, useToast } from './toast';
+export type { ToastType } from './toast';
