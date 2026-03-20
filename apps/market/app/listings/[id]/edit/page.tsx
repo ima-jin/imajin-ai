@@ -1,0 +1,240 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
+import { ListingForm, ListingFormData } from '../../../components/ListingForm';
+
+interface Listing {
+  id: string;
+  title: string;
+  description: string | null;
+  price: number;
+  currency: string;
+  category: string | null;
+  images: string[];
+  quantity: number | null;
+  sellerTier: string;
+  contactInfo: { phone?: string; email?: string; whatsapp?: string } | null;
+  status: string;
+}
+
+export default function EditListingPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    async function fetchListing() {
+      try {
+        const res = await fetch(`/api/listings/${id}`);
+        if (res.status === 404) {
+          setLoadError('Listing not found.');
+          return;
+        }
+        if (!res.ok) throw new Error('Failed to load listing');
+        const data: Listing = await res.json();
+        setListing(data);
+      } catch {
+        setLoadError('Could not load this listing. Please try again.');
+      }
+    }
+    fetchListing();
+  }, [id]);
+
+  const handleSubmit = async (data: ListingFormData) => {
+    setIsLoading(true);
+    setSubmitError('');
+
+    try {
+      const body: Record<string, unknown> = {
+        title: data.title,
+        description: data.description || null,
+        price: data.price,
+        currency: data.currency,
+        category: data.category || null,
+        images: [],
+        sellerTier: data.sellerTier,
+        quantity: data.quantity ?? 1,
+      };
+
+      if (data.sellerTier === 'public_offplatform') {
+        const ci: Record<string, string> = {};
+        if (data.contactInfo.phone) ci.phone = data.contactInfo.phone;
+        if (data.contactInfo.email) ci.email = data.contactInfo.email;
+        if (data.contactInfo.whatsapp) ci.whatsapp = data.contactInfo.whatsapp;
+        body.contactInfo = ci;
+      } else {
+        body.contactInfo = null;
+      }
+
+      const res = await fetch(`/api/listings/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+
+      if (res.status === 401) {
+        setSubmitError('You must be signed in to edit a listing.');
+        return;
+      }
+
+      if (res.status === 403) {
+        setSubmitError('You do not have permission to edit this listing.');
+        return;
+      }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSubmitError(data.error || 'Failed to update listing. Please try again.');
+        return;
+      }
+
+      router.push(`/listings/${id}`);
+    } catch {
+      setSubmitError('Network error. Please check your connection and try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/listings/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (res.status === 403) {
+        setSubmitError('You do not have permission to delete this listing.');
+        setShowDeleteConfirm(false);
+        return;
+      }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSubmitError(data.error || 'Failed to delete listing.');
+        setShowDeleteConfirm(false);
+        return;
+      }
+
+      router.push('/');
+    } catch {
+      setSubmitError('Network error. Please try again.');
+      setShowDeleteConfirm(false);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="text-center px-4">
+          <p className="text-lg font-medium text-gray-100 mb-4">{loadError}</p>
+          <Link href="/" className="text-blue-400 hover:text-blue-300 transition text-sm">
+            ← Back to listings
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (!listing) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="animate-pulse space-y-4 w-full max-w-2xl px-4">
+          <div className="h-6 bg-gray-800 rounded w-1/3" />
+          <div className="h-10 bg-gray-800 rounded" />
+          <div className="h-32 bg-gray-800 rounded" />
+          <div className="h-10 bg-gray-800 rounded w-1/2" />
+        </div>
+      </div>
+    );
+  }
+
+  const initialData: Partial<ListingFormData> & { price: number } = {
+    title: listing.title,
+    description: listing.description ?? '',
+    price: listing.price,
+    currency: listing.currency,
+    category: listing.category ?? '',
+    quantity: listing.quantity,
+    images: listing.images ?? [],
+    sellerTier: (listing.sellerTier as 'public_offplatform' | 'public_onplatform') ?? 'public_offplatform',
+    contactInfo: {
+      phone: listing.contactInfo?.phone ?? '',
+      email: listing.contactInfo?.email ?? '',
+      whatsapp: listing.contactInfo?.whatsapp ?? '',
+    },
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-gray-100">
+      <div className="container mx-auto px-4 py-8 max-w-2xl">
+        <Link
+          href={`/listings/${id}`}
+          className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-400 transition mb-6"
+        >
+          ← Back to listing
+        </Link>
+
+        <h1 className="text-2xl font-bold mb-2">Edit Listing</h1>
+        <p className="text-gray-400 mb-8">Update your listing details.</p>
+
+        <ListingForm
+          initialData={initialData}
+          onSubmit={handleSubmit}
+          submitLabel="Update Listing"
+          isLoading={isLoading}
+          error={submitError}
+        />
+
+        {/* Delete section */}
+        <div className="mt-10 pt-8 border-t border-gray-800">
+          <h3 className="text-sm font-medium text-gray-400 mb-3">Danger Zone</h3>
+          {!showDeleteConfirm ? (
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-4 py-2 bg-red-900/40 border border-red-800 text-red-400 hover:bg-red-800/50 hover:text-red-300 rounded-lg text-sm font-medium transition"
+            >
+              Delete Listing
+            </button>
+          ) : (
+            <div className="p-4 bg-red-900/20 border border-red-800 rounded-lg space-y-3">
+              <p className="text-sm text-red-300">
+                Are you sure? This will permanently remove the listing. This cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition"
+                >
+                  {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm font-medium transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
