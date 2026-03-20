@@ -57,7 +57,6 @@ Core services that make up the sovereign stack.
 | [chat](./apps/chat) | 3007 | 7007 | [chat.imajin.ai](https://chat.imajin.ai) | E2EE messaging, trust-bound | ✅ Live |
 | [input](./apps/input) | 3008 | 7008 | [input.imajin.ai](https://input.imajin.ai) | Input processing (voice, files) | ✅ Live |
 | [media](./apps/media) | 3009 | 7009 | [media.imajin.ai](https://media.imajin.ai) | Asset storage, .fair attribution | 🧪 Alpha |
-| [market](./apps/market) | 3010 | 7010 | [market.imajin.ai](https://market.imajin.ai) | Local commerce, trust-based discovery | 🧪 Alpha |
 
 ### Imajin Apps (3100+/7100+)
 
@@ -69,6 +68,7 @@ Account-based apps tied to a user's DID, accessible at `{service}.imajin.ai/{han
 | [dykil](./apps/dykil) | 3101 | 7101 | Surveys & polls (event integration) | ✅ Live |
 | [links](./apps/links) | 3102 | 7102 | Curated link collection | ✅ Live |
 | [learn](./apps/learn) | 3103 | 7103 | Courses, lessons, and learning progress | ✅ Live |
+| [market](./apps/market) | 3104 | 7104 | Local commerce, trust-based discovery | 🧪 Alpha |
 
 ### Client Apps (3400+/7400+)
 

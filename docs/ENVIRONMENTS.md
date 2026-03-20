@@ -63,11 +63,11 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | Core | chat | 3007 | 7007 | chat.imajin.ai |
 | Core | input | 3008 | 7008 | input.imajin.ai |
 | Core | media | 3009 | 7009 | media.imajin.ai |
-| Core | market | 3010 | 7010 | market.imajin.ai |
 | Imajin | coffee | 3100 | 7100 | coffee.imajin.ai |
 | Imajin | dykil | 3101 | 7101 | dykil.imajin.ai |
 | Imajin | links | 3102 | 7102 | links.imajin.ai |
 | Imajin | learn | 3103 | 7103 | learn.imajin.ai |
+| Imajin | market | 3104 | 7104 | market.imajin.ai |
 | Client | fixready | 3400 | 7400 | fixready.imajin.ai |
 | Client | karaoke | 3401 | 7401 | karaoke.imajin.ai |
 
