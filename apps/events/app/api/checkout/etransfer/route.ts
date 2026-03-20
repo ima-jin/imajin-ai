@@ -26,24 +26,16 @@ interface ETransferCheckoutRequest {
  * Create or retrieve a soft DID session from email (same pattern as webhook ticket creation).
  */
 async function getOrCreateSoftDid(email: string, name?: string): Promise<string> {
-  try {
-    const response = await fetch(`${AUTH_URL}/api/session/soft`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.toLowerCase().trim(), name }),
-    });
-    if (!response.ok) {
-      console.error('Soft DID creation failed:', response.status);
-      const emailSlug = email.toLowerCase().trim().replace(/@/g, '_at_').replace(/\./g, '_');
-      return `did:email:${emailSlug}`;
-    }
-    const data = await response.json();
-    return data.did;
-  } catch (error) {
-    console.error('Soft DID creation error:', error);
-    const emailSlug = email.toLowerCase().trim().replace(/@/g, '_at_').replace(/\./g, '_');
-    return `did:email:${emailSlug}`;
+  const response = await fetch(`${AUTH_URL}/api/session/soft`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email.toLowerCase().trim(), name }),
+  });
+  if (!response.ok) {
+    throw new Error(`Soft DID creation failed: ${response.status}`);
   }
+  const data = await response.json();
+  return data.did;
 }
 
 export async function POST(request: NextRequest) {

@@ -30,31 +30,23 @@ const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http:/
  * This creates a soft registration that can be claimed later.
  */
 async function getOrCreateGuestDid(email: string, eventId: string, eventDid: string): Promise<string> {
-  try {
-    const response = await fetch(`${PROFILE_URL}/api/soft-register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        source: 'event',
-        sourceId: eventDid,
-      }),
-    });
+  const response = await fetch(`${PROFILE_URL}/api/soft-register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      source: 'event',
+      sourceId: eventDid,
+    }),
+  });
 
-    if (!response.ok) {
-      console.error('Soft register failed:', await response.text());
-      // Fallback to email-based DID
-      return `did:email:${email.replace('@', '_at_')}`;
-    }
-
-    const data = await response.json();
-    console.log(`Guest DID for ${email}: ${data.did} (isNew: ${data.isNew})`);
-    return data.did;
-  } catch (error) {
-    console.error('Soft register error:', error);
-    // Fallback to email-based DID
-    return `did:email:${email.replace('@', '_at_')}`;
+  if (!response.ok) {
+    throw new Error(`Soft register failed: ${response.status} ${await response.text()}`);
   }
+
+  const data = await response.json();
+  console.log(`Guest DID for ${email}: ${data.did} (isNew: ${data.isNew})`);
+  return data.did;
 }
 
 /**
@@ -280,7 +272,10 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   } else {
     // Guest buyer — create soft DID session
     const softSession = await createSoftDidSession(customerEmail, customerName || undefined);
-    ownerDid = softSession?.did || `did:email:${customerEmail.replace('@', '_at_')}`;
+    if (!softSession?.did) {
+      throw new Error(`Failed to create soft DID session for ${customerEmail}`);
+    }
+    ownerDid = softSession.did;
   }
 
   // Create ticket(s)

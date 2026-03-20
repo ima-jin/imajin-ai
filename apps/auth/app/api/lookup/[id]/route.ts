@@ -36,6 +36,7 @@ export async function GET(
         handle: identities.handle,
         name: identities.name,
         avatarUrl: identities.avatarUrl,
+        tier: identities.tier,
         metadata: identities.metadata,
         createdAt: identities.createdAt,
       })
@@ -56,6 +57,7 @@ export async function GET(
       handle: identity.handle,
       name: identity.name,
       type: identity.type,
+      tier: identity.tier,
       avatarUrl: identity.avatarUrl,
       metadata: identity.metadata,
       createdAt: identity.createdAt,
