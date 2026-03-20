@@ -9,6 +9,7 @@ import { eq, count } from 'drizzle-orm';
 import { Avatar } from '../components/Avatar';
 import { FollowButton } from '../components/FollowButton';
 import { AskButton } from '../components/AskButton';
+import { MarketItems } from '../components/MarketItems';
 
 interface PageProps {
   params: Promise<{ handle: string }>;
@@ -24,6 +25,7 @@ interface Profile {
   email?: string;
   phone?: string;
   inferenceEnabled?: boolean;
+  showMarketItems?: boolean;
   createdAt: string;
   metadata?: {
     links?: string;
@@ -369,6 +371,11 @@ export default async function ProfilePage({ params }: PageProps) {
               ☕ Tip Me
             </a>
           </div>
+        )}
+
+        {/* Market items */}
+        {profile.showMarketItems && (
+          <MarketItems did={profile.did} servicePrefix={servicePrefix} domain={domain} />
         )}
 
         {/* Member since */}
