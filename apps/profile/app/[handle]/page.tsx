@@ -226,7 +226,9 @@ export default async function ProfilePage({ params }: PageProps) {
   };
   const typeLabel = typeLabels[profile.displayType];
 
-  const isSoftDID = profile.did.startsWith('did:email:');
+  const authSql = getClient();
+  const [identityRow] = await authSql`SELECT tier FROM auth.identities WHERE id = ${profile.did} LIMIT 1`.catch(() => []);
+  const isSoftDID = identityRow?.tier === 'soft';
 
   // Fetch counts, follow status, and links in parallel
   const [counts, isFollowing, links] = await Promise.all([

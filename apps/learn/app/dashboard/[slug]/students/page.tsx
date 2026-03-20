@@ -33,7 +33,6 @@ function timeAgo(dateStr: string): string {
 }
 
 function shortDid(did: string): string {
-  if (did.startsWith('did:email:')) return did.replace('did:email:', '').replace(/_at_/g, '@').replace(/_/g, '.');
   if (did.length > 30) return did.slice(0, 16) + '…' + did.slice(-8);
   return did;
 }

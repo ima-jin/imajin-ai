@@ -5,16 +5,11 @@ import { requireAuth } from '@/src/lib/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { db, tickets, events, ticketTypes, ticketRegistrations } from '@/src/db';
 import { getClient } from '@imajin/db';
+import { getEmailForDid } from '@imajin/auth';
 import { sendEmail, generateQRCode, ticketConfirmationEmail, registrationReminderEmail } from '@/src/lib/email';
 
 const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
-
-function decodeEmailFromDid(did: string): string | null {
-  // did:email:user_at_domain_com -> user@domain.com
-  if (!did.startsWith('did:email:')) return null;
-  return did.slice('did:email:'.length).replace('_at_', '@');
-}
 
 function redactEmail(email: string): string {
   const atIdx = email.indexOf('@');
@@ -100,7 +95,7 @@ export async function POST(
       if (profileRows.length > 0 && profileRows[0].email) {
         customerEmail = profileRows[0].email;
       } else {
-        customerEmail = decodeEmailFromDid(ticket.ownerDid);
+        customerEmail = await getEmailForDid(ticket.ownerDid);
       }
     }
 

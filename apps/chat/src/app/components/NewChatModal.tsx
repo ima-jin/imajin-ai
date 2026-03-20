@@ -33,6 +33,7 @@ interface Connection {
   did: string;
   handle?: string;
   name?: string;
+  tier?: string | null;
   podId: string;
   podName: string;
 }
@@ -40,7 +41,6 @@ interface Connection {
 function displayName(conn: Connection): string {
   if (conn.name) return conn.name;
   if (conn.handle) return `@${conn.handle}`;
-  if (conn.did.startsWith('did:email:')) return conn.did.slice('did:email:'.length);
   return conn.did.slice(0, 24) + '...';
 }
 
@@ -77,7 +77,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
               );
               if (lookupRes.ok) {
                 const profile = await lookupRes.json();
-                return { ...conn, handle: profile.handle, name: profile.name };
+                return { ...conn, handle: profile.handle, name: profile.name, tier: profile.tier };
               }
             } catch {}
             return conn;
@@ -89,7 +89,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
         const seen = new Map<string, Connection>();
         for (const conn of resolved) {
           if (identity && conn.did === identity.did) continue; // exclude self
-          if (conn.did.startsWith('did:email:')) continue; // soft DIDs cannot receive messages
+          if (conn.tier === 'soft') continue; // soft DIDs cannot receive messages
           const existing = seen.get(conn.did);
           // Keep the entry with the most profile info
           if (!existing || (conn.name && !existing.name)) {

@@ -3,6 +3,7 @@ import { db, tips, coffeePages } from '@/db';
 import { eq } from 'drizzle-orm';
 import { settleTip } from '@/lib/settle';
 import { sendEmail, tipReceivedEmail, tipSentEmail } from '@/lib/email';
+import { getEmailForDid } from '@imajin/auth';
 
 const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL || 'http://localhost:3005';
 const COFFEE_URL = process.env.NEXT_PUBLIC_COFFEE_URL || 'https://coffee.imajin.ai';
@@ -148,24 +149,23 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Look up email for a DID via profile service.
+ * Look up email for a DID via profile service, with credentials table as fallback.
  */
 async function resolveEmailForDid(did: string): Promise<string | null> {
-  // For soft DIDs, extract email directly
-  if (did.startsWith('did:email:')) {
-    return did.replace('did:email:', '').replace(/_at_/g, '@').replace(/_/g, '.');
-  }
-
-  // For hard DIDs, query profile service
+  // Try profile service first (covers hard DIDs with email set)
   try {
     const res = await fetch(`${PROFILE_SERVICE_URL}/api/profile/${encodeURIComponent(did)}`, {
       headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
     });
-    if (!res.ok) return null;
-    const profile = await res.json();
-    return profile.email || null;
+    if (res.ok) {
+      const profile = await res.json();
+      if (profile.email) return profile.email;
+    }
   } catch {
-    return null;
+    // Fall through to credentials lookup
   }
+
+  // Fall back to credentials table (covers all DIDs with email credentials)
+  return getEmailForDid(did);
 }

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, index, pgSchema } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, index, uniqueIndex, pgSchema } from 'drizzle-orm/pg-core';
 
 export const authSchema = pgSchema('auth');
 
@@ -93,6 +93,25 @@ export const attestations = authSchema.table('attestations', {
   typeIdx: index('idx_auth_attestations_type').on(table.type),
 }));
 
+/**
+ * Credentials - authentication methods linked to identities
+ *
+ * Decouples identity (DID) from auth method (email, keypair, etc.)
+ * so that a single DID can have multiple credentials and can
+ * graduate from email to keypair without changing identity.
+ */
+export const credentials = authSchema.table('credentials', {
+  id: text('id').primaryKey(),                    // cred_xxx
+  did: text('did').notNull(),                     // references auth.identities
+  type: text('type').notNull(),                   // 'email' | 'keypair'
+  value: text('value').notNull(),                 // email address, public key, etc.
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  didIdx: index('idx_credentials_did').on(table.did),
+  typeValueIdx: uniqueIndex('idx_credentials_type_value').on(table.type, table.value),
+}));
+
 // Types
 export type Identity = typeof identities.$inferSelect;
 export type NewIdentity = typeof identities.$inferInsert;
@@ -101,3 +120,5 @@ export type Token = typeof tokens.$inferSelect;
 export type OnboardToken = typeof onboardTokens.$inferSelect;
 export type Attestation = typeof attestations.$inferSelect;
 export type NewAttestation = typeof attestations.$inferInsert;
+export type Credential = typeof credentials.$inferSelect;
+export type NewCredential = typeof credentials.$inferInsert;
