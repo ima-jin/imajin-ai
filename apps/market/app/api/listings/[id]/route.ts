@@ -18,7 +18,7 @@ export async function GET(
       return errorResponse('Listing not found', 404);
     }
 
-    return jsonResponse(listing);
+    return jsonResponse({ ...listing, price: Number(listing.price) });
   } catch (error) {
     console.error('Failed to fetch listing:', error);
     return errorResponse('Failed to fetch listing', 500);

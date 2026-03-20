@@ -52,6 +52,7 @@ export default function ListingDetailPage() {
   const [activeImage, setActiveImage] = useState(0);
   const [buyLoading, setBuyLoading] = useState(false);
   const [buyError, setBuyError] = useState<string | null>(null);
+  const [sellerName, setSellerName] = useState<string | null>(null);
 
   async function handleBuyNow() {
     if (!listing) return;
@@ -92,6 +93,20 @@ export default function ListingDetailPage() {
         if (!res.ok) throw new Error('Failed to load listing');
         const data: Listing = await res.json();
         setListing(data);
+
+        // Resolve seller name from profile service
+        try {
+          const profileRes = await fetch(
+            `${servicePrefix}profile.${domain}/api/profiles/${encodeURIComponent(data.sellerDid)}`
+          );
+          if (profileRes.ok) {
+            const profile = await profileRes.json();
+            const name = profile?.handle || profile?.name || null;
+            if (name) setSellerName(name);
+          }
+        } catch {
+          // Silently fall back to truncated DID
+        }
       } catch {
         setError('Could not load this listing. Please try again.');
       } finally {
@@ -99,7 +114,7 @@ export default function ListingDetailPage() {
       }
     }
     fetchListing();
-  }, [id]);
+  }, [id, servicePrefix, domain]);
 
   if (loading) {
     return (
@@ -134,7 +149,7 @@ export default function ListingDetailPage() {
     );
   }
 
-  const images = listing.images || [];
+  const images = (listing.images || []).filter(Boolean);
   const hasImages = images.length > 0;
   const tierLabel = listing.sellerTier === 'public_onplatform' ? 'Protected' : 'Direct';
   const tierColor =
@@ -194,7 +209,7 @@ export default function ListingDetailPage() {
 
             {/* Price */}
             <PriceDisplay
-              amount={listing.price}
+              price={listing.price}
               currency={listing.currency}
               className="text-3xl font-bold text-orange-500"
             />
@@ -223,9 +238,9 @@ export default function ListingDetailPage() {
               <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Listed by</p>
               <a
                 href={`${profileUrl}/${encodeURIComponent(listing.sellerDid)}`}
-                className="text-sm font-mono text-orange-500 hover:text-orange-600 transition break-all"
+                className="text-sm text-orange-500 hover:text-orange-600 transition break-all"
               >
-                {truncateDid(listing.sellerDid)}
+                {sellerName ?? truncateDid(listing.sellerDid)}
               </a>
             </div>
 
