@@ -1,4 +1,4 @@
-CREATE SCHEMA "market";
+CREATE SCHEMA IF NOT EXISTS "market";
 --> statement-breakpoint
 CREATE TABLE "market"."disputes" (
 	"id" text PRIMARY KEY NOT NULL,
