@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ImajinFooter } from '@imajin/ui';
 import ListingCard from './components/ListingCard';
@@ -32,7 +32,7 @@ const SORT_OPTIONS = [
   { value: 'price_desc', label: 'Price: High → Low' },
 ];
 
-export default function MarketPage() {
+function MarketPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -234,5 +234,13 @@ export default function MarketPage() {
 
       <ImajinFooter className="mt-12" />
     </div>
+  );
+}
+
+export default function MarketPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-950" />}>
+      <MarketPageContent />
+    </Suspense>
   );
 }
