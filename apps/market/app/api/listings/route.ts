@@ -101,9 +101,9 @@ export async function GET(request: NextRequest) {
 
     // Check if requester is the seller (can see all their own statuses)
     let authSellerDid: string | null = null;
-    const session = await getSession(request);
+    const session = await getSession();
     if (session) {
-      authSellerDid = session.identity.id;
+      authSellerDid = session.id;
     }
 
     // Build where conditions
