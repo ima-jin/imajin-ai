@@ -14,6 +14,7 @@ import { EventLobbyAccordion } from './event-lobby-accordion';
 import { SurveyAccordion } from './survey-accordion';
 import { FairAccordion } from '@imajin/fair';
 import { TicketsGate } from './tickets-gate';
+import { MagicLinkButton } from './magic-link-button';
 import { ShareButton } from './share-button';
 import { getSession } from '@/src/lib/auth';
 import { MarkdownContent } from '@imajin/ui';
@@ -595,7 +596,10 @@ export default async function EventPage({ params, searchParams }: Props) {
 
         {/* Tickets Section */}
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8" id="tickets">
-          <h2 className="text-2xl md:text-3xl font-bold mb-6">Tickets</h2>
+          <div className="flex items-baseline justify-between mb-6">
+            <h2 className="text-2xl md:text-3xl font-bold">Tickets</h2>
+            {!session && <MagicLinkButton eventId={event.id} />}
+          </div>
 
           {!canSeeTickets ? (
             <div className="text-center py-12">

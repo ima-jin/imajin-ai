@@ -86,10 +86,11 @@ export async function GET(request: NextRequest) {
               .limit(1);
 
             if (identity) {
+              const identityTier = (identity.tier || 'soft') as 'soft' | 'preliminary' | 'established';
               const sessionToken = await createSessionToken({
                 sub: existingCred.did,
                 type: 'human',
-                tier: 'soft',
+                tier: identityTier,
                 handle: identity.handle || undefined,
                 name: identity.name || undefined,
               });
@@ -169,11 +170,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Create session token
+    // Create session token — use actual tier (supports hard DID re-auth via magic link)
+    const identityTier = (identity.tier || 'soft') as 'soft' | 'preliminary' | 'established';
     const sessionToken = await createSessionToken({
       sub: did,
       type: 'human',
-      tier: 'soft',
+      tier: identityTier,
       handle: identity.handle || undefined,
       name: identity.name || undefined,
     });
@@ -193,7 +195,7 @@ export async function GET(request: NextRequest) {
     emitSessionAttestation({
       did,
       method: "email_onboard",
-      tier: "soft",
+      tier: identityTier,
       userAgent: request.headers.get("user-agent"),
     }).catch(err => console.error("Session attestation error:", err));
 
