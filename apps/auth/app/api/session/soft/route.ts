@@ -3,8 +3,8 @@ import { createSessionToken, getSessionCookieOptions } from '@/lib/jwt';
 import { emitSessionAttestation } from '@/lib/emit-session-attestation';
 import { db } from '@/src/db';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
-import { identities } from '@/src/db/schema';
-import { eq } from 'drizzle-orm';
+import { identities, credentials } from '@/src/db/schema';
+import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { corsHeaders } from '@imajin/config';
 
@@ -48,20 +48,34 @@ export async function POST(request: NextRequest) {
     // Normalize email to lowercase
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Create did:email:xxx format (replace @ and . with _)
-    const emailSlug = normalizedEmail.replace(/@/g, '_at_').replace(/\./g, '_');
-    const did = `did:email:${emailSlug}`;
-
-    // Check if identity already exists
-    let identity = await db
-      .select()
-      .from(identities)
-      .where(eq(identities.id, did))
+    // Check if a credential already exists for this email (prevents duplicate DIDs)
+    const [existingCred] = await db
+      .select({ did: credentials.did })
+      .from(credentials)
+      .where(and(eq(credentials.type, 'email'), eq(credentials.value, normalizedEmail)))
       .limit(1);
 
-    if (identity.length === 0) {
-      // Create new soft DID identity
-      // For soft DIDs, we use a placeholder public key
+    let identity: typeof identities.$inferSelect[];
+
+    if (existingCred?.did) {
+      identity = await db
+        .select()
+        .from(identities)
+        .where(eq(identities.id, existingCred.did))
+        .limit(1);
+
+      // Update name if provided
+      if (name && identity.length > 0) {
+        const [updated] = await db
+          .update(identities)
+          .set({ name: name.trim(), updatedAt: new Date() })
+          .where(eq(identities.id, existingCred.did))
+          .returning();
+        identity = [updated];
+      }
+    } else {
+      // Mint a new stable DID
+      const did = `did:imajin:${nanoid(16)}`;
       const placeholderKey = `soft_${nanoid(32)}`;
 
       const [newIdentity] = await db
@@ -76,21 +90,16 @@ export async function POST(request: NextRequest) {
         })
         .returning();
 
-      identity = [newIdentity];
-    } else {
-      // Update name if provided
-      if (name) {
-        const [updated] = await db
-          .update(identities)
-          .set({
-            name: name.trim(),
-            updatedAt: new Date(),
-          })
-          .where(eq(identities.id, did))
-          .returning();
+      // Insert email credential
+      await db.insert(credentials).values({
+        id: `cred_${nanoid(16)}`,
+        did,
+        type: 'email',
+        value: normalizedEmail,
+        verifiedAt: new Date(),
+      });
 
-        identity = [updated];
-      }
+      identity = [newIdentity];
     }
 
     // Create session token with tier information

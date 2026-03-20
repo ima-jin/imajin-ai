@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { onboardTokens, identities } from '@/src/db/schema';
+import { onboardTokens, identities, credentials } from '@/src/db/schema';
 import { createSessionToken, getSessionCookieOptions, verifySessionToken } from '@/lib/jwt';
 import { emitSessionAttestation } from '@/lib/emit-session-attestation';
 import { eq, and, gt, isNull } from 'drizzle-orm';
@@ -69,30 +69,37 @@ export async function GET(request: NextRequest) {
         const GRACE_MS = 60_000;
 
         if (usedAgo < GRACE_MS) {
-          // Re-issue session — the token already proved email ownership
-          const emailSlug = usedRecord.email.replace(/@/g, '_at_').replace(/\./g, '_');
-          const did = `did:email:${emailSlug}`;
-
-          let [identity] = await db
-            .select()
-            .from(identities)
-            .where(eq(identities.id, did))
+          // Re-issue session — the token already proved email ownership.
+          // Look up the stable DID via the credentials table.
+          const normalizedEmail = usedRecord.email.toLowerCase().trim();
+          const [existingCred] = await db
+            .select({ did: credentials.did })
+            .from(credentials)
+            .where(and(eq(credentials.type, 'email'), eq(credentials.value, normalizedEmail)))
             .limit(1);
 
-          if (identity) {
-            const sessionToken = await createSessionToken({
-              sub: did,
-              type: 'human',
-              tier: 'soft',
-              handle: identity.handle || undefined,
-              name: identity.name || undefined,
-            });
+          if (existingCred?.did) {
+            const [identity] = await db
+              .select()
+              .from(identities)
+              .where(eq(identities.id, existingCred.did))
+              .limit(1);
 
-            const cookieOptions = getSessionCookieOptions();
-            const redirectUrl = usedRecord.redirectUrl || 'https://events.imajin.ai';
-            const response = NextResponse.redirect(redirectUrl);
-            response.cookies.set(cookieOptions.name, sessionToken, cookieOptions.options);
-            return response;
+            if (identity) {
+              const sessionToken = await createSessionToken({
+                sub: existingCred.did,
+                type: 'human',
+                tier: 'soft',
+                handle: identity.handle || undefined,
+                name: identity.name || undefined,
+              });
+
+              const cookieOptions = getSessionCookieOptions();
+              const redirectUrl = usedRecord.redirectUrl || 'https://events.imajin.ai';
+              const response = NextResponse.redirect(redirectUrl);
+              response.cookies.set(cookieOptions.name, sessionToken, cookieOptions.options);
+              return response;
+            }
           }
         }
 
@@ -113,16 +120,33 @@ export async function GET(request: NextRequest) {
       .where(eq(onboardTokens.id, record.id));
 
     // Create or find soft DID
-    const emailSlug = record.email.replace(/@/g, '_at_').replace(/\./g, '_');
-    const did = `did:email:${emailSlug}`;
-
-    let [identity] = await db
-      .select()
-      .from(identities)
-      .where(eq(identities.id, did))
+    // Check for existing credential to reuse DID (prevents duplicates)
+    const normalizedEmail = record.email.toLowerCase().trim();
+    const [existingCred] = await db
+      .select({ did: credentials.did })
+      .from(credentials)
+      .where(and(eq(credentials.type, 'email'), eq(credentials.value, normalizedEmail)))
       .limit(1);
 
-    if (!identity) {
+    let did: string;
+
+    let [identity] = existingCred
+      ? await db.select().from(identities).where(eq(identities.id, existingCred.did)).limit(1)
+      : [];
+
+    if (identity) {
+      did = identity.id;
+      if (record.name && !identity.name) {
+        // Update name if provided and not already set
+        [identity] = await db
+          .update(identities)
+          .set({ name: record.name, updatedAt: new Date() })
+          .where(eq(identities.id, did))
+          .returning();
+      }
+    } else {
+      // Mint a new stable DID
+      did = `did:imajin:${nanoid(16)}`;
       const placeholderKey = `soft_${nanoid(32)}`;
       [identity] = await db
         .insert(identities)
@@ -135,13 +159,14 @@ export async function GET(request: NextRequest) {
           metadata: { email: record.email, tier: 'soft', source: 'onboard' },
         })
         .returning();
-    } else if (record.name && !identity.name) {
-      // Update name if provided and not already set
-      [identity] = await db
-        .update(identities)
-        .set({ name: record.name, updatedAt: new Date() })
-        .where(eq(identities.id, did))
-        .returning();
+      // Insert email credential
+      await db.insert(credentials).values({
+        id: `cred_${nanoid(16)}`,
+        did,
+        type: 'email',
+        value: normalizedEmail,
+        verifiedAt: new Date(),
+      });
     }
 
     // Create session token
