@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, integer, index, pgSchema } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, integer, boolean, index, pgSchema } from 'drizzle-orm/pg-core';
 
 export const marketSchema = pgSchema('market');
 
@@ -49,8 +49,20 @@ export const disputes = marketSchema.table('disputes', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
+/**
+ * Seller Settings - profile integration preferences
+ */
+export const sellerSettings = marketSchema.table('seller_settings', {
+  did: text('did').primaryKey(),
+  showMarketItems: boolean('show_market_items').default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
 // Types
 export type Listing = typeof listings.$inferSelect;
 export type NewListing = typeof listings.$inferInsert;
 export type Dispute = typeof disputes.$inferSelect;
 export type NewDispute = typeof disputes.$inferInsert;
+export type SellerSettings = typeof sellerSettings.$inferSelect;
+export type NewSellerSettings = typeof sellerSettings.$inferInsert;
