@@ -292,7 +292,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
                   )}
                 </div>
 
-                {isAuthenticated ? (
+                {isAuthenticated || !etransferEnabled ? (
                   <TicketPurchase
                     eventId={eventId}
                     eventTitle={eventTitle}
