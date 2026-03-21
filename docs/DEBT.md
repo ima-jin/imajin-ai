@@ -13,7 +13,7 @@ Deferred: March 21, 2026. Phase 1+2 shipped (PR #407). Phase 3 is hardening — 
 | Issue | What | Why Deferred | Revisit When |
 |-------|------|-------------|--------------|
 | #400 | dag-cbor content addressing | .fair already uses SHA-256 hashes. CIDs are a nicer format but don't unlock new capability yet. | When content needs to be portable across protocols (DFOS relay, IPFS) |
-| ~~#401~~ | ~~Key rotation + multifactor roles~~ | Promoted — blocks multi-device auth, which is a real onboarding friction problem | N/A |
+| #401 | Key rotation + multifactor roles | ~9 hard DIDs. Manual reset is fine. No one has needed to rotate a key. | When user count makes manual recovery impractical (100+?) |
 | #402 | Countersignature attestations | No attestation system is wired up yet. Can't build coexistence for something that doesn't exist. | When attestations ship as a feature |
 
 ---
