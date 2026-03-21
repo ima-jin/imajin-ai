@@ -1,5 +1,66 @@
 <!-- Build Log — newest first. Source: Discord dev channel + git history. -->
 
+## March 18–20, 2026 — Market Launch, Places & DFOS Partnership
+
+### 🛒 Market — SHIPPED
+
+- **6 deploy bugs fixed** in one session (3 parallel agents): getSession() API mismatch, missing Create Listing CTA, CA$NaN price (Postgres returns strings for numeric), raw DID → resolved seller names, image array filtering, market missing from health check + homepage + launcher
+- PRs #388–391 merged, issues #373 + #382–387 closed
+
+### 🍞 Toast Component — SHIPPED
+
+- `ToastProvider` + `useToast()` in `@imajin/ui`
+- Replaced ALL 48 `alert()` calls across 9 apps (dykil 17, links 9, events 8, connections 4, learn 4, www 3, pay 2, coffee 1)
+- PR #391 merged
+
+### 🔧 CI Fixed
+
+- Root cause: `apps/market/.eslintrc.json` missing → `next lint` prompted interactively in CI → hung. One-file fix. CI fully green.
+
+### 📍 Places App — DESIGNED (#392)
+
+- Local business discovery, check-ins, business profiles
+- Two doors: customer stubs (check in → soft business profile) vs owner claim/create (review queue)
+- Bilateral featuring model — each side independently controls what shows on their profile
+- Connection types: founder (non-severable), admin, employee, regular, supporter
+- Port 3105/7105
+
+### 🤝 DFOS × Imajin — Layer 6
+
+**The big move.** Created Discussion #393 — a 30K+ word technical deep dive mapping DFOS's proof substrate against Imajin's application layer.
+
+**The concept:** DFOS is L0–L5 (crypto core → identity chains → content chains → beacons → web relay → application). Imajin is **Layer 6** — settlement, trust graph, .fair attribution, sovereign presence. *Localized internet infrastructure.*
+
+**Protocol comparison findings:**
+- Identical Ed25519 curve (`@noble/ed25519`), byte-compatible keys
+- DFOS: self-certifying DIDs (chain-derived), JWS signatures, dag-cbor canonicalization, CID content addressing
+- Imajin: random DIDs (nanoid), hex signatures, JSON canonicalization, SHA-256 hashes
+- DFOS has key rotation, countersignatures, Merkle beacons — we don't (yet)
+- We have settlement, trust graph, presence, commerce — they don't
+
+**Three integration doors:**
+1. **DID Bridge** ✅ — same keypair derives DFOS chain. Actionable now.
+2. **Sideloading** ✅ — two paths: relay (proof gossip, spec coming) + MCP (OAuth 2.1, 20+ tools, live now)
+3. **Provisioning** 🟡 — needs DFOS space creation API
+
+**The symbiosis:** DFOS content chains feed Imajin presence context. Your writing becomes searchable, verifiable, consent-gated knowledge — settled via gas fees that flow back to content sources. Neither stack does this alone.
+
+**Brandon (Clearbyte, lead DFOS dev) responded:** "very very interesting" / "sounds like things line up nicely" / "excited to jam w you on this!" — sending updated web relay spec + TS implementation.
+
+**Agent identity (#394):** Sub-identities with VC delegation. Imajin types every signed message as `human`, `agent`, or `device`. DFOS independently arriving at same pattern.
+
+### 📊 By the Numbers
+
+- 7 issues closed (#373, #382–387)
+- 4 PRs merged (#388–391)
+- 2 issues created (#392, #394)
+- 1 discussion created (#393 — 30K+ words)
+- CI fixed
+- 48 alert() calls eliminated
+- **Services now at 15:** auth, pay, www, profile, registry, events, chat, connections, input, media, coffee, dykil, links, learn, market
+
+---
+
 ## March 15–17, 2026 — Stripe Connect, Voice Fix & Infrastructure
 
 ### 💳 Stripe Connect — SHIPPED
