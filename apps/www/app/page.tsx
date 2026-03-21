@@ -2,7 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ImajinFooter } from '@imajin/ui';
 import { getClient } from '@imajin/db';
-import { PrimitiveMatrix } from '../components/PrimitiveMatrix';
+import { PrimitiveMatrix } from '@/components/PrimitiveMatrix';
 import matrixData from '../../../docs/matrix-status.json';
 
 // Revalidate stats every 15 minutes (ISR)
