@@ -2,7 +2,9 @@
 const nextConfig = {
   transpilePackages: ['@imajin/auth','@imajin/config','@imajin/db','@imajin/dfos','@imajin/email','@imajin/onboard','@imajin/ui'],
   typescript: { ignoreBuildErrors: true },
-  serverExternalPackages: ['@metalabel/dfos-protocol'],
+  experimental: {
+    serverComponentsExternalPackages: ['@metalabel/dfos-protocol'],
+  },
 };
 
 module.exports = nextConfig;
