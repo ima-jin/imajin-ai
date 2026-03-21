@@ -140,6 +140,36 @@ Family governance is custodial with graduated autonomy.
 - **RFC-15 (Trust Accountability):** Vouch chain accountability, bad actor model, consequence tiers — these are all governance *parameters* that communities can tune.
 - **RFC-07/08 (Cultural/Org DID):** These scopes get their own governance configs. Cultural DID governance may require quorum. Org DID governance supports delegation hierarchy.
 
+## Device Scope
+
+Devices are actor-scoped DIDs with governance configuration. Same primitive, applied to hardware.
+
+### How It Works
+
+A device DID holds its own governance chain. Permissions are governance parameters — granted, TTL'd, revocable, forkable. No cloud vendor. No phoning home.
+
+| Parameter | Example | TTL |
+|-----------|---------|-----|
+| `control.allowed_dids` | Who can send commands | Per-grant, owner-set |
+| `control.scope` | What they can do (read sensors, push frames, change settings) | Per-grant |
+| `control.conditions` | Conditional access (e.g., only when owner is home) | Per-grant |
+| `override.human_supersedes` | Human override always wins vs agent/device | Permanent default |
+
+### Identity Typing
+
+Every signed message is typed (`human` / `agent` / `device`). Governance configs can enforce:
+- Agents get TTL'd access, never permanent
+- Devices can grant each other limited permissions (mesh)
+- Human override always supersedes agent/device decisions
+
+### Multi-Device Governance
+
+A group of devices (e.g., "the living room") is a community of device DIDs. Governance scales the same way — 1 device is sovereign, multiple devices need rules about priority and override.
+
+### POC: Remote WLED Control
+
+One controller node governing 4 remote WLED nodes via Maddrix. Each WLED node is a device DID. The controller has permission grants (TTL'd, scoped to frame push) on each node's governance chain. Demonstrates: device identity, remote permission, revocation, multi-node coordination.
+
 ## Relationship to DFOS
 
 DFOS provides the substrate:
