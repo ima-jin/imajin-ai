@@ -20,4 +20,4 @@ Canonical location for all Imajin protocol and architecture RFCs. Each RFC has a
 | [14](./RFC-14-community-issuance-network.md) | Community Issuance Network | Draft | [#272](https://github.com/ima-jin/imajin-ai/discussions/272) |
 | [15](./RFC-15-trust-accountability-framework.md) | Trust Accountability Framework | Draft | [#273](https://github.com/ima-jin/imajin-ai/discussions/273) |
 | [16](./RFC-16-jin-workspace-agent.md) | Jin Workspace Agent Architecture | Draft | — |
-| [17](./RFC-17-governance-primitive.md) | Governance Primitive | Draft | — |
+| [17](./RFC-17-governance-primitive.md) | Governance Primitive | Draft | [#410](https://github.com/ima-jin/imajin-ai/discussions/410) |
