@@ -110,7 +110,19 @@ export async function POST(request: NextRequest) {
 
     if (existing.length > 0) {
       if (existing[0].publicKey === publicKey) {
-        // Same key - return existing identity
+        // Same key - return existing identity (login-via-register flow)
+        if (body.dfosChain) {
+          try {
+            const { verifyClientChain, storeDfosChain } = await import('@/lib/dfos');
+            const verified = await verifyClientChain(body.dfosChain, publicKey);
+            if (verified) {
+              await storeDfosChain(existing[0].id, verified);
+            }
+          } catch (err) {
+            console.error(`[register] DFOS bridge failed for ${existing[0].id}:`, err);
+          }
+        }
+
         const token = await createSessionToken({
           sub: existing[0].id,
           handle: existing[0].handle || undefined,
@@ -127,7 +139,7 @@ export async function POST(request: NextRequest) {
           created: false,
           message: 'Identity already exists',
         });
-        
+
         response.cookies.set(cookieConfig.name, token, cookieConfig.options);
         return response;
       } else {
@@ -192,6 +204,22 @@ export async function POST(request: NextRequest) {
         tier: 'preliminary',
       })
       .returning();
+
+    // Store DFOS chain if provided
+    if (body.dfosChain) {
+      try {
+        const { verifyClientChain, storeDfosChain } = await import('@/lib/dfos');
+        const verified = await verifyClientChain(body.dfosChain, publicKey);
+        if (verified) {
+          await storeDfosChain(identity.id, verified);
+        } else {
+          console.warn(`[register] DFOS chain verification failed for ${identity.id} — skipping`);
+        }
+      } catch (err) {
+        console.error(`[register] DFOS chain storage failed for ${identity.id}:`, err);
+        // Non-fatal — registration still succeeds
+      }
+    }
 
     // Create session token
     const token = await createSessionToken({

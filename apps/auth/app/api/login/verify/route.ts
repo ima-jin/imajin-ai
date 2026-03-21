@@ -90,6 +90,19 @@ export async function POST(request: NextRequest) {
       .set({ usedAt: new Date() })
       .where(eq(challenges.id, challengeId));
 
+    // Store DFOS chain if provided (login-time bridging)
+    if (body.dfosChain) {
+      try {
+        const { verifyClientChain, storeDfosChain } = await import('@/lib/dfos');
+        const verified = await verifyClientChain(body.dfosChain, identity.publicKey);
+        if (verified) {
+          await storeDfosChain(identity.id, verified);
+        }
+      } catch (err) {
+        console.error(`[login] DFOS bridge failed for ${identity.id}:`, err);
+      }
+    }
+
     // Create session token
     const token = await createSessionToken({
       sub: identity.id,

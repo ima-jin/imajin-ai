@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, index, uniqueIndex, pgSchema } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, integer, boolean, index, uniqueIndex, pgSchema } from 'drizzle-orm/pg-core';
 
 export const authSchema = pgSchema('auth');
 
@@ -111,6 +111,30 @@ export const credentials = authSchema.table('credentials', {
   didIdx: index('idx_credentials_did').on(table.did),
   typeValueIdx: uniqueIndex('idx_credentials_type_value').on(table.type, table.value),
 }));
+
+/**
+ * Identity Chains — DFOS proof chains for self-certifying identity
+ *
+ * Each identity with a real Ed25519 key gets a DFOS identity chain.
+ * The chain is append-only: genesis (create), then updates (rotate, delete).
+ * The log array contains JWS tokens verifiable by anyone with
+ * @metalabel/dfos-protocol — no server needed.
+ */
+export const identityChains = authSchema.table('identity_chains', {
+  did: text('did').primaryKey().references(() => identities.id),
+  dfosDid: text('dfos_did').notNull().unique(),
+  log: jsonb('log').notNull().$type<string[]>(),
+  headCid: text('head_cid').notNull(),
+  keyCount: integer('key_count').notNull().default(1),
+  isDeleted: boolean('is_deleted').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  dfosDidIdx: uniqueIndex('idx_identity_chains_dfos_did').on(table.dfosDid),
+}));
+
+export type IdentityChain = typeof identityChains.$inferSelect;
+export type NewIdentityChain = typeof identityChains.$inferInsert;
 
 // Types
 export type Identity = typeof identities.$inferSelect;

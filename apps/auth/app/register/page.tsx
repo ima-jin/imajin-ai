@@ -136,7 +136,16 @@ function RegisterPage() {
       };
       
       const signature = await sign(JSON.stringify(payload), keypair.privateKey);
-      
+
+      // Create DFOS identity chain (client-side, non-blocking)
+      let dfosChain = null;
+      try {
+        const { createDfosChain } = await import('@/lib/dfos-client');
+        dfosChain = await createDfosChain(keypair);
+      } catch (err) {
+        console.warn('DFOS chain creation failed (non-fatal):', err);
+      }
+
       // Register with invite code
       const response = await fetch('/api/register', {
         method: 'POST',
@@ -148,6 +157,7 @@ function RegisterPage() {
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
           optInUpdates,
+          dfosChain,
         }),
       });
       

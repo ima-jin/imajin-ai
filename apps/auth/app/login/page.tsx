@@ -52,10 +52,22 @@ async function importPrivateKey(privateKeyHex: string): Promise<{ success: boole
   const signatureBytes = await ed.signAsync(msgBytes, privateKeyBytes);
   const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
+  // Create DFOS identity chain for login-time bridging
+  let dfosChain = null;
+  try {
+    const { createDfosChain } = await import('@/lib/dfos-client');
+    dfosChain = await createDfosChain({
+      privateKey: privateKeyHex,
+      publicKey: publicKeyHex,
+    });
+  } catch (err) {
+    console.warn('DFOS chain creation failed (non-fatal):', err);
+  }
+
   const authResponse = await fetch('/api/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ publicKey: publicKeyHex, type: 'human', signature }),
+    body: JSON.stringify({ publicKey: publicKeyHex, type: 'human', signature, dfosChain }),
   });
 
   if (!authResponse.ok) {
