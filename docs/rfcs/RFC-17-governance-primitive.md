@@ -44,7 +44,7 @@ Every governance parameter is a key-value pair with a TTL. Examples:
 
 ### Decision Tiers
 
-The bigger the decision, the longer the deliberation and the longer it stays in effect. **No deliberation exceeds 7 days.** If a community can't decide in a week, the helpers system activates.
+The bigger the decision, the longer the deliberation and the longer it stays in effect. **No deliberation exceeds 7 days.** If a community can't decide in a week, the assists system activates.
 
 | Tier | Example | Deliberation | Mandate TTL |
 |------|---------|-------------|-------------|
@@ -72,18 +72,18 @@ A community isn't a headcount — it's a graph of governance units. Two solo act
 | Size | Mode | System Role |
 |------|------|------------|
 | 1 | Sovereign | None — full control |
-| 2 | Bilateral | Conflict → connect to helper |
-| 3–10 | Informal consensus | Facilitate discussion, surface helpers |
+| 2 | Bilateral | Conflict → connect to assist |
+| 3–10 | Informal consensus | Facilitate discussion, connect to assists |
 | 11–50 | Weighted voting | Deliberation periods, quorum defaults |
 | 50+ | Formal governance | Scoped decision tiers, constitutional TTLs |
 
 Transitions are automatic. The community never has more process than it needs.
 
-### Helpers
+### Assists
 
-When a community hits governance friction (dispute, threshold change, member issue), the system doesn't just say "vote." It connects the community with **helpers** — established DIDs with governance attestations in communities of similar size.
+When a community hits governance friction (dispute, threshold change, member issue), the system doesn't just say "vote." It connects the community with **assists** — established DIDs with governance attestations in communities of similar size.
 
-Helpers are discovered through the trust graph, not appointed. They earn attestations for helping, which raises their standing, which makes them more discoverable. Governance is a skill you earn, not a title you hold.
+Assists are discovered through the trust graph, not appointed. They earn attestations for helping, which raises their standing, which makes them more discoverable. Governance is a skill you earn, not a title you hold.
 
 Communities don't figure everything out from scratch. Community #500 benefits from the patterns Communities #1–499 established — through the people who shaped them being available to help again.
 
@@ -130,7 +130,7 @@ Family governance is custodial with graduated autonomy.
 
 - Guardians hold governance control
 - Members gain governance weight through age + attestation history
-- Family-internal disputes connect to helpers (same mechanism as community)
+- Family-internal disputes connect to assists (same mechanism as community)
 - Family fork (separation) creates two family DIDs, each with full history
 
 ## Relationship to Existing RFCs
@@ -148,7 +148,7 @@ DFOS provides the substrate:
 - **Beacons** — proof of governance activity over time
 - **Spaces** — potential community containers
 
-Imajin provides the policy layer on top: what the defaults are, how votes work, how standing is computed, how helpers are discovered, how forks and merges are recorded.
+Imajin provides the policy layer on top: what the defaults are, how votes work, how standing is computed, how assists are discovered, how forks and merges are recorded.
 
 ## Open Questions
 
@@ -156,7 +156,7 @@ Imajin provides the policy layer on top: what the defaults are, how votes work, 
 2. **Cross-community governance** — when communities interact (e.g., shared events), whose governance applies? Intersection? Union? Negotiated?
 3. **Governance migration** — if a community forks, how are in-flight votes resolved?
 4. **Constitutional amendments** — can a community vote to change the decision tier structure itself? (Probably yes, at constitutional tier with longest TTL.)
-5. **Helper compensation** — do helpers earn attestations only, or settlement too?
+5. **Assist compensation** — do assists earn attestations only, or settlement too?
 
 ---
 
