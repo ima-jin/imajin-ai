@@ -1,6 +1,6 @@
 import { verifyChain } from '@imajin/dfos';
 import { hexToMultibase } from '@imajin/auth';
-import { db, identityChains, credentials } from '@/src/db';
+import { db, identities, identityChains, credentials } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
@@ -94,4 +94,50 @@ export async function storeDfosChain(
   });
 
   return true;
+}
+
+/**
+ * Look up a DFOS chain by Imajin DID.
+ * Returns the full chain record or null.
+ */
+export async function getChainByImajinDid(imajinDid: string) {
+  const [chain] = await db
+    .select()
+    .from(identityChains)
+    .where(eq(identityChains.did, imajinDid))
+    .limit(1);
+  return chain ?? null;
+}
+
+/**
+ * Look up an Imajin identity by its DFOS DID.
+ * Returns { imajinDid, dfosDid, type, tier } or null.
+ */
+export async function getIdentityByDfosDid(dfosDid: string) {
+  const [chain] = await db
+    .select()
+    .from(identityChains)
+    .where(eq(identityChains.dfosDid, dfosDid))
+    .limit(1);
+
+  if (!chain) return null;
+
+  const [identity] = await db
+    .select({
+      id: identities.id,
+      type: identities.type,
+      tier: identities.tier,
+    })
+    .from(identities)
+    .where(eq(identities.id, chain.did))
+    .limit(1);
+
+  if (!identity) return null;
+
+  return {
+    imajinDid: identity.id,
+    dfosDid: chain.dfosDid,
+    type: identity.type,
+    tier: identity.tier,
+  };
 }

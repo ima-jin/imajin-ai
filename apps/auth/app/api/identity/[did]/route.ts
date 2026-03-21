@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
+import { getChainByImajinDid } from '@/lib/dfos';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -39,12 +40,15 @@ export async function GET(
       );
     }
 
+    const chain = await getChainByImajinDid(decodedDid);
+
     return NextResponse.json(
       {
         did: identity.id,
         publicKey: identity.publicKey,
         type: identity.type,
         tier: identity.tier,
+        ...(chain ? { dfosDid: chain.dfosDid } : {}),
       },
       { headers: cors }
     );
