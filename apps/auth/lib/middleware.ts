@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken, getSessionCookieOptions, SessionPayload } from './jwt';
+import { verifyChain } from '@imajin/dfos';
+import { hexToMultibase } from '@imajin/auth';
+import { db, identityChains, identities } from '@/src/db';
+import { eq } from 'drizzle-orm';
+
+interface AuthOptions {
+  /** If true, verify identity against DFOS chain (not just DB) */
+  verifyChain?: boolean;
+}
 
 /**
  * Middleware helper to require authentication (soft or hard DID)
@@ -9,8 +18,14 @@ import { verifySessionToken, getSessionCookieOptions, SessionPayload } from './j
  * if (!session) {
  *   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
  * }
+ *
+ * With chain verification (opt-in):
+ * const session = await requireAuth(request, { verifyChain: true });
  */
-export async function requireAuth(request: NextRequest): Promise<SessionPayload | null> {
+export async function requireAuth(
+  request: NextRequest,
+  options?: AuthOptions
+): Promise<SessionPayload | null> {
   const cookieConfig = getSessionCookieOptions();
   const token = request.cookies.get(cookieConfig.name)?.value;
 
@@ -23,7 +38,63 @@ export async function requireAuth(request: NextRequest): Promise<SessionPayload 
     return null;
   }
 
+  // Optional chain verification — OFF by default
+  if (options?.verifyChain) {
+    const chainValid = await verifyIdentityChain(session.did);
+    if (!chainValid) {
+      console.error('[auth] Chain verification failed for', session.did);
+      return null;
+    }
+  }
+
   return session;
+}
+
+/**
+ * Verify an identity's DFOS chain and check key consistency with DB.
+ * Returns true if chain is valid and keys match, or if no chain exists (non-fatal).
+ */
+async function verifyIdentityChain(did: string): Promise<boolean> {
+  try {
+    const [chain] = await db
+      .select()
+      .from(identityChains)
+      .where(eq(identityChains.did, did))
+      .limit(1);
+
+    // No chain = not bridged. Non-fatal — verification not applicable.
+    if (!chain) return true;
+
+    // Verify chain cryptographically
+    const verified = await verifyChain(chain.log as string[]);
+
+    if (verified.isDeleted) {
+      console.error('[auth] Identity chain is deleted:', did);
+      return false;
+    }
+
+    // Check key consistency: chain controller key should match DB public key
+    const [identity] = await db
+      .select({ publicKey: identities.publicKey })
+      .from(identities)
+      .where(eq(identities.id, did))
+      .limit(1);
+
+    if (!identity) return false;
+
+    const dbMultibase = hexToMultibase(identity.publicKey);
+    const chainMultibase = verified.controllerKeys[0]?.publicKeyMultibase;
+
+    if (dbMultibase !== chainMultibase) {
+      console.error('[auth] Key mismatch — DB vs chain for', did);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[auth] Chain verification error:', err);
+    return false;
+  }
 }
 
 /**

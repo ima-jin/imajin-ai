@@ -141,3 +141,57 @@ export async function getIdentityByDfosDid(dfosDid: string) {
     tier: identity.tier,
   };
 }
+
+/**
+ * Check all identity chains for consistency with DB public keys.
+ * Returns a list of mismatches. For admin/scripts use.
+ */
+export async function checkAllChainConsistency(): Promise<Array<{
+  did: string;
+  dfosDid: string;
+  issue: string;
+}>> {
+  const chains = await db.select().from(identityChains);
+  const issues: Array<{ did: string; dfosDid: string; issue: string }> = [];
+
+  for (const chain of chains) {
+    try {
+      const verified = await verifyChain(chain.log as string[]);
+
+      if (verified.isDeleted) {
+        issues.push({ did: chain.did, dfosDid: chain.dfosDid, issue: 'Chain is deleted' });
+        continue;
+      }
+
+      const [identity] = await db
+        .select({ publicKey: identities.publicKey })
+        .from(identities)
+        .where(eq(identities.id, chain.did))
+        .limit(1);
+
+      if (!identity) {
+        issues.push({ did: chain.did, dfosDid: chain.dfosDid, issue: 'Identity missing from DB' });
+        continue;
+      }
+
+      const dbMultibase = hexToMultibase(identity.publicKey);
+      const chainMultibase = verified.controllerKeys[0]?.publicKeyMultibase;
+
+      if (dbMultibase !== chainMultibase) {
+        issues.push({
+          did: chain.did,
+          dfosDid: chain.dfosDid,
+          issue: `Key mismatch: DB=${dbMultibase.slice(0, 12)}... Chain=${chainMultibase?.slice(0, 12)}...`,
+        });
+      }
+    } catch (err: unknown) {
+      issues.push({
+        did: chain.did,
+        dfosDid: chain.dfosDid,
+        issue: `Verification error: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
+
+  return issues;
+}
