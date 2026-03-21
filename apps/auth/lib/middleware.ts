@@ -122,6 +122,40 @@ export async function requireHardDID(request: NextRequest): Promise<SessionPaylo
 }
 
 /**
+ * Require an assert key session (signing content, attestations, .fair).
+ * Legacy tokens (no keyRole) pass — single key does everything.
+ */
+export async function requireAssertKey(request: NextRequest): Promise<SessionPayload | null> {
+  const session = await requireAuth(request);
+  if (!session) return null;
+
+  // Legacy tokens (no key role) — single key does everything
+  if (!session.keyRole) return session;
+
+  if (session.keyRole !== 'assert' && session.keyRole !== 'controller') {
+    return null; // auth-only key can't sign content
+  }
+  return session;
+}
+
+/**
+ * Require a controller key session (rotation, deletion, fund transfers).
+ * Legacy tokens (no keyRole) pass — single key does everything.
+ */
+export async function requireControllerKey(request: NextRequest): Promise<SessionPayload | null> {
+  const session = await requireAuth(request);
+  if (!session) return null;
+
+  // Legacy tokens (no key role) — single key does everything
+  if (!session.keyRole) return session;
+
+  if (session.keyRole !== 'controller') {
+    return null;
+  }
+  return session;
+}
+
+/**
  * Helper to create a JSON response with authentication error
  */
 export function unauthorizedResponse(message = 'Authentication required') {

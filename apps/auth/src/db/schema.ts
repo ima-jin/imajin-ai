@@ -1,5 +1,12 @@
 import { pgTable, text, timestamp, jsonb, integer, boolean, index, uniqueIndex, pgSchema } from 'drizzle-orm/pg-core';
 
+/** Key role configuration for multi-device / role-separated identities */
+export interface KeyRoles {
+  auth: string[];       // multibase public keys for authentication
+  assert: string[];     // multibase public keys for signing content
+  controller: string[]; // multibase public keys for rotation/deletion
+}
+
 export const authSchema = pgSchema('auth');
 
 /**
@@ -13,6 +20,7 @@ export const identities = authSchema.table('identities', {
   name: text('name'),                             // Display name
   avatarUrl: text('avatar_url'),
   tier: text('tier').notNull().default('soft'),
+  keyRoles: jsonb('key_roles').$type<KeyRoles | null>(), // null = single key in all roles
   metadata: jsonb('metadata').default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -40,6 +48,8 @@ export const challenges = authSchema.table('challenges', {
 export const tokens = authSchema.table('tokens', {
   id: text('id').primaryKey(),                    // imajin_tok_xxx
   identityId: text('identity_id').references(() => identities.id).notNull(),
+  keyId: text('key_id'),                          // which key created this session
+  keyRole: text('key_role'),                      // 'auth' | 'assert' | 'controller'
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
