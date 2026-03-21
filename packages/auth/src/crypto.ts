@@ -1,9 +1,9 @@
 /**
  * Cryptographic primitives using @noble/ed25519
- * 
+ *
  * Ed25519: Fast, secure, audited elliptic curve signatures.
  * - 32-byte private keys
- * - 32-byte public keys  
+ * - 32-byte public keys
  * - 64-byte signatures
  * - All encoded as hex strings for portability
  */
@@ -154,4 +154,98 @@ export function isValidSignature(hex: string): boolean {
   if (hex.length !== 128) return false; // 64 bytes = 128 hex chars
   if (!/^[0-9a-fA-F]+$/.test(hex)) return false;
   return true;
+}
+
+// ─── Base58btc encoding (Bitcoin alphabet, no external dep) ──────────────────
+
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+function base58Encode(bytes: Uint8Array): string {
+  let num = BigInt(0);
+  for (const b of bytes) {
+    num = num * BigInt(256) + BigInt(b);
+  }
+  let result = '';
+  while (num > BigInt(0)) {
+    result = BASE58_ALPHABET[Number(num % BigInt(58))] + result;
+    num = num / BigInt(58);
+  }
+  // Leading zero bytes → leading '1's
+  for (const b of bytes) {
+    if (b !== 0) break;
+    result = '1' + result;
+  }
+  return result;
+}
+
+function base58Decode(str: string): Uint8Array {
+  let num = BigInt(0);
+  for (const ch of str) {
+    const idx = BASE58_ALPHABET.indexOf(ch);
+    if (idx < 0) throw new Error(`Invalid base58 character: ${ch}`);
+    num = num * BigInt(58) + BigInt(idx);
+  }
+  const bytes: number[] = [];
+  while (num > BigInt(0)) {
+    bytes.unshift(Number(num % BigInt(256)));
+    num = num / BigInt(256);
+  }
+  // Leading '1's → leading zero bytes
+  for (const ch of str) {
+    if (ch !== '1') break;
+    bytes.unshift(0);
+  }
+  return new Uint8Array(bytes);
+}
+
+// ─── Multikey encoding ────────────────────────────────────────────────────────
+
+// Multikey header: 0xed = Ed25519, 0x01 = public key
+const MULTIKEY_ED25519_HEADER = new Uint8Array([0xed, 0x01]);
+
+/**
+ * Encode an Ed25519 public key (raw 32 bytes) as a W3C Multikey multibase string.
+ *
+ * Format: 'z' + base58btc([0xed, 0x01] + publicKeyBytes)
+ * Result starts with "z6Mk..."
+ */
+export function bytesToMultibase(publicKey: Uint8Array): string {
+  if (publicKey.length !== 32) {
+    throw new Error('Ed25519 public key must be 32 bytes');
+  }
+  const prefixed = new Uint8Array(MULTIKEY_ED25519_HEADER.length + publicKey.length);
+  prefixed.set(MULTIKEY_ED25519_HEADER);
+  prefixed.set(publicKey, MULTIKEY_ED25519_HEADER.length);
+  return 'z' + base58Encode(prefixed);
+}
+
+/**
+ * Decode a W3C Multikey multibase string back to raw Ed25519 public key bytes.
+ */
+export function multibaseToPubkey(multibase: string): Uint8Array {
+  if (!multibase.startsWith('z')) {
+    throw new Error('Multibase must start with z (base58btc)');
+  }
+  const decoded = base58Decode(multibase.slice(1));
+  if (decoded.length !== 34) {
+    throw new Error(`Expected 34 bytes (2 header + 32 key), got ${decoded.length}`);
+  }
+  if (decoded[0] !== 0xed || decoded[1] !== 0x01) {
+    throw new Error('Invalid Multikey header (expected 0xed01 for Ed25519)');
+  }
+  return decoded.slice(2);
+}
+
+/**
+ * Convert a hex-encoded Ed25519 public key to a W3C Multikey multibase string.
+ */
+export function hexToMultibase(publicKeyHex: string): string {
+  return bytesToMultibase(hexToBytes(publicKeyHex));
+}
+
+/**
+ * Convert a W3C Multikey multibase string to a hex-encoded Ed25519 public key.
+ */
+export function multibaseToHex(multibase: string): string {
+  return bytesToHex(multibaseToPubkey(multibase));
 }

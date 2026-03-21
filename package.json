@@ -6,6 +6,8 @@
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "clean": "pnpm -r clean",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:seed": "tsx scripts/seed.ts",
     "db:reset": "tsx scripts/reset-db.ts",
     "db:migrate": "tsx scripts/migrate-to-schemas.ts",
@@ -17,12 +19,15 @@
     "eslint": "^8",
     "eslint-config-next": "14",
     "next": "^14.2.0",
-    "postgres": "^3.4.5"
+    "postgres": "^3.4.5",
+    "vitest": "^2.1.9"
   },
   "packageManager": "pnpm@9.15.0",
   "dependencies": {
+    "@metalabel/dfos-protocol": "^0.1.0",
     "@noble/ed25519": "^2.3.0",
     "@noble/hashes": "^1.7.2",
+    "bs58": "^6.0.0",
     "sharp": "^0.34.5"
   }
 }
