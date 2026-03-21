@@ -12,7 +12,7 @@ import {
   type VerifiedIdentity,
 } from '@metalabel/dfos-protocol';
 import { hexToBytes } from '@imajin/auth';
-import { createSigner } from './signer.js';
+import { createSigner } from './signer';
 
 export { type VerifiedIdentity };
 
