@@ -69,6 +69,8 @@ export interface SessionPayload {
   type: string;     // identity type
   name?: string;
   tier?: 'soft' | 'preliminary' | 'established'; // identity tier
+  keyId?: string;   // which key created this session
+  keyRole?: string; // 'auth' | 'assert' | 'controller'
 }
 
 /**
@@ -82,6 +84,8 @@ export async function createSessionToken(payload: SessionPayload): Promise<strin
     type: payload.type,
     name: payload.name,
     tier: payload.tier || 'soft',
+    ...(payload.keyId ? { keyId: payload.keyId } : {}),
+    ...(payload.keyRole ? { keyRole: payload.keyRole } : {}),
   })
     .setProtectedHeader({ alg: 'EdDSA' })
     .setSubject(payload.sub)
@@ -112,6 +116,8 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       type: payload.type as string,
       name: payload.name as string | undefined,
       tier,
+      keyId: payload.keyId as string | undefined,
+      keyRole: payload.keyRole as string | undefined,
     };
   } catch (error) {
     console.error('JWT verification failed:', error);
