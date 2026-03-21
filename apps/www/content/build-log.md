@@ -1,5 +1,21 @@
 <!-- Build Log — newest first. Source: Discord dev channel + git history. -->
 
+## March 20, 2026 — Auth Rebuild: Chain-Backed Identity (#395)
+
+**The base layer gets cryptographic bones.** Designed and specced a full auth rebuild using DFOS identity chain primitives. 9 child issues, 3 phases.
+
+- **Self-certifying identity** — every `did:imajin` backed by a DFOS proof chain, verifiable without our server
+- **Key rotation** — signed handoff via chain updates (previously: no mechanism at all)
+- **Multifactor key roles** — auth/assert/controller keys on separate devices with different compromise boundaries
+- **Bilateral attestations** — DFOS countersignatures replace our single-signature model
+- **First test suite** — verification tests proving every bridge linkage is correct
+
+Same Ed25519 curve, byte-compatible keys. One keypair, two DIDs. Nothing existing breaks — profiles, connections, tickets all untouched. The Postgres stays as operational layer; the chain provides cryptographic proof underneath.
+
+This is the "federated now, decentralized later" promise becoming real. The chain is the exit door.
+
+---
+
 ## March 18–20, 2026 — Market Launch, Places & DFOS Partnership
 
 ### 🛒 Market — SHIPPED

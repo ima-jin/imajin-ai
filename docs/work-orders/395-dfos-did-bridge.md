@@ -218,6 +218,18 @@ Separate from the auth rebuild. Adopt `dagCborCanonicalEncode()` → CIDv1 for c
 
 ---
 
+## Production Awareness
+
+The work order specs everything for dev (`imajin_dev` on 192.168.1.193). Production considerations:
+
+- **Migration script** must support both `imajin_dev` and `imajin_prod` databases (pass DATABASE_URL as env var)
+- **Prod data may differ** — check identity counts and tiers before running. Same script, different data.
+- **Deploy path:** code → push → CI → dev auto-deploy. Prod deploy is manual (tag-based for monorepo). Don't deploy prod without Ryan's explicit approval.
+- **Schema migrations** need to run on prod DB separately. Drizzle push or manual SQL — match existing deploy pattern.
+- **Registration hook** goes live on both envs when auth is rebuilt and deployed.
+
+---
+
 ## What NOT To Do
 
 - Don't edit code on the server. Edit locally, commit, push.
