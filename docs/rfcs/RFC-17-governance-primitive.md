@@ -44,14 +44,14 @@ Every governance parameter is a key-value pair with a TTL. Examples:
 
 ### Decision Tiers
 
-The bigger the decision, the longer the deliberation and the longer it stays in effect.
+The bigger the decision, the longer the deliberation and the longer it stays in effect. **No deliberation exceeds 7 days.** If a community can't decide in a week, the helpers system activates.
 
 | Tier | Example | Deliberation | Mandate TTL |
 |------|---------|-------------|-------------|
 | Operational | Change listing throttle | 24h vote | 90 days |
-| Membership | Raise vouch threshold | 7-day vote | 6 months |
-| Structural | Change revenue split model | 30-day vote | 1 year |
-| Constitutional | Change how voting works | 60-day vote | 2 years |
+| Membership | Raise vouch threshold | 48h vote | 6 months |
+| Structural | Change revenue split model | 7-day vote | 1 year |
+| Constitutional | Change how voting works | 7-day vote | 2 years |
 
 All decisions expire. All decisions revert to defaults if not renewed. No permanent power grabs.
 
