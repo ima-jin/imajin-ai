@@ -135,6 +135,49 @@ describe('signer adapter', () => {
   });
 });
 
+// ─── Section 3b: Identity chain storage format ────────────────────────────────
+
+describe('identity chain storage format', () => {
+  it('chain log survives JSON round-trip (simulates DB storage)', async () => {
+    const keypair = generateKeypair();
+    const chain = await createIdentityChain({
+      privateKeyHex: keypair.privateKey,
+      publicKeyHex: keypair.publicKey,
+    });
+
+    const serialized = JSON.stringify(chain.log);
+    const deserialized = JSON.parse(serialized);
+
+    const verified = await verifyChain(deserialized);
+    expect(verified.did).toBe(chain.did);
+  });
+
+  it('operationCID is a valid CID string', async () => {
+    const keypair = generateKeypair();
+    const chain = await createIdentityChain({
+      privateKeyHex: keypair.privateKey,
+      publicKeyHex: keypair.publicKey,
+    });
+
+    expect(chain.operationCID).toMatch(/^[a-z2-7]+$/);
+    expect(chain.operationCID.length).toBeGreaterThan(10);
+  });
+
+  it('chain key matches input public key (server verification test)', async () => {
+    const keypair = generateKeypair();
+    const chain = await createIdentityChain({
+      privateKeyHex: keypair.privateKey,
+      publicKeyHex: keypair.publicKey,
+    });
+
+    const verified = await verifyChain(chain.log);
+    const chainKeyMultibase = verified.controllerKeys[0].publicKeyMultibase;
+    const expectedMultibase = hexToMultibase(keypair.publicKey);
+
+    expect(chainKeyMultibase).toBe(expectedMultibase);
+  });
+});
+
 // ─── Section 4: Cross-protocol verification ──────────────────────────────────
 
 describe('cross-protocol verification', () => {

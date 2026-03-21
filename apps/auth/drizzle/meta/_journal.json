@@ -22,6 +22,13 @@
       "when": 1773969631635,
       "tag": "0002_special_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1774066635160,
+      "tag": "0003_brave_avengers",
+      "breakpoints": true
     }
   ]
 }
