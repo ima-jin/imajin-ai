@@ -19,6 +19,9 @@ export const ATTESTATION_TYPES = [
   'session.created',
   'learn.enrolled',
   'learn.completed',
+  'pod.member.added',
+  'pod.member.removed',
+  'pod.role.changed'
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
