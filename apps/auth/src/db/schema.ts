@@ -19,6 +19,8 @@ export const identities = authSchema.table('identities', {
   handle: text('handle').unique(),                // @username (unique, optional)
   name: text('name'),                             // Display name
   avatarUrl: text('avatar_url'),
+  // SQL: ALTER TABLE auth.identities ADD COLUMN IF NOT EXISTS avatar_asset_id TEXT;
+  avatarAssetId: text('avatar_asset_id'),           // asset_xxx from media service
   tier: text('tier').notNull().default('soft'),
   keyRoles: jsonb('key_roles').$type<KeyRoles | null>(), // null = single key in all roles
   metadata: jsonb('metadata').default({}),
