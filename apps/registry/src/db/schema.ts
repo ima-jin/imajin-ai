@@ -30,6 +30,9 @@ export const nodes = registrySchema.table('nodes', {
   verifiedAt: timestamp('verified_at', { withTimezone: true }),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   
+  // Chain identity (optional — only set if node registered with chain log)
+  chainDid: text('chain_did').unique(),               // did:dfos:... (chain-native DID)
+
   // Full attestation record
   attestation: jsonb('attestation').notNull(),
   
