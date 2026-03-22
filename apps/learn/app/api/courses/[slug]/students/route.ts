@@ -49,15 +49,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   // Resolve DIDs to profile names/emails
   const studentDids = enrolled.map(e => e.studentDid);
-  let profileMap: Record<string, { displayName: string | null; email: string | null; handle: string | null }> = {};
+  let profileMap: Record<string, { displayName: string | null; contactEmail: string | null; handle: string | null }> = {};
   if (studentDids.length > 0) {
     try {
       const result = await db.execute(
-        sql`SELECT did, display_name, email, handle FROM profile.profiles WHERE did = ANY(${studentDids})`
+        sql`SELECT did, display_name, contact_email, handle FROM profile.profiles WHERE did = ANY(${studentDids})`
       );
       const profiles = (result as any).rows ?? result;
       for (const p of profiles as any[]) {
-        profileMap[p.did] = { displayName: p.display_name, email: p.email, handle: p.handle };
+        profileMap[p.did] = { displayName: p.display_name, contactEmail: p.contact_email, handle: p.handle };
       }
     } catch {
       // Profile schema may not be accessible — continue with DIDs only
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return {
       studentDid: enrollment.studentDid,
       displayName: profile?.displayName || null,
-      email: profile?.email || null,
+      email: profile?.contactEmail || null,
       handle: profile?.handle || null,
       enrolledAt: enrollment.enrolledAt,
       completedAt: enrollment.completedAt,

@@ -65,11 +65,11 @@ export async function POST(request: NextRequest) {
     let did = cred?.did;
 
     if (!did) {
-      // Fallback: check profile.profiles for legacy email (pre-credential migration)
+      // Fallback: check profile.profiles for legacy contact email (pre-credential migration)
       const rawSql = getClient();
       const profileRows = await rawSql`
         SELECT did FROM profile.profiles 
-        WHERE LOWER(email) = ${normalizedEmail} 
+        WHERE LOWER(contact_email) = ${normalizedEmail} 
         LIMIT 1
       `;
 

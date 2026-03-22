@@ -81,7 +81,7 @@ export default function EditProfilePage() {
       setBio(profile.bio || '');
       setAvatar(profile.avatar || '');
       setHandle(profile.handle || '');
-      setEmail(profile.email || '');
+      setEmail(profile.contactEmail || '');
       setPhone(profile.phone || '');
       setVisibility((profile.visibility as 'public' | 'incognito') || 'public');
 

@@ -1,0 +1,1 @@
+ALTER TABLE "profile"."profiles" RENAME COLUMN "email" TO "contact_email";

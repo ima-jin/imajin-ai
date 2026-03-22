@@ -68,7 +68,7 @@ export async function POST(
       .limit(1);
 
     const isForUser = invite.toDid === session.did ||
-      (invite.toEmail && inviteeProfile?.email === invite.toEmail);
+      (invite.toEmail && inviteeProfile?.contactEmail === invite.toEmail);
 
     if (!isForUser) {
       return NextResponse.json({ error: 'This invite is not for you' }, { status: 403 });
