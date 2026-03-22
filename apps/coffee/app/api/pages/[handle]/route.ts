@@ -68,6 +68,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       title,
       bio,
       avatar,
+      avatarAssetId,
       theme,
       paymentMethods,
       presets,
@@ -85,6 +86,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (title !== undefined) updates.title = title;
     if (bio !== undefined) updates.bio = bio;
     if (avatar !== undefined) updates.avatar = avatar;
+    if (avatarAssetId !== undefined) updates.avatarAssetId = avatarAssetId;
     if (theme !== undefined) updates.theme = theme;
     if (paymentMethods !== undefined) updates.paymentMethods = paymentMethods;
     if (presets !== undefined) updates.presets = presets;
