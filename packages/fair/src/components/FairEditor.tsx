@@ -119,6 +119,11 @@ function AttributionView({ entries, didNames }: { entries: FairEntry[]; didNames
               <span className="text-xs text-gray-500 truncate max-w-[180px]" title={entry.did}>
                 {formatDid(entry.did, didNames)}
               </span>
+              {entry.chainProof?.verified && (
+                <span className="inline-flex items-center px-1.5 py-0.5 bg-emerald-900/30 border border-emerald-700/50 rounded-full text-[10px] text-emerald-400">
+                  ⛓ verified
+                </span>
+              )}
             </div>
           </div>
           {shareBar(entry.share, entry.role)}

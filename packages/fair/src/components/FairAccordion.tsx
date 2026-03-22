@@ -107,6 +107,11 @@ export function FairAccordion({ manifest, resolveProfile }: FairAccordionProps) 
                         {formatDid(entry.did, didNames)}
                       </span>
                     )}
+                    {entry.chainProof?.verified && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 bg-emerald-900/30 border border-emerald-700/50 rounded-full text-[10px] text-emerald-400">
+                        ⛓ verified
+                      </span>
+                    )}
                   </div>
                   <span className="text-sm font-bold">{(entry.share * 100).toFixed(1)}%</span>
                 </div>
