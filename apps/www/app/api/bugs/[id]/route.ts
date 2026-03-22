@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, bugReports } from '@/db';
 import { eq } from 'drizzle-orm';
-import { authenticateRequest, isAdmin } from '@/lib/session-auth';
+import { requireAuth } from '@imajin/auth';
+import { isAdmin } from '@/lib/session-auth';
 
 // PATCH /api/bugs/[id] — update a bug report (admin only)
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const auth = await authenticateRequest(request);
-  if (!auth.authenticated || !auth.identity) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  if (!isAdmin(auth.identity)) {
+  const { identity } = authResult;
+  if (!isAdmin(identity)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -30,7 +32,7 @@ export async function PATCH(
   };
 
   const updates: Partial<typeof bugReports.$inferInsert> = {
-    reviewedBy: auth.identity.did,
+    reviewedBy: identity.id,
     reviewedAt: new Date(),
   };
   if (typeof status === 'string') updates.status = status;

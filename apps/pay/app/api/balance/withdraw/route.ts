@@ -19,7 +19,7 @@ import { db, balances, transactions } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
 import { genId } from '@/src/lib/id';
 import { corsHeaders } from '@/src/lib/cors';
-import { authenticateRequest } from '@/lib/session-auth';
+import { requireAuth } from '@imajin/auth';
 
 const MIN_WITHDRAWAL_CENTS = 100; // $1.00 minimum
 
@@ -43,15 +43,15 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const auth = await authenticateRequest(request);
-  if (!auth.authenticated || !auth.identity) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401, headers: cors }
     );
   }
 
-  const did = auth.identity.did;
+  const did = authResult.identity.id;
 
   try {
     const body = await request.json();

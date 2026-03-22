@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, balances } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@/src/lib/cors';
-import { authenticateRequest } from '@/lib/session-auth';
+import { requireAuth } from '@imajin/auth';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -24,8 +24,8 @@ export async function GET(
   const decoded = decodeURIComponent(did);
 
   // Authenticate via cookie or Bearer token
-  const auth = await authenticateRequest(request);
-  if (!auth.authenticated || !auth.identity) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401, headers: cors }
@@ -33,7 +33,7 @@ export async function GET(
   }
 
   // Must be requesting your own balance
-  if (auth.identity.did !== decoded) {
+  if (authResult.identity.id !== decoded) {
     return NextResponse.json(
       { error: 'Forbidden - can only access your own balance' },
       { status: 403, headers: cors }
