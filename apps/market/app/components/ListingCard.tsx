@@ -47,7 +47,8 @@ function TierBadge({ tier }: { tier: string }) {
 export default function ListingCard({ listing }: { listing: Listing }) {
   const images = Array.isArray(listing.images) ? listing.images : [];
   const primaryImage = images.find(
-    (img): img is string => typeof img === 'string' && img.startsWith('http')
+    (img): img is string =>
+      typeof img === 'string' && (img.startsWith('http') || img.startsWith('data:'))
   );
 
   return (
