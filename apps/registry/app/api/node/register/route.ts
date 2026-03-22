@@ -32,7 +32,7 @@ import { randomBytes } from 'crypto';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { attestation } = body as { attestation: NodeAttestation };
+    const { attestation, chainLog } = body as { attestation: NodeAttestation; chainLog?: string[] };
 
     // 1. Validate attestation structure
     if (!attestation || !attestation.nodeId || !attestation.publicKey || 
@@ -87,7 +87,49 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Verify build hash against approved builds
+    // 5. Optional chain verification — verify chain identity through auth
+    let chainDid: string | undefined;
+    if (chainLog && Array.isArray(chainLog) && chainLog.length > 0) {
+      const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+      let verifyRes: Response;
+      try {
+        verifyRes = await fetch(`${authUrl}/api/identity/verify-chain`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.AUTH_INTERNAL_API_KEY}`,
+          },
+          body: JSON.stringify({ chainLog }),
+        });
+      } catch (err) {
+        console.warn('[register] Chain verification fetch failed (non-fatal):', err);
+        verifyRes = { ok: false } as Response;
+      }
+
+      if (verifyRes.ok) {
+        const chainInfo = await verifyRes.json();
+        if (chainInfo.valid) {
+          // Chain public key MUST match the attestation public key
+          if (chainInfo.publicKey !== attestation.publicKey) {
+            return NextResponse.json(
+              { status: 'rejected', error: 'Chain public key does not match attestation' },
+              { status: 400 }
+            );
+          }
+          chainDid = chainInfo.chainDid;
+        }
+        // If chainInfo.valid === false, chain is invalid — reject
+        else {
+          return NextResponse.json(
+            { status: 'rejected', error: chainInfo.error || 'Chain verification failed' },
+            { status: 400 }
+          );
+        }
+      }
+      // If auth is unreachable, proceed without chain verification (degraded mode)
+    }
+
+    // 6. Verify build hash against approved builds
     const [approvedBuild] = await db
       .select()
       .from(approvedBuilds)
@@ -116,7 +158,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 6. Check if node already registered (renewal)
+    // 7. Check if node already registered (renewal)
     const [existingNode] = await db
       .select()
       .from(nodes)
@@ -153,6 +195,7 @@ export async function POST(request: NextRequest) {
           version: attestation.version,
           sourceCommit: attestation.sourceCommit,
           attestation,
+          chainDid: chainDid ?? existingNode.chainDid,
           status: 'active',
           expiresAt,
           lastHeartbeat: new Date(),
@@ -165,6 +208,7 @@ export async function POST(request: NextRequest) {
         subdomain: `${attestation.hostname}.imajin.ai`,
         expiresAt: expiresAt.getTime(),
         renewed: true,
+        chainVerified: !!chainDid,
       });
     }
 
@@ -226,6 +270,7 @@ export async function POST(request: NextRequest) {
       buildHash: attestation.buildHash,
       version: attestation.version,
       sourceCommit: attestation.sourceCommit,
+      chainDid: chainDid ?? null,
       lastHeartbeat: new Date(),
       verifiedAt: new Date(),
       expiresAt,
@@ -236,6 +281,7 @@ export async function POST(request: NextRequest) {
       status: 'verified',
       subdomain: `${attestation.hostname}.imajin.ai`,
       expiresAt: expiresAt.getTime(),
+      chainVerified: !!chainDid,
     }, { status: 201 });
 
   } catch (error) {
