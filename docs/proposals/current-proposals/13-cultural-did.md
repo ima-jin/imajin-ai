@@ -1,3 +1,11 @@
+## STATUS: SPEC ADOPTED
+**Adopted:** 2026-03-17
+**Evidence:** `docs/rfcs/RFC-07-cultural-did.md` in upstream main (HEAD 23b9f2a). RFC-07 is authored as Greg's work (`@anonymous_observer`, March 9, 2026) and incorporates the specific answers from this proposal to all seven open specification questions.
+**Outcome:** All key decisions adopted — minimum 5–7 founding members, token context threshold (performance qualifier not financial barrier), trust-weighted governance (not one-person-one-vote), four membership tiers (Governing/Active/Participant/Observer), governance weight ceiling with automatic redistribution, tiered visibility model (roster private to governing members), profit motive structurally excluded. Open questions remain: exact threshold values, dissolution mechanics, treasury multi-sig, cross-node Cultural DIDs.
+**Implementation:** In spec only — attestation infrastructure (auth.attestations) is live which was the critical dependency; Cultural DID formation/governance code not yet built.
+
+---
+
 ## 13. Cultural DID — Complete Specification
 
 **Author:** Greg Mulholland

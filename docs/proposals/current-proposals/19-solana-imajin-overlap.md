@@ -1,3 +1,49 @@
+## STATUS: CORE FINDING SPEC ADOPTED — PATHWAY DECISION PENDING
+**Adopted:** 2026-03-17
+**Evidence:** `docs/rfcs/RFC-11-embedded-wallet.md` in upstream main (HEAD 23b9f2a). RFC-11 explicitly records the March 9, 2026 realization event and confirms the Ed25519 convergence as architectural fact. The core thesis of this proposal — that every DID keypair IS a Solana wallet — is now canonical in the protocol spec.
+**Outcome:** Ed25519 convergence confirmed and documented. MJN-scoped-only wallet design adopted (containing blast radius). Three-tier identity model (soft/preliminary/established) is live in code. Pathway 1 (member invitation → keypair → preliminary DID) is the active model for April 1 launch.
+**What remains open:** Pathway 2 (Solana wallet + MJN purchase → preliminary DID) — blocked on legal review. 5 open questions for Ryan (MJN threshold, soft→preliminary upgrade, invite gate replacement, continuous holding requirement, regulatory timeline) still unanswered.
+**Implementation:** Core finding in spec; three-tier model fully shipped in code; Pathway 2 in spec only pending legal.
+
+---
+
+## Update — 2026-03-20
+
+### Stable DID Migration Landed (#371, HEAD 39f198d)
+
+Soft DIDs have changed format. Previously `did:email:username_at_domain_com` — now `did:imajin:{nanoid(44)}`. Both `session/soft` and `onboard/verify` now mint the same format via `nanoid(44)`. Email is stored separately in `auth.credentials` (type=`email`, value=normalized email). Two new shared utilities: `getEmailForDid()` / `getDidForEmail()` in `packages/auth/src/credentials.ts`.
+
+**Impact on this proposal:** The "Soft DIDs Are Not Affected" section below remains correct — soft DIDs still use a placeholder key (`soft_${nanoid(32)}`), not a real Ed25519 keypair, so they are still not Solana wallets. The format change does not affect the Ed25519 convergence claim. However, the `isValidDID()` function in `packages/auth/src/providers/keypair.ts` (line 228) now validates only 16-char hex suffixes — it will reject all soft DIDs (44-char nanoid). This is a latent bug if any code path calls `isValidDID()` on a soft DID identity; however, the codebase has largely replaced DID-string parsing with tier-based gating, so the blast radius is limited.
+
+**The `createDID()` inconsistency is unchanged.** `packages/auth/src/providers/keypair.ts:createDID()` (line 49) still produces `did:imajin:{pubkey.slice(0,16)}` — 16-char hex truncation. This has not been resolved by #371. The inconsistency flagged in this proposal (shared package vs. server format) remains active.
+
+### DFOS DID Bridge Filed (#395–400, 2026-03-21)
+
+Discussion #393 (30K+ word DFOS × Imajin technical deep dive) turned into 6 filed issues overnight:
+
+- **#395** — Epic: DFOS DID Bridge (chain-backed identity for `did:imajin`)
+- **#396** — `@imajin/dfos` shared package — keypair bridging + chain creation
+- **#397** — `identity_chains` table + DFOS credential migration
+- **#398** — DFOS chain resolution endpoints + bidirectional lookup
+- **#399** — Key format utilities — hex ↔ multikey ↔ bytes conversion
+- **#400** — DAG-CBOR content addressing — CID-address all portable content
+
+Both DFOS and Imajin use `@noble/ed25519` — keys are byte-compatible. The DFOS bridge means the same Ed25519 keypair now simultaneously controls:
+
+1. An Imajin preliminary DID (`did:imajin:{base58(pubkey)}`)
+2. A Solana wallet address (same base58 bytes)
+3. A DFOS identity chain (same keypair → chain-derived self-certifying DID)
+
+The convergence this proposal identified is now a three-way fact. DFOS adds key rotation and Merkle beacon capabilities that Imajin does not yet have — the bridge work in #395–400 is likely to inform future DID rotation design.
+
+**Pathway 2 connection:** A user arriving via Solana wallet (Pathway 2) would automatically have all three: Imajin DID, Solana wallet, and DFOS chain derivable from the same keypair. This strengthens the case for Pathway 2 as the "power user" entry point once the bridge is live.
+
+### Agent Sub-Identities Filed (#394, 2026-03-20)
+
+Issue #394 (VC delegation, sidecar DIDs, human/agent protocol enforcement) directly affects the identity surface of this proposal. Agent DIDs operate alongside human DIDs — they are not Solana wallets by default (agent keypairs may be ephemeral or server-managed). This is a new tier of identity that the Pathway comparison table below does not yet account for.
+
+---
+
 # Proposal 19 — Solana / Imajin DID Overlap: Architecture and Registration Pathways
 
 **Filed:** 2026-03-13
@@ -74,7 +120,7 @@ To use this keypair as a Solana wallet in Phantom or Solflare, the 32-byte priva
 
 ## Soft DIDs Are Not Affected
 
-Email-onboarded identities (`did:email:username_at_domain_com`) use a placeholder key: `soft_${nanoid(32)}`. This is not a real Ed25519 keypair. Soft DID holders do not have Solana wallets. The duality described in this proposal applies exclusively to preliminary and established DIDs (keypair-based registrations).
+~~Email-onboarded identities (`did:email:username_at_domain_com`)~~ **Updated 2026-03-20:** Soft DIDs now use `did:imajin:{nanoid(44)}` format following stable DID migration #371. Email is decoupled from the DID string and stored in `auth.credentials`. The placeholder key remains `soft_${nanoid(32)}` — not a real Ed25519 keypair. Soft DID holders do not have Solana wallets. The duality described in this proposal applies exclusively to preliminary and established DIDs (keypair-based registrations).
 
 ---
 
@@ -116,7 +162,7 @@ The current system has one path to a keypair-based DID: invite code + browser ke
 
 A member of the network issues an invite. The invitee receives a link, generates an Ed25519 keypair in the browser, signs a registration payload, and receives a preliminary DID. The invite establishes the initial trust connection.
 
-The soft DID → preliminary DID upgrade path (currently undefined in code) would follow the same ceremony: the user generates a keypair, signs a migration payload, and the `auth.identities` record is updated from `did:email:` to `did:imajin:`. Phase 0 of the Identity Hardening Roadmap (#319) establishes the `tier` column in `auth.identities` that this upgrade path writes to.
+The soft DID → preliminary DID upgrade path (currently undefined in code) would follow the same ceremony: the user generates a keypair, signs a migration payload, and the `auth.identities` record is updated — the DID itself would change from `did:imajin:{nanoid(44)}` to `did:imajin:{base58(pubkey)}`, since the soft DID's nanoid suffix has no relationship to a keypair. This is a DID replacement, not an upgrade in place. All foreign key references across 14+ schemas must be updated atomically — the `migrate-stable-dids.ts` migration script (#371) demonstrates this pattern and could serve as a template. Phase 0 of the Identity Hardening Roadmap (#319) establishes the `tier` column in `auth.identities` that this upgrade path writes to.
 
 **What this requires that doesn't exist yet:**
 - A defined soft → hard DID upgrade flow (no code or spec exists)

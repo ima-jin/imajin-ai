@@ -1,3 +1,11 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-17
+**Evidence:** `docs/rfcs/RFC-07-cultural-did.md` in upstream main (HEAD 23b9f2a). All seven open specification questions from this concern were answered in Proposal 13 (Cultural DID Complete Specification), and RFC-07 incorporates those answers as the canonical spec. RFC-07 is authored as Greg's work and is open for community discussion at #252.
+**Outcome:** Minimum founding members (5–7), token context threshold (performance-based), governance weight ceiling with auto-redistribution, four membership tiers, tiered visibility model, profit motive excluded — all adopted. Remaining calibration questions (exact threshold values, dissolution mechanics) are now open questions in RFC-07 for community input.
+**Implementation:** In spec only — attestation infrastructure (the critical dependency) is live; Cultural DID formation code not yet built.
+
+---
+
 ### 7. Cultural DID — Open Specification Questions
 
 **From:** Historical Context §6, Concerns & Resolutions §9
