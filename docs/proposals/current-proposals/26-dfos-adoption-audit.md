@@ -1,4 +1,4 @@
-# P25: DFOS Adoption Audit — Chain-Backed Identity Across All Services
+# P26: DFOS Adoption Audit — Chain-Backed Identity Across All Services
 
 **Author:** Jin  
 **Date:** March 21, 2026  
