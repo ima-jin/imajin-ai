@@ -177,7 +177,7 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const { content, replyToMessageId, mediaType, mediaPath, mediaMeta, conversationName } = body;
+    const { content, replyToMessageId, mediaType, mediaPath, mediaAssetId, mediaMeta, conversationName } = body;
 
     if (!content || typeof content !== 'object') {
       return errorResponse('content is required and must be an object', 400, cors);
@@ -253,6 +253,7 @@ export async function POST(
       replyToMessageId: replyToMessageId || null,
       mediaType: mediaType || null,
       mediaPath: mediaPath || null,
+        mediaAssetId: mediaAssetId || null,
       mediaMeta: mediaMeta || null,
       createdAt,
       signature,
