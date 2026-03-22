@@ -17,6 +17,8 @@ export const ATTESTATION_TYPES = [
   'connection.accepted',
   'vouch',
   'session.created',
+  'learn.enrolled',
+  'learn.completed',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];

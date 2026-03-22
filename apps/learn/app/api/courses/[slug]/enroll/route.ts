@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { courses, enrollments, lessons, modules, lessonProgress } from '@/db/schema';
 import { requireAuth } from '@/lib/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
+import { emitAttestation } from '@/lib/attestations';
 import { eq, and } from 'drizzle-orm';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
@@ -63,6 +64,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         );
       }
     }
+
+    await emitAttestation({
+      issuer_did: course.creatorDid,
+      subject_did: identity.id,
+      type: 'learn.enrolled',
+      context_id: course.id,
+      context_type: 'course',
+      payload: {
+        course_title: course.title,
+        enrolled_at: new Date().toISOString(),
+      },
+    });
 
     return jsonResponse({ enrolled: true, enrollment }, 201);
   }

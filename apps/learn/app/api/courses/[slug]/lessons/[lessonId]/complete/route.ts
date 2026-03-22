@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { courses, enrollments, lessonProgress, lessons, modules } from '@/db/schema';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
+import { emitAttestation } from '@/lib/attestations';
 import { eq, and, sql } from 'drizzle-orm';
 
 type RouteParams = { params: Promise<{ slug: string; lessonId: string }> };
@@ -93,6 +94,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     await db.update(enrollments)
       .set({ completedAt: now })
       .where(eq(enrollments.id, enrollment.id));
+
+    await emitAttestation({
+      issuer_did: course.creatorDid,
+      subject_did: identity.id,
+      type: 'learn.completed',
+      context_id: course.id,
+      context_type: 'course',
+      payload: {
+        course_title: course.title,
+        completed_at: now.toISOString(),
+        modules_completed: total,
+      },
+    });
   }
 
   return jsonResponse({
