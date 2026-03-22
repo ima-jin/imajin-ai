@@ -36,6 +36,7 @@ export const events = eventsSchema.table('events', {
   
   // Media
   imageUrl: text('image_url'),
+  imageAssetId: text('image_asset_id'),                       // asset_xxx from media service
   
   // Metadata
   tags: jsonb('tags').default([]),
