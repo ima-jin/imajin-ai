@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { resolveMediaRef } from '@imajin/media';
 import PriceDisplay from './PriceDisplay';
 
 interface Listing {
@@ -46,10 +47,8 @@ function TierBadge({ tier }: { tier: string }) {
 
 export default function ListingCard({ listing }: { listing: Listing }) {
   const images = Array.isArray(listing.images) ? listing.images : [];
-  const primaryImage = images.find(
-    (img): img is string =>
-      typeof img === 'string' && (img.startsWith('http') || img.startsWith('data:'))
-  );
+  const primaryRef = images.find((img): img is string => typeof img === 'string' && img.length > 0);
+  const primaryImage = primaryRef ? resolveMediaRef(primaryRef) : undefined;
 
   return (
     <Link

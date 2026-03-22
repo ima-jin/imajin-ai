@@ -648,6 +648,9 @@ importers:
       '@imajin/fair':
         specifier: workspace:*
         version: link:../../packages/fair
+      '@imajin/media':
+        specifier: workspace:*
+        version: link:../../packages/media
       '@imajin/ui':
         specifier: workspace:*
         version: link:../../packages/ui

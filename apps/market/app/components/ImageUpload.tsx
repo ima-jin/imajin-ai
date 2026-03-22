@@ -55,10 +55,10 @@ export function ImageUpload({ images, onChange }: ImageUploadProps) {
         }
 
         const data = await res.json();
-        const url: string = data.url;
+        const assetId: string = data.id;
 
         // Use ref so parallel uploads each append to the latest list
-        const next = [...imagesRef.current, url];
+        const next = [...imagesRef.current, assetId];
         imagesRef.current = next;
         onChange(next);
       } catch (err) {
