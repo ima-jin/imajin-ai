@@ -8,6 +8,7 @@ import {
   pgSchema,
   boolean,
   primaryKey,
+  unique,
 } from "drizzle-orm/pg-core";
 
 export const mediaSchema = pgSchema("media");
@@ -80,3 +81,19 @@ export const assetFolders = mediaSchema.table("asset_folders", {
 
 export type Folder = typeof folders.$inferSelect;
 export type NewFolder = typeof folders.$inferInsert;
+
+export const assetReferences = mediaSchema.table("asset_references", {
+  id: text("id").primaryKey(),
+  assetId: text("asset_id").references(() => assets.id).notNull(),
+  service: text("service").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  assetIdx: index("idx_asset_refs_asset").on(table.assetId),
+  serviceIdx: index("idx_asset_refs_service").on(table.service),
+  uniq: unique("uq_asset_reference").on(table.assetId, table.service, table.entityType, table.entityId),
+}));
+
+export type AssetReference = typeof assetReferences.$inferSelect;
+export type NewAssetReference = typeof assetReferences.$inferInsert;

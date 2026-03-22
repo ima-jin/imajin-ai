@@ -129,7 +129,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 
   const body = await request.json();
-  const allowedFields = ['title', 'description', 'slug', 'price', 'currency', 'visibility', 'imageUrl', 'tags', 'metadata', 'status', 'eventSlug', 'courseType'];
+  const allowedFields = ['title', 'description', 'slug', 'price', 'currency', 'visibility', 'imageUrl', 'imageAssetId', 'tags', 'metadata', 'status', 'eventSlug', 'courseType'];
   const updates: Record<string, any> = {};
 
   for (const field of allowedFields) {
@@ -146,6 +146,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   if (updates.imageUrl !== undefined) {
     updates.image_url = updates.imageUrl;
     delete updates.imageUrl;
+  }
+  if (updates.imageAssetId !== undefined) {
+    updates.image_asset_id = updates.imageAssetId;
+    delete updates.imageAssetId;
   }
   if (updates.eventSlug !== undefined) {
     updates.event_slug = updates.eventSlug;

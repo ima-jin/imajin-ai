@@ -12,7 +12,8 @@ export const coffeePages = coffeeSchema.table('pages', {
   title: text('title').notNull(),                             // "Buy Ryan a coffee"
   bio: text('bio'),                                           // Short description
   avatar: text('avatar'),                                     // Image URL or emoji
-  avatarAssetId: text('avatar_asset_id'),                     // asset_xxx from media service
+  // SQL: ALTER TABLE coffee.pages ADD COLUMN IF NOT EXISTS avatar_asset_id TEXT;
+  avatarAssetId: text('avatar_asset_id'),                     // asset_xxx from media service (nullable — emoji stays in avatar)
   theme: jsonb('theme').default({}),                          // { primaryColor, backgroundColor }
   paymentMethods: jsonb('payment_methods').notNull(),         // { stripe: {...}, solana: {...} }
   presets: integer('presets').array().default([100, 500, 1000]), // cents: $1, $5, $10
