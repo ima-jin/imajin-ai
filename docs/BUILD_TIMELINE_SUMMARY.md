@@ -1,12 +1,12 @@
 # Build Timeline Summary & Pressure Test
 
-*Compiled March 8, 2026. Updated March 9, 2026 — from the full [Build Timeline](./BUILD_TIMELINE.md), external analysis, and founder responses.*
+*Compiled March 8, 2026. Updated March 21, 2026 — from the full [Build Timeline](./BUILD_TIMELINE.md), external analysis, and founder responses.*
 
 ---
 
 ## What This Actually Is
 
-A build chronicle — part technical changelog, part philosophical memoir — documenting how one developer built a sovereign protocol in 37 days, largely alone, using AI as a parallel coding partner. Retrospective journalism written from the git history.
+A build chronicle — part technical changelog, part philosophical memoir — documenting how one developer built a sovereign protocol in 49 days, largely alone, using AI as a parallel coding partner. Retrospective journalism written from the git history.
 
 ## The Core Thesis
 
@@ -78,21 +78,34 @@ OpenClaw dropped. The interface layer between architectural vision and working s
 | 23 | 7 features shipped in 90 minutes using parallel coding agents |
 | 25 | First non-developer creates a real event with ticket sales |
 | 35 | 14 live services, ~60 identities, 68,024 lines of code |
-| 36 | Typed identity primitives — Individual, Family, Cultural, Org. Greg crystallizes: "restructure backwards from the Cultural DID" |
-| 37 | **The protocol discovers itself** — Ed25519 DID keypairs are Solana wallets. Identity IS settlement. Token economics model. |
+| 36 | Typed identity primitives — Individual, Family, Cultural, Org |
+| 37 | **The protocol discovers itself** — Ed25519 DID keypairs are Solana wallets |
+| 39 | Chat becomes a primitive — every conversation is a DID |
+| 41 | Attestation infrastructure LIVE — 6 types, trust graph gains substance |
+| 43 | RFC consolidation — 16 RFCs canonical, Jin workspace agent designed |
+| 45 | OG users see it live — "genuine excitement" + "what is it" problem |
+| 47 | Stable DIDs — identity decoupled from auth method forever |
+| 48 | DFOS discovered — Imajin positioned as L6 above external protocol |
+| 49 | **DFOS epic sprint** — full protocol bridge built in one session, 31 tests |
 
 ### The Numbers
 
 | Metric | Value |
 |--------|-------|
-| Services live | 14 |
-| Lines of code | 68,000+ |
-| Inference cost | $1,589 |
-| Human hours | 190+ |
-| Build days | 37 |
-| Traditional estimate | $932,316 over 16.4 months (3-person team) |
+| Services live | 15 |
+| Lines of code | 130,000+ |
+| Total commits | 830+ |
+| Inference cost | ~$6K ($25/PR avg) |
+| Build days | 49 |
+| Total issues | 328 (113 open) |
+| PRs shipped | 79 |
+| Traditional estimate | $932,316+ over 16.4 months (3-person team) |
 | Essays written | 30 (9 published) |
-| Registered identities | ~73 (~25 hard DIDs, ~48 soft DIDs) |
+| Registered identities | ~120 |
+| Tickets sold | 66 across 2 events |
+| Attestation types live | 6 |
+| External protocols | 1 (DFOS bridge) |
+| RFCs | 16 (canonical) |
 | Solana wallets (latent) | Every hard DID — they just don't know it yet |
 
 ---
@@ -293,10 +306,30 @@ A direct counter-stack to:
 | Stripe-as-platform | pay — settlement engine, Stripe as plumbing |
 | Eventbrite, Luma | events — trust-gated ticketing |
 | Linktree | links — sovereign link pages |
-| Discord, Slack | chat — real-time messaging on owned infrastructure |
+| Discord, Slack | chat — real-time messaging on owned infrastructure, DID-based conversations |
 | S3, Cloudflare R2 | media — DID-pegged storage with .fair |
+| Etsy, Facebook Marketplace | market — consent-based local commerce, no feed, no infinite scroll |
 | Google Calendar, Outlook | calendar — trust-gated scheduling (planned) |
+| Google Ads, Meta Ads | The AttMart — user-as-vendor attention marketplace |
 | Every platform that ties your existence to a corporate account | The entire stack |
+
+---
+
+## The New Convergence (March 10–21, 2026)
+
+The first 37 days discovered the protocol from the human layer. The next 12 days discovered interoperability from the protocol layer.
+
+**Attestation infrastructure went live (Day 41):** Six cryptographic attestation types operational. The trust graph stopped being a connection list and became a live cryptographic record. Settlement verification working. Login attestations carrying auth strength metadata. The AttMart concept validated by academic literature.
+
+**Stable DIDs (Day 47):** Identity decoupled from authentication method. Every DID is `did:imajin:xxx` from birth — email is just a credential. This was the architectural prerequisite for everything that followed.
+
+**DFOS bridge (Days 48–49):** First external protocol integration. Yancey Strickler's DFOS = crypto substrate (proofs, identity chains). Imajin = Layer 6 (economic, settlement, inference layer on top). Same Ed25519 curve, complementary architectures. Built and tested in one session — 31 tests, key rotation, content addressing, countersignatures.
+
+**The sentence this phase was writing:**
+
+> **"Build from the protocol and you will find the network."**
+
+The first 37 days: "Start from the human and you will find the protocol." Days 38–49: build from the protocol and external networks discover you. DFOS partnership emerged from building correctly, not from seeking partnerships.
 
 ---
 
@@ -306,4 +339,4 @@ A direct counter-stack to:
 
 ---
 
-*Based on analysis by Greg [surname redacted], founder responses, and the [full build timeline](./BUILD_TIMELINE.md). March 8–9, 2026.*
+*Based on analysis by Greg [surname redacted], founder responses, and the [full build timeline](./BUILD_TIMELINE.md). March 8–21, 2026.*

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 // Base58 encoding for DIDs
@@ -81,43 +81,114 @@ async function importPrivateKey(privateKeyHex: string): Promise<{ success: boole
   return { success: true, did: derivedDid };
 }
 
+type ViewState = 'email' | 'email-sent' | 'keypair' | 'login-mfa';
 type ImportMethod = 'file' | 'paste';
+
+const RESEND_COOLDOWN_SECONDS = 60;
 
 function LoginForm() {
   const searchParams = useSearchParams();
   const nextUrl = searchParams.get('next');
 
+  // View routing
+  const [view, setView] = useState<ViewState>('email');
+  const [fromEmailForbidden, setFromEmailForbidden] = useState(false);
+
+  // Email view state
+  const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [emailLoading, setEmailLoading] = useState(false);
+
+  // Email-sent cooldown
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Keypair view state
   const [method, setMethod] = useState<ImportMethod>('file');
   const [privateKeyHex, setPrivateKeyHex] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [keypairError, setKeypairError] = useState('');
+  const [keypairLoading, setKeypairLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
     // If localStorage says logged in, verify the session is still valid
     const storedDid = localStorage.getItem('imajin_did');
     if (storedDid) {
-      // Check if the actual session cookie is still valid
       fetch('/api/session', { credentials: 'include' })
         .then(res => {
           if (res.ok) {
-            // Session is valid — redirect to destination
             window.location.href = nextUrl || '/';
           } else {
-            // Session expired — clear stale localStorage
             localStorage.removeItem('imajin_did');
             localStorage.removeItem('imajin_keypair');
           }
         })
-        .catch(() => {
-          // Network error — don't redirect, let them re-login
-        });
+        .catch(() => {});
     }
   }, [nextUrl]);
 
+  useEffect(() => {
+    return () => {
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
+    };
+  }, []);
+
+  function startResendCooldown() {
+    setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown(prev => {
+        if (prev <= 1) {
+          if (cooldownRef.current) clearInterval(cooldownRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }
+
+  async function sendMagicLink(targetEmail: string) {
+    setEmailLoading(true);
+    setEmailError('');
+
+    try {
+      const res = await fetch('/api/magic/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: targetEmail, redirectUrl: nextUrl }),
+      });
+
+      if (res.ok) {
+        setView('email-sent');
+        startResendCooldown();
+      } else if (res.status === 403) {
+        setFromEmailForbidden(true);
+        setView('keypair');
+      } else if (res.status === 429) {
+        setEmailError('Too many attempts. Please wait a moment before trying again.');
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setEmailError(body.error || 'Something went wrong. Please try again.');
+      }
+    } catch {
+      setEmailError('Network error. Please check your connection and try again.');
+    } finally {
+      setEmailLoading(false);
+    }
+  }
+
+  async function handleEmailSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await sendMagicLink(email.trim());
+  }
+
+  async function handleResend() {
+    if (resendCooldown > 0) return;
+    await sendMagicLink(email.trim());
+  }
+
   async function handleFileSelect(file: File) {
-    setError('');
-    setLoading(true);
+    setKeypairError('');
+    setKeypairLoading(true);
 
     try {
       const text = await file.text();
@@ -135,20 +206,20 @@ function LoginForm() {
       if (result.success) {
         window.location.href = nextUrl || '/';
       } else {
-        setError(result.error || 'Import failed');
+        setKeypairError(result.error || 'Import failed');
       }
     } catch (err: any) {
       console.error('File import failed:', err);
-      setError(err.message || 'Failed to import backup file');
+      setKeypairError(err.message || 'Failed to import backup file');
     } finally {
-      setLoading(false);
+      setKeypairLoading(false);
     }
   }
 
   async function handlePasteImport(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
-    setLoading(true);
+    setKeypairError('');
+    setKeypairLoading(true);
 
     try {
       const result = await importPrivateKey(privateKeyHex.trim());
@@ -156,13 +227,13 @@ function LoginForm() {
       if (result.success) {
         window.location.href = nextUrl || '/';
       } else {
-        setError(result.error || 'Import failed');
+        setKeypairError(result.error || 'Import failed');
       }
     } catch (err: any) {
       console.error('Manual import failed:', err);
-      setError(err.message || 'Failed to import key');
+      setKeypairError(err.message || 'Failed to import key');
     } finally {
-      setLoading(false);
+      setKeypairLoading(false);
     }
   }
 
@@ -174,7 +245,7 @@ function LoginForm() {
     if (file && file.type === 'application/json') {
       handleFileSelect(file);
     } else {
-      setError('Please drop a valid JSON backup file');
+      setKeypairError('Please drop a valid JSON backup file');
     }
   }
 
@@ -188,13 +259,175 @@ function LoginForm() {
     setDragOver(false);
   }
 
+  function goBackToEmail() {
+    setFromEmailForbidden(false);
+    setKeypairError('');
+    setView('email');
+  }
+
+  // ── Email view ──────────────────────────────────────────────────────────────
+  if (view === 'email') {
+    return (
+      <div className="max-w-md mx-auto">
+        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+          <h1 className="text-2xl font-bold mb-2 text-center text-white">Welcome back</h1>
+          <p className="text-gray-400 text-center mb-6">
+            Enter your email to continue
+          </p>
+
+          <form onSubmit={handleEmailSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium mb-1 text-gray-300">
+                Email address
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+                autoFocus
+                className="w-full px-4 py-3 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent outline-none"
+              />
+            </div>
+
+            {emailError && (
+              <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg">
+                <p className="text-sm text-red-400">{emailError}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={emailLoading || !email.trim()}
+              className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {emailLoading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-black"></span>
+                  Sending…
+                </span>
+              ) : 'Continue'}
+            </button>
+          </form>
+
+          <div className="mt-4 text-center">
+            <button
+              onClick={() => { setFromEmailForbidden(false); setView('keypair'); }}
+              className="text-sm text-gray-500 hover:text-gray-300 transition"
+            >
+              Use key directly →
+            </button>
+          </div>
+
+          <div className="mt-6 p-4 bg-gray-900 border border-gray-800 rounded-lg">
+            <p className="text-sm text-gray-400">
+              <strong className="text-white">Don&apos;t have an account?</strong>
+              <br />
+              <a href="/register" className="text-[#F59E0B] hover:underline mt-1 inline-block">
+                Create a new identity →
+              </a>
+            </p>
+          </div>
+
+          <div className="mt-4 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
+            <p className="text-xs text-[#F59E0B]">
+              🔐 Your private key never leaves your device. It&apos;s only stored locally in your browser.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Email-sent view ─────────────────────────────────────────────────────────
+  if (view === 'email-sent') {
+    return (
+      <div className="max-w-md mx-auto">
+        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
+          <div className="text-5xl mb-4">📬</div>
+          <h1 className="text-2xl font-bold mb-2 text-white">Check your email</h1>
+          <p className="text-gray-400 mb-1">We sent a magic link to</p>
+          <p className="text-white font-medium mb-6 break-all">{email}</p>
+
+          <p className="text-sm text-gray-500 mb-6">
+            Click the link in the email to sign in. The link expires in 15 minutes.
+          </p>
+
+          {emailError && (
+            <div className="mb-4 p-3 bg-red-900/20 border border-red-800 rounded-lg">
+              <p className="text-sm text-red-400">{emailError}</p>
+            </div>
+          )}
+
+          <button
+            onClick={handleResend}
+            disabled={resendCooldown > 0 || emailLoading}
+            className="w-full px-6 py-3 border border-gray-700 text-gray-300 rounded-lg hover:bg-gray-900 transition disabled:opacity-50 disabled:cursor-not-allowed mb-3"
+          >
+            {emailLoading
+              ? 'Sending…'
+              : resendCooldown > 0
+                ? `Resend in ${resendCooldown}s`
+                : 'Resend email'}
+          </button>
+
+          <button
+            onClick={goBackToEmail}
+            className="text-sm text-gray-500 hover:text-gray-300 transition"
+          >
+            ← Try a different email
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── MFA stub view ───────────────────────────────────────────────────────────
+  if (view === 'login-mfa') {
+    return (
+      <div className="max-w-md mx-auto">
+        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
+          <div className="text-5xl mb-4">✅</div>
+          <h1 className="text-2xl font-bold mb-2 text-white">Email verified</h1>
+          <p className="text-gray-400 mb-6">
+            Now import your key to complete login.
+          </p>
+          <button
+            onClick={goBackToEmail}
+            className="text-sm text-gray-500 hover:text-gray-300 transition"
+          >
+            ← Back to email
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Keypair view ────────────────────────────────────────────────────────────
   return (
     <div className="max-w-md mx-auto">
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+        <button
+          onClick={goBackToEmail}
+          className="text-sm text-gray-500 hover:text-gray-300 transition mb-4 flex items-center gap-1"
+        >
+          ← Back to email
+        </button>
+
         <h1 className="text-2xl font-bold mb-2 text-center text-white">Login / Recovery</h1>
-        <p className="text-gray-400 text-center mb-6">
+        <p className="text-gray-400 text-center mb-4">
           Import your private key to access your identity
         </p>
+
+        {fromEmailForbidden && (
+          <div className="mb-4 p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg">
+            <p className="text-sm text-amber-400">
+              This identity uses key-based authentication. Please import your private key to continue.
+            </p>
+          </div>
+        )}
 
         {/* Method selector */}
         <div className="flex gap-2 mb-6">
@@ -241,12 +474,12 @@ function LoginForm() {
                 <input
                   type="file"
                   accept="application/json"
-                  onChange={(e) => {
+                  onChange={e => {
                     const file = e.target.files?.[0];
                     if (file) handleFileSelect(file);
                   }}
                   className="hidden"
-                  disabled={loading}
+                  disabled={keypairLoading}
                 />
               </label>
             </div>
@@ -262,7 +495,7 @@ function LoginForm() {
               </label>
               <textarea
                 value={privateKeyHex}
-                onChange={(e) => setPrivateKeyHex(e.target.value)}
+                onChange={e => setPrivateKeyHex(e.target.value)}
                 placeholder="64 character hex string..."
                 rows={4}
                 required
@@ -275,44 +508,39 @@ function LoginForm() {
 
             <button
               type="submit"
-              disabled={loading || !privateKeyHex.trim()}
+              disabled={keypairLoading || !privateKeyHex.trim()}
               className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Importing...' : 'Import & Login'}
+              {keypairLoading ? 'Importing...' : 'Import & Login'}
             </button>
           </form>
         )}
 
         {/* Error display */}
-        {error && (
+        {keypairError && (
           <div className="mt-4 p-3 bg-red-900/20 border border-red-800 rounded-lg">
-            <p className="text-sm text-red-400">{error}</p>
+            <p className="text-sm text-red-400">{keypairError}</p>
           </div>
         )}
 
         {/* Loading state */}
-        {loading && (
+        {keypairLoading && (
           <div className="mt-4 text-center">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#F59E0B]"></div>
             <p className="text-sm text-gray-400 mt-2">Importing keys...</p>
           </div>
         )}
 
-        {/* Info box */}
         <div className="mt-6 p-4 bg-gray-900 border border-gray-800 rounded-lg">
           <p className="text-sm text-gray-400">
             <strong className="text-white">Don&apos;t have an account?</strong>
             <br />
-            <a
-              href="/register"
-              className="text-[#F59E0B] hover:underline mt-1 inline-block"
-            >
+            <a href="/register" className="text-[#F59E0B] hover:underline mt-1 inline-block">
               Create a new identity →
             </a>
           </p>
         </div>
 
-        {/* Security warning */}
         <div className="mt-4 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
           <p className="text-xs text-[#F59E0B]">
             🔐 Your private key never leaves your device. It&apos;s only stored locally in your browser.

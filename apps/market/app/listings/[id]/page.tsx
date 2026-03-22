@@ -94,14 +94,14 @@ export default function ListingDetailPage() {
         const data: Listing = await res.json();
         setListing(data);
 
-        // Resolve seller name from profile service
+        // Resolve seller name from auth lookup (works for all DID tiers)
         try {
-          const profileRes = await fetch(
-            `${servicePrefix}profile.${domain}/api/profiles/${encodeURIComponent(data.sellerDid)}`
+          const lookupRes = await fetch(
+            `${servicePrefix}auth.${domain}/api/lookup/${encodeURIComponent(data.sellerDid)}`
           );
-          if (profileRes.ok) {
-            const profile = await profileRes.json();
-            const name = profile?.handle || profile?.name || null;
+          if (lookupRes.ok) {
+            const identity = await lookupRes.json();
+            const name = identity?.handle ? `@${identity.handle}` : identity?.name || null;
             if (name) setSellerName(name);
           }
         } catch {

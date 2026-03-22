@@ -416,10 +416,331 @@ auth, pay, www, profile, registry, events, chat, connections, media, input, lear
 
 ---
 
+## Phase 10: The Platform Meets Reality (March 10–14, 2026)
+
+### March 10 — Evening Hardening Sprint
+
+The platform was live, but it wasn't *reliable*. Ryan's evening hardening sprint addressed the gap between "working demo" and "production system":
+
+- Coffee payments routed through pay service (#154) — eliminating one-off payment flows
+- 6 bug fixes shipped in rapid succession — media upload 404s, chat presence issues, stale CSS, null data crashes
+- build.sh pre-flight env check added — dev environment validation before deployment
+- Session cookie environment isolation — no more dev/prod cookie conflicts
+
+The pitch deck loaded into Learn service: 25 slides mapping the complete vision. Revenue dependency chain documented. This wasn't feature work — it was foundation work. The difference between something that functions and something that *works*.
+
+### March 11 — Chat Becomes a Primitive
+
+Issue #278: "@imajin/chat as Universal Chat Consumer." Six phases, six PRs, two hours. Every conversation became a DID.
+
+**Architecture shift:** DID as conversation primary key, deterministic DM DIDs (SHA-256 of sorted participant DIDs), auto-create on first message. WebSocket replaced 3-second polling. The old pod-based chat routing died — 556 lines removed.
+
+`<Chat did="..." />` — a drop-in component. Any service could embed chat by passing a DID. Auth service became the single access control authority. Chat stopped being a service feature and became infrastructure.
+
+**The deeper pattern:** Conversations aren't features of services. They're entities with identity. A DM between two humans has the same cryptographic primitives as a group chat or an agent conversation. `did:imajin:event:summer-camp`, `did:imajin:dm:a3f7b2c1`, `did:imajin:group:1fcab1a9` — all first-class citizens in the identity layer.
+
+### March 12 — Chat Architecture Refined
+
+Group membership via pods — the right approach after reverting the wrong approach (a `conversation_members_v2` table that duplicated what pods already did). The answer: membership lives in connections, communication lives in chat, pods bridge the two.
+
+DID name resolution via `useDidNames` hook. WebSocket deferred auth (browsers don't send cookies on WS upgrade — so connect unauthenticated, fetch a short-lived token via same-origin XHR, authenticate over the wire). Real-time broadcast for deletes, reactions, edits.
+
+### March 13 — Attestation Infrastructure Goes Live
+
+**The day the trust graph gained substance.**
+
+Three sovereignty roadmaps written in parallel: .fair, Identity, Settlement. All three converged on a single keystone — #316, auth signing utilities:
+
+```
+                    #316: @imajin/auth signing
+                   /           |            \
+      .fair Phase 1    Identity Phase 1    Settlement Phase 1
+     (sign manifests)  (attestations)     (verify at settle)
+```
+
+Fee model designed: 0.75% total (0.25% protocol + 0.25% host + 0.25% dev), dev fee CAPS at $100/DID — once you've contributed, it drops to zero. Not extractive. Temporary. Micro-investment in a 10% Supporter Pool equity stake.
+
+**Then all three Phase 0s shipped the same evening.** Identity tier model (soft/preliminary/established), .fair signature fields and templates, settlement chain math with platform fee calculation. The keystone turned out to already be 80% built in `packages/auth/` — just not exported.
+
+**Attestation infrastructure LIVE:** Six types operational — `transaction.settled`, `customer`, `connection.invited`, `connection.accepted`, `vouch`, `session.created`. Settlement Phase 1 complete: cryptographic .fair signature verification at settlement time. Connection attestations wired (invited, accepted, vouch). Login attestations carrying auth strength metadata.
+
+**The AttMart crystallized** that same evening. "The Attention Marketplace" — invert the ad industry. You're the vendor, not the product. Businesses query the attestation graph to find interested people, pay MJN per result, DID owners get micro-payments for their attention. No data leaves your node.
+
+Academic validation arrived from Springer (2025): "The attention market — and what is wrong with it." The paper argued attention markets are ethically broken because they commodify the capacity that makes autonomy possible. The AttMart solved every problem they identified: explicit consent, user-as-vendor, revocable discovery, transparent pricing.
+
+### March 14 — First Real User Friction
+
+Two users — Jonathan and Kirstin — hit onboard token expiry. Corporate email scanners (Outlook Safe Links) were consuming magic link tokens before humans clicked them. Fix: 60-second grace window on recently-consumed tokens.
+
+**Then the critical discoveries:**
+
+Every ticket confirmation email had failed since the first ticket sold. A Date serialization bug — `${new Date(...)}` in a SQL tagged template instead of `.toISOString()`. The webhook crashed after ticket creation but before email send. Chain reaction: the crash also prevented `settleTicketPurchase()` from running.
+
+**66 tickets across 2 events. Zero confirmations sent. Zero settlements recorded.**
+
+The tickets themselves were fine — the data was correct, the money was collected. But the downstream chain was broken. Backfill scripts written, not yet run.
+
+Pay settlement UI shipped: transaction history, two-bucket balance display (cash/credit), platform fee verification. `transpilePackages` missing from all 14 apps — workspace packages export raw TypeScript, Next.js needs to know.
+
+> The sobering lesson: real users expose the gap between "works for me" and "works for everyone."
+
+---
+
+## Phase 11: The Architecture Matures (March 15–19, 2026)
+
+### March 15 — RFC Consolidation and Agent Convergence
+
+Media browser UX refined: multi-select, view modes, color-coded .fair badges (green=public, orange=trust-graph, red=private). Media inference tools shipped in `@imajin/llm`.
+
+**RFC consolidation:** 16 RFCs scattered across three locations (articles/, docs/rfcs/, GitHub Discussions) pulled into canonical `docs/rfcs/` with INDEX.md and consistent numbering. Nine discussion-only RFCs given repo files. Old copies removed.
+
+**RFC-16: Jin Workspace Agent** produced five connected insights:
+
+1. **Knowledge cache + conversation memory** — two-layer memory solving the "re-derive everything every query" problem
+2. **Jin as distinct identity** — separate agent DID (`did:imajin:jin:{handle}`), not a shadow of the user. Ryan talks TO Jin, not to himself.
+3. **Workspace canvas replacing chat box** — spatial panels instead of linearized chat. Jin surfaces documents, calendars, photos as visual panels.
+4. **OpenClaw as agent runtime** — convergence point between Imajin and OpenClaw. OpenClaw already has tools, memory, sessions, heartbeats, multi-surface messaging, node access.
+5. **Pluggable runtime interface** — `AgentRuntime` interface that Imajin owns. Tier 1: built-in. Tier 2: OpenClaw-connected. Tier N: anything that implements the interface.
+
+Postgres backups went live: hourly `pg_dump` of 3 production databases, local retention (30 days) + Synology NAS (90 days). No cloud dependencies for operational data.
+
+**External validation arriving:** George Polzer (Imperial College London, AI Program Leader) interested in academic comparison between MJN and A2SPA. Ben Feist (NASA, creator of Apollo in Real Time) signed up and recommended CRDTs for multi-source data merging. Ownership roadmap drafted: founders reverse-vest DOWN from majority to 2-3% as protocol governance matures.
+
+### March 16 — The Graph Layer
+
+Late-night session. The `@imajin/graph` package — the missing architectural piece.
+
+The sovereign presence agent (RFC-16) created a "mess of services colliding" problem. Multiple services needed trust-scoped queries. The answer: a shared package (not a service) that imports `@imajin/db` directly for trust checks. No HTTP hops.
+
+**Intent documents** for multi-service write coordination — a saga pattern with CRDT-like semantics. Build plan → collect readiness from all services → execute atomically. For multi-agent read coordination: fan-out queries with conflict surfacing.
+
+> **Key principle:** Conflicts are NEVER resolved silently — always surface disagreements with attribution.
+
+Pressure tested against five scenarios: single-agent actions, background autonomous work, agent-to-agent settlement, multi-domain expert coordination (three Jins planning an event), and streaming latency.
+
+> Ryan's insight: "CRDT may help with agent coordination — get all your ducks in a row and then execute."
+
+This became the intent document pattern.
+
+Zakat and Islamic finance surfaced as prior art for protocol-level redistribution. Added to RFC-14. CRDTs identified as the entry point for registry synchronization across federated nodes.
+
+### March 17 — The OG Users
+
+Wesley Small, Scott Cameron, Ben Feist, Chris, Lee. Dinner. Platform demoed live.
+
+> "They love it. Genuine excitement, not polite interest."
+
+But:
+
+> "What is it" problem persists. The experience clicks when you see it. Hard to explain cold.
+
+**The validation and the challenge simultaneously.** Five technically sophisticated people immediately understood it when they used it. But the elevator pitch remained elusive. Success was creating a new problem: the thing was too integrated, too interconnected to reduce to a tagline.
+
+These five became the first wave of real users onboarded via connection keys — outside Ryan's immediate family.
+
+### March 18 — The Bad Session
+
+Registration form integration. Multiple rounds of wasted compute because existing components weren't reused. Custom `InlineRegForm` built instead of generalizing `EventSurveyAccordion`. Dykil embed modified unnecessarily. A fallback form nobody asked for.
+
+> Had to be told THREE TIMES to reuse the existing component.
+
+Ticket-scoping took 4 separate commits because each fix addressed one layer without tracing the full chain.
+
+**Lessons burned in:**
+1. Reuse existing components — search the codebase first, generalize with props
+2. Trace the full chain — when fixing a scoping bug, find ALL layers that share the assumption
+3. Don't build from issue specs without checking current code — the issue isn't the truth, the codebase is
+
+62 tickets sold on prod. 55 unique owners. The platform was scaling despite the development friction.
+
+### March 19 — Migration Crisis Forces Governance
+
+**The crisis:** Drizzle migration system completely broken across 14 services.
+
+Root causes cascading: All services shared a single `__drizzle_migrations` table — drizzle counted rows, not hashes, so it thought migrations were applied when they weren't. Introspection-generated `0000_` files had SQL wrapped in `/* */` comments that drizzle couldn't execute. Migration files were never committed to git — generated on server, invisible to the codebase.
+
+**The fix:** Per-service migration tracking tables (`__drizzle_migrations_auth`, `__drizzle_migrations_chat`, etc.). Programmatic migrator using `createRequire` for correct module resolution. All 14 services' drizzle directories committed to git. Manually applied and seeded tracking on both dev and prod. 14/14 green.
+
+**Stable DIDs decision (#371):** The identity architecture grew up. Every DID became `did:imajin:xxx` from birth — email is just a credential attached to it, not the identity itself. New `auth.credentials` table: `(id, did, type, value)`. Tier reflects credential strength, not DID format.
+
+This was the decoupling that had to happen. `did:email:user_at_domain_com` meant the email WAS the identity. Graduating to a keypair-based DID would orphan every reference across every schema. Stable DIDs solved it: the DID is permanent, authentication methods are interchangeable.
+
+Summer Camp data cleanup: 24 survey responses married to tickets via email matching.
+
+---
+
+## Phase 12: The First External Protocol (March 20–21, 2026)
+
+### March 20 — Market Launch and DFOS Discovery
+
+Market app scaffolded and shipped (#374) — consent-based local commerce, no feed, no infinite scroll. Six market bugs fixed with three parallel coding agents. Toast component shipped across 9 apps, replacing 48 `alert()` calls. CI fixed (missing `.eslintrc.json` on market was hanging the lint step).
+
+**Then: DFOS.**
+
+Metalabel/DFOS — Yancey Strickler's (Kickstarter co-founder) open source cryptographic identity protocol. Ed25519 signed chains, self-certifying DIDs (`did:dfos`), content chains, countersignatures, Merkle beacons. Cross-language verification (TS, Go, Python, Rust, Swift). MIT licensed, ~4,800 lines.
+
+Ryan was already in their dev channel, showing them Imajin.
+
+> **Key finding:** DFOS = crypto substrate (proofs, identity chains, verification). Imajin = application layer (payments, trust, events, market, profiles). Complementary stacks.
+
+Brandon (Clearbyte, OG Dev Wizard) responded:
+
+> "very very interesting"
+> "sounds like things line up nicely"
+> "excited to jam w you on this!"
+
+Three integration doors identified:
+1. **DID Bridge** — same Ed25519 keypair, derived DFOS chain (actionable immediately)
+2. **Sideloading** — relay for proof gossip + MCP for content access
+3. **Space provisioning** — needs their space creation API (soft-blocked)
+
+Ryan dropped "localized internet infrastructure" in the dev channel. That's the VC pitch.
+
+Stable DIDs shipped (#372). Places app designed (#392). DFOS DID bridge spec written — 9 child issues (#396-404).
+
+**The significance:** This was the first external protocol integration. Not a library dependency or an API consumption — a real protocol-level interop. Imajin positioned as Layer 6: the economic, settlement, and inference layer on top of DFOS's L0–L5 proof substrate.
+
+### March 21 — DFOS Epic Sprint
+
+All DFOS bridge issues built in one session:
+
+- **`@imajin/dfos` package** — full bridge between Imajin Ed25519 keypairs and DFOS chain format
+- **Login-time bridging** — DFOS chain derived and stored when users authenticate
+- **Resolution endpoints** — `GET /api/identity/:did/chain`, `GET /api/resolve/dfos/:dfosDid`
+- **Chain-aware middleware** — `requireAuth(req, { verifyChain: true })`, opt-in verification
+- **Key rotation** — `POST /api/identity/:did/rotate`, session invalidation, rate limiting
+- **`@imajin/cid` package** — DAG-CBOR + SHA-256 content identifiers (CIDv1), 10 tests
+- **Countersignature attestations** — author JWS + witness countersign + decline flow
+
+PR #407 (Phase 1+2), PR #412 (#398), PR #413 (#403) — merged. PR #426 (consolidated: #401, #400, #402) — 31 tests, awaiting merge.
+
+**CI fix chain:** 5 commits to resolve webpack bundling of Node built-ins from `@metalabel/dfos-protocol`. The lesson: when a workspace package in `transpilePackages` imports a node_module with Node built-ins, webpack follows the entire chain. `serverExternalPackages` doesn't help because transpilation happens first. Must use `resolve.fallback: { net: false, ... }` for client bundles.
+
+**P25 DFOS Adoption Audit** written — 10 child issues across all 8 services. Registry as "DNS for the sovereign network" — nodes present chains, registry verifies, provisions subdomains. Chain updates = node migration (same identity, new location).
+
+**Brandon's relay spec update incoming.** Countersignatures = JWS re-sign (matches what #402 built). VC auth for reads = `Authorization: Bearer` header. Delegated chain write auth = VC in the op payload. OSS update coming.
+
+---
+
+## The Arc: From Platform to Protocol Infrastructure
+
+### What it looked like from outside (March 10–21):
+A working platform adding features and fixing bugs. Chat improvements, market app, more bug fixes. Standard startup iteration.
+
+### What was actually happening:
+
+**Week 6 (Mar 10–14):** The platform met reality. Real users hit real friction — corporate email scanners eating magic links, Date serialization crashing the entire downstream chain. 66 tickets sold with zero confirmation emails. But the same week, attestation infrastructure went live — six cryptographic attestation types operational, settlement verification working. The trust graph gained *substance* while the platform gained *resilience*.
+
+**Week 7 (Mar 15–19):** Architecture maturation. RFC consolidation brought intellectual coherence to the codebase. The graph layer was designed as infrastructure for agent coordination. Database governance was forced by crisis. Stable DIDs decoupled identity from authentication. The platform was growing up — not just in features, but in the governance and architectural patterns underneath.
+
+**Days 48–49 (Mar 20–21):** External protocol integration. DFOS discovered and bridged in 48 hours. Market app shipped. The platform was mature enough to interop with other protocols, and that integration stress-tested everything — build system, migration system, CI pipeline, architectural boundaries.
+
+### The deeper pattern:
+
+The platform followed the same discovery arc as the first 37 days, but at a higher level of abstraction:
+
+- **Phase 1–9:** Build from identity → discover the protocol
+- **Phase 10–12:** Build from the protocol → discover interoperability
+
+Each crisis produced better infrastructure. The migration crisis produced per-service governance. Real user friction produced graceful error handling. DFOS integration produced proper build system boundaries. The pattern: **adversity as architecture.**
+
+### The numbers grew:
+
+| Metric | Day 37 | Day 49 |
+|--------|--------|--------|
+| Services live | 14 | 15 (+market) |
+| Lines of code | 68,000+ | 130,000+ |
+| Total commits | 300+ | 830+ |
+| Registered identities | ~73 | ~120 |
+| Tickets sold | 3 | 66 |
+| Attestation types | 0 | 6 (live) |
+| External protocols | 0 | 1 (DFOS) |
+| RFCs | 12 (scattered) | 16 (canonical) |
+
+### The sentence this phase was writing:
+
+> **"Build from the protocol and you will find the network."**
+
+The first 37 days discovered the protocol from the human layer. The next 12 days discovered interoperability from the protocol layer. DFOS partnership, Brandon's relay spec, countersignature alignment — all emerged from building the protocol correctly, not from seeking partnerships.
+
+---
+
+## What Exists (as of March 21, 2026)
+
+### Live Services (15)
+auth, pay, www, profile, registry, events, chat, connections, media, input, learn, coffee, links, dykil, market
+
+### Protocol Infrastructure
+- DFOS bridge (Phase 1+2 merged, Phase 3 awaiting merge)
+- `@imajin/dfos` package — chain creation, resolution, verification
+- `@imajin/cid` package — DAG-CBOR content identifiers
+- Key rotation + multi-device auth
+- Countersignature attestations
+- Stable DIDs (`did:imajin:xxx` from birth)
+- 31 protocol tests passing
+
+### Attestation Layer (LIVE)
+- 6 types: transaction.settled, customer, connection.invited, connection.accepted, vouch, session.created
+- Cryptographic .fair signature verification at settlement
+- Login attestations with auth strength metadata
+- Connection attestations with vouch primitives
+
+### Infrastructure
+- Self-hosted on owned hardware (HP ProLiant ML350p Gen8)
+- Local Postgres with per-service migration governance
+- GPU node (RTX 3080 Ti) for inference + transcription
+- GitHub Actions self-hosted CI/CD runner
+- Caddy reverse proxy with auto-SSL
+- Postgres backups: hourly, local (30 days) + Synology NAS (90 days)
+- MJN token reserved on Solana mainnet
+
+### Key Numbers
+- ~120 registered identities
+- 66 tickets sold on the sovereign stack (2 events)
+- 30 essays written (9 published)
+- 15 live services, 130,000+ lines of code
+- 830+ commits over 49 build days
+- 328 issues tracked (113 open)
+- 79 PRs shipped
+- $25/PR average inference cost
+- Traditional estimate: growing. The gap between AI-assisted and traditional execution widens daily.
+
+### The Stack (Updated)
+
+```
+┌─────────────────────────────────────────┐
+│           Trust-Gated Services          │
+│ events · chat · media · learn · input   │
+│ market · coffee · links · dykil         │
+│            places(*)                    │
+├─────────────────────────────────────────┤
+│          Attestation Layer              │
+│  6 live types · crypto verification     │
+│  countersignatures · The AttMart(*)     │
+├─────────────────────────────────────────┤
+│           Trust Graph Layer             │
+│  connections · @imajin/graph(*)         │
+│      intent docs · fan-out(*)          │
+├─────────────────────────────────────────┤
+│    Identity + Commerce + Protocol       │
+│  auth (stable DIDs) · pay (Stripe/SOL) │
+│  DFOS bridge · key rotation · CID      │
+├─────────────────────────────────────────┤
+│       Attribution + Discovery           │
+│    .fair · registry · search(*)        │
+├─────────────────────────────────────────┤
+│          Physical Presence              │
+│    Unit 8×8×8 · Sonos · GPU Node       │
+└─────────────────────────────────────────┘
+              (*) = planned
+```
+
+---
+
 *"The best way to make something better within a system that has absolute control over everything is likely to make a completely free and easy to use system that just works on its own frequency."*
 
 — Ryan Veteze, pre-code vision docs
 
 ---
 
-*Compiled March 8, 2026. Updated March 9, 2026. From git history (300+ commits), daily memory files (37 days), and 30 essays.*
+*Compiled March 8, 2026. Updated March 21, 2026. From git history (830+ commits), daily memory files (49 days), and 30 essays.*
