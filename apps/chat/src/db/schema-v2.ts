@@ -47,6 +47,10 @@ export const messagesV2 = chatSchema.table('messages_v2', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   editedAt: timestamp('edited_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+
+  // Federation prep: Ed25519 signature over canonicalized { conversationDid, content, fromDid, createdAt }
+  // Null when sender has no chain identity
+  signature: text('signature'),
 }, (table) => ({
   conversationDidIdx: index('idx_chat_msg_v2_conversation').on(table.conversationDid),
   fromDidIdx: index('idx_chat_msg_v2_from').on(table.fromDid),
