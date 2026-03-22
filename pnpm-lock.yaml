@@ -1120,6 +1120,15 @@ importers:
         specifier: ^5
         version: 5.9.3
 
+  packages/cid:
+    dependencies:
+      '@ipld/dag-cbor':
+        specifier: ^9.2.5
+        version: 9.2.5
+      multiformats:
+        specifier: ^13.4.2
+        version: 13.4.2
+
   packages/config:
     dependencies:
       next:

@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ['@imajin/auth','@imajin/config','@imajin/db','@imajin/dfos','@imajin/email','@imajin/onboard','@imajin/ui'],
+  transpilePackages: ['@imajin/auth','@imajin/cid','@imajin/config','@imajin/db','@imajin/dfos','@imajin/email','@imajin/onboard','@imajin/ui'],
   typescript: { ignoreBuildErrors: true },
   experimental: {
     serverComponentsExternalPackages: ['@metalabel/dfos-protocol'],

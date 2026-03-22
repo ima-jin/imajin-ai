@@ -93,7 +93,11 @@ export const attestations = authSchema.table('attestations', {
   contextId: text('context_id'),                       // e.g. event DID
   contextType: text('context_type'),                   // e.g. 'event'
   payload: jsonb('payload'),
-  signature: text('signature').notNull(),              // Ed25519 hex (128 chars)
+  signature: text('signature').notNull(),              // Ed25519 hex (128 chars) — legacy, kept for backward compat
+  cid: text('cid'),                                    // dag-cbor CID of attestation payload
+  authorJws: text('author_jws'),                       // JWS compact token (author signature)
+  witnessJws: text('witness_jws'),                     // JWS compact token (countersignature)
+  attestationStatus: text('attestation_status').default('pending'), // 'pending' | 'bilateral' | 'declined'
   issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
@@ -101,6 +105,7 @@ export const attestations = authSchema.table('attestations', {
   subjectIdx: index('idx_auth_attestations_subject').on(table.subjectDid),
   issuerIdx: index('idx_auth_attestations_issuer').on(table.issuerDid),
   typeIdx: index('idx_auth_attestations_type').on(table.type),
+  statusIdx: index('idx_auth_attestations_status').on(table.attestationStatus),
 }));
 
 /**
