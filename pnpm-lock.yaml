@@ -1090,8 +1090,8 @@ importers:
         specifier: workspace:*
         version: link:../auth
       '@metalabel/dfos-protocol':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: 0.2.0
+        version: 0.2.0
       '@noble/curves':
         specifier: ^1.8.1
         version: 1.9.7
@@ -2217,6 +2217,9 @@ packages:
 
   '@metalabel/dfos-protocol@0.1.0':
     resolution: {integrity: sha512-wXCyZGQM2L9q1ptERuzFoGyVSytEf3iM7/cAGZ28OMmfZ2vgsFZbJajArk4ZnYx8VLLMNrByCKGmlDs/+CT1sg==}
+
+  '@metalabel/dfos-protocol@0.2.0':
+    resolution: {integrity: sha512-8nprwkeIwEbWTSFvhkeA2iF8L8kckAOheaP4cbdlEAy3hr893z+YoMamwZw6U6w3WYNpdo655u9DFNdOI6CsSA==}
 
   '@napi-rs/wasm-runtime@0.2.12':
     resolution: {integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==}
@@ -7226,6 +7229,14 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
 
   '@metalabel/dfos-protocol@0.1.0':
+    dependencies:
+      '@ipld/dag-cbor': 9.2.5
+      '@noble/curves': 2.0.1
+      '@noble/hashes': 2.0.1
+      multiformats: 13.4.2
+      zod: 4.3.6
+
+  '@metalabel/dfos-protocol@0.2.0':
     dependencies:
       '@ipld/dag-cbor': 9.2.5
       '@noble/curves': 2.0.1
