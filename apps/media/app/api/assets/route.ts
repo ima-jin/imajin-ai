@@ -172,6 +172,9 @@ export async function POST(request: NextRequest) {
 
   // .fair manifest — allow context to override access (public only)
   const accessLevel = context?.access === "public" ? "public" : "private";
+  const chainProof = identity.chainVerified
+    ? { verified: true, verifiedAt: new Date().toISOString() }
+    : undefined;
   const fairManifest = {
     fair: "1.0",
     id: assetId,
@@ -180,7 +183,7 @@ export async function POST(request: NextRequest) {
     created: new Date().toISOString(),
     source: "upload",
     access: { type: accessLevel },
-    attribution: [{ did: ownerDid, role: "creator", share: 1.0 }],
+    attribution: [{ did: ownerDid, role: "creator", share: 1.0, chainProof }],
     transfer: { allowed: false },
   };
 

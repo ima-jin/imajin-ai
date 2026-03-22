@@ -9,6 +9,10 @@ export interface FairEntry {
   role: string; // creator, collaborator, producer, performer, platform, venue, etc.
   share: number; // 0.0 to 1.0
   note?: string;
+  chainProof?: {            // present when contributor has chain identity
+    verified: boolean;      // was chain verified at manifest creation time?
+    verifiedAt?: string;    // ISO timestamp
+  };
 }
 
 export interface FairTransfer {
