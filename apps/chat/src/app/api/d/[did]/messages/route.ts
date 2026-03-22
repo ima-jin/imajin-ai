@@ -148,7 +148,7 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const { content, replyToMessageId, mediaType, mediaPath, mediaMeta } = body;
+    const { content, replyToMessageId, mediaType, mediaPath, mediaMeta, conversationName } = body;
 
     if (!content || typeof content !== 'object') {
       return errorResponse('content is required and must be an object', 400, cors);
@@ -167,10 +167,24 @@ export async function POST(
 
     if (!existing) {
       const parsed = parseConversationDid(did);
-      const name = parsed.type !== 'unknown' ? `${parsed.type}:${parsed.slug ?? ''}` : did;
+      let name = conversationName || null;
+      if (!name) {
+        name = parsed.type !== 'unknown' ? `${parsed.type}:${parsed.slug ?? ''}` : null;
+      }
+      // If still no name, try to resolve from events service
+      if (!name) {
+        try {
+          const eventsUrl = process.env.EVENTS_SERVICE_URL || 'http://localhost:3006';
+          const evtRes = await fetch(`${eventsUrl}/api/events/by-did/${encodeURIComponent(did)}`);
+          if (evtRes.ok) {
+            const evtData = await evtRes.json();
+            name = evtData.event?.title ? `${evtData.event.title} Lobby` : null;
+          }
+        } catch {}
+      }
       await db.insert(conversationsV2).values({
         did,
-        name,
+        name: name || did,
         createdBy: identity.id,
       }).onConflictDoNothing();
     }
