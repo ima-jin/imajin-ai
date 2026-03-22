@@ -3,6 +3,10 @@ import type { Identity, AuthResult, AuthError } from "./types";
 
 const getAuthUrl = () => process.env.AUTH_SERVICE_URL!;
 
+export interface AuthOptions {
+  verifyChain?: boolean; // If true, also verify the chain is valid (not just session)
+}
+
 /**
  * Extract session cookie value from a cookie header string.
  */
@@ -85,20 +89,42 @@ async function validateBearerToken(
  * Works with both `Request` and `NextRequest`.
  */
 export async function requireAuth(
-  request: Request
+  request: Request,
+  options?: AuthOptions
 ): Promise<AuthResult | AuthError> {
   // Try session cookie first
   const cookieHeader = request.headers.get("cookie");
   const sessionToken = extractSessionCookie(cookieHeader);
+
+  let result: AuthResult | AuthError;
   if (sessionToken) {
-    return validateSessionCookie(sessionToken);
+    result = await validateSessionCookie(sessionToken);
+  } else {
+    // Fall back to Bearer token
+    const auth = request.headers.get("authorization");
+    if (auth?.startsWith("Bearer ")) {
+      result = await validateBearerToken(auth.slice(7));
+    } else {
+      return { error: "Not authenticated", status: 401 };
+    }
   }
 
-  // Fall back to Bearer token
-  const auth = request.headers.get("authorization");
-  if (auth?.startsWith("Bearer ")) {
-    return validateBearerToken(auth.slice(7));
+  if (options?.verifyChain && "identity" in result && result.identity) {
+    try {
+      const chainRes = await fetch(
+        `${getAuthUrl()}/api/identity/${encodeURIComponent(result.identity.id)}/verify`
+      );
+      if (!chainRes.ok) {
+        result.identity.chainVerified = false;
+      } else {
+        const chainData = await chainRes.json();
+        result.identity.chainVerified = chainData.chain?.valid ?? false;
+      }
+    } catch (err) {
+      console.error("[AUTH] Chain verification failed:", err);
+      result.identity.chainVerified = false;
+    }
   }
 
-  return { error: "Not authenticated", status: 401 };
+  return result;
 }
