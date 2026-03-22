@@ -77,7 +77,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { title, bio, avatar, theme, socialLinks, isPublic } = body;
+    const { title, bio, avatar, avatarAssetId, theme, socialLinks, isPublic } = body;
 
     // Build update object
     const updates: Record<string, any> = {
@@ -87,6 +87,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (title !== undefined) updates.title = title;
     if (bio !== undefined) updates.bio = bio;
     if (avatar !== undefined) updates.avatar = avatar;
+    if (avatarAssetId !== undefined) updates.avatarAssetId = avatarAssetId;
     if (theme !== undefined) updates.theme = theme;
     if (socialLinks !== undefined) updates.socialLinks = socialLinks;
     if (isPublic !== undefined) updates.isPublic = isPublic;
