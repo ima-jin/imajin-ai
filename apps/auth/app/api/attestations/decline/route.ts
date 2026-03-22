@@ -9,24 +9,33 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 /**
- * POST /api/attestations/:id/decline
+ * POST /api/attestations/decline
  *
  * Witness explicitly declines an attestation.
  * Only the attestation subject can decline.
+ *
+ * Body: { attestationId: string }
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
   const session = await requireAuth(request);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
   }
 
-  const { id } = await params;
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
+  }
 
-  const [att] = await db.select().from(attestations).where(eq(attestations.id, id)).limit(1);
+  const { attestationId } = body;
+  if (!attestationId || typeof attestationId !== 'string') {
+    return NextResponse.json({ error: 'attestationId required' }, { status: 400, headers: cors });
+  }
+
+  const [att] = await db.select().from(attestations).where(eq(attestations.id, attestationId)).limit(1);
   if (!att) {
     return NextResponse.json({ error: 'Attestation not found' }, { status: 404, headers: cors });
   }
@@ -47,10 +56,10 @@ export async function POST(
 
   await db.update(attestations)
     .set({ attestationStatus: 'declined' })
-    .where(eq(attestations.id, id));
+    .where(eq(attestations.id, attestationId));
 
   return NextResponse.json({
-    id,
+    id: attestationId,
     status: 'declined',
   }, { headers: cors });
 }
