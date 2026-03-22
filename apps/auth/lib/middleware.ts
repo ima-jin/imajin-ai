@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken, getSessionCookieOptions, SessionPayload } from './jwt';
-import { verifyChain } from '@imajin/dfos';
 import { hexToMultibase } from '@imajin/auth';
 import { db, identityChains, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
+import { verifyChainLog } from './chain-providers';
 
 interface AuthOptions {
   /** If true, verify identity against DFOS chain (not just DB) */
@@ -65,10 +65,15 @@ async function verifyIdentityChain(did: string): Promise<boolean> {
     // No chain = not bridged. Non-fatal — verification not applicable.
     if (!chain) return true;
 
-    // Verify chain cryptographically
-    const verified = await verifyChain(chain.log as string[]);
+    // Verify chain cryptographically via provider abstraction
+    const result = await verifyChainLog(chain.log as string[]);
 
-    if (verified.isDeleted) {
+    if (!result.valid) {
+      console.error('[auth] Identity chain is invalid:', did, result.error);
+      return false;
+    }
+
+    if (result.isDeleted) {
       console.error('[auth] Identity chain is deleted:', did);
       return false;
     }
@@ -83,7 +88,7 @@ async function verifyIdentityChain(did: string): Promise<boolean> {
     if (!identity) return false;
 
     const dbMultibase = hexToMultibase(identity.publicKey);
-    const chainMultibase = verified.controllerKeys[0]?.publicKeyMultibase;
+    const chainMultibase = result.publicKeyMultibase;
 
     if (dbMultibase !== chainMultibase) {
       console.error('[auth] Key mismatch — DB vs chain for', did);

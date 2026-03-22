@@ -1,11 +1,22 @@
 import { dfosProvider } from './providers/dfos';
 
+export interface ChainKey {
+  publicKeyMultibase: string;
+}
+
 export interface ChainVerificationResult {
   valid: boolean;
   did?: string;
-  publicKeyMultibase?: string;
-  publicKeyHex?: string;
+  publicKeyMultibase?: string;  // first controller key in multibase
+  publicKeyHex?: string;        // first controller key in hex
   keyCount?: number;
+  isDeleted?: boolean;
+  /** Full key sets — populated when the provider has role-separated keys. */
+  keys?: {
+    auth: ChainKey[];
+    assert: ChainKey[];
+    controller: ChainKey[];
+  };
   providerName?: string;
   error?: string;
 }

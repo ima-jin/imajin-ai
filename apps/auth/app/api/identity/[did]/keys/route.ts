@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@imajin/config';
-import { db, identities, identityChains, tokens } from '@/src/db';
+import { db, identities, identityChains } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { verifyChain } from '@imajin/dfos';
+import { verifyChainLog } from '@/lib/chain-providers';
 import { requireAuth } from '@/lib/middleware';
 import { getChainByImajinDid } from '@/lib/dfos';
 import type { KeyRoles } from '@/src/db/schema';
@@ -45,16 +45,16 @@ export async function GET(
       }, { headers: cors });
     }
 
-    const verified = await verifyChain(chain.log as string[]);
+    const result = await verifyChainLog(chain.log as string[]);
 
     return NextResponse.json({
       did: decodedDid,
       dfosDid: chain.dfosDid,
       singleKey: false,
       chainLength: (chain.log as string[]).length,
-      authKeys: verified.authKeys,
-      assertKeys: verified.assertKeys,
-      controllerKeys: verified.controllerKeys,
+      authKeys: result.keys?.auth ?? [],
+      assertKeys: result.keys?.assert ?? [],
+      controllerKeys: result.keys?.controller ?? [],
       lastRotated: chain.updatedAt,
     }, { headers: cors });
   } catch (err) {
@@ -128,25 +128,23 @@ export async function POST(
       }
     }
 
-    // Verify the full updated chain
-    let verified;
-    try {
-      verified = await verifyChain(log);
-    } catch (err: unknown) {
+    // Verify the full updated chain via provider abstraction
+    const result = await verifyChainLog(log);
+    if (!result.valid) {
       return NextResponse.json(
-        { error: `Chain verification failed: ${err instanceof Error ? err.message : String(err)}` },
+        { error: `Chain verification failed: ${result.error}` },
         { status: 400, headers: cors }
       );
     }
 
-    if (verified.isDeleted) {
+    if (result.isDeleted) {
       return NextResponse.json(
         { error: 'Chain marks identity as deleted' },
         { status: 400, headers: cors }
       );
     }
 
-    if (verified.controllerKeys.length === 0) {
+    if (!result.keys || result.keys.controller.length === 0) {
       return NextResponse.json(
         { error: 'Must retain at least one controller key' },
         { status: 400, headers: cors }
@@ -155,17 +153,19 @@ export async function POST(
 
     // Build key_roles from verified chain state
     const keyRoles: KeyRoles = {
-      auth: verified.authKeys.map(k => k.publicKeyMultibase),
-      assert: verified.assertKeys.map(k => k.publicKeyMultibase),
-      controller: verified.controllerKeys.map(k => k.publicKeyMultibase),
+      auth: result.keys.auth.map(k => k.publicKeyMultibase),
+      assert: result.keys.assert.map(k => k.publicKeyMultibase),
+      controller: result.keys.controller.map(k => k.publicKeyMultibase),
     };
+
+    const totalKeyCount = result.keys.auth.length + result.keys.assert.length + result.keys.controller.length;
 
     // Update chain + identity
     await db.update(identityChains)
       .set({
         log,
         headCid: operationCID,
-        keyCount: verified.authKeys.length + verified.assertKeys.length + verified.controllerKeys.length,
+        keyCount: totalKeyCount,
         updatedAt: new Date(),
       })
       .where(eq(identityChains.did, decodedDid));
@@ -181,9 +181,9 @@ export async function POST(
       did: decodedDid,
       dfosDid: existingChain.dfosDid,
       updated: true,
-      authKeys: verified.authKeys.length,
-      assertKeys: verified.assertKeys.length,
-      controllerKeys: verified.controllerKeys.length,
+      authKeys: result.keys.auth.length,
+      assertKeys: result.keys.assert.length,
+      controllerKeys: result.keys.controller.length,
     }, { headers: cors });
   } catch (err) {
     console.error('[keys] Error updating keys:', err);

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@imajin/config';
 import { db, identityChains, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { verifyChain } from '@imajin/dfos';
 import { hexToMultibase } from '@imajin/auth';
+import { verifyChainLog } from '@/lib/chain-providers';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -56,24 +56,17 @@ export async function GET(
       }, { headers: cors });
     }
 
-    // Verify chain
-    let chainValid = false;
-    let chainError: string | null = null;
-    let verified: Awaited<ReturnType<typeof verifyChain>> | null = null;
+    // Verify chain via provider abstraction
+    const result = await verifyChainLog(chain.log as string[]);
 
-    try {
-      verified = await verifyChain(chain.log as string[]);
-      chainValid = !verified.isDeleted;
-    } catch (err: unknown) {
-      chainError = err instanceof Error ? err.message : 'Chain verification failed';
-    }
+    const chainValid = result.valid;
+    const chainError = result.valid ? null : (result.error ?? 'Chain verification failed');
 
     // Check DB consistency
     let dbConsistent = false;
-    if (verified && identity.publicKey) {
+    if (result.publicKeyMultibase && identity.publicKey) {
       const dbMultibase = hexToMultibase(identity.publicKey);
-      const chainMultibase = verified.controllerKeys?.[0]?.publicKeyMultibase;
-      dbConsistent = dbMultibase === chainMultibase;
+      dbConsistent = dbMultibase === result.publicKeyMultibase;
     }
 
     return NextResponse.json({
@@ -83,13 +76,13 @@ export async function GET(
       chainValid,
       chainError,
       chainLength: (chain.log as string[]).length,
-      currentKeys: verified ? {
-        auth: verified.authKeys?.length ?? 0,
-        assert: verified.assertKeys?.length ?? 0,
-        controller: verified.controllerKeys?.length ?? 0,
+      currentKeys: result.keys ? {
+        auth: result.keys.auth.length,
+        assert: result.keys.assert.length,
+        controller: result.keys.controller.length,
       } : null,
       dbConsistent,
-      isDeleted: verified?.isDeleted ?? null,
+      isDeleted: result.isDeleted ?? null,
     }, { headers: cors });
   } catch (err) {
     console.error('[verify] Error:', err);

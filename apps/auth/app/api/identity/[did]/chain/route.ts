@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@imajin/config';
 import { getChainByImajinDid } from '@/lib/dfos';
-import { verifyChain } from '@imajin/dfos';
+import { verifyChainLog } from '@/lib/chain-providers';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -30,7 +30,7 @@ export async function GET(
     }
 
     // Verify chain integrity before serving
-    const verified = await verifyChain(chain.log as string[]);
+    const result = await verifyChainLog(chain.log as string[]);
 
     return NextResponse.json({
       did: decodedDid,
@@ -38,7 +38,7 @@ export async function GET(
       log: chain.log,
       headCid: chain.headCid,
       keyCount: chain.keyCount,
-      isDeleted: verified.isDeleted,
+      isDeleted: result.isDeleted ?? false,
     }, { headers: cors });
   } catch (err) {
     console.error('[chain] Error serving chain:', err);

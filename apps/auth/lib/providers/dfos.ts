@@ -24,12 +24,20 @@ export const dfosProvider: ChainProvider = {
     try {
       const verified = await verifyChain(chainLog);
 
-      if (verified.isDeleted) {
-        return { valid: false, error: 'Chain has been deleted' };
-      }
-
       const publicKeyMultibase = verified.controllerKeys[0]?.publicKeyMultibase;
       const publicKeyHex = publicKeyMultibase ? multibaseToHex(publicKeyMultibase) : undefined;
+
+      if (verified.isDeleted) {
+        return {
+          valid: false,
+          did: verified.did,
+          publicKeyMultibase,
+          publicKeyHex,
+          isDeleted: true,
+          error: 'Chain has been deleted',
+          providerName: 'dfos',
+        };
+      }
 
       return {
         valid: true,
@@ -37,6 +45,12 @@ export const dfosProvider: ChainProvider = {
         publicKeyMultibase,
         publicKeyHex,
         keyCount: chainLog.length,
+        isDeleted: false,
+        keys: {
+          auth: verified.authKeys.map(k => ({ publicKeyMultibase: k.publicKeyMultibase })),
+          assert: verified.assertKeys.map(k => ({ publicKeyMultibase: k.publicKeyMultibase })),
+          controller: verified.controllerKeys.map(k => ({ publicKeyMultibase: k.publicKeyMultibase })),
+        },
         providerName: 'dfos',
       };
     } catch (err) {
