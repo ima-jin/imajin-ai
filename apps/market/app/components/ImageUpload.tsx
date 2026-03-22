@@ -1,29 +1,84 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 const MAX_IMAGES = 8;
+const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL || 'https://media.imajin.ai';
 
 interface ImageUploadProps {
   images: string[];
   onChange: (images: string[]) => void;
 }
 
+interface PendingUpload {
+  id: string;
+  previewUrl: string;
+}
+
 export function ImageUpload({ images, onChange }: ImageUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
+  const [pending, setPending] = useState<PendingUpload[]>([]);
+
+  // Keep a ref so concurrent uploads see the latest committed images
+  const imagesRef = useRef(images);
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadFile = useCallback(
+    async (file: File) => {
+      const tempId = `${Date.now()}-${Math.random()}`;
+      const previewUrl = URL.createObjectURL(file);
+
+      setPending((prev) => [...prev, { id: tempId, previewUrl }]);
+      setError('');
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('context', JSON.stringify({ app: 'market', access: 'public' }));
+
+        const res = await fetch(`${MEDIA_URL}/api/assets`, {
+          method: 'POST',
+          credentials: 'include',
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `Upload failed (${res.status})`);
+        }
+
+        const data = await res.json();
+        const url: string = data.url;
+
+        // Use ref so parallel uploads each append to the latest list
+        const next = [...imagesRef.current, url];
+        imagesRef.current = next;
+        onChange(next);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
+      } finally {
+        setPending((prev) => prev.filter((p) => p.id !== tempId));
+        URL.revokeObjectURL(previewUrl);
+      }
+    },
+    [onChange]
+  );
 
   const addFiles = useCallback(
     (files: FileList | File[]) => {
       const fileArray = Array.from(files);
-      const remaining = MAX_IMAGES - images.length;
-      if (remaining <= 0) {
+      const totalSlots = MAX_IMAGES - images.length - pending.length;
+      if (totalSlots <= 0) {
         setError(`Maximum ${MAX_IMAGES} images allowed.`);
         return;
       }
 
-      const allowed = fileArray.slice(0, remaining);
+      const allowed = fileArray.slice(0, totalSlots);
       const invalid = fileArray.find(
         (f) => !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(f.type)
       );
@@ -33,20 +88,9 @@ export function ImageUpload({ images, onChange }: ImageUploadProps) {
       }
 
       setError('');
-      const readers = allowed.map(
-        (file) =>
-          new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target?.result as string);
-            reader.readAsDataURL(file);
-          })
-      );
-
-      Promise.all(readers).then((dataUrls) => {
-        onChange([...images, ...dataUrls]);
-      });
+      allowed.forEach((file) => uploadFile(file));
     },
-    [images, onChange]
+    [images.length, pending.length, uploadFile]
   );
 
   const onDrop = useCallback(
@@ -86,15 +130,17 @@ export function ImageUpload({ images, onChange }: ImageUploadProps) {
     [images, onChange]
   );
 
-  const isFull = images.length >= MAX_IMAGES;
+  const totalCount = images.length + pending.length;
+  const isFull = totalCount >= MAX_IMAGES;
 
   return (
     <div>
       {/* Thumbnails */}
-      {images.length > 0 && (
+      {(images.length > 0 || pending.length > 0) && (
         <div className="flex flex-wrap gap-2 mb-3">
+          {/* Committed images */}
           {images.map((src, i) => (
-            <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-700 group">
+            <div key={src} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-700 group">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={src} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
               <button
@@ -105,6 +151,29 @@ export function ImageUpload({ images, onChange }: ImageUploadProps) {
               >
                 ×
               </button>
+            </div>
+          ))}
+
+          {/* Pending uploads — spinner overlay */}
+          {pending.map((p) => (
+            <div key={p.id} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-700">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={p.previewUrl} alt="Uploading…" className="w-full h-full object-cover opacity-40" />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                <svg
+                  className="w-6 h-6 text-white animate-spin"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+              </div>
             </div>
           ))}
         </div>
@@ -139,7 +208,7 @@ export function ImageUpload({ images, onChange }: ImageUploadProps) {
           />
           <p className="text-sm text-gray-400 mb-1">Drop images here or click to browse</p>
           <p className="text-xs text-gray-500">
-            {images.length} of {MAX_IMAGES} images · JPG, PNG, GIF, WebP
+            {totalCount} of {MAX_IMAGES} images · JPG, PNG, GIF, WebP
           </p>
         </div>
       )}
