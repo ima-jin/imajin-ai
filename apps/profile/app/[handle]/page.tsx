@@ -231,6 +231,8 @@ export default async function ProfilePage({ params }: PageProps) {
   const authSql = getClient();
   const [identityRow] = await authSql`SELECT tier FROM auth.identities WHERE id = ${profile.did} LIMIT 1`.catch(() => []);
   const isSoftDID = identityRow?.tier === 'soft';
+  const [chainRow] = await authSql`SELECT did FROM auth.identity_chains WHERE did = ${profile.did} LIMIT 1`.catch(() => []);
+  const chainVerified = !!chainRow;
 
   // Fetch counts, follow status, and links in parallel
   const [counts, isFollowing, links] = await Promise.all([
@@ -264,6 +266,11 @@ export default async function ProfilePage({ params }: PageProps) {
           {isSoftDID && (
             <span className="inline-block px-3 py-1 bg-amber-900/30 border border-amber-700/50 rounded-full text-sm text-amber-400">
               ⚡ Quick Profile
+            </span>
+          )}
+          {chainVerified && (
+            <span className="inline-block px-3 py-1 bg-emerald-900/30 border border-emerald-700/50 rounded-full text-sm text-emerald-400">
+              ⛓ Chain Verified
             </span>
           )}
         </div>
