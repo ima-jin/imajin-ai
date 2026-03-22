@@ -6,6 +6,7 @@
 
 export const ATTESTATION_TYPES = [
   'event.attendance',
+  'institution.verified',
   'vouch.given',
   'vouch.received',
   'flag.yellow',
