@@ -12,7 +12,11 @@ import { createHash, randomBytes } from 'crypto';
 import { extname, join } from 'path';
 import postgres from 'postgres';
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://imajin:6xSnkNnbH0AxNQuX64hrN4ZBnac6OE5@localhost:5432/imajin_prod';
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.error('DATABASE_URL is required');
+  process.exit(1);
+}
 const MEDIA_ROOT = '/mnt/media';
 const LEGACY_CHAT_DIR = '/mnt/media/chat';
 const DRY_RUN = process.argv.includes('--dry-run');
