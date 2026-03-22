@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
-import { authenticateRequest } from '@/lib/session-auth';
+import { requireAuth } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/cors';
 import { db, connectedAccounts } from '@/src/db';
 import { genId } from '@/src/lib/id';
@@ -28,16 +28,17 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const auth = await authenticateRequest(request);
-  if (!auth.authenticated || !auth.identity) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401, headers: cors }
     );
   }
+  const { identity } = authResult;
 
   // Must be a human (hard DID), not an agent
-  if (auth.identity.type !== 'human') {
+  if (identity.type !== 'human') {
     return NextResponse.json(
       { error: 'Forbidden - only human accounts can onboard to Stripe Connect' },
       { status: 403, headers: cors }
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
     }
 
     const stripe = getStripe();
-    const did = auth.identity.did;
+    const did = identity.id;
 
     // Check if DID already has a connected account
     const existing = await db

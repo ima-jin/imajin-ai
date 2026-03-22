@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, bugReports } from '@/db';
 import { eq } from 'drizzle-orm';
-import { authenticateRequest, isAdmin } from '@/lib/session-auth';
+import { requireAuth } from '@imajin/auth';
+import { isAdmin } from '@/lib/session-auth';
 
 const GITHUB_REPO = process.env.GITHUB_REPO || 'ima-jin/imajin-ai';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -11,11 +12,12 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const auth = await authenticateRequest(request);
-  if (!auth.authenticated || !auth.identity) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  if (!isAdmin(auth.identity)) {
+  const { identity } = authResult;
+  if (!isAdmin(identity)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -79,7 +81,7 @@ export async function POST(
       status: 'imported',
       githubIssueNumber: issue.number,
       githubIssueUrl: issue.html_url,
-      reviewedBy: auth.identity.did,
+      reviewedBy: identity.id,
       reviewedAt: new Date(),
     })
     .where(eq(bugReports.id, params.id))

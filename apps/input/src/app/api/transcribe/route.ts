@@ -1,4 +1,4 @@
-import { SESSION_COOKIE_NAME } from "@imajin/config";
+import { optionalAuth } from '@imajin/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/metering';
 import { corsHeaders, corsOptions } from '@/lib/cors';
@@ -9,7 +9,6 @@ import { randomBytes } from 'crypto';
 
 const GPU_NODE_URL = process.env.GPU_NODE_URL || 'http://192.168.1.124:8765';
 const GPU_AUTH_TOKEN = process.env.GPU_AUTH_TOKEN || '';
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:7001';
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -26,21 +25,8 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
   // Validate session (optional — allow anonymous for now, but track DID if present)
-  let callerDid = 'anonymous';
-  try {
-    const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-    if (sessionCookie) {
-      const sessionRes = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-        headers: { Cookie: `${SESSION_COOKIE_NAME}=${sessionCookie}` },
-      });
-      if (sessionRes.ok) {
-        const session = await sessionRes.json();
-        callerDid = session.did || session.sub || 'anonymous';
-      }
-    }
-  } catch {
-    // Auth failure is non-fatal — proceed as anonymous
-  }
+  const identity = await optionalAuth(request);
+  const callerDid = identity?.id || 'anonymous';
 
   // Rate limit check
   const rateCheck = checkRateLimit(callerDid, 'transcribe');

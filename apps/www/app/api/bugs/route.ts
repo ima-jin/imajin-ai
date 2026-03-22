@@ -2,14 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { db, bugReports } from '@/db';
 import { eq, desc } from 'drizzle-orm';
-import { authenticateRequest } from '@/lib/session-auth';
+import { requireAuth } from '@imajin/auth';
+import { isAdmin } from '@/lib/session-auth';
 
 // POST /api/bugs — submit a new bug report
 export async function POST(request: NextRequest) {
-  const auth = await authenticateRequest(request);
-  if (!auth.authenticated || !auth.identity) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const { identity } = authResult;
 
   let body: Record<string, unknown>;
   try {
@@ -37,8 +39,8 @@ export async function POST(request: NextRequest) {
 
   const [report] = await db.insert(bugReports).values({
     id: `bug_${nanoid(16)}`,
-    reporterDid: auth.identity.did,
-    reporterName: auth.identity.name ?? null,
+    reporterDid: identity.id,
+    reporterName: identity.name ?? null,
     type: reportType,
     description: description.trim(),
     screenshotUrl: typeof screenshotUrl === 'string' ? screenshotUrl : null,
@@ -53,10 +55,11 @@ export async function POST(request: NextRequest) {
 
 // GET /api/bugs — list bugs for the authenticated user, or all bugs with ?scope=all
 export async function GET(request: NextRequest) {
-  const auth = await authenticateRequest(request);
-  if (!auth.authenticated || !auth.identity) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const { identity } = authResult;
 
   const url = new URL(request.url);
   const scope = url.searchParams.get('scope');
@@ -70,15 +73,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(reports.map(r => ({
       ...r,
-      reporterDid: r.reporterDid === auth.identity!.did ? r.reporterDid : undefined,
-      reporterName: r.reporterDid === auth.identity!.did ? r.reporterName : undefined,
+      reporterDid: r.reporterDid === identity.id ? r.reporterDid : undefined,
+      reporterName: r.reporterDid === identity.id ? r.reporterName : undefined,
     })));
   }
 
   const reports = await db
     .select()
     .from(bugReports)
-    .where(eq(bugReports.reporterDid, auth.identity.did))
+    .where(eq(bugReports.reporterDid, identity.id))
     .orderBy(desc(bugReports.createdAt));
 
   return NextResponse.json(reports);

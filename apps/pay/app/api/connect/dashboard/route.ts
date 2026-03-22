@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
-import { authenticateRequest } from '@/lib/session-auth';
+import { requireAuth } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/cors';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 import { db, connectedAccounts } from '@/src/db';
@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const auth = await authenticateRequest(request);
-  if (!auth.authenticated || !auth.identity) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401, headers: cors }
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (auth.identity.did !== did) {
+  if (authResult.identity.id !== did) {
     return NextResponse.json(
       { error: 'Not authorized to access this account' },
       { status: 403, headers: cors }

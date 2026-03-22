@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, bugReports } from '@/db';
 import { eq, desc } from 'drizzle-orm';
-import { authenticateRequest, isAdmin } from '@/lib/session-auth';
+import { requireAuth } from '@imajin/auth';
+import { isAdmin } from '@/lib/session-auth';
 
 // GET /api/bugs/admin — list all bug reports (admin only)
 export async function GET(request: NextRequest) {
-  const auth = await authenticateRequest(request);
-  if (!auth.authenticated || !auth.identity) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  if (!isAdmin(auth.identity)) {
+  const { identity } = authResult;
+  if (!isAdmin(identity)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
