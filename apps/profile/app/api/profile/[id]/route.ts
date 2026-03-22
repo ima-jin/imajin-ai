@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { db, profiles } from '@/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { corsHeaders, corsOptions } from '@/lib/utils';
 import { eq } from 'drizzle-orm';

@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "fs/promises";
 import { extname } from "path";
 import { nanoid } from "nanoid";
 import { db, assets, folders, assetFolders } from "@/src/db";
-import { requireAuth } from "@/src/lib/auth";
+import { requireAuth } from "@imajin/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/cors";
 import { eq, and } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/classify";

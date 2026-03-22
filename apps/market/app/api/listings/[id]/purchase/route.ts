@@ -7,7 +7,7 @@
 
 import { NextRequest } from 'next/server';
 import { db, listings } from '@/db';
-import { getSession } from '@/lib/auth';
+import { getSession } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 

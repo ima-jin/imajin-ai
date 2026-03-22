@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, modules, lessons, enrollments, lessonProgress } from '@/db/schema';
-import { requireAuth, requireHardDID, getSessionFromCookie } from '@/lib/auth';
+import { requireAuth, requireHardDID, optionalAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and, sql, asc } from 'drizzle-orm';
 
@@ -25,8 +25,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const course = result[0];
 
   // Single session lookup for visibility, creator check, and enrollment
-  const cookieHeader = request.headers.get('Cookie');
-  const identity = await getSessionFromCookie(cookieHeader);
+  const identity = await optionalAuth(request);
   const isCreator = identity?.id === course.creatorDid;
 
   // Check visibility

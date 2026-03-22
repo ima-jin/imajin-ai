@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, modules, lessons } from '@/db/schema';
-import { requireHardDID } from '@/lib/auth';
+import { requireHardDID } from '@imajin/auth';
 import { generateId, slugify, jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and, sql, desc } from 'drizzle-orm';
 

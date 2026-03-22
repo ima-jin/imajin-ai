@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, listings } from '@/db';
-import { requireAuth, getSession } from '@/lib/auth';
+import { requireAuth, getSession } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, ilike, and, desc, asc, sql } from 'drizzle-orm';
 

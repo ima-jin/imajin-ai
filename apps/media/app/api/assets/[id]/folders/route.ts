@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets, folders, assetFolders } from "@/src/db";
-import { requireAuth } from "@/src/lib/auth";
+import { requireAuth } from "@imajin/auth";
 import { eq, and, inArray } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------

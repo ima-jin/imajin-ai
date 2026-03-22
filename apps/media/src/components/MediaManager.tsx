@@ -5,7 +5,7 @@ import { FolderTree } from "./FolderTree";
 import { AssetGrid } from "./AssetGrid";
 import { AssetDetail } from "./AssetDetail";
 import type { Asset, Folder } from "@/src/db/schema";
-import type { Identity } from "@/src/lib/auth";
+import type { Identity } from "@imajin/auth";
 
 interface FolderWithCount extends Folder {
   assetCount?: number;

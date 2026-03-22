@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { db, linkPages, links } from '@/db';
 import { eq, and, asc } from 'drizzle-orm';
-import { getSession } from '@/lib/auth';
+import { getSession } from '@imajin/auth';
 import LinkButton from './link-button';
 
 interface PageProps {

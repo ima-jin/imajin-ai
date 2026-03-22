@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, eventAdmins } from '@/src/db';
-import { requireAuth } from '@/src/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq, and } from 'drizzle-orm';
 

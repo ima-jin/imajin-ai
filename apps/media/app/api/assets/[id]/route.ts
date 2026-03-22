@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile, unlink, rename } from "fs/promises";
 import path from "path";
 import { db, assets } from "@/src/db";
-import { requireAuth } from "@/src/lib/auth";
+import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import type { FairManifest } from "@imajin/fair";
 

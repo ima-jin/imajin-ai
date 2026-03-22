@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { NavBar } from '@imajin/ui';
 import { MediaManager } from './MediaManager';
-import type { Identity } from '@/src/lib/auth';
+import type { Identity } from '@imajin/auth';
 
 interface Props {
   session: Identity;

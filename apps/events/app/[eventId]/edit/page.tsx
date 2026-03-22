@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
-import { getSession } from '@/src/lib/auth';
+import { getSession } from '@imajin/auth';
 import { db, events, ticketTypes } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { getClient } from '@imajin/db';

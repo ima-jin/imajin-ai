@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, enrollments, lessons, modules, lessonProgress } from '@/db/schema';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
 import { emitAttestation } from '@/lib/attestations';
 import { eq, and } from 'drizzle-orm';

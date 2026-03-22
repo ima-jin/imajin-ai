@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, eventInvites } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
-import { requireAuth } from '@/src/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 
 export async function DELETE(

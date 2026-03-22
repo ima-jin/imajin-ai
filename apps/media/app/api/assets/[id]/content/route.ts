@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile } from "fs/promises";
 import { createHash } from "crypto";
 import { db, assets } from "@/src/db";
-import { requireAuth } from "@/src/lib/auth";
+import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import type { FairManifest } from "@imajin/fair";
 

@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, profiles, queryLogs } from '@/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { eq } from 'drizzle-orm';
 import { generateText } from 'ai';
 import { resolveModel, calculateCost, createPresenceTools } from '@imajin/llm';

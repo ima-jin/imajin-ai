@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import { db, assets } from "@/src/db";
-import { requireAuth } from "@/src/lib/auth";
+import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/classify";
 

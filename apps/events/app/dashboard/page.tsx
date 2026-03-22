@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getSession } from '@/src/lib/auth';
+import { getSession } from '@imajin/auth';
 import { db, events, ticketTypes } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import Link from 'next/link';
