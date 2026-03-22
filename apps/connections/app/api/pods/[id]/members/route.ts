@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { emitAttestation } from '@/lib/attestations';
+import { emitAttestation } from '@imajin/auth';
 import { db, pods, podMembers } from '@/db';
 import { eq, and, isNull } from 'drizzle-orm';
 
