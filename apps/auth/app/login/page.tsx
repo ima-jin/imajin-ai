@@ -31,7 +31,7 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
-async function importPrivateKey(privateKeyHex: string): Promise<{ success: boolean; error?: string; did?: string }> {
+async function loginWithKeypair(privateKeyHex: string): Promise<{ success: boolean; error?: string; did?: string }> {
   if (!/^[0-9a-fA-F]{64}$/.test(privateKeyHex)) {
     return { success: false, error: 'Invalid private key format. Must be 64 hex characters.' };
   }
@@ -81,7 +81,7 @@ async function importPrivateKey(privateKeyHex: string): Promise<{ success: boole
   return { success: true, did: derivedDid };
 }
 
-type ViewState = 'email' | 'email-sent' | 'keypair' | 'login-mfa';
+type ViewState = 'keys' | 'email' | 'email-sent';
 type ImportMethod = 'file' | 'paste';
 
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -90,9 +90,15 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const nextUrl = searchParams.get('next');
 
-  // View routing
-  const [view, setView] = useState<ViewState>('email');
-  const [fromEmailForbidden, setFromEmailForbidden] = useState(false);
+  // View routing — keys first
+  const [view, setView] = useState<ViewState>('keys');
+
+  // Keypair view state
+  const [method, setMethod] = useState<ImportMethod>('file');
+  const [privateKeyHex, setPrivateKeyHex] = useState('');
+  const [keypairError, setKeypairError] = useState('');
+  const [keypairLoading, setKeypairLoading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   // Email view state
   const [email, setEmail] = useState('');
@@ -102,13 +108,6 @@ function LoginForm() {
   // Email-sent cooldown
   const [resendCooldown, setResendCooldown] = useState(0);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Keypair view state
-  const [method, setMethod] = useState<ImportMethod>('file');
-  const [privateKeyHex, setPrivateKeyHex] = useState('');
-  const [keypairError, setKeypairError] = useState('');
-  const [keypairLoading, setKeypairLoading] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
     // If localStorage says logged in, verify the session is still valid
@@ -133,6 +132,66 @@ function LoginForm() {
     };
   }, []);
 
+  // ── File import ───────────────────────────────────────────────────────────
+  async function handleFileSelect(file: File) {
+    setKeypairError('');
+    setKeypairLoading(true);
+
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+
+      const privateKey = data.keypair?.privateKey || data.privateKey;
+      if (!privateKey) {
+        throw new Error('Invalid backup file format. Missing privateKey.');
+      }
+
+      const result = await loginWithKeypair(privateKey);
+      if (result.success) {
+        window.location.href = nextUrl || '/';
+      } else {
+        setKeypairError(result.error || 'Import failed');
+      }
+    } catch (err: any) {
+      setKeypairError(err.message || 'Failed to import backup file');
+    } finally {
+      setKeypairLoading(false);
+    }
+  }
+
+  // ── Paste key ─────────────────────────────────────────────────────────────
+  async function handlePasteImport(e: React.FormEvent) {
+    e.preventDefault();
+    setKeypairError('');
+    setKeypairLoading(true);
+
+    try {
+      const result = await loginWithKeypair(privateKeyHex.trim());
+      if (result.success) {
+        window.location.href = nextUrl || '/';
+      } else {
+        setKeypairError(result.error || 'Import failed');
+      }
+    } catch (err: any) {
+      setKeypairError(err.message || 'Failed to import key');
+    } finally {
+      setKeypairLoading(false);
+    }
+  }
+
+  // ── Drag & drop ───────────────────────────────────────────────────────────
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file && file.type === 'application/json') {
+      handleFileSelect(file);
+    } else {
+      setKeypairError('Please drop a valid JSON backup file');
+    }
+  }
+
+  // ── Email magic link ──────────────────────────────────────────────────────
   function startResendCooldown() {
     setResendCooldown(RESEND_COOLDOWN_SECONDS);
     cooldownRef.current = setInterval(() => {
@@ -161,8 +220,9 @@ function LoginForm() {
         setView('email-sent');
         startResendCooldown();
       } else if (res.status === 403) {
-        setFromEmailForbidden(true);
-        setView('keypair');
+        // Hard DID — can't use email login
+        setEmailError('This identity uses key-based authentication. Use your backup key file to log in.');
+        setView('keys');
       } else if (res.status === 429) {
         setEmailError('Too many attempts. Please wait a moment before trying again.');
       } else {
@@ -186,94 +246,177 @@ function LoginForm() {
     await sendMagicLink(email.trim());
   }
 
-  async function handleFileSelect(file: File) {
-    setKeypairError('');
-    setKeypairLoading(true);
+  // ── Keys view (default) ─────────────────────────────────────────────────
+  if (view === 'keys') {
+    return (
+      <div className="max-w-md mx-auto">
+        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+          <h1 className="text-2xl font-bold mb-2 text-center text-white">Sign in</h1>
+          <p className="text-gray-400 text-center mb-6">
+            Your key is your identity
+          </p>
 
-    try {
-      const text = await file.text();
-      const data = JSON.parse(text);
+          {/* Method selector (file / paste) */}
+          <div className="flex gap-2 mb-6">
+            <button
+              onClick={() => setMethod('file')}
+              className={`flex-1 px-4 py-2 rounded-lg transition ${
+                method === 'file'
+                  ? 'bg-[#F59E0B] text-black font-medium'
+                  : 'bg-gray-900 text-gray-400 hover:bg-gray-800'
+              }`}
+            >
+              Import File
+            </button>
+            <button
+              onClick={() => setMethod('paste')}
+              className={`flex-1 px-4 py-2 rounded-lg transition ${
+                method === 'paste'
+                  ? 'bg-[#F59E0B] text-black font-medium'
+                  : 'bg-gray-900 text-gray-400 hover:bg-gray-800'
+              }`}
+            >
+              Paste Key
+            </button>
+          </div>
 
-      // Accept both nested format (v0.2+: { keypair: { privateKey } })
-      // and flat format (v0.1: { privateKey })
-      const privateKey = data.keypair?.privateKey || data.privateKey;
-      if (!privateKey) {
-        throw new Error('Invalid backup file format. Missing privateKey.');
-      }
+          {/* File import */}
+          {method === 'file' && (
+            <div
+              onDrop={handleDrop}
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={e => { e.preventDefault(); setDragOver(false); }}
+              className={`border-2 border-dashed rounded-lg p-8 text-center transition ${
+                dragOver
+                  ? 'border-[#F59E0B] bg-[#F59E0B]/10'
+                  : 'border-gray-700 hover:border-gray-600'
+              }`}
+            >
+              <div className="text-4xl mb-3">📁</div>
+              <p className="text-gray-300 mb-2">Drag & drop your backup file</p>
+              <p className="text-sm text-gray-500 mb-4">or</p>
+              <label className="inline-block px-6 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition cursor-pointer font-medium">
+                Choose File
+                <input
+                  type="file"
+                  accept="application/json"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileSelect(file);
+                  }}
+                  className="hidden"
+                  disabled={keypairLoading}
+                />
+              </label>
+            </div>
+          )}
 
-      const result = await importPrivateKey(privateKey);
+          {/* Paste key */}
+          {method === 'paste' && (
+            <form onSubmit={handlePasteImport} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-300">
+                  Private Key (hex)
+                </label>
+                <textarea
+                  value={privateKeyHex}
+                  onChange={e => setPrivateKeyHex(e.target.value)}
+                  placeholder="64 character hex string..."
+                  rows={3}
+                  required
+                  autoFocus
+                  className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white font-mono text-sm focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={keypairLoading || !privateKeyHex.trim()}
+                className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {keypairLoading ? 'Importing…' : 'Import & Sign In'}
+              </button>
+            </form>
+          )}
 
-      if (result.success) {
-        window.location.href = nextUrl || '/';
-      } else {
-        setKeypairError(result.error || 'Import failed');
-      }
-    } catch (err: any) {
-      console.error('File import failed:', err);
-      setKeypairError(err.message || 'Failed to import backup file');
-    } finally {
-      setKeypairLoading(false);
-    }
+          {/* Error */}
+          {keypairError && (
+            <div className="mt-4 p-3 bg-red-900/20 border border-red-800 rounded-lg">
+              <p className="text-sm text-red-400">{keypairError}</p>
+            </div>
+          )}
+
+          {/* Loading */}
+          {keypairLoading && (
+            <div className="mt-4 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#F59E0B]"></div>
+              <p className="text-sm text-gray-400 mt-2">Verifying identity…</p>
+            </div>
+          )}
+
+          {/* Email fallback */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-800"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-3 bg-[#0a0a0a] text-gray-500">no key?</span>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setView('email')}
+            className="w-full px-4 py-3 border border-gray-700 text-gray-300 rounded-lg hover:bg-gray-900 transition text-sm"
+          >
+            Sign in with email instead
+          </button>
+          <p className="text-xs text-gray-600 mt-2 text-center">
+            Established identities using email login incur a 0.001 MJN gas fee
+          </p>
+
+          {/* Register link */}
+          <div className="mt-6 p-4 bg-gray-900 border border-gray-800 rounded-lg">
+            <p className="text-sm text-gray-400">
+              <strong className="text-white">New here?</strong>
+              <br />
+              <a href="/register" className="text-[#F59E0B] hover:underline mt-1 inline-block">
+                Create an identity →
+              </a>
+            </p>
+          </div>
+
+          <div className="mt-4 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
+            <p className="text-xs text-[#F59E0B]">
+              🔐 Your private key never leaves your device. It&apos;s stored locally in your browser.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  async function handlePasteImport(e: React.FormEvent) {
-    e.preventDefault();
-    setKeypairError('');
-    setKeypairLoading(true);
-
-    try {
-      const result = await importPrivateKey(privateKeyHex.trim());
-
-      if (result.success) {
-        window.location.href = nextUrl || '/';
-      } else {
-        setKeypairError(result.error || 'Import failed');
-      }
-    } catch (err: any) {
-      console.error('Manual import failed:', err);
-      setKeypairError(err.message || 'Failed to import key');
-    } finally {
-      setKeypairLoading(false);
-    }
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragOver(false);
-
-    const file = e.dataTransfer.files[0];
-    if (file && file.type === 'application/json') {
-      handleFileSelect(file);
-    } else {
-      setKeypairError('Please drop a valid JSON backup file');
-    }
-  }
-
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault();
-    setDragOver(true);
-  }
-
-  function handleDragLeave(e: React.DragEvent) {
-    e.preventDefault();
-    setDragOver(false);
-  }
-
-  function goBackToEmail() {
-    setFromEmailForbidden(false);
-    setKeypairError('');
-    setView('email');
-  }
-
-  // ── Email view ──────────────────────────────────────────────────────────────
+  // ── Email view ──────────────────────────────────────────────────────────
   if (view === 'email') {
     return (
       <div className="max-w-md mx-auto">
         <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-          <h1 className="text-2xl font-bold mb-2 text-center text-white">Welcome back</h1>
+          <button
+            onClick={() => { setView('keys'); setEmailError(''); }}
+            className="text-sm text-gray-500 hover:text-gray-300 transition mb-4 flex items-center gap-1"
+          >
+            ← Back to key login
+          </button>
+
+          <h1 className="text-2xl font-bold mb-2 text-center text-white">Email login</h1>
           <p className="text-gray-400 text-center mb-6">
-            Enter your email to continue
+            We&apos;ll send you a magic link
           </p>
+
+          <div className="mb-4 p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg">
+            <p className="text-xs text-amber-400">
+              ⚡ Established identities using email login incur a <strong>0.001 MJN</strong> gas fee. 
+              Key-based login is free and more secure.
+            </p>
+          </div>
 
           <form onSubmit={handleEmailSubmit} className="space-y-4">
             <div>
@@ -308,244 +451,51 @@ function LoginForm() {
                   <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-black"></span>
                   Sending…
                 </span>
-              ) : 'Continue'}
+              ) : 'Send magic link'}
             </button>
           </form>
-
-          <div className="mt-4 text-center">
-            <button
-              onClick={() => { setFromEmailForbidden(false); setView('keypair'); }}
-              className="text-sm text-gray-500 hover:text-gray-300 transition"
-            >
-              Use key directly →
-            </button>
-          </div>
-
-          <div className="mt-6 p-4 bg-gray-900 border border-gray-800 rounded-lg">
-            <p className="text-sm text-gray-400">
-              <strong className="text-white">Don&apos;t have an account?</strong>
-              <br />
-              <a href="/register" className="text-[#F59E0B] hover:underline mt-1 inline-block">
-                Create a new identity →
-              </a>
-            </p>
-          </div>
-
-          <div className="mt-4 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
-            <p className="text-xs text-[#F59E0B]">
-              🔐 Your private key never leaves your device. It&apos;s only stored locally in your browser.
-            </p>
-          </div>
         </div>
       </div>
     );
   }
 
-  // ── Email-sent view ─────────────────────────────────────────────────────────
-  if (view === 'email-sent') {
-    return (
-      <div className="max-w-md mx-auto">
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
-          <div className="text-5xl mb-4">📬</div>
-          <h1 className="text-2xl font-bold mb-2 text-white">Check your email</h1>
-          <p className="text-gray-400 mb-1">We sent a magic link to</p>
-          <p className="text-white font-medium mb-6 break-all">{email}</p>
-
-          <p className="text-sm text-gray-500 mb-6">
-            Click the link in the email to sign in. The link expires in 15 minutes.
-          </p>
-
-          {emailError && (
-            <div className="mb-4 p-3 bg-red-900/20 border border-red-800 rounded-lg">
-              <p className="text-sm text-red-400">{emailError}</p>
-            </div>
-          )}
-
-          <button
-            onClick={handleResend}
-            disabled={resendCooldown > 0 || emailLoading}
-            className="w-full px-6 py-3 border border-gray-700 text-gray-300 rounded-lg hover:bg-gray-900 transition disabled:opacity-50 disabled:cursor-not-allowed mb-3"
-          >
-            {emailLoading
-              ? 'Sending…'
-              : resendCooldown > 0
-                ? `Resend in ${resendCooldown}s`
-                : 'Resend email'}
-          </button>
-
-          <button
-            onClick={goBackToEmail}
-            className="text-sm text-gray-500 hover:text-gray-300 transition"
-          >
-            ← Try a different email
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── MFA stub view ───────────────────────────────────────────────────────────
-  if (view === 'login-mfa') {
-    return (
-      <div className="max-w-md mx-auto">
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
-          <div className="text-5xl mb-4">✅</div>
-          <h1 className="text-2xl font-bold mb-2 text-white">Email verified</h1>
-          <p className="text-gray-400 mb-6">
-            Now import your key to complete login.
-          </p>
-          <button
-            onClick={goBackToEmail}
-            className="text-sm text-gray-500 hover:text-gray-300 transition"
-          >
-            ← Back to email
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Keypair view ────────────────────────────────────────────────────────────
+  // ── Email-sent view ─────────────────────────────────────────────────────
   return (
     <div className="max-w-md mx-auto">
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-        <button
-          onClick={goBackToEmail}
-          className="text-sm text-gray-500 hover:text-gray-300 transition mb-4 flex items-center gap-1"
-        >
-          ← Back to email
-        </button>
+      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
+        <div className="text-5xl mb-4">📬</div>
+        <h1 className="text-2xl font-bold mb-2 text-white">Check your email</h1>
+        <p className="text-gray-400 mb-1">We sent a magic link to</p>
+        <p className="text-white font-medium mb-6 break-all">{email}</p>
 
-        <h1 className="text-2xl font-bold mb-2 text-center text-white">Login / Recovery</h1>
-        <p className="text-gray-400 text-center mb-4">
-          Import your private key to access your identity
+        <p className="text-sm text-gray-500 mb-6">
+          Click the link in the email to sign in. Expires in 15 minutes.
         </p>
 
-        {fromEmailForbidden && (
-          <div className="mb-4 p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg">
-            <p className="text-sm text-amber-400">
-              This identity uses key-based authentication. Please import your private key to continue.
-            </p>
+        {emailError && (
+          <div className="mb-4 p-3 bg-red-900/20 border border-red-800 rounded-lg">
+            <p className="text-sm text-red-400">{emailError}</p>
           </div>
         )}
 
-        {/* Method selector */}
-        <div className="flex gap-2 mb-6">
-          <button
-            onClick={() => setMethod('file')}
-            className={`flex-1 px-4 py-2 rounded-lg transition ${
-              method === 'file'
-                ? 'bg-[#F59E0B] text-black font-medium'
-                : 'bg-gray-900 text-gray-400 hover:bg-gray-800'
-            }`}
-          >
-            Import File
-          </button>
-          <button
-            onClick={() => setMethod('paste')}
-            className={`flex-1 px-4 py-2 rounded-lg transition ${
-              method === 'paste'
-                ? 'bg-[#F59E0B] text-black font-medium'
-                : 'bg-gray-900 text-gray-400 hover:bg-gray-800'
-            }`}
-          >
-            Paste Key
-          </button>
-        </div>
+        <button
+          onClick={handleResend}
+          disabled={resendCooldown > 0 || emailLoading}
+          className="w-full px-6 py-3 border border-gray-700 text-gray-300 rounded-lg hover:bg-gray-900 transition disabled:opacity-50 disabled:cursor-not-allowed mb-3"
+        >
+          {emailLoading
+            ? 'Sending…'
+            : resendCooldown > 0
+              ? `Resend in ${resendCooldown}s`
+              : 'Resend email'}
+        </button>
 
-        {/* File import */}
-        {method === 'file' && (
-          <div>
-            <div
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              className={`border-2 border-dashed rounded-lg p-8 text-center transition ${
-                dragOver
-                  ? 'border-[#F59E0B] bg-[#F59E0B]/10'
-                  : 'border-gray-700 hover:border-gray-600'
-              }`}
-            >
-              <div className="text-4xl mb-3">📁</div>
-              <p className="text-gray-300 mb-2">Drag & drop your backup file here</p>
-              <p className="text-sm text-gray-500 mb-4">or</p>
-              <label className="inline-block px-6 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition cursor-pointer font-medium">
-                Choose File
-                <input
-                  type="file"
-                  accept="application/json"
-                  onChange={e => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFileSelect(file);
-                  }}
-                  className="hidden"
-                  disabled={keypairLoading}
-                />
-              </label>
-            </div>
-          </div>
-        )}
-
-        {/* Paste key */}
-        {method === 'paste' && (
-          <form onSubmit={handlePasteImport} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1 text-gray-300">
-                Private Key (hex)
-              </label>
-              <textarea
-                value={privateKeyHex}
-                onChange={e => setPrivateKeyHex(e.target.value)}
-                placeholder="64 character hex string..."
-                rows={4}
-                required
-                className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white font-mono text-sm focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Your private key is 64 hexadecimal characters
-              </p>
-            </div>
-
-            <button
-              type="submit"
-              disabled={keypairLoading || !privateKeyHex.trim()}
-              className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {keypairLoading ? 'Importing...' : 'Import & Login'}
-            </button>
-          </form>
-        )}
-
-        {/* Error display */}
-        {keypairError && (
-          <div className="mt-4 p-3 bg-red-900/20 border border-red-800 rounded-lg">
-            <p className="text-sm text-red-400">{keypairError}</p>
-          </div>
-        )}
-
-        {/* Loading state */}
-        {keypairLoading && (
-          <div className="mt-4 text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#F59E0B]"></div>
-            <p className="text-sm text-gray-400 mt-2">Importing keys...</p>
-          </div>
-        )}
-
-        <div className="mt-6 p-4 bg-gray-900 border border-gray-800 rounded-lg">
-          <p className="text-sm text-gray-400">
-            <strong className="text-white">Don&apos;t have an account?</strong>
-            <br />
-            <a href="/register" className="text-[#F59E0B] hover:underline mt-1 inline-block">
-              Create a new identity →
-            </a>
-          </p>
-        </div>
-
-        <div className="mt-4 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
-          <p className="text-xs text-[#F59E0B]">
-            🔐 Your private key never leaves your device. It&apos;s only stored locally in your browser.
-          </p>
-        </div>
+        <button
+          onClick={() => { setView('email'); setEmailError(''); }}
+          className="text-sm text-gray-500 hover:text-gray-300 transition"
+        >
+          ← Try a different email
+        </button>
       </div>
     </div>
   );
