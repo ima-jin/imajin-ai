@@ -370,7 +370,7 @@ function LoginForm() {
             Sign in with email instead
           </button>
           <p className="text-xs text-gray-600 mt-2 text-center">
-            Established identities using email login incur a 0.001 MJN gas fee
+            Established identities using email login incur a 0.01 MJN gas fee
           </p>
 
           {/* Register link */}
@@ -413,7 +413,7 @@ function LoginForm() {
 
           <div className="mb-4 p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg">
             <p className="text-xs text-amber-400">
-              ⚡ Established identities using email login incur a <strong>0.001 MJN</strong> gas fee. 
+              ⚡ Established identities using email login incur a <strong>0.01 MJN</strong> gas fee. 
               Key-based login is free and more secure.
             </p>
           </div>
