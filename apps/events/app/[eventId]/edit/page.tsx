@@ -81,8 +81,8 @@ export default async function EditEventPage({ params }: Props) {
   // Fetch creator profile email for EMT auto-fill
   let creatorEmail: string | null = null;
   try {
-    const [profile] = await sql`SELECT email FROM profile.profiles WHERE did = ${event.creatorDid}`;
-    creatorEmail = profile?.email || null;
+    const [profile] = await sql`SELECT contact_email FROM profile.profiles WHERE did = ${event.creatorDid}`;
+    creatorEmail = profile?.contact_email || null;
   } catch {}
 
   return (

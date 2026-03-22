@@ -97,7 +97,7 @@ async function attachEmailToProfile(did: string, email: string): Promise<void> {
   try {
     const normalizedEmail = email.toLowerCase().trim();
     const result = await db.execute(
-      sql`UPDATE profile.profiles SET email = ${normalizedEmail} WHERE did = ${did} AND (email IS NULL OR email = '')`
+      sql`UPDATE profile.profiles SET contact_email = ${normalizedEmail} WHERE did = ${did} AND (contact_email IS NULL OR contact_email = '')`
     );
     const rowCount = (result as any)?.rowCount ?? (result as any)?.count ?? 0;
     if (rowCount > 0) {

@@ -12,7 +12,7 @@ export const profiles = profileSchema.table('profiles', {
   displayType: text('display_type').notNull(),                // 'human' | 'agent' | 'device' | 'org' | 'event' | 'service'
   avatar: text('avatar'),                                     // URL or emoji
   bio: text('bio'),
-  email: text('email'),                                       // contact email (plaintext for now)
+  contactEmail: text('contact_email'),                          // where to send receipts/tickets/notifications (NOT for auth)
   phone: text('phone'),                                       // contact phone (plaintext for now)
   // invitedBy moved to connections service
   // identity_tier DEPRECATED — auth.identities.tier is source of truth (#319)

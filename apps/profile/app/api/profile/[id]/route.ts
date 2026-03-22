@@ -126,13 +126,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Gate contact info: only visible to self or connections
     const result: Record<string, any> = { ...profile };
-    if (profile.email || profile.phone) {
+    if (profile.contactEmail || profile.phone) {
       const viewerDid = await getViewerDid(request);
       const isSelf = viewerDid === profile.did;
       const cookie = request.headers.get('cookie') || '';
       const connected = viewerDid && !isSelf ? await checkConnected(cookie, profile.did) : false;
       if (!isSelf && !connected) {
-        delete result.email;
+        delete result.contactEmail;
         delete result.phone;
       }
     }
@@ -208,7 +208,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
     if (avatar !== undefined) updates.avatar = avatar;
     if (bio !== undefined) updates.bio = bio;
-    if (email !== undefined) updates.email = email || null;
+    if (email !== undefined) updates.contactEmail = email || null;
     if (phone !== undefined) updates.phone = phone || null;
     if (metadata !== undefined) updates.metadata = metadata;
     if (inferenceEnabled !== undefined) updates.inferenceEnabled = !!inferenceEnabled;

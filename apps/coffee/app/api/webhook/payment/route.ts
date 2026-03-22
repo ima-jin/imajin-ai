@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
  * Look up email for a DID via profile service, with credentials table as fallback.
  */
 async function resolveEmailForDid(did: string): Promise<string | null> {
-  // Try profile service first (covers hard DIDs with email set)
+  // Try profile contact email first (user's preferred transactional email)
   try {
     const res = await fetch(`${PROFILE_SERVICE_URL}/api/profile/${encodeURIComponent(did)}`, {
       headers: { 'Content-Type': 'application/json' },
@@ -160,12 +160,12 @@ async function resolveEmailForDid(did: string): Promise<string | null> {
     });
     if (res.ok) {
       const profile = await res.json();
-      if (profile.email) return profile.email;
+      if (profile.contactEmail) return profile.contactEmail;
     }
   } catch {
     // Fall through to credentials lookup
   }
 
-  // Fall back to credentials table (covers all DIDs with email credentials)
+  // Fall back to auth credentials (login email)
   return getEmailForDid(did);
 }
