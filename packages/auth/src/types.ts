@@ -4,6 +4,7 @@ export interface Identity {
   name?: string;
   handle?: string;
   tier?: "soft" | "preliminary" | "established";
+  chainVerified?: boolean;
 }
 
 export interface AuthResult {

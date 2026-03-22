@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken, getSessionCookieOptions } from '@/lib/jwt';
 import { db } from '@/src/db';
-import { identities } from '@/src/db/schema';
+import { identities, identityChains } from '@/src/db/schema';
 import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 
@@ -47,6 +47,12 @@ export async function GET(request: NextRequest) {
     const metadata = identity[0].metadata as Record<string, unknown> || {};
     const tier = (identity[0] as any).tier || 'soft';
 
+    const chain = await db.select({ did: identityChains.did })
+      .from(identityChains)
+      .where(eq(identityChains.did, session.sub))
+      .limit(1);
+    const chainVerified = chain.length > 0;
+
     return NextResponse.json({
       did: session.sub,
       handle: identity[0].handle || session.handle,
@@ -54,6 +60,7 @@ export async function GET(request: NextRequest) {
       name: identity[0].name || session.name,
       role: metadata.role || 'member',
       tier,
+      chainVerified,
     }, { headers: cors });
 
   } catch (error) {
