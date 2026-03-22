@@ -59,7 +59,7 @@ export default function EditListingPage() {
         price: data.price,
         currency: data.currency,
         category: data.category || null,
-        images: [],
+        images: data.images,
         sellerTier: data.sellerTier,
         quantity: data.quantity ?? 1,
       };

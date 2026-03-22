@@ -21,7 +21,7 @@ export default function NewListingPage() {
         price: data.price,
         currency: data.currency,
         category: data.category || undefined,
-        images: [],
+        images: data.images,
         sellerTier: data.sellerTier,
       };
 

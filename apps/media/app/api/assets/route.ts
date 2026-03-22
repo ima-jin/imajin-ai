@@ -140,6 +140,30 @@ export async function POST(request: NextRequest) {
   // SHA-256 hash
   const hash = createHash("sha256").update(buffer).digest("hex");
 
+  // Dedup: if this exact file (same hash + same owner) already exists, return the existing asset
+  const [existing] = await db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.hash, hash), eq(assets.ownerDid, ownerDid), eq(assets.status, "active")))
+    .limit(1);
+
+  if (existing) {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
+    const url = `${baseUrl}/api/assets/${existing.id}`;
+    return NextResponse.json(
+      {
+        id: existing.id,
+        url,
+        filename: existing.filename,
+        mimeType: existing.mimeType,
+        size: existing.size,
+        hash: existing.hash,
+        deduplicated: true,
+      },
+      { status: 200, headers: cors }
+    );
+  }
+
   // Storage path: {MEDIA_ROOT}/{didPath}/assets/{assetId}{ext}
   const didPath = didToPath(ownerDid);
   const dirPath = `${MEDIA_ROOT}/${didPath}/assets`;
