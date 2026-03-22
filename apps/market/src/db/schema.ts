@@ -13,7 +13,8 @@ export const listings = marketSchema.table('listings', {
   price: integer('price').notNull(),                                    // Smallest currency unit
   currency: text('currency').default('CAD'),                           // ISO 4217
   category: text('category'),                                           // Freeform category
-  images: jsonb('images').default([]),                                  // Array of media asset IDs (max 8)
+  images: jsonb('images').default([]),                                  // Legacy: URL strings
+  imageAssetIds: jsonb('image_asset_ids').default([]),                  // asset_xxx IDs from media service (max 8)
   quantity: integer('quantity').default(1),                             // null = unlimited/service
   status: text('status').default('active'),                            // active | paused | sold | removed
   sellerTier: text('seller_tier').notNull().default('public_offplatform'), // public_offplatform | public_onplatform | trust_gated

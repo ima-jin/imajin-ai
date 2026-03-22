@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, listings } from '@/db';
-import { requireAuth, getSession } from '@/lib/auth';
+import { requireAuth, getSession } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, ilike, and, desc, asc, sql } from 'drizzle-orm';
 
@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
       currency: currency || 'CAD',
       category: category || null,
       images: images || [],
+      imageAssetIds: imageAssetIds || [],
       quantity: quantity ?? 1,
       sellerTier: sellerTier || 'public_offplatform',
       contactInfo: contactInfo || null,

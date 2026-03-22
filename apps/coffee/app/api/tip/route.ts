@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, coffeePages, tips } from '@/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
 

@@ -16,7 +16,7 @@ import { FairAccordion } from '@imajin/fair';
 import { TicketsGate } from './tickets-gate';
 import { MagicLinkButton } from './magic-link-button';
 import { ShareButton } from './share-button';
-import { getSession } from '@/src/lib/auth';
+import { getSession } from '@imajin/auth';
 import { MarkdownContent } from '@imajin/ui';
 import type { Metadata } from 'next';
 

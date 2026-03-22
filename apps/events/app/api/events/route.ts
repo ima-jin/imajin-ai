@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes } from '@/src/db';
-import { requireHardDID } from '@/src/lib/auth';
+import { requireHardDID } from '@imajin/auth';
 import { and, asc, desc, eq, gt } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 
@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
       city,
       country,
       imageUrl,
+      imageAssetId,
       tags,
       tickets: ticketTypesInput,
       courseSlug,
@@ -115,6 +116,7 @@ export async function POST(request: NextRequest) {
       city,
       country,
       imageUrl,
+      imageAssetId: imageAssetId || null,
       tags: tags || [],
       courseSlug: courseSlug || null,
       emtEmail: emtEmail || null,

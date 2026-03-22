@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { db, events, ticketTypes, eventAdmins } from '@/src/db';
-import { requireAuth } from '@/src/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq } from 'drizzle-orm';
 
@@ -170,6 +170,7 @@ export async function PUT(
       city,
       country,
       imageUrl,
+      imageAssetId,
       tags,
       status,
       metadata,
@@ -192,6 +193,7 @@ export async function PUT(
     if (city !== undefined) updates.city = city;
     if (country !== undefined) updates.country = country;
     if (imageUrl !== undefined) updates.imageUrl = imageUrl;
+    if (imageAssetId !== undefined) updates.imageAssetId = imageAssetId;
     if (tags !== undefined) updates.tags = tags;
     if (status !== undefined) updates.status = status;
     if (metadata !== undefined) updates.metadata = metadata;

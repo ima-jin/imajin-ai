@@ -12,6 +12,7 @@ export const linkPages = linksSchema.table('pages', {
   title: text('title').notNull(),                             // Display name
   bio: text('bio'),                                           // Short description
   avatar: text('avatar'),                                     // Image URL or emoji
+  avatarAssetId: text('avatar_asset_id'),                     // asset_xxx from media service
   theme: jsonb('theme').notNull().default({}),                // Theme settings
   socialLinks: jsonb('social_links').default({}),             // Social media handles
   isPublic: boolean('is_public').default(true),

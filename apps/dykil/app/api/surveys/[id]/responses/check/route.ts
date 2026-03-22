@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, surveyResponses } from '@/db';
-import { getSession } from '@/lib/auth';
+import { getSession } from '@imajin/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
 import { eq, and } from 'drizzle-orm';
 

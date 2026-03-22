@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
 import { eq, and, lt } from 'drizzle-orm';
-import { getSessionFromCookie } from '@/src/lib/auth';
+import { optionalAuth } from '@imajin/auth';
 import { randomBytes } from 'crypto';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
@@ -40,8 +40,7 @@ async function getOrCreateSoftDid(email: string, name?: string): Promise<string>
 
 export async function POST(request: NextRequest) {
   // Try session auth first (logged-in user), but don't require it
-  const cookieHeader = request.headers.get('cookie');
-  const session = await getSessionFromCookie(cookieHeader);
+  const session = await optionalAuth(request);
 
   // We'll resolve identity after parsing body (may need email fallback)
 

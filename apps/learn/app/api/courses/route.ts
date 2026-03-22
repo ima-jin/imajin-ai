@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, modules, lessons } from '@/db/schema';
-import { requireHardDID } from '@/lib/auth';
+import { requireHardDID } from '@imajin/auth';
 import { generateId, slugify, jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and, sql, desc } from 'drizzle-orm';
 
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   const { identity } = authResult;
   const body = await request.json();
 
-  const { title, description, slug, price, currency, visibility, imageUrl, tags, metadata } = body;
+  const { title, description, slug, price, currency, visibility, imageUrl, imageAssetId, tags, metadata } = body;
 
   if (!title?.trim()) {
     return errorResponse('Title is required');
@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
     currency: currency || 'CAD',
     visibility: visibility || 'public',
     imageUrl: imageUrl || null,
+    imageAssetId: imageAssetId || null,
     tags: tags || [],
     metadata: metadata || {},
     status: 'draft' as const,

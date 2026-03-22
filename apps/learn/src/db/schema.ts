@@ -15,6 +15,7 @@ export const courses = learnSchema.table('courses', {
   currency: text('currency').default('CAD'),
   visibility: text('visibility').default('public'),               // public / trust-bound / private
   imageUrl: text('image_url'),
+  imageAssetId: text('image_asset_id'),                           // asset_xxx from media service
   tags: jsonb('tags').default([]),
   metadata: jsonb('metadata').default({}),
   eventSlug: text('event_slug'),                                   // linked event on events.imajin.ai

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/src/lib/auth';
+import { requireAuth, emitAttestation } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
-import { emitAttestation } from '@/src/lib/attestations';
 
 const sql = getClient();
 

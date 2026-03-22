@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, linkPages } from '@/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, isValidHandle, generateId, themePresets } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { handle, title, bio, avatar, theme, themePreset, socialLinks } = body;
+    const { handle, title, bio, avatar, avatarAssetId, theme, themePreset, socialLinks } = body;
 
     // Validate required fields
     if (!handle) {
@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
       title,
       bio: bio || null,
       avatar: avatar || null,
+      avatarAssetId: avatarAssetId || null,
       theme: resolvedTheme,
       socialLinks: socialLinks || {},
       isPublic: true,

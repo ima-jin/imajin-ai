@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getSession } from '@/src/lib/auth';
+import { getSession } from '@imajin/auth';
 import EventCreateForm from './form';
 
 export default async function CreateEventPage() {

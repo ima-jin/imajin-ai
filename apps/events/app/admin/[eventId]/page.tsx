@@ -10,7 +10,7 @@ import { EventStatusControls } from './event-status-controls';
 import { CohostManager } from './cohost-manager';
 import { GuestList } from './guest-list';
 import { InviteManager } from './invite-manager';
-import { getSession } from '@/src/lib/auth';
+import { getSession } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 
 const sql = getClient();

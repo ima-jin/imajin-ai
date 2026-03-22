@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, modules, lessons, enrollments } from '@/db/schema';
-import { requireHardDID, getSessionFromCookie } from '@/lib/auth';
+import { requireHardDID, optionalAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and } from 'drizzle-orm';
 
@@ -25,8 +25,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   // For paid courses, check enrollment
   if (course.price && course.price > 0) {
-    const cookieHeader = request.headers.get('Cookie');
-    const identity = await getSessionFromCookie(cookieHeader);
+    const identity = await optionalAuth(request);
 
     // Creator always has access
     if (identity?.id !== course.creatorDid) {

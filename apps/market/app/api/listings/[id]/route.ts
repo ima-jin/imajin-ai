@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, listings } from '@/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
@@ -87,6 +87,7 @@ export async function PATCH(
     if (currency !== undefined) updates.currency = currency;
     if (category !== undefined) updates.category = category;
     if (images !== undefined) updates.images = images;
+    if (imageAssetIds !== undefined) updates.imageAssetIds = imageAssetIds;
     if (quantity !== undefined) updates.quantity = quantity;
     if (sellerTier !== undefined) updates.sellerTier = sellerTier;
     if (contactInfo !== undefined) updates.contactInfo = contactInfo;

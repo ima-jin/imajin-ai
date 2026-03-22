@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, profiles } from '@/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, isValidHandle } from '@/lib/utils';
 
 /**
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { displayName, displayType, avatar, bio, handle, metadata, email, phone, optInUpdates } = body;
+    const { displayName, displayType, avatar, avatarAssetId, bio, handle, metadata, email, phone, optInUpdates } = body;
 
     // Validate required fields
     if (!displayName) {
@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
       displayName,
       displayType,
       avatar: avatar || null,
+      avatarAssetId: avatarAssetId || null,
       bio: bio || null,
       handle: handle || null,
       email: email || null,

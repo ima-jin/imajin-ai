@@ -38,6 +38,7 @@ export const messagesV2 = chatSchema.table('messages_v2', {
   // Media attachments
   mediaType: text('media_type'),                                // 'image' | 'file' | 'audio' | null
   mediaPath: text('media_path'),
+  mediaAssetId: text('media_asset_id'),                         // asset_xxx from media service (replaces mediaPath)
   mediaMeta: jsonb('media_meta'),                               // { width, height, size, originalName, mimeType, thumbnailPath }
 
   // Link previews

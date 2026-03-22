@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { resolveMediaRef } from '@imajin/media';
 import PriceDisplay from '../../components/PriceDisplay';
 
 interface ContactInfo {
@@ -149,7 +150,7 @@ export default function ListingDetailPage() {
     );
   }
 
-  const images = (listing.images || []).filter(Boolean);
+  const images = (listing.images || []).filter(Boolean).map(resolveMediaRef);
   const hasImages = images.length > 0;
   const tierLabel = listing.sellerTier === 'public_onplatform' ? 'Protected' : 'Direct';
   const tierColor =

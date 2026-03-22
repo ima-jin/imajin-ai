@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, pods, podMembers } from '../../../../../src/db/index';
-import { emitAttestation } from '../../../../../src/lib/attestations';
+import { emitAttestation } from '@imajin/auth';
 import { eq, and, isNull } from 'drizzle-orm';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;

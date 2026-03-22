@@ -28,7 +28,7 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { genId } from '@/src/lib/id';
 import { corsHeaders } from '@/src/lib/cors';
 import { verifyManifest } from '@imajin/fair';
-import { createHttpResolver } from '@imajin/auth';
+import { createHttpResolver, emitAttestation } from '@imajin/auth';
 
 async function verifyChainStatus(did: string, authServiceUrl: string): Promise<boolean> {
   try {
@@ -51,45 +51,21 @@ async function emitAttestations(
   payerChainVerified: boolean,
   payeeChainVerified: boolean,
 ) {
-  const authServiceUrl = process.env.AUTH_SERVICE_URL;
-  const internalApiKey = process.env.AUTH_INTERNAL_API_KEY;
-
-  if (!authServiceUrl || !internalApiKey) {
-    console.warn('Attestation emission skipped: AUTH_SERVICE_URL or AUTH_INTERNAL_API_KEY not set');
-    return;
-  }
-
-  const url = `${authServiceUrl}/api/attestations/internal`;
-
   const attestationCalls: Promise<void>[] = [];
 
   // One "customer" attestation per recipient
   for (const recipient of fair_manifest.chain) {
     attestationCalls.push(
-      fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${internalApiKey}`,
-        },
-        body: JSON.stringify({
-          issuer_did: recipient.did,
-          subject_did: from_did,
-          type: 'customer',
-          context_id: batchId,
-          context_type: 'service',
-          payload: { role: recipient.role },
-        }),
+      emitAttestation({
+        issuer_did: recipient.did,
+        subject_did: from_did,
+        type: 'customer',
+        context_id: batchId,
+        context_type: 'service',
+        payload: { role: recipient.role },
+      }).catch((err) => {
+        console.error(`Attestation (customer) error for ${recipient.did}:`, err);
       })
-        .then(async (res) => {
-          if (!res.ok) {
-            const text = await res.text().catch(() => '');
-            console.error(`Attestation (customer) failed for ${recipient.did}: ${res.status} ${text}`);
-          }
-        })
-        .catch((err) => {
-          console.error(`Attestation (customer) error for ${recipient.did}:`, err);
-        })
     );
   }
 
@@ -97,30 +73,16 @@ async function emitAttestations(
   const platformDid = process.env.PLATFORM_DID;
   if (platformDid) {
     attestationCalls.push(
-      fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${internalApiKey}`,
-        },
-        body: JSON.stringify({
-          issuer_did: platformDid,
-          subject_did: from_did,
-          type: 'transaction.settled',
-          context_id: batchId,
-          context_type: 'service',
-          payload: { total_amount, recipients: fair_manifest.chain.length, source, payerChainVerified, payeeChainVerified },
-        }),
+      emitAttestation({
+        issuer_did: platformDid,
+        subject_did: from_did,
+        type: 'transaction.settled',
+        context_id: batchId,
+        context_type: 'service',
+        payload: { total_amount, recipients: fair_manifest.chain.length, source, payerChainVerified, payeeChainVerified },
+      }).catch((err) => {
+        console.error('Attestation (transaction.settled) error:', err);
       })
-        .then(async (res) => {
-          if (!res.ok) {
-            const text = await res.text().catch(() => '');
-            console.error(`Attestation (transaction.settled) failed: ${res.status} ${text}`);
-          }
-        })
-        .catch((err) => {
-          console.error('Attestation (transaction.settled) error:', err);
-        })
     );
   } else {
     console.warn('Attestation (transaction.settled) skipped: PLATFORM_DID not set');

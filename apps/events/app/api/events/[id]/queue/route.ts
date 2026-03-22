@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, ticketQueue, ticketTypes } from '@/src/db';
-import { requireAuth } from '@/src/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { eq, and, max } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 

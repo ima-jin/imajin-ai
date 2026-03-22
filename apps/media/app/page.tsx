@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { getSession } from "@/src/lib/auth";
+import { getSession } from "@imajin/auth";
 import { MediaPageClient } from "@/src/components/MediaPageClient";
 
 export const dynamic = "force-dynamic";

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, coffeePages } from '@/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, isValidHandle, generateId } from '@/lib/utils';
 
 /**
@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
       title,
       bio,
       avatar,
+      avatarAssetId,
       theme,
       paymentMethods,
       presets,
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
       title,
       bio: bio || null,
       avatar: avatar || null,
+      avatarAssetId: avatarAssetId || null,
       theme: theme || {},
       paymentMethods,
       presets: presets || [100, 500, 1000],

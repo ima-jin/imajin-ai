@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/src/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 

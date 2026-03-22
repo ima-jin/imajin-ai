@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes, eventInvites } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
-import { getSessionFromCookie } from '@/src/lib/auth';
+import { optionalAuth } from '@imajin/auth';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
@@ -105,8 +105,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Check if buyer is logged in (hard DID)
-    const cookieHeader = request.headers.get('cookie');
-    const session = await getSessionFromCookie(cookieHeader);
+    const session = await optionalAuth(request);
     const buyerDid = (session?.tier === 'preliminary' || session?.tier === 'established') ? session.id : undefined;
 
     // Check availability

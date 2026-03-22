@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { db, profiles } from '@/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { corsHeaders, corsOptions } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
@@ -192,7 +192,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = JSON.parse(bodyText);
-    const { displayName, displayType, avatar, bio, email, phone, metadata, visibility, inferenceEnabled } = body;
+    const { displayName, displayType, avatar, avatarAssetId, bio, email, phone, metadata, visibility, inferenceEnabled } = body;
 
     // Build update object
     const updates: Record<string, any> = {
@@ -207,6 +207,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       updates.displayType = displayType;
     }
     if (avatar !== undefined) updates.avatar = avatar;
+    if (avatarAssetId !== undefined) updates.avatarAssetId = avatarAssetId;
     if (bio !== undefined) updates.bio = bio;
     if (email !== undefined) updates.contactEmail = email || null;
     if (phone !== undefined) updates.phone = phone || null;

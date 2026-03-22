@@ -11,6 +11,7 @@ export const profiles = profileSchema.table('profiles', {
   displayName: text('display_name').notNull(),
   displayType: text('display_type').notNull(),                // 'human' | 'agent' | 'device' | 'org' | 'event' | 'service'
   avatar: text('avatar'),                                     // URL or emoji
+  avatarAssetId: text('avatar_asset_id'),                     // asset_xxx from media service (nullable — emoji stays in avatar)
   bio: text('bio'),
   contactEmail: text('contact_email'),                          // where to send receipts/tickets/notifications (NOT for auth)
   phone: text('phone'),                                       // contact phone (plaintext for now)

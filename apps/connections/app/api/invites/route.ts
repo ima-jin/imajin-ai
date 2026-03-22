@@ -4,7 +4,7 @@ import { eq, desc, and, sql, isNull } from 'drizzle-orm';
 import { db, invites, profiles, podMembers } from '../../../src/db/index';
 import { generateId } from '../../../src/lib/id';
 import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
-import { emitAttestation } from '../../../src/lib/attestations';
+import { emitAttestation } from '@imajin/auth';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';

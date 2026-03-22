@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
 import { db, invites, profiles, pods, podMembers } from '../../../../../src/db/index';
 import { generateId } from '../../../../../src/lib/id';
-import { emitAttestation } from '../../../../../src/lib/attestations';
+import { emitAttestation } from '@imajin/auth';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 const INVITE_COOLDOWN_DAYS = 7;
