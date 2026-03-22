@@ -1,5 +1,12 @@
 import { pgTable, text, timestamp, jsonb, integer, boolean, index, uniqueIndex, pgSchema } from 'drizzle-orm/pg-core';
 
+/** Key role configuration for multi-device / role-separated identities */
+export interface KeyRoles {
+  auth: string[];       // multibase public keys for authentication
+  assert: string[];     // multibase public keys for signing content
+  controller: string[]; // multibase public keys for rotation/deletion
+}
+
 export const authSchema = pgSchema('auth');
 
 /**
@@ -13,6 +20,7 @@ export const identities = authSchema.table('identities', {
   name: text('name'),                             // Display name
   avatarUrl: text('avatar_url'),
   tier: text('tier').notNull().default('soft'),
+  keyRoles: jsonb('key_roles').$type<KeyRoles | null>(), // null = single key in all roles
   metadata: jsonb('metadata').default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -40,6 +48,8 @@ export const challenges = authSchema.table('challenges', {
 export const tokens = authSchema.table('tokens', {
   id: text('id').primaryKey(),                    // imajin_tok_xxx
   identityId: text('identity_id').references(() => identities.id).notNull(),
+  keyId: text('key_id'),                          // which key created this session
+  keyRole: text('key_role'),                      // 'auth' | 'assert' | 'controller'
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
@@ -83,7 +93,11 @@ export const attestations = authSchema.table('attestations', {
   contextId: text('context_id'),                       // e.g. event DID
   contextType: text('context_type'),                   // e.g. 'event'
   payload: jsonb('payload'),
-  signature: text('signature').notNull(),              // Ed25519 hex (128 chars)
+  signature: text('signature').notNull(),              // Ed25519 hex (128 chars) — legacy, kept for backward compat
+  cid: text('cid'),                                    // dag-cbor CID of attestation payload
+  authorJws: text('author_jws'),                       // JWS compact token (author signature)
+  witnessJws: text('witness_jws'),                     // JWS compact token (countersignature)
+  attestationStatus: text('attestation_status').default('pending'), // 'pending' | 'bilateral' | 'declined'
   issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
@@ -91,6 +105,7 @@ export const attestations = authSchema.table('attestations', {
   subjectIdx: index('idx_auth_attestations_subject').on(table.subjectDid),
   issuerIdx: index('idx_auth_attestations_issuer').on(table.issuerDid),
   typeIdx: index('idx_auth_attestations_type').on(table.type),
+  statusIdx: index('idx_auth_attestations_status').on(table.attestationStatus),
 }));
 
 /**

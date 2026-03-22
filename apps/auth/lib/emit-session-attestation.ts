@@ -1,6 +1,7 @@
 import { db, attestations } from "@/src/db";
 import { canonicalize, crypto as authCrypto } from "@imajin/auth";
 import type { AttestationType } from "@imajin/auth";
+import { computeCid } from "@imajin/cid";
 
 function genId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 14)}${Date.now().toString(36)}`;
@@ -42,6 +43,20 @@ export async function emitSessionAttestation(params: {
 
   try {
     const signature = authCrypto.signSync(canonicalPayload, privateKey);
+
+    let cid: string | null = null;
+    try {
+      cid = await computeCid({
+        issuerDid: platformDid,
+        subjectDid: params.did,
+        type: "session.created",
+        contextId: null,
+        contextType: "auth",
+        payload,
+        issuedAt: issuedAtMs,
+      });
+    } catch { /* non-fatal */ }
+
     await db.insert(attestations).values({
       id: genId("att"),
       issuerDid: platformDid,
@@ -51,6 +66,7 @@ export async function emitSessionAttestation(params: {
       contextType: "auth",
       payload,
       signature,
+      cid,
       issuedAt: new Date(issuedAtMs),
     });
   } catch (err) {

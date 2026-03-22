@@ -5,6 +5,7 @@ import { corsHeaders } from '@imajin/config';
 import { verifySessionToken, getSessionCookieOptions } from '@/lib/jwt';
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
+import { computeCid } from '@imajin/cid';
 
 const ATTESTATION_LIMIT_MAX = 100;
 
@@ -124,6 +125,26 @@ export async function POST(request: NextRequest) {
 
   const id = genId('att');
 
+  // Compute content address (CID) for the attestation payload
+  const cidPayload = {
+    issuerDid: issuer_did,
+    subjectDid: subject_did,
+    type,
+    contextId: context_id ?? null,
+    contextType: context_type ?? null,
+    payload: payload ?? null,
+    issuedAt: issuedAtMs,
+  };
+  let cid: string | null = null;
+  try {
+    cid = await computeCid(cidPayload);
+  } catch {
+    // Non-fatal — old-style attestation still works without CID
+  }
+
+  // Accept optional author_jws for new-style bilateral attestations
+  const authorJws = (body.author_jws as string | undefined) ?? null;
+
   const [attestation] = await db
     .insert(attestations)
     .values({
@@ -135,6 +156,9 @@ export async function POST(request: NextRequest) {
       contextType: (context_type as string | undefined) ?? null,
       payload: (payload as Record<string, unknown> | undefined) ?? null,
       signature,
+      cid,
+      authorJws,
+      attestationStatus: authorJws ? 'pending' : null, // null for legacy attestations
       issuedAt: new Date(issuedAtMs),
     })
     .returning();
@@ -158,6 +182,7 @@ export async function GET(request: NextRequest) {
 
   const typeFilter = searchParams.get('type');
   const issuerFilter = searchParams.get('issuer_did');
+  const statusFilter = searchParams.get('status'); // 'pending' | 'bilateral' | 'declined'
   const limitParam = parseInt(searchParams.get('limit') ?? '20', 10);
   const limit = Math.min(Math.max(1, isNaN(limitParam) ? 20 : limitParam), ATTESTATION_LIMIT_MAX);
 
@@ -167,6 +192,7 @@ export async function GET(request: NextRequest) {
   ];
   if (typeFilter) conditions.push(eq(attestations.type, typeFilter));
   if (issuerFilter) conditions.push(eq(attestations.issuerDid, issuerFilter));
+  if (statusFilter) conditions.push(eq(attestations.attestationStatus, statusFilter));
 
   try {
     const rows = await db
