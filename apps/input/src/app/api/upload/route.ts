@@ -1,10 +1,9 @@
-import { SESSION_COOKIE_NAME } from "@imajin/config";
+import { requireAuth } from '@imajin/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/metering';
 import { corsHeaders, corsOptions } from '@/lib/cors';
 
 const MEDIA_SERVICE_URL = process.env.MEDIA_SERVICE_URL || 'http://localhost:7009';
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:7001';
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -18,30 +17,14 @@ export async function OPTIONS(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
-  // Validate session — uploads require authentication
-  let callerDid: string | null = null;
-  let sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-
-  if (sessionCookie) {
-    try {
-      const sessionRes = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-        headers: { Cookie: `${SESSION_COOKIE_NAME}=${sessionCookie}` },
-      });
-      if (sessionRes.ok) {
-        const session = await sessionRes.json();
-        callerDid = session.did || session.sub || null;
-      }
-    } catch {
-      // Auth failure
-    }
-  }
-
-  if (!callerDid) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
     return NextResponse.json(
-      { error: 'Authentication required for file uploads' },
-      { status: 401, headers: cors }
+      { error: authResult.error },
+      { status: authResult.status, headers: cors }
     );
   }
+  const callerDid = authResult.identity.id;
 
   // Rate limit check
   const rateCheck = checkRateLimit(callerDid, 'upload');
@@ -84,7 +67,6 @@ export async function POST(request: NextRequest) {
     const mediaRes = await fetch(`${MEDIA_SERVICE_URL}/api/assets`, {
       method: 'POST',
       body: mediaFormData,
-      headers: sessionCookie ? { Cookie: `${SESSION_COOKIE_NAME}=${sessionCookie}` } : {},
     });
 
     if (!mediaRes.ok) {
