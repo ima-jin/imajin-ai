@@ -4,8 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { events } from '@/db/schema';
+import { db, events } from '@/src/db';
 import { eq } from 'drizzle-orm';
 
 export async function GET(
