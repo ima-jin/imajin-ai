@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { eq, and } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, getEmailForDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { db, tickets, events, ticketTypes, ticketRegistrations } from '@/src/db';
 import { getClient } from '@imajin/db';
-import { getEmailForDid } from '@imajin/auth';
 import { sendEmail, generateQRCode, ticketConfirmationEmail, registrationReminderEmail } from '@/src/lib/email';
 
 const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';

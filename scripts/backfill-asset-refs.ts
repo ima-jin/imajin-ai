@@ -26,7 +26,7 @@ const sql = postgres(DATABASE_URL);
 /** Extract asset ID from a media content URL */
 function extractAssetId(url: string | null): string | null {
   if (!url) return null;
-  const match = url.match(/\/api\/assets\/(asset_[^/]+)\/content/);
+  const match = /\/api\/assets\/(asset_[^/]+)\/content/.exec(url);
   return match ? match[1] : null;
 }
 
@@ -217,7 +217,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error('Backfill failed:', err);
   process.exit(1);
-});
+}

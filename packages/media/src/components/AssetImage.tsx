@@ -24,7 +24,7 @@ export interface AssetImageProps {
  * If only fallback is set and it looks like an image URL, renders it directly.
  * Otherwise renders nothing (caller should supply an emoji fallback separately).
  */
-export function AssetImage({ assetId, fallback, alt, className, width, height }: AssetImageProps) {
+export function AssetImage({ assetId, fallback, alt, className, width, height }: Readonly<AssetImageProps>) {
   const isImageUrl = (v: string) =>
     v.startsWith('http') || v.startsWith('/') || v.startsWith('blob:');
 
