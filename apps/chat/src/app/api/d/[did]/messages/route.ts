@@ -168,11 +168,8 @@ export async function POST(
     if (!existing) {
       const parsed = parseConversationDid(did);
       let name = conversationName || null;
-      if (!name) {
-        name = parsed.type !== 'unknown' ? `${parsed.type}:${parsed.slug ?? ''}` : null;
-      }
-      // If still no name, try to resolve from events service
-      if (!name) {
+      // For event conversations, resolve the event title from events service
+      if (!name && parsed.type === 'event') {
         try {
           const eventsUrl = process.env.EVENTS_SERVICE_URL || 'http://localhost:3006';
           const evtRes = await fetch(`${eventsUrl}/api/events/by-did/${encodeURIComponent(did)}`);
@@ -181,6 +178,10 @@ export async function POST(
             name = evtData.event?.title ? `${evtData.event.title} Lobby` : null;
           }
         } catch {}
+      }
+      // Fallback for non-event types: use type:slug
+      if (!name && parsed.type !== 'unknown' && parsed.type !== 'event') {
+        name = `${parsed.type}:${parsed.slug ?? ''}`;
       }
       await db.insert(conversationsV2).values({
         did,
