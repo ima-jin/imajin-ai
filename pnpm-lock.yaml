@@ -63,6 +63,9 @@ importers:
       '@imajin/email':
         specifier: workspace:*
         version: link:../../packages/email
+      '@imajin/media':
+        specifier: workspace:*
+        version: link:../../packages/media
       '@imajin/ui':
         specifier: workspace:^
         version: link:../../packages/ui
@@ -215,6 +218,9 @@ importers:
       '@imajin/email':
         specifier: workspace:*
         version: link:../../packages/email
+      '@imajin/media':
+        specifier: workspace:*
+        version: link:../../packages/media
       '@imajin/ui':
         specifier: workspace:*
         version: link:../../packages/ui

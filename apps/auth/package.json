@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@imajin/auth": "workspace:*",
+    "@imajin/media": "workspace:*",
     "@imajin/dfos": "workspace:*",
     "@imajin/config": "workspace:*",
     "@imajin/email": "workspace:*",
