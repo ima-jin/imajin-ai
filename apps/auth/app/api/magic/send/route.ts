@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Look up DID by email credential
+    // Look up DID by email credential (authoritative source)
     const [cred] = await db
       .select({ did: credentials.did })
       .from(credentials)
@@ -63,6 +63,33 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     let did = cred?.did;
+
+    if (!did) {
+      // Fallback: check profile.profiles for legacy email (pre-credential migration)
+      const rawSql = getClient();
+      const profileRows = await rawSql`
+        SELECT did FROM profile.profiles 
+        WHERE LOWER(email) = ${normalizedEmail} 
+        LIMIT 1
+      `;
+
+      if (profileRows.length > 0) {
+        did = profileRows[0].did;
+        // Backfill credential so future lookups hit the fast path
+        try {
+          await db.insert(credentials).values({
+            id: `cred_${nanoid(16)}`,
+            did,
+            type: 'email',
+            value: normalizedEmail,
+            verifiedAt: new Date(),
+          });
+        } catch (e: any) {
+          // Unique constraint violation = credential already exists (race condition)
+          if (e?.code !== '23505') throw e;
+        }
+      }
+    }
 
     if (!did) {
       // No account found — return success anyway to prevent enumeration
