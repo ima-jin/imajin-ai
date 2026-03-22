@@ -1,8 +1,8 @@
-import { verifyChain } from '@imajin/dfos';
 import { hexToMultibase } from '@imajin/auth';
 import { db, identities, identityChains, credentials } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import { verifyChainLog } from './chain-providers';
 
 interface DfosChainPayload {
   did: string;
@@ -21,31 +21,29 @@ export async function verifyClientChain(
   expectedPublicKeyHex: string
 ): Promise<{ did: string; log: string[]; headCid: string } | null> {
   try {
-    // 1. Verify the chain is cryptographically valid
-    const verified = await verifyChain(chain.log);
+    // 1. Verify the chain is cryptographically valid via provider abstraction
+    const result = await verifyChainLog(chain.log);
+
+    if (!result.valid) {
+      console.error('[dfos] Chain verification failed:', result.error);
+      return null;
+    }
 
     // 2. Verify the DID matches what the client claims
-    if (verified.did !== chain.did) {
-      console.error('[dfos] DID mismatch:', verified.did, '!==', chain.did);
+    if (result.did !== chain.did) {
+      console.error('[dfos] DID mismatch:', result.did, '!==', chain.did);
       return null;
     }
 
     // 3. Verify the chain's public key matches the identity's public key
     const expectedMultibase = hexToMultibase(expectedPublicKeyHex);
-    const chainKey = verified.controllerKeys[0]?.publicKeyMultibase;
-    if (chainKey !== expectedMultibase) {
+    if (result.publicKeyMultibase !== expectedMultibase) {
       console.error('[dfos] Key mismatch: chain key does not match identity public key');
       return null;
     }
 
-    // 4. Verify chain is not deleted
-    if (verified.isDeleted) {
-      console.error('[dfos] Chain is deleted');
-      return null;
-    }
-
     return {
-      did: verified.did,
+      did: result.did,
       log: chain.log,
       headCid: chain.operationCID,
     };
@@ -156,10 +154,10 @@ export async function checkAllChainConsistency(): Promise<Array<{
 
   for (const chain of chains) {
     try {
-      const verified = await verifyChain(chain.log as string[]);
+      const result = await verifyChainLog(chain.log as string[]);
 
-      if (verified.isDeleted) {
-        issues.push({ did: chain.did, dfosDid: chain.dfosDid, issue: 'Chain is deleted' });
+      if (!result.valid) {
+        issues.push({ did: chain.did, dfosDid: chain.dfosDid, issue: result.error || 'Verification failed' });
         continue;
       }
 
@@ -175,7 +173,7 @@ export async function checkAllChainConsistency(): Promise<Array<{
       }
 
       const dbMultibase = hexToMultibase(identity.publicKey);
-      const chainMultibase = verified.controllerKeys[0]?.publicKeyMultibase;
+      const chainMultibase = result.publicKeyMultibase;
 
       if (dbMultibase !== chainMultibase) {
         issues.push({

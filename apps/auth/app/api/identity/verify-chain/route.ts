@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyChain } from '@imajin/dfos';
-import { multibaseToHex } from '@imajin/auth';
+import { verifyChainLog } from '@/lib/chain-providers';
 import { getIdentityByDfosDid } from '@/lib/dfos';
 
 /**
@@ -36,33 +35,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let verified;
-    try {
-      verified = await verifyChain(chainLog);
-    } catch (err) {
+    const result = await verifyChainLog(chainLog);
+
+    if (!result.valid) {
       return NextResponse.json({
         valid: false,
-        error: err instanceof Error ? err.message : 'Chain verification failed',
+        error: result.error ?? 'Chain verification failed',
       });
     }
 
-    if (verified.isDeleted) {
-      return NextResponse.json({
-        valid: false,
-        error: 'Chain has been deleted',
-      });
-    }
-
-    const chainDid = verified.did;
-
-    // Extract current public key (hex) from chain head controller key
-    const controllerKey = verified.controllerKeys[0];
-    const publicKey = controllerKey
-      ? multibaseToHex(controllerKey.publicKeyMultibase)
-      : undefined;
-
-    // keyCount = number of log entries (operations applied to chain)
-    const keyCount = chainLog.length;
+    const chainDid = result.did!;
+    const publicKey = result.publicKeyHex;
+    const keyCount = result.keyCount ?? chainLog.length;
 
     // Look up if a did:imajin alias exists for this chain DID
     const identity = await getIdentityByDfosDid(chainDid);
