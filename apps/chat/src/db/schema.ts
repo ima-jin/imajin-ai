@@ -1,113 +1,25 @@
-import { pgTable, text, timestamp, jsonb, boolean, index, primaryKey, pgSchema } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, boolean, index, pgSchema } from 'drizzle-orm/pg-core';
 
 export const chatSchema = pgSchema('chat');
 
 /**
- * Conversations - both direct messages and groups
- */
-export const conversations = chatSchema.table('conversations', {
-  id: text('id').primaryKey(),                                  // conv_xxx
-  type: text('type').notNull(),                                 // 'direct' | 'group'
-  name: text('name'),                                           // For groups
-  description: text('description'),                             // Group description
-  avatar: text('avatar'),                                       // Group avatar URL/emoji
-  
-  // Context - links chat to events, orgs, etc.
-  context: jsonb('context'),                                    // { type: 'event' | 'org' | 'project', id: 'xxx' }
-
-  // Trust pod integration
-  podId: text('pod_id'),                                        // Links to trust_pods.id
-
-  // Visibility & access
-  visibility: text('visibility').notNull().default('private'),  // 'private' | 'trust-bound'
-  trustRadius: text('trust_radius'),                            // For trust-bound: max hops
-  
-  // Ownership
-  createdBy: text('created_by').notNull(),                      // DID of creator
-  
-  // Timestamps
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-  lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
-}, (table) => ({
-  typeIdx: index('idx_chat_conversations_type').on(table.type),
-  createdByIdx: index('idx_chat_conversations_created_by').on(table.createdBy),
-  podIdx: index('idx_chat_conversations_pod_id').on(table.podId),
-}));
-
-/**
- * Participants in conversations
- */
-export const participants = chatSchema.table('participants', {
-  conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
-  did: text('did').notNull(),
-  
-  // Role & permissions
-  role: text('role').notNull().default('member'),               // 'owner' | 'admin' | 'member' | 'readonly'
-  
-  // Status
-  joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow(),
-  invitedBy: text('invited_by'),                                // DID who invited them
-  lastReadAt: timestamp('last_read_at', { withTimezone: true }),
-  muted: boolean('muted').default(false),
-  
-  // For cross-graph trust building
-  trustExtendedTo: jsonb('trust_extended_to').default([]),      // DIDs this participant has extended trust to in this group
-}, (table) => ({
-  pk: primaryKey({ columns: [table.conversationId, table.did] }),
-  didIdx: index('idx_chat_participants_did').on(table.did),
-  roleIdx: index('idx_chat_participants_role').on(table.role),
-}));
-
-/**
- * Messages
- */
-export const messages = chatSchema.table('messages', {
-  id: text('id').primaryKey(),                                  // msg_xxx
-  conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
-  fromDid: text('from_did').notNull(),
-
-  // Content (E2EE)
-  content: jsonb('content').notNull(),                          // { encrypted, nonce } or { type: 'system', text }
-  contentType: text('content_type').notNull().default('text'),  // 'text' | 'system' | 'invite' | 'trust-extended' | 'voice' | 'media' | 'location'
-
-  // Legacy media attachments (deprecated — use content.type='media' with assetId instead)
-  mediaType: text('media_type'),                                // 'image' | 'file' | null
-  mediaPath: text('media_path'),                                // Legacy path (migrated to media service)
-  mediaMeta: jsonb('media_meta'),                               // Legacy metadata
-
-  // Threading
-  replyTo: text('reply_to'),                                    // Message ID
-
-  // Link previews
-  linkPreviews: jsonb('link_previews'),                         // [{ url, title, description, image, favicon, siteName }]
-
-  // Status
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-  editedAt: timestamp('edited_at', { withTimezone: true }),
-  deletedAt: timestamp('deleted_at', { withTimezone: true }),
-}, (table) => ({
-  conversationIdx: index('idx_chat_messages_conversation').on(table.conversationId),
-  createdIdx: index('idx_chat_messages_created').on(table.createdAt),
-  fromDidIdx: index('idx_chat_messages_from').on(table.fromDid),
-}));
-
-/**
- * Invites - for joining groups
+ * Invites - for joining group conversations
+ * conversationId references a conversation DID (v2) as plain text.
+ * TODO(#435-followup): drop the FK constraint from the old conversations table.
  */
 export const invites = chatSchema.table('invites', {
   id: text('id').primaryKey(),                                  // inv_xxx
-  conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
-  
+  conversationId: text('conversation_id').notNull(),            // conversation DID or legacy conv id
+
   // Who can use this invite
   createdBy: text('created_by').notNull(),                      // DID who created invite
   forDid: text('for_did'),                                      // Specific DID (null = anyone with link)
-  
+
   // Constraints
   maxUses: text('max_uses'),                                    // null = unlimited
   usedCount: text('used_count').notNull().default('0'),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
-  
+
   // Status
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
@@ -140,49 +52,6 @@ export const preKeys = chatSchema.table('pre_keys', {
   didIdx: index('idx_chat_pre_keys_did').on(table.did),
 }));
 
-/**
- * Read receipts (separate for performance)
- */
-export const readReceipts = chatSchema.table('read_receipts', {
-  conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
-  did: text('did').notNull(),
-  lastReadMessageId: text('last_read_message_id').references(() => messages.id),
-  readAt: timestamp('read_at', { withTimezone: true }).defaultNow(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.conversationId, table.did] }),
-}));
-
-/**
- * Conversation reads - tracks when each user last viewed a conversation
- * Used for calculating unread message counts
- */
-export const conversationReads = chatSchema.table('conversation_reads', {
-  conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
-  did: text('did').notNull(),
-  lastReadAt: timestamp('last_read_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.conversationId, table.did] }),
-}));
-
-/**
- * Message reactions
- */
-export const messageReactions = chatSchema.table('message_reactions', {
-  messageId: text('message_id').references(() => messages.id, { onDelete: 'cascade' }).notNull(),
-  did: text('did').notNull(),
-  emoji: text('emoji').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.messageId, table.did, table.emoji] }),
-  messageIdx: index('idx_chat_message_reactions_message').on(table.messageId),
-}));
-
 // Types
-export type Conversation = typeof conversations.$inferSelect;
-export type NewConversation = typeof conversations.$inferInsert;
-export type Participant = typeof participants.$inferSelect;
-export type Message = typeof messages.$inferSelect;
 export type Invite = typeof invites.$inferSelect;
 export type PublicKey = typeof publicKeys.$inferSelect;
-export type ConversationRead = typeof conversationReads.$inferSelect;
-export type MessageReaction = typeof messageReactions.$inferSelect;

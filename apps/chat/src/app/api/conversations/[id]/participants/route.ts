@@ -1,11 +1,24 @@
 import { NextRequest } from 'next/server';
-import { eq, and } from 'drizzle-orm';
-import { db, conversations, participants, messages } from '@/db';
 import { requireAuth } from '@/lib/auth';
-import { jsonResponse, errorResponse, generateId, hasRole, isValidDid } from '@/lib/utils';
+import { jsonResponse, errorResponse } from '@/lib/utils';
+
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+
+async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
+  try {
+    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
+      headers: cookieHeader ? { Cookie: cookieHeader } : {},
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 /**
- * GET /api/conversations/:id/participants - List participants
+ * GET /api/conversations/:id/participants
+ * :id is a URL-encoded conversation DID.
+ * Returns members by proxying to the auth service access/members endpoint.
  */
 export async function GET(
   request: NextRequest,
@@ -16,27 +29,29 @@ export async function GET(
     return errorResponse(authResult.error, authResult.status);
   }
 
-  const { identity } = authResult;
-  const { id: conversationId } = await params;
+  const { id } = await params;
+  const conversationDid = decodeURIComponent(id);
+
+  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
+  if (!hasAccess) {
+    return errorResponse('Conversation not found or access denied', 404);
+  }
 
   try {
-    // Verify user is a participant
-    const myParticipant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, identity.id)
-      ),
-    });
+    // Proxy to auth service members endpoint
+    const cookieHeader = request.headers.get('Cookie');
+    const res = await fetch(
+      `${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(conversationDid)}/members`,
+      { headers: cookieHeader ? { Cookie: cookieHeader } : {} }
+    );
 
-    if (!myParticipant) {
-      return errorResponse('Conversation not found or access denied', 404);
+    if (res.ok) {
+      const data = await res.json();
+      return jsonResponse({ participants: data.members || data });
     }
 
-    const allParticipants = await db.query.participants.findMany({
-      where: eq(participants.conversationId, conversationId),
-    });
-
-    return jsonResponse({ participants: allParticipants });
+    // Auth service doesn't support members endpoint — return access granted but no list
+    return jsonResponse({ participants: [] });
   } catch (error) {
     console.error('Failed to list participants:', error);
     return errorResponse('Failed to list participants', 500);
@@ -44,7 +59,8 @@ export async function GET(
 }
 
 /**
- * POST /api/conversations/:id/participants - Add participant (admin+)
+ * POST /api/conversations/:id/participants - Add a member
+ * Delegates to the /api/d/:did/members endpoint pattern.
  */
 export async function POST(
   request: NextRequest,
@@ -55,234 +71,38 @@ export async function POST(
     return errorResponse(authResult.error, authResult.status);
   }
 
-  const { identity } = authResult;
-  const { id: conversationId } = await params;
+  const { id } = await params;
+  const conversationDid = decodeURIComponent(id);
+
+  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
+  if (!hasAccess) {
+    return errorResponse('Access denied', 403);
+  }
 
   try {
-    // Check if user can invite (admin or owner)
-    const myParticipant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, identity.id)
-      ),
-    });
-
-    if (!myParticipant || !hasRole(myParticipant.role, 'admin')) {
-      return errorResponse('Permission denied', 403);
-    }
-
+    const cookieHeader = request.headers.get('Cookie');
     const body = await request.json();
-    const { did, role = 'member' } = body;
 
-    if (!isValidDid(did)) {
-      return errorResponse('Invalid DID');
+    const res = await fetch(
+      `${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(conversationDid)}/members`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+        },
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      return jsonResponse(data, 201);
     }
 
-    // Can't add someone with higher role than yourself (unless owner)
-    if (myParticipant.role !== 'owner' && hasRole(role, myParticipant.role)) {
-      return errorResponse('Cannot add participant with equal or higher role');
-    }
-
-    // Check if already a participant
-    const existing = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, did)
-      ),
-    });
-
-    if (existing) {
-      return errorResponse('Already a participant', 409);
-    }
-
-    // Add participant
-    await db.insert(participants).values({
-      conversationId,
-      did,
-      role,
-      invitedBy: identity.id,
-    });
-
-    // Add system message
-    await db.insert(messages).values({
-      id: generateId('msg'),
-      conversationId,
-      fromDid: identity.id,
-      content: { type: 'system', text: `${identity.id} added ${did}` },
-      contentType: 'system',
-    });
-
-    const participant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, did)
-      ),
-    });
-
-    return jsonResponse({ participant }, 201);
+    return errorResponse('Failed to add participant', res.status);
   } catch (error) {
     console.error('Failed to add participant:', error);
     return errorResponse('Failed to add participant', 500);
-  }
-}
-
-/**
- * PATCH /api/conversations/:id/participants - Update participant role (owner only for admin+)
- */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
-  }
-
-  const { identity } = authResult;
-  const { id: conversationId } = await params;
-
-  try {
-    const body = await request.json();
-    const { did, role } = body;
-
-    if (!isValidDid(did)) {
-      return errorResponse('Invalid DID');
-    }
-
-    if (!['readonly', 'member', 'admin'].includes(role)) {
-      return errorResponse('Invalid role');
-    }
-
-    // Check if user is owner
-    const myParticipant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, identity.id)
-      ),
-    });
-
-    if (!myParticipant || myParticipant.role !== 'owner') {
-      return errorResponse('Only the owner can change roles', 403);
-    }
-
-    // Can't change your own role
-    if (did === identity.id) {
-      return errorResponse('Cannot change your own role');
-    }
-
-    // Update role
-    await db
-      .update(participants)
-      .set({ role })
-      .where(
-        and(
-          eq(participants.conversationId, conversationId),
-          eq(participants.did, did)
-        )
-      );
-
-    // Add system message
-    await db.insert(messages).values({
-      id: generateId('msg'),
-      conversationId,
-      fromDid: identity.id,
-      content: { type: 'system', text: `${identity.id} changed ${did}'s role to ${role}` },
-      contentType: 'system',
-    });
-
-    return jsonResponse({ updated: true });
-  } catch (error) {
-    console.error('Failed to update participant:', error);
-    return errorResponse('Failed to update participant', 500);
-  }
-}
-
-/**
- * DELETE /api/conversations/:id/participants - Remove participant
- */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
-  }
-
-  const { identity } = authResult;
-  const { id: conversationId } = await params;
-
-  try {
-    const url = new URL(request.url);
-    const did = url.searchParams.get('did');
-
-    if (!did || !isValidDid(did)) {
-      return errorResponse('Invalid or missing DID');
-    }
-
-    const myParticipant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, identity.id)
-      ),
-    });
-
-    if (!myParticipant) {
-      return errorResponse('Conversation not found', 404);
-    }
-
-    // Can remove yourself (leave) or others if admin+
-    const isSelf = did === identity.id;
-    
-    if (!isSelf && !hasRole(myParticipant.role, 'admin')) {
-      return errorResponse('Permission denied', 403);
-    }
-
-    // Owner can't leave without transferring ownership
-    if (isSelf && myParticipant.role === 'owner') {
-      return errorResponse('Owner must transfer ownership before leaving');
-    }
-
-    // Get the participant being removed
-    const targetParticipant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, did)
-      ),
-    });
-
-    if (!targetParticipant) {
-      return errorResponse('Participant not found', 404);
-    }
-
-    // Can't remove someone with higher role
-    if (!isSelf && hasRole(targetParticipant.role, myParticipant.role)) {
-      return errorResponse('Cannot remove participant with equal or higher role');
-    }
-
-    // Remove
-    await db
-      .delete(participants)
-      .where(
-        and(
-          eq(participants.conversationId, conversationId),
-          eq(participants.did, did)
-        )
-      );
-
-    // Add system message
-    const action = isSelf ? 'left the group' : `removed ${did}`;
-    await db.insert(messages).values({
-      id: generateId('msg'),
-      conversationId,
-      fromDid: identity.id,
-      content: { type: 'system', text: `${identity.id} ${action}` },
-      contentType: 'system',
-    });
-
-    return jsonResponse({ removed: true });
-  } catch (error) {
-    console.error('Failed to remove participant:', error);
-    return errorResponse('Failed to remove participant', 500);
   }
 }

@@ -1,8 +1,21 @@
 import { NextRequest } from 'next/server';
 import { eq, and } from 'drizzle-orm';
-import { db, messages, participants } from '@/db';
+import { db, messagesV2 } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
+
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+
+async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
+  try {
+    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
+      headers: cookieHeader ? { Cookie: cookieHeader } : {},
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * PUT /api/conversations/:id/messages/:msgId - Edit a message
@@ -17,14 +30,14 @@ export async function PUT(
   }
 
   const { identity } = authResult;
-  const { id: conversationId, msgId } = await params;
+  const { id, msgId } = await params;
+  const conversationDid = decodeURIComponent(id);
 
   try {
-    // Get the message
-    const message = await db.query.messages.findFirst({
+    const message = await db.query.messagesV2.findFirst({
       where: and(
-        eq(messages.id, msgId),
-        eq(messages.conversationId, conversationId)
+        eq(messagesV2.id, msgId),
+        eq(messagesV2.conversationDid, conversationDid)
       ),
     });
 
@@ -32,7 +45,6 @@ export async function PUT(
       return errorResponse('Message not found', 404);
     }
 
-    // Only the author can edit
     if (message.fromDid !== identity.id) {
       return errorResponse('You can only edit your own messages', 403);
     }
@@ -44,27 +56,22 @@ export async function PUT(
       return errorResponse('content is required and must be an object');
     }
 
-    // Update the message
     await db
-      .update(messages)
-      .set({
-        content,
-        editedAt: new Date(),
-      })
-      .where(eq(messages.id, msgId));
+      .update(messagesV2)
+      .set({ content, editedAt: new Date() })
+      .where(eq(messagesV2.id, msgId));
 
-    const updatedMessage = await db.query.messages.findFirst({
-      where: eq(messages.id, msgId),
+    const updatedMessage = await db.query.messagesV2.findFirst({
+      where: eq(messagesV2.id, msgId),
     });
 
-    // Broadcast via WebSocket
     if (updatedMessage) {
       const port = process.env.PORT || '3007';
       fetch(`http://localhost:${port}/__ws_broadcast`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          conversationId,
+          conversationId: conversationDid,
           type: 'message_edited',
           message: updatedMessage,
         }),
@@ -79,7 +86,7 @@ export async function PUT(
 }
 
 /**
- * DELETE /api/conversations/:id/messages/:msgId - Delete a message (soft delete)
+ * DELETE /api/conversations/:id/messages/:msgId - Soft delete a message
  */
 export async function DELETE(
   request: NextRequest,
@@ -91,14 +98,14 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
-  const { id: conversationId, msgId } = await params;
+  const { id, msgId } = await params;
+  const conversationDid = decodeURIComponent(id);
 
   try {
-    // Get the message
-    const message = await db.query.messages.findFirst({
+    const message = await db.query.messagesV2.findFirst({
       where: and(
-        eq(messages.id, msgId),
-        eq(messages.conversationId, conversationId)
+        eq(messagesV2.id, msgId),
+        eq(messagesV2.conversationDid, conversationDid)
       ),
     });
 
@@ -106,43 +113,30 @@ export async function DELETE(
       return errorResponse('Message not found', 404);
     }
 
-    // Check permissions: author can delete, or admin/owner for group conversations
-    const participant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, identity.id)
-      ),
-    });
-
-    const canDelete =
-      message.fromDid === identity.id ||
-      participant?.role === 'admin' ||
-      participant?.role === 'owner';
-
-    if (!canDelete) {
-      return errorResponse('You do not have permission to delete this message', 403);
+    // Author can always delete their own; for others, check access via auth service
+    if (message.fromDid !== identity.id) {
+      const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
+      if (!hasAccess) {
+        return errorResponse('You do not have permission to delete this message', 403);
+      }
     }
 
-    // Soft delete
     await db
-      .update(messages)
-      .set({
-        deletedAt: new Date(),
-      })
-      .where(eq(messages.id, msgId));
+      .update(messagesV2)
+      .set({ deletedAt: new Date() })
+      .where(eq(messagesV2.id, msgId));
 
-    const deletedMessage = await db.query.messages.findFirst({
-      where: eq(messages.id, msgId),
+    const deletedMessage = await db.query.messagesV2.findFirst({
+      where: eq(messagesV2.id, msgId),
     });
 
-    // Broadcast via WebSocket
     if (deletedMessage) {
       const port = process.env.PORT || '3007';
       fetch(`http://localhost:${port}/__ws_broadcast`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          conversationId,
+          conversationId: conversationDid,
           type: 'message_deleted',
           message: deletedMessage,
         }),

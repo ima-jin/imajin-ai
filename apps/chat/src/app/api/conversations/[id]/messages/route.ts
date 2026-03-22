@@ -1,13 +1,27 @@
 import { NextRequest } from 'next/server';
-import { eq, and, desc, lt, isNull } from 'drizzle-orm';
-import { db, conversations, participants, messages } from '@/db';
+import { eq, and, desc, lt, isNull, inArray } from 'drizzle-orm';
+import { db, conversationsV2, messagesV2, messageReactionsV2 } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
-import { unfurlLinks } from '@/lib/unfurl';
+import { parseConversationDid } from '@/lib/conversation-did';
 import { hasCapability, requiredCapability, CAPABILITY_MESSAGES } from '@/lib/capabilities';
 
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+
+async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
+  try {
+    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
+      headers: cookieHeader ? { Cookie: cookieHeader } : {},
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * GET /api/conversations/:id/messages - Get messages in a conversation
+ * GET /api/conversations/:id/messages
+ * :id is a URL-encoded conversation DID
  */
 export async function GET(
   request: NextRequest,
@@ -18,65 +32,75 @@ export async function GET(
     return errorResponse(authResult.error, authResult.status);
   }
 
-  const { identity } = authResult;
-  const { id: conversationId } = await params;
-  
-  // Pagination
+  const { id } = await params;
+  const conversationDid = decodeURIComponent(id);
+
+  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
+  if (!hasAccess) {
+    return errorResponse('Conversation not found or access denied', 404);
+  }
+
   const url = new URL(request.url);
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100);
-  const before = url.searchParams.get('before'); // Message ID for pagination
+  const before = url.searchParams.get('before');
 
   try {
-    // Check if user is a participant
-    const participant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, identity.id)
-      ),
-    });
-
-    if (!participant) {
-      return errorResponse('Conversation not found or access denied', 404);
-    }
-
-    // Build query
     let query = db
       .select()
-      .from(messages)
+      .from(messagesV2)
       .where(
         and(
-          eq(messages.conversationId, conversationId),
-          isNull(messages.deletedAt)
+          eq(messagesV2.conversationDid, conversationDid),
+          isNull(messagesV2.deletedAt)
         )
       )
-      .orderBy(desc(messages.createdAt))
+      .orderBy(desc(messagesV2.createdAt))
       .limit(limit);
 
-    // If paginating, get messages before the cursor
     if (before) {
-      const cursorMessage = await db.query.messages.findFirst({
-        where: eq(messages.id, before),
+      const cursorMessage = await db.query.messagesV2.findFirst({
+        where: eq(messagesV2.id, before),
       });
-      if (cursorMessage && cursorMessage.createdAt) {
+      if (cursorMessage?.createdAt) {
         query = db
           .select()
-          .from(messages)
+          .from(messagesV2)
           .where(
             and(
-              eq(messages.conversationId, conversationId),
-              isNull(messages.deletedAt),
-              lt(messages.createdAt, cursorMessage.createdAt)
+              eq(messagesV2.conversationDid, conversationDid),
+              isNull(messagesV2.deletedAt),
+              lt(messagesV2.createdAt, cursorMessage.createdAt)
             )
           )
-          .orderBy(desc(messages.createdAt))
+          .orderBy(desc(messagesV2.createdAt))
           .limit(limit);
       }
     }
 
     const result = await query;
 
+    // Fetch reactions
+    const messageIds = result.map(m => m.id);
+    const reactions = messageIds.length > 0
+      ? await db
+          .select()
+          .from(messageReactionsV2)
+          .where(inArray(messageReactionsV2.messageId, messageIds))
+      : [];
+
+    const reactionsByMessage = reactions.reduce<Record<string, typeof reactions>>((acc, r) => {
+      if (!acc[r.messageId]) acc[r.messageId] = [];
+      acc[r.messageId].push(r);
+      return acc;
+    }, {});
+
+    const messagesWithReactions = result.reverse().map(m => ({
+      ...m,
+      reactions: reactionsByMessage[m.id] || [],
+    }));
+
     return jsonResponse({
-      messages: result.reverse(), // Return in chronological order
+      messages: messagesWithReactions,
       hasMore: result.length === limit,
     });
   } catch (error) {
@@ -98,29 +122,24 @@ export async function POST(
   }
 
   const { identity } = authResult;
-  const { id: conversationId } = await params;
+  const { id } = await params;
+  const conversationDid = decodeURIComponent(id);
+
+  // Soft DIDs cannot send messages
+  if (identity.tier === 'soft') {
+    return errorResponse('Please verify your account to send messages', 403);
+  }
+
+  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
+  if (!hasAccess) {
+    return errorResponse('Conversation not found or access denied', 404);
+  }
 
   try {
-    // Check if user is a participant with write access
-    const participant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, identity.id)
-      ),
-    });
-
-    if (!participant) {
-      return errorResponse('Conversation not found or access denied', 404);
-    }
-
-    if (participant.role === 'readonly') {
-      return errorResponse('You do not have permission to send messages', 403);
-    }
-
     const body = await request.json();
+    const { content, replyToMessageId, mediaType, mediaPath, mediaMeta, conversationName } = body;
 
-    // Determine contentType early for capability check
-    const earlyContentType = body.contentType || body.content?.type || 'text';
+    const earlyContentType = body.contentType || content?.type || 'text';
     const required = requiredCapability(earlyContentType);
     const tier = identity.tier ?? 'preliminary';
     if (!hasCapability({ tier }, required)) {
@@ -129,43 +148,38 @@ export async function POST(
         { status: 403 }
       );
     }
-    const { content, replyTo, mediaType, mediaPath, mediaMeta } = body;
 
-    // Validate content
     if (!content || typeof content !== 'object') {
       return errorResponse('content is required and must be an object');
     }
 
-    // Determine contentType from body or infer from content shape
-    const requestedType = body.contentType || content.type || 'text';
-    const validContentTypes = ['text', 'system', 'invite', 'trust-extended', 'voice', 'media', 'location'];
-    if (!validContentTypes.includes(requestedType)) {
-      return errorResponse(`Invalid contentType: ${requestedType}`);
+    const contentType = body.contentType || content.type || 'text';
+    const validContentTypes = ['text', 'system', 'media', 'voice', 'location'];
+    if (!validContentTypes.includes(contentType)) {
+      return errorResponse(`Invalid contentType: ${contentType}`);
     }
 
-    // Validate content shape for rich message types
-    if (requestedType === 'voice') {
-      if (!content.assetId || typeof content.transcript !== 'string' || typeof content.durationMs !== 'number') {
-        return errorResponse('voice message requires assetId, transcript, and durationMs');
-      }
-    } else if (requestedType === 'media') {
-      if (!content.assetId || !content.filename || !content.mimeType) {
-        return errorResponse('media message requires assetId, filename, and mimeType');
-      }
-    } else if (requestedType === 'location') {
-      if (typeof content.lat !== 'number' || typeof content.lng !== 'number') {
-        return errorResponse('location message requires lat and lng');
-      }
+    // Auto-create conversation if it doesn't exist
+    const existing = await db.query.conversationsV2.findFirst({
+      where: eq(conversationsV2.did, conversationDid),
+    });
+
+    if (!existing) {
+      const parsed = parseConversationDid(conversationDid);
+      const name = conversationName || (parsed.type !== 'unknown' ? `${parsed.type}:${parsed.slug ?? ''}` : conversationDid);
+      await db.insert(conversationsV2).values({
+        did: conversationDid,
+        name,
+        createdBy: identity.id,
+      }).onConflictDoNothing();
     }
 
-    const contentType = requestedType;
-
-    // If replying, verify the message exists in this conversation
-    if (replyTo) {
-      const replyMessage = await db.query.messages.findFirst({
+    // Validate reply if provided
+    if (replyToMessageId) {
+      const replyMessage = await db.query.messagesV2.findFirst({
         where: and(
-          eq(messages.id, replyTo),
-          eq(messages.conversationId, conversationId)
+          eq(messagesV2.id, replyToMessageId),
+          eq(messagesV2.conversationDid, conversationDid)
         ),
       });
       if (!replyMessage) {
@@ -173,49 +187,36 @@ export async function POST(
       }
     }
 
-    // Unfurl links from message content (text and system messages only)
-    let linkPreviews = null;
-    if ((contentType === 'text' || contentType === 'system') && content.text) {
-      const previews = await unfurlLinks(content.text);
-      linkPreviews = previews.length > 0 ? previews : null;
-    }
-
-    // Create message
     const messageId = generateId('msg');
 
-    await db.insert(messages).values({
+    await db.insert(messagesV2).values({
       id: messageId,
-      conversationId,
+      conversationDid,
       fromDid: identity.id,
       content,
       contentType,
-      replyTo: replyTo || null,
-      linkPreviews,
+      replyToMessageId: replyToMessageId || null,
       mediaType: mediaType || null,
       mediaPath: mediaPath || null,
       mediaMeta: mediaMeta || null,
     });
 
-    // Update conversation's lastMessageAt
     await db
-      .update(conversations)
-      .set({ 
-        lastMessageAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(conversations.id, conversationId));
+      .update(conversationsV2)
+      .set({ lastMessageAt: new Date(), updatedAt: new Date() })
+      .where(eq(conversationsV2.did, conversationDid));
 
-    const message = await db.query.messages.findFirst({
-      where: eq(messages.id, messageId),
+    const message = await db.query.messagesV2.findFirst({
+      where: eq(messagesV2.id, messageId),
     });
 
-    // Broadcast via WebSocket (POST to custom server's broadcast endpoint)
+    // Broadcast via WebSocket
     if (message) {
       const port = process.env.PORT || '3007';
       fetch(`http://localhost:${port}/__ws_broadcast`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversationId, message }),
+        body: JSON.stringify({ conversationId: conversationDid, message }),
       }).catch(() => {});
     }
 

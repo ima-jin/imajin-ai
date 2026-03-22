@@ -6,26 +6,7 @@ import { useIdentity, LoginPrompt } from '@/contexts/IdentityContext';
 import { NewChatModal } from '@/app/components/NewChatModal';
 import { useWebSocket } from '@/hooks/useWebSocket';
 
-interface V1Conversation {
-  id: string;
-  type: string;
-  name: string | null;
-  createdBy: string;
-  lastMessageAt: string | null;
-  createdAt: string;
-  myRole: string;
-  otherParticipant?: {
-    did: string;
-    handle: string | null;
-    name: string | null;
-  } | null;
-  podName?: string | null;
-  eventName?: string | null;
-  participantCount?: number;
-  unread?: number;
-}
-
-interface V2Conversation {
+interface Conversation {
   did: string;
   name: string | null;
   type: 'dm' | 'group' | 'event' | 'unknown';
@@ -35,6 +16,11 @@ interface V2Conversation {
   lastMessageAt: string | null;
   lastMessagePreview: string;
   unread: number;
+  otherParticipant?: {
+    did: string;
+    handle: string | null;
+    name: string | null;
+  } | null;
 }
 
 interface DisplayConversation {
@@ -65,10 +51,10 @@ function formatTime(dateStr: string | null): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function v2DisplayName(conv: V2Conversation): string {
+function displayName(conv: Conversation): string {
   if (
     conv.name &&
-    !conv.name.startsWith('did:') &&   // skip raw DID stored as name (legacy)
+    !conv.name.startsWith('did:') &&
     !conv.name.startsWith('dm:') &&
     !conv.name.startsWith('group:') &&
     !conv.name.startsWith('event:') &&
@@ -76,21 +62,30 @@ function v2DisplayName(conv: V2Conversation): string {
   ) {
     return conv.name;
   }
-  if (conv.type === 'dm') return 'Direct Message';
+
+  if (conv.type === 'dm') {
+    if (conv.otherParticipant) {
+      return (
+        conv.otherParticipant.name ||
+        (conv.otherParticipant.handle ? `@${conv.otherParticipant.handle}` : 'Direct Message')
+      );
+    }
+    return 'Direct Message';
+  }
+
   if (conv.type === 'event') {
     if (conv.slug) return `Event: ${conv.slug}`;
-    // Legacy: name was stored as the raw DID (did:imajin:evt_xxx)
     if (conv.name?.startsWith('did:imajin:evt_')) return `Event: ${conv.name.slice('did:imajin:'.length)}`;
     return 'Event Chat';
   }
+
   if (conv.type === 'group') return 'Group Chat';
   return 'Conversation';
 }
 
 export default function ConversationsPage() {
   const { identity, loading } = useIdentity();
-  const [v1Conversations, setV1Conversations] = useState<V1Conversation[]>([]);
-  const [v2Conversations, setV2Conversations] = useState<V2Conversation[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
@@ -99,7 +94,6 @@ export default function ConversationsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const { lastMessage } = useWebSocket();
 
-  // Debounce search
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 250);
     return () => clearTimeout(timer);
@@ -109,49 +103,34 @@ export default function ConversationsPage() {
     if (!identity) return;
 
     try {
-      const [convsRes, unreadRes, v2Res] = await Promise.all([
-        fetch('/api/conversations'),
-        fetch('/api/conversations/unread'),
-        fetch('/api/conversations-v2'),
-      ]);
+      const res = await fetch('/api/conversations');
 
-      if (convsRes.status === 401) {
+      if (res.status === 401) {
         window.location.reload();
         return;
       }
-      if (!convsRes.ok) throw new Error('Failed to load conversations');
+      if (!res.ok) throw new Error('Failed to load conversations');
 
-      const convsData = await convsRes.json();
-      let convs: V1Conversation[] = convsData.conversations || [];
+      const data = await res.json();
+      const convs: Conversation[] = data.conversations || [];
 
-      if (unreadRes.ok) {
-        const unreadData = await unreadRes.json();
-        const unreadMap = new Map(
-          unreadData.conversations.map((c: { id: string; unread: number }) => [c.id, c.unread])
+      // Sort: unread first, then by last message time
+      convs.sort((a, b) => {
+        if (a.unread && !b.unread) return -1;
+        if (!a.unread && b.unread) return 1;
+        return (
+          new Date(b.lastMessageAt || b.createdAt).getTime() -
+          new Date(a.lastMessageAt || a.createdAt).getTime()
         );
-        convs = convs.map((conv) => ({ ...conv, unread: (unreadMap.get(conv.id) as number | undefined) ?? undefined }));
-        convs.sort((a, b) => {
-          if (a.unread && !b.unread) return -1;
-          if (!a.unread && b.unread) return 1;
-          return (
-            new Date(b.lastMessageAt || b.createdAt).getTime() -
-            new Date(a.lastMessageAt || a.createdAt).getTime()
-          );
-        });
-      }
+      });
 
-      setV1Conversations(convs);
+      setConversations(convs);
 
-      if (v2Res.ok) {
-        const v2Data = await v2Res.json();
-        setV2Conversations(v2Data.conversations || []);
-      }
-
-      // Fetch online status for v1 DMs
+      // Fetch online status for DM participants
       const profileUrl = process.env.NEXT_PUBLIC_PROFILE_URL || 'http://localhost:3005';
       const didsToCheck = new Set<string>();
       convs.forEach((conv) => {
-        if (conv.type === 'direct' && conv.otherParticipant?.did) {
+        if (conv.type === 'dm' && conv.otherParticipant?.did) {
           didsToCheck.add(conv.otherParticipant.did);
         }
       });
@@ -186,21 +165,21 @@ export default function ConversationsPage() {
     setOnlineStatus((prev) => ({ ...prev, [lastMessage.did]: lastMessage.online }));
   }, [lastMessage]);
 
-  // Build unified display list
   const allConversations = useMemo((): DisplayConversation[] => {
-    const items: DisplayConversation[] = [];
+    return conversations.map((conv) => {
+      const name = displayName(conv);
+      const subtitle =
+        conv.lastMessagePreview ||
+        (conv.type === 'dm'
+          ? conv.otherParticipant?.handle
+            ? `@${conv.otherParticipant.handle}`
+            : 'Direct message'
+          : conv.type === 'event'
+          ? 'Event chat'
+          : 'Group chat');
 
-    // V2 DID-based conversations
-    for (const conv of v2Conversations) {
-      const name = v2DisplayName(conv);
-      const subtitle = conv.lastMessagePreview || (
-        conv.type === 'dm' ? 'Direct message' :
-        conv.type === 'event' ? 'Event chat' :
-        'Group chat'
-      );
-
-      items.push({
-        key: `v2-${conv.did}`,
+      return {
+        key: conv.did,
         href: `/conversations/${encodeURIComponent(conv.did)}`,
         name,
         type: conv.type,
@@ -208,60 +187,11 @@ export default function ConversationsPage() {
         createdAt: conv.createdAt,
         unread: conv.unread,
         subtitle,
-      });
-    }
-
-    // V1 legacy conversations
-    for (const conv of v1Conversations) {
-      const name =
-        conv.name ||
-        (conv.type === 'direct' && conv.otherParticipant
-          ? conv.otherParticipant.name ||
-            (conv.otherParticipant.handle
-              ? `@${conv.otherParticipant.handle}`
-              : 'Direct Message')
-          : 'Direct Message');
-
-      const subtitle =
-        conv.type === 'group'
-          ? conv.eventName
-            ? `Event: ${conv.eventName}`
-            : conv.podName
-            ? `Pod: ${conv.podName}`
-            : conv.participantCount
-            ? `${conv.participantCount} members`
-            : 'Group chat'
-          : conv.otherParticipant?.handle
-          ? `@${conv.otherParticipant.handle}`
-          : 'Direct message';
-
-      items.push({
-        key: `v1-${conv.id}`,
-        href: `/conversations/${conv.id}`,
-        name,
-        type: conv.type === 'direct' ? 'dm' : conv.type,
-        lastMessageAt: conv.lastMessageAt,
-        createdAt: conv.createdAt,
-        unread: conv.unread ?? 0,
-        subtitle,
         otherParticipantDid: conv.otherParticipant?.did,
-      });
-    }
-
-    // Sort: unread first, then by last message time
-    items.sort((a, b) => {
-      if (a.unread && !b.unread) return -1;
-      if (!a.unread && b.unread) return 1;
-      return (
-        new Date(b.lastMessageAt || b.createdAt).getTime() -
-        new Date(a.lastMessageAt || a.createdAt).getTime()
-      );
+      };
     });
+  }, [conversations]);
 
-    return items;
-  }, [v1Conversations, v2Conversations]);
-
-  // Filter by search
   const filteredConversations = useMemo(() => {
     if (!debouncedSearch.trim()) return allConversations;
     const q = debouncedSearch.toLowerCase();
@@ -357,7 +287,7 @@ function ConversationRow({
 }) {
   const isGroup = conv.type === 'group';
   const isEvent = conv.type === 'event';
-  const isDm = conv.type === 'dm' || conv.type === 'direct';
+  const isDm = conv.type === 'dm';
 
   const iconBg = isGroup
     ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600'

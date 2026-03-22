@@ -3,8 +3,6 @@ import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import sharp from 'sharp';
-import { eq, and } from 'drizzle-orm';
-import { db, participants } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { errorResponse } from '@/lib/utils';
 
@@ -22,8 +20,22 @@ const FILE_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ];
 
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+
+async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
+  try {
+    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
+      headers: cookieHeader ? { Cookie: cookieHeader } : {},
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * POST /api/conversations/:id/upload - Upload media to conversation
+ * :id is a URL-encoded conversation DID.
  */
 export async function POST(
   request: NextRequest,
@@ -34,26 +46,15 @@ export async function POST(
     return errorResponse(authResult.error, authResult.status);
   }
 
-  const { identity } = authResult;
-  const { id: conversationId } = await params;
+  const { id } = await params;
+  const conversationDid = decodeURIComponent(id);
+
+  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
+  if (!hasAccess) {
+    return errorResponse('Conversation not found or access denied', 404);
+  }
 
   try {
-    // Check if user is a participant
-    const participant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, identity.id)
-      ),
-    });
-
-    if (!participant) {
-      return errorResponse('Conversation not found or access denied', 404);
-    }
-
-    if (participant.role === 'readonly') {
-      return errorResponse('You do not have permission to upload files', 403);
-    }
-
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
 
@@ -72,8 +73,9 @@ export async function POST(
       return errorResponse('Invalid file type', 400);
     }
 
-    // Create conversation-specific upload directory
-    const convUploadDir = path.join(UPLOAD_DIR, conversationId);
+    // Use a filesystem-safe slug from the DID (replace colons with underscores)
+    const dirSlug = conversationDid.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const convUploadDir = path.join(UPLOAD_DIR, dirSlug);
     if (!existsSync(convUploadDir)) {
       await mkdir(convUploadDir, { recursive: true });
     }
@@ -86,71 +88,53 @@ export async function POST(
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    let mediaMeta: any = {
+    let mediaMeta: Record<string, unknown> = {
       originalName: file.name,
       mimeType: file.type,
       size: file.size,
     };
 
     let mediaType: 'image' | 'file';
-    let thumbnailPath: string | null = null;
 
     if (isImage) {
       mediaType = 'image';
 
-      // Get image dimensions
       const metadata = await sharp(buffer).metadata();
       mediaMeta.width = metadata.width;
       mediaMeta.height = metadata.height;
 
-      // Resize image if needed (max 1600px)
       const maxDimension = 1600;
       let processedBuffer: Buffer = buffer;
 
       if (metadata.width && metadata.height) {
         if (metadata.width > maxDimension || metadata.height > maxDimension) {
-          const resizedBuffer = await sharp(buffer)
-            .resize(maxDimension, maxDimension, {
-              fit: 'inside',
-              withoutEnlargement: true,
-            })
+          processedBuffer = await sharp(buffer)
+            .resize(maxDimension, maxDimension, { fit: 'inside', withoutEnlargement: true })
             .jpeg({ quality: 85 })
             .toBuffer();
-          processedBuffer = resizedBuffer;
         }
       }
 
-      // Save resized image
       await writeFile(filepath, processedBuffer);
 
-      // Generate thumbnail (300px max)
       const thumbFilename = `${timestamp}_thumb.jpg`;
       const thumbPath = path.join(convUploadDir, thumbFilename);
 
       await sharp(buffer)
-        .resize(300, 300, {
-          fit: 'inside',
-          withoutEnlargement: true,
-        })
+        .resize(300, 300, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 80 })
         .toBuffer()
         .then(thumbBuffer => writeFile(thumbPath, thumbBuffer));
 
-      thumbnailPath = `${conversationId}/${thumbFilename}`;
-      mediaMeta.thumbnailPath = thumbnailPath;
+      mediaMeta.thumbnailPath = `${dirSlug}/${thumbFilename}`;
     } else {
       mediaType = 'file';
-      // Save file as-is
       await writeFile(filepath, buffer);
     }
 
-    const mediaPath = `${conversationId}/${filename}`;
+    const mediaPath = `${dirSlug}/${filename}`;
 
-    return Response.json({
-      mediaType,
-      mediaPath,
-      mediaMeta,
-    }, { status: 200 });
+    return Response.json({ mediaType, mediaPath, mediaMeta }, { status: 200 });
   } catch (error) {
     console.error('Upload failed:', error);
     return errorResponse('Upload failed', 500);
