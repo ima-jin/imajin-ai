@@ -87,6 +87,7 @@ export async function PATCH(
     if (currency !== undefined) updates.currency = currency;
     if (category !== undefined) updates.category = category;
     if (images !== undefined) updates.images = images;
+    if (imageAssetIds !== undefined) updates.imageAssetIds = imageAssetIds;
     if (quantity !== undefined) updates.quantity = quantity;
     if (sellerTier !== undefined) updates.sellerTier = sellerTier;
     if (contactInfo !== undefined) updates.contactInfo = contactInfo;

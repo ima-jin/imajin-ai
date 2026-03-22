@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
       currency: currency || 'CAD',
       category: category || null,
       images: images || [],
+      imageAssetIds: imageAssetIds || [],
       quantity: quantity ?? 1,
       sellerTier: sellerTier || 'public_offplatform',
       contactInfo: contactInfo || null,
