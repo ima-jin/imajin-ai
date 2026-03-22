@@ -3,7 +3,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
 const MAX_IMAGES = 8;
-const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL || 'https://media.imajin.ai';
+const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
+const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL || `${SERVICE_PREFIX}media.${DOMAIN}`;
 
 interface ImageUploadProps {
   images: string[];
