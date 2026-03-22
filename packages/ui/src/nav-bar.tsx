@@ -154,7 +154,7 @@ export function NavBar({
     const payUrl = buildUrl('pay', servicePrefix, domain, serviceUrls);
     fetch(`${payUrl}/api/balance/${encodeURIComponent(identity.did)}`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.amount) setBalance(parseFloat(data.amount)); })
+      .then(data => { if (data?.total) setBalance(parseFloat(data.total)); })
       .catch(() => {});
   }, [identity?.isLoggedIn, identity?.did, servicePrefix, domain, serviceUrls]);
 
