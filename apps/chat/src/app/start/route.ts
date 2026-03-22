@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and, or } from 'drizzle-orm';
-import { db, conversations, participants } from '@/db';
+import { eq } from 'drizzle-orm';
+import { db, conversationsV2 } from '@/db';
 import { requireAuth } from '@/lib/auth';
+import { dmDid } from '@/lib/conversation-did';
 
 const APP_URL = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3007';
 
@@ -11,7 +12,7 @@ function redirect(path: string) {
 
 /**
  * GET /start?did=DID
- * Finds or creates a direct conversation with the given DID, then redirects to it.
+ * Finds or creates a v2 direct conversation with the given DID, then redirects to it.
  */
 export async function GET(request: NextRequest) {
   const did = request.nextUrl.searchParams.get('did');
@@ -26,49 +27,23 @@ export async function GET(request: NextRequest) {
 
   const myDid = authResult.identity.id;
 
-  // Find existing direct conversation between these two DIDs
-  const allParticipations = await db
-    .select()
-    .from(conversations)
-    .innerJoin(participants, eq(participants.conversationId, conversations.id))
-    .where(
-      and(
-        eq(conversations.type, 'direct'),
-        or(
-          eq(participants.did, myDid),
-          eq(participants.did, did)
-        )
-      )
-    );
+  // Derive stable DM conversation DID
+  const convDid = dmDid(myDid, did);
 
-  // Group by conversation and find one with both DIDs
-  const convCounts: Record<string, Set<string>> = {};
-  for (const row of allParticipations) {
-    const convId = row.conversations.id;
-    if (!convCounts[convId]) convCounts[convId] = new Set();
-    convCounts[convId].add(row.participants.did);
-  }
-
-  for (const [convId, dids] of Object.entries(convCounts)) {
-    if (dids.has(myDid) && dids.has(did)) {
-      return redirect(`/conversations/${convId}`);
-    }
-  }
-
-  // No existing conversation — create one
-  const { generateId } = await import('@/lib/utils');
-  const conversationId = generateId('conv');
-
-  await db.insert(conversations).values({
-    id: conversationId,
-    type: 'direct',
-    createdBy: myDid,
+  // Upsert into conversations_v2 if it doesn't exist yet
+  const existing = await db.query.conversationsV2.findFirst({
+    where: eq(conversationsV2.did, convDid),
   });
 
-  await db.insert(participants).values([
-    { conversationId, did: myDid, role: 'owner' },
-    { conversationId, did, role: 'member', invitedBy: myDid },
-  ]);
+  if (!existing) {
+    await db
+      .insert(conversationsV2)
+      .values({
+        did: convDid,
+        createdBy: myDid,
+      })
+      .onConflictDoNothing();
+  }
 
-  return redirect(`/conversations/${conversationId}`);
+  return redirect(`/conversations/${encodeURIComponent(convDid)}`);
 }

@@ -1,9 +1,11 @@
 import { SESSION_COOKIE_NAME } from "@imajin/config";
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { conversationReads, messages, participants } from '@/db/schema';
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { db, conversationReadsV2, messagesV2 } from '@/db';
+import { getClient } from '@imajin/db';
+import { and, eq, gt, ne, inArray, sql } from 'drizzle-orm';
 import { corsHeaders, corsOptions } from '@/lib/utils';
+
+const rawSql = getClient();
 
 async function getSessionDid(req: NextRequest): Promise<string | null> {
   const cookie = req.cookies.get(SESSION_COOKIE_NAME);
@@ -28,7 +30,7 @@ export async function OPTIONS(req: NextRequest) {
 
 /**
  * GET /api/conversations/unread
- * Returns total unread count and per-conversation unread counts
+ * Returns total unread count and per-conversation unread counts (v2)
  */
 export async function GET(req: NextRequest) {
   const cors = corsHeaders(req);
@@ -38,79 +40,83 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
     }
 
-    // Get all conversations the user is a participant in
-    const userConversations = await db
-      .select({ conversationId: participants.conversationId })
-      .from(participants)
-      .where(eq(participants.did, did));
+    // Discover all conversation DIDs this user is involved in
+    const [readRecords, sentMessages, createdConvs, podConvDids] = await Promise.all([
+      db
+        .select()
+        .from(conversationReadsV2)
+        .where(eq(conversationReadsV2.did, did)),
+      db
+        .selectDistinct({ conversationDid: messagesV2.conversationDid })
+        .from(messagesV2)
+        .where(eq(messagesV2.fromDid, did)),
+      db
+        .select({ did: conversationReadsV2.conversationDid })
+        .from(conversationReadsV2)
+        .where(eq(conversationReadsV2.did, did)),
+      rawSql`
+        SELECT p.conversation_did
+        FROM connections.pods p
+        JOIN connections.pod_members pm ON pm.pod_id = p.id
+        WHERE pm.did = ${did}
+          AND pm.removed_at IS NULL
+          AND p.conversation_did IS NOT NULL
+      `,
+    ]);
 
-    const conversationIds = userConversations.map((p) => p.conversationId);
+    const didSet = new Set<string>([
+      ...readRecords.map(r => r.conversationDid),
+      ...sentMessages.map(m => m.conversationDid),
+      ...createdConvs.map(c => c.did),
+      ...podConvDids.map((r: Record<string, string>) => r.conversation_did),
+    ]);
 
-    if (conversationIds.length === 0) {
+    if (didSet.size === 0) {
       return NextResponse.json({ total: 0, conversations: [] }, { headers: cors });
     }
 
-    // For each conversation, count messages created after last_read_at
+    const readMap = new Map(readRecords.map(r => [r.conversationDid, r.lastReadAt]));
+
+    const conversationDids = Array.from(didSet);
+
     const unreadCounts = await Promise.all(
-      conversationIds.map(async (conversationId) => {
-        // Get the last read timestamp for this conversation
-        const readRecord = await db
-          .select()
-          .from(conversationReads)
-          .where(
-            and(
-              eq(conversationReads.conversationId, conversationId),
-              eq(conversationReads.did, did)
-            )
-          )
-          .limit(1);
+      conversationDids.map(async (conversationDid) => {
+        const lastReadAt = readMap.get(conversationDid);
 
-        const lastReadAt = readRecord[0]?.lastReadAt;
-
-        // Count messages created after lastReadAt (or all messages if never read)
         let unreadCount = 0;
-
         if (lastReadAt) {
-          const result = await db
+          const [result] = await db
             .select({ count: sql<number>`count(*)::int` })
-            .from(messages)
+            .from(messagesV2)
             .where(
               and(
-                eq(messages.conversationId, conversationId),
-                gt(messages.createdAt, lastReadAt),
-                sql`${messages.fromDid} != ${did}`
+                eq(messagesV2.conversationDid, conversationDid),
+                gt(messagesV2.createdAt, lastReadAt),
+                ne(messagesV2.fromDid, did),
               )
             );
-          unreadCount = result[0]?.count || 0;
+          unreadCount = result?.count || 0;
         } else {
-          // Never read - count all messages not from this user
-          const result = await db
+          const [result] = await db
             .select({ count: sql<number>`count(*)::int` })
-            .from(messages)
+            .from(messagesV2)
             .where(
               and(
-                eq(messages.conversationId, conversationId),
-                sql`${messages.fromDid} != ${did}`
+                eq(messagesV2.conversationDid, conversationDid),
+                ne(messagesV2.fromDid, did),
               )
             );
-          unreadCount = result[0]?.count || 0;
+          unreadCount = result?.count || 0;
         }
 
-        return {
-          id: conversationId,
-          unread: unreadCount,
-        };
+        return { id: conversationDid, unread: unreadCount };
       })
     );
 
-    // Filter out conversations with 0 unread
     const conversationsWithUnread = unreadCounts.filter((c) => c.unread > 0);
     const total = conversationsWithUnread.reduce((sum, c) => sum + c.unread, 0);
 
-    return NextResponse.json({
-      total,
-      conversations: conversationsWithUnread,
-    }, { headers: cors });
+    return NextResponse.json({ total, conversations: conversationsWithUnread }, { headers: cors });
   } catch (error) {
     console.error('Error fetching unread counts:', error);
     return NextResponse.json(

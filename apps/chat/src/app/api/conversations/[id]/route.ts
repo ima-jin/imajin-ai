@@ -1,11 +1,25 @@
 import { NextRequest } from 'next/server';
-import { eq, and } from 'drizzle-orm';
-import { db, conversations, participants } from '@/db';
+import { eq } from 'drizzle-orm';
+import { db, conversationsV2 } from '@/db';
 import { requireAuth } from '@/lib/auth';
-import { jsonResponse, errorResponse, hasRole } from '@/lib/utils';
+import { jsonResponse, errorResponse } from '@/lib/utils';
+
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+
+async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
+  try {
+    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
+      headers: cookieHeader ? { Cookie: cookieHeader } : {},
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 /**
- * GET /api/conversations/:id - Get conversation details
+ * GET /api/conversations/:id - Get v2 conversation details
+ * :id is a URL-encoded conversation DID
  */
 export async function GET(
   request: NextRequest,
@@ -16,40 +30,24 @@ export async function GET(
     return errorResponse(authResult.error, authResult.status);
   }
 
-  const { identity } = authResult;
-  const { id: conversationId } = await params;
+  const { id } = await params;
+  const conversationDid = decodeURIComponent(id);
+
+  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
+  if (!hasAccess) {
+    return errorResponse('Conversation not found or access denied', 404);
+  }
 
   try {
-    // Check if user is a participant
-    const participant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, identity.id)
-      ),
-    });
-
-    if (!participant) {
-      return errorResponse('Conversation not found or access denied', 404);
-    }
-
-    // Get conversation with all participants
-    const conversation = await db.query.conversations.findFirst({
-      where: eq(conversations.id, conversationId),
+    const conversation = await db.query.conversationsV2.findFirst({
+      where: eq(conversationsV2.did, conversationDid),
     });
 
     if (!conversation) {
       return errorResponse('Conversation not found', 404);
     }
 
-    const allParticipants = await db.query.participants.findMany({
-      where: eq(participants.conversationId, conversationId),
-    });
-
-    return jsonResponse({
-      conversation,
-      participants: allParticipants,
-      myRole: participant.role,
-    });
+    return jsonResponse({ conversation });
   } catch (error) {
     console.error('Failed to get conversation:', error);
     return errorResponse('Failed to get conversation', 500);
@@ -57,7 +55,7 @@ export async function GET(
 }
 
 /**
- * PATCH /api/conversations/:id - Update conversation (admin+)
+ * PATCH /api/conversations/:id - Update conversation name
  */
 export async function PATCH(
   request: NextRequest,
@@ -69,42 +67,40 @@ export async function PATCH(
   }
 
   const { identity } = authResult;
-  const { id: conversationId } = await params;
+  const { id } = await params;
+  const conversationDid = decodeURIComponent(id);
+
+  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
+  if (!hasAccess) {
+    return errorResponse('Access denied', 403);
+  }
 
   try {
-    // Check if user is admin or owner
-    const participant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, identity.id)
-      ),
+    const body = await request.json();
+    const { name } = body;
+
+    const conv = await db.query.conversationsV2.findFirst({
+      where: eq(conversationsV2.did, conversationDid),
     });
 
-    if (!participant || !hasRole(participant.role, 'admin')) {
-      return errorResponse('Permission denied', 403);
+    if (!conv) {
+      // Auto-create if it doesn't exist yet
+      await db.insert(conversationsV2).values({
+        did: conversationDid,
+        name: name || null,
+        createdBy: identity.id,
+      }).onConflictDoNothing();
+    } else {
+      if (conv.createdBy !== identity.id) {
+        return errorResponse('Only the creator can update the name', 403);
+      }
+      await db
+        .update(conversationsV2)
+        .set({ name: name || null, updatedAt: new Date() })
+        .where(eq(conversationsV2.did, conversationDid));
     }
 
-    const body = await request.json();
-    const { name, description, visibility } = body;
-
-    const updates: Partial<typeof conversations.$inferInsert> = {
-      updatedAt: new Date(),
-    };
-
-    if (name !== undefined) updates.name = name;
-    if (description !== undefined) updates.description = description;
-    if (visibility !== undefined) updates.visibility = visibility;
-
-    await db
-      .update(conversations)
-      .set(updates)
-      .where(eq(conversations.id, conversationId));
-
-    const updated = await db.query.conversations.findFirst({
-      where: eq(conversations.id, conversationId),
-    });
-
-    return jsonResponse({ conversation: updated });
+    return jsonResponse({ ok: true });
   } catch (error) {
     console.error('Failed to update conversation:', error);
     return errorResponse('Failed to update conversation', 500);
@@ -112,7 +108,7 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/conversations/:id - Delete conversation (owner only)
+ * DELETE /api/conversations/:id - Delete conversation (creator only)
  */
 export async function DELETE(
   request: NextRequest,
@@ -124,23 +120,24 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
-  const { id: conversationId } = await params;
+  const { id } = await params;
+  const conversationDid = decodeURIComponent(id);
 
   try {
-    // Check if user is owner
-    const participant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, conversationId),
-        eq(participants.did, identity.id)
-      ),
+    const conv = await db.query.conversationsV2.findFirst({
+      where: eq(conversationsV2.did, conversationDid),
     });
 
-    if (!participant || participant.role !== 'owner') {
-      return errorResponse('Only the owner can delete a conversation', 403);
+    if (!conv) {
+      return errorResponse('Conversation not found', 404);
     }
 
-    // Cascade delete handles participants and messages
-    await db.delete(conversations).where(eq(conversations.id, conversationId));
+    if (conv.createdBy !== identity.id) {
+      return errorResponse('Only the creator can delete a conversation', 403);
+    }
+
+    // Cascade deletes messages_v2, message_reactions_v2, conversation_reads_v2
+    await db.delete(conversationsV2).where(eq(conversationsV2.did, conversationDid));
 
     return jsonResponse({ deleted: true });
   } catch (error) {

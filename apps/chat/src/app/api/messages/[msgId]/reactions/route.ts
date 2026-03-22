@@ -1,11 +1,24 @@
 import { NextRequest } from 'next/server';
 import { eq, and, sql } from 'drizzle-orm';
-import { db, messages, messageReactions, participants } from '@/db';
+import { db, messagesV2, messageReactionsV2 } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+
+async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
+  try {
+    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
+      headers: cookieHeader ? { Cookie: cookieHeader } : {},
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * GET /api/messages/:msgId/reactions - Get reactions for a message
+ * GET /api/messages/:msgId/reactions - Get reactions for a v2 message
  */
 export async function GET(
   request: NextRequest,
@@ -20,37 +33,29 @@ export async function GET(
   const { msgId } = await params;
 
   try {
-    // Verify message exists and user has access
-    const message = await db.query.messages.findFirst({
-      where: eq(messages.id, msgId),
+    const message = await db.query.messagesV2.findFirst({
+      where: eq(messagesV2.id, msgId),
     });
 
     if (!message) {
       return errorResponse('Message not found', 404);
     }
 
-    // Check if user is participant
-    const participant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, message.conversationId),
-        eq(participants.did, identity.id)
-      ),
-    });
-
-    if (!participant) {
+    // Verify access to the conversation
+    const hasAccess = await verifyAccess(message.conversationDid, request.headers.get('Cookie'));
+    if (!hasAccess) {
       return errorResponse('Access denied', 403);
     }
 
-    // Get reactions grouped by emoji
     const reactions = await db
       .select({
-        emoji: messageReactions.emoji,
+        emoji: messageReactionsV2.emoji,
         count: sql<number>`count(*)::int`,
-        reacted: sql<boolean>`bool_or(${messageReactions.did} = ${identity.id})`,
+        reacted: sql<boolean>`bool_or(${messageReactionsV2.did} = ${identity.id})`,
       })
-      .from(messageReactions)
-      .where(eq(messageReactions.messageId, msgId))
-      .groupBy(messageReactions.emoji);
+      .from(messageReactionsV2)
+      .where(eq(messageReactionsV2.messageId, msgId))
+      .groupBy(messageReactionsV2.emoji);
 
     return jsonResponse({ reactions });
   } catch (error) {
@@ -82,55 +87,40 @@ export async function POST(
       return errorResponse('emoji is required and must be a string');
     }
 
-    // Verify message exists and user has access
-    const message = await db.query.messages.findFirst({
-      where: eq(messages.id, msgId),
+    const message = await db.query.messagesV2.findFirst({
+      where: eq(messagesV2.id, msgId),
     });
 
     if (!message) {
       return errorResponse('Message not found', 404);
     }
 
-    // Check if user is participant
-    const participant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, message.conversationId),
-        eq(participants.did, identity.id)
-      ),
-    });
-
-    if (!participant) {
+    const hasAccess = await verifyAccess(message.conversationDid, request.headers.get('Cookie'));
+    if (!hasAccess) {
       return errorResponse('Access denied', 403);
     }
 
-    // Insert reaction (will fail silently if already exists due to primary key)
     await db
-      .insert(messageReactions)
-      .values({
-        messageId: msgId,
-        did: identity.id,
-        emoji,
-      })
+      .insert(messageReactionsV2)
+      .values({ messageId: msgId, did: identity.id, emoji })
       .onConflictDoNothing();
 
-    // Get updated reactions
     const reactions = await db
       .select({
-        emoji: messageReactions.emoji,
+        emoji: messageReactionsV2.emoji,
         count: sql<number>`count(*)::int`,
-        reacted: sql<boolean>`bool_or(${messageReactions.did} = ${identity.id})`,
+        reacted: sql<boolean>`bool_or(${messageReactionsV2.did} = ${identity.id})`,
       })
-      .from(messageReactions)
-      .where(eq(messageReactions.messageId, msgId))
-      .groupBy(messageReactions.emoji);
+      .from(messageReactionsV2)
+      .where(eq(messageReactionsV2.messageId, msgId))
+      .groupBy(messageReactionsV2.emoji);
 
-    // Broadcast via WebSocket
     const port = process.env.PORT || '3007';
     fetch(`http://localhost:${port}/__ws_broadcast`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        conversationId: message.conversationId,
+        conversationId: message.conversationDid,
         type: 'reaction_added',
         messageId: msgId,
         emoji,
@@ -169,56 +159,45 @@ export async function DELETE(
       return errorResponse('emoji is required and must be a string');
     }
 
-    // Verify message exists and user has access
-    const message = await db.query.messages.findFirst({
-      where: eq(messages.id, msgId),
+    const message = await db.query.messagesV2.findFirst({
+      where: eq(messagesV2.id, msgId),
     });
 
     if (!message) {
       return errorResponse('Message not found', 404);
     }
 
-    // Check if user is participant
-    const participant = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, message.conversationId),
-        eq(participants.did, identity.id)
-      ),
-    });
-
-    if (!participant) {
+    const hasAccess = await verifyAccess(message.conversationDid, request.headers.get('Cookie'));
+    if (!hasAccess) {
       return errorResponse('Access denied', 403);
     }
 
-    // Remove reaction
     await db
-      .delete(messageReactions)
+      .delete(messageReactionsV2)
       .where(
         and(
-          eq(messageReactions.messageId, msgId),
-          eq(messageReactions.did, identity.id),
-          eq(messageReactions.emoji, emoji)
+          eq(messageReactionsV2.messageId, msgId),
+          eq(messageReactionsV2.did, identity.id),
+          eq(messageReactionsV2.emoji, emoji)
         )
       );
 
-    // Get updated reactions
     const reactions = await db
       .select({
-        emoji: messageReactions.emoji,
+        emoji: messageReactionsV2.emoji,
         count: sql<number>`count(*)::int`,
-        reacted: sql<boolean>`bool_or(${messageReactions.did} = ${identity.id})`,
+        reacted: sql<boolean>`bool_or(${messageReactionsV2.did} = ${identity.id})`,
       })
-      .from(messageReactions)
-      .where(eq(messageReactions.messageId, msgId))
-      .groupBy(messageReactions.emoji);
+      .from(messageReactionsV2)
+      .where(eq(messageReactionsV2.messageId, msgId))
+      .groupBy(messageReactionsV2.emoji);
 
-    // Broadcast via WebSocket
     const port = process.env.PORT || '3007';
     fetch(`http://localhost:${port}/__ws_broadcast`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        conversationId: message.conversationId,
+        conversationId: message.conversationDid,
         type: 'reaction_removed',
         messageId: msgId,
         emoji,

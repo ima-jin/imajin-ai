@@ -1,11 +1,27 @@
 import { NextRequest } from 'next/server';
-import { eq, and } from 'drizzle-orm';
-import { db, conversations, participants, invites, messages } from '@/db';
+import { eq } from 'drizzle-orm';
+import { db, invites } from '@/db';
 import { requireAuth } from '@/lib/auth';
-import { jsonResponse, errorResponse, generateId, hasRole } from '@/lib/utils';
+import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
+
+// TODO(#435-followup): invites.conversationId FK to chat.conversations.id needs to be
+// dropped and the column treated as plain text pointing to a conversation DID.
+
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+
+async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
+  try {
+    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
+      headers: cookieHeader ? { Cookie: cookieHeader } : {},
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 /**
- * GET /api/invites/:id - Get invite info (public - for preview before joining)
+ * GET /api/invites/:id - Get invite info (public — for preview before joining)
  */
 export async function GET(
   request: NextRequest,
@@ -22,34 +38,17 @@ export async function GET(
       return errorResponse('Invite not found', 404);
     }
 
-    // Check if revoked
     if (invite.revokedAt) {
       return errorResponse('Invite has been revoked', 410);
     }
 
-    // Check if expired
     if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
       return errorResponse('Invite has expired', 410);
     }
 
-    // Check if maxed out
     if (invite.maxUses && parseInt(invite.usedCount) >= parseInt(invite.maxUses)) {
       return errorResponse('Invite has reached maximum uses', 410);
     }
-
-    // Get conversation info (limited for preview)
-    const conversation = await db.query.conversations.findFirst({
-      where: eq(conversations.id, invite.conversationId),
-    });
-
-    if (!conversation) {
-      return errorResponse('Conversation not found', 404);
-    }
-
-    // Count participants
-    const allParticipants = await db.query.participants.findMany({
-      where: eq(participants.conversationId, invite.conversationId),
-    });
 
     return jsonResponse({
       invite: {
@@ -57,14 +56,6 @@ export async function GET(
         conversationId: invite.conversationId,
         forDid: invite.forDid,
         expiresAt: invite.expiresAt,
-      },
-      conversation: {
-        id: conversation.id,
-        type: conversation.type,
-        name: conversation.name,
-        description: conversation.description,
-        avatar: conversation.avatar,
-        participantCount: allParticipants.length,
       },
     });
   } catch (error) {
@@ -97,7 +88,6 @@ export async function POST(
       return errorResponse('Invite not found', 404);
     }
 
-    // Validate invite is still valid
     if (invite.revokedAt) {
       return errorResponse('Invite has been revoked', 410);
     }
@@ -110,33 +100,9 @@ export async function POST(
       return errorResponse('Invite has reached maximum uses', 410);
     }
 
-    // Check if invite is for a specific DID
     if (invite.forDid && invite.forDid !== identity.id) {
       return errorResponse('This invite is for a different user', 403);
     }
-
-    // Check if already a participant
-    const existing = await db.query.participants.findFirst({
-      where: and(
-        eq(participants.conversationId, invite.conversationId),
-        eq(participants.did, identity.id)
-      ),
-    });
-
-    if (existing) {
-      return jsonResponse({ 
-        conversationId: invite.conversationId,
-        alreadyMember: true,
-      });
-    }
-
-    // Add as participant
-    await db.insert(participants).values({
-      conversationId: invite.conversationId,
-      did: identity.id,
-      role: 'member',
-      invitedBy: invite.createdBy,
-    });
 
     // Increment used count
     await db
@@ -144,16 +110,8 @@ export async function POST(
       .set({ usedCount: (parseInt(invite.usedCount) + 1).toString() })
       .where(eq(invites.id, inviteId));
 
-    // Add system message
-    await db.insert(messages).values({
-      id: generateId('msg'),
-      conversationId: invite.conversationId,
-      fromDid: identity.id,
-      content: { type: 'system', text: `${identity.id} joined via invite` },
-      contentType: 'system',
-    });
-
-    return jsonResponse({ 
+    // Return the conversation DID — the client should redirect there
+    return jsonResponse({
       conversationId: invite.conversationId,
       joined: true,
     });
@@ -187,16 +145,10 @@ export async function DELETE(
       return errorResponse('Invite not found', 404);
     }
 
-    // Check if user can revoke (creator or admin+ of conversation)
     if (invite.createdBy !== identity.id) {
-      const participant = await db.query.participants.findFirst({
-        where: and(
-          eq(participants.conversationId, invite.conversationId),
-          eq(participants.did, identity.id)
-        ),
-      });
-
-      if (!participant || !hasRole(participant.role, 'admin')) {
+      // Check if user has access to the conversation
+      const hasAccess = await verifyAccess(invite.conversationId, request.headers.get('Cookie'));
+      if (!hasAccess) {
         return errorResponse('Permission denied', 403);
       }
     }
