@@ -30,6 +30,17 @@ import { corsHeaders } from '@/src/lib/cors';
 import { verifyManifest } from '@imajin/fair';
 import { createHttpResolver } from '@imajin/auth';
 
+async function verifyChainStatus(did: string, authServiceUrl: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${authServiceUrl}/api/identity/${encodeURIComponent(did)}/verify`);
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.chain?.valid ?? false;
+  } catch {
+    return false;
+  }
+}
+
 async function emitAttestations(
   from_did: string,
   fair_manifest: { chain: Array<{ did: string; amount: number; role: string }> },
@@ -37,6 +48,8 @@ async function emitAttestations(
   txIds: string[],
   total_amount: number,
   source: string,
+  payerChainVerified: boolean,
+  payeeChainVerified: boolean,
 ) {
   const authServiceUrl = process.env.AUTH_SERVICE_URL;
   const internalApiKey = process.env.AUTH_INTERNAL_API_KEY;
@@ -96,7 +109,7 @@ async function emitAttestations(
           type: 'transaction.settled',
           context_id: batchId,
           context_type: 'service',
-          payload: { total_amount, recipients: fair_manifest.chain.length, source },
+          payload: { total_amount, recipients: fair_manifest.chain.length, source, payerChainVerified, payeeChainVerified },
         }),
       })
         .then(async (res) => {
@@ -251,6 +264,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Verify chain status for payer and all payees (non-blocking — don't fail payment)
+    const authServiceUrl = process.env.AUTH_SERVICE_URL!;
+    const payeeDids = [...new Set(fair_manifest.chain.map((r) => r.did))];
+    const [payerChainVerified, ...payeeVerifications] = await Promise.all([
+      verifyChainStatus(from_did, authServiceUrl),
+      ...payeeDids.map((did) => verifyChainStatus(did, authServiceUrl)),
+    ]);
+    const payeeChainVerified = payeeVerifications.every(Boolean);
+
     const batchId = genId('batch');
     const txIds: string[] = [];
 
@@ -315,7 +337,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Fire attestations asynchronously — don't block settlement response
-    emitAttestations(from_did, fair_manifest, batchId, txIds, total_amount, source).catch((err) => {
+    emitAttestations(from_did, fair_manifest, batchId, txIds, total_amount, source, payerChainVerified, payeeChainVerified).catch((err) => {
       console.error('Attestation emission error:', err);
     });
 
