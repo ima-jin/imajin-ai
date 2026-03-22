@@ -4,8 +4,37 @@ import { db, conversationsV2, messagesV2, messageReactionsV2 } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } from '@/lib/utils';
 import { parseConversationDid } from '@/lib/conversation-did';
+import { canonicalize } from '@imajin/auth';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+
+/**
+ * Sign a message payload with the node's chain key via the auth service.
+ * Best-effort: returns null on any failure rather than blocking message delivery.
+ */
+async function signMessagePayload(fromDid: string, payload: string): Promise<string | null> {
+  const apiKey = process.env.INTERNAL_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch(
+      `${AUTH_SERVICE_URL}/api/identity/${encodeURIComponent(fromDid)}/sign`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ payload }),
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.signature ?? null;
+  } catch {
+    return null;
+  }
+}
 
 async function verifyDidAccess(did: string, cookieHeader: string | null): Promise<boolean> {
   try {
@@ -204,6 +233,16 @@ export async function POST(
     }
 
     const messageId = generateId('msg');
+    const createdAt = new Date();
+
+    // Sign if sender has chain identity — best-effort, never blocks delivery
+    const signaturePayload = canonicalize({
+      conversationDid: did,
+      content,
+      fromDid: identity.id,
+      createdAt: createdAt.toISOString(),
+    });
+    const signature = await signMessagePayload(identity.id, signaturePayload);
 
     await db.insert(messagesV2).values({
       id: messageId,
@@ -215,6 +254,8 @@ export async function POST(
       mediaType: mediaType || null,
       mediaPath: mediaPath || null,
       mediaMeta: mediaMeta || null,
+      createdAt,
+      signature,
     });
 
     // Update lastMessageAt
