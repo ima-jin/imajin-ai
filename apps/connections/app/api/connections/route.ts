@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, podMembers, pods } from '../../../src/db/index';
 import { corsHeaders, corsOptions, withCors } from '@/lib/cors';
+import { requireAuth } from '@imajin/auth';
 import { eq, and, isNull, ne, sql } from 'drizzle-orm';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
@@ -9,30 +10,19 @@ export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
-async function getSession(request: NextRequest) {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      headers: { Cookie: request.headers.get('cookie') || '' },
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
-  const session = await getSession(request);
-  if (!session?.did) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401, headers: cors });
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
+  const { identity } = authResult;
 
   // Find 2-person pods I'm in
   const myPodIds = db
     .select({ podId: podMembers.podId })
     .from(podMembers)
-    .where(and(eq(podMembers.did, session.did), isNull(podMembers.removedAt)));
+    .where(and(eq(podMembers.did, identity.id), isNull(podMembers.removedAt)));
 
   const twoPersonPods = await db
     .select({ podId: podMembers.podId })
@@ -59,7 +49,7 @@ export async function GET(request: NextRequest) {
     .innerJoin(pods, eq(pods.id, podMembers.podId))
     .where(and(
       isNull(podMembers.removedAt),
-      ne(podMembers.did, session.did),
+      ne(podMembers.did, identity.id),
       sql`${podMembers.podId} IN (${sql.join(podIds.map(id => sql`${id}`), sql`, `)})`
     ));
 
