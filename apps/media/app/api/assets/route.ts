@@ -232,9 +232,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Build public URL from request origin
-  const origin = new URL(request.url).origin;
-  const url = `${origin}/api/assets/${record.id}`;
+  // Build public URL — use configured base URL, not request origin (which may be localhost behind reverse proxy)
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
+  const url = `${baseUrl}/api/assets/${record.id}`;
 
   const response = NextResponse.json(
     {
