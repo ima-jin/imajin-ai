@@ -196,23 +196,21 @@ export async function GET(
         );
       }
 
-      // 5. For groups, check context.members array (set at creation time)
+      // 5. For groups, check conversation_members table
       if (governance === 'group') {
-        const ctxRows = await sql`
-          SELECT context FROM chat.conversations_v2
-          WHERE did = ${targetDid}
+        const memberRows = await sql`
+          SELECT role FROM chat.conversation_members
+          WHERE conversation_did = ${targetDid}
+            AND member_did = ${requesterDid}
+            AND left_at IS NULL
           LIMIT 1
         `;
 
-        if (ctxRows.length > 0) {
-          const ctx = ctxRows[0].context as Record<string, unknown> | null;
-          const members = Array.isArray(ctx?.members) ? ctx.members : [];
-          if (members.includes(requesterDid)) {
-            return NextResponse.json(
-              { allowed: true, role: 'participant', governance },
-              { headers: cors }
-            );
-          }
+        if (memberRows.length > 0) {
+          return NextResponse.json(
+            { allowed: true, role: memberRows[0].role as string, governance },
+            { headers: cors }
+          );
         }
 
         // Also check created_by — creator always has access

@@ -4,7 +4,7 @@ import { db, conversationsV2, messagesV2, conversationReadsV2 } from '@/db';
 import { getClient } from '@imajin/db';
 import { requireAuth, requireGraphMember } from '@/lib/auth';
 import { jsonResponse, errorResponse, isValidDid } from '@/lib/utils';
-import { dmDid, groupDid, parseConversationDid } from '@/lib/conversation-did';
+import { dmDid, parseConversationDid } from '@/lib/conversation-did';
 
 const rawSql = getClient();
 
@@ -246,23 +246,34 @@ export async function POST(request: NextRequest) {
     }
 
     const allMembers = [...new Set([identity.id, ...participantDids])];
-    const convDid = groupDid(allMembers);
 
-    const existing = await db.query.conversationsV2.findFirst({
-      where: eq(conversationsV2.did, convDid),
-    });
-
-    if (existing) {
-      return jsonResponse({ conversation: existing, existing: true });
-    }
+    // Random group DID — group identity is the room, not the members
+    const groupId = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    const convDid = `did:imajin:group:${groupId}`;
 
     await db.insert(conversationsV2).values({
       did: convDid,
       type: 'group',
       name,
-      context: { members: allMembers },
       createdBy: identity.id,
     }).onConflictDoNothing();
+
+    // Insert members
+    await rawSql`
+      INSERT INTO chat.conversation_members (conversation_did, member_did, role)
+      SELECT ${convDid}, unnest(${allMembers}::text[]),
+        CASE WHEN unnest = ${identity.id} THEN 'owner' ELSE 'member' END
+      ON CONFLICT (conversation_did, member_did) DO NOTHING
+    `.catch(() => {
+      // Fallback: insert one by one if unnest approach fails
+      return Promise.all(allMembers.map(did =>
+        rawSql`
+          INSERT INTO chat.conversation_members (conversation_did, member_did, role)
+          VALUES (${convDid}, ${did}, ${did === identity.id ? 'owner' : 'member'})
+          ON CONFLICT (conversation_did, member_did) DO NOTHING
+        `
+      ));
+    });
 
     const conv = await db.query.conversationsV2.findFirst({
       where: eq(conversationsV2.did, convDid),

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, index, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, index, primaryKey, serial, uniqueIndex } from 'drizzle-orm/pg-core';
 import { chatSchema } from './schema';
 
 /**
@@ -7,8 +7,15 @@ import { chatSchema } from './schema';
  */
 export const conversationsV2 = chatSchema.table('conversations_v2', {
   did: text('did').primaryKey(),                                // did:imajin:dm:xxx or did:imajin:group:xxx
+  type: text('type').notNull().default('dm'),                   // 'dm' | 'group'
   parentDid: text('parent_did'),                                // Optional parent conversation DID
   name: text('name'),
+  description: text('description'),
+  avatar: text('avatar'),                                       // asset_xxx or URL
+  context: jsonb('context').default({}),                        // Flexible metadata
+  visibility: text('visibility').default('private'),            // 'private' | 'trust' | 'public'
+  trustRadius: text('trust_radius'),
+  podId: text('pod_id'),                                        // Link to connections.pods
   createdBy: text('created_by').notNull(),                      // DID of creator
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -83,7 +90,26 @@ export const conversationReadsV2 = chatSchema.table('conversation_reads_v2', {
   didIdx: index('idx_chat_reads_v2_did').on(table.did),
 }));
 
+/**
+ * Conversation members - tracks who is in a group conversation
+ * DMs don't need this (membership is implicit in the deterministic DID).
+ */
+export const conversationMembers = chatSchema.table('conversation_members', {
+  id: serial('id').primaryKey(),
+  conversationDid: text('conversation_did').references(() => conversationsV2.did, { onDelete: 'cascade' }).notNull(),
+  memberDid: text('member_did').notNull(),
+  role: text('role').notNull().default('member'),               // 'owner' | 'admin' | 'member'
+  joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
+  leftAt: timestamp('left_at', { withTimezone: true }),
+}, (table) => ({
+  memberIdx: index('idx_conv_members_member').on(table.memberDid),
+  convIdx: index('idx_conv_members_conv').on(table.conversationDid),
+  uniqueMember: uniqueIndex('idx_conv_members_unique').on(table.conversationDid, table.memberDid),
+}));
+
 // Types
+export type ConversationMember = typeof conversationMembers.$inferSelect;
+export type NewConversationMember = typeof conversationMembers.$inferInsert;
 export type ConversationV2 = typeof conversationsV2.$inferSelect;
 export type NewConversationV2 = typeof conversationsV2.$inferInsert;
 export type MessageV2 = typeof messagesV2.$inferSelect;
