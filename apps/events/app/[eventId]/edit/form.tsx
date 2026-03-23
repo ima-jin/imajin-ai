@@ -12,6 +12,7 @@ interface Props {
   event: Event;
   existingTickets: TicketType[];
   creatorEmail?: string | null;
+  organizerDids?: string[];
 }
 
 interface TicketTier {
@@ -34,7 +35,7 @@ interface Survey {
 
 type ActiveTab = 'details' | 'fair';
 
-export default function EventEditForm({ event, existingTickets, creatorEmail }: Props) {
+export default function EventEditForm({ event, existingTickets, creatorEmail, organizerDids }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -101,7 +102,8 @@ export default function EventEditForm({ event, existingTickets, creatorEmail }: 
   useEffect(() => {
     async function fetchSurveys() {
       try {
-        const res = await fetch(`${DYKIL_URL}/api/surveys/mine`, {
+        const didsParam = organizerDids?.length ? `?dids=${organizerDids.join(',')}` : '';
+        const res = await fetch(`${DYKIL_URL}/api/surveys/mine${didsParam}`, {
           credentials: 'include',
         });
         if (res.ok) {

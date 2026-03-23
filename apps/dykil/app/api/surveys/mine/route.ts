@@ -12,6 +12,8 @@ export async function OPTIONS(request: NextRequest) {
 
 /**
  * GET /api/surveys/mine - Get current user's surveys
+ * Optional: ?dids=did1,did2,did3 — return surveys owned by any of those DIDs
+ * (used by events edit form to show forms from all organizers)
  */
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -22,10 +24,25 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const { searchParams } = new URL(request.url);
+  const didsParam = searchParams.get('dids');
 
   try {
+    let ownerDids: string[];
+
+    if (didsParam) {
+      // Return surveys for specified DIDs (caller must be one of them)
+      ownerDids = didsParam.split(',').map(d => d.trim()).filter(Boolean);
+      // Always include the current user
+      if (!ownerDids.includes(identity.id)) {
+        ownerDids.push(identity.id);
+      }
+    } else {
+      ownerDids = [identity.id];
+    }
+
     const userSurveys = await db.query.surveys.findMany({
-      where: (surveys, { eq }) => eq(surveys.did, identity.id),
+      where: (surveys, { inArray }) => inArray(surveys.did, ownerDids),
       orderBy: (surveys, { desc }) => [desc(surveys.createdAt)],
     });
 

@@ -85,6 +85,22 @@ export default async function EditEventPage({ params }: Props) {
     creatorEmail = profile?.contact_email || null;
   } catch {}
 
+  // Gather all organizer DIDs (creator + cohosts) for survey dropdown
+  const organizerDids = [event.creatorDid];
+  if (event.podId) {
+    try {
+      const cohosts = await sql`
+        SELECT did FROM connections.pod_members
+        WHERE pod_id = ${event.podId} AND role IN ('cohost', 'owner', 'host') AND removed_at IS NULL
+      `;
+      for (const row of cohosts) {
+        if (row.did && !organizerDids.includes(row.did as string)) {
+          organizerDids.push(row.did as string);
+        }
+      }
+    } catch {}
+  }
+
   return (
     <div className="min-h-screen">
       <div className="max-w-2xl mx-auto px-4 py-8">
@@ -103,7 +119,7 @@ export default async function EditEventPage({ params }: Props) {
           </p>
         </div>
 
-        <EventEditForm event={event} existingTickets={tickets} creatorEmail={creatorEmail} />
+        <EventEditForm event={event} existingTickets={tickets} creatorEmail={creatorEmail} organizerDids={organizerDids} />
       </div>
     </div>
   );
