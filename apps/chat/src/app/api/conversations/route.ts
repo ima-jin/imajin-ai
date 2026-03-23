@@ -123,8 +123,10 @@ export async function GET(request: NextRequest) {
         // For DMs, resolve other participant info by parsing the DID slug
         let otherParticipant: { did: string; handle: string | null; name: string | null } | null = null;
         if (parsed.type === 'dm' && AUTH_SERVICE_URL) {
-          // DM DIDs don't embed participant DIDs — look up from sent messages or reads
-          // to find the other party
+          // DM DIDs don't embed participant DIDs — look up from messages and reads
+          let otherDid: string | undefined;
+
+          // 1. Check messages from the other party
           const [otherMsg] = await db
             .select({ fromDid: messagesV2.fromDid })
             .from(messagesV2)
@@ -135,8 +137,27 @@ export async function GET(request: NextRequest) {
               )
             )
             .limit(1);
+          otherDid = otherMsg?.fromDid;
 
-          const otherDid = otherMsg?.fromDid;
+          // 2. If no messages from other party, check conversation reads
+          if (!otherDid) {
+            const [otherRead] = await db
+              .select({ did: conversationReadsV2.did })
+              .from(conversationReadsV2)
+              .where(
+                and(
+                  eq(conversationReadsV2.conversationDid, conv.did),
+                  ne(conversationReadsV2.did, identity.id),
+                )
+              )
+              .limit(1);
+            otherDid = otherRead?.did;
+          }
+
+          // 3. If still nothing, check who was invited (created_by != me means I'm the other party)
+          if (!otherDid && conv.createdBy !== identity.id) {
+            otherDid = conv.createdBy;
+          }
           if (otherDid) {
             try {
               const lookupRes = await fetch(`${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(otherDid)}`);
