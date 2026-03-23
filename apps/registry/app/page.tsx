@@ -24,6 +24,19 @@ export default function Home() {
         </ol>
       </div>
 
+      <div className="bg-[#0a0a0a] border border-gray-800 rounded-xl p-8 mb-8">
+        <h2 className="text-2xl font-semibold mb-4 text-white">DFOS Relay</h2>
+        <p className="text-gray-400 mb-4">
+          This registry is also a <a href="https://dfos.com" className="text-[#F59E0B] hover:underline">DFOS</a> relay node — 
+          syncing identity chains and content proofs across the network.
+        </p>
+        <div className="text-left space-y-2 text-gray-400">
+          <p><span className="text-[#F59E0B] font-bold">→</span> Chain-backed identity verification</p>
+          <p><span className="text-[#F59E0B] font-bold">→</span> Cryptographic proof relay</p>
+          <p><span className="text-[#F59E0B] font-bold">→</span> Self-certifying DIDs via DFOS substrate</p>
+        </div>
+      </div>
+
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-xl p-6 mb-8">
         <a 
           href="/docs" 
