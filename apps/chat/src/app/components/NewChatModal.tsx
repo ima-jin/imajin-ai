@@ -132,28 +132,34 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
 
   async function createGroup() {
     if (!identity || selectedDids.size === 0) return;
-    const members = [identity.did, ...Array.from(selectedDids)];
-    const did = await groupDid(members);
     const name = groupName.trim() || 'Group Chat';
 
-    // Create a pod in connections with all members + conversation DID
+    // Server creates the group with a random DID and tracks members
     try {
-      await fetch(`${CONNECTIONS_URL}/api/groups`, {
+      const res = await fetch(`/api/conversations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
+          type: 'group',
           name,
-          conversationDid: did,
-          memberDids: Array.from(selectedDids),
+          participantDids: Array.from(selectedDids),
         }),
       });
-    } catch {
-      // Best-effort — conversation will still work via direct access
+
+      if (!res.ok) throw new Error('Failed to create group');
+      const data = await res.json();
+      const convDid = data.conversation?.did;
+
+      if (convDid) {
+        router.push(`/conversations/${encodeURIComponent(convDid)}`);
+        onClose();
+        return;
+      }
+    } catch (err) {
+      console.error('Group creation failed:', err);
     }
 
-    const params = groupName ? `?name=${encodeURIComponent(groupName)}` : '';
-    router.push(`/conversations/${encodeURIComponent(did)}${params}`);
     onClose();
   }
 
