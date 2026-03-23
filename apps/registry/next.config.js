@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Enable standalone output for Docker deployments
-  output: 'standalone',
+  // output: 'standalone', // Disabled — breaks catch-all routes with next start
   
   // Transpile workspace packages
   transpilePackages: ['@imajin/auth','@imajin/config','@imajin/db','@imajin/ui'],
