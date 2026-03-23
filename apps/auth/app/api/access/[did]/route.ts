@@ -232,10 +232,42 @@ export async function GET(
       return NextResponse.json({ allowed: false }, { headers: cors });
     }
 
-    // Unknown DID namespace
+    // --- Fallback: check conversation_members for any DID ---
+    // Event DIDs that don't match evt_* or event:* patterns still get conversations
+    const fallbackMemberRows = await sql`
+      SELECT role FROM chat.conversation_members
+      WHERE conversation_did = ${targetDid}
+        AND member_did = ${requesterDid}
+        AND left_at IS NULL
+      LIMIT 1
+    `;
+
+    if (fallbackMemberRows.length > 0) {
+      return NextResponse.json(
+        { allowed: true, role: fallbackMemberRows[0].role as string, governance: 'member' },
+        { headers: cors }
+      );
+    }
+
+    // Check if requester is conversation creator
+    const fallbackCreatorRows = await sql`
+      SELECT created_by FROM chat.conversations_v2
+      WHERE did = ${targetDid}
+        AND created_by = ${requesterDid}
+      LIMIT 1
+    `;
+
+    if (fallbackCreatorRows.length > 0) {
+      return NextResponse.json(
+        { allowed: true, role: 'owner', governance: 'member' },
+        { headers: cors }
+      );
+    }
+
+    // Unknown DID namespace or no access
     return NextResponse.json(
-      { error: 'Unsupported DID namespace' },
-      { status: 400, headers: cors }
+      { allowed: false },
+      { headers: cors }
     );
 
   } catch (error) {
