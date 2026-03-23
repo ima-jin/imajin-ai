@@ -258,7 +258,9 @@ export async function POST(request: NextRequest) {
 
     await db.insert(conversationsV2).values({
       did: convDid,
+      type: 'group',
       name,
+      context: { members: allMembers },
       createdBy: identity.id,
     }).onConflictDoNothing();
 

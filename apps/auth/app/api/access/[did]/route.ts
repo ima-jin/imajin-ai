@@ -196,19 +196,36 @@ export async function GET(
         );
       }
 
-      // 5. For groups, check legacy participants table
+      // 5. For groups, check context.members array (set at creation time)
       if (governance === 'group') {
-        const legacyRows = await sql`
-          SELECT p.role
-          FROM chat.participants p
-          WHERE p.conversation_id = ${targetDid}
-            AND p.did = ${requesterDid}
+        const ctxRows = await sql`
+          SELECT context FROM chat.conversations_v2
+          WHERE did = ${targetDid}
           LIMIT 1
         `;
 
-        if (legacyRows.length > 0) {
+        if (ctxRows.length > 0) {
+          const ctx = ctxRows[0].context as Record<string, unknown> | null;
+          const members = Array.isArray(ctx?.members) ? ctx.members : [];
+          if (members.includes(requesterDid)) {
+            return NextResponse.json(
+              { allowed: true, role: 'participant', governance },
+              { headers: cors }
+            );
+          }
+        }
+
+        // Also check created_by — creator always has access
+        const creatorRows = await sql`
+          SELECT created_by FROM chat.conversations_v2
+          WHERE did = ${targetDid}
+            AND created_by = ${requesterDid}
+          LIMIT 1
+        `;
+
+        if (creatorRows.length > 0) {
           return NextResponse.json(
-            { allowed: true, role: legacyRows[0].role as string, governance },
+            { allowed: true, role: 'owner', governance },
             { headers: cors }
           );
         }
