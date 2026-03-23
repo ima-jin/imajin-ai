@@ -8,8 +8,11 @@ servers:
     description: production
   - url: https://dev-events.imajin.ai
     description: dev
-  - url: http://localhost:7006
+  - url: http://localhost:7008
     description: local
+
+tags:
+  - name: events
 
 components:
   securitySchemes:
@@ -17,6 +20,9 @@ components:
       type: apiKey
       in: cookie
       name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
     webhookSecret:
       type: http
       scheme: bearer
@@ -26,9 +32,21 @@ components:
       type: object
       properties:
         id: { type: string }
+        did: { type: string }
         title: { type: string }
         description: { type: string }
-        status: { type: string }
+        status: { type: string, enum: [draft, published, paused, cancelled, completed] }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time, nullable: true }
+        timezone: { type: string, nullable: true }
+        isVirtual: { type: boolean }
+        virtualUrl: { type: string, nullable: true }
+        venue: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        country: { type: string, nullable: true }
+        imageUrl: { type: string, nullable: true }
+        tags: { type: array, items: { type: string } }
         fairManifest: { type: object }
         createdAt: { type: string, format: date-time }
     TicketTier:
@@ -38,8 +56,12 @@ components:
         name: { type: string }
         description: { type: string }
         price: { type: number }
-        quantity: { type: integer }
+        currency: { type: string }
+        quantity: { type: integer, nullable: true }
+        sold: { type: integer }
+        available: { type: integer, nullable: true }
         perks: { type: array, items: { type: string } }
+        requiresRegistration: { type: boolean }
     Error:
       type: object
       required: [error]
@@ -47,17 +69,54 @@ components:
         error: { type: string }
 
 paths:
+  /api/health:
+    get:
+      tags: [events]
+      operationId: healthCheck
+      summary: Service health check
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  service: { type: string }
+                  timestamp: { type: string, format: date-time }
+
+  /api/spec:
+    get:
+      tags: [events]
+      operationId: getSpec
+      summary: Serve OpenAPI spec (YAML)
+      responses:
+        "200":
+          description: OpenAPI YAML spec
+          content:
+            text/yaml:
+              schema: { type: string }
+
   /api/events:
     get:
+      tags: [events]
       operationId: listEvents
       summary: List events
       parameters:
         - name: status
           in: query
-          schema: { type: string }
+          schema: { type: string, default: published }
         - name: limit
           in: query
           schema: { type: integer, default: 20 }
+        - name: courseSlug
+          in: query
+          schema: { type: string }
+        - name: upcoming
+          in: query
+          schema: { type: boolean }
+          description: "Filter to events that haven't started yet"
       responses:
         "200":
           description: Events list
@@ -70,6 +129,7 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Event" }
     post:
+      tags: [events]
       operationId: createEvent
       summary: Create an event — requires hard DID
       security:
@@ -80,33 +140,78 @@ paths:
           application/json:
             schema:
               type: object
-              required: [title]
+              required: [title, startsAt]
               properties:
                 title: { type: string }
                 description: { type: string }
                 startsAt: { type: string, format: date-time }
                 endsAt: { type: string, format: date-time }
-                location: { type: string }
-                coverImage: { type: string }
-                fairManifest: { type: object }
+                timezone: { type: string }
+                isVirtual: { type: boolean }
+                virtualUrl: { type: string }
+                venue: { type: string }
+                address: { type: string }
+                city: { type: string }
+                country: { type: string }
+                imageUrl: { type: string }
+                imageAssetId: { type: string }
+                tags: { type: array, items: { type: string } }
+                courseSlug: { type: string }
+                emtEmail: { type: string }
+                tickets:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      description: { type: string }
+                      price: { type: number }
+                      currency: { type: string }
+                      quantity: { type: integer }
+                      perks: { type: array, items: { type: string } }
       responses:
         "201":
           description: Event created
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Event" }
+              schema:
+                type: object
+                properties:
+                  event: { $ref: "#/components/schemas/Event" }
+                  ticketTypes:
+                    type: array
+                    items: { $ref: "#/components/schemas/TicketTier" }
+                  eventKeypair:
+                    type: object
+                    properties:
+                      publicKey: { type: string }
+                      privateKey: { type: string }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "403":
           description: Requires hard DID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/events/mine:
     get:
+      tags: [events]
       operationId: listMyEvents
       summary: List authenticated user's events with stats
       security:
         - cookieAuth: []
       responses:
         "200":
-          description: User's events
+          description: User's events with ticket stats
           content:
             application/json:
               schema:
@@ -114,12 +219,58 @@ paths:
                 properties:
                   events:
                     type: array
-                    items: { $ref: "#/components/schemas/Event" }
+                    items:
+                      allOf:
+                        - { $ref: "#/components/schemas/Event" }
+                        - type: object
+                          properties:
+                            ticketsSold: { type: integer }
+                            revenue: { type: number }
+                            statusBadge: { type: string }
+                            ticketTypes:
+                              type: array
+                              items: { $ref: "#/components/schemas/TicketTier" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/events/by-did/{did}:
+    get:
+      tags: [events]
+      operationId: getEventByDid
+      summary: Look up an event by its DID
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Event found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      title: { type: string }
+                      did: { type: string }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/events/{id}:
     get:
+      tags: [events]
       operationId: getEvent
-      summary: Get event by ID
+      summary: Get event by ID with ticket types and admins
       parameters:
         - name: id
           in: path
@@ -127,18 +278,26 @@ paths:
           schema: { type: string }
       responses:
         "200":
-          description: Event
+          description: Event details
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Event" }
+              schema:
+                type: object
+                properties:
+                  event: { $ref: "#/components/schemas/Event" }
+                  ticketTypes:
+                    type: array
+                    items: { $ref: "#/components/schemas/TicketTier" }
+                  admins: { type: array, items: { type: object } }
         "404":
           description: Not found
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
     put:
+      tags: [events]
       operationId: updateEvent
-      summary: Update event
+      summary: Update event fields — requires creator, admin, or cohost
       security:
         - cookieAuth: []
       parameters:
@@ -150,16 +309,105 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/Event" }
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                description: { type: string }
+                startsAt: { type: string, format: date-time }
+                endsAt: { type: string, format: date-time }
+                timezone: { type: string }
+                isVirtual: { type: boolean }
+                virtualUrl: { type: string }
+                venue: { type: string }
+                address: { type: string }
+                city: { type: string }
+                country: { type: string }
+                imageUrl: { type: string }
+                imageAssetId: { type: string }
+                tags: { type: array, items: { type: string } }
+                status: { type: string }
+                metadata: { type: object }
+                nameDisplayPolicy:
+                  type: string
+                  enum: [real_name, handle, anonymous, attendee_choice]
+                accessMode: { type: string }
+                courseSlug: { type: string }
+                emtEmail: { type: string }
       responses:
         "200":
           description: Event updated
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Event" }
+              schema:
+                type: object
+                properties:
+                  event: { $ref: "#/components/schemas/Event" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    patch:
+      tags: [events]
+      operationId: updateEventStatus
+      summary: Update event status — creator only; follows allowed status transitions
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [draft, published, paused, cancelled, completed]
+      responses:
+        "200":
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event: { $ref: "#/components/schemas/Event" }
+        "400":
+          description: Invalid or disallowed status transition
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Only creator can change status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/events/{id}/admins:
     get:
+      tags: [events]
       operationId: listEventAdmins
       summary: List event admins
       security:
@@ -172,7 +420,15 @@ paths:
       responses:
         "200":
           description: Admin list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  creator: { type: string }
+                  admins: { type: array, items: { type: object } }
     post:
+      tags: [events]
       operationId: addEventAdmin
       summary: Add an admin to an event
       security:
@@ -194,7 +450,18 @@ paths:
       responses:
         "201":
           description: Admin added
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     delete:
+      tags: [events]
       operationId: removeEventAdmin
       summary: Remove an admin from an event
       security:
@@ -211,11 +478,56 @@ paths:
       responses:
         "200":
           description: Admin removed
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
-  /api/events/{id}/my-ticket:
+  /api/events/{id}/cohosts:
     get:
-      operationId: getMyTicket
-      summary: Check if authenticated user has a ticket for this event
+      tags: [events]
+      operationId: listEventCohosts
+      summary: List cohosts for an event (via pod membership)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Cohost list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cohosts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        did: { type: string }
+                        name: { type: string, nullable: true }
+                        handle: { type: string, nullable: true }
+                        avatar: { type: string, nullable: true }
+                        role: { type: string }
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/events/{id}/guests:
+    get:
+      tags: [events]
+      operationId: listEventGuests
+      summary: List all ticket holders with profile info — organizer only
       security:
         - cookieAuth: []
       parameters:
@@ -225,13 +537,190 @@ paths:
           schema: { type: string }
       responses:
         "200":
-          description: Ticket ownership status
+          description: Guest/ticket list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  guests:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        status: { type: string }
+                        ownerDid: { type: string }
+                        pricePaid: { type: number }
+                        currency: { type: string }
+                        purchasedAt: { type: string, format: date-time }
+                        usedAt: { type: string, format: date-time, nullable: true }
+                        paymentMethod: { type: string }
+                        ticketType: { type: string }
+                        attendeeName: { type: string, nullable: true }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/events/{id}/invites:
+    get:
+      tags: [events]
+      operationId: listEventInvites
+      summary: List invite links — organizer only
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invite list with URLs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invites:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        token: { type: string }
+                        label: { type: string }
+                        maxUses: { type: integer, nullable: true }
+                        useCount: { type: integer }
+                        expiresAt: { type: string, format: date-time, nullable: true }
+                        url: { type: string }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    post:
+      tags: [events]
+      operationId: createEventInvite
+      summary: Create an invite link — organizer only
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string }
+                maxUses: { type: integer }
+                expiresAt: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invite:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      token: { type: string }
+                      url: { type: string }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/events/{id}/invites/{inviteId}:
+    delete:
+      tags: [events]
+      operationId: revokeEventInvite
+      summary: Revoke an invite link — organizer only
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: inviteId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invite revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Invite not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/events/{id}/my-ticket:
+    get:
+      tags: [events]
+      operationId: getMyTicket
+      summary: Check if authenticated user has a ticket or organizer access for this event
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Ticket ownership and access status
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   hasTicket: { type: boolean }
+                  hasAccess: { type: boolean }
+                  isOrganizer: { type: boolean }
                   tickets: { type: array, items: { type: object } }
                   ticketId: { type: string }
                   conversationId: { type: string }
@@ -239,6 +728,7 @@ paths:
 
   /api/events/{id}/fair:
     patch:
+      tags: [events]
       operationId: updateEventFair
       summary: Update .fair manifest for an event
       security:
@@ -260,11 +750,34 @@ paths:
       responses:
         "200":
           description: Manifest updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event: { $ref: "#/components/schemas/Event" }
+                  manifest: { type: object }
+        "400":
+          description: Invalid .fair manifest
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/events/{id}/queue:
     get:
+      tags: [events]
       operationId: getQueue
-      summary: Get queue for a ticket type
+      summary: Get queue position for a ticket type
       security:
         - cookieAuth: []
       parameters:
@@ -274,11 +787,22 @@ paths:
           schema: { type: string }
         - name: ticketTypeId
           in: query
+          required: true
           schema: { type: string }
       responses:
         "200":
           description: Queue info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  inQueue: { type: boolean }
+                  position: { type: integer }
+                  totalAhead: { type: integer }
+                  message: { type: string }
     post:
+      tags: [events]
       operationId: joinQueue
       summary: Join the ticket queue
       security:
@@ -299,7 +823,13 @@ paths:
       responses:
         "200":
           description: Joined queue
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     delete:
+      tags: [events]
       operationId: leaveQueue
       summary: Leave the ticket queue
       security:
@@ -315,9 +845,15 @@ paths:
       responses:
         "200":
           description: Left queue
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/events/{id}/hold:
     post:
+      tags: [events]
       operationId: holdTicket
       summary: Place a hold on a ticket
       security:
@@ -336,11 +872,27 @@ paths:
               required: [ticketTypeId]
               properties:
                 ticketTypeId: { type: string }
-                holdHours: { type: number, default: 24 }
+                holdHours: { type: number, default: 72 }
       responses:
         "200":
           description: Hold placed
+        "400":
+          description: Validation error or existing hold
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Ticket type not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     delete:
+      tags: [events]
       operationId: releaseHold
       summary: Release a ticket hold
       security:
@@ -357,9 +909,15 @@ paths:
       responses:
         "200":
           description: Hold released
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/events/{id}/tiers:
     get:
+      tags: [events]
       operationId: listTicketTiers
       summary: List ticket tiers for an event
       parameters:
@@ -379,6 +937,7 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/TicketTier" }
     post:
+      tags: [events]
       operationId: createTicketTier
       summary: Create a ticket tier
       security:
@@ -392,14 +951,37 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/TicketTier" }
+            schema:
+              type: object
+              required: [name, price]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                price: { type: number }
+                currency: { type: string, default: USD }
+                quantity: { type: integer }
+                perks: { type: array, items: { type: string } }
+                sortOrder: { type: integer }
+                requiresRegistration: { type: boolean }
+                registrationFormId: { type: string }
       responses:
         "201":
           description: Tier created
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TicketTier" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     put:
+      tags: [events]
       operationId: updateTicketTier
       summary: Update a ticket tier
       security:
@@ -426,9 +1008,354 @@ paths:
       responses:
         "200":
           description: Tier updated
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/events/{id}/tickets/{ticketId}/check-in:
+    post:
+      tags: [events]
+      operationId: checkInTicket
+      summary: Check in a ticket holder — sets used_at timestamp; organizer only
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: ticketId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Checked in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      usedAt: { type: string, format: date-time }
+        "400":
+          description: Ticket not valid or already checked in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Ticket not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/events/{id}/tickets/{ticketId}/refund:
+    post:
+      tags: [events]
+      operationId: refundTicket
+      summary: Mark a ticket as refunded — event owner only
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: ticketId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Ticket refunded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      status: { type: string }
+        "400":
+          description: Ticket not in refundable state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Only event owner can issue refunds
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Ticket or event not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/events/{id}/tickets/{ticketId}/resend-email:
+    post:
+      tags: [events]
+      operationId: resendTicketEmail
+      summary: Resend ticket confirmation email — organizer only; 3-day cooldown
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: ticketId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Email resent
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Ticket not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Email cooldown not elapsed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  lastEmailSentAt: { type: string, format: date-time }
+
+  /api/events/{id}/tickets/{ticketId}/registration:
+    get:
+      tags: [events]
+      operationId: getTicketRegistration
+      summary: Get registration answers for a ticket — organizer only
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: ticketId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Registration data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  registration: { type: object, nullable: true }
+                  questions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        question: { type: string }
+                        answer: {}
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Ticket not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/tickets/{id}/qr:
+    get:
+      tags: [events]
+      operationId: getTicketQr
+      summary: Generate QR code data URI for a ticket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: QR code data URI
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  qrCodeDataUri: { type: string }
+        "500":
+          description: QR generation failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/tickets/{id}/confirm-payment:
+    post:
+      tags: [events]
+      operationId: confirmTicketPayment
+      summary: Confirm e-Transfer payment for a held ticket — organizer only
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Payment confirmed, ticket activated
+        "400":
+          description: Ticket not in held state or not an e-Transfer hold
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Ticket not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/register/{ticketId}:
+    get:
+      tags: [events]
+      operationId: getTicketRegistrationByTicket
+      summary: Get registration for a specific ticket
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Registration data
+          content:
+            application/json:
+              schema: { type: object }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    post:
+      tags: [events]
+      operationId: submitTicketRegistration
+      summary: Submit registration details for a ticket
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [formId]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                formId: { type: string }
+                responseId: { type: string, description: "Dykil survey response ID" }
+                registeredByDid: { type: string }
+      responses:
+        "200":
+          description: Registration submitted, confirmation email sent
+          content:
+            application/json:
+              schema: { type: object }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Ticket not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/access/{did}:
+    get:
+      tags: [events]
+      operationId: checkAccess
+      summary: Proxy access check to auth service for a given DID
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Access check result from auth service
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/checkout:
     post:
+      tags: [events]
       operationId: eventCheckout
       summary: Create checkout session via pay service
       requestBody:
@@ -443,6 +1370,7 @@ paths:
                 ticketTypeId: { type: string }
                 quantity: { type: integer, default: 1 }
                 email: { type: string, format: email }
+                invite: { type: string, description: "Invite token for restricted events" }
       responses:
         "200":
           description: Checkout URL created
@@ -453,31 +1381,59 @@ paths:
                 properties:
                   url: { type: string }
                   sessionId: { type: string }
-
-  /api/tickets/by-token/{token}:
-    get:
-      operationId: getTicketByToken
-      summary: Look up a ticket by magic token
-      parameters:
-        - name: token
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Ticket found
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Rate limited
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ticket: { type: object }
-                  event: { $ref: "#/components/schemas/Event" }
-        "404":
-          description: Token not found
+                  error: { type: string }
+                  retryAfter: { type: integer }
+
+  /api/checkout/etransfer:
+    post:
+      tags: [events]
+      operationId: etransferCheckout
+      summary: Create e-Transfer hold on a ticket with payment instructions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventId, ticketTypeId]
+              properties:
+                eventId: { type: string }
+                ticketTypeId: { type: string }
+                email: { type: string, format: email }
+                name: { type: string }
+                invite: { type: string }
+      responses:
+        "200":
+          description: E-Transfer hold created with payment instructions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticketId: { type: string }
+                  holdExpiresAt: { type: string, format: date-time }
+                  paymentInstructions: { type: object }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/webhook/payment:
     post:
+      tags: [events]
       operationId: paymentWebhook
       summary: Payment webhook from pay service
       security:
@@ -491,8 +1447,28 @@ paths:
         "200":
           description: Event received
 
+  /api/proxy/connections:
+    get:
+      tags: [events]
+      operationId: proxyConnections
+      summary: Proxy connections list from connections service (same-origin cookie forwarding)
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Connections list
+          content:
+            application/json:
+              schema: { type: object }
+        "502":
+          description: Could not reach connections service
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/upload:
     post:
+      tags: [events]
       operationId: uploadEventImage
       summary: Upload event cover image
       security:
@@ -517,9 +1493,15 @@ paths:
                 type: object
                 properties:
                   url: { type: string }
+        "400":
+          description: Validation error (missing file, invalid type/size)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/media/{path}:
     get:
+      tags: [events]
       operationId: serveMedia
       summary: Serve media files
       parameters:
@@ -530,3 +1512,8 @@ paths:
       responses:
         "200":
           description: Media file
+        "404":
+          description: File not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }

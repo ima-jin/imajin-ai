@@ -8,8 +8,11 @@ servers:
     description: production
   - url: https://dev-dykil.imajin.ai
     description: dev
-  - url: http://localhost:7101
+  - url: http://localhost:7013
     description: local
+
+tags:
+  - name: dykil
 
 components:
   securitySchemes:
@@ -17,6 +20,9 @@ components:
       type: apiKey
       in: cookie
       name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
   schemas:
     Survey:
       type: object
@@ -36,16 +42,16 @@ components:
               description: "Legacy format: array of field objects"
               items: { type: object }
         settings: { type: object }
-        eventId: { type: string }
         type: { type: string, enum: [survey, poll, quiz] }
         status: { type: string, enum: [draft, published, closed] }
         createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     SurveyResponse:
       type: object
       properties:
         id: { type: string }
         surveyId: { type: string }
-        respondentDid: { type: string }
+        respondentDid: { type: string, nullable: true }
         answers: { type: object }
         createdAt: { type: string, format: date-time }
     Error:
@@ -55,12 +61,31 @@ components:
         error: { type: string }
 
 paths:
+  /api/health:
+    get:
+      operationId: healthCheck
+      summary: Service health check
+      tags: [dykil]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: dykil }
+                  timestamp: { type: string, format: date-time }
+
   /api/surveys:
     post:
       operationId: createSurvey
       summary: Create a new survey
+      tags: [dykil]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -82,7 +107,6 @@ paths:
                       description: "Legacy format — will be wrapped into SurveyJS structure"
                       items: { type: object }
                 settings: { type: object }
-                eventId: { type: string }
                 type: { type: string, enum: [survey, poll, quiz], default: survey }
                 status: { type: string, enum: [draft, published], default: draft }
       responses:
@@ -91,11 +115,23 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Survey" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     get:
       operationId: listMySurveys
       summary: List authenticated user's surveys
+      tags: [dykil]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Surveys list
@@ -107,13 +143,20 @@ paths:
                   surveys:
                     type: array
                     items: { $ref: "#/components/schemas/Survey" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/surveys/mine:
     get:
       operationId: getMySurveys
       summary: List authenticated user's surveys (explicit route)
+      tags: [dykil]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Surveys list
@@ -125,40 +168,17 @@ paths:
                   surveys:
                     type: array
                     items: { $ref: "#/components/schemas/Survey" }
-
-  /api/surveys/event/{eventId}:
-    get:
-      operationId: getEventSurveys
-      summary: Get published surveys linked to an event (public, CORS-enabled)
-      parameters:
-        - name: eventId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Event surveys with response counts
+        "401":
+          description: Unauthorized
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  surveys:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id: { type: string }
-                        title: { type: string }
-                        description: { type: string }
-                        type: { type: string }
-                        handle: { type: string }
-                        responseCount: { type: integer }
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/surveys/handle/{handle}:
     get:
       operationId: getSurveysByHandle
       summary: Get published surveys by user handle (public)
+      tags: [dykil]
       parameters:
         - name: handle
           in: path
@@ -181,6 +201,7 @@ paths:
     get:
       operationId: getSurvey
       summary: Get survey by ID. Published surveys are public; draft surveys require ownership.
+      tags: [dykil]
       parameters:
         - name: id
           in: path
@@ -188,6 +209,7 @@ paths:
           schema: { type: string }
       security:
         - cookieAuth: []
+        - bearerAuth: []
         - {}
       responses:
         "200":
@@ -197,11 +219,16 @@ paths:
               schema: { $ref: "#/components/schemas/Survey" }
         "404":
           description: Not found (or unpublished and not owner)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     put:
       operationId: updateSurvey
       summary: Update survey (owner only)
+      tags: [dykil]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -218,7 +245,6 @@ paths:
                 description: { type: string }
                 fields: { type: object }
                 settings: { type: object }
-                eventId: { type: string }
                 type: { type: string }
                 status: { type: string, enum: [draft, published, closed] }
       responses:
@@ -227,11 +253,28 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Survey" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the survey owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Survey not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     delete:
       operationId: deleteSurvey
       summary: Delete survey (owner only)
+      tags: [dykil]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -240,11 +283,33 @@ paths:
       responses:
         "200":
           description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: boolean }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the survey owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Survey not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/surveys/{id}/respond:
     post:
       operationId: submitSurveyResponse
       summary: Submit a response to a published survey. Optional auth — anonymous responses allowed.
+      tags: [dykil]
       parameters:
         - name: id
           in: path
@@ -252,6 +317,7 @@ paths:
           schema: { type: string }
       security:
         - cookieAuth: []
+        - bearerAuth: []
         - {}
       requestBody:
         required: true
@@ -264,7 +330,19 @@ paths:
                 answers:
                   type: object
                   description: "Key-value pairs matching field names (SurveyJS: field.name; legacy: field.id)"
+                forceNew:
+                  type: boolean
+                  description: "When true, always creates a new response instead of upserting (used for ticket-scoped responses)"
       responses:
+        "200":
+          description: Response updated (upsert — authenticated user already responded)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  response: { $ref: "#/components/schemas/SurveyResponse" }
         "201":
           description: Response submitted
           content:
@@ -275,18 +353,29 @@ paths:
                   message: { type: string }
                   response: { $ref: "#/components/schemas/SurveyResponse" }
         "400":
-          description: Missing required fields
+          description: Missing required fields or validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "403":
           description: Survey not accepting responses (not published)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "404":
           description: Survey not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/surveys/{id}/responses:
     get:
       operationId: getSurveyResponses
       summary: Get all responses for a survey (owner only, CORS-enabled)
+      tags: [dykil]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -304,5 +393,81 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/SurveyResponse" }
                   total: { type: integer }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "403":
           description: Not the survey owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Survey not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/surveys/{id}/responses/check:
+    get:
+      operationId: checkSurveyResponse
+      summary: Check if the current user has already responded to a survey. Supports session cookie, DID param, or responseId param.
+      tags: [dykil]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: did
+          in: query
+          required: false
+          schema: { type: string }
+          description: "Explicit DID lookup — used server-to-server by the events service"
+        - name: responseId
+          in: query
+          required: false
+          schema: { type: string }
+          description: "Response ID for anonymous users who stored it in localStorage"
+        - name: include
+          in: query
+          required: false
+          schema: { type: string, enum: [answers] }
+          description: "Pass 'answers' to also return the submitted answer payload"
+        - name: skipDid
+          in: query
+          required: false
+          schema: { type: boolean }
+          description: "When true, skips session-cookie DID lookup (for ticket-scoped checks)"
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+        - {}
+      responses:
+        "200":
+          description: Response check result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  completed: { type: boolean }
+                  answers:
+                    type: object
+                    description: "Only present when include=answers and the user has responded"
+                  responseId:
+                    type: string
+                    description: "Only present when include=answers and the user has responded"
+
+  /api/spec:
+    get:
+      operationId: getSpec
+      summary: Serve the OpenAPI spec YAML
+      tags: [dykil]
+      responses:
+        "200":
+          description: OpenAPI YAML document
+          content:
+            text/yaml:
+              schema:
+                type: string

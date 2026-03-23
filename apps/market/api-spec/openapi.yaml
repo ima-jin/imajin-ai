@@ -1,0 +1,594 @@
+openapi: "3.1.0"
+info:
+  title: imajin market
+  version: "1.0.0"
+  description: Peer-to-peer marketplace with tiered seller access (off-platform contact, on-platform checkout, trust-gated), .fair revenue distribution, and Stripe-powered payments via the pay service.
+servers:
+  - url: https://market.imajin.ai
+    description: production
+  - url: https://dev-market.imajin.ai
+    description: dev
+  - url: http://localhost:7015
+    description: local
+
+tags:
+  - name: market
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Listing:
+      type: object
+      properties:
+        id: { type: string }
+        sellerDid: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        price:
+          type: number
+          description: "Price as a decimal number"
+        currency:
+          type: string
+          description: "ISO 4217 currency code, default CAD"
+          example: CAD
+        category: { type: string, nullable: true }
+        images:
+          type: array
+          items: { type: string }
+          description: "Array of image URLs, max 8"
+        imageAssetIds:
+          type: array
+          items: { type: string }
+          description: "Corresponding asset IDs for CDN-managed images"
+        quantity: { type: integer, nullable: true }
+        sellerTier:
+          type: string
+          enum: [public_offplatform, public_onplatform, trust_gated]
+          description: "public_offplatform: buyer contacts seller directly; public_onplatform: checkout via pay service; trust_gated: requires trust threshold"
+        contactInfo:
+          type: object
+          nullable: true
+          description: "Required for public_offplatform tier"
+          properties:
+            phone: { type: string }
+            email: { type: string }
+            whatsapp: { type: string }
+        trustThreshold: { type: number, nullable: true }
+        rangeKm:
+          type: integer
+          description: "Geographic availability radius in kilometres, default 50"
+        fairManifest:
+          type: object
+          nullable: true
+          description: ".fair revenue distribution manifest used by the pay service"
+        metadata: { type: object }
+        status:
+          type: string
+          enum: [active, paused, sold, removed]
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ListingPreview:
+      type: object
+      description: "Compact listing shape returned by the public profile-listings endpoint"
+      properties:
+        id: { type: string }
+        title: { type: string }
+        price: { type: number }
+        currency: { type: string }
+        images:
+          type: array
+          items: { type: string }
+        category: { type: string, nullable: true }
+        sellerTier: { type: string }
+        createdAt: { type: string, format: date-time }
+    SellerSettings:
+      type: object
+      properties:
+        showMarketItems:
+          type: boolean
+          description: "Whether the seller's active listings appear on their public profile"
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/health:
+    get:
+      operationId: healthCheck
+      summary: Service health check
+      tags: [market]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: market }
+                  timestamp: { type: string, format: date-time }
+
+  /api/listings:
+    get:
+      operationId: listListings
+      summary: Browse and search active listings. Authenticated sellers viewing their own listings can see all statuses.
+      tags: [market]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema: { type: string }
+          description: "Filter by category (partial match)"
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [active, paused, sold, removed], default: active }
+          description: "Filter by status. Unauthenticated callers only see active listings."
+        - name: currency
+          in: query
+          required: false
+          schema: { type: string }
+          description: "Filter by ISO 4217 currency code"
+        - name: seller_tier
+          in: query
+          required: false
+          schema: { type: string, enum: [public_offplatform, public_onplatform, trust_gated] }
+        - name: seller_did
+          in: query
+          required: false
+          schema: { type: string }
+          description: "Filter to a specific seller's listings"
+        - name: sort
+          in: query
+          required: false
+          schema: { type: string, enum: [newest, price_asc, price_desc], default: newest }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Paginated listings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  listings:
+                    type: array
+                    items: { $ref: "#/components/schemas/Listing" }
+                  total: { type: integer }
+                  page: { type: integer }
+                  limit: { type: integer }
+                  hasMore: { type: boolean }
+    post:
+      operationId: createListing
+      summary: Create a new listing. public_offplatform tier requires at least one contactInfo field.
+      tags: [market]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, price]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                price:
+                  type: number
+                  minimum: 0.01
+                currency: { type: string, default: CAD }
+                category: { type: string }
+                images:
+                  type: array
+                  items: { type: string }
+                  maxItems: 8
+                imageAssetIds:
+                  type: array
+                  items: { type: string }
+                  maxItems: 8
+                quantity: { type: integer, default: 1 }
+                sellerTier:
+                  type: string
+                  enum: [public_offplatform, public_onplatform, trust_gated]
+                  default: public_offplatform
+                contactInfo:
+                  type: object
+                  description: "Required when sellerTier is public_offplatform (default)"
+                  properties:
+                    phone: { type: string }
+                    email: { type: string }
+                    whatsapp: { type: string }
+                trustThreshold: { type: number }
+                rangeKm: { type: integer, default: 50 }
+                metadata: { type: object }
+      responses:
+        "201":
+          description: Listing created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/listings/{id}:
+    get:
+      operationId: getListing
+      summary: Get a single listing by ID (public)
+      tags: [market]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Listing detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+        "404":
+          description: Listing not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    patch:
+      operationId: updateListing
+      summary: Update a listing (seller only). Cannot update sold or removed listings. Status can only be set to active or paused.
+      tags: [market]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                description: { type: string }
+                price: { type: number, minimum: 0.01 }
+                currency: { type: string }
+                category: { type: string }
+                images:
+                  type: array
+                  items: { type: string }
+                  maxItems: 8
+                imageAssetIds:
+                  type: array
+                  items: { type: string }
+                  maxItems: 8
+                quantity: { type: integer }
+                sellerTier:
+                  type: string
+                  enum: [public_offplatform, public_onplatform, trust_gated]
+                contactInfo:
+                  type: object
+                  properties:
+                    phone: { type: string }
+                    email: { type: string }
+                    whatsapp: { type: string }
+                rangeKm: { type: integer }
+                metadata: { type: object }
+                status:
+                  type: string
+                  enum: [active, paused]
+                  description: "Seller can pause or re-activate a listing; sold/removed transitions are system-managed"
+      responses:
+        "200":
+          description: Listing updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+        "400":
+          description: Validation error or invalid status transition
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the listing seller
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Listing not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      operationId: removeListing
+      summary: Soft-delete a listing (seller only) — sets status to removed
+      tags: [market]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Listing removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the listing seller
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Listing not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/listings/{id}/purchase:
+    post:
+      operationId: purchaseListing
+      summary: Initiate a checkout session via the pay service. Not available for public_offplatform listings (contact seller directly). Returns a Stripe checkout URL.
+      tags: [market]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                quantity:
+                  type: integer
+                  minimum: 1
+                  default: 1
+      responses:
+        "200":
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                    description: "Stripe hosted checkout URL — redirect the buyer here"
+                  sessionId:
+                    type: string
+                    description: "Stripe checkout session ID"
+        "400":
+          description: Listing not active or not available for on-platform purchase
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Listing not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/my/listings:
+    get:
+      operationId: getMyListings
+      summary: Get the authenticated seller's own listings (all statuses visible)
+      tags: [market]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [active, paused, sold, removed] }
+          description: "Optionally filter by status"
+        - name: sort
+          in: query
+          required: false
+          schema: { type: string, enum: [newest, price_asc, price_desc], default: newest }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Paginated seller listings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  listings:
+                    type: array
+                    items: { $ref: "#/components/schemas/Listing" }
+                  total: { type: integer }
+                  page: { type: integer }
+                  limit: { type: integer }
+                  hasMore: { type: boolean }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/seller/settings:
+    get:
+      operationId: getSellerSettings
+      summary: Get seller settings for the authenticated user. Creates a default row if none exists.
+      tags: [market]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Seller settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SellerSettings" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    patch:
+      operationId: updateSellerSettings
+      summary: Update seller settings for the authenticated user
+      tags: [market]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [showMarketItems]
+              properties:
+                showMarketItems:
+                  type: boolean
+                  description: "Whether to display active listings on the seller's public profile"
+      responses:
+        "200":
+          description: Settings updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SellerSettings" }
+        "400":
+          description: showMarketItems must be a boolean
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/seller/{did}/profile-listings:
+    get:
+      operationId: getProfileListings
+      summary: Get a seller's active listings for public profile display. Returns empty array if the seller has not enabled profile integration.
+      tags: [market]
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+          description: "Seller DID"
+      responses:
+        "200":
+          description: Profile listings (up to 8, newest first)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  listings:
+                    type: array
+                    items: { $ref: "#/components/schemas/ListingPreview" }
+                  enabled:
+                    type: boolean
+                    description: "false when the seller has disabled profile market integration"
+
+  /api/webhook:
+    post:
+      operationId: handleWebhook
+      summary: Receive payment events from the pay service. Authenticated via x-webhook-secret header or body.secret. Decrements quantity and marks listings sold when payment succeeds.
+      tags: [market]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  description: "Event type, e.g. payment.succeeded"
+                status:
+                  type: string
+                  description: "Payment status, e.g. paid, succeeded"
+                secret:
+                  type: string
+                  description: "Webhook secret (alternative to x-webhook-secret header)"
+                metadata:
+                  type: object
+                  properties:
+                    listingId: { type: string }
+                    sellerDid: { type: string }
+                    buyerDid: { type: string }
+      responses:
+        "200":
+          description: Webhook received and processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received: { type: boolean }
+        "401":
+          description: Invalid or missing webhook secret
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }

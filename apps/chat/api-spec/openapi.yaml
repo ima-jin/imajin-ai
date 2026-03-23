@@ -8,7 +8,7 @@ servers:
     description: production
   - url: https://dev-chat.imajin.ai
     description: dev
-  - url: http://localhost:7007
+  - url: http://localhost:7006
     description: local
 
 components:
@@ -17,28 +17,63 @@ components:
       type: apiKey
       in: cookie
       name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
   schemas:
-    Conversation:
+    ConversationV2:
       type: object
       properties:
-        id: { type: string }
-        type: { type: string }
+        did: { type: string, description: "Conversation DID (stable identifier)" }
         name: { type: string }
-        description: { type: string }
-        visibility: { type: string, enum: [public, private] }
+        type: { type: string, enum: [dm, group, event, unknown] }
+        slug: { type: string }
+        createdBy: { type: string }
         createdAt: { type: string, format: date-time }
-    Message:
+        lastMessageAt: { type: string, format: date-time }
+        lastMessagePreview: { type: string }
+        unread: { type: integer }
+        otherParticipant:
+          type: object
+          nullable: true
+          properties:
+            did: { type: string }
+            handle: { type: string, nullable: true }
+            name: { type: string, nullable: true }
+    MessageV2:
       type: object
       properties:
         id: { type: string }
-        conversationId: { type: string }
-        authorDid: { type: string }
-        content: { type: string }
-        replyTo: { type: string }
-        mediaType: { type: string }
-        mediaPath: { type: string }
-        mediaMeta: { type: object }
+        conversationDid: { type: string }
+        fromDid: { type: string }
+        content:
+          type: object
+          description: "Structured content object. For text messages: {type: 'text', text: string}. For media: {type: 'media'}. For voice: {type: 'voice'}. For location: {type: 'location'}."
+        contentType: { type: string, enum: [text, system, media, voice, location] }
+        replyToMessageId: { type: string, nullable: true }
+        mediaType: { type: string, nullable: true }
+        mediaPath: { type: string, nullable: true }
+        mediaAssetId: { type: string, nullable: true }
+        mediaMeta: { type: object, nullable: true }
+        signature: { type: string, nullable: true, description: "Node chain signature (best-effort, may be null)" }
+        editedAt: { type: string, format: date-time, nullable: true }
+        deletedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
+        reactions:
+          type: array
+          items: { $ref: "#/components/schemas/Reaction" }
+    Reaction:
+      type: object
+      properties:
+        messageId: { type: string }
+        did: { type: string }
+        emoji: { type: string }
+    ReactionSummary:
+      type: object
+      properties:
+        emoji: { type: string }
+        count: { type: integer }
+        reacted: { type: boolean, description: "Whether the current user has added this reaction" }
     KeyBundle:
       type: object
       properties:
@@ -46,18 +81,59 @@ components:
         identityKey: { type: string }
         signedPreKey: { type: string }
         signature: { type: string }
-        oneTimePreKey: { type: string }
+        oneTimePreKey: { type: string, nullable: true }
+    ChatInvite:
+      type: object
+      properties:
+        id: { type: string }
+        conversationId: { type: string, description: "Conversation DID or legacy ID" }
+        createdBy: { type: string }
+        forDid: { type: string, nullable: true }
+        maxUses: { type: string, nullable: true }
+        usedCount: { type: string }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        revokedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+    Member:
+      type: object
+      properties:
+        did: { type: string }
+        role: { type: string }
+        name: { type: string, nullable: true }
+        handle: { type: string, nullable: true }
     Error:
       type: object
       required: [error]
       properties:
         error: { type: string }
 
+tags:
+  - name: chat
+    description: imajin chat service
+
 paths:
+  /api/health:
+    get:
+      tags: [chat]
+      operationId: chatHealthCheck
+      summary: Service health check
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  service: { type: string }
+                  timestamp: { type: string, format: date-time }
+
   /api/session:
     get:
+      tags: [chat]
       operationId: getChatSession
-      summary: Get current chat session
+      summary: Get current chat session — verifies JWT and returns enriched identity with profile
       security:
         - cookieAuth: []
       responses:
@@ -75,11 +151,60 @@ paths:
                       handle: { type: string }
                       name: { type: string }
                       type: { type: string }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/capabilities:
+    get:
+      tags: [chat]
+      operationId: getChatCapabilities
+      summary: Get current user's capabilities based on identity tier
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Capabilities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tier: { type: string }
+                  inGraph: { type: boolean }
+                  capabilities: { type: array, items: { type: string } }
+        "401":
+          description: Not authenticated
+
+  /api/access/{did}:
+    get:
+      tags: [chat]
+      operationId: proxyAccessCheck
+      summary: Proxy access check to auth service — forwards session cookie server-to-server
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+          description: URL-encoded DID to check access for
+      responses:
+        "200":
+          description: Access check result
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/conversations:
     get:
+      tags: [chat]
       operationId: listConversations
-      summary: List conversations for authenticated user
+      summary: List v2 conversations for authenticated user — includes unread counts and DM participant enrichment
       security:
         - cookieAuth: []
       responses:
@@ -92,10 +217,13 @@ paths:
                 properties:
                   conversations:
                     type: array
-                    items: { $ref: "#/components/schemas/Conversation" }
+                    items: { $ref: "#/components/schemas/ConversationV2" }
+        "401":
+          description: Not authenticated
     post:
+      tags: [chat]
       operationId: createConversation
-      summary: Create a new conversation
+      summary: Create a new v2 conversation — direct type requires trust graph membership
       security:
         - cookieAuth: []
       requestBody:
@@ -106,22 +234,46 @@ paths:
               type: object
               required: [type, participantDids]
               properties:
-                type: { type: string }
-                name: { type: string }
-                description: { type: string }
-                participantDids: { type: array, items: { type: string } }
-                visibility: { type: string, enum: [public, private], default: private }
+                type:
+                  type: string
+                  enum: [direct, group]
+                  description: "direct = DM (requires graph membership); group = multi-person"
+                name:
+                  type: string
+                  description: "Required for group conversations"
+                participantDids:
+                  type: array
+                  items: { type: string }
+                  description: "Exactly 1 DID for direct; 1+ for group"
       responses:
         "201":
           description: Conversation created
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Conversation" }
+              schema:
+                type: object
+                properties:
+                  conversation: { $ref: "#/components/schemas/ConversationV2" }
+        "200":
+          description: Conversation already exists (idempotent)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversation: { $ref: "#/components/schemas/ConversationV2" }
+                  existing: { type: boolean }
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/conversations/unread:
     get:
+      tags: [chat]
       operationId: getUnreadCounts
-      summary: Get unread message counts
+      summary: Get unread message counts — returns total and per-conversation breakdown
       security:
         - cookieAuth: []
       responses:
@@ -143,8 +295,9 @@ paths:
 
   /api/conversations/{id}:
     get:
+      tags: [chat]
       operationId: getConversation
-      summary: Get conversation by ID
+      summary: Get v2 conversation by URL-encoded DID — verifies access via auth service
       security:
         - cookieAuth: []
       parameters:
@@ -152,17 +305,22 @@ paths:
           in: path
           required: true
           schema: { type: string }
+          description: URL-encoded conversation DID
       responses:
         "200":
           description: Conversation
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Conversation" }
+              schema:
+                type: object
+                properties:
+                  conversation: { $ref: "#/components/schemas/ConversationV2" }
         "404":
-          description: Not found
+          description: Not found or access denied
     patch:
+      tags: [chat]
       operationId: updateConversation
-      summary: Update conversation metadata
+      summary: Update conversation name — only the creator can update; auto-creates if not exists
       security:
         - cookieAuth: []
       parameters:
@@ -170,6 +328,7 @@ paths:
           in: path
           required: true
           schema: { type: string }
+          description: URL-encoded conversation DID
       requestBody:
         required: true
         content:
@@ -178,14 +337,21 @@ paths:
               type: object
               properties:
                 name: { type: string }
-                description: { type: string }
-                visibility: { type: string, enum: [public, private] }
       responses:
         "200":
           description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "403":
+          description: Only the creator can update
     delete:
+      tags: [chat]
       operationId: deleteConversation
-      summary: Delete conversation
+      summary: Delete conversation (creator only) — cascades to messages, reactions, and read records
       security:
         - cookieAuth: []
       parameters:
@@ -193,14 +359,26 @@ paths:
           in: path
           required: true
           schema: { type: string }
+          description: URL-encoded conversation DID
       responses:
         "200":
           description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: boolean }
+        "403":
+          description: Only the creator can delete
+        "404":
+          description: Not found
 
   /api/conversations/{id}/messages:
     get:
+      tags: [chat]
       operationId: getMessages
-      summary: Get messages in a conversation
+      summary: Get paginated messages for a conversation — includes inline reactions
       security:
         - cookieAuth: []
       parameters:
@@ -208,9 +386,10 @@ paths:
           in: path
           required: true
           schema: { type: string }
+          description: URL-encoded conversation DID
         - name: limit
           in: query
-          schema: { type: integer, default: 50 }
+          schema: { type: integer, default: 50, maximum: 100 }
         - name: before
           in: query
           schema: { type: string }
@@ -225,10 +404,14 @@ paths:
                 properties:
                   messages:
                     type: array
-                    items: { $ref: "#/components/schemas/Message" }
+                    items: { $ref: "#/components/schemas/MessageV2" }
+                  hasMore: { type: boolean }
+        "404":
+          description: Not found or access denied
     post:
+      tags: [chat]
       operationId: sendMessage
-      summary: Send a message
+      summary: Send a message — soft DIDs blocked; content must be an object; auto-creates conversation if missing
       security:
         - cookieAuth: []
       parameters:
@@ -236,6 +419,7 @@ paths:
           in: path
           required: true
           schema: { type: string }
+          description: URL-encoded conversation DID
       requestBody:
         required: true
         content:
@@ -244,22 +428,44 @@ paths:
               type: object
               required: [content]
               properties:
-                content: { type: string }
-                replyTo: { type: string }
+                content:
+                  type: object
+                  description: "Structured content object, e.g. {type: 'text', text: 'hello'}"
+                contentType:
+                  type: string
+                  enum: [text, system, media, voice, location]
+                  default: text
+                replyToMessageId: { type: string }
                 mediaType: { type: string }
                 mediaPath: { type: string }
+                mediaAssetId: { type: string }
                 mediaMeta: { type: object }
+                conversationName: { type: string, description: "Optional name hint for auto-creation" }
       responses:
         "201":
           description: Message sent
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Message" }
+              schema:
+                type: object
+                properties:
+                  message: { $ref: "#/components/schemas/MessageV2" }
+        "403":
+          description: Soft DID or capability denied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  code: { type: string }
+                  required: { type: string }
 
   /api/conversations/{id}/messages/{msgId}:
     put:
+      tags: [chat]
       operationId: editMessage
-      summary: Edit a message
+      summary: Edit a message (author only) — content must be an object
       security:
         - cookieAuth: []
       parameters:
@@ -267,6 +473,7 @@ paths:
           in: path
           required: true
           schema: { type: string }
+          description: URL-encoded conversation DID
         - name: msgId
           in: path
           required: true
@@ -279,13 +486,26 @@ paths:
               type: object
               required: [content]
               properties:
-                content: { type: string }
+                content:
+                  type: object
+                  description: "Structured content object"
       responses:
         "200":
           description: Message updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { $ref: "#/components/schemas/MessageV2" }
+        "403":
+          description: Not the author
+        "404":
+          description: Message not found
     delete:
+      tags: [chat]
       operationId: deleteMessage
-      summary: Delete a message
+      summary: Soft delete a message — author can always delete; others need conversation access
       security:
         - cookieAuth: []
       parameters:
@@ -293,18 +513,30 @@ paths:
           in: path
           required: true
           schema: { type: string }
+          description: URL-encoded conversation DID
         - name: msgId
           in: path
           required: true
           schema: { type: string }
       responses:
         "200":
-          description: Message deleted
+          description: Message soft-deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { $ref: "#/components/schemas/MessageV2" }
+        "403":
+          description: No permission
+        "404":
+          description: Message not found
 
   /api/conversations/{id}/participants:
     get:
+      tags: [chat]
       operationId: listParticipants
-      summary: List conversation participants
+      summary: List conversation participants — proxies to auth service members endpoint
       security:
         - cookieAuth: []
       parameters:
@@ -312,12 +544,24 @@ paths:
           in: path
           required: true
           schema: { type: string }
+          description: URL-encoded conversation DID
       responses:
         "200":
           description: Participants list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  participants:
+                    type: array
+                    items: { type: object }
+        "404":
+          description: Not found or access denied
     post:
+      tags: [chat]
       operationId: addParticipant
-      summary: Add a participant
+      summary: Add a participant — delegates to auth service
       security:
         - cookieAuth: []
       parameters:
@@ -325,6 +569,7 @@ paths:
           in: path
           required: true
           schema: { type: string }
+          description: URL-encoded conversation DID
       requestBody:
         required: true
         content:
@@ -337,50 +582,12 @@ paths:
       responses:
         "201":
           description: Participant added
-    patch:
-      operationId: updateParticipant
-      summary: Update participant role
-      security:
-        - cookieAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                did: { type: string }
-                role: { type: string }
-      responses:
-        "200":
-          description: Updated
-    delete:
-      operationId: removeParticipant
-      summary: Remove a participant
-      security:
-        - cookieAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: did
-          in: query
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Removed
 
   /api/conversations/{id}/read:
     post:
+      tags: [chat]
       operationId: markRead
-      summary: Mark conversation as read
+      summary: Mark a v2 conversation as read — upserts last-read timestamp
       security:
         - cookieAuth: []
       parameters:
@@ -388,14 +595,22 @@ paths:
           in: path
           required: true
           schema: { type: string }
+          description: URL-encoded conversation DID
       responses:
         "200":
           description: Marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
 
   /api/conversations/{id}/upload:
     post:
+      tags: [chat]
       operationId: uploadMedia
-      summary: Upload media to a conversation
+      summary: Upload media to a conversation (25 MB max) — images are auto-resized and thumbnailed
       security:
         - cookieAuth: []
       parameters:
@@ -403,6 +618,7 @@ paths:
           in: path
           required: true
           schema: { type: string }
+          description: URL-encoded conversation DID
       requestBody:
         required: true
         content:
@@ -414,6 +630,7 @@ paths:
                 file:
                   type: string
                   format: binary
+                  description: "Allowed: image/jpeg, image/png, image/gif, image/webp, application/pdf, application/zip, text/plain, application/msword, xlsx"
       responses:
         "200":
           description: Media uploaded
@@ -422,175 +639,65 @@ paths:
               schema:
                 type: object
                 properties:
-                  mediaType: { type: string }
+                  mediaType: { type: string, enum: [image, file] }
                   mediaPath: { type: string }
-                  mediaMeta: { type: object }
-
-  /api/invites:
-    get:
-      operationId: listInvites
-      summary: List conversation invites
-      security:
-        - cookieAuth: []
-      parameters:
-        - name: conversationId
-          in: query
-          schema: { type: string }
-      responses:
-        "200":
-          description: Invites list
-    post:
-      operationId: createInvite
-      summary: Create a conversation invite
-      security:
-        - cookieAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                conversationId: { type: string }
-      responses:
-        "201":
-          description: Invite created
-
-  /api/invites/{id}:
-    get:
-      operationId: getInvite
-      summary: Get invite by ID (public)
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Invite details
-    post:
-      operationId: acceptInvite
-      summary: Accept a conversation invite
-      security:
-        - cookieAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Invite accepted
-    delete:
-      operationId: revokeInvite
-      summary: Revoke a conversation invite
-      security:
-        - cookieAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Invite revoked
-
-  /api/keys:
-    get:
-      operationId: getKeyBundle
-      summary: Get own E2EE key bundle
-      security:
-        - cookieAuth: []
-      responses:
-        "200":
-          description: Key bundle
+                  mediaMeta:
+                    type: object
+                    properties:
+                      originalName: { type: string }
+                      mimeType: { type: string }
+                      size: { type: integer }
+                      width: { type: integer }
+                      height: { type: integer }
+                      thumbnailPath: { type: string }
+        "400":
+          description: Missing file or invalid type
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/KeyBundle" }
-    post:
-      operationId: uploadKeyBundle
-      summary: Upload E2EE key bundle (X3DH-style)
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/d/{did}/messages:
+    get:
+      tags: [chat]
+      operationId: getDMessages
+      summary: Get paginated messages for a DID-keyed conversation — includes inline reactions
       security:
         - cookieAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [identityKey, signedPreKey, signature]
-              properties:
-                identityKey: { type: string }
-                signedPreKey: { type: string }
-                signature: { type: string }
-                oneTimePreKeys: { type: array, items: { type: string } }
-      responses:
-        "200":
-          description: Key bundle stored
-
-  /api/keys/{did}:
-    get:
-      operationId: getPublicKeys
-      summary: Get public keys for a DID (public)
       parameters:
         - name: did
           in: path
           required: true
           schema: { type: string }
-      responses:
-        "200":
-          description: Public key bundle
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/KeyBundle" }
-
-  /api/lobby/{eventId}:
-    get:
-      operationId: getLobby
-      summary: Get lobby conversation for an event (requires ticket)
-      security:
-        - cookieAuth: []
-      parameters:
-        - name: eventId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Lobby conversation
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Conversation" }
-        "403":
-          description: No ticket
-
-  /api/lobby/{eventId}/messages:
-    get:
-      operationId: getLobbyMessages
-      summary: Get lobby messages (requires ticket)
-      security:
-        - cookieAuth: []
-      parameters:
-        - name: eventId
-          in: path
-          required: true
-          schema: { type: string }
+          description: Conversation DID (not URL-encoded in this path)
         - name: limit
           in: query
-          schema: { type: integer, default: 50 }
+          schema: { type: integer, default: 50, maximum: 100 }
         - name: before
           in: query
           schema: { type: string }
+          description: "Cursor for pagination (message ID)"
       responses:
         "200":
-          description: Lobby messages
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items: { $ref: "#/components/schemas/MessageV2" }
+                  hasMore: { type: boolean }
+        "403":
+          description: Access denied
     post:
-      operationId: sendLobbyMessage
-      summary: Send a lobby message (requires ticket)
+      tags: [chat]
+      operationId: sendDMessage
+      summary: Send a message to a DID-keyed conversation — soft DIDs blocked; auto-creates conversation; node signs payload
       security:
         - cookieAuth: []
       parameters:
-        - name: eventId
+        - name: did
           in: path
           required: true
           schema: { type: string }
@@ -602,44 +709,105 @@ paths:
               type: object
               required: [content]
               properties:
-                content: { type: string }
+                content:
+                  type: object
+                  description: "Structured content object, e.g. {type: 'text', text: 'hello'}"
+                contentType:
+                  type: string
+                  enum: [text, system, media, voice, location]
+                replyToMessageId: { type: string }
+                mediaType: { type: string }
+                mediaPath: { type: string }
+                mediaAssetId: { type: string }
+                mediaMeta: { type: object }
+                conversationName: { type: string }
       responses:
         "201":
           description: Message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { $ref: "#/components/schemas/MessageV2" }
+        "403":
+          description: Soft DID or access denied
 
-  /api/lookup/{did}:
-    get:
-      operationId: lookupDid
-      summary: Resolve DID to handle and name (proxies to auth service)
+  /api/d/{did}/messages/{msgId}:
+    patch:
+      tags: [chat]
+      operationId: editDMessage
+      summary: Edit a DID-keyed message (author only)
+      security:
+        - cookieAuth: []
       parameters:
         - name: did
           in: path
           required: true
           schema: { type: string }
+        - name: msgId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: object
+                  description: "Structured content object"
       responses:
         "200":
-          description: Identity info
-
-  /api/messages/{msgId}/reactions:
-    get:
-      operationId: listReactions
-      summary: List reactions on a message
+          description: Message updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { $ref: "#/components/schemas/MessageV2" }
+        "403":
+          description: Not the author
+        "404":
+          description: Message not found
+    delete:
+      tags: [chat]
+      operationId: deleteDMessage
+      summary: Soft delete a DID-keyed message (author only)
       security:
         - cookieAuth: []
       parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
         - name: msgId
           in: path
           required: true
           schema: { type: string }
       responses:
-        "200":
-          description: Reactions
+        "204":
+          description: Message deleted
+        "403":
+          description: Not the author
+        "404":
+          description: Message not found
+
+  /api/d/{did}/messages/{msgId}/reactions:
     post:
-      operationId: addReaction
-      summary: Add a reaction to a message
+      tags: [chat]
+      operationId: addDReaction
+      summary: Add a reaction to a DID-keyed message
       security:
         - cookieAuth: []
       parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
         - name: msgId
           in: path
           required: true
@@ -656,9 +824,120 @@ paths:
       responses:
         "201":
           description: Reaction added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "400":
+          description: emoji required
+        "404":
+          description: Message not found
     delete:
-      operationId: removeReaction
-      summary: Remove a reaction from a message
+      tags: [chat]
+      operationId: removeDReaction
+      summary: Remove a reaction from a DID-keyed message
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+        - name: msgId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emoji]
+              properties:
+                emoji: { type: string }
+      responses:
+        "204":
+          description: Reaction removed
+
+  /api/d/{did}/members:
+    get:
+      tags: [chat]
+      operationId: getDConversationMembers
+      summary: Get members of a DID-keyed conversation via pod membership — resolves names from auth service
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Members list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items: { $ref: "#/components/schemas/Member" }
+                  count: { type: integer }
+
+  /api/d/{did}/read:
+    post:
+      tags: [chat]
+      operationId: markDRead
+      summary: Mark a DID-keyed conversation as read
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+
+  /api/messages/{msgId}/reactions:
+    get:
+      tags: [chat]
+      operationId: listReactions
+      summary: List grouped reactions on a v2 message — returns per-emoji counts with current user's react status
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: msgId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Reactions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reactions:
+                    type: array
+                    items: { $ref: "#/components/schemas/ReactionSummary" }
+        "404":
+          description: Message not found
+    post:
+      tags: [chat]
+      operationId: addReaction
+      summary: Add a reaction to a v2 message — idempotent; returns updated reaction counts
       security:
         - cookieAuth: []
       parameters:
@@ -677,38 +956,240 @@ paths:
                 emoji: { type: string }
       responses:
         "200":
-          description: Reaction removed
-
-  /api/participants/migrate:
-    post:
-      operationId: migrateParticipants
-      summary: Migrate chat data between DIDs (e.g. soft → hard DID)
+          description: Reaction added; updated counts returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reactions:
+                    type: array
+                    items: { $ref: "#/components/schemas/ReactionSummary" }
+    delete:
+      tags: [chat]
+      operationId: removeReaction
+      summary: Remove a reaction from a v2 message — returns updated reaction counts
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: msgId
+          in: path
+          required: true
+          schema: { type: string }
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [fromDid, toDid]
+              required: [emoji]
               properties:
-                fromDid: { type: string }
-                toDid: { type: string }
+                emoji: { type: string }
       responses:
         "200":
-          description: Migration result
+          description: Reaction removed; updated counts returned
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  migrated: { type: boolean }
-                  participants: { type: integer }
-                  messages: { type: integer }
+                  reactions:
+                    type: array
+                    items: { $ref: "#/components/schemas/ReactionSummary" }
 
-  /api/participants/{did}/conversations:
+  /api/invites:
     get:
-      operationId: getParticipantConversations
-      summary: Get conversation IDs for a DID (public)
+      tags: [chat]
+      operationId: listInvites
+      summary: List active (non-revoked) invites for a conversation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: conversationId
+          in: query
+          required: true
+          schema: { type: string }
+          description: Conversation DID or legacy ID
+      responses:
+        "200":
+          description: Invites list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invites:
+                    type: array
+                    items: { $ref: "#/components/schemas/ChatInvite" }
+        "403":
+          description: Permission denied
+    post:
+      tags: [chat]
+      operationId: createInvite
+      summary: Create an invite link for a conversation
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [conversationId]
+              properties:
+                conversationId: { type: string }
+                forDid: { type: string, description: "Restrict invite to specific DID" }
+                maxUses: { type: integer }
+                expiresInHours: { type: integer }
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invite: { $ref: "#/components/schemas/ChatInvite" }
+                  link: { type: string }
+
+  /api/invites/{id}:
+    get:
+      tags: [chat]
+      operationId: getInvite
+      summary: Get invite info (public — for preview before joining)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invite details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invite:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      conversationId: { type: string }
+                      forDid: { type: string, nullable: true }
+                      expiresAt: { type: string, format: date-time, nullable: true }
+        "404":
+          description: Invite not found
+        "410":
+          description: Invite expired, revoked, or max uses reached
+    post:
+      tags: [chat]
+      operationId: acceptInvite
+      summary: Accept a conversation invite — increments use count and returns conversation DID
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invite accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversationId: { type: string }
+                  joined: { type: boolean }
+        "403":
+          description: Invite is for a different user
+        "410":
+          description: Invite expired, revoked, or max uses reached
+    delete:
+      tags: [chat]
+      operationId: revokeInvite
+      summary: Revoke a conversation invite (creator or conversation member)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invite revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  revoked: { type: boolean }
+        "403":
+          description: Permission denied
+        "404":
+          description: Invite not found
+
+  /api/keys:
+    get:
+      tags: [chat]
+      operationId: getKeyBundle
+      summary: Get own E2EE key bundle with unused pre-key count
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Key bundle
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/KeyBundle"
+                  - type: object
+                    properties:
+                      unusedPreKeyCount: { type: integer }
+        "404":
+          description: No keys uploaded
+    post:
+      tags: [chat]
+      operationId: uploadKeyBundle
+      summary: Upload or update E2EE key bundle (X3DH-style) — signature is verified server-side
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identityKey, signedPreKey, signature]
+              properties:
+                identityKey: { type: string, description: "Base64-encoded Ed25519 public key" }
+                signedPreKey: { type: string, description: "Base64-encoded signed pre-key" }
+                signature: { type: string, description: "Base64-encoded Ed25519 signature of signedPreKey" }
+                oneTimePreKeys: { type: array, items: { type: string } }
+      responses:
+        "200":
+          description: Key bundle stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  preKeysAdded: { type: integer }
+        "400":
+          description: Invalid signature
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/keys/{did}:
+    get:
+      tags: [chat]
+      operationId: getPublicKeys
+      summary: Get public keys for a DID (public endpoint) — consumes one one-time pre-key if available
       parameters:
         - name: did
           in: path
@@ -716,18 +1197,41 @@ paths:
           schema: { type: string }
       responses:
         "200":
-          description: Conversation IDs
+          description: Public key bundle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KeyBundle" }
+        "404":
+          description: No keys found for DID
+
+  /api/lookup/{did}:
+    get:
+      tags: [chat]
+      operationId: lookupDid
+      summary: Resolve DID to handle and name (proxies to auth service)
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Identity info (graceful on lookup failure)
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  conversationIds: { type: array, items: { type: string } }
+                  did: { type: string }
+                  handle: { type: string, nullable: true }
+                  name: { type: string, nullable: true }
+                  tier: { type: string, nullable: true }
 
   /api/profile:
     get:
+      tags: [chat]
       operationId: getChatProfile
-      summary: Proxy profile lookup by handle
+      summary: Proxy profile lookup by handle to profile service
       parameters:
         - name: handle
           in: query
@@ -736,16 +1240,75 @@ paths:
       responses:
         "200":
           description: Profile data
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
-  /api/media/chat/{path}:
+  /api/ws-token:
     get:
-      operationId: serveChatMedia
-      summary: Serve chat media files (public)
-      parameters:
-        - name: path
-          in: path
-          required: true
-          schema: { type: string }
+      tags: [chat]
+      operationId: getWsToken
+      summary: Get a short-lived token for WebSocket authentication — exchanges session cookie for token
+      security:
+        - cookieAuth: []
       responses:
         "200":
-          description: Media file
+          description: WS token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+        "401":
+          description: Not authenticated
+
+  /api/ws-token/validate:
+    post:
+      tags: [chat]
+      operationId: validateWsToken
+      summary: Validate a WS auth token (internal — used by ws-server)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "200":
+          description: Token valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+        "401":
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /start:
+    get:
+      tags: [chat]
+      operationId: startConversation
+      summary: Find or create a DM conversation then redirect to it — used by chat open deep-link
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: query
+          required: true
+          schema: { type: string }
+          description: DID of the person to start a conversation with
+      responses:
+        "302":
+          description: Redirect to /conversations/{encodedConvDid}
+        "307":
+          description: Redirect (unauthenticated falls back to /conversations)

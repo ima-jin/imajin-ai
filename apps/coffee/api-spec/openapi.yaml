@@ -3,6 +3,7 @@ info:
   title: imajin coffee
   version: "1.0.0"
   description: Tip pages and one-time or recurring support payments via Stripe Checkout and Solana.
+
 servers:
   - url: https://coffee.imajin.ai
     description: production
@@ -11,12 +12,18 @@ servers:
   - url: http://localhost:7100
     description: local
 
+tags:
+  - name: coffee
+
 components:
   securitySchemes:
     cookieAuth:
       type: apiKey
       in: cookie
       name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
     webhookSecret:
       type: http
       scheme: bearer
@@ -31,6 +38,7 @@ components:
         title: { type: string }
         bio: { type: string }
         avatar: { type: string }
+        avatarAssetId: { type: string, nullable: true, description: "Media service asset ID for the avatar" }
         theme: { type: object }
         paymentMethods:
           type: object
@@ -47,8 +55,10 @@ components:
         presets: { type: array, items: { type: integer }, description: "Preset amounts in cents" }
         allowCustomAmount: { type: boolean }
         allowMessages: { type: boolean }
+        thankYouContent: { type: string, nullable: true }
         isPublic: { type: boolean }
         createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     Tip:
       type: object
       properties:
@@ -70,12 +80,31 @@ components:
         error: { type: string }
 
 paths:
+  /api/health:
+    get:
+      operationId: getCoffeeHealth
+      summary: Health check
+      tags: [coffee]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: coffee }
+                  timestamp: { type: string, format: date-time }
+
   /api/pages:
     post:
       operationId: createCoffeePage
       summary: Create a tip page — one per DID
+      tags: [coffee]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -88,39 +117,65 @@ paths:
                 title: { type: string }
                 bio: { type: string }
                 avatar: { type: string }
+                avatarAssetId: { type: string, description: "Media service asset ID for the avatar" }
                 theme: { type: object }
                 paymentMethods: { type: object }
                 presets: { type: array, items: { type: integer } }
                 allowCustomAmount: { type: boolean }
                 allowMessages: { type: boolean }
+                thankYouContent: { type: string }
       responses:
         "201":
           description: Page created
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CoffeePage" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "409":
           description: Page or handle already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/pages/mine:
     get:
       operationId: getMyCoffeePage
       summary: Get authenticated user's tip page
+      tags: [coffee]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: User's coffee page
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CoffeePage" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "404":
           description: No page found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/pages/{handle}:
     get:
       operationId: getCoffeePage
       summary: Get a public tip page by handle
+      tags: [coffee]
       parameters:
         - name: handle
           in: path
@@ -134,13 +189,21 @@ paths:
               schema: { $ref: "#/components/schemas/CoffeePage" }
         "403":
           description: Page is private
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "404":
           description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     put:
       operationId: updateCoffeePage
       summary: Update tip page (owner only)
+      tags: [coffee]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: handle
           in: path
@@ -156,23 +219,42 @@ paths:
                 title: { type: string }
                 bio: { type: string }
                 avatar: { type: string }
+                avatarAssetId: { type: string }
                 theme: { type: object }
                 paymentMethods: { type: object }
                 presets: { type: array, items: { type: integer } }
                 allowCustomAmount: { type: boolean }
                 allowMessages: { type: boolean }
                 isPublic: { type: boolean }
+                thankYouContent: { type: string }
       responses:
         "200":
           description: Page updated
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CoffeePage" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the page owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     delete:
       operationId: deleteCoffeePage
       summary: Delete tip page (owner only)
+      tags: [coffee]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: handle
           in: path
@@ -181,13 +263,37 @@ paths:
       responses:
         "200":
           description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: boolean }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the page owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/tip:
     post:
       operationId: sendTip
       summary: Send a tip via Stripe Checkout (redirect) or Solana (address return)
+      tags: [coffee]
       security:
         - cookieAuth: []
+        - bearerAuth: []
+        - {}
       requestBody:
         required: true
         content:
@@ -226,13 +332,33 @@ paths:
                       paymentMethod: { type: string, enum: [solana] }
         "400":
           description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "403":
           description: Page not accepting tips or payment method disabled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Coffee page not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Too many requests
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/checkout:
     post:
       operationId: coffeeCheckout
       summary: Create Stripe checkout for one-time or recurring support (no specific page)
+      tags: [coffee]
       requestBody:
         required: true
         content:
@@ -253,13 +379,33 @@ paths:
                 type: object
                 properties:
                   url: { type: string }
+        "400":
+          description: Amount below minimum
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Too many requests
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Failed to create checkout
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/tips/{did}:
     get:
       operationId: getTipsReceived
       summary: Get tips received by a DID (owner only)
+      tags: [coffee]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: did
           in: path
@@ -298,11 +444,27 @@ paths:
                     properties:
                       limit: { type: integer }
                       offset: { type: integer }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized to view these tips
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No coffee page found for this DID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/webhook/payment:
     post:
       operationId: coffeePaymentWebhook
       summary: Receive payment callbacks from pay service
+      tags: [coffee]
       security:
         - webhookSecret: []
       requestBody:
@@ -315,9 +477,15 @@ paths:
                 type: { type: string, enum: [payment.succeeded, payment.failed, checkout.completed] }
                 tipId: { type: string }
                 pageId: { type: string }
+                pageHandle: { type: string }
                 amount: { type: number }
                 paymentId: { type: string }
-                status: { type: string }
+                fromDid: { type: string }
+                fromName: { type: string }
+                fromEmail: { type: string }
+                to_did: { type: string }
+                message: { type: string }
+                stripeSessionId: { type: string }
       responses:
         "200":
           description: Received
@@ -327,3 +495,25 @@ paths:
                 type: object
                 properties:
                   received: { type: boolean }
+        "401":
+          description: Invalid or missing webhook secret
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Webhook handler failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/spec:
+    get:
+      operationId: getCoffeeSpec
+      summary: Serve this OpenAPI spec
+      tags: [coffee]
+      responses:
+        "200":
+          description: OpenAPI YAML
+          content:
+            text/yaml:
+              schema: { type: string }

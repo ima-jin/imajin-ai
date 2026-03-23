@@ -8,8 +8,11 @@ servers:
     description: production
   - url: https://dev-links.imajin.ai
     description: dev
-  - url: http://localhost:7102
+  - url: http://localhost:7014
     description: local
+
+tags:
+  - name: links
 
 components:
   securitySchemes:
@@ -17,6 +20,9 @@ components:
       type: apiKey
       in: cookie
       name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
   schemas:
     LinkPage:
       type: object
@@ -25,12 +31,14 @@ components:
         did: { type: string }
         handle: { type: string }
         title: { type: string }
-        bio: { type: string }
-        avatar: { type: string }
+        bio: { type: string, nullable: true }
+        avatar: { type: string, nullable: true }
+        avatarAssetId: { type: string, nullable: true }
         theme: { type: object }
         socialLinks: { type: object }
         isPublic: { type: boolean }
         createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     Link:
       type: object
       properties:
@@ -38,13 +46,14 @@ components:
         pageId: { type: string }
         title: { type: string }
         url: { type: string }
-        icon: { type: string }
-        thumbnail: { type: string }
+        icon: { type: string, nullable: true }
+        thumbnail: { type: string, nullable: true }
         position: { type: integer }
         isActive: { type: boolean }
         visibility: { type: string, enum: [public, private] }
         clicks: { type: integer }
         createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     Error:
       type: object
       required: [error]
@@ -52,12 +61,31 @@ components:
         error: { type: string }
 
 paths:
+  /api/health:
+    get:
+      operationId: healthCheck
+      summary: Service health check
+      tags: [links]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: links }
+                  timestamp: { type: string, format: date-time }
+
   /api/pages:
     post:
       operationId: createLinksPage
       summary: Create a link-in-bio page — one per DID
+      tags: [links]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -70,6 +98,7 @@ paths:
                 title: { type: string }
                 bio: { type: string }
                 avatar: { type: string }
+                avatarAssetId: { type: string }
                 theme: { type: object }
                 themePreset: { type: string, description: "Named theme preset (e.g., dark, light)" }
                 socialLinks: { type: object }
@@ -79,15 +108,30 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/LinkPage" }
+        "400":
+          description: Validation error (invalid handle format, missing required fields)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "409":
           description: Page or handle already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/pages/mine:
     get:
       operationId: getMyLinksPage
       summary: Get authenticated user's link page with all links
+      tags: [links]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: User's links page (page: null if not created)
@@ -105,26 +149,42 @@ paths:
                   - type: object
                     properties:
                       page: { type: "null" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/pages/auto-create:
     post:
       operationId: autoCreateLinksPage
       summary: Auto-create a link page from identity data (handle + name)
+      tags: [links]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       responses:
         "201":
           description: Page created
           content:
             application/json:
               schema: { $ref: "#/components/schemas/LinkPage" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "409":
           description: Page already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/pages/{handle}:
     get:
       operationId: getLinksPage
       summary: Get a public link page with active links
+      tags: [links]
       parameters:
         - name: handle
           in: path
@@ -145,13 +205,21 @@ paths:
                         items: { $ref: "#/components/schemas/Link" }
         "403":
           description: Page is private
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "404":
           description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     put:
       operationId: updateLinksPage
       summary: Update link page (owner only)
+      tags: [links]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: handle
           in: path
@@ -167,6 +235,7 @@ paths:
                 title: { type: string }
                 bio: { type: string }
                 avatar: { type: string }
+                avatarAssetId: { type: string }
                 theme: { type: object }
                 socialLinks: { type: object }
                 isPublic: { type: boolean }
@@ -176,11 +245,28 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/LinkPage" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the page owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Page not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     delete:
       operationId: deleteLinksPage
       summary: Delete link page (owner only) — links cascade
+      tags: [links]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: handle
           in: path
@@ -189,13 +275,36 @@ paths:
       responses:
         "200":
           description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: boolean }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the page owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Page not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/pages/{handle}/links:
     post:
       operationId: addLinks
       summary: Add links to a page (owner only)
+      tags: [links]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: handle
           in: path
@@ -233,13 +342,35 @@ paths:
                   links:
                     type: array
                     items: { $ref: "#/components/schemas/Link" }
+        "400":
+          description: Validation error (missing title, invalid URL)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the page owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Page not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/pages/{handle}/stats:
     get:
       operationId: getPageStats
       summary: Get page click statistics (owner only) — last 30 days
+      tags: [links]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: handle
           in: path
@@ -277,13 +408,30 @@ paths:
                       properties:
                         referrer: { type: string }
                         clicks: { type: integer }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the page owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Page not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/links/{id}:
     put:
       operationId: updateLink
       summary: Update a link (owner only)
+      tags: [links]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -309,11 +457,33 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Link" }
+        "400":
+          description: Invalid URL
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the page owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Link not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     delete:
       operationId: deleteLink
       summary: Delete a link (owner only)
+      tags: [links]
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -322,11 +492,33 @@ paths:
       responses:
         "200":
           description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: boolean }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the page owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Link not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/links/{id}/click:
     post:
       operationId: recordClick
       summary: Record a link click (privacy-preserving — only referrer domain and country stored)
+      tags: [links]
       parameters:
         - name: id
           in: path
@@ -341,3 +533,16 @@ paths:
                 type: object
                 properties:
                   recorded: { type: boolean }
+
+  /api/spec:
+    get:
+      operationId: getSpec
+      summary: Serve the OpenAPI spec YAML
+      tags: [links]
+      responses:
+        "200":
+          description: OpenAPI YAML document
+          content:
+            text/yaml:
+              schema:
+                type: string

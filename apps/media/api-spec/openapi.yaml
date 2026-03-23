@@ -17,6 +17,9 @@ components:
       type: apiKey
       in: cookie
       name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
   schemas:
     Asset:
       type: object
@@ -29,19 +32,34 @@ components:
         storagePath: { type: string }
         hash: { type: string, description: "SHA-256 hex" }
         fairManifest: { type: object }
-        classification: { type: string }
-        classificationConfidence: { type: integer }
+        fairPath: { type: string }
+        classification: { type: string, nullable: true }
+        classificationConfidence: { type: integer, nullable: true }
         metadata: { type: object }
         status: { type: string, enum: [active, deleted] }
         createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time, nullable: true }
+    AssetUploadResponse:
+      type: object
+      properties:
+        id: { type: string }
+        url: { type: string, description: "Public URL to serve the asset" }
+        filename: { type: string }
+        mimeType: { type: string }
+        size: { type: integer }
+        hash: { type: string }
+        storagePath: { type: string }
+        fairManifest: { type: object }
+        createdAt: { type: string, format: date-time }
+        deduplicated: { type: boolean, description: "True if the exact same file already existed for this owner" }
     Folder:
       type: object
       properties:
         id: { type: string }
         ownerDid: { type: string }
         name: { type: string }
-        parentId: { type: string }
-        icon: { type: string }
+        parentId: { type: string, nullable: true }
+        icon: { type: string, nullable: true }
         isSystem: { type: boolean }
         sortOrder: { type: integer }
         assetCount: { type: integer }
@@ -49,29 +67,44 @@ components:
     FairManifest:
       type: object
       properties:
-        version: { type: string }
-        asset: { type: string }
+        fair: { type: string }
+        id: { type: string }
+        type: { type: string }
         owner: { type: string }
+        created: { type: string, format: date-time }
+        source: { type: string }
         access:
           oneOf:
             - type: string
               enum: [public, private]
             - type: object
               properties:
-                type: { type: string, enum: [trust-graph] }
+                type: { type: string, enum: [trust-graph, conversation] }
                 allowedDids: { type: array, items: { type: string } }
         attribution: { type: array, items: { type: object } }
         transfer: { type: object }
-        createdAt: { type: string, format: date-time }
+    AssetReference:
+      type: object
+      properties:
+        id: { type: string }
+        assetId: { type: string }
+        service: { type: string }
+        entityType: { type: string }
+        entityId: { type: string }
     Error:
       type: object
       required: [error]
       properties:
         error: { type: string }
 
+tags:
+  - name: media
+    description: imajin media service
+
 paths:
   /api/health:
     get:
+      tags: [media]
       operationId: healthCheck
       summary: Service health check
       responses:
@@ -87,8 +120,9 @@ paths:
 
   /api/assets:
     post:
+      tags: [media]
       operationId: uploadAsset
-      summary: Upload a file (50 MB max) — auto-creates .fair manifest and async classification
+      summary: Upload a file (50 MB max) — auto-creates .fair manifest, deduplicates by SHA-256, async ML classification, auto-assigns to context folder
       security:
         - cookieAuth: []
       requestBody:
@@ -103,29 +137,64 @@ paths:
                   type: string
                   format: binary
                   description: "Allowed: image/*, audio/*, video/*, text/*, application/pdf"
-                filename: { type: string }
+                filename:
+                  type: string
+                  description: "Override filename (default: file.name from upload)"
+                context:
+                  type: string
+                  description: "JSON string: {app?, feature?, entityId?, access?} — access=public makes manifest public; feature/app triggers auto-folder assignment"
       responses:
         "201":
           description: Asset uploaded
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Asset" }
+              schema: { $ref: "#/components/schemas/AssetUploadResponse" }
+        "200":
+          description: Deduplicated — same file already exists for this owner
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/AssetUploadResponse"
+                  - type: object
+                    properties:
+                      deduplicated: { type: boolean, enum: [true] }
         "400":
           description: Missing file field
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "413":
           description: File exceeds 50 MB limit
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "415":
           description: MIME type not allowed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Rate limit exceeded (20 uploads per 60 seconds per IP)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     get:
+      tags: [media]
       operationId: listAssets
-      summary: List assets for authenticated user
+      summary: List assets for authenticated user — also accepts internal Bearer + X-Owner-DID for service-to-service
       security:
         - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: type
           in: query
           schema: { type: string }
-          description: "MIME type prefix filter (e.g., image, audio, video)"
+          description: "MIME type prefix filter (e.g., image, audio, video, text)"
+        - name: search
+          in: query
+          schema: { type: string }
+          description: "Filename search (case-insensitive substring)"
         - name: sort
           in: query
           schema: { type: string, default: created }
@@ -155,6 +224,7 @@ paths:
 
   /api/assets/{id}:
     get:
+      tags: [media]
       operationId: getAsset
       summary: Serve asset file with .fair access control. Supports thumbnail resizing (?w=) and conditional GET (ETag).
       parameters:
@@ -177,18 +247,91 @@ paths:
             ETag:
               schema: { type: string }
             X-Fair-Access:
-              schema: { type: string, enum: [public, private, trust-graph] }
+              schema: { type: string, enum: [public, private, trust-graph, conversation] }
             Cache-Control:
               schema: { type: string }
         "304":
           description: Not modified (ETag match)
         "403":
           description: Access denied per .fair manifest
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  reason: { type: string }
+        "404":
+          description: Asset not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [media]
+      operationId: deleteAsset
+      summary: Hard-delete asset and files from storage (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Asset deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "401":
+          description: Authentication required
+        "403":
+          description: Forbidden — not the owner
+        "404":
+          description: Asset not found
+    patch:
+      tags: [media]
+      operationId: renameAsset
+      summary: Rename asset filename (owner only) — renames the file on disk
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filename]
+              properties:
+                filename: { type: string }
+      responses:
+        "200":
+          description: Renamed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  filename: { type: string }
+        "400":
+          description: filename is required
+        "403":
+          description: Forbidden
         "404":
           description: Asset not found
 
   /api/assets/{id}/fair:
     get:
+      tags: [media]
       operationId: getAssetFair
       summary: Get .fair manifest for an asset (same access rules as the asset itself)
       parameters:
@@ -210,8 +353,81 @@ paths:
         "404":
           description: Manifest not found
 
+  /api/assets/{id}/content:
+    get:
+      tags: [media]
+      operationId: getAssetContent
+      summary: Read text content of a text/* or application/json asset — internal Bearer also accepted for public/trust-graph
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: File text content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  content: { type: string }
+                  filename: { type: string }
+        "403":
+          description: Forbidden
+        "404":
+          description: Asset not found
+        "415":
+          description: Not a text file
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  mimeType: { type: string }
+    put:
+      tags: [media]
+      operationId: updateAssetContent
+      summary: Overwrite text file content (owner only) — updates hash and size in DB
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+      responses:
+        "200":
+          description: Content updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "400":
+          description: content must be a string
+        "403":
+          description: Forbidden
+        "404":
+          description: Asset not found
+
   /api/assets/{id}/folders:
     put:
+      tags: [media]
       operationId: setAssetFolders
       summary: Set folder assignments for an asset (replaces all existing assignments)
       security:
@@ -245,6 +461,7 @@ paths:
 
   /api/assets/{id}/classify:
     post:
+      tags: [media]
       operationId: classifyAsset
       summary: Re-classify an existing asset (owner only)
       security:
@@ -269,8 +486,49 @@ paths:
                       category: { type: string }
                       confidence: { type: number }
 
+  /api/assets/{id}/references:
+    post:
+      tags: [media]
+      operationId: registerAssetReference
+      summary: Register a service entity reference to an asset (internal — requires Bearer AUTH_INTERNAL_API_KEY)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service, entityType, entityId]
+              properties:
+                service: { type: string, description: "Service name, e.g. 'profile', 'chat'" }
+                entityType: { type: string, description: "Entity type, e.g. 'avatar', 'message'" }
+                entityId: { type: string }
+      responses:
+        "201":
+          description: Reference registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  reference: { $ref: "#/components/schemas/AssetReference" }
+        "400":
+          description: Missing required fields
+        "401":
+          description: Unauthorized
+        "404":
+          description: Asset not found
+
   /api/folders:
     get:
+      tags: [media]
       operationId: listFolders
       summary: List all folders with asset counts
       security:
@@ -287,8 +545,9 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Folder" }
     post:
+      tags: [media]
       operationId: createFolder
-      summary: Create a folder
+      summary: Create a folder — parentId must belong to same owner
       security:
         - cookieAuth: []
       requestBody:
@@ -308,9 +567,14 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Folder" }
+        "400":
+          description: name is required
+        "404":
+          description: Parent folder not found
 
   /api/folders/init:
     post:
+      tags: [media]
       operationId: initFolders
       summary: Create default system folders (Photos, Audio, Videos, Documents, Uncategorized) — idempotent
       security:
@@ -329,9 +593,17 @@ paths:
                     items: { $ref: "#/components/schemas/Folder" }
         "200":
           description: Already initialized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  created: { type: array, items: {} }
 
   /api/folders/{id}:
     patch:
+      tags: [media]
       operationId: updateFolder
       summary: Rename, move, or change folder icon
       security:
@@ -357,9 +629,14 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Folder" }
+        "400":
+          description: Invalid input
+        "404":
+          description: Folder not found or parent not found
     delete:
+      tags: [media]
       operationId: deleteFolder
-      summary: Delete folder (assets stay, only folder assignments removed)
+      summary: Delete folder (assets stay, only folder assignments removed) — system folders cannot be deleted
       security:
         - cookieAuth: []
       parameters:
@@ -372,3 +649,77 @@ paths:
           description: Folder deleted
         "403":
           description: Cannot delete system folders
+        "404":
+          description: Folder not found
+
+  /api/presence/{did}:
+    get:
+      tags: [media]
+      operationId: getPresence
+      summary: Read .imajin folder contents (soul.md, context.md, config.json) for a DID (internal — requires Bearer MEDIA_INTERNAL_API_KEY)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Presence data (seeded=false if .imajin folder not found)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  soul: { type: string, nullable: true, description: "Contents of soul.md" }
+                  context: { type: string, nullable: true, description: "Contents of context.md" }
+                  config: { type: object, nullable: true, description: "Parsed contents of config.json" }
+                  seeded: { type: boolean }
+        "401":
+          description: Unauthorized
+
+  /api/seed/presence:
+    post:
+      tags: [media]
+      operationId: seedPresence
+      summary: Seed default .imajin/ presence files for a DID (internal — requires Bearer MEDIA_INTERNAL_API_KEY) — idempotent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string }
+                handle: { type: string, description: "Used to personalise soul.md content" }
+      responses:
+        "201":
+          description: Presence seeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  folderId: { type: string }
+                  assetIds: { type: array, items: { type: string } }
+                  files: { type: array, items: { type: string } }
+        "200":
+          description: Already seeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  folderId: { type: string }
+                  assetIds: { type: array, items: { type: string } }
+        "400":
+          description: did is required
+        "401":
+          description: Unauthorized

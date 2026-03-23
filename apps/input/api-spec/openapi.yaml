@@ -1,0 +1,263 @@
+openapi: "3.1.0"
+info:
+  title: imajin input
+  version: "1.0.0"
+  description: Media upload relay and Whisper speech-to-text transcription.
+
+servers:
+  - url: https://input.imajin.ai
+    description: production
+  - url: https://dev-input.imajin.ai
+    description: dev
+  - url: http://localhost:7010
+    description: local
+
+tags:
+  - name: input
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    TranscriptionResult:
+      type: object
+      description: Whisper transcription result forwarded from the GPU node.
+      properties:
+        text:
+          type: string
+          description: Full transcript text.
+        segments:
+          type: array
+          description: Word- or sentence-level segments with timing.
+          items:
+            type: object
+            properties:
+              start: { type: number, description: "Segment start time in seconds" }
+              end: { type: number, description: "Segment end time in seconds" }
+              text: { type: string }
+    AssetReference:
+      type: object
+      description: Media asset reference returned by the media service after upload.
+      properties:
+        id: { type: string }
+        url: { type: string }
+        ownerDid: { type: string }
+        contentType: { type: string }
+        size: { type: integer }
+        createdAt: { type: string, format: date-time }
+    UsageStats:
+      type: object
+      description: Rate-limit usage statistics for the authenticated DID.
+      properties:
+        did:
+          type: string
+        usage:
+          type: object
+          description: >
+            Map of operation name to usage bucket. Each bucket contains
+            the request count within the current window.
+          additionalProperties:
+            type: object
+            properties:
+              count: { type: integer }
+              windowMs: { type: integer }
+              limit: { type: integer }
+              remaining: { type: integer }
+
+paths:
+  /api/health:
+    get:
+      operationId: getInputHealth
+      summary: Health check
+      tags: [input]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: input }
+
+  /api/transcribe:
+    post:
+      operationId: transcribeAudio
+      summary: Transcribe audio via Whisper
+      description: >
+        Accepts an audio file as multipart/form-data and relays it to the
+        internal GPU node running Whisper. Auth is optional — anonymous
+        callers are rate-limited by IP; authenticated callers by DID.
+      tags: [input]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio file (webm, mp3, wav, etc.)
+                language:
+                  type: string
+                  description: "Optional BCP-47 language hint passed to Whisper (e.g. en, fr)."
+      responses:
+        "200":
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptionResult"
+        "400":
+          description: Missing or invalid audio file
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              schema: { type: integer }
+              description: Seconds until the rate-limit window resets
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Error"
+                  - type: object
+                    properties:
+                      retryAfterMs: { type: integer }
+        "502":
+          description: GPU node returned an error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: GPU node unreachable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/upload:
+    post:
+      operationId: uploadMedia
+      summary: Upload and relay a media file to the media service
+      description: >
+        Accepts a file as multipart/form-data, validates the session, and
+        forwards to the media service for storage and optional .fair
+        attribution. Returns the created asset reference.
+      tags: [input]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to upload
+                terms:
+                  type: string
+                  description: Optional .fair license/attribution terms JSON string.
+                context:
+                  type: string
+                  description: Optional context hint for automatic folder assignment.
+      responses:
+        "200":
+          description: Uploaded asset reference
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetReference"
+        "400":
+          description: Missing file
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Error"
+                  - type: object
+                    properties:
+                      retryAfterMs: { type: integer }
+        "502":
+          description: Media service returned an error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Media service unreachable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/usage:
+    get:
+      operationId: getUsage
+      summary: Get rate-limit usage stats for the authenticated DID
+      tags: [input]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Usage statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageStats"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/spec:
+    get:
+      operationId: getInputSpec
+      summary: Serve this OpenAPI spec
+      tags: [input]
+      responses:
+        "200":
+          description: OpenAPI YAML
+          content:
+            text/yaml:
+              schema: { type: string }
