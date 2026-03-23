@@ -569,7 +569,7 @@ Summer Camp data cleanup: 24 survey responses married to tickets via email match
 
 ---
 
-## Phase 12: The First External Protocol (March 20–21, 2026)
+## Phase 12: The First External Protocol (March 20–22, 2026)
 
 ### March 20 — Market Launch and DFOS Discovery
 
@@ -620,6 +620,33 @@ PR #407 (Phase 1+2), PR #412 (#398), PR #413 (#403) — merged. PR #426 (consoli
 
 **Brandon's relay spec update incoming.** Countersignatures = JWS re-sign (matches what #402 built). VC auth for reads = `Authorization: Bearer` header. Delegated chain write auth = VC in the op payload. OSS update coming.
 
+### March 22 — The Relay Goes Live and P26 Ships
+
+**Greg's strongest architectural proposal yet** arrived as P27 (Tonalith). Core thesis adopted:
+
+> DFOS is not an external protocol to integrate with. It's the cryptographic substrate MJN's identity layer should rest on.
+
+**One DID, not two.** `did:imajin` becomes an alias (like DNS), the chain is canonical identity. No `dfosDid` columns anywhere outside auth. The "door-check model": `institution.verified` attestation = the seam between crypto identity (DFOS) and social identity (MJN). A trusted human verifies a body and records it on-chain.
+
+**P26 Epic (#415) shipped — all 10 issues implemented in 4 batches:**
+
+| Batch | Issues | What |
+|-------|--------|------|
+| #425 (auth consolidation) | connections, input, www, pay | Migrated to `@imajin/auth` + dfos-protocol 0.2.0 |
+| Batch 1 (foundation) | #417, #420 | `chainVerified` on Identity + door-check attestations |
+| Batch 2 (trust boundaries) | #416, #418, #419 | Chain-verified registry, .fair chain proof, settlement verification |
+| Batch 3 (federation) | #421–#424 | Pod membership, signed messages, learn attestations, chain presentation + external onboarding |
+
+Every service now has chain-aware identity. Services don't know about DFOS directly — they ask `@imajin/auth` about verification status. Only three services touch the chain at trust boundaries: registry, .fair, events.
+
+**DFOS Web Relay — LIVE (PR #453).** Registry IS the relay. `@metalabel/dfos-web-relay` v0.3.0 mounted at `/relay/*`, PostgresRelayStore backed by drizzle, same DID, same DB, same service. Live at `dev-registry.imajin.ai/relay/`. Brandon published the relay spec the same day Ryan integrated it.
+
+**Auth test suite shipped (PR #451, #408).** 43 integration tests, `imajin_test` DB, CI wired. The safety net for all future auth changes.
+
+**Community engagement:** Ryan posted in DFOSter about typed actor identity — every DID typed as human or agent, real people building attestations through real-world verification, the question shifting from "is this a human?" to "what attestations does this identity carry?" The posture shift: from "waiting for spec" to "we integrated, here's what we built."
+
+**Essay 31 published:** "The Receipt" — chain-native token launch from usage proof. Not a whitepaper promise — the chain record IS the launch event.
+
 ---
 
 ## The Arc: From Platform to Protocol Infrastructure
@@ -633,7 +660,7 @@ A working platform adding features and fixing bugs. Chat improvements, market ap
 
 **Week 7 (Mar 15–19):** Architecture maturation. RFC consolidation brought intellectual coherence to the codebase. The graph layer was designed as infrastructure for agent coordination. Database governance was forced by crisis. Stable DIDs decoupled identity from authentication. The platform was growing up — not just in features, but in the governance and architectural patterns underneath.
 
-**Days 48–49 (Mar 20–21):** External protocol integration. DFOS discovered and bridged in 48 hours. Market app shipped. The platform was mature enough to interop with other protocols, and that integration stress-tested everything — build system, migration system, CI pipeline, architectural boundaries.
+**Days 48–50 (Mar 20–22):** External protocol integration. DFOS discovered, bridged, and relay deployed in 72 hours. Market app shipped. P26 epic completed — all 10 issues across 4 batches. The platform was mature enough to interop with other protocols, and that integration stress-tested everything — build system, migration system, CI pipeline, architectural boundaries. By Day 50, Imajin was running a live DFOS relay node and every service had chain-aware identity.
 
 ### The deeper pattern:
 
@@ -665,25 +692,29 @@ The first 37 days discovered the protocol from the human layer. The next 12 days
 
 ---
 
-## What Exists (as of March 21, 2026)
+## What Exists (as of March 22, 2026)
 
 ### Live Services (15)
 auth, pay, www, profile, registry, events, chat, connections, media, input, learn, coffee, links, dykil, market
 
 ### Protocol Infrastructure
-- DFOS bridge (Phase 1+2 merged, Phase 3 awaiting merge)
+- DFOS relay LIVE at `registry.imajin.ai/relay/`
+- P26 complete — all 10 chain-integration issues shipped
 - `@imajin/dfos` package — chain creation, resolution, verification
 - `@imajin/cid` package — DAG-CBOR content identifiers
 - Key rotation + multi-device auth
 - Countersignature attestations
+- Chain provider abstraction for external chain onboarding
 - Stable DIDs (`did:imajin:xxx` from birth)
-- 31 protocol tests passing
+- 43 auth integration tests + 31 protocol tests passing
 
 ### Attestation Layer (LIVE)
 - 6 types: transaction.settled, customer, connection.invited, connection.accepted, vouch, session.created
+- Door-check attestations: institution.verified, event.attendance
+- Enrollment + completion attestations (learn)
+- Chain-recorded pod membership (connections)
+- Signed messages with chain keys (chat)
 - Cryptographic .fair signature verification at settlement
-- Login attestations with auth strength metadata
-- Connection attestations with vouch primitives
 
 ### Infrastructure
 - Self-hosted on owned hardware (HP ProLiant ML350p Gen8)
@@ -697,11 +728,11 @@ auth, pay, www, profile, registry, events, chat, connections, media, input, lear
 ### Key Numbers
 - ~120 registered identities
 - 66 tickets sold on the sovereign stack (2 events)
-- 30 essays written (9 published)
+- 31 essays written (9 published)
 - 15 live services, 130,000+ lines of code
-- 830+ commits over 49 build days
-- 328 issues tracked (113 open)
-- 79 PRs shipped
+- 830+ commits over 50 build days
+- 10 P26 chain-integration issues shipped in one sprint
+- 43 auth tests, 31 protocol tests
 - $25/PR average inference cost
 - Traditional estimate: growing. The gap between AI-assisted and traditional execution widens daily.
 
@@ -715,19 +746,22 @@ auth, pay, www, profile, registry, events, chat, connections, media, input, lear
 │            places(*)                    │
 ├─────────────────────────────────────────┤
 │          Attestation Layer              │
-│  6 live types · crypto verification     │
+│  8+ live types · crypto verification    │
+│  door-check · signed messages           │
 │  countersignatures · The AttMart(*)     │
 ├─────────────────────────────────────────┤
 │           Trust Graph Layer             │
-│  connections · @imajin/graph(*)         │
-│      intent docs · fan-out(*)          │
+│  connections · chain-recorded pods      │
+│  @imajin/graph(*) · intent docs(*)     │
 ├─────────────────────────────────────────┤
 │    Identity + Commerce + Protocol       │
 │  auth (stable DIDs) · pay (Stripe/SOL) │
-│  DFOS bridge · key rotation · CID      │
+│  DFOS relay · chain provider · CID     │
+│  key rotation · external onboarding    │
 ├─────────────────────────────────────────┤
 │       Attribution + Discovery           │
-│    .fair · registry · search(*)        │
+│  .fair (chain-backed) · registry        │
+│  chain-verified nodes · search(*)      │
 ├─────────────────────────────────────────┤
 │          Physical Presence              │
 │    Unit 8×8×8 · Sonos · GPU Node       │
@@ -743,4 +777,4 @@ auth, pay, www, profile, registry, events, chat, connections, media, input, lear
 
 ---
 
-*Compiled March 8, 2026. Updated March 21, 2026. From git history (830+ commits), daily memory files (49 days), and 30 essays.*
+*Compiled March 8, 2026. Updated March 22, 2026. From git history (830+ commits), daily memory files (50 days), and 31 essays.*
