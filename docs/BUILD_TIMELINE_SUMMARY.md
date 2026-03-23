@@ -1,12 +1,12 @@
 # Build Timeline Summary & Pressure Test
 
-*Compiled March 8, 2026. Updated March 21, 2026 — from the full [Build Timeline](./BUILD_TIMELINE.md), external analysis, and founder responses.*
+*Compiled March 8, 2026. Updated March 22, 2026 — from the full [Build Timeline](./BUILD_TIMELINE.md), external analysis, and founder responses.*
 
 ---
 
 ## What This Actually Is
 
-A build chronicle — part technical changelog, part philosophical memoir — documenting how one developer built a sovereign protocol in 49 days, largely alone, using AI as a parallel coding partner. Retrospective journalism written from the git history.
+A build chronicle — part technical changelog, part philosophical memoir — documenting how one developer built a sovereign protocol in 50 days, largely alone, using AI as a parallel coding partner. Retrospective journalism written from the git history.
 
 ## The Core Thesis
 
@@ -87,6 +87,7 @@ OpenClaw dropped. The interface layer between architectural vision and working s
 | 47 | Stable DIDs — identity decoupled from auth method forever |
 | 48 | DFOS discovered — Imajin positioned as L6 above external protocol |
 | 49 | **DFOS epic sprint** — full protocol bridge built in one session, 31 tests |
+| 50 | **DFOS relay live** — registry IS the relay. P26 complete (10 issues). 43 auth tests. Chain-aware identity on every service |
 
 ### The Numbers
 
@@ -96,15 +97,16 @@ OpenClaw dropped. The interface layer between architectural vision and working s
 | Lines of code | 130,000+ |
 | Total commits | 830+ |
 | Inference cost | ~$6K ($25/PR avg) |
-| Build days | 49 |
-| Total issues | 328 (113 open) |
-| PRs shipped | 79 |
+| Build days | 50 |
+| Total issues | 328+ |
+| PRs shipped | 90+ |
 | Traditional estimate | $932,316+ over 16.4 months (3-person team) |
-| Essays written | 30 (9 published) |
+| Essays written | 31 (9 published) |
 | Registered identities | ~120 |
 | Tickets sold | 66 across 2 events |
-| Attestation types live | 6 |
-| External protocols | 1 (DFOS bridge) |
+| Attestation types live | 8+ |
+| External protocols | 1 (DFOS — relay live, bridge complete) |
+| Auth integration tests | 43 |
 | RFCs | 16 (canonical) |
 | Solana wallets (latent) | Every hard DID — they just don't know it yet |
 
@@ -315,9 +317,9 @@ A direct counter-stack to:
 
 ---
 
-## The New Convergence (March 10–21, 2026)
+## The New Convergence (March 10–22, 2026)
 
-The first 37 days discovered the protocol from the human layer. The next 12 days discovered interoperability from the protocol layer.
+The first 37 days discovered the protocol from the human layer. The next 13 days discovered interoperability from the protocol layer.
 
 **Attestation infrastructure went live (Day 41):** Six cryptographic attestation types operational. The trust graph stopped being a connection list and became a live cryptographic record. Settlement verification working. Login attestations carrying auth strength metadata. The AttMart concept validated by academic literature.
 
@@ -325,11 +327,13 @@ The first 37 days discovered the protocol from the human layer. The next 12 days
 
 **DFOS bridge (Days 48–49):** First external protocol integration. Yancey Strickler's DFOS = crypto substrate (proofs, identity chains). Imajin = Layer 6 (economic, settlement, inference layer on top). Same Ed25519 curve, complementary architectures. Built and tested in one session — 31 tests, key rotation, content addressing, countersignatures.
 
+**P26 complete + relay live (Day 50):** Greg's P27 proposal adopted — DFOS as cryptographic substrate, not external integration. `did:imajin` becomes an alias, chain is canonical. All 10 P26 issues shipped across 4 batches. Every service now chain-aware. Registry mounted the DFOS web relay — Imajin is running a live relay node. 43 auth integration tests. The posture shift: from "waiting for spec" to "we integrated, here's what we built."
+
 **The sentence this phase was writing:**
 
 > **"Build from the protocol and you will find the network."**
 
-The first 37 days: "Start from the human and you will find the protocol." Days 38–49: build from the protocol and external networks discover you. DFOS partnership emerged from building correctly, not from seeking partnerships.
+The first 37 days: "Start from the human and you will find the protocol." Days 38–50: build from the protocol and external networks discover you. DFOS partnership emerged from building correctly, not from seeking partnerships.
 
 ---
 
@@ -339,4 +343,4 @@ The first 37 days: "Start from the human and you will find the protocol." Days 3
 
 ---
 
-*Based on analysis by Greg [surname redacted], founder responses, and the [full build timeline](./BUILD_TIMELINE.md). March 8–21, 2026.*
+*Based on analysis by Greg [surname redacted], founder responses, and the [full build timeline](./BUILD_TIMELINE.md). March 8–22, 2026.*
