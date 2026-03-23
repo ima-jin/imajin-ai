@@ -1,0 +1,48 @@
+name: DFOS Relay Conformance
+
+on:
+  workflow_dispatch:
+    inputs:
+      relay_url:
+        description: 'Relay URL to test against'
+        required: false
+        default: 'https://dev-registry.imajin.ai/relay'
+        type: string
+
+jobs:
+  conformance:
+    name: DFOS Conformance Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Clone DFOS repo
+        run: git clone --depth 1 https://github.com/metalabel/dfos.git
+
+      - name: Run conformance tests
+        working-directory: dfos/packages/dfos-web-relay
+        env:
+          RELAY_URL: ${{ inputs.relay_url }}
+        run: |
+          echo "🔍 Testing relay at: $RELAY_URL"
+          go test -v -count=1 ./conformance/ 2>&1 | tee results.txt
+          
+          # Summary
+          echo ""
+          echo "=== SUMMARY ==="
+          PASS=$(grep -c "^--- PASS:" results.txt || true)
+          FAIL=$(grep -c "^--- FAIL:" results.txt || true)
+          echo "✅ Passed: $PASS"
+          echo "❌ Failed: $FAIL"
+          echo "📊 Total: $((PASS + FAIL))"
+          
+          # Fail the job if any tests failed
+          if [ "$FAIL" -gt 0 ]; then
+            echo ""
+            echo "=== FAILING TESTS ==="
+            grep "^--- FAIL:" results.txt
+            exit 1
+          fi
