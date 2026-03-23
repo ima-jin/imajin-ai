@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, pods, podMembers } from '../../../src/db/index';
 import { eq, and, isNull, inArray, sql, ne } from 'drizzle-orm';
 import { generateId } from '@/lib/id';
+import { corsHeaders, corsOptions } from '@imajin/config';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
@@ -17,10 +18,15 @@ async function getSession(request: NextRequest) {
   }
 }
 
+export async function OPTIONS(request: NextRequest) {
+  return corsOptions(request);
+}
+
 export async function GET(request: NextRequest) {
+  const cors = corsHeaders(request);
   const session = await getSession(request);
   if (!session?.did) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401, headers: cors });
   }
 
   // Get all pods the user is a member of (excluding personal/connection pods)
@@ -30,7 +36,7 @@ export async function GET(request: NextRequest) {
     .where(and(eq(podMembers.did, session.did), isNull(podMembers.removedAt)));
 
   if (memberPodIds.length === 0) {
-    return NextResponse.json({ pods: [] });
+    return NextResponse.json({ pods: [] }, { headers: cors });
   }
 
   const podIds = memberPodIds.map((r) => r.podId);
@@ -58,18 +64,19 @@ export async function GET(request: NextRequest) {
     memberCount: countMap.get(pod.id) ?? 0,
   }));
 
-  return NextResponse.json({ pods: result });
+  return NextResponse.json({ pods: result }, { headers: cors });
 }
 
 export async function POST(request: NextRequest) {
+  const cors = corsHeaders(request);
   const session = await getSession(request);
   if (!session?.did) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401, headers: cors });
   }
 
   const body = await request.json();
   if (!body.name?.trim()) {
-    return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+    return NextResponse.json({ error: 'Name is required' }, { status: 400, headers: cors });
   }
 
   const id = generateId('pod_');
@@ -113,5 +120,5 @@ export async function POST(request: NextRequest) {
 
   const memberCount = 1 + memberDids.filter(d => d !== session.did).length;
 
-  return NextResponse.json({ pod: { ...pod, memberCount } }, { status: 201 });
+  return NextResponse.json({ pod: { ...pod, memberCount } }, { status: 201, headers: cors });
 }
