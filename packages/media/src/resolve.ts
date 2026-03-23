@@ -6,7 +6,7 @@
  */
 export function resolveAssetUrl(assetId: string): string {
   const base = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
-  return `${base}/api/assets/${assetId}/content`;
+  return `${base}/api/assets/${assetId}`;
 }
 
 /**
