@@ -29,14 +29,13 @@ export async function GET(
   const { did } = await params;
 
   try {
-    // Find pod by conversation_did and get members
+    // Get members from chat.conversation_members
     const rows = await sql`
-      SELECT pm.did, pm.role
-      FROM connections.pods p
-      JOIN connections.pod_members pm ON pm.pod_id = p.id
-      WHERE p.conversation_did = ${did}
-        AND pm.removed_at IS NULL
-      ORDER BY pm.role DESC, pm.joined_at ASC
+      SELECT member_did as did, role
+      FROM chat.conversation_members
+      WHERE conversation_did = ${did}
+        AND left_at IS NULL
+      ORDER BY role DESC, joined_at ASC
     `;
 
     // Resolve names via auth lookup
