@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1773897237962,
-      "tag": "0000_late_thanos",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1773897239603,
-      "tag": "0001_motionless_karma",
+      "when": 1774231650912,
+      "tag": "0000_daily_metal_master",
       "breakpoints": true
     }
   ]

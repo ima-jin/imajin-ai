@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1774146596797,
-      "tag": "0000_happy_bedlam",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1774146604540,
-      "tag": "0001_quick_shotgun",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1742601600000,
-      "tag": "0002_drop_v1_tables",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1774137600000,
-      "tag": "0003_add_message_signature",
+      "when": 1774231645588,
+      "tag": "0000_first_sinister_six",
       "breakpoints": true
     }
   ]

@@ -1,9 +1,175 @@
 {
-  "id": "00000000-0000-0000-0000-000000000000",
-  "prevId": "",
+  "id": "09e4db1d-ae2e-40b2-8924-a7ef3075540d",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
+    "auth.attestations": {
+      "name": "attestations",
+      "schema": "auth",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "issuer_did": {
+          "name": "issuer_did",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_did": {
+          "name": "subject_did",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "context_id": {
+          "name": "context_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "context_type": {
+          "name": "context_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "signature": {
+          "name": "signature",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cid": {
+          "name": "cid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author_jws": {
+          "name": "author_jws",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "witness_jws": {
+          "name": "witness_jws",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attestation_status": {
+          "name": "attestation_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'pending'"
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_auth_attestations_subject": {
+          "name": "idx_auth_attestations_subject",
+          "columns": [
+            {
+              "expression": "subject_did",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_auth_attestations_issuer": {
+          "name": "idx_auth_attestations_issuer",
+          "columns": [
+            {
+              "expression": "issuer_did",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_auth_attestations_type": {
+          "name": "idx_auth_attestations_type",
+          "columns": [
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_auth_attestations_status": {
+          "name": "idx_auth_attestations_status",
+          "columns": [
+            {
+              "expression": "attestation_status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "auth.challenges": {
       "name": "challenges",
       "schema": "auth",
@@ -52,10 +218,9 @@
           "columns": [
             {
               "expression": "expires_at",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "timestamptz_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -65,8 +230,8 @@
         }
       },
       "foreignKeys": {
-        "auth_challenges_identity_id_auth_identities_id_fk": {
-          "name": "auth_challenges_identity_id_auth_identities_id_fk",
+        "challenges_identity_id_identities_id_fk": {
+          "name": "challenges_identity_id_identities_id_fk",
           "tableFrom": "challenges",
           "tableTo": "identities",
           "schemaTo": "auth",
@@ -82,12 +247,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "auth.tokens": {
-      "name": "tokens",
+    "auth.credentials": {
+      "name": "credentials",
       "schema": "auth",
       "columns": {
         "id": {
@@ -96,20 +261,26 @@
           "primaryKey": true,
           "notNull": true
         },
-        "identity_id": {
-          "name": "identity_id",
+        "did": {
+          "name": "did",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
+        "type": {
+          "name": "type",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "revoked_at": {
-          "name": "revoked_at",
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verified_at": {
+          "name": "verified_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -120,52 +291,51 @@
           "primaryKey": false,
           "notNull": false,
           "default": "now()"
-        },
-        "last_used_at": {
-          "name": "last_used_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
-        "idx_auth_tokens_identity": {
-          "name": "idx_auth_tokens_identity",
+        "idx_credentials_did": {
+          "name": "idx_credentials_did",
           "columns": [
             {
-              "expression": "identity_id",
+              "expression": "did",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "idx_credentials_type_value": {
+          "name": "idx_credentials_type_value",
+          "columns": [
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "value",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
-      "foreignKeys": {
-        "auth_tokens_identity_id_auth_identities_id_fk": {
-          "name": "auth_tokens_identity_id_auth_identities_id_fk",
-          "tableFrom": "tokens",
-          "tableTo": "identities",
-          "schemaTo": "auth",
-          "columnsFrom": [
-            "identity_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "auth.identities": {
@@ -208,6 +378,25 @@
           "primaryKey": false,
           "notNull": false
         },
+        "avatar_asset_id": {
+          "name": "avatar_asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tier": {
+          "name": "tier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'soft'"
+        },
+        "key_roles": {
+          "name": "key_roles",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "metadata": {
           "name": "metadata",
           "type": "jsonb",
@@ -228,13 +417,6 @@
           "primaryKey": false,
           "notNull": false,
           "default": "now()"
-        },
-        "tier": {
-          "name": "tier",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'soft'"
         }
       },
       "indexes": {
@@ -243,10 +425,9 @@
           "columns": [
             {
               "expression": "handle",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -258,23 +439,127 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "auth_identities_public_key_unique": {
+        "identities_public_key_unique": {
+          "name": "identities_public_key_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "public_key"
-          ],
-          "nullsNotDistinct": false,
-          "name": "auth_identities_public_key_unique"
+          ]
         },
-        "auth_identities_handle_unique": {
+        "identities_handle_unique": {
+          "name": "identities_handle_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "handle"
-          ],
-          "nullsNotDistinct": false,
-          "name": "auth_identities_handle_unique"
+          ]
         }
       },
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "auth.identity_chains": {
+      "name": "identity_chains",
+      "schema": "auth",
+      "columns": {
+        "did": {
+          "name": "did",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "dfos_did": {
+          "name": "dfos_did",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "log": {
+          "name": "log",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "head_cid": {
+          "name": "head_cid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key_count": {
+          "name": "key_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "is_deleted": {
+          "name": "is_deleted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_identity_chains_dfos_did": {
+          "name": "idx_identity_chains_dfos_did",
+          "columns": [
+            {
+              "expression": "dfos_did",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "identity_chains_did_identities_id_fk": {
+          "name": "identity_chains_did_identities_id_fk",
+          "tableFrom": "identity_chains",
+          "tableTo": "identities",
+          "schemaTo": "auth",
+          "columnsFrom": [
+            "did"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "identity_chains_dfos_did_unique": {
+          "name": "identity_chains_dfos_did_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "dfos_did"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "auth.onboard_tokens": {
@@ -338,15 +623,14 @@
         }
       },
       "indexes": {
-        "idx_auth_onboard_tokens_email": {
-          "name": "idx_auth_onboard_tokens_email",
+        "idx_auth_onboard_tokens_token": {
+          "name": "idx_auth_onboard_tokens_token",
           "columns": [
             {
-              "expression": "email",
+              "expression": "token",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -354,15 +638,14 @@
           "method": "btree",
           "with": {}
         },
-        "idx_auth_onboard_tokens_token": {
-          "name": "idx_auth_onboard_tokens_token",
+        "idx_auth_onboard_tokens_email": {
+          "name": "idx_auth_onboard_tokens_email",
           "columns": [
             {
-              "expression": "token",
+              "expression": "email",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -374,20 +657,20 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "onboard_tokens_token_key": {
+        "onboard_tokens_token_unique": {
+          "name": "onboard_tokens_token_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "token"
-          ],
-          "nullsNotDistinct": false,
-          "name": "onboard_tokens_token_key"
+          ]
         }
       },
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "auth.attestations": {
-      "name": "attestations",
+    "auth.tokens": {
+      "name": "tokens",
       "schema": "auth",
       "columns": {
         "id": {
@@ -396,110 +679,59 @@
           "primaryKey": true,
           "notNull": true
         },
-        "issuer_did": {
-          "name": "issuer_did",
+        "identity_id": {
+          "name": "identity_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "subject_did": {
-          "name": "subject_did",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "context_id": {
-          "name": "context_id",
+        "key_id": {
+          "name": "key_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "context_type": {
-          "name": "context_type",
+        "key_role": {
+          "name": "key_role",
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "payload": {
-          "name": "payload",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "signature": {
-          "name": "signature",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "issued_at": {
-          "name": "issued_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
         },
         "expires_at": {
           "name": "expires_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "revoked_at": {
           "name": "revoked_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
-        "idx_auth_attestations_issuer": {
-          "name": "idx_auth_attestations_issuer",
+        "idx_auth_tokens_identity": {
+          "name": "idx_auth_tokens_identity",
           "columns": [
             {
-              "expression": "issuer_did",
+              "expression": "identity_id",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_auth_attestations_subject": {
-          "name": "idx_auth_attestations_subject",
-          "columns": [
-            {
-              "expression": "subject_did",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_auth_attestations_type": {
-          "name": "idx_auth_attestations_type",
-          "columns": [
-            {
-              "expression": "type",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -508,11 +740,26 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "tokens_identity_id_identities_id_fk": {
+          "name": "tokens_identity_id_identities_id_fk",
+          "tableFrom": "tokens",
+          "tableTo": "identities",
+          "schemaTo": "auth",
+          "columnsFrom": [
+            "identity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },
@@ -525,11 +772,8 @@
   "policies": {},
   "views": {},
   "_meta": {
+    "columns": {},
     "schemas": {},
-    "tables": {},
-    "columns": {}
-  },
-  "internal": {
     "tables": {}
   }
 }

@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1773897233757,
-      "tag": "0000_jittery_lionheart",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1773897235500,
-      "tag": "0001_ambitious_scourge",
+      "when": 1774231649155,
+      "tag": "0000_hard_rawhide_kid",
       "breakpoints": true
     }
   ]

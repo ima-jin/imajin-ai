@@ -1,1 +1,0 @@
-ALTER TABLE "events"."events" ADD COLUMN "image_asset_id" text;

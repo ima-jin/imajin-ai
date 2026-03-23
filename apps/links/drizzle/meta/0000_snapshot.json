@@ -1,9 +1,99 @@
 {
-  "id": "00000000-0000-0000-0000-000000000000",
-  "prevId": "",
+  "id": "ef74cc32-c1ad-45f2-9897-43ac658bbf4c",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
+    "links.clicks": {
+      "name": "clicks",
+      "schema": "links",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "link_id": {
+          "name": "link_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "clicked_at": {
+          "name": "clicked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "referrer": {
+          "name": "referrer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_link_clicks_link": {
+          "name": "idx_link_clicks_link",
+          "columns": [
+            {
+              "expression": "link_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_link_clicks_date": {
+          "name": "idx_link_clicks_date",
+          "columns": [
+            {
+              "expression": "clicked_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "clicks_link_id_links_id_fk": {
+          "name": "clicks_link_id_links_id_fk",
+          "tableFrom": "clicks",
+          "tableTo": "links",
+          "schemaTo": "links",
+          "columnsFrom": [
+            "link_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "links.pages": {
       "name": "pages",
       "schema": "links",
@@ -40,6 +130,12 @@
         },
         "avatar": {
           "name": "avatar",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "avatar_asset_id": {
+          "name": "avatar_asset_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -81,15 +177,14 @@
         }
       },
       "indexes": {
-        "idx_link_pages_did": {
-          "name": "idx_link_pages_did",
+        "idx_link_pages_handle": {
+          "name": "idx_link_pages_handle",
           "columns": [
             {
-              "expression": "did",
+              "expression": "handle",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -97,15 +192,14 @@
           "method": "btree",
           "with": {}
         },
-        "idx_link_pages_handle": {
-          "name": "idx_link_pages_handle",
+        "idx_link_pages_did": {
+          "name": "idx_link_pages_did",
           "columns": [
             {
-              "expression": "handle",
+              "expression": "did",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -117,115 +211,23 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "link_pages_did_key": {
+        "pages_did_unique": {
+          "name": "pages_did_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "did"
-          ],
-          "nullsNotDistinct": false,
-          "name": "link_pages_did_key"
+          ]
         },
-        "link_pages_handle_key": {
+        "pages_handle_unique": {
+          "name": "pages_handle_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "handle"
-          ],
-          "nullsNotDistinct": false,
-          "name": "link_pages_handle_key"
+          ]
         }
       },
-      "checkConstraints": {},
       "policies": {},
-      "isRLSEnabled": false
-    },
-    "links.clicks": {
-      "name": "clicks",
-      "schema": "links",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "link_id": {
-          "name": "link_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "clicked_at": {
-          "name": "clicked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "referrer": {
-          "name": "referrer",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "country": {
-          "name": "country",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "idx_link_clicks_date": {
-          "name": "idx_link_clicks_date",
-          "columns": [
-            {
-              "expression": "clicked_at",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "timestamptz_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_link_clicks_link": {
-          "name": "idx_link_clicks_link",
-          "columns": [
-            {
-              "expression": "link_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "link_clicks_link_id_fkey": {
-          "name": "link_clicks_link_id_fkey",
-          "tableFrom": "clicks",
-          "tableTo": "links",
-          "schemaTo": "links",
-          "columnsFrom": [
-            "link_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "checkConstraints": {},
-      "policies": {},
       "isRLSEnabled": false
     },
     "links.links": {
@@ -282,6 +284,13 @@
           "notNull": false,
           "default": true
         },
+        "visibility": {
+          "name": "visibility",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'public'"
+        },
         "clicks": {
           "name": "clicks",
           "type": "integer",
@@ -302,13 +311,6 @@
           "primaryKey": false,
           "notNull": false,
           "default": "now()"
-        },
-        "visibility": {
-          "name": "visibility",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'public'"
         }
       },
       "indexes": {
@@ -317,10 +319,9 @@
           "columns": [
             {
               "expression": "page_id",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -333,17 +334,15 @@
           "columns": [
             {
               "expression": "page_id",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "int4_ops",
-              "isExpression": false
+              "nulls": "last"
             },
             {
               "expression": "position",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "int4_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -353,8 +352,8 @@
         }
       },
       "foreignKeys": {
-        "links_page_id_fkey": {
-          "name": "links_page_id_fkey",
+        "links_page_id_pages_id_fk": {
+          "name": "links_page_id_pages_id_fk",
           "tableFrom": "links",
           "tableTo": "pages",
           "schemaTo": "links",
@@ -370,8 +369,8 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },
@@ -384,11 +383,8 @@
   "policies": {},
   "views": {},
   "_meta": {
+    "columns": {},
     "schemas": {},
-    "tables": {},
-    "columns": {}
-  },
-  "internal": {
     "tables": {}
   }
 }

@@ -1,309 +1,9 @@
 {
-  "id": "00000000-0000-0000-0000-000000000000",
-  "prevId": "",
+  "id": "6c438418-146b-4a8a-abb0-a1c3a459c2c3",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "chat.conversations": {
-      "name": "conversations",
-      "schema": "chat",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "avatar": {
-          "name": "avatar",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "context": {
-          "name": "context",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "visibility": {
-          "name": "visibility",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'private'"
-        },
-        "trust_radius": {
-          "name": "trust_radius",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "last_message_at": {
-          "name": "last_message_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pod_id": {
-          "name": "pod_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "idx_chat_conversations_created_by": {
-          "name": "idx_chat_conversations_created_by",
-          "columns": [
-            {
-              "expression": "created_by",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_chat_conversations_pod_id": {
-          "name": "idx_chat_conversations_pod_id",
-          "columns": [
-            {
-              "expression": "pod_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_chat_conversations_type": {
-          "name": "idx_chat_conversations_type",
-          "columns": [
-            {
-              "expression": "type",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {},
-      "policies": {},
-      "isRLSEnabled": false
-    },
-    "chat.messages": {
-      "name": "messages",
-      "schema": "chat",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "from_did": {
-          "name": "from_did",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content": {
-          "name": "content",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content_type": {
-          "name": "content_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'text'"
-        },
-        "reply_to": {
-          "name": "reply_to",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "edited_at": {
-          "name": "edited_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "deleted_at": {
-          "name": "deleted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "media_type": {
-          "name": "media_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "media_path": {
-          "name": "media_path",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "media_meta": {
-          "name": "media_meta",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "link_previews": {
-          "name": "link_previews",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "idx_chat_messages_conversation": {
-          "name": "idx_chat_messages_conversation",
-          "columns": [
-            {
-              "expression": "conversation_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_chat_messages_created": {
-          "name": "idx_chat_messages_created",
-          "columns": [
-            {
-              "expression": "created_at",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "timestamptz_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_chat_messages_from": {
-          "name": "idx_chat_messages_from",
-          "columns": [
-            {
-              "expression": "from_did",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "messages_conversation_id_conversations_id_fk": {
-          "name": "messages_conversation_id_conversations_id_fk",
-          "tableFrom": "messages",
-          "tableTo": "conversations",
-          "schemaTo": "chat",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {},
-      "policies": {},
-      "isRLSEnabled": false
-    },
     "chat.invites": {
       "name": "invites",
       "schema": "chat",
@@ -371,10 +71,9 @@
           "columns": [
             {
               "expression": "conversation_id",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -387,10 +86,9 @@
           "columns": [
             {
               "expression": "for_did",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -399,70 +97,11 @@
           "with": {}
         }
       },
-      "foreignKeys": {
-        "invites_conversation_id_conversations_id_fk": {
-          "name": "invites_conversation_id_conversations_id_fk",
-          "tableFrom": "invites",
-          "tableTo": "conversations",
-          "schemaTo": "chat",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {},
-      "policies": {},
-      "isRLSEnabled": false
-    },
-    "chat.public_keys": {
-      "name": "public_keys",
-      "schema": "chat",
-      "columns": {
-        "did": {
-          "name": "did",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "identity_key": {
-          "name": "identity_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "signed_pre_key": {
-          "name": "signed_pre_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "signature": {
-          "name": "signature",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "chat.pre_keys": {
@@ -508,10 +147,9 @@
           "columns": [
             {
               "expression": "did",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -538,16 +176,60 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "chat.conversation_reads": {
-      "name": "conversation_reads",
+    "chat.public_keys": {
+      "name": "public_keys",
       "schema": "chat",
       "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
+        "did": {
+          "name": "did",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "identity_key": {
+          "name": "identity_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signed_pre_key": {
+          "name": "signed_pre_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signature": {
+          "name": "signature",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "chat.conversation_reads_v2": {
+      "name": "conversation_reads_v2",
+      "schema": "chat",
+      "columns": {
+        "conversation_did": {
+          "name": "conversation_did",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -566,114 +248,158 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "idx_chat_reads_v2_did": {
+          "name": "idx_chat_reads_v2_did",
+          "columns": [
+            {
+              "expression": "did",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
-        "conversation_reads_conversation_id_conversations_id_fk": {
-          "name": "conversation_reads_conversation_id_conversations_id_fk",
-          "tableFrom": "conversation_reads",
-          "tableTo": "conversations",
+        "conversation_reads_v2_conversation_did_conversations_v2_did_fk": {
+          "name": "conversation_reads_v2_conversation_did_conversations_v2_did_fk",
+          "tableFrom": "conversation_reads_v2",
+          "tableTo": "conversations_v2",
           "schemaTo": "chat",
           "columnsFrom": [
-            "conversation_id"
+            "conversation_did"
           ],
           "columnsTo": [
-            "id"
+            "did"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "conversation_reads_conversation_id_did_pk": {
-          "name": "conversation_reads_conversation_id_did_pk",
+        "conversation_reads_v2_conversation_did_did_pk": {
+          "name": "conversation_reads_v2_conversation_did_did_pk",
           "columns": [
-            "conversation_id",
+            "conversation_did",
             "did"
           ]
         }
       },
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "chat.read_receipts": {
-      "name": "read_receipts",
+    "chat.conversations_v2": {
+      "name": "conversations_v2",
       "schema": "chat",
       "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "did": {
           "name": "did",
           "type": "text",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true
         },
-        "last_read_message_id": {
-          "name": "last_read_message_id",
+        "parent_did": {
+          "name": "parent_did",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "read_at": {
-          "name": "read_at",
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false,
           "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "read_receipts_conversation_id_conversations_id_fk": {
-          "name": "read_receipts_conversation_id_conversations_id_fk",
-          "tableFrom": "read_receipts",
-          "tableTo": "conversations",
-          "schemaTo": "chat",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
         },
-        "read_receipts_last_read_message_id_messages_id_fk": {
-          "name": "read_receipts_last_read_message_id_messages_id_fk",
-          "tableFrom": "read_receipts",
-          "tableTo": "messages",
-          "schemaTo": "chat",
-          "columnsFrom": [
-            "last_read_message_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "last_message_at": {
+          "name": "last_message_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "compositePrimaryKeys": {
-        "read_receipts_conversation_id_did_pk": {
-          "name": "read_receipts_conversation_id_did_pk",
+      "indexes": {
+        "idx_chat_conv_v2_created_by": {
+          "name": "idx_chat_conv_v2_created_by",
           "columns": [
-            "conversation_id",
-            "did"
-          ]
+            {
+              "expression": "created_by",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_chat_conv_v2_parent_did": {
+          "name": "idx_chat_conv_v2_parent_did",
+          "columns": [
+            {
+              "expression": "parent_did",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_chat_conv_v2_last_message": {
+          "name": "idx_chat_conv_v2_last_message",
+          "columns": [
+            {
+              "expression": "last_message_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "chat.message_reactions": {
-      "name": "message_reactions",
+    "chat.message_reactions_v2": {
+      "name": "message_reactions_v2",
       "schema": "chat",
       "columns": {
         "message_id": {
@@ -703,15 +429,14 @@
         }
       },
       "indexes": {
-        "idx_chat_message_reactions_message": {
-          "name": "idx_chat_message_reactions_message",
+        "idx_chat_react_v2_message": {
+          "name": "idx_chat_react_v2_message",
           "columns": [
             {
               "expression": "message_id",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -721,10 +446,10 @@
         }
       },
       "foreignKeys": {
-        "message_reactions_message_id_messages_id_fk": {
-          "name": "message_reactions_message_id_messages_id_fk",
-          "tableFrom": "message_reactions",
-          "tableTo": "messages",
+        "message_reactions_v2_message_id_messages_v2_id_fk": {
+          "name": "message_reactions_v2_message_id_messages_v2_id_fk",
+          "tableFrom": "message_reactions_v2",
+          "tableTo": "messages_v2",
           "schemaTo": "chat",
           "columnsFrom": [
             "message_id"
@@ -737,8 +462,8 @@
         }
       },
       "compositePrimaryKeys": {
-        "message_reactions_message_id_did_emoji_pk": {
-          "name": "message_reactions_message_id_did_emoji_pk",
+        "message_reactions_v2_message_id_did_emoji_pk": {
+          "name": "message_reactions_v2_message_id_did_emoji_pk",
           "columns": [
             "message_id",
             "did",
@@ -747,77 +472,122 @@
         }
       },
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "chat.participants": {
-      "name": "participants",
+    "chat.messages_v2": {
+      "name": "messages_v2",
       "schema": "chat",
       "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "conversation_did": {
+          "name": "conversation_did",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "did": {
-          "name": "did",
+        "from_did": {
+          "name": "from_did",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "role": {
-          "name": "role",
+        "reply_to_did": {
+          "name": "reply_to_did",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reply_to_message_id": {
+          "name": "reply_to_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "content": {
+          "name": "content",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_type": {
+          "name": "content_type",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'member'"
+          "default": "'text'"
         },
-        "joined_at": {
-          "name": "joined_at",
+        "media_type": {
+          "name": "media_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "media_path": {
+          "name": "media_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "media_asset_id": {
+          "name": "media_asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "media_meta": {
+          "name": "media_meta",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "link_previews": {
+          "name": "link_previews",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false,
           "default": "now()"
         },
-        "invited_by": {
-          "name": "invited_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_read_at": {
-          "name": "last_read_at",
+        "edited_at": {
+          "name": "edited_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
-        "muted": {
-          "name": "muted",
-          "type": "boolean",
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false,
-          "default": false
+          "notNull": false
         },
-        "trust_extended_to": {
-          "name": "trust_extended_to",
-          "type": "jsonb",
+        "signature": {
+          "name": "signature",
+          "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "default": "'[]'::jsonb"
+          "notNull": false
         }
       },
       "indexes": {
-        "idx_chat_participants_did": {
-          "name": "idx_chat_participants_did",
+        "idx_chat_msg_v2_conversation": {
+          "name": "idx_chat_msg_v2_conversation",
           "columns": [
             {
-              "expression": "did",
+              "expression": "conversation_did",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -825,15 +595,29 @@
           "method": "btree",
           "with": {}
         },
-        "idx_chat_participants_role": {
-          "name": "idx_chat_participants_role",
+        "idx_chat_msg_v2_from": {
+          "name": "idx_chat_msg_v2_from",
           "columns": [
             {
-              "expression": "role",
+              "expression": "from_did",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_chat_msg_v2_created": {
+          "name": "idx_chat_msg_v2_created",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -843,33 +627,25 @@
         }
       },
       "foreignKeys": {
-        "participants_conversation_id_conversations_id_fk": {
-          "name": "participants_conversation_id_conversations_id_fk",
-          "tableFrom": "participants",
-          "tableTo": "conversations",
+        "messages_v2_conversation_did_conversations_v2_did_fk": {
+          "name": "messages_v2_conversation_did_conversations_v2_did_fk",
+          "tableFrom": "messages_v2",
+          "tableTo": "conversations_v2",
           "schemaTo": "chat",
           "columnsFrom": [
-            "conversation_id"
+            "conversation_did"
           ],
           "columnsTo": [
-            "id"
+            "did"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "participants_conversation_id_did_pk": {
-          "name": "participants_conversation_id_did_pk",
-          "columns": [
-            "conversation_id",
-            "did"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },
@@ -882,11 +658,8 @@
   "policies": {},
   "views": {},
   "_meta": {
+    "columns": {},
     "schemas": {},
-    "tables": {},
-    "columns": {}
-  },
-  "internal": {
     "tables": {}
   }
 }

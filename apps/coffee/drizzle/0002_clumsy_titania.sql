@@ -1,1 +1,0 @@
-ALTER TABLE "coffee"."pages" ADD COLUMN "avatar_asset_id" text;

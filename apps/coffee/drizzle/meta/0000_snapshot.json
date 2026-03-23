@@ -1,6 +1,6 @@
 {
-  "id": "00000000-0000-0000-0000-000000000000",
-  "prevId": "",
+  "id": "356bda91-46b4-48bb-85c6-4cf1a28ad6bf",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -44,6 +44,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "avatar_asset_id": {
+          "name": "avatar_asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "theme": {
           "name": "theme",
           "type": "jsonb",
@@ -55,8 +61,7 @@
           "name": "payment_methods",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
+          "notNull": true
         },
         "presets": {
           "name": "presets",
@@ -64,6 +69,19 @@
           "primaryKey": false,
           "notNull": false,
           "default": "'{100,500,1000}'"
+        },
+        "fund_directions": {
+          "name": "fund_directions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'[]'::jsonb"
+        },
+        "thank_you_content": {
+          "name": "thank_you_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "allow_custom_amount": {
           "name": "allow_custom_amount",
@@ -99,31 +117,17 @@
           "primaryKey": false,
           "notNull": false,
           "default": "now()"
-        },
-        "fund_directions": {
-          "name": "fund_directions",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "'[]'::jsonb"
-        },
-        "thank_you_content": {
-          "name": "thank_you_content",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
-        "idx_coffee_pages_did": {
-          "name": "idx_coffee_pages_did",
+        "idx_coffee_pages_handle": {
+          "name": "idx_coffee_pages_handle",
           "columns": [
             {
-              "expression": "did",
+              "expression": "handle",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -131,15 +135,14 @@
           "method": "btree",
           "with": {}
         },
-        "idx_coffee_pages_handle": {
-          "name": "idx_coffee_pages_handle",
+        "idx_coffee_pages_did": {
+          "name": "idx_coffee_pages_did",
           "columns": [
             {
-              "expression": "handle",
+              "expression": "did",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -151,23 +154,23 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "coffee_pages_did_key": {
+        "pages_did_unique": {
+          "name": "pages_did_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "did"
-          ],
-          "nullsNotDistinct": false,
-          "name": "coffee_pages_did_key"
+          ]
         },
-        "coffee_pages_handle_key": {
+        "pages_handle_unique": {
+          "name": "pages_handle_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "handle"
-          ],
-          "nullsNotDistinct": false,
-          "name": "coffee_pages_handle_key"
+          ]
         }
       },
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "coffee.tips": {
@@ -217,6 +220,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "fund_direction": {
+          "name": "fund_direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "payment_method": {
           "name": "payment_method",
           "type": "text",
@@ -242,40 +251,17 @@
           "primaryKey": false,
           "notNull": false,
           "default": "now()"
-        },
-        "fund_direction": {
-          "name": "fund_direction",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
-        "idx_tips_created": {
-          "name": "idx_tips_created",
-          "columns": [
-            {
-              "expression": "created_at",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "timestamptz_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_tips_page": {
           "name": "idx_tips_page",
           "columns": [
             {
               "expression": "page_id",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -288,10 +274,24 @@
           "columns": [
             {
               "expression": "status",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_tips_created": {
+          "name": "idx_tips_created",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -301,8 +301,8 @@
         }
       },
       "foreignKeys": {
-        "tips_page_id_fkey": {
-          "name": "tips_page_id_fkey",
+        "tips_page_id_pages_id_fk": {
+          "name": "tips_page_id_pages_id_fk",
           "tableFrom": "tips",
           "tableTo": "pages",
           "schemaTo": "coffee",
@@ -318,8 +318,8 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },
@@ -332,21 +332,8 @@
   "policies": {},
   "views": {},
   "_meta": {
+    "columns": {},
     "schemas": {},
-    "tables": {},
-    "columns": {}
-  },
-  "internal": {
-    "tables": {
-      "pages": {
-        "columns": {
-          "presets": {
-            "isArray": true,
-            "dimensions": 1,
-            "rawType": "integer"
-          }
-        }
-      }
-    }
+    "tables": {}
   }
 }

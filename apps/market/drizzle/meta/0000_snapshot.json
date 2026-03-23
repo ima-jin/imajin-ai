@@ -1,5 +1,5 @@
 {
-  "id": "776556be-61e7-4f87-a0d9-2d4761447853",
+  "id": "999fb2e9-2df5-4532-8202-19373bbc0467",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -168,6 +168,13 @@
           "notNull": false,
           "default": "'[]'::jsonb"
         },
+        "image_asset_ids": {
+          "name": "image_asset_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'[]'::jsonb"
+        },
         "quantity": {
           "name": "quantity",
           "type": "integer",
@@ -295,6 +302,46 @@
           "with": {}
         }
       },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "market.seller_settings": {
+      "name": "seller_settings",
+      "schema": "market",
+      "columns": {
+        "did": {
+          "name": "did",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "show_market_items": {
+          "name": "show_market_items",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

@@ -1,1 +1,0 @@
-ALTER TABLE "links"."pages" ADD COLUMN "avatar_asset_id" text;

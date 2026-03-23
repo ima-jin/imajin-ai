@@ -1,1 +1,0 @@
-ALTER TABLE "profile"."profiles" ADD COLUMN "avatar_asset_id" text;

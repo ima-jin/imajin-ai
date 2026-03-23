@@ -139,10 +139,13 @@ async function main() {
       console.log(`  UPSERT conv ${conv.id} → ${conversationDid}`);
       if (!DRY_RUN) {
         await sql`
-          INSERT INTO chat.conversations_v2 (did, name, created_by, created_at, updated_at, last_message_at)
+          INSERT INTO chat.conversations_v2 (did, type, name, context, visibility, created_by, created_at, updated_at, last_message_at)
           VALUES (
             ${conversationDid},
+            ${conv.type === 'direct' ? 'dm' : (conv.type || 'dm')},
             ${conv.name},
+            ${JSON.stringify(conv.context || {})},
+            ${'private'},
             ${conv.created_by},
             ${conv.created_at},
             ${conv.updated_at},
@@ -187,7 +190,7 @@ async function main() {
         await sql`
           INSERT INTO chat.messages_v2 (
             id, conversation_did, from_did, content, content_type,
-            media_type, media_path, media_meta, reply_to_message_id, link_previews,
+            media_type, media_path, media_meta, reply_to, link_previews,
             created_at, edited_at, deleted_at
           ) VALUES (
             ${msg.id},

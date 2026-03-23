@@ -1,1 +1,0 @@
-ALTER TABLE "market"."listings" ADD COLUMN "image_asset_ids" jsonb DEFAULT '[]'::jsonb;

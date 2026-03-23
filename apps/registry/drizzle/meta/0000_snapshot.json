@@ -1,9 +1,214 @@
 {
-  "id": "00000000-0000-0000-0000-000000000000",
-  "prevId": "",
+  "id": "4c182207-0499-47ff-932e-e6cacb046d3e",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
+    "registry.approved_builds": {
+      "name": "approved_builds",
+      "schema": "registry",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "build_hash": {
+          "name": "build_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "architecture": {
+          "name": "architecture",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "release_date": {
+          "name": "release_date",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "deprecated": {
+          "name": "deprecated",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_registry_builds_version": {
+          "name": "idx_registry_builds_version",
+          "columns": [
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_registry_builds_hash": {
+          "name": "idx_registry_builds_hash",
+          "columns": [
+            {
+              "expression": "build_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "approved_builds_build_hash_unique": {
+          "name": "approved_builds_build_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "build_hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "registry.heartbeats": {
+      "name": "heartbeats",
+      "schema": "registry",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "node_id": {
+          "name": "node_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "build_hash": {
+          "name": "build_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "health": {
+          "name": "health",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "signature": {
+          "name": "signature",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_registry_heartbeats_node": {
+          "name": "idx_registry_heartbeats_node",
+          "columns": [
+            {
+              "expression": "node_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_registry_heartbeats_timestamp": {
+          "name": "idx_registry_heartbeats_timestamp",
+          "columns": [
+            {
+              "expression": "timestamp",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "heartbeats_node_id_nodes_id_fk": {
+          "name": "heartbeats_node_id_nodes_id_fk",
+          "tableFrom": "heartbeats",
+          "tableTo": "nodes",
+          "schemaTo": "registry",
+          "columnsFrom": [
+            "node_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "registry.nodes": {
       "name": "nodes",
       "schema": "registry",
@@ -96,6 +301,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "chain_did": {
+          "name": "chain_did",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "attestation": {
           "name": "attestation",
           "type": "jsonb",
@@ -118,15 +329,29 @@
         }
       },
       "indexes": {
+        "idx_registry_nodes_status": {
+          "name": "idx_registry_nodes_status",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_registry_nodes_expires": {
           "name": "idx_registry_nodes_expires",
           "columns": [
             {
               "expression": "expires_at",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "timestamptz_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -139,26 +364,9 @@
           "columns": [
             {
               "expression": "hostname",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_registry_nodes_status": {
-          "name": "idx_registry_nodes_status",
-          "columns": [
-            {
-              "expression": "status",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -170,239 +378,37 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "registry_nodes_public_key_unique": {
+        "nodes_public_key_unique": {
+          "name": "nodes_public_key_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "public_key"
-          ],
-          "nullsNotDistinct": false,
-          "name": "registry_nodes_public_key_unique"
+          ]
         },
-        "registry_nodes_hostname_unique": {
+        "nodes_hostname_unique": {
+          "name": "nodes_hostname_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "hostname"
-          ],
-          "nullsNotDistinct": false,
-          "name": "registry_nodes_hostname_unique"
+          ]
         },
-        "registry_nodes_subdomain_unique": {
+        "nodes_subdomain_unique": {
+          "name": "nodes_subdomain_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "subdomain"
-          ],
+          ]
+        },
+        "nodes_chain_did_unique": {
+          "name": "nodes_chain_did_unique",
           "nullsNotDistinct": false,
-          "name": "registry_nodes_subdomain_unique"
+          "columns": [
+            "chain_did"
+          ]
         }
       },
-      "checkConstraints": {},
       "policies": {},
-      "isRLSEnabled": false
-    },
-    "registry.approved_builds": {
-      "name": "approved_builds",
-      "schema": "registry",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "build_hash": {
-          "name": "build_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "architecture": {
-          "name": "architecture",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "release_date": {
-          "name": "release_date",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "deprecated": {
-          "name": "deprecated",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false,
-          "default": false
-        },
-        "notes": {
-          "name": "notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_registry_builds_hash": {
-          "name": "idx_registry_builds_hash",
-          "columns": [
-            {
-              "expression": "build_hash",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_registry_builds_version": {
-          "name": "idx_registry_builds_version",
-          "columns": [
-            {
-              "expression": "version",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "registry_approved_builds_build_hash_unique": {
-          "columns": [
-            "build_hash"
-          ],
-          "nullsNotDistinct": false,
-          "name": "registry_approved_builds_build_hash_unique"
-        }
-      },
       "checkConstraints": {},
-      "policies": {},
-      "isRLSEnabled": false
-    },
-    "registry.heartbeats": {
-      "name": "heartbeats",
-      "schema": "registry",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "node_id": {
-          "name": "node_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "timestamp": {
-          "name": "timestamp",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "build_hash": {
-          "name": "build_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "health": {
-          "name": "health",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "signature": {
-          "name": "signature",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "idx_registry_heartbeats_node": {
-          "name": "idx_registry_heartbeats_node",
-          "columns": [
-            {
-              "expression": "node_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_registry_heartbeats_timestamp": {
-          "name": "idx_registry_heartbeats_timestamp",
-          "columns": [
-            {
-              "expression": "timestamp",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "timestamptz_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "registry_heartbeats_node_id_registry_nodes_id_fk": {
-          "name": "registry_heartbeats_node_id_registry_nodes_id_fk",
-          "tableFrom": "heartbeats",
-          "tableTo": "nodes",
-          "schemaTo": "registry",
-          "columnsFrom": [
-            "node_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {},
-      "policies": {},
       "isRLSEnabled": false
     },
     "registry.trust": {
@@ -477,10 +483,9 @@
           "columns": [
             {
               "expression": "from_node",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -493,10 +498,9 @@
           "columns": [
             {
               "expression": "to_node",
+              "isExpression": false,
               "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -506,8 +510,8 @@
         }
       },
       "foreignKeys": {
-        "registry_trust_from_node_registry_nodes_id_fk": {
-          "name": "registry_trust_from_node_registry_nodes_id_fk",
+        "trust_from_node_nodes_id_fk": {
+          "name": "trust_from_node_nodes_id_fk",
           "tableFrom": "trust",
           "tableTo": "nodes",
           "schemaTo": "registry",
@@ -520,8 +524,8 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "registry_trust_to_node_registry_nodes_id_fk": {
-          "name": "registry_trust_to_node_registry_nodes_id_fk",
+        "trust_to_node_nodes_id_fk": {
+          "name": "trust_to_node_nodes_id_fk",
           "tableFrom": "trust",
           "tableTo": "nodes",
           "schemaTo": "registry",
@@ -537,25 +541,295 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "relay.relay_beacons": {
+      "name": "relay_beacons",
+      "schema": "relay",
+      "columns": {
+        "did": {
+          "name": "did",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "jws_token": {
+          "name": "jws_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "beacon_cid": {
+          "name": "beacon_cid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "relay.relay_blobs": {
+      "name": "relay_blobs",
+      "schema": "relay",
+      "columns": {
+        "creator_did": {
+          "name": "creator_did",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_cid": {
+          "name": "document_cid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "relay_blobs_creator_did_document_cid_pk": {
+          "name": "relay_blobs_creator_did_document_cid_pk",
+          "columns": [
+            "creator_did",
+            "document_cid"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "relay.relay_content_chains": {
+      "name": "relay_content_chains",
+      "schema": "relay",
+      "columns": {
+        "content_id": {
+          "name": "content_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "genesis_cid": {
+          "name": "genesis_cid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "log": {
+          "name": "log",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "state": {
+          "name": "state",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "relay.relay_countersignatures": {
+      "name": "relay_countersignatures",
+      "schema": "relay",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "operation_cid": {
+          "name": "operation_cid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "jws_token": {
+          "name": "jws_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_relay_countersignatures_operation_cid": {
+          "name": "idx_relay_countersignatures_operation_cid",
+          "columns": [
+            {
+              "expression": "operation_cid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "relay.relay_identity_chains": {
+      "name": "relay_identity_chains",
+      "schema": "relay",
+      "columns": {
+        "did": {
+          "name": "did",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "log": {
+          "name": "log",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "state": {
+          "name": "state",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "relay.relay_operations": {
+      "name": "relay_operations",
+      "schema": "relay",
+      "columns": {
+        "cid": {
+          "name": "cid",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "jws_token": {
+          "name": "jws_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chain_type": {
+          "name": "chain_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chain_id": {
+          "name": "chain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },
   "enums": {},
   "schemas": {
-    "registry": "registry"
+    "registry": "registry",
+    "relay": "relay"
   },
   "sequences": {},
   "roles": {},
   "policies": {},
   "views": {},
   "_meta": {
+    "columns": {},
     "schemas": {},
-    "tables": {},
-    "columns": {}
-  },
-  "internal": {
     "tables": {}
   }
 }
