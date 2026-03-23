@@ -67,6 +67,10 @@ export async function POST(request: NextRequest) {
     const mediaRes = await fetch(`${MEDIA_SERVICE_URL}/api/assets`, {
       method: 'POST',
       body: mediaFormData,
+      headers: {
+        Cookie: request.headers.get('Cookie') || '',
+        'X-Caller-DID': callerDid,
+      },
     });
 
     if (!mediaRes.ok) {
@@ -74,7 +78,7 @@ export async function POST(request: NextRequest) {
       console.error('Media service upload failed:', mediaRes.status, errorText);
       return NextResponse.json(
         { error: 'Upload failed' },
-        { status: 502 }
+        { status: 502, headers: cors }
       );
     }
 
