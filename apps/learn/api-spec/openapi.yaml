@@ -1,0 +1,1185 @@
+openapi: "3.1.0"
+info:
+  title: imajin learn
+  version: "1.0.0"
+  description: >
+    Course creation, enrollment, and lesson-progress tracking. Creators build
+    courses with modules and lessons; students enroll (free or paid) and mark
+    progress. Completion attestations are emitted to the auth service.
+
+servers:
+  - url: https://learn.imajin.ai
+    description: production
+  - url: https://dev-learn.imajin.ai
+    description: dev
+  - url: http://localhost:7011
+    description: local
+
+tags:
+  - name: learn
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    Course:
+      type: object
+      properties:
+        id: { type: string }
+        creatorDid: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        slug: { type: string }
+        price: { type: integer, description: "Price in minor currency units (0 = free)" }
+        currency: { type: string, default: CAD }
+        visibility: { type: string, enum: [public, private, trust] }
+        status: { type: string, enum: [draft, published, archived] }
+        imageUrl: { type: string, nullable: true }
+        imageAssetId: { type: string, nullable: true }
+        tags: { type: array, items: { type: string } }
+        metadata: { type: object }
+        courseType: { type: string, nullable: true }
+        eventSlug: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CourseListItem:
+      allOf:
+        - $ref: "#/components/schemas/Course"
+        - type: object
+          properties:
+            moduleCount: { type: integer }
+            lessonCount: { type: integer }
+    Module:
+      type: object
+      properties:
+        id: { type: string }
+        courseId: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        sortOrder: { type: integer }
+    Lesson:
+      type: object
+      properties:
+        id: { type: string }
+        moduleId: { type: string }
+        title: { type: string }
+        contentType: { type: string, enum: [markdown, video, embed], description: "Defaults to markdown" }
+        content: { type: string, nullable: true }
+        durationMinutes: { type: integer, nullable: true }
+        sortOrder: { type: integer }
+        metadata: { type: object }
+    Enrollment:
+      type: object
+      properties:
+        id: { type: string }
+        courseId: { type: string }
+        studentDid: { type: string }
+        paymentId: { type: string, nullable: true }
+        enrolledAt: { type: string, format: date-time }
+        completedAt: { type: string, nullable: true, format: date-time }
+    Progress:
+      type: object
+      properties:
+        total: { type: integer }
+        completed: { type: integer }
+        percentage: { type: integer }
+
+paths:
+  /api/health:
+    get:
+      operationId: getLearnHealth
+      summary: Health check
+      tags: [learn]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: learn }
+                  timestamp: { type: string, format: date-time }
+
+  /api/courses:
+    get:
+      operationId: listCourses
+      summary: List published courses (public discovery)
+      description: >
+        Returns published courses. By default only public-visibility courses
+        are shown unless `creator_did` is specified.
+      tags: [learn]
+      parameters:
+        - name: creator_did
+          in: query
+          schema: { type: string }
+          description: Filter by creator DID (shows all visibility for that creator)
+        - name: tag
+          in: query
+          schema: { type: string }
+          description: Filter by tag
+        - name: status
+          in: query
+          schema: { type: string, default: published }
+          description: Filter by course status
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: Paginated course list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  courses:
+                    type: array
+                    items: { $ref: "#/components/schemas/CourseListItem" }
+                  limit: { type: integer }
+                  offset: { type: integer }
+    post:
+      operationId: createCourse
+      summary: Create a new course
+      description: Requires a hard DID (cryptographic key-backed identity).
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                slug: { type: string, description: "Auto-generated from title if omitted" }
+                price: { type: integer, description: "Price in minor currency units (0 = free)" }
+                currency: { type: string, default: CAD }
+                visibility: { type: string, enum: [public, private, trust], default: public }
+                imageUrl: { type: string }
+                imageAssetId: { type: string }
+                tags: { type: array, items: { type: string } }
+                metadata: { type: object }
+      responses:
+        "201":
+          description: Course created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Course" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Slug already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/courses/{slug}:
+    get:
+      operationId: getCourse
+      summary: Get course detail with modules and lessons
+      description: >
+        Public endpoint. Auth is optional — if authenticated, enrollment status
+        and progress are included. Creators see full lesson content and metadata.
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Course detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Course"
+                  - type: object
+                    properties:
+                      modules:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: "#/components/schemas/Module"
+                            - type: object
+                              properties:
+                                lessons:
+                                  type: array
+                                  items: { $ref: "#/components/schemas/Lesson" }
+                      enrollment:
+                        nullable: true
+                        allOf:
+                          - $ref: "#/components/schemas/Enrollment"
+                          - type: object
+                            properties:
+                              progress: { $ref: "#/components/schemas/Progress" }
+                      isCreator: { type: boolean }
+                      isAuthenticated: { type: boolean }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    patch:
+      operationId: updateCourse
+      summary: Update course fields (owner only)
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                description: { type: string }
+                slug: { type: string }
+                price: { type: integer }
+                currency: { type: string }
+                visibility: { type: string, enum: [public, private, trust] }
+                status: { type: string, enum: [draft, published, archived] }
+                imageUrl: { type: string }
+                imageAssetId: { type: string }
+                tags: { type: array, items: { type: string } }
+                metadata: { type: object }
+                eventSlug: { type: string }
+                courseType: { type: string }
+      responses:
+        "200":
+          description: Updated course
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Course" }
+        "400":
+          description: No fields to update
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the course owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      operationId: deleteCourse
+      summary: Archive course (soft delete, owner only)
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Course archived
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the course owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/courses/{slug}/enroll:
+    post:
+      operationId: enrollInCourse
+      summary: Enroll in a course (free) or initiate payment (paid)
+      description: >
+        For free courses, creates enrollment immediately. For paid courses,
+        initiates a Stripe Checkout session via the pay service and returns
+        a redirect URL. Emits a `learn.enrolled` attestation on free enrollment.
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                successUrl:
+                  type: string
+                  description: Redirect URL after successful payment (paid courses only)
+                cancelUrl:
+                  type: string
+                  description: Redirect URL if payment is cancelled (paid courses only)
+      responses:
+        "200":
+          description: Already enrolled, or paid course checkout URL
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    description: Already enrolled
+                    properties:
+                      enrolled: { type: boolean, example: true }
+                      enrollment: { $ref: "#/components/schemas/Enrollment" }
+                  - type: object
+                    description: Paid course — redirect to checkout
+                    properties:
+                      enrolled: { type: boolean, example: false }
+                      checkoutUrl: { type: string }
+        "201":
+          description: Enrollment created (free course)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enrolled: { type: boolean, example: true }
+                  enrollment: { $ref: "#/components/schemas/Enrollment" }
+        "400":
+          description: Course not available for enrollment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: Payment service error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/courses/{slug}/progress:
+    get:
+      operationId: getCourseProgress
+      summary: Get enrollment status and per-lesson progress
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Progress detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enrollment:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      enrolledAt: { type: string, format: date-time }
+                      completedAt: { type: string, nullable: true, format: date-time }
+                  progress: { $ref: "#/components/schemas/Progress" }
+                  modules:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        title: { type: string }
+                        total: { type: integer }
+                        completed: { type: integer }
+                        lessons:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id: { type: string }
+                              title: { type: string }
+                              contentType: { type: string }
+                              durationMinutes: { type: integer, nullable: true }
+                              status: { type: string, enum: [not_started, in_progress, completed] }
+                              completedAt: { type: string, nullable: true, format: date-time }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not enrolled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/courses/{slug}/students:
+    get:
+      operationId: listCourseStudents
+      summary: List enrolled students with progress (course owner only)
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Student list with progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  courseTitle: { type: string }
+                  totalStudents: { type: integer }
+                  totalLessons: { type: integer }
+                  students:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        studentDid: { type: string }
+                        displayName: { type: string, nullable: true }
+                        email: { type: string, nullable: true }
+                        handle: { type: string, nullable: true }
+                        enrolledAt: { type: string, format: date-time }
+                        completedAt: { type: string, nullable: true, format: date-time }
+                        progress: { $ref: "#/components/schemas/Progress" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the course owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/courses/{slug}/lessons/{lessonId}/complete:
+    post:
+      operationId: completeLesson
+      summary: Mark a lesson as complete
+      description: >
+        Marks the lesson as completed in the enrollment progress record.
+        If all lessons are now complete, the enrollment is flagged as completed
+        and a `learn.completed` attestation is emitted.
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: lessonId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Completion recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lessonId: { type: string }
+                  status: { type: string, example: completed }
+                  completedAt: { type: string, format: date-time }
+                  courseProgress: { $ref: "#/components/schemas/Progress" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not enrolled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Course or lesson not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/courses/{slug}/modules:
+    get:
+      operationId: listModules
+      summary: List modules for a course
+      tags: [learn]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Module list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  modules:
+                    type: array
+                    items: { $ref: "#/components/schemas/Module" }
+        "404":
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    post:
+      operationId: createModule
+      summary: Add a module to a course (owner only)
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                sortOrder: { type: integer, description: "Auto-assigned if omitted" }
+      responses:
+        "201":
+          description: Module created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Module" }
+        "400":
+          description: Title is required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the course owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/courses/{slug}/modules/reorder:
+    patch:
+      operationId: reorderModules
+      summary: Reorder modules within a course (owner only)
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order]
+              properties:
+                order:
+                  type: array
+                  items: { type: string }
+                  description: Ordered array of module IDs
+      responses:
+        "200":
+          description: Modules in new order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  modules:
+                    type: array
+                    items: { $ref: "#/components/schemas/Module" }
+        "400":
+          description: order must be an array
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the course owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/courses/{slug}/modules/{moduleId}:
+    patch:
+      operationId: updateModule
+      summary: Update a module (owner only)
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: moduleId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                description: { type: string }
+                sortOrder: { type: integer }
+      responses:
+        "200":
+          description: Updated module
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Module" }
+        "400":
+          description: No fields to update
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the course owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Course or module not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      operationId: deleteModule
+      summary: Delete a module and its lessons (owner only)
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: moduleId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Module deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the course owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Course or module not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/courses/{slug}/modules/{moduleId}/lessons:
+    get:
+      operationId: listLessons
+      summary: List lessons in a module
+      tags: [learn]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: moduleId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Lesson list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lessons:
+                    type: array
+                    items: { $ref: "#/components/schemas/Lesson" }
+        "404":
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    post:
+      operationId: createLesson
+      summary: Add a lesson to a module (owner only)
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: moduleId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                contentType: { type: string, enum: [markdown, video, embed], default: markdown }
+                content: { type: string }
+                durationMinutes: { type: integer }
+                sortOrder: { type: integer, description: "Auto-assigned if omitted" }
+                metadata: { type: object }
+      responses:
+        "201":
+          description: Lesson created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lesson" }
+        "400":
+          description: Title is required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the course owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Course or module not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/courses/{slug}/modules/{moduleId}/lessons/reorder:
+    patch:
+      operationId: reorderLessons
+      summary: Reorder lessons within a module (owner only)
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: moduleId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order]
+              properties:
+                order:
+                  type: array
+                  items: { type: string }
+                  description: Ordered array of lesson IDs
+      responses:
+        "200":
+          description: Lessons in new order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lessons:
+                    type: array
+                    items: { $ref: "#/components/schemas/Lesson" }
+        "400":
+          description: order must be an array
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the course owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/courses/{slug}/modules/{moduleId}/lessons/{lessonId}:
+    get:
+      operationId: getLesson
+      summary: Get lesson content
+      description: >
+        For paid courses, unauthenticated requests or non-enrolled students
+        receive metadata only with `content: null` and `locked: true`.
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: moduleId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: lessonId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Lesson (full or locked preview)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Lesson"
+                  - type: object
+                    properties:
+                      locked: { type: boolean, description: "True when content is withheld due to paywall" }
+        "401":
+          description: Authentication required for paid course
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Course or lesson not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    patch:
+      operationId: updateLesson
+      summary: Update a lesson (owner only)
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: moduleId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: lessonId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                contentType: { type: string, enum: [markdown, video, embed] }
+                content: { type: string }
+                durationMinutes: { type: integer }
+                sortOrder: { type: integer }
+                metadata: { type: object }
+      responses:
+        "200":
+          description: Updated lesson
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lesson" }
+        "400":
+          description: No fields to update
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the course owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Course or lesson not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      operationId: deleteLesson
+      summary: Delete a lesson (owner only)
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: moduleId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: lessonId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Lesson deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the course owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/my/courses:
+    get:
+      operationId: myEnrolledCourses
+      summary: List courses the authenticated user is enrolled in
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Enrolled courses with progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  courses:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/Course"
+                        - type: object
+                          properties:
+                            enrollment:
+                              type: object
+                              properties:
+                                id: { type: string }
+                                enrolledAt: { type: string, format: date-time }
+                                completedAt: { type: string, nullable: true, format: date-time }
+                            progress: { $ref: "#/components/schemas/Progress" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/my/teaching:
+    get:
+      operationId: myTeachingCourses
+      summary: List courses the authenticated user created
+      tags: [learn]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Created courses with enrollment and content counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  courses:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/Course"
+                        - type: object
+                          properties:
+                            enrollmentCount: { type: integer }
+                            moduleCount: { type: integer }
+                            lessonCount: { type: integer }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/spec:
+    get:
+      operationId: getLearnSpec
+      summary: Serve this OpenAPI spec
+      tags: [learn]
+      responses:
+        "200":
+          description: OpenAPI YAML
+          content:
+            text/yaml:
+              schema: { type: string }

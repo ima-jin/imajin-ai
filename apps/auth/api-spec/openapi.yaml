@@ -2,7 +2,7 @@ openapi: "3.1.0"
 info:
   title: imajin auth
   version: "1.0.0"
-  description: Identity registration, DID-based challenge-response authentication, session management, and magic-link flows.
+  description: Identity registration, DID-based challenge-response authentication, session management, magic-link flows, attestations, and DFOS chain identity.
 servers:
   - url: https://auth.imajin.ai
     description: production
@@ -11,12 +11,20 @@ servers:
   - url: http://localhost:7001
     description: local
 
+tags:
+  - name: auth
+    description: imajin auth service
+
 components:
   securitySchemes:
     cookieAuth:
       type: apiKey
       in: cookie
       name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "Bearer token (imajin_tok_* API token)"
   schemas:
     Identity:
       type: object
@@ -24,9 +32,14 @@ components:
         did: { type: string, example: "did:imajin:abc123" }
         handle: { type: string }
         name: { type: string }
-        type: { type: string, enum: [hard, soft] }
+        type:
+          type: string
+          enum: [human, agent, presence, org, device, service, event]
+        tier:
+          type: string
+          enum: [soft, preliminary, established]
         role: { type: string }
-        tier: { type: string, enum: [hard, soft] }
+        chainVerified: { type: boolean }
     Error:
       type: object
       required: [error]
@@ -34,10 +47,29 @@ components:
         error: { type: string }
 
 paths:
+  /api/health:
+    get:
+      tags: [auth]
+      operationId: healthCheck
+      summary: Service health check
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  service: { type: string }
+                  timestamp: { type: string, format: date-time }
+
   /api/challenge:
     post:
+      tags: [auth]
       operationId: createChallenge
-      summary: Create a signing challenge
+      summary: Create a signing challenge (API token flow)
+      description: Request a random challenge to be signed by the identity's private key. Part of the low-level token-based auth flow.
       requestBody:
         required: true
         content:
@@ -46,7 +78,7 @@ paths:
               type: object
               required: [id]
               properties:
-                id: { type: string, description: "DID or public key" }
+                id: { type: string, description: "DID of the identity requesting the challenge" }
       responses:
         "200":
           description: Challenge created
@@ -57,12 +89,24 @@ paths:
                 properties:
                   challengeId: { type: string }
                   challenge: { type: string }
-                  expiresAt: { type: number }
+                  expiresAt: { type: string, format: date-time }
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Identity not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/authenticate:
     post:
+      tags: [auth]
       operationId: authenticate
-      summary: Submit signed challenge and receive a token
+      summary: Submit signed challenge and receive an API token
+      description: Verify an Ed25519 signature over the challenge string and issue an imajin_tok_* API token with expiry.
       requestBody:
         required: true
         content:
@@ -71,20 +115,25 @@ paths:
               type: object
               required: [id, challengeId, signature]
               properties:
-                id: { type: string }
+                id: { type: string, description: "DID" }
                 challengeId: { type: string }
-                signature: { type: string }
+                signature: { type: string, description: "Ed25519 signature of challenge bytes (hex)" }
       responses:
         "200":
-          description: Authenticated
+          description: Authenticated — returns API token
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  token: { type: string }
-                  expiresAt: { type: number }
+                  token: { type: string, example: "imajin_tok_..." }
+                  expiresAt: { type: string, format: date-time }
                   identity: { $ref: "#/components/schemas/Identity" }
+        "400":
+          description: Invalid or expired challenge
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Invalid signature
           content:
@@ -93,8 +142,10 @@ paths:
 
   /api/login/challenge:
     post:
+      tags: [auth]
       operationId: createLoginChallenge
-      summary: Create a login challenge by handle or DID
+      summary: Create a login challenge by handle or DID (session cookie flow)
+      description: Request a challenge for the cookie-based login flow. Rate-limited to 10 req/min per IP.
       requestBody:
         required: true
         content:
@@ -114,12 +165,31 @@ paths:
                 properties:
                   challengeId: { type: string }
                   challenge: { type: string }
-                  expiresAt: { type: number }
+                  expiresAt: { type: string, format: date-time }
+        "400":
+          description: handle or did required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Identity not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/login/verify:
     post:
+      tags: [auth]
       operationId: verifyLogin
       summary: Verify signed challenge and set session cookie
+      description: |
+        Verify Ed25519 signature over the challenge. On success, sets the `imajin_session` HttpOnly cookie.
+        Optionally bridges a DFOS chain on login by passing `dfosChain`.
       requestBody:
         required: true
         content:
@@ -129,7 +199,8 @@ paths:
               required: [challengeId, signature]
               properties:
                 challengeId: { type: string }
-                signature: { type: string }
+                signature: { type: string, description: "Ed25519 signature of the challenge (hex)" }
+                dfosChain: { type: array, items: { type: string }, description: "Optional DFOS chain log to bridge at login" }
       responses:
         "200":
           description: Login successful — sets imajin_session cookie
@@ -147,6 +218,11 @@ paths:
                   handle: { type: string }
                   type: { type: string }
                   name: { type: string }
+        "400":
+          description: Invalid challenge
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Invalid signature
           content:
@@ -155,6 +231,7 @@ paths:
 
   /api/logout:
     post:
+      tags: [auth]
       operationId: logout
       summary: Clear session cookie
       responses:
@@ -169,8 +246,10 @@ paths:
 
   /api/session:
     get:
+      tags: [auth]
       operationId: getSession
       summary: Get current session from cookie
+      description: Reads the imajin_session cookie, verifies the JWT, and returns the full identity record including tier and chain status.
       security:
         - cookieAuth: []
       responses:
@@ -187,8 +266,12 @@ paths:
 
   /api/session/soft:
     post:
+      tags: [auth]
       operationId: createSoftSession
-      summary: Create a soft DID session from email
+      summary: Create or retrieve a soft DID session from email
+      description: |
+        Mints a stable `did:imajin:*` for the email (or retrieves existing) and sets a session cookie.
+        Soft DIDs have no keypair — email is the credential. Rate-limited to 10 req/min per IP.
       requestBody:
         required: true
         content:
@@ -201,7 +284,7 @@ paths:
                 name: { type: string }
       responses:
         "200":
-          description: Soft session created
+          description: Soft session created — sets imajin_session cookie
           content:
             application/json:
               schema:
@@ -209,14 +292,30 @@ paths:
                 properties:
                   did: { type: string }
                   handle: { type: string }
-                  type: { type: string, enum: [soft] }
+                  type: { type: string }
                   name: { type: string }
                   tier: { type: string, enum: [soft] }
+        "400":
+          description: Invalid email
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/register:
     post:
+      tags: [auth]
       operationId: register
-      summary: Register a new hard DID identity
+      summary: Register a new keypair-backed DID identity
+      description: |
+        Register a new identity with an Ed25519 public key. Requires an invite code for human
+        registrations (unless NEXT_PUBLIC_DISABLE_INVITE_GATE=true). Non-human types bypass the
+        invite gate. If the public key already exists, returns the existing identity (login-via-register).
+        Rate-limited to 5 req/min per IP.
       requestBody:
         required: true
         content:
@@ -225,15 +324,21 @@ paths:
               type: object
               required: [publicKey, type, signature]
               properties:
-                publicKey: { type: string, description: "Ed25519 public key (base64)" }
-                handle: { type: string }
+                publicKey: { type: string, description: "Ed25519 public key (hex)" }
+                handle: { type: string, description: "3-30 chars: lowercase letters, numbers, underscores" }
                 name: { type: string }
-                type: { type: string, enum: [hard] }
-                signature: { type: string }
-                inviteCode: { type: string }
+                type:
+                  type: string
+                  enum: [human, agent, presence, org, device, service, event]
+                signature: { type: string, description: "Ed25519 signature of the registration payload (hex)" }
+                inviteCode: { type: string, description: "Required for human type when invite gate is enabled" }
+                email: { type: string, format: email }
+                phone: { type: string }
+                optInUpdates: { type: boolean }
+                dfosChain: { type: array, items: { type: string }, description: "Optional DFOS chain to bridge at registration" }
       responses:
         "201":
-          description: Identity registered
+          description: Identity registered — sets imajin_session cookie
           content:
             application/json:
               schema:
@@ -244,16 +349,49 @@ paths:
                   type: { type: string }
                   created: { type: boolean }
                   inviteAccepted: { type: boolean }
+        "200":
+          description: Public key already registered — returns existing identity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  handle: { type: string }
+                  type: { type: string }
+                  created: { type: boolean }
         "400":
           description: Invalid request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Invalid signature
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Invite required or invalid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Handle already taken by a different key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Too many requests
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
   /api/magic:
     get:
+      tags: [auth]
       operationId: magicLink
-      summary: Authenticate via magic link token and redirect
+      summary: Authenticate via magic link token (deprecated — use /api/onboard/verify)
+      description: Verifies a ticket magic-link token via the events service, sets a session cookie, and redirects. Returns HTML on error.
       parameters:
         - name: token
           in: query
@@ -263,21 +401,112 @@ paths:
         "302":
           description: Redirects to event or destination after setting session cookie
         "400":
-          description: Invalid or expired token
+          description: Missing or invalid token (returns HTML error page)
+
+  /api/magic/send:
+    post:
+      tags: [auth]
+      operationId: sendMagicLink
+      summary: Send a magic link email for re-authentication
+      description: |
+        Sends a magic link to the email associated with a soft or hard DID. Always returns
+        `{ sent: true }` to prevent email enumeration. Rate-limited to 5 req/min per IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                redirectUrl: { type: string }
+      responses:
+        "200":
+          description: Magic link sent (or silently suppressed — always 200 to prevent enumeration)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent: { type: boolean }
+        "429":
+          description: Too many requests
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/onboard:
+    post:
+      tags: [auth]
+      operationId: initiateOnboard
+      summary: Initiate email-based onboarding — sends verification email
+      description: |
+        Sends a verification email with a magic link. The link calls `/api/onboard/verify` to
+        complete onboarding and mint a soft DID. Rate-limited to 5 req/min per IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string }
+                redirectUrl: { type: string }
+                context: { type: string, description: "Context label shown in email (e.g. event name)" }
+      responses:
+        "200":
+          description: Verification email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent: { type: boolean }
+        "400":
+          description: Invalid email
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/onboard/verify:
+    get:
+      tags: [auth]
+      operationId: verifyOnboard
+      summary: Complete email verification — mints soft DID and sets session cookie
+      description: |
+        Consumes the one-time onboard token from the email link. Mints or retrieves a soft DID,
+        sets the imajin_session cookie, and redirects to the configured redirectUrl.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "302":
+          description: Redirects to redirectUrl (or default) after setting session cookie
+        "400":
+          description: Missing or expired token (returns HTML error page)
+
   /api/lookup/{id}:
     get:
+      tags: [auth]
       operationId: lookupIdentity
       summary: Look up identity by DID
+      description: Public endpoint returning public identity fields by DID.
       parameters:
         - name: id
           in: path
           required: true
           schema: { type: string }
-          description: "DID (e.g., did:imajin:abc123)"
+          description: "DID (URL-encoded, e.g. did%3Aimajin%3Aabc123)"
       responses:
         "200":
           description: Identity found
@@ -290,6 +519,7 @@ paths:
                   handle: { type: string }
                   name: { type: string }
                   type: { type: string }
+                  tier: { type: string }
                   avatarUrl: { type: string }
                   metadata: { type: object }
                   createdAt: { type: string, format: date-time }
@@ -301,8 +531,10 @@ paths:
 
   /api/validate:
     post:
+      tags: [auth]
       operationId: validateToken
-      summary: Validate an API token
+      summary: Validate an API token and return identity
+      description: Validates an imajin_tok_* token, updates its last-used timestamp, and returns the associated identity.
       requestBody:
         required: true
         content:
@@ -322,11 +554,14 @@ paths:
                 properties:
                   valid: { type: boolean }
                   identity: { $ref: "#/components/schemas/Identity" }
+                  error: { type: string }
 
   /api/verify:
     post:
-      operationId: verifySignature
+      tags: [auth]
+      operationId: verifySignedMessage
       summary: Stateless verification of a signed message
+      description: Resolves the signer's public key from DB and verifies an imajin SignedMessage envelope.
       requestBody:
         required: true
         content:
@@ -339,7 +574,7 @@ paths:
                   type: object
                   required: [from, type, timestamp, payload, signature]
                   properties:
-                    from: { type: string }
+                    from: { type: string, description: "DID of signer" }
                     type: { type: string }
                     timestamp: { type: number }
                     payload: { type: object }
@@ -354,3 +589,673 @@ paths:
                 properties:
                   valid: { type: boolean }
                   identity: { $ref: "#/components/schemas/Identity" }
+                  error: { type: string }
+
+  /api/access/{did}:
+    get:
+      tags: [auth]
+      operationId: checkAccess
+      summary: Check whether the authenticated requester has access to a resource DID
+      description: |
+        Supports three DID namespaces:
+        - `did:imajin:event:*` / `did:imajin:evt_*` — ticket-holder or organizer check
+        - `did:imajin:dm:*` — deterministic DM membership check
+        - `did:imajin:group:*` — group participant check
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+          description: "URL-encoded resource DID"
+      responses:
+        "200":
+          description: Access result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allowed: { type: boolean }
+                  role: { type: string, description: "attendee | organizer | participant | <pod role>" }
+                  governance: { type: string, description: "ticket | owner | dm | group" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/identity/{did}:
+    get:
+      tags: [auth]
+      operationId: resolveIdentity
+      summary: Resolve a DID to its public key and metadata
+      description: Public endpoint. Returns did, publicKey, type, tier, and dfosDid (if chain exists).
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Identity resolved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  publicKey: { type: string, description: "Ed25519 public key (hex)" }
+                  type: { type: string }
+                  tier: { type: string }
+                  dfosDid: { type: string }
+        "404":
+          description: Identity not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/identity/{did}/chain:
+    get:
+      tags: [auth]
+      operationId: getIdentityChain
+      summary: Get the DFOS identity chain for a DID
+      description: Public endpoint. Returns the portable, self-verifying chain log and integrity metadata.
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Chain log
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  dfosDid: { type: string }
+                  log: { type: array, items: { type: string } }
+                  headCid: { type: string }
+                  keyCount: { type: number }
+                  isDeleted: { type: boolean }
+        "404":
+          description: No DFOS chain found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/identity/{did}/keys:
+    get:
+      tags: [auth]
+      operationId: getIdentityKeys
+      summary: Get current key state for the authenticated identity
+      description: Authenticated — returns multi-role key state (auth/assert/controller) from the DFOS chain, or single-key state if no chain.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Key state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  dfosDid: { type: string }
+                  singleKey: { type: boolean }
+                  keyCount: { type: number }
+                  chainLength: { type: number }
+                  authKeys: { type: array, items: { type: string } }
+                  assertKeys: { type: array, items: { type: string } }
+                  controllerKeys: { type: array, items: { type: string } }
+                  lastRotated: { type: string, format: date-time }
+        "401":
+          description: Unauthorized (must be the DID owner)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/identity/{did}/rotate:
+    post:
+      tags: [auth]
+      operationId: rotateKeys
+      summary: Rotate keys by submitting an updated DFOS chain log
+      description: |
+        Accepts a client-signed chain update (signed with the controller key) and stores the
+        updated chain. Invalidates all existing sessions/tokens for this DID.
+        Rate-limited to 1 rotation per hour.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [log]
+              properties:
+                log:
+                  type: array
+                  items: { type: string }
+                  description: "Full updated chain log (existing entries + new rotation entry)"
+      responses:
+        "200":
+          description: Keys rotated — all sessions invalidated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  keyCount: { type: number }
+                  headCid: { type: string }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No existing chain found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Rate limit — max 1 rotation per hour
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/identity/{did}/sign:
+    post:
+      tags: [auth]
+      operationId: nodeSignPayload
+      summary: Internal — node signs a payload on behalf of a chain-verified identity
+      description: |
+        Service-to-service endpoint (INTERNAL_API_KEY required). Signs a canonical payload using
+        AUTH_PRIVATE_KEY as node witness. Only signs for identities with a valid DFOS chain.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payload]
+              properties:
+                payload: { type: string }
+      responses:
+        "200":
+          description: Signature result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      signature: { type: string }
+                  - type: object
+                    properties:
+                      signed: { type: boolean, enum: [false] }
+                      reason: { type: string }
+        "401":
+          description: Unauthorized (invalid INTERNAL_API_KEY)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/identity/{did}/verify:
+    get:
+      tags: [auth]
+      operationId: verifyIdentityChain
+      summary: Verify DFOS chain and check DB consistency for a DID
+      description: Public endpoint. Verifies chain cryptographic integrity and checks that the DB public key matches the chain.
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  hasDfosChain: { type: boolean }
+                  chain:
+                    type: object
+                    properties:
+                      valid: { type: boolean }
+                      keyCount: { type: number }
+                      isDeleted: { type: boolean }
+                      publicKeyMatches: { type: boolean }
+        "404":
+          description: Identity not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/identity/present-chain:
+    post:
+      tags: [auth]
+      operationId: presentChain
+      summary: External onboarding — present a DFOS chain log to create or retrieve a did:imajin alias
+      description: |
+        An external user presents their chain log. Auth verifies it cryptographically, creates a
+        `did:imajin:*` alias (or returns existing), and sets a session cookie.
+        Trust tier: `preliminary` — chain proves keypair ownership, not standing on this network.
+        Rate-limited to 10 req/min per IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chainLog]
+              properties:
+                chainLog:
+                  type: array
+                  items: { type: string }
+                  description: "Non-empty DFOS chain log"
+                provider: { type: string, description: "Chain provider hint (e.g. dfos)" }
+      responses:
+        "200":
+          description: Identity resolved or created — sets imajin_session cookie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  identity:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      tier: { type: string, enum: [preliminary] }
+                      chainVerified: { type: boolean, enum: [true] }
+                  created: { type: boolean }
+        "400":
+          description: chainLog must be a non-empty array
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: Chain verification failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/identity/verify-chain:
+    post:
+      tags: [auth]
+      operationId: verifyChain
+      summary: Internal — verify a DFOS chain log and resolve identity
+      description: |
+        Chain abstraction endpoint used by registry and other services. Verifies chain integrity
+        and resolves a `did:imajin` alias if one exists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chainLog]
+              properties:
+                chainLog:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean }
+                  did: { type: string, description: "Canonical DID (did:imajin alias or chain DID)" }
+                  chainDid: { type: string }
+                  publicKey: { type: string }
+                  keyCount: { type: number }
+                  error: { type: string }
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/resolve/dfos/{dfosDid}:
+    get:
+      tags: [auth]
+      operationId: resolveDfosDid
+      summary: Resolve a did:dfos to its linked did:imajin identity
+      description: Public endpoint.
+      parameters:
+        - name: dfosDid
+          in: path
+          required: true
+          schema: { type: string }
+          description: "URL-encoded did:dfos:... identifier"
+      responses:
+        "200":
+          description: Identity found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imajinDid: { type: string }
+                  dfosDid: { type: string }
+                  type: { type: string }
+                  tier: { type: string }
+        "404":
+          description: No Imajin identity linked to this DFOS DID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/attestations:
+    post:
+      tags: [auth]
+      operationId: createAttestation
+      summary: Issue a new attestation
+      description: |
+        Caller must be the issuer (session cookie or Bearer token). The signature must be an
+        Ed25519 signature over the canonical JSON of `{subject_did, type, context_id, context_type, payload, issued_at}`.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [issuer_did, subject_did, type, signature]
+              properties:
+                issuer_did: { type: string }
+                subject_did: { type: string }
+                type: { type: string, description: "Attestation type (from ATTESTATION_TYPES registry)" }
+                context_id: { type: string }
+                context_type: { type: string }
+                payload: { type: object }
+                signature: { type: string, description: "Ed25519 signature over canonical payload (hex)" }
+                issued_at: { type: number, description: "Unix timestamp ms (defaults to now)" }
+                author_jws: { type: string, description: "Optional JWS for bilateral attestation flow" }
+      responses:
+        "201":
+          description: Attestation created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  cid: { type: string }
+                  issuerDid: { type: string }
+                  subjectDid: { type: string }
+                  type: { type: string }
+                  attestationStatus: { type: string, enum: [pending, bilateral, declined, "null"] }
+                  issuedAt: { type: string, format: date-time }
+        "400":
+          description: Invalid request or signature
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      tags: [auth]
+      operationId: listAttestations
+      summary: List non-revoked attestations for a subject DID
+      description: Returns attestations newest first. subject_did is required.
+      parameters:
+        - name: subject_did
+          in: query
+          required: true
+          schema: { type: string }
+        - name: type
+          in: query
+          schema: { type: string }
+        - name: issuer_did
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, bilateral, declined] }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        "200":
+          description: Attestation list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    cid: { type: string }
+                    issuerDid: { type: string }
+                    subjectDid: { type: string }
+                    type: { type: string }
+                    contextId: { type: string }
+                    contextType: { type: string }
+                    payload: { type: object }
+                    attestationStatus: { type: string }
+                    issuedAt: { type: string, format: date-time }
+        "400":
+          description: subject_did required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/attestations/{did}:
+    get:
+      tags: [auth]
+      operationId: getAttestationsByDid
+      summary: Shorthand — list attestations for a subject DID (path param)
+      description: Equivalent to GET /api/attestations?subject_did={did}
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Attestation list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object }
+
+  /api/attestations/countersign:
+    post:
+      tags: [auth]
+      operationId: countersignAttestation
+      summary: Countersign a pending attestation (witness/subject signs to make it bilateral)
+      description: Only the attestation subject can countersign. Transitions status from `pending` to `bilateral`.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [attestationId, witnessJws]
+              properties:
+                attestationId: { type: string }
+                witnessJws: { type: string, description: "JWS from the subject's chain key" }
+      responses:
+        "200":
+          description: Attestation is now bilateral
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  cid: { type: string }
+                  status: { type: string, enum: [bilateral] }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Only the subject can countersign
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Attestation not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Attestation is not in pending state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/attestations/decline:
+    post:
+      tags: [auth]
+      operationId: declineAttestation
+      summary: Decline a pending attestation
+      description: Only the attestation subject can decline. Transitions status from `pending` to `declined`.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [attestationId]
+              properties:
+                attestationId: { type: string }
+      responses:
+        "200":
+          description: Attestation declined
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  status: { type: string, enum: [declined] }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Only the subject can decline
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Attestation not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Attestation is not in pending state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/attestations/internal:
+    post:
+      tags: [auth]
+      operationId: issueAttestationInternal
+      summary: Internal — issue a platform-signed attestation (service-to-service)
+      description: |
+        Signs the attestation using the platform keypair (AUTH_PRIVATE_KEY).
+        Requires `ATTESTATION_INTERNAL_API_KEY` as Bearer token. No session cookie.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [issuer_did, subject_did, type]
+              properties:
+                issuer_did: { type: string }
+                subject_did: { type: string }
+                type: { type: string }
+                context_id: { type: string }
+                context_type: { type: string }
+                payload: { type: object }
+      responses:
+        "201":
+          description: Attestation issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  cid: { type: string }
+                  issuerDid: { type: string }
+                  subjectDid: { type: string }
+                  type: { type: string }
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized (invalid API key)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/spec:
+    get:
+      tags: [auth]
+      operationId: getSpec
+      summary: Serve the OpenAPI spec YAML
+      responses:
+        "200":
+          description: OpenAPI YAML
+          content:
+            text/yaml:
+              schema: { type: string }

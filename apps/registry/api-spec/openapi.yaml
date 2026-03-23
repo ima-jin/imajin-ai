@@ -11,8 +11,18 @@ servers:
   - url: http://localhost:7002
     description: local
 
+tags:
+  - name: registry
+
 components:
   securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
     attestation:
       type: http
       scheme: bearer
@@ -70,8 +80,93 @@ components:
         error: { type: string }
 
 paths:
+  /api/health:
+    get:
+      tags: [registry]
+      operationId: healthCheck
+      summary: Service health check
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  service: { type: string }
+                  timestamp: { type: string, format: date-time }
+
+  /api/spec:
+    get:
+      tags: [registry]
+      operationId: getSpec
+      summary: Serve OpenAPI spec (YAML)
+      responses:
+        "200":
+          description: OpenAPI YAML spec
+          content:
+            text/yaml:
+              schema: { type: string }
+
+  /api/specs:
+    get:
+      tags: [registry]
+      operationId: listServices
+      summary: List all registered imajin services with their spec URLs
+      responses:
+        "200":
+          description: Service list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  services:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        description: { type: string }
+                        icon: { type: string }
+                        label: { type: string }
+                        visibility: { type: string }
+                        category: { type: string }
+                        url: { type: string }
+                        spec: { type: string }
+
+  /api/specs/{service}:
+    get:
+      tags: [registry]
+      operationId: getServiceSpec
+      summary: Proxy and return the OpenAPI spec for a named service
+      parameters:
+        - name: service
+          in: path
+          required: true
+          schema: { type: string }
+          description: "Service name (e.g. profile, events, auth)"
+      responses:
+        "200":
+          description: Service spec (YAML or JSON as returned by service)
+          content:
+            text/yaml:
+              schema: { type: string }
+        "404":
+          description: Unknown service
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: Could not reach service
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/builds/verify:
     get:
+      tags: [registry]
       operationId: listApprovedBuilds
       summary: List all approved builds
       parameters:
@@ -94,6 +189,7 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/ApprovedBuild" }
     post:
+      tags: [registry]
       operationId: verifyBuild
       summary: Check if a build hash is approved
       requestBody:
@@ -129,6 +225,7 @@ paths:
 
   /api/node/register:
     post:
+      tags: [registry]
       operationId: registerNode
       summary: Register a new node — verifies Ed25519 attestation and provisions subdomain
       requestBody:
@@ -140,6 +237,10 @@ paths:
               required: [attestation]
               properties:
                 attestation: { $ref: "#/components/schemas/NodeAttestation" }
+                chainLog:
+                  type: array
+                  items: { type: string }
+                  description: "Optional chain verification log"
       responses:
         "201":
           description: Node registered
@@ -151,6 +252,7 @@ paths:
                   status: { type: string, enum: [verified] }
                   subdomain: { type: string, example: "jin.imajin.ai" }
                   expiresAt: { type: number }
+                  chainVerified: { type: boolean }
         "200":
           description: Node renewed (existing node)
           content:
@@ -162,6 +264,7 @@ paths:
                   subdomain: { type: string }
                   expiresAt: { type: number }
                   renewed: { type: boolean }
+                  chainVerified: { type: boolean }
         "400":
           description: Invalid attestation structure or hostname format
           content:
@@ -203,6 +306,7 @@ paths:
 
   /api/node/heartbeat:
     post:
+      tags: [registry]
       operationId: nodeHeartbeat
       summary: Node liveness ping — verifies Ed25519 signature against registered public key
       requestBody:
@@ -252,6 +356,7 @@ paths:
 
   /api/node/list:
     get:
+      tags: [registry]
       operationId: listNodes
       summary: List registered nodes
       parameters:
@@ -283,6 +388,7 @@ paths:
                   limit: { type: integer }
                   offset: { type: integer }
     head:
+      tags: [registry]
       operationId: nodeStats
       summary: Network statistics in response headers
       responses:
@@ -300,6 +406,7 @@ paths:
 
   /api/node/lookup/{id}:
     get:
+      tags: [registry]
       operationId: lookupNode
       summary: Look up a node by DID or hostname
       parameters:
@@ -319,3 +426,91 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /api/node/resolve/{did}:
+    get:
+      tags: [registry]
+      operationId: resolveNodeByDid
+      summary: Resolve any DID (node DID or chain DID) to a node endpoint
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+          description: "did:imajin:... (node DID) or did:dfos:... (chain DID)"
+      responses:
+        "200":
+          description: Node resolved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  node:
+                    type: object
+                    properties:
+                      hostname: { type: string }
+                      subdomain: { type: string }
+                      status: { type: string }
+                      services: { type: array, items: { type: string } }
+        "400":
+          description: DID is required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No node found for this DID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /relay/{path}:
+    get:
+      tags: [registry]
+      operationId: relayGet
+      summary: DFOS web relay — catch-all GET handler
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema: { type: string }
+          description: "Relay sub-path (catch-all)"
+      responses:
+        "200":
+          description: Relay response
+    post:
+      tags: [registry]
+      operationId: relayPost
+      summary: DFOS web relay — catch-all POST handler
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema: { type: string }
+          description: "Relay sub-path (catch-all)"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Relay response
+    put:
+      tags: [registry]
+      operationId: relayPut
+      summary: DFOS web relay — catch-all PUT handler
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema: { type: string }
+          description: "Relay sub-path (catch-all)"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Relay response
