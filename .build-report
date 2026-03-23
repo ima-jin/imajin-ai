@@ -1,0 +1,164 @@
+=== Build started: Mon 23 Mar 01:43:23 UTC 2026 ===
+Apps: registry www
+
+=== Building registry ===
+  ▲ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Skipping validation of types
+   Linting ...
+   Collecting page data ...
+   Generating static pages (0/11) ...
+   Generating static pages (2/11) 
+   Generating static pages (5/11) 
+List error: B [Error]: Dynamic server usage: Route /api/node/list couldn't be rendered statically because it used `request.url`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error
+    at V (/home/jin/dev/imajin-ai/node_modules/.pnpm/next@14.2.35_@babel+core@7.29.0_@opentelemetry+api@1.9.0_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:21778)
+    at Object.get (/home/jin/dev/imajin-ai/node_modules/.pnpm/next@14.2.35_@babel+core@7.29.0_@opentelemetry+api@1.9.0_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:29465)
+    at p (/home/jin/dev/imajin-ai/apps/registry/.next/server/app/api/node/list/route.js:1:840)
+    at /home/jin/dev/imajin-ai/node_modules/.pnpm/next@14.2.35_@babel+core@7.29.0_@opentelemetry+api@1.9.0_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:38417
+    at /home/jin/dev/imajin-ai/node_modules/.pnpm/next@14.2.35_@babel+core@7.29.0_@opentelemetry+api@1.9.0_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/next/dist/server/lib/trace/tracer.js:140:36
+    at NoopContextManager.with (/home/jin/dev/imajin-ai/node_modules/.pnpm/@opentelemetry+api@1.9.0/node_modules/@opentelemetry/api/build/src/context/NoopContextManager.js:25:19)
+    at ContextAPI.with (/home/jin/dev/imajin-ai/node_modules/.pnpm/@opentelemetry+api@1.9.0/node_modules/@opentelemetry/api/build/src/api/context.js:60:46)
+    at NoopTracer.startActiveSpan (/home/jin/dev/imajin-ai/node_modules/.pnpm/@opentelemetry+api@1.9.0/node_modules/@opentelemetry/api/build/src/trace/NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (/home/jin/dev/imajin-ai/node_modules/.pnpm/@opentelemetry+api@1.9.0/node_modules/@opentelemetry/api/build/src/trace/ProxyTracer.js:36:24)
+    at /home/jin/dev/imajin-ai/node_modules/.pnpm/next@14.2.35_@babel+core@7.29.0_@opentelemetry+api@1.9.0_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/next/dist/server/lib/trace/tracer.js:122:103 {
+  description: "Route /api/node/list couldn't be rendered statically because it used `request.url`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error",
+  digest: 'DYNAMIC_SERVER_USAGE'
+}
+   Generating static pages (8/11) 
+ ✓ Generating static pages (11/11)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                              Size     First Load JS
+┌ ○ /                                    138 B          87.4 kB
+├ ○ /_not-found                          871 B          88.2 kB
+├ ƒ /api/builds/verify                   0 B                0 B
+├ ○ /api/health                          0 B                0 B
+├ ƒ /api/node/heartbeat                  0 B                0 B
+├ ƒ /api/node/list                       0 B                0 B
+├ ƒ /api/node/lookup/[id]                0 B                0 B
+├ ƒ /api/node/register                   0 B                0 B
+├ ƒ /api/node/resolve/[did]              0 B                0 B
+├ ƒ /api/spec                            0 B                0 B
+├ ƒ /api/specs                           0 B                0 B
+├ ƒ /api/specs/[service]                 0 B                0 B
+├ ○ /docs                                2.15 kB        89.4 kB
+└ ƒ /relay/[[...path]]                   0 B                0 B
++ First Load JS shared by all            87.3 kB
+  ├ chunks/814-22f7f5a8217c5849.js       31.7 kB
+  ├ chunks/e2c5e4a1-cd822d2d949ec03f.js  53.6 kB
+  └ other shared chunks (total)          1.92 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+✅ registry
+
+=== Building www ===
+  ▲ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/52) ...
+   Generating static pages (13/52) 
+   Generating static pages (26/52) 
+   Generating static pages (39/52) 
+ ✓ Generating static pages (52/52)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                  Size     First Load JS
+┌ ƒ /                                        1.08 kB         308 kB
+├ ƒ /_not-found                              871 B          88.2 kB
+├ ○ /.well-known/apple-app-site-association  0 B                0 B
+├ ○ /.well-known/assetlinks.json             0 B                0 B
+├ ƒ /api/bugs                                0 B                0 B
+├ ƒ /api/bugs/[id]                           0 B                0 B
+├ ƒ /api/bugs/[id]/import                    0 B                0 B
+├ ƒ /api/bugs/admin                          0 B                0 B
+├ ƒ /api/health                              0 B                0 B
+├ ƒ /api/spec                                0 B                0 B
+├ ƒ /api/subscribe                           0 B                0 B
+├ ƒ /apps                                    1.47 kB        88.8 kB
+├ ƒ /articles                                188 B          96.2 kB
+├ ● /articles/[slug]                         188 B          96.2 kB
+├   ├ /articles/prologue
+├   ├ /articles/the-internet-we-lost
+├   ├ /articles/the-artificial-developer
+├   └ [+28 more paths]
+├ ƒ /bugs                                    592 B           302 kB
+├ ƒ /bugs/admin                              2.57 kB         304 kB
+├ ƒ /build                                   188 B          96.2 kB
+├ ƒ /developer-guide                         188 B          96.2 kB
+├ ƒ /health                                  1.72 kB        97.7 kB
+├ ƒ /privacy                                 188 B          96.2 kB
+├ ƒ /register                                1.76 kB         103 kB
+├ ○ /sitemap.xml                             0 B                0 B
+└ ƒ /whitepaper                              188 B          96.2 kB
++ First Load JS shared by all                87.3 kB
+  ├ chunks/814-f8e77bffa40c1dcc.js           31.7 kB
+  ├ chunks/e2c5e4a1-d055739a669c587c.js      53.6 kB
+  └ other shared chunks (total)              1.96 kB
+
+
+○  (Static)   prerendered as static content
+●  (SSG)      prerendered as static HTML (uses getStaticProps)
+ƒ  (Dynamic)  server-rendered on demand
+
+✅ www
+
+=== Restarting: dev-registry dev-www  ===
+Use --update-env to update environment variables
+[PM2] Applying action restartProcessId on app [dev-registry](ids: [ 67 ])
+[PM2] [dev-registry](67) ✓
+Use --update-env to update environment variables
+[PM2] Applying action restartProcessId on app [dev-www](ids: [ 60 ])
+[PM2] [dev-www](60) ✓
+┌─────┬────────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id  │ name               │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├─────┼────────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 72  │ auth               │ default     │ 0.40.1  │ fork    │ 2117993  │ 4h     │ 54   │ online    │ 0%       │ 69.0mb   │ jin      │ disabled │
+│ 84  │ chat               │ default     │ 0.40.1  │ fork    │ 2118212  │ 4h     │ 228  │ online    │ 0%       │ 68.6mb   │ jin      │ disabled │
+│ 104 │ coffee             │ default     │ N/A     │ fork    │ 2118364  │ 4h     │ 545  │ online    │ 0%       │ 74.0mb   │ jin      │ disabled │
+│ 77  │ connections        │ default     │ 0.40.1  │ fork    │ 2118085  │ 4h     │ 38   │ online    │ 0%       │ 69.0mb   │ jin      │ disabled │
+│ 61  │ dev-auth           │ default     │ 0.40.1  │ fork    │ 2164082  │ 13m    │ 1084 │ online    │ 0%       │ 67.0mb   │ jin      │ disabled │
+│ 82  │ dev-chat           │ default     │ 0.40.1  │ fork    │ 2164224  │ 13m    │ 243  │ online    │ 0%       │ 67.6mb   │ jin      │ disabled │
+│ 100 │ dev-coffee         │ default     │ N/A     │ fork    │ 2164389  │ 13m    │ 28   │ online    │ 0%       │ 74.7mb   │ jin      │ disabled │
+│ 66  │ dev-connections    │ default     │ 0.40.1  │ fork    │ 2164240  │ 13m    │ 107  │ online    │ 0%       │ 67.7mb   │ jin      │ disabled │
+│ 101 │ dev-dykil          │ default     │ N/A     │ fork    │ 2164431  │ 13m    │ 111  │ online    │ 0%       │ 73.9mb   │ jin      │ disabled │
+│ 81  │ dev-events         │ default     │ 0.40.1  │ fork    │ 2164193  │ 13m    │ 324  │ online    │ 0%       │ 67.1mb   │ jin      │ disabled │
+│ 107 │ dev-fixready       │ default     │ N/A     │ fork    │ 2118465  │ 4h     │ 2    │ online    │ 0%       │ 74.1mb   │ jin      │ disabled │
+│ 97  │ dev-input          │ default     │ N/A     │ fork    │ 2164271  │ 13m    │ 28   │ online    │ 0%       │ 74.8mb   │ jin      │ disabled │
+│ 108 │ dev-karaoke        │ default     │ N/A     │ fork    │ 2118479  │ 4h     │ 2    │ online    │ 0%       │ 73.9mb   │ jin      │ disabled │
+│ 115 │ dev-learn          │ default     │ 0.40.1  │ fork    │ 2164359  │ 13m    │ 33   │ online    │ 0%       │ 67.1mb   │ jin      │ disabled │
+│ 102 │ dev-links          │ default     │ N/A     │ fork    │ 2164453  │ 13m    │ 25   │ online    │ 0%       │ 75.5mb   │ jin      │ disabled │
+│ 122 │ dev-market         │ default     │ 0.40.1  │ fork    │ 2164332  │ 13m    │ 19   │ online    │ 0%       │ 67.4mb   │ jin      │ disabled │
+│ 103 │ dev-media          │ default     │ N/A     │ fork    │ 2164301  │ 13m    │ 36   │ online    │ 0%       │ 73.5mb   │ jin      │ disabled │
+│ 62  │ dev-pay            │ default     │ 0.40.1  │ fork    │ 2164100  │ 13m    │ 400  │ online    │ 0%       │ 67.6mb   │ jin      │ disabled │
+│ 63  │ dev-profile        │ default     │ 0.40.1  │ fork    │ 2164134  │ 13m    │ 4569 │ online    │ 0%       │ 67.3mb   │ jin      │ disabled │
+│ 67  │ dev-registry       │ default     │ 0.40.1  │ fork    │ 2165537  │ 0s     │ 209  │ online    │ 116.7%   │ 60.6mb   │ jin      │ disabled │
+│ 60  │ dev-www            │ default     │ 0.40.1  │ fork    │ 2165551  │ 0s     │ 397  │ online    │ 0%       │ 20.1mb   │ jin      │ disabled │
+│ 105 │ dykil              │ default     │ N/A     │ fork    │ 2118417  │ 4h     │ 22   │ online    │ 0%       │ 73.9mb   │ jin      │ disabled │
+│ 83  │ events             │ default     │ 0.40.1  │ fork    │ 2118201  │ 4h     │ 67   │ online    │ 0%       │ 68.4mb   │ jin      │ disabled │
+│ 109 │ fixready           │ default     │ N/A     │ fork    │ 2118511  │ 4h     │ 2    │ online    │ 0%       │ 73.8mb   │ jin      │ disabled │
+│ 114 │ input              │ default     │ 0.40.1  │ fork    │ 2118591  │ 4h     │ 20   │ online    │ 0%       │ 69.1mb   │ jin      │ disabled │
+│ 110 │ karaoke            │ default     │ N/A     │ fork    │ 2118522  │ 4h     │ 2    │ online    │ 0%       │ 74.6mb   │ jin      │ disabled │
+│ 117 │ learn              │ default     │ N/A     │ fork    │ 2118632  │ 4h     │ 18   │ online    │ 0%       │ 74.3mb   │ jin      │ disabled │
+│ 106 │ links              │ default     │ N/A     │ fork    │ 2118418  │ 4h     │ 452  │ online    │ 0%       │ 74.1mb   │ jin      │ disabled │
+│ 113 │ media              │ default     │ 0.40.1  │ fork    │ 2118576  │ 4h     │ 20   │ online    │ 0%       │ 69.0mb   │ jin      │ disabled │
+│ 73  │ pay                │ default     │ 0.40.1  │ fork    │ 2118035  │ 4h     │ 40   │ online    │ 0%       │ 68.7mb   │ jin      │ disabled │
+│ 74  │ profile            │ default     │ 0.40.1  │ fork    │ 2118042  │ 4h     │ 352  │ online    │ 0%       │ 68.7mb   │ jin      │ disabled │
+│ 78  │ registry           │ default     │ 0.40.1  │ fork    │ 2118092  │ 4h     │ 28   │ online    │ 0%       │ 69.0mb   │ jin      │ disabled │
+│ 71  │ www                │ default     │ 0.40.1  │ fork    │ 2117981  │ 4h     │ 70   │ online    │ 0%       │ 68.7mb   │ jin      │ disabled │
+└─────┴────────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+
+=== Build finished: Mon 23 Mar 01:46:05 UTC 2026 ===
+✅ Succeeded: registry www
+❌ Failed: none

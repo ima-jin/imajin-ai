@@ -1,0 +1,1 @@
+ALTER TABLE "learn"."courses" ADD COLUMN "image_asset_id" text;
