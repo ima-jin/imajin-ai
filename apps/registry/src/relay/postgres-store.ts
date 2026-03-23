@@ -8,6 +8,7 @@ import type {
   StoredBeacon,
   BlobKey,
 } from '@metalabel/dfos-web-relay';
+import { decodeJwsUnsafe } from '@metalabel/dfos-protocol';
 import {
   relayOperations,
   relayIdentityChains,
@@ -183,6 +184,17 @@ export class PostgresRelayStore implements RelayStore {
   }
 
   async addCountersignature(operationCid: string, jwsToken: string): Promise<void> {
+    const decoded = decodeJwsUnsafe(jwsToken);
+    if (decoded) {
+      const witnessDID = decoded.header.kid.split('#')[0];
+      const existing = await this.getCountersignatures(operationCid);
+      for (const existingJws of existing) {
+        const existingDecoded = decodeJwsUnsafe(existingJws);
+        if (existingDecoded && existingDecoded.header.kid.split('#')[0] === witnessDID) {
+          return;
+        }
+      }
+    }
     await this.db.insert(relayCountersignatures).values({
       operationCid,
       jwsToken,
