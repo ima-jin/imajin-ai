@@ -15,7 +15,10 @@
   "dependencies": {
     "@imajin/auth": "workspace:*",
     "@imajin/config": "workspace:*",
+    "@metalabel/dfos-protocol": "^0.3.0",
+    "@metalabel/dfos-web-relay": "^0.3.0",
     "drizzle-orm": "^0.45.1",
+    "hono": "^4.12.5",
     "next": "^14.2.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",

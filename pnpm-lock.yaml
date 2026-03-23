@@ -922,9 +922,18 @@ importers:
       '@imajin/ui':
         specifier: workspace:^
         version: link:../../packages/ui
+      '@metalabel/dfos-protocol':
+        specifier: ^0.3.0
+        version: 0.3.0
+      '@metalabel/dfos-web-relay':
+        specifier: ^0.3.0
+        version: 0.3.0(@metalabel/dfos-protocol@0.3.0)
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.1(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@prisma/client@5.22.0(prisma@5.22.0))(@types/pg@8.16.0)(postgres@3.4.8)(prisma@5.22.0)
+      hono:
+        specifier: ^4.12.5
+        version: 4.12.8
       next:
         specifier: ^14.2.0
         version: 14.2.35(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -2264,6 +2273,14 @@ packages:
 
   '@metalabel/dfos-protocol@0.2.0':
     resolution: {integrity: sha512-8nprwkeIwEbWTSFvhkeA2iF8L8kckAOheaP4cbdlEAy3hr893z+YoMamwZw6U6w3WYNpdo655u9DFNdOI6CsSA==}
+
+  '@metalabel/dfos-protocol@0.3.0':
+    resolution: {integrity: sha512-xg2zvdCN9aSC667MAmgCv9T6pE2eZfEC+0BxI7fhMhqqj9iee+Mysm13bfi+XVJzo4CiKdZgdfAw6EodTUTzQA==}
+
+  '@metalabel/dfos-web-relay@0.3.0':
+    resolution: {integrity: sha512-u4n4lRU58zekJ3/GkI+diXunNpR3XEAcTXlP2KJueRAn6HIBYOHFohuviEQ5UTBED/Uhl2g56z45OfggD2hFIg==}
+    peerDependencies:
+      '@metalabel/dfos-protocol': ^0.3.0
 
   '@napi-rs/wasm-runtime@0.2.12':
     resolution: {integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==}
@@ -4450,6 +4467,10 @@ packages:
   he@1.2.0:
     resolution: {integrity: sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==}
     hasBin: true
+
+  hono@4.12.8:
+    resolution: {integrity: sha512-VJCEvtrezO1IAR+kqEYnxUOoStaQPGrCmX3j4wDTNOcD1uRPFpGlwQUIW8niPuvHXaTUxeOUl5MMDGrl+tmO9A==}
+    engines: {node: '>=16.9.0'}
 
   html-escaper@2.0.2:
     resolution: {integrity: sha512-H2iMtd0I4Mt5eYiapRdIDjp+XzelXQ0tFE4JS7YFwFevXXMmOp9myNrUvCg0D6ws8iqkRPBfKHgbwig1SmlLfg==}
@@ -7457,6 +7478,20 @@ snapshots:
       multiformats: 13.4.2
       zod: 4.3.6
 
+  '@metalabel/dfos-protocol@0.3.0':
+    dependencies:
+      '@ipld/dag-cbor': 9.2.5
+      '@noble/curves': 2.0.1
+      '@noble/hashes': 2.0.1
+      multiformats: 13.4.2
+      zod: 4.3.6
+
+  '@metalabel/dfos-web-relay@0.3.0(@metalabel/dfos-protocol@0.3.0)':
+    dependencies:
+      '@metalabel/dfos-protocol': 0.3.0
+      hono: 4.12.8
+      zod: 4.3.6
+
   '@napi-rs/wasm-runtime@0.2.12':
     dependencies:
       '@emnapi/core': 1.8.1
@@ -9853,6 +9888,8 @@ snapshots:
       '@types/hast': 3.0.4
 
   he@1.2.0: {}
+
+  hono@4.12.8: {}
 
   html-escaper@2.0.2: {}
 
