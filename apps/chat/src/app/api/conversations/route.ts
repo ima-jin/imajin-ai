@@ -154,7 +154,20 @@ export async function GET(request: NextRequest) {
             otherDid = otherRead?.did;
           }
 
-          // 3. If still nothing, check who was invited (created_by != me means I'm the other party)
+          // 3. Check conversation_members table
+          if (!otherDid) {
+            const otherMembers = await rawSql`
+              SELECT member_did FROM chat.conversation_members
+              WHERE conversation_did = ${conv.did}
+                AND member_did != ${identity.id}
+              LIMIT 1
+            `;
+            if (otherMembers.length > 0) {
+              otherDid = otherMembers[0].member_did as string;
+            }
+          }
+
+          // 4. Fallback: created_by != me means I'm the other party
           if (!otherDid && conv.createdBy !== identity.id) {
             otherDid = conv.createdBy;
           }
@@ -251,8 +264,16 @@ export async function POST(request: NextRequest) {
 
       await db.insert(conversationsV2).values({
         did: convDid,
+        type: 'dm',
         createdBy: identity.id,
       }).onConflictDoNothing();
+
+      // Track both parties so we can resolve names without reversing the hash
+      await rawSql`
+        INSERT INTO chat.conversation_members (conversation_did, member_did, role)
+        VALUES (${convDid}, ${identity.id}, 'member'), (${convDid}, ${otherDid}, 'member')
+        ON CONFLICT (conversation_did, member_did) DO NOTHING
+      `;
 
       const conv = await db.query.conversationsV2.findFirst({
         where: eq(conversationsV2.did, convDid),
