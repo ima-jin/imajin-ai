@@ -153,12 +153,8 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
         if (res.ok) {
           const data = await res.json();
           setCurrentUserDid(data.did);
-          const tier = data.tier || 'soft';
-          if (tier === 'hard') {
-            setCapabilities(new Set(['send:text', 'send:voice', 'send:media', 'send:location']));
-          } else {
-            setCapabilities(new Set(['send:text']));
-          }
+          // All authenticated users get full chat capabilities
+          setCapabilities(new Set(['send:text', 'send:voice', 'send:media', 'send:location']));
         }
       } catch (err) {
         console.error('Failed to fetch session:', err);
