@@ -1,8 +1,47 @@
 <!-- Build Log — newest first. Source: Discord dev channel + git history. -->
 
-## March 20, 2026 — Auth Rebuild: Chain-Backed Identity (#395)
+## March 20–22, 2026 — Chain-Backed Identity, DFOS Relay & P26 Epic
 
-**The base layer gets cryptographic bones.** Designed and specced a full auth rebuild using DFOS identity chain primitives. 9 child issues, 3 phases.
+**Three days, one thesis: every identity operation gets cryptographic proof underneath.**
+
+### 🔗 DFOS Relay — LIVE (PR #453)
+
+- **Registry IS the relay.** Mounted `@metalabel/dfos-web-relay` v0.3.0 inside registry at `/relay/*`
+- PostgresRelayStore backed by drizzle — relay data lives in the same DB as node registrations
+- Same DID, same service, same trust boundary
+- Live at `dev-registry.imajin.ai/relay/`
+- AuthZ gating tracked in #454 (require verified DID for writes before prod)
+
+### 🧪 Auth Test Suite — SHIPPED (PR #451, #408)
+
+- 43 integration tests covering the full auth surface
+- `imajin_test` DB created for isolated test runs
+- CI wired — safety net for all future auth changes
+
+### 🏗 P26 Epic: Unified Identity Substrate (#415–#425)
+
+**Core thesis adopted from Greg (Tonalith):** DFOS is not an external protocol — it's the cryptographic substrate MJN's identity layer rests on. One DID, not two. `did:imajin` is an alias (like DNS), chain is canonical.
+
+**Batch 0 — Auth Consolidation (PR #437)**
+- 4 services migrated from manual session validation to `@imajin/auth` + dfos-protocol 0.2.0
+- connections, input, www, pay all use `requireAuth` now
+
+**Batch 1 — Foundation (PR #440)**
+- #417: `chainVerified` added to Identity type + session + profile badge
+- #420: Door-check attestations — `institution.verified` + `event.attendance` emitted on check-in
+
+**Batch 2 — Trust Boundaries (PRs #441–#443)**
+- #416: Chain-verified node registration + DID resolution in registry
+- #418: Portable .fair attribution with chain-backed creator proof
+- #419: Chain-verified settlement parties in pay
+
+**Batch 3 — Federation (PRs #444–#447)**
+- #421: Chain-recorded pod membership attestations in connections
+- #422: Signed messages with chain keys in chat (+ migration for signature column)
+- #423: Enrollment and completion attestations in learn
+- #424: Chain presentation endpoint + login UI + chain provider abstraction for external onboarding
+
+### 🔐 Auth Rebuild Design (#395)
 
 - **Self-certifying identity** — every `did:imajin` backed by a DFOS proof chain, verifiable without our server
 - **Key rotation** — signed handoff via chain updates (previously: no mechanism at all)
@@ -10,9 +49,45 @@
 - **Bilateral attestations** — DFOS countersignatures replace our single-signature model
 - **First test suite** — verification tests proving every bridge linkage is correct
 
-Same Ed25519 curve, byte-compatible keys. One keypair, two DIDs. Nothing existing breaks — profiles, connections, tickets all untouched. The Postgres stays as operational layer; the chain provides cryptographic proof underneath.
+Same Ed25519 curve, byte-compatible keys. One keypair, two DIDs. Nothing existing breaks.
 
-This is the "federated now, decentralized later" promise becoming real. The chain is the exit door.
+### 💬 Chat v2 Migration (PR #436, #435)
+
+- Migrated v1 conversations to v2 schema and removed v1 tables
+- Event name resolution for auto-created conversations
+- Drizzle migration re-baseline with v2 tables (#428)
+
+### 🔑 DFOS Sprint (PR #434, #431)
+
+- Keys-first login flow with stored key auto-login
+- Unified email-first login page (#427)
+- Gas fee adjustment (0.001 → 0.01 MJN)
+- Nav bar balance fix (reads `data.total` not `data.amount`)
+- Profile email renamed to `contact_email` (auth owns identity email)
+- Essay 31: "The Receipt" — chain-native token launch from usage proof
+
+### 🛒 Market Fixes
+
+- Image upload via media service instead of data URLs (#429)
+- Seller name resolved from auth lookup (#430)
+- Media URL fix (use service prefix, not hardcoded prod)
+- Image dedup by hash on upload
+
+### 📄 Documentation
+
+- Developer guide updated — stable DIDs, attestations, DFOS, market, 15 services
+- RFC-18: Media Revocation & Cross-Graph Attribution
+- Build timeline phases 10–12 updated
+- Work orders written for Batch 2 + 3
+- Completed work orders archived
+
+### 📊 By the Numbers
+
+- 10 P26 issues implemented (#416–#425)
+- 12+ PRs merged
+- 43 auth tests
+- DFOS relay live
+- **Services: 15** — all with chain-aware identity
 
 ---
 
