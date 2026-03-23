@@ -595,15 +595,9 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
           </div>
         )}
         {voiceActive ? (
-          <div className="flex items-center gap-2">
-            <VoiceRecorder
-              onRecordingStart={() => setVoiceActive(true)}
-              onRecordingComplete={handleVoiceComplete}
-              onCancel={() => setVoiceActive(false)}
-              disabled={voiceSending}
-            />
+          <div className="flex items-center gap-2 flex-1">
             {voiceSending && (
-              <span className="text-sm text-gray-500 flex-shrink-0">Processing...</span>
+              <span className="text-sm text-gray-500 flex-shrink-0">Processing voice...</span>
             )}
           </div>
         ) : (
