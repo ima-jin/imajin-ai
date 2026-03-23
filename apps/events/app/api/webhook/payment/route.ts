@@ -306,6 +306,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       pricePaid: amountTotal / quantity,
       currency: currency.toUpperCase(),
       paymentId: paymentId || sessionId,
+      paymentMethod: paymentId ? 'stripe' : 'etransfer',
       status: 'valid',
       purchasedAt: new Date(),
       signature,
