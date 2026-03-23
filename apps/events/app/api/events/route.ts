@@ -143,6 +143,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Create event chat conversation and add creator as admin
+    const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
+    if (CHAT_URL) {
+      try {
+        await fetch(`${CHAT_URL}/api/d/${encodeURIComponent(eventDid)}/members`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ memberDid: identity.id, role: 'admin' }),
+        });
+        // Update conversation name (the POST creates with empty name)
+        const { getClient: getChatClient } = await import('@imajin/db');
+        const chatSql = getChatClient();
+        await chatSql`
+          UPDATE chat.conversations_v2 
+          SET name = ${title}, created_by = ${identity.id}
+          WHERE did = ${eventDid}
+        `;
+        console.log(`Created event chat ${eventDid} with creator ${identity.id} as admin`);
+      } catch (chatError) {
+        console.warn('Event chat creation failed (non-fatal):', chatError);
+      }
+    }
+
     // Store event keypair (in real system, this would be encrypted/secured)
     // For now, we return it so creator can sign tickets
     return NextResponse.json({

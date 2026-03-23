@@ -159,6 +159,21 @@ export async function POST(
       ON CONFLICT (pod_id, did) DO NOTHING
     `;
 
+    // Also add cohost to event chat as admin
+    const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
+    if (CHAT_URL && event.did) {
+      try {
+        await fetch(`${CHAT_URL}/api/d/${encodeURIComponent(event.did)}/members`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ memberDid: coHostDid, role: 'admin' }),
+        });
+        console.log(`Added cohost ${coHostDid} to event chat ${event.did}`);
+      } catch (chatError) {
+        console.warn('Cohost chat sync failed (non-fatal):', chatError);
+      }
+    }
+
     const cohost = {
       did: coHostDid,
       name: profileData.name || null,
