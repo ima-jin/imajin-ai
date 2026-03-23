@@ -1,90 +1,74 @@
-# Imajin — A Trust-Gated Service Layer
+# Imajin — A Cryptographic Operating System for Sovereign Commerce
 
-> imajin.ai is a trust-gated service layer for sovereign communities.
-> Identity determines access. Your trust graph determines scope. Every action is signed and attributed.
+> imajin.ai runs a JBOS (Just a Bunch Of Services) on a cryptographic substrate.
+> Services are commodity. Chains are permanent. Identity, attribution, trust, and settlement are structural.
+
+## Full specification
+
+For the complete protocol spec, architecture, and API reference:
+https://imajin.ai/llms-full.txt
 
 ## What is Imajin?
 
-Imajin (今人 - "now-person" / "imagination") is sovereign infrastructure founded by Ryan Veteze. It provides:
+Imajin (今人 — "now-person") is sovereign infrastructure. 15 independent HTTP services sharing a cryptographic kernel: signed identity chains (DFOS), .fair attribution manifests, and bilateral attestations.
 
-- **Trust-Gated Access** — DID-based identity scopes every service interaction
-- **Trust Graphs** — Real human relationships as infrastructure, not algorithmic connections
-- **Direct Payments** — Value flows person-to-person, no platform cut
-- **.fair Protocol** — Attribution infrastructure for creative work
-- **Federated Nodes** — Self-hostable, path to full decentralization
+The kernel (auth + pay) enforces identity and settlement. Userspace services (events, chat, market, learn, etc.) are disposable — swap, rewrite, or add more without touching the chain layer.
 
 ## Architecture
 
-The core insight: build human-first infrastructure — identity, payments, connections, attribution — and the agent layer emerges naturally on top. Every API is already trust-scoped and DID-signed. An authenticated agent operates within the same boundaries as a human.
+```
+MJN (L6)     ← identity + attribution + trust + settlement
+DFOS (L0–L5) ← proof chains, key rotation, countersignatures
+HTTPS        ← transport
+```
 
-### Services (10 live)
+## Services (15 live)
 
-| Service | URL | Purpose |
-|---------|-----|---------|
-| www | https://imajin.ai | Landing, essays |
-| auth | https://auth.imajin.ai | Identity (Ed25519 keypairs, DIDs) |
-| registry | https://registry.imajin.ai | Node federation & discovery |
-| connections | https://connections.imajin.ai | Trust graph |
-| pay | https://pay.imajin.ai | Payments (Stripe + Solana) |
-| profile | https://profile.imajin.ai | Public identity pages |
-| events | https://events.imajin.ai | Events & ticketing |
-| chat | https://chat.imajin.ai | Messaging, trust-bound |
-| input | https://input.imajin.ai | Voice/file processing |
-| media | https://media.imajin.ai | Asset storage, .fair attribution |
+| Service | URL | Role |
+|---------|-----|------|
+| auth | auth.imajin.ai | Kernel — DIDs, sessions, attestations, DFOS bridge |
+| pay | pay.imajin.ai | Kernel — Stripe, settlement, .fair verification |
+| connections | connections.imajin.ai | Trust — pods, invites, groups, vouches |
+| profile | profile.imajin.ai | Discovery — public profiles, handles |
+| registry | registry.imajin.ai | Federation — node discovery, DFOS relay |
+| events | events.imajin.ai | Userspace — events, tickets, .fair splits |
+| chat | chat.imajin.ai | Userspace — DID messaging, WebSocket |
+| media | media.imajin.ai | Userspace — assets, .fair sidecars |
+| input | input.imajin.ai | Userspace — voice (Whisper), uploads |
+| learn | learn.imajin.ai | Userspace — courses, enrollment |
+| market | market.imajin.ai | Userspace — local commerce |
+| coffee | coffee.imajin.ai | Userspace — tipping pages |
+| links | links.imajin.ai | Userspace — link-in-bio |
+| dykil | dykil.imajin.ai | Userspace — spending surveys |
+| www | imajin.ai | Userspace — landing, app launcher |
 
-### Identity Model
+## Identity
 
-Two tiers:
-- **Soft DIDs** (`did:email:*`) — Email-verified, can participate (buy tickets, enroll, chat)
-- **Hard DIDs** (`did:imajin:*`) — Ed25519 keypair, full identity, profile, creator tools
-
-### API Specification
-
-- Registry API: https://registry.imajin.ai/api/spec (OpenAPI 3.1)
+Ed25519 keypairs → `did:imajin:xxx` (also valid Solana wallet). Three standing tiers: soft (email), preliminary (keypair), established (earned). Chain-backed via DFOS.
 
 ## Key Concepts
 
-### Trust Graph
-A network of vouched relationships. Trust is local and earned. Every connection is intentional — invite-only, no algorithmic matching.
-
-### .fair Attribution
-JSON manifests tracking who made what and who gets paid. Attached to every media asset.
-
-### Sovereign Presence
-AI presences (like Jin — an 8×8×8 LED cube) are first-class network participants with their own DIDs.
-
-## The Essays
-
-Twenty essays articulating the vision, published February 2026:
-1. The Pain of Knowing — https://imajin.ai/articles/the-internet-we-lost
-2. I've Been an AI Since 1988 — https://imajin.ai/articles/the-artificial-developer
-3. The Mask We All Wear — https://imajin.ai/articles/the-mask-we-all-wear
-4. The Internet That Pays You Back — https://imajin.ai/articles/the-internet-that-pays-you-back
-5. You Don't Need Ads — https://imajin.ai/articles/you-dont-need-ads
-6. The Guild — https://imajin.ai/articles/the-guild
-7. The Utility — https://imajin.ai/articles/the-utility
-8. The Ticket Is the Trust — https://imajin.ai/articles/the-ticket-is-the-trust
-9. The Network — https://imajin.ai/articles/the-network
-10. The Bridge — https://imajin.ai/articles/the-bridge
-11. The Practice — https://imajin.ai/articles/the-practice
-12. Memory — https://imajin.ai/articles/memory
-13. How to Save the Ad Industry — https://imajin.ai/articles/how-to-save-the-ad-industry
-14. How to Save the Music Industry — https://imajin.ai/articles/how-to-save-the-music-industry
-15. How to Save Journalism — https://imajin.ai/articles/how-to-save-journalism
-16. The Business Case — https://imajin.ai/articles/the-business-case
-17. Honor the Chain (.fair) — https://imajin.ai/articles/honor-the-chain
-18. The Connector — https://imajin.ai/articles/the-connector
-19. I Need Help — https://imajin.ai/articles/i-need-help
+- **JBOS** — Just a Bunch Of Services. No orchestration. Services verify chains, not each other.
+- **.fair** — JSON manifests: who made it, who gets paid. Kernel primitive — settlement rejects unsigned manifests.
+- **Bilateral attestations** — both parties sign via DFOS countersignatures. Trust is mutual, not unilateral.
+- **Exit credentials** — leave with your reputation. Signed, portable, encrypted under your key.
 
 ## Links
 
-- Website: https://imajin.ai
-- Code: https://github.com/ima-jin/imajin-ai
-- Articles: https://imajin.ai/articles
-- API Spec: https://registry.imajin.ai/api/spec
-- Founder: Ryan Veteze
+- Full spec: https://imajin.ai/llms-full.txt
+- Source: https://github.com/ima-jin/imajin-ai
+- .fair spec: https://github.com/ima-jin/.fair
+- MJN protocol: https://github.com/ima-jin/mjn-protocol
+- DFOS: https://protocol.dfos.com
+- DFOS relay: https://registry.imajin.ai/relay/
+- OpenAPI specs: https://<service>.imajin.ai/api/spec
+- Developer guide: https://imajin.ai/developer-guide
+
+## Build Stats (March 2026)
+
+15 services · 122,721 LOC · ~120 identities · 50 days · 1 human + AI · $76K actual ($2.3M traditional estimate)
 
 ## Contact
 
+Ryan Veteze — ryan@imajin.ai
 This is exit infrastructure from platform dependency, not a competing platform.
-The essays at /articles provide the complete intellectual foundation.
