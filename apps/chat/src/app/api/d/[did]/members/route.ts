@@ -14,6 +14,49 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 /**
+ * POST /api/d/:did/members - Add a member to a conversation
+ * Body: { memberDid: string, role?: string }
+ * 
+ * Used by events webhook to sync ticket holders into event chat.
+ * Creates conversation if it doesn't exist (for event chats).
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ did: string }> }
+) {
+  const cors = corsHeaders(request);
+  const { did } = await params;
+
+  try {
+    const body = await request.json();
+    const { memberDid, role = 'member' } = body;
+
+    if (!memberDid) {
+      return errorResponse('memberDid is required', 400, cors);
+    }
+
+    // Ensure conversation exists (upsert — event chats may not exist yet)
+    await sql`
+      INSERT INTO chat.conversations_v2 (did, type, name, created_at, updated_at)
+      VALUES (${did}, 'group', '', NOW(), NOW())
+      ON CONFLICT (did) DO NOTHING
+    `;
+
+    // Add member (idempotent)
+    await sql`
+      INSERT INTO chat.conversation_members (conversation_did, member_did, role, joined_at)
+      VALUES (${did}, ${memberDid}, ${role}, NOW())
+      ON CONFLICT (conversation_did, member_did) DO NOTHING
+    `;
+
+    return jsonResponse({ ok: true, did, memberDid, role }, 200, cors);
+  } catch (error) {
+    console.error('Failed to add member:', error);
+    return errorResponse('Failed to add member', 500, cors);
+  }
+}
+
+/**
  * GET /api/d/:did/members - Get members of a conversation via pod membership
  */
 export async function GET(

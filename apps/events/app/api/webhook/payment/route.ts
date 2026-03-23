@@ -328,6 +328,26 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
 
   console.log(`Created ${createdTickets.length} ticket(s) for ${customerEmail}`);
 
+  // Add buyer to event chat conversation_members (non-fatal)
+  // The event DID is the conversation DID
+  const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
+  if (CHAT_URL) {
+    try {
+      const memberRes = await fetch(`${CHAT_URL}/api/d/${encodeURIComponent(event.did)}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberDid: ownerDid, role: 'member' }),
+      });
+      if (memberRes.ok) {
+        console.log(`Added ${ownerDid} to event chat ${event.did}`);
+      } else {
+        console.warn(`Failed to add to event chat (${memberRes.status}) — non-fatal`);
+      }
+    } catch (chatError) {
+      console.warn('Event chat member sync failed (non-fatal):', chatError);
+    }
+  }
+
   // After ticket creation, trigger .fair settlement (non-fatal)
   const eventMetadata = (event.metadata || {}) as Record<string, any>;
   try {
