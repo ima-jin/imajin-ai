@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import PriceDisplay from '../components/PriceDisplay';
+import { resolveMediaRef } from '@imajin/media';
 
 interface Listing {
   id: string;
@@ -487,7 +488,8 @@ interface ListingActionProps {
 
 function ListingThumbnail({ images }: { images: string[] | null }) {
   const imgs = Array.isArray(images) ? images : [];
-  const src = imgs.find((img) => typeof img === 'string' && img.startsWith('http'));
+  const ref = imgs.find((img) => typeof img === 'string' && img.length > 0);
+  const src = ref ? resolveMediaRef(ref) : undefined;
   if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element

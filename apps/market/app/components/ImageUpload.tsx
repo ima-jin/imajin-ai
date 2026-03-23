@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { resolveMediaRef } from '@imajin/media';
 
 const MAX_IMAGES = 8;
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
@@ -141,10 +142,12 @@ export function ImageUpload({ images, onChange }: ImageUploadProps) {
       {(images.length > 0 || pending.length > 0) && (
         <div className="flex flex-wrap gap-2 mb-3">
           {/* Committed images */}
-          {images.map((src, i) => (
+          {images.map((src, i) => {
+            const imgUrl = resolveMediaRef(src);
+            return (
             <div key={src} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-700 group">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={src} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
+              <img src={imgUrl} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
               <button
                 type="button"
                 onClick={() => removeImage(i)}
@@ -154,7 +157,8 @@ export function ImageUpload({ images, onChange }: ImageUploadProps) {
                 ×
               </button>
             </div>
-          ))}
+            );
+          })}
 
           {/* Pending uploads — spinner overlay */}
           {pending.map((p) => (

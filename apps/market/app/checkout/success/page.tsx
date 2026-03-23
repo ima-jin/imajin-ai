@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { resolveMediaRef } from '@imajin/media';
 
 interface Listing {
   id: string;
@@ -40,7 +41,7 @@ function CheckoutSuccessContent() {
             {listing.images?.[0] && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={listing.images[0]}
+                src={resolveMediaRef(listing.images[0])}
                 alt={listing.title}
                 className="w-24 h-24 object-cover rounded-xl mx-auto my-4"
               />
