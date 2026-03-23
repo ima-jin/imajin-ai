@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Discover all conversation DIDs this user participates in (same logic as conversations-v2)
-    const [readRecords, sentMessages, createdConvs, podConvDids] = await Promise.all([
+    const [readRecords, sentMessages, createdConvs, podConvDids, memberConvDids] = await Promise.all([
       db
         .select()
         .from(conversationReadsV2)
@@ -45,6 +45,12 @@ export async function GET(request: NextRequest) {
           AND pm.removed_at IS NULL
           AND p.conversation_did IS NOT NULL
       `,
+      rawSql`
+        SELECT conversation_did
+        FROM chat.conversation_members
+        WHERE member_did = ${identity.id}
+          AND left_at IS NULL
+      `,
     ]);
 
     const didSet = new Set<string>([
@@ -52,6 +58,7 @@ export async function GET(request: NextRequest) {
       ...sentMessages.map(m => m.conversationDid),
       ...createdConvs.map(c => c.did),
       ...podConvDids.map((r: Record<string, string>) => r.conversation_did),
+      ...memberConvDids.map((r: Record<string, string>) => r.conversation_did),
     ]);
 
     if (didSet.size === 0) {
