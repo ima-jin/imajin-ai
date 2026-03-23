@@ -102,10 +102,10 @@ function MarketPageContent() {
             </p>
           </div>
           <a
-            href="/listings/new"
+            href="/dashboard"
             className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-medium whitespace-nowrap"
           >
-            Create Listing
+            My Listings
           </a>
         </div>
 
