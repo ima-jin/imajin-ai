@@ -62,6 +62,7 @@ export async function PATCH(
       currency,
       category,
       images,
+      imageAssetIds,
       quantity,
       sellerTier,
       contactInfo,
