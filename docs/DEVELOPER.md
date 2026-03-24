@@ -27,9 +27,9 @@ done
 # 4. Edit DATABASE_URL in each .env.local to point to your local Postgres
 #    e.g. DATABASE_URL="postgresql://your_user:your_pass@localhost:5432/imajin_dev"
 
-# 5. Generate an Ed25519 private key for auth (used to sign JWTs)
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-#    Put the output in apps/auth/.env.local as AUTH_PRIVATE_KEY=<hex>
+# 5. Generate an Ed25519 private key for auth (PKCS#8 format, used to sign JWTs)
+node -e "const kp = require('crypto').generateKeyPairSync('ed25519'); console.log(kp.privateKey.export({type:'pkcs8',format:'der'}).toString('hex'))"
+#    Put the output (96 hex chars) in apps/auth/.env.local as AUTH_PRIVATE_KEY=<hex>
 
 # 6. Disable invite gate for local dev (in apps/auth/.env.local)
 #    NEXT_PUBLIC_DISABLE_INVITE_GATE=true
@@ -121,7 +121,7 @@ cp apps/auth/.env.example apps/auth/.env.local
 | Variable | Where | What | How to Generate |
 |----------|-------|------|-----------------|
 | `DATABASE_URL` | All services | Postgres connection | Your local Postgres URL |
-| `AUTH_PRIVATE_KEY` | auth only | Ed25519 key for signing JWTs | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `AUTH_PRIVATE_KEY` | auth only | Ed25519 PKCS#8 key for signing JWTs | See below |
 | `NEXT_PUBLIC_DISABLE_INVITE_GATE` | auth only | Skip invite codes in dev | Set to `true` |
 | `NEXT_PUBLIC_SERVICE_PREFIX` | All services | URL pattern for cross-service links | `http://localhost:` for local dev |
 
