@@ -8,7 +8,65 @@ Getting started with the imajin-ai monorepo.
 - **pnpm** (`npm install -g pnpm`)
 - **PostgreSQL** (local install or SSH tunnel to server)
 
-## Setup
+## Quickstart (Local Dev from Zero)
+
+```bash
+# 1. Clone and install
+git clone https://github.com/ima-jin/imajin-ai.git
+cd imajin-ai
+pnpm install
+
+# 2. Create a local database
+createdb imajin_dev
+
+# 3. Set up env files — copy from examples
+for app in auth profile registry connections pay events chat input media coffee dykil links learn market; do
+  cp apps/$app/.env.example apps/$app/.env.local 2>/dev/null
+done
+
+# 4. Edit DATABASE_URL in each .env.local to point to your local Postgres
+#    e.g. DATABASE_URL="postgresql://your_user:your_pass@localhost:5432/imajin_dev"
+
+# 5. Generate an Ed25519 private key for auth (used to sign JWTs)
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+#    Put the output in apps/auth/.env.local as AUTH_PRIVATE_KEY=<hex>
+
+# 6. Disable invite gate for local dev (in apps/auth/.env.local)
+#    NEXT_PUBLIC_DISABLE_INVITE_GATE=true
+
+# 7. Push all database schemas
+for app in auth profile registry connections pay events chat input media coffee dykil links learn market; do
+  (cd apps/$app && DATABASE_URL="postgresql://..." npx drizzle-kit push --force)
+done
+
+# 8. Start auth (minimum viable service)
+pnpm --filter @imajin/auth dev    # localhost:3001
+
+# 9. Register at http://localhost:3001/register
+#    This generates a keypair in your browser and creates your identity.
+#    SAVE YOUR KEY FILE — it's your only copy.
+```
+
+### Minimum Services for Local Dev
+
+You don't need all 15 services. Start with what you need:
+
+| Service | Port | Why |
+|---------|------|-----|
+| **auth** | 3001 | Required — identity, sessions, registration |
+| **profile** | 3005 | User profiles (registration creates one) |
+| **registry** | 3002 | App launcher, service discovery |
+
+Add more as needed. Each service's `.env.example` has all the defaults.
+
+### Fresh Start (Reset Everything)
+
+```bash
+dropdb imajin_dev && createdb imajin_dev
+# Then re-run step 7 above to push schemas
+```
+
+## Setup (Detailed)
 
 ```bash
 # Clone
@@ -21,7 +79,25 @@ pnpm install
 
 ## Database
 
-### Option A: SSH Tunnel (recommended for dev)
+### Option A: Local Postgres (recommended for external devs)
+
+Create a database and set `DATABASE_URL` in each service's `.env.local`:
+
+```bash
+createdb imajin_dev
+```
+
+Push **all** schemas (each service owns its own Postgres schema):
+
+```bash
+for app in auth profile registry connections pay events chat input media coffee dykil links learn market; do
+  (cd apps/$app && DATABASE_URL="postgresql://your_user:pass@localhost:5432/imajin_dev" npx drizzle-kit push --force)
+done
+```
+
+> **Note:** Tables live in named schemas (`auth`, `profile`, `chat`, etc.) — not in `public`. If your DB browser shows no tables, check the schema dropdown.
+
+### Option B: SSH Tunnel (team members)
 
 Connect to the server's Postgres:
 
@@ -29,40 +105,31 @@ Connect to the server's Postgres:
 ssh -f -N -L 5432:127.0.0.1:5432 jin@192.168.1.193
 ```
 
-Then use `postgresql://imajin_dev:PASSWORD@localhost:5432/imajin_dev` in your `.env.local`.
-
-### Option B: Local Postgres
-
-Create a database and set `DATABASE_URL` in `.env.local`:
-
-```bash
-createdb imajin_dev
-```
-
-Push schemas:
-
-```bash
-cd apps/auth && DATABASE_URL="postgresql://..." npx drizzle-kit push --force
-```
+Then use `postgresql://imajin_dev:PASSWORD@localhost:5432/imajin_dev` in your `.env.local`. Schemas are already pushed.
 
 ## Environment Variables
 
 Each app needs a `.env.local` file. Start from the example:
 
 ```bash
-cd apps/events
-cp .env.example .env.local
-# Edit with your DATABASE_URL and service URLs
+cp apps/auth/.env.example apps/auth/.env.local
+# Edit with your DATABASE_URL and secrets
 ```
 
-Key variables every service needs:
+### Critical Variables
 
-| Variable | Example |
-|----------|---------|
-| `DATABASE_URL` | `postgresql://imajin_dev:pass@localhost:5432/imajin_dev` |
-| `AUTH_SERVICE_URL` | `http://localhost:3001` |
+| Variable | Where | What | How to Generate |
+|----------|-------|------|-----------------|
+| `DATABASE_URL` | All services | Postgres connection | Your local Postgres URL |
+| `AUTH_PRIVATE_KEY` | auth only | Ed25519 key for signing JWTs | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `NEXT_PUBLIC_DISABLE_INVITE_GATE` | auth only | Skip invite codes in dev | Set to `true` |
+| `NEXT_PUBLIC_SERVICE_PREFIX` | All services | URL pattern for cross-service links | `http://localhost:` for local dev |
 
-Service-to-service URLs must point to wherever each service is running. In local dev, that's `http://localhost:PORT`.
+### Service URL Pattern
+
+The `.env.example` files default to `NEXT_PUBLIC_SERVICE_PREFIX=http://localhost:` which uses the canonical port map for cross-service browser links. No CORS issues, no hitting production by accident.
+
+Service-to-service (server-side) URLs use `AUTH_SERVICE_URL=http://localhost:3001` etc.
 
 ## Running Services
 
