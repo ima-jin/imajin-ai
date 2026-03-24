@@ -147,6 +147,8 @@ export async function GET(
     headers.set("Cache-Control", "private, max-age=3600");
   }
 
+  headers.set("Content-Length", String(outputBuffer.length));
+
   if (download) {
     headers.set(
       "Content-Disposition",
