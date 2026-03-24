@@ -20,19 +20,30 @@ export function getSessionCookieName(env?: "dev" | "prod"): string {
 /** Default cookie name — resolves at import time based on environment */
 export const SESSION_COOKIE_NAME = getSessionCookieName();
 
+/** Detect if running on localhost (not deployed to *.imajin.ai) */
+function isLocalhost(): boolean {
+  if (typeof process === "undefined") return false;
+  const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX ?? "";
+  return prefix.includes("localhost");
+}
+
 /** Cookie options for cross-subdomain sessions.
  *  When called with no argument, auto-detects from IMAJIN_ENV (same logic as getSessionCookieName).
  *  Accepts optional "dev" | "prod" override for explicit control.
+ *
+ *  Localhost-aware: when SERVICE_PREFIX contains "localhost", uses
+ *  settings compatible with HTTP on localhost (no domain, not secure, lax sameSite).
  */
 export function getSessionCookieOptions(env?: "dev" | "prod") {
+  const local = isLocalhost();
   return {
     name: getSessionCookieName(env),
     options: {
       httpOnly: true,
-      secure: true,
-      sameSite: "none" as const,
+      secure: !local,
+      sameSite: local ? ("lax" as const) : ("none" as const),
       path: "/",
-      domain: ".imajin.ai",
+      ...(local ? {} : { domain: ".imajin.ai" }),
       maxAge: 60 * 60 * 24, // 24 hours
     },
   };
