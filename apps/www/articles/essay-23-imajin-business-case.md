@@ -222,6 +222,40 @@ Every transaction is visible. Every cent is traceable. The journalist can see ex
 
 Until now.
 
+### Commerce: The Real Revenue — and Why It Stopped Making Sense
+
+Advertising, music, journalism — these are the visible casualties. But the quieter destruction happened on Main Street.
+
+Businesses used to be community infrastructure.
+
+The general store knew everyone's name. The restaurant was where you celebrated anniversaries and mourned losses. The hardware store owner coached Little League and served on the town council. The local paper ran on ads from these businesses — not because advertising "worked" in some algorithmic sense, but because the business and the community were the same thing. Funding the paper was funding the community. The return wasn't clicks. It was belonging.
+
+Then the platforms arrived and pulled the relationship layer out of local commerce.
+
+Google owns discovery — you search for a restaurant, Google decides which one you see. Uber Eats owns delivery — 30% of every meal goes to San Francisco. Yelp owns reputation — one bad review from a tourist who was having a bad day can tank a season. Booking.com owns the reservation — 15-25% for the privilege of being found. None of these platforms cook, clean, build, or serve anyone. They insert themselves between a business and its community and charge rent for the introduction.
+
+The result: businesses stopped being community nodes and became content in someone else's feed. They stopped investing in local relationships because the return was invisible. They started optimizing for algorithms instead of neighbors. A restaurant that used to know 500 regulars by name now manages an Instagram account and prays the algorithm shows their post to people within driving distance.
+
+This is extractive not because the fees are high — though they are — but because the model breaks the feedback loop between a business and its community. The money flows out. The data flows out. The relationship flows out. What stays is a storefront paying rent to five different platforms for access to people who live three blocks away.
+
+Imajin inverts this.
+
+A business on the trust graph doesn't buy ads — it accumulates attestations from customers who actually showed up. Every transaction is a signed receipt that both parties own. The tourist who ate at your restaurant in July has a direct connection to you in October when they're planning next summer. No algorithm between you. No platform deciding whether they see your post. The relationship is cryptographic — permanent, portable, yours.
+
+The referral chain between businesses becomes visible and compensable. The cottage owner who sends guests to your restaurant — that referral is tracked. When the guest books, the referring business earns. Not because someone built a referral marketing platform. Because the attribution is embedded in the transaction. The .fair manifest that documented the music remix does the same thing for the restaurant recommendation.
+
+And here's where it gets interesting: **the model rewards generosity.**
+
+A business that hoards customer relationships has a weaker trust graph than one that refers freely. The restaurant that sends guests to the boat rental, which sends them to the ice cream shop, which recommends the restaurant — that circular generosity creates a richer trust graph for all three businesses than any of them could build alone. The referral chain compensates each link. Being a good community member is literally more profitable than being a selfish one.
+
+This is how commerce used to work before platforms taught businesses that competition was about hoarding attention. The baker and the butcher and the grocer sent customers to each other because that's how a town works. The platform model told them to compete for the same eyeballs on the same feed. The trust graph model tells them what they already knew: a rising tide lifts all boats, and the receipts prove it.
+
+**At human scale:** A local business with 2,000 customer relationships, processing $500K in annual transactions through the network at 1%, generates $5,000 in platform fees — compared to $50,000-$100,000 they currently pay to platforms. The $45,000-$95,000 difference stays in the community. The referral chain earns them an additional 2-5% on referred business. The seasonal worker reputation system reduces hiring risk every spring.
+
+**At network scale:** 100,000 local businesses, each processing $200K annually through sovereign infrastructure, generates $200M in transaction volume with $2M in protocol fees. But the real number is the $5-10 billion in platform fees that *stays local* instead of flowing to San Francisco. That's not revenue for Imajin. That's capital returned to communities.
+
+The business case for the network isn't the 1% platform fee. It's the 99% that stops leaving.
+
 ---
 
 ## The Flywheel That Can't Be Captured
