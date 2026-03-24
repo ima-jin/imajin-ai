@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { buildPublicUrl } from '@imajin/config';
 
 export interface Identity {
   did: string;
@@ -69,7 +70,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
  */
 export function LoginPrompt() {
   const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 
-    `${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://dev-'}auth.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`;
+    buildPublicUrl('auth');
   const chatUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://dev-chat.imajin.ai';
 
   return (
