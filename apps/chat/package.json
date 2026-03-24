@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node server.js",
+    "dev": "node --env-file=.env.local server.js",
     "dev:next": "next dev --port 3007",
     "build": "next build",
     "start": "node server.js",
