@@ -3,6 +3,8 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { db, assets } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
+
+export const dynamic = "force-dynamic";
 import { eq } from "drizzle-orm";
 import { corsHeaders } from "@imajin/config";
 

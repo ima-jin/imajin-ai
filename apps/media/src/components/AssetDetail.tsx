@@ -176,6 +176,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
       const res = await fetch(`/api/assets/${asset.id}/transcribe`, {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
       });
       if (res.ok) {
         const data = await res.json();
