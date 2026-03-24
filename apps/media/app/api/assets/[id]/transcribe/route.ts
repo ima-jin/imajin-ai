@@ -10,20 +10,9 @@ const WHISPER_URL = process.env.WHISPER_URL || "http://192.168.1.234:8765";
 const WHISPER_AUTH = process.env.WHISPER_AUTH_TOKEN || "";
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
 
-const AUDIO_MIMES = new Set([
-  "audio/mpeg",
-  "audio/mp3",
-  "audio/wav",
-  "audio/x-wav",
-  "audio/ogg",
-  "audio/webm",
-  "audio/m4a",
-  "audio/mp4",
-  "audio/aac",
-  "audio/flac",
-  "video/webm",
-  "video/mp4",
-]);
+function isTranscribable(mime: string): boolean {
+  return mime.startsWith("audio/") || mime.startsWith("video/");
+}
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -70,7 +59,7 @@ export async function POST(
 
   // 3. Check mime type
   const mime = (asset.mimeType || "").toLowerCase();
-  if (!AUDIO_MIMES.has(mime)) {
+  if (!isTranscribable(mime)) {
     return NextResponse.json(
       { error: `Not an audio/video asset (${mime})` },
       { status: 400, headers: cors }
