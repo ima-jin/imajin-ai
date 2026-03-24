@@ -60,35 +60,24 @@ export async function POST(request: NextRequest) {
   try {
     await writeFile(tmpPath, fileBytes);
 
-    // Build multipart body manually — Web API FormData + fetch drops bytes in Node.js
-    const boundary = `----formdata-${randomBytes(16).toString('hex')}`;
-    const parts: Buffer[] = [];
-
-    // File part
-    parts.push(Buffer.from(
-      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: ${fileType}\r\n\r\n`
-    ));
-    parts.push(fileBytes);
-    parts.push(Buffer.from('\r\n'));
-
-    // Language part (optional)
+    // Use native FormData with File object
+    const gpuForm = new FormData();
+    gpuForm.append('file', new File([fileBytes], fileName, { type: fileType }));
     if (language && typeof language === 'string') {
-      parts.push(Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n${language}\r\n`
-      ));
+      gpuForm.append('language', language);
     }
 
-    parts.push(Buffer.from(`--${boundary}--\r\n`));
-    const body = Buffer.concat(parts);
+    const gpuHeaders: Record<string, string> = {
+      'X-Caller-DID': callerDid,
+    };
+    if (GPU_AUTH_TOKEN) {
+      gpuHeaders['Authorization'] = `Bearer ${GPU_AUTH_TOKEN}`;
+    }
 
     const gpuRes = await fetch(`${GPU_NODE_URL}/api/whisper/transcribe`, {
       method: 'POST',
-      body,
-      headers: {
-        'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        ...(GPU_AUTH_TOKEN ? { Authorization: `Bearer ${GPU_AUTH_TOKEN}` } : {}),
-        'X-Caller-DID': callerDid,
-      },
+      body: gpuForm,
+      headers: gpuHeaders,
     });
 
     if (!gpuRes.ok) {
