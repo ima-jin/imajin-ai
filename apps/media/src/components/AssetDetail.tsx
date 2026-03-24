@@ -173,7 +173,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   const handleTranscribe = async () => {
     setTranscribing(true);
     try {
-      const res = await fetch(`/api/assets/${asset.id}/transcribe`, {
+      const res = await fetch(`${window.location.origin}/api/assets/${asset.id}/transcribe`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
