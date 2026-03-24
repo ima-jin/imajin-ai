@@ -74,13 +74,23 @@ export function getServiceUrl(name: string, env: "dev" | "prod" = "dev"): string
   return port ? `http://localhost:${port}` : undefined;
 }
 
-/** Get the public URL for a service */
+/** Get the public URL for a service.
+ *  Localhost-aware: if domain contains "localhost" or prefix is "http://localhost:",
+ *  returns http://localhost:{devPort} using the canonical port map.
+ */
 export function getPublicUrl(
   name: string,
   options?: { prefix?: string; domain?: string }
 ): string {
   const domain = options?.domain || "imajin.ai";
   const prefix = options?.prefix;
+
+  // Detect localhost dev environment
+  if (domain.includes("localhost") || prefix?.includes("localhost")) {
+    const port = getPort(name, "dev");
+    return port ? `http://localhost:${port}` : `http://localhost:3000`;
+  }
+
   const subdomain = prefix ? `${prefix}-${name}` : name;
   return `https://${subdomain}.${domain}`;
 }
