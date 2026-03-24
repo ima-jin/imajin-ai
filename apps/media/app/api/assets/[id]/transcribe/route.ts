@@ -27,7 +27,7 @@ export async function OPTIONS(request: NextRequest) {
  * Stores the transcript in asset metadata.
  * Returns the transcript with segments and timing.
  */
-export async function POST(
+export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
