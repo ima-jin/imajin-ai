@@ -26,7 +26,8 @@
     "drizzle-orm": "^0.45.1",
     "next": "14.2.35",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "@imajin/input": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20",

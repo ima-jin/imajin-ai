@@ -11,7 +11,7 @@ import { useFileUpload } from './hooks/useFileUpload';
 import { useVoiceRecording } from './hooks/useVoiceRecording';
 import { useLocationShare } from './hooks/useLocationShare';
 import { MessageBubble } from './MessageBubble';
-import { VoiceRecorder } from './VoiceRecorder';
+import { VoiceRecorder } from '@imajin/input';
 
 interface ChatProps {
   did: string;

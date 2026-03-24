@@ -5,7 +5,6 @@ export type { ImajinInputProps, InputFeature, TranscriptionMeta } from './Imajin
 // Sub-components (can be used independently)
 export { EmojiPicker } from './EmojiPicker';
 export { VoiceRecorder } from './VoiceRecorder';
-export type { VoiceRecorderProps } from './VoiceRecorder';
 export { LocationPicker } from './LocationPicker';
 export type { LocationData, LocationPickerProps } from './LocationPicker';
 export { FileAttachment } from './FileAttachment';
