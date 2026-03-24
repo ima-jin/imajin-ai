@@ -226,18 +226,21 @@ export function Chat({
     setComposerText('');
   };
 
-  const handleVoiceComplete = useCallback(async (blob: Blob, durationMs: number) => {
+  const handleVoiceComplete = useCallback(async (blob: Blob, _durationMs: number) => {
     setVoiceSending(true);
     try {
-      const { assetId, transcript } = await sendVoice(blob);
-      await sendMessage({ type: 'voice', assetId, transcript, durationMs });
+      // Upload and transcribe, then put transcript in the text input
+      const { transcript } = await sendVoice(blob);
+      if (transcript) {
+        setComposerText(prev => prev ? `${prev} ${transcript}` : transcript);
+      }
     } catch {
       // error tracked in hook
     } finally {
       setVoiceSending(false);
       setVoiceActive(false);
     }
-  }, [sendVoice, sendMessage]);
+  }, [sendVoice]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
