@@ -41,7 +41,7 @@ function CheckoutSuccessContent() {
             {listing.images?.[0] && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={resolveMediaRef(listing.images[0])}
+                src={resolveMediaRef(listing.images[0], 'card')}
                 alt={listing.title}
                 className="w-24 h-24 object-cover rounded-xl mx-auto my-4"
               />

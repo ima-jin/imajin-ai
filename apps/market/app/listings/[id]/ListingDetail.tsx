@@ -150,10 +150,10 @@ export default function ListingDetail() {
     );
   }
 
-  const images = (listing.images || []).filter(Boolean).map(resolveMediaRef);
-  // Append ?w= for sized variants (only for asset URLs, not legacy external URLs)
-  const sized = (url: string, w: number) => url.includes('/api/assets/') ? `${url}?w=${w}` : url;
-  const hasImages = images.length > 0;
+  const images = (listing.images || []).filter(Boolean);
+  const detailImages = images.map((ref: string) => resolveMediaRef(ref, 'detail'));
+  const thumbImages = images.map((ref: string) => resolveMediaRef(ref, 'thumbnail'));
+  const hasImages = detailImages.length > 0;
   const tierLabel = listing.sellerTier === 'public_onplatform' ? 'Protected' : 'Direct';
   const tierColor =
     listing.sellerTier === 'public_onplatform'
@@ -177,7 +177,7 @@ export default function ListingDetail() {
               {hasImages ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={sized(images[activeImage], 800)}
+                  src={detailImages[activeImage]}
                   alt={listing.title}
                   className="w-full h-full object-cover"
                 />
@@ -186,9 +186,9 @@ export default function ListingDetail() {
               )}
             </div>
 
-            {hasImages && images.length > 1 && (
+            {hasImages && detailImages.length > 1 && (
               <div className="flex gap-2 flex-wrap">
-                {images.map((src, i) => (
+                {thumbImages.map((src, i) => (
                   <button
                     key={i}
                     onClick={() => setActiveImage(i)}
@@ -197,7 +197,7 @@ export default function ListingDetail() {
                     }`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={sized(src, 200)} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
+                    <img src={src} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>

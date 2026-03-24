@@ -143,7 +143,7 @@ export function ImageUpload({ images, onChange }: ImageUploadProps) {
         <div className="flex flex-wrap gap-2 mb-3">
           {/* Committed images */}
           {images.map((src, i) => {
-            const imgUrl = resolveMediaRef(src);
+            const imgUrl = resolveMediaRef(src, 'thumbnail');
             return (
             <div key={src} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-700 group">
               {/* eslint-disable-next-line @next/next/no-img-element */}

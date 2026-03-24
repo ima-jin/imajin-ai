@@ -489,7 +489,7 @@ interface ListingActionProps {
 function ListingThumbnail({ images }: { images: string[] | null }) {
   const imgs = Array.isArray(images) ? images : [];
   const ref = imgs.find((img) => typeof img === 'string' && img.length > 0);
-  const src = ref ? resolveMediaRef(ref) : undefined;
+  const src = ref ? resolveMediaRef(ref, 'thumbnail') : undefined;
   if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element

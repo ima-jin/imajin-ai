@@ -48,8 +48,7 @@ function TierBadge({ tier }: { tier: string }) {
 export default function ListingCard({ listing }: { listing: Listing }) {
   const images = Array.isArray(listing.images) ? listing.images : [];
   const primaryRef = images.find((img): img is string => typeof img === 'string' && img.length > 0);
-  const primaryImage = primaryRef ? resolveMediaRef(primaryRef) : undefined;
-  const thumbUrl = primaryImage && primaryImage.includes('/api/assets/') ? `${primaryImage}?w=400` : primaryImage;
+  const primaryImage = primaryRef ? resolveMediaRef(primaryRef, 'card') : undefined;
 
   return (
     <Link
@@ -58,9 +57,9 @@ export default function ListingCard({ listing }: { listing: Listing }) {
     >
       {/* Image */}
       <div className="aspect-video bg-gradient-to-br from-gray-800 to-gray-700 relative overflow-hidden">
-        {thumbUrl ? (
+        {primaryImage ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={thumbUrl} alt={listing.title} className="w-full h-full object-cover" />
+          <img src={primaryImage} alt={listing.title} className="w-full h-full object-cover" />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-gray-600">
             <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
