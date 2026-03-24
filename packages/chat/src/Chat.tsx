@@ -374,13 +374,7 @@ export function Chat({
         )}
 
         {voiceActive && enableVoice ? (
-          <div className="flex items-center gap-2">
-            <VoiceRecorder
-              onRecordingStart={() => setVoiceActive(true)}
-              onRecordingComplete={handleVoiceComplete}
-              onCancel={() => setVoiceActive(false)}
-              disabled={voiceSending}
-            />
+          <div className="flex items-center gap-2 flex-1">
             {voiceSending && (
               <span className="text-xs text-slate-400 flex-shrink-0">Sending…</span>
             )}
