@@ -92,7 +92,9 @@ export function VoiceRecorder({ onRecordingComplete, onRecorded, onCancel, onRec
   const startRecording = useCallback(async () => {
     if (state !== 'idle') return;
     try {
+      console.log('VoiceRecorder: requesting mic access...');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('VoiceRecorder: mic access granted, starting recorder');
       streamRef.current = stream;
 
       const audioCtx = new AudioContext();
@@ -159,7 +161,8 @@ export function VoiceRecorder({ onRecordingComplete, onRecorded, onCancel, onRec
         animFrameRef.current = requestAnimationFrame(drawWaveform);
       };
       animFrameRef.current = requestAnimationFrame(drawWaveform);
-    } catch {
+    } catch (err) {
+      console.error('VoiceRecorder: failed to start recording:', err);
       cleanup();
       onCancel();
     }
