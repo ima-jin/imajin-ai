@@ -39,10 +39,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ? listing.description.replace(/\s+/g, ' ').trim().slice(0, 200)
     : `${listing.title} for ${priceStr} on Imajin Market`;
 
-  const images = ((listing.images as string[]) || [])
-    .filter(Boolean)
-    .map(resolveMediaRef);
-  const ogImage = images.length > 0 ? images[0] : undefined;
+  const rawImages = ((listing.images as string[]) || []).filter(Boolean);
+  const images = rawImages.map(resolveMediaRef);
+  // Use /og variant for asset images (compressed, properly-sized for link previews)
+  const firstImage = images.length > 0 ? images[0] : undefined;
+  const ogImage = firstImage && rawImages[0]?.startsWith('asset_')
+    ? `${firstImage}/og`
+    : firstImage;
 
   const url = `${MARKET_URL}/listings/${listing.id}`;
 
