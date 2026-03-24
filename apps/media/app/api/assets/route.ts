@@ -17,6 +17,7 @@ const CONTEXT_FOLDER_MAP: Record<string, { name: string; icon: string }> = {
   profile: { name: "Profile", icon: "👤" },
   events: { name: "Events", icon: "🎫" },
   market: { name: "Profile", icon: "👤" },
+  voice: { name: "Audio Recordings", icon: "🎙️" },
 };
 
 export const dynamic = "force-dynamic";

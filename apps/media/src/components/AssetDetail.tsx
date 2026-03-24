@@ -125,6 +125,10 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   const [savedFilename, setSavedFilename] = useState(asset.filename);
   const [editingFilename, setEditingFilename] = useState(false);
   const [filenameInput, setFilenameInput] = useState("");
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcript, setTranscript] = useState<Record<string, unknown> | null>(
+    () => (asset.metadata as Record<string, unknown> | null)?.transcript as Record<string, unknown> | null ?? null
+  );
 
   const isImage = asset.mimeType.startsWith("image/");
   const isAudio = asset.mimeType.startsWith("audio/");
@@ -164,6 +168,34 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
       setSavedFilename(trimmed);
     }
     setEditingFilename(false);
+  };
+
+  const handleTranscribe = async () => {
+    setTranscribing(true);
+    try {
+      const res = await fetch(`/api/assets/${asset.id}/transcribe`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTranscript(data.transcript);
+      }
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
+  const handleDownloadTranscript = () => {
+    if (!transcript?.text) return;
+    const baseName = savedFilename.replace(/\.[^.]+$/, "");
+    const blob = new Blob([transcript.text as string], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${baseName}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleSaveFair = async (manifest: FairManifest) => {
@@ -332,9 +364,43 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
                 >
                   {shareLabel}
                 </button>
+                {(isAudio || isVideo) && (
+                  <button
+                    onClick={handleTranscribe}
+                    disabled={transcribing}
+                    className="px-3 py-1.5 text-xs bg-[#252525] border border-gray-700 text-gray-300 rounded-lg hover:border-gray-500 transition-colors disabled:opacity-50"
+                  >
+                    {transcribing ? "Transcribing…" : transcript ? "Re-transcribe" : "Transcribe"}
+                  </button>
+                )}
               </>
             )}
           </div>
+
+          {transcript && (
+            <div className="mt-3 p-3 bg-[#252525] rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500 uppercase tracking-widest">Transcript</p>
+                <button
+                  onClick={handleDownloadTranscript}
+                  className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
+                >
+                  Download .txt
+                </button>
+              </div>
+              <div className="flex gap-4 text-xs text-gray-400">
+                {transcript.language && (
+                  <span>Language: {String(transcript.language).toUpperCase()}</span>
+                )}
+                {transcript.durationSeconds != null && (
+                  <span>{Math.round(transcript.durationSeconds as number)}s</span>
+                )}
+              </div>
+              <p className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">
+                {transcript.text as string}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

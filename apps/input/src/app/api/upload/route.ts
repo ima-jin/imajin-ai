@@ -5,6 +5,20 @@ import { corsHeaders, corsOptions } from '@/lib/cors';
 
 const MEDIA_SERVICE_URL = process.env.MEDIA_SERVICE_URL || 'http://localhost:7009';
 
+const GENERIC_AUDIO_PATTERN = /^(voice|blob|audio|recording|sound)\./i;
+
+function generateAudioFilename(originalName: string, timestamp: Date): string {
+  const ext = originalName.includes('.') ? originalName.slice(originalName.lastIndexOf('.')) : '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const y = timestamp.getFullYear();
+  const mo = pad(timestamp.getMonth() + 1);
+  const d = pad(timestamp.getDate());
+  const h = pad(timestamp.getHours());
+  const mi = pad(timestamp.getMinutes());
+  const s = pad(timestamp.getSeconds());
+  return `Audio_${y}_${mo}_${d}_${h}_${mi}_${s}${ext}`;
+}
+
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
@@ -37,13 +51,22 @@ export async function POST(request: NextRequest) {
 
   // Get the file from the request
   const formData = await request.formData();
-  const file = formData.get('file');
+  let file = formData.get('file');
 
   if (!file || !(file instanceof Blob)) {
     return NextResponse.json(
       { error: 'File is required (multipart field "file")' },
       { status: 400 }
     );
+  }
+
+  // Rename generic audio filenames to a timestamped name
+  const originalFilename = (file instanceof File) ? file.name : 'upload';
+  if (file.type.startsWith('audio/') && GENERIC_AUDIO_PATTERN.test(originalFilename)) {
+    const newFilename = generateAudioFilename(originalFilename, new Date());
+    // Forward as a named File so the media service picks up the new name
+    const renamed = new File([file], newFilename, { type: file.type });
+    file = renamed;
   }
 
   // Forward to media service
