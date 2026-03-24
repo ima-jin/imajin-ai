@@ -151,6 +151,8 @@ export default function ListingDetail() {
   }
 
   const images = (listing.images || []).filter(Boolean).map(resolveMediaRef);
+  // Append ?w= for sized variants (only for asset URLs, not legacy external URLs)
+  const sized = (url: string, w: number) => url.includes('/api/assets/') ? `${url}?w=${w}` : url;
   const hasImages = images.length > 0;
   const tierLabel = listing.sellerTier === 'public_onplatform' ? 'Protected' : 'Direct';
   const tierColor =
@@ -175,7 +177,7 @@ export default function ListingDetail() {
               {hasImages ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={images[activeImage]}
+                  src={sized(images[activeImage], 800)}
                   alt={listing.title}
                   className="w-full h-full object-cover"
                 />
@@ -195,7 +197,7 @@ export default function ListingDetail() {
                     }`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={src} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
+                    <img src={sized(src, 200)} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>

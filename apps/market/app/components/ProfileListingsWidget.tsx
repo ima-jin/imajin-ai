@@ -40,7 +40,8 @@ function MiniCard({
   const primaryRef = images.find(
     (img): img is string => typeof img === 'string' && img.length > 0
   );
-  const primaryImage = primaryRef ? resolveMediaRef(primaryRef) : undefined;
+  const primaryResolved = primaryRef ? resolveMediaRef(primaryRef) : undefined;
+  const primaryImage = primaryResolved && primaryResolved.includes('/api/assets/') ? `${primaryResolved}?w=400` : primaryResolved;
 
   return (
     <a
