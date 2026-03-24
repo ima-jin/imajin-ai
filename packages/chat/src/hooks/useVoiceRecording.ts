@@ -10,7 +10,7 @@ interface UseVoiceRecordingResult {
 }
 
 export function useVoiceRecording(): UseVoiceRecordingResult {
-  const { inputUrl } = useChatConfig();
+  const { inputUrl, mediaUrl } = useChatConfig();
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -19,35 +19,44 @@ export function useVoiceRecording(): UseVoiceRecordingResult {
     setError(null);
     const startTime = Date.now();
     try {
+      // Step 1: Upload audio to get an asset ID
       const uploadForm = new FormData();
       uploadForm.append('file', blob, 'voice.webm');
       uploadForm.append('context', JSON.stringify({ app: 'chat', feature: 'voice' }));
 
-      const transcribeForm = new FormData();
-      transcribeForm.append('file', blob, 'voice.webm');
-
-      const [uploadRes, transcribeRes] = await Promise.all([
-        fetch(`${inputUrl}/api/upload`, { method: 'POST', body: uploadForm, credentials: 'include' }),
-        fetch(`${inputUrl}/api/transcribe`, { method: 'POST', body: transcribeForm, credentials: 'include' }),
-      ]);
+      const uploadRes = await fetch(`${inputUrl}/api/upload`, {
+        method: 'POST',
+        body: uploadForm,
+        credentials: 'include',
+      });
 
       if (!uploadRes.ok) {
         const err = await uploadRes.json().catch(() => ({}));
         throw new Error((err as { error?: string }).error || 'Voice upload failed');
       }
-      if (!transcribeRes.ok) {
-        const err = await transcribeRes.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error || 'Transcription failed');
+
+      const uploadData = await uploadRes.json();
+      const assetId = (uploadData.assetId ?? uploadData.id ?? '') as string;
+
+      // Step 2: Transcribe the stored asset via media service
+      let transcript = '';
+      if (assetId && mediaUrl) {
+        try {
+          const transcribeRes = await fetch(`${mediaUrl}/api/assets/${assetId}/transcribe`, {
+            credentials: 'include',
+          });
+          if (transcribeRes.ok) {
+            const transcribeData = await transcribeRes.json();
+            transcript = (transcribeData.transcript?.text ?? transcribeData.text ?? '') as string;
+          }
+        } catch {
+          // Transcription is best-effort — voice message still sends without it
+        }
       }
 
-      const [uploadData, transcribeData] = await Promise.all([
-        uploadRes.json(),
-        transcribeRes.json(),
-      ]);
-
       return {
-        assetId: (uploadData.assetId ?? uploadData.id ?? '') as string,
-        transcript: (transcribeData.transcript ?? transcribeData.text ?? '') as string,
+        assetId,
+        transcript,
         durationMs: Date.now() - startTime,
       };
     } catch (err) {
