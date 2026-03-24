@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { NavBar } from './components/NavBar';
+import { buildPublicUrl } from '@imajin/config';
 
 const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
   keywords: ['identity', 'authentication', 'sovereign', 'DID', 'keypair', 'imajin'],
   openGraph: {
     type: 'website',
-    url: `${prefix}auth.${domain}`,
+    url: buildPublicUrl('auth', prefix, domain),
     siteName: `Imajin Auth${envLabel}`,
     title: `Imajin Auth${envLabel} — Sovereign Identity`,
     description: 'Sovereign identity for humans, agents, and devices. No passwords. No OAuth. Just cryptography.',

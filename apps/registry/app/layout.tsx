@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { buildPublicUrl } from '@imajin/config';
 import './globals.css';
 import { NavBar } from './components/NavBar';
 
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
   keywords: ['registry', 'nodes', 'federation', 'sovereign', 'imajin'],
   openGraph: {
     type: 'website',
-    url: `${prefix}registry.${domain}`,
+    url: buildPublicUrl('registry', prefix, domain),
     siteName: `Imajin Registry${envLabel}`,
     title: `Imajin Registry${envLabel} — Node Federation`,
     description: 'The phone book for the sovereign network. Register your node, discover others.',
