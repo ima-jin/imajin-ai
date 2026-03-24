@@ -2,9 +2,9 @@
 title: "How to Save Media Streaming"
 subtitle: "Every play should find the artist. Every artist should find the listener. The pipe between them is broken."
 description: "Spotify, Apple Music, YouTube, Twitch — the streaming platforms solved access and broke everything else. Inspired by WeR1, here's what the pipe looks like when it actually works."
-date: "2026-02-28"
+date: "2026-03-24"
 author: "Ryan Veteze"
-status: "DRAFT"
+status: "POSTED"
 ---
 
 An open letter to every artist who's been told a million streams is success, and every listener who thinks their subscription supports the people they love.
@@ -89,7 +89,7 @@ On the sovereign network, your money goes where your ears go.
 
 Not into a pool. Not through a label taking 80%. Not past a distributor and a publisher and a rights administrator and a payment processor, each one taking their cut before the artist sees a cent.
 
-Directly. From your node to theirs. Settled through .fair. Attributed. Transparent. You can see exactly where every fraction of every dollar went. The artist can see exactly who's supporting them. There is no pool. There is no platform in the middle. There is a person who made something and a person who values it, connected by infrastructure that routes the payment honestly.
+Directly. From your profile to theirs. Settled through .fair. Attributed. Transparent. You can see exactly where every fraction of every dollar went. The artist can see exactly who's supporting them. There is no pool. There is no platform in the middle. There is a person who made something and a person who values it, connected by infrastructure that routes the payment honestly.
 
 ---
 
@@ -101,7 +101,7 @@ A film has a director, a cinematographer, a writer, actors, editors, composers, 
 
 Every piece of media is a mix. Every piece of media has a chain of human creative labor behind it. The streaming model ignores this. It pays the account that uploaded the file and lets everything else disappear into contracts, disputes, and unpaid invoices.
 
-The .fair manifest — the attribution layer that WeR1's distribution model needs underneath it — makes the chain explicit. Every contributor is in the file. Every contribution is weighted. Every play triggers a settlement instruction that routes payment through the entire chain. Automatically. At the moment of play. Not six months later through an opaque reconciliation process. Now.
+The .fair manifest — the attribution layer that WeR1's distribution model needs underneath it — makes the chain explicit. Every contributor is in the file. Every contribution is weighted. Every play triggers settlement that routes payment through the entire chain. Automatically. At the moment of play. Not six months later through an opaque reconciliation process. Now.
 
 The producer whose beat is in the mix gets paid when the mix plays. The session musician whose bass line became the hook gets paid when the song streams. The journalist whose research informed the podcast gets paid when the episode downloads. The editor who made the video watchable gets paid when the video runs.
 
@@ -133,9 +133,9 @@ A creator on Twitch builds a community. Thousands of people show up regularly. T
 
 Twitch takes half. Owns the data. Controls the algorithm. Can change the terms anytime. Can ban the creator and the community has no way to follow — because the relationship was mediated by the platform, not owned by the people in it.
 
-On the sovereign network, the live stream runs through the creator's node. The audience connects directly. The payment flows through .fair — no 50% cut, no 30% cut, a settlement fee for infrastructure and the rest goes to the creator. The community is in the creator's trust graph, not the platform's database. If the creator wants to move, the community moves with them, because the relationship is sovereign.
+On the sovereign network, the live stream runs through the creator's sovereign presence. The audience connects directly. The payment flows through .fair — transaction fees settle through the chain — no 50% cut, no 30% cut — and the rest goes directly to the creator. The community is in the creator's trust graph, not the platform's database. If the creator wants to move, the community moves with them, because the relationship is sovereign.
 
-And the live stream doesn't end when the stream ends. It becomes a node. A memory. An archived piece of content that continues to generate value every time someone watches the replay, every time the conversation is referenced, every time the knowledge shared in that stream answers someone's question through the trust graph.
+And the live stream doesn't end when the stream ends. It becomes a record. A memory. An archived piece of content that continues to generate value every time someone watches the replay, every time the conversation is referenced, every time the knowledge shared in that stream answers someone's question through the trust graph.
 
 The stream is a room. The room becomes a record. The record earns forever.
 
@@ -179,15 +179,33 @@ The demand is proven. Four billion people are already paying for streaming. They
 
 Jin throws a party.
 
-The music at the party — every track, every mix, every moment of audio — runs through the same attribution and settlement infrastructure that this essay describes. Every play finds the artist. Every artist gets paid. Every contributor in the chain receives their attributed share.
+Tickets: $1 virtual, $10 physical.
 
-Not through a pool. Not through a platform. Through a protocol that doesn't care whether the music was made yesterday or thirty years ago, whether the artist has a million followers or two hundred, whether the listener is in Toronto or Johannesburg.
+Seven headless services running attribution, identity, payment, and presence — all settled through .fair. Every ticket purchase is attributed. Every transaction is transparent. No platform taking 30%. No pool. No opaque reconciliation six months later.
 
-The play finds the artist. The money follows the play. The chain is honored.
+The music at the party is what this essay is pointing toward. WeR1's distribution model proved the DJ problem is solvable. .fair makes it permanent. The attribution infrastructure is live. Music settlement through the chain is where it goes next.
 
-WeR1 proved it could work. The .fair manifest makes it permanent. imajin makes it sovereign.
+The pipe is being built in public. The receipts are already running.
 
-The pipe between the listener and the artist is finally clear.
+---
+
+## For the Artists
+
+Not the label. Not the distributor. Not the rights administrator. Not the platform. The artist.
+
+You made something. You put it into a pipe that told you it would find the people who needed it. And the pipe swallowed the money and handed you a streaming report that said a million people heard your work and you made $800.
+
+You knew something was wrong. You've always known. The math never made sense. The deal was never fair. The consent was buried in a contract you signed before you understood what you were signing.
+
+Your back catalogue is not worthless. Your community is not the platform's database. Your relationship with the people who love your work is yours — not Spotify's, not Twitch's, not YouTube's.
+
+WeR1 proved it in a DJ set in Johannesburg. If the hardest attribution problem in music — a two-hour mix with sixty tracks, live, in real time — is solvable, everything is solvable.
+
+The pipe can be clear. The play can find the artist. The money can follow the play.
+
+Bring your music. Bring your back catalogue. Bring your community. The infrastructure is here.
+
+The chain is ready to honor you.
 
 *— Ryan VETEZE, Founder, imajin.ai aka b0b*
 
@@ -195,6 +213,10 @@ The pipe between the listener and the artist is finally clear.
 
 **If you want to follow along:**
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
+- The inspiration: [WeR1](https://www.wer1.ai/)
 - The network: [imajin.ai](imajin.ai)
-- Jin's party: April 1st, 2026
-- The inspiration: [WeR1](https://wer1.co.za)
+- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-21-how-to-save-media-streaming.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-20-how-to-save-media-streaming.md)
+
+This article was originally published on [imajin.ai/articles/how-to-save-media-streaming](https://www.imajin.ai/articles/how-to-save-media-streaming) on March 24, 2026. Imajin is building sovereign technology infrastructure — identity, attribution, trust, settlement, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)
+

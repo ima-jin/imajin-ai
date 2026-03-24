@@ -2,9 +2,9 @@
 title: "The Headless Economy"
 subtitle: "The engineering was always good. The business model was the disease."
 description: "Every platform is a bundle of services wrapped in an extraction layer. Every SaaS is a capability wrapped in a moat. Go headless. Enter the chain. The middleman isn't replaced — it disappears."
-date: "2026-02-28"
+date: "2026-03-23"
 author: "Ryan Veteze"
-status: "DRAFT"
+status: "POSTED"
 ---
 
 ## The Engineering Was Always Good
@@ -91,11 +91,11 @@ DID: the user brings their own identity. Facebook doesn't own your social graph 
 
 .fair: every service interaction is attributed. When Instagram's recommendation leads you to a creator whose work you buy, the recommendation service, the creator, and the chain of curation that surfaced the content are all in the manifest. All compensated proportionally.
 
-Consent Declaration: you decide which services can access which parts of your data. Not a terms-of-service document that nobody reads. A cryptographically enforced declaration that the service either honors or can't access.
+Trust Graph: you decide which services can reach you and under what conditions. Not a terms-of-service document nobody reads. A live graph of directed relationships you own and can revoke. The service either operates inside your graph or it doesn't reach you.
 
-Settlement Instruction: the payment for every service interaction routes automatically through the protocol. No platform holding the float. No quarterly revenue report where the money disappears into "operating costs." Direct settlement, attributed, transparent.
+Settlement: the payment for every service interaction routes automatically through the protocol. No platform holding the float. No quarterly revenue report where the money disappears into "operating costs." Direct settlement, attributed, transparent.
 
-The services connect to the user's node. The user's node is sovereign infrastructure they control. Nobody sits between the service and the user.
+The services connect to the user's sovereign presence. That presence is infrastructure they control. Nobody sits between the service and the user.
 
 There's no ad exchange. There's no platform taking 30%. There's no algorithmic feed deciding what you see based on what keeps you scrolling. There's a user who chose which services to use, consented to specific data access, and pays for what they consume.
 
@@ -131,17 +131,17 @@ The user sits on top. The value flows down. The application captures most of it.
 
 In the chain the stack inverts.
 
-The user is at the center. Their node is the integration point. Services connect to the user, not the other way around. The user's sovereign identity is the thread that connects every service they use. Their data lives on their node, not in twenty different proprietary databases that don't talk to each other.
+The user is at the center. Their sovereign presence is the integration point. Services connect to the user, not the other way around. The user's sovereign identity is the thread that connects every service they use. Their data lives on their profile, not in twenty different proprietary databases that don't talk to each other.
 
-The services compete to be useful to the user. Not to lock the user in. The user can swap any service at any time with zero switching cost, because the data is theirs and the integration happens at their node, not at the service's platform.
+The services compete to be useful to the user. Not to lock the user in. The user can swap any service at any time with zero switching cost, because the data is theirs and the integration happens at their profile, not at the service's platform.
 
 This changes what software companies optimize for. Right now they optimize for retention — keeping you inside the walls. In the chain they optimize for value — being so good that you choose them every time, knowing you could leave at any moment. Retention through quality instead of retention through captivity.
 
-The chain also makes invisible infrastructure visible for the first time. Every service that touches a workflow gets attributed. The .fair manifest tracks which services contributed to which outcomes. The settlement instruction routes payment proportionally to actual contribution.
+The chain also makes invisible infrastructure visible for the first time. Every service that touches a workflow gets attributed. The .fair manifest tracks which services contributed to which outcomes. Settlement routes payment proportionally to actual contribution.
 
 The database that never gets credit. The authentication layer that just works. The CDN that nobody thinks about until it goes down. The logging service that caught the bug. All of it attributed. All of it compensated proportionally to its actual contribution.
 
-Infrastructure has always been the most important and least compensated layer of the software economy. Attribution in the chain fixes that. The boring essential service that everything else depends on finally gets paid what it's worth, because the chain shows exactly how much everything else depends on it.
+Infrastructure has always been the most important and least compensated layer of the software economy. The chain fixes that. The boring essential service that everything else depends on finally gets paid what it's worth — because for the first time, everyone can see exactly how much everything else depends on it.
 
 ---
 
@@ -155,7 +155,7 @@ The developer who built a tool for their own workflow — a script that cleans d
 
 In the chain there's a third option. Expose the capability. Enter the graph. Get paid when it's used. The developer's node is the service. The trust graph is the distribution. The .fair chain is the billing. The developer's reputation in the graph is the marketing.
 
-No company required. No infrastructure required. No pitch deck. No Series A. Just: a thing that works, available to anyone who needs it, compensated every time it runs.
+No company required. The stack ships with a default UI — a React app that works out of the box. No pitch deck. No Series A. Just: a thing that works, available to anyone who needs it, compensated every time it runs.
 
 The solo developer with a brilliant algorithm can compete with the billion-dollar incumbent on the quality of the algorithm alone. The infrastructure advantage that the incumbent spent years building — the moat, the integrations, the enterprise sales team, the compliance theater — that's not an advantage anymore. It's overhead. And overhead loses to efficiency every time, given enough time and a level playing field.
 
@@ -173,11 +173,35 @@ The surveillance advertising industry as currently constructed does not survive 
 
 The behavioral manipulation infrastructure dies. The algorithmic feed optimized for engagement, the dark patterns, the notification systems designed to create anxiety — all of it exists to keep people on the platform so their attention can be sold. When the business model is service quality instead of attention capture, the manipulation has no business justification. It's pure cost with no revenue attached.
 
+The replacement isn't abstract. Essay 19 describes it fully. The short version: declared intent replaces inferred intent. The AttMart goes live April 2026. Direct settlement replaces the auction. The infrastructure that harvested attention without asking becomes vestigial the moment people can sell attention on their own terms — because the harvested version was always a worse product, just the only one available.
+
 The content moderation army shrinks. Not because moderation isn't needed — trust graph governance handles the hard cases through structural accountability rather than policy enforcement. The operator is accountable. The vouching chain is visible. The bad actor self-segregates because the architecture makes bad behavior economically irrational, not just against the rules.
 
 The regulatory burden lightens. Most platform regulation exists because the extraction model creates harms that need to be governed. Remove the extraction model and you remove the harms — the attention manipulation, the surveillance, the behavioral exploitation. Those are extraction-layer problems, not engineering problems.
 
 The lobbyists can find other work.
+
+---
+
+## April 1st, 2026
+
+Jin throws a party.
+
+Tickets: $1 virtual, $10 physical.
+
+The infrastructure running it: auth (Ed25519 keypairs, no passwords, no OAuth), events (tickets with .fair manifests), pay (Stripe checkout, direct settlement), market (buy and sell, directly, no middleman), connections (trust graph routing — heard about it through someone who knew), chat (real-time presence), media (attributed assets). Seven headless services. Each one attributed. Each one compensated for its actual contribution to the event working.
+
+The infrastructure is free. Nobody owns this the way nobody owns TCP/IP. Transaction fees settle through the .fair chain to the people who did the work — not to a platform sitting above them. There is no surveillance layer watching who comes. There is no algorithmic feed deciding who hears about it. There are 73 verified identities in a trust graph, hearing about a party through people they trust, choosing to show up, paying directly, with full attribution and full transparency.
+
+The .fair manifest is on every ticket. The OpenAPI spec is at events.imajin.ai/api/spec.
+
+That's seven headless services on April 1st. The stack is 15 services total. The moat economy runs on thousands more.
+
+Same infrastructure. Same protocol. Same chain.
+
+The moat economy gave us $300 billion in annual revenue built on captivity.
+
+The chain economy gives us something honest.
 
 ---
 
@@ -201,26 +225,6 @@ Your engineering was always the product.
 
 Come let it be the product again.
 
----
-
-## April 1st, 2026
-
-Jin throws a party.
-
-The services that run the event are headless services in the chain. The ticketing. The identity verification. The payment settlement. The trust graph routing. The chat. The presence. Each one attributed. Each one compensated for its actual contribution to the event working.
-
-There is no platform taking a cut. There is no surveillance layer watching who comes. There is no algorithmic feed deciding who hears about it. There are verified humans in a trust graph, hearing about a party through people they trust, choosing to show up, paying directly, with full attribution and full transparency.
-
-That's five headless services on April 1st.
-
-The platforms have five thousand. The moat economy has ten thousand more.
-
-Same infrastructure. Same protocol. Same chain.
-
-The moat economy gave us $300 billion in annual revenue built on captivity.
-
-The chain economy gives us something honest.
-
 *— Ryan VETEZE, Founder, imajin.ai aka b0b*
 
 ---
@@ -228,5 +232,8 @@ The chain economy gives us something honest.
 **If you want to follow along:**
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
-- The protocol: MJN (RFC-0001)
-- Jin's party: April 1st, 2026
+- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-20-how-to-save-the-platforms.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-20-how-to-save-the-platforms.md)
+
+This article was originally published on [imajin.ai/articles/how-to-save-the-platforms](https://www.imajin.ai/articles/how-to-save-the-platforms) on March 23, 2026. Imajin is building sovereign technology infrastructure — identity, attribution, trust, settlement, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)
+

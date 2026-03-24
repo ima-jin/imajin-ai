@@ -4,7 +4,7 @@
 
 *Ryan Veteze · ryan@imajin.ai · [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
 
-**Building on MJN?** → [Developer Guide](./developer-guide.md)
+**Building on MJN?** → [Developer Guide](./developer-guide)
 **Machine-readable spec** → [llms-full.txt](https://imajin.ai/llms-full.txt)
 
 ---

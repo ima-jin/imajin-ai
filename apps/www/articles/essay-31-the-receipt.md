@@ -99,6 +99,8 @@ The people who use the platform the most have the longest chains. The longest ch
 
 Not because we decided. Because the math worked out that way.
 
+The first 1000 accounts on the network each start with 100 virtual MJN. That's the founding cohort — enough to participate, enough to prove the chain works, enough to be in the mint when it happens. To convert virtual MJN to real MJN, you need $100 of verified transaction volume through the platform. Not because we're making it hard. Because a token backed by real economic activity is a different thing entirely from a token backed by a promise. The threshold scales as the network grows. The principle doesn't.
+
 ---
 
 ## What the Speculators Don't Get
@@ -115,6 +117,16 @@ That's not an ideological position. It's a structural one. The mechanism doesn't
 
 ---
 
+## The Infrastructure Is Yours Too
+
+Every community built on the sovereign stack gets this mechanism for free.
+
+Their members' DFOS chains already exist. Every interaction their community has facilitated — every ticket, every attestation, every governance decision — is already recorded, signed, and auditable. If that community ever wants a token, the ledger is already there. They don't need to run a database query. They don't need to trust a foundation. They replay the chains.
+
+Imajin didn't build this for Imajin. Imajin built the infrastructure. What communities do with it is theirs to decide.
+
+---
+
 ## The Invitation
 
 We're recording right now. Every identity created. Every ticket sold. Every attestation earned. Every login. Every action. Every chain entry signed and appended.
@@ -128,3 +140,13 @@ Not because we're promising returns. We're not promising anything. We're just ke
 And the receipts are yours.
 
 🟠
+
+*— Ryan VETEZE, Founder, imajin.ai aka b0b*
+
+---
+
+**If you want to follow along:**
+- The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
+- The network: [imajin.ai](https://imajin.ai)
+- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
+- Jin's party: April 1st, 2026
