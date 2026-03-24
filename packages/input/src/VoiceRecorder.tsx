@@ -115,12 +115,19 @@ export function VoiceRecorder({ onRecordingComplete, onRecorded, onCancel, onRec
       chunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
+        console.log('VoiceRecorder: data chunk received, size:', e.data.size);
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
+      recorder.onerror = (e) => {
+        console.error('VoiceRecorder: MediaRecorder error:', e);
+      };
+
       recorder.onstop = () => {
+        console.log('VoiceRecorder: recorder stopped, chunks:', chunksRef.current.length);
         const durationMs = Date.now() - startTimeRef.current;
         const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' });
+        console.log('VoiceRecorder: blob size:', blob.size, 'duration:', durationMs);
         cleanup();
 
         // Don't send empty blobs
@@ -140,6 +147,7 @@ export function VoiceRecorder({ onRecordingComplete, onRecorded, onCancel, onRec
       recorder.start(100);
       startTimeRef.current = Date.now();
       setState('recording');
+      console.log('VoiceRecorder: state → recording, recorder.state:', recorder.state);
       onRecordingStart?.();
 
       // Timer
