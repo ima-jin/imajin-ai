@@ -122,6 +122,7 @@ export async function GET(
     try {
       const sharp = (await import("sharp")).default;
       outputBuffer = await sharp(fileBuffer)
+        .rotate() // auto-orient from EXIF before resize
         .resize({ width: parseInt(widthParam, 10), withoutEnlargement: true })
         .toBuffer();
     } catch {

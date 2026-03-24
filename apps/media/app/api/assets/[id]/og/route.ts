@@ -63,6 +63,7 @@ export async function GET(
   try {
     const sharp = (await import("sharp")).default;
     outputBuffer = await sharp(fileBuffer)
+      .rotate() // auto-orient from EXIF before resize
       .resize({
         width: OG_MAX_WIDTH,
         height: OG_MAX_HEIGHT,
