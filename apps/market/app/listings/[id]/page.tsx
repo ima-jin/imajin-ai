@@ -4,9 +4,9 @@ import { eq } from 'drizzle-orm';
 import { resolveMediaRef } from '@imajin/media';
 import ListingDetail from './ListingDetail';
 
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const MARKET_URL = process.env.NEXT_PUBLIC_APP_URL || `${SERVICE_PREFIX}market.${DOMAIN}`;
+import { buildPublicUrl } from '@imajin/config';
+
+const MARKET_URL = process.env.NEXT_PUBLIC_APP_URL || buildPublicUrl('market');
 
 interface Props {
   params: { id: string };

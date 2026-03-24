@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react';
 import { useIdentity } from './context/IdentityContext';
 import InvitationsTab from './invitations-tab';
 
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const AUTH_URL = `${SERVICE_PREFIX}auth.${DOMAIN}`;
-const PROFILE_URL = `${SERVICE_PREFIX}profile.${DOMAIN}`;
+import { buildPublicUrl } from '@imajin/config';
+
+const AUTH_URL = buildPublicUrl('auth');
+const PROFILE_URL = buildPublicUrl('profile');
 
 interface Connection {
   podId: string;
@@ -227,7 +227,7 @@ export default function ConnectionsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <a
-                      href={`${SERVICE_PREFIX}chat.${DOMAIN}/start?did=${encodeURIComponent(conn.did)}`}
+                      href={`${buildPublicUrl('chat')}/start?did=${encodeURIComponent(conn.did)}`}
                       className="px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 text-white rounded-lg transition"
                       onClick={(e) => e.stopPropagation()}
                     >

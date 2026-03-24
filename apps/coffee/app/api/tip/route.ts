@@ -5,9 +5,9 @@ import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
-const COFFEE_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX 
-  ? `${process.env.NEXT_PUBLIC_SERVICE_PREFIX}coffee.${process.env.NEXT_PUBLIC_DOMAIN}`
-  : 'https://coffee.imajin.ai';
+import { buildPublicUrl } from '@imajin/config';
+
+const COFFEE_URL = buildPublicUrl('coffee');
 
 /**
  * POST /api/tip - Send a tip via Stripe Checkout

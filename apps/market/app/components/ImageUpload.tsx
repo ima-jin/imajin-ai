@@ -4,9 +4,9 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { resolveMediaRef } from '@imajin/media';
 
 const MAX_IMAGES = 8;
-const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL || `${SERVICE_PREFIX}media.${DOMAIN}`;
+import { buildPublicUrl } from '@imajin/config';
+
+const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL || buildPublicUrl('media');
 
 interface ImageUploadProps {
   images: string[];

@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useToast } from '@imajin/ui';
 
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const PROFILE_URL = `${SERVICE_PREFIX}profile.${DOMAIN}`;
+import { buildPublicUrl } from '@imajin/config';
+
+const PROFILE_URL = buildPublicUrl('profile');
 
 interface InvitedBy {
   did: string;

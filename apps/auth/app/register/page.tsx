@@ -4,9 +4,9 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const CONNECTIONS_URL = `${SERVICE_PREFIX}connections.${DOMAIN}`;
+import { buildPublicUrl } from '@imajin/config';
+
+const CONNECTIONS_URL = buildPublicUrl('connections');
 
 // Ed25519 utilities - using noble/ed25519 via script
 async function generateKeypair(): Promise<{ publicKey: string; privateKey: string }> {
@@ -219,7 +219,7 @@ function RegisterPage() {
               Already have an account? Login
             </Link>
             <a
-              href={`${SERVICE_PREFIX}www.${DOMAIN}`}
+              href={buildPublicUrl('www')}
               className="block w-full py-3 bg-white/10 hover:bg-white/20 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition text-center"
             >
               Learn about Imajin

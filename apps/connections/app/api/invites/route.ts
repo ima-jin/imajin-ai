@@ -5,10 +5,9 @@ import { db, invites, profiles, podMembers } from '../../../src/db/index';
 import { generateId } from '../../../src/lib/id';
 import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
 import { emitAttestation } from '@imajin/auth';
+import { buildPublicUrl } from '@imajin/config';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const INVITE_COOLDOWN_DAYS = 7;
 const INVITE_EXPIRY_DAYS = 7;
 
@@ -134,7 +133,7 @@ export async function POST(request: NextRequest) {
       expiresAt,
     }).returning();
 
-    const inviteUrl = `${SERVICE_PREFIX}connections.${DOMAIN}/invite/${session.did}/${code}`;
+    const inviteUrl = `${buildPublicUrl('connections')}/invite/${session.did}/${code}`;
     const inviterName = profile.displayName || profile.handle || session.did;
     const inviterHandle = profile.handle || undefined;
 
@@ -202,7 +201,7 @@ export async function POST(request: NextRequest) {
     maxUses: body.maxUses || 1,
   }).returning();
 
-  const inviteUrl = `${SERVICE_PREFIX}connections.${DOMAIN}/invite/${session.did}/${code}`;
+  const inviteUrl = `${buildPublicUrl('connections')}/invite/${session.did}/${code}`;
 
   emitAttestation({
     issuer_did: session.did,
@@ -251,7 +250,7 @@ export async function GET(request: NextRequest) {
     acceptedBy: r.acceptedHandle || r.acceptedName || null,
     acceptedHandle: r.acceptedHandle || null,
     daysAgo: r.invite.createdAt ? Math.floor((now - new Date(r.invite.createdAt).getTime()) / 86400000) : 0,
-    url: `${SERVICE_PREFIX}connections.${DOMAIN}/invite/${r.invite.fromDid}/${r.invite.code}`,
+    url: `${buildPublicUrl('connections')}/invite/${r.invite.fromDid}/${r.invite.code}`,
   }));
 
   return NextResponse.json({
