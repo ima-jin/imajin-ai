@@ -88,7 +88,7 @@ export async function GET(
   headers.set("Content-Type", "image/jpeg");
   headers.set("Content-Length", String(outputBuffer.length));
   headers.set("ETag", etag);
-  headers.set("Cache-Control", "public, max-age=604800"); // 7 days — OG images rarely change
+  headers.set("Cache-Control", "public, max-age=3600"); // 1 hour — sellers may update listings
 
   return new NextResponse(new Uint8Array(outputBuffer), { status: 200, headers });
 }

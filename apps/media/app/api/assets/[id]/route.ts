@@ -130,8 +130,9 @@ export async function GET(
     }
   }
 
-  // 6. ETag / conditional GET
-  const etag = `"${asset.hash}"`;
+  // 6. ETag / conditional GET — include resize params so variants cache separately
+  const isResized = !!widthParam;
+  const etag = isResized ? `"${asset.hash}-w${widthParam}"` : `"${asset.hash}"`;
   if (request.headers.get("If-None-Match") === etag) {
     return new NextResponse(null, { status: 304 });
   }
@@ -143,7 +144,9 @@ export async function GET(
   headers.set("X-Fair-Access", accessType);
 
   if (accessType === "public") {
-    headers.set("Cache-Control", "public, max-age=86400");
+    // Resized variants: 1 hour (sellers may update images)
+    // Originals: 24 hours (raw file doesn't change)
+    headers.set("Cache-Control", isResized ? "public, max-age=3600" : "public, max-age=86400");
   } else {
     headers.set("Cache-Control", "private, max-age=3600");
   }
