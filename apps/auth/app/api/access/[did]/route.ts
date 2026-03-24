@@ -151,31 +151,20 @@ export async function GET(
         );
       }
 
-      // 3. For DMs, try hash re-derivation as fallback
-      if (governance === 'dm') {
-        const targetHash = targetDid.slice('did:imajin:dm:'.length);
-        const participantRows = await sql`
-          SELECT p.did
-          FROM chat.participants p
-          JOIN chat.conversations c ON c.id = p.conversation_id
-          WHERE c.type = 'direct'
-            AND p.conversation_id IN (
-              SELECT conversation_id FROM chat.participants WHERE did = ${requesterDid}
-            )
-        `;
+      // 3. Check conversation_members (covers both DMs and groups)
+      const memberRows = await sql`
+        SELECT role FROM chat.conversation_members
+        WHERE conversation_did = ${targetDid}
+          AND member_did = ${requesterDid}
+          AND left_at IS NULL
+        LIMIT 1
+      `;
 
-        for (const row of participantRows) {
-          if (row.did !== requesterDid) {
-            const sorted = [requesterDid, row.did].sort();
-            const derived = sha256hex(sorted.join(':')).slice(0, 16);
-            if (derived === targetHash) {
-              return NextResponse.json(
-                { allowed: true, role: 'participant', governance },
-                { headers: cors }
-              );
-            }
-          }
-        }
+      if (memberRows.length > 0) {
+        return NextResponse.json(
+          { allowed: true, role: memberRows[0].role as string, governance },
+          { headers: cors }
+        );
       }
 
       // 4. Check pod membership (conversation_did on pods)
