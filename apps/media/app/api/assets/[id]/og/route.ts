@@ -40,8 +40,9 @@ export async function GET(
 
   // Only serve public assets via OG route (crawlers can't auth)
   const manifest = asset.fairManifest as FairManifest | null;
-  const access = manifest?.access ?? "private";
-  if (access !== "public") {
+  const access = manifest?.access;
+  const isPublic = access === "public" || (typeof access === "object" && access?.type === "public");
+  if (!isPublic) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
