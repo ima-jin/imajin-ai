@@ -61,6 +61,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description,
       ...(ogImage && { images: [ogImage] }),
     },
+    other: {
+      // LinkedIn requires name="image" alongside property="og:image"
+      ...(ogImage && { image: ogImage }),
+      'author': 'Imajin Market',
+      ...(listing.createdAt && {
+        'article:published_time': new Date(listing.createdAt).toISOString(),
+      }),
+    },
   };
 }
 
