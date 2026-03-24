@@ -233,6 +233,14 @@ export function Chat({
       const { transcript } = await sendVoice(blob);
       if (transcript) {
         setComposerText(prev => prev ? `${prev} ${transcript}` : transcript);
+        // Trigger textarea auto-resize after content changes
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (el) {
+            el.style.height = 'auto';
+            el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+          }
+        });
       }
     } catch {
       // error tracked in hook
