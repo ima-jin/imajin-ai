@@ -4,6 +4,8 @@ import { db, messagesV2 } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 
+export const dynamic = 'force-dynamic';
+
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 
 async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
