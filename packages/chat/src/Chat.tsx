@@ -65,7 +65,7 @@ export function Chat({
 }: ChatProps) {
   const access = useChatAccess(did);
   const { messages, hasMore, loadMore, isLoading, pushMessage, updateMessage, removeMessage, addReactionToMessage, removeReactionFromMessage } = useChatMessages(did);
-  const { sendMessage, addReaction, removeReaction, editMessage, deleteMessage, isSending } =
+  const { sendMessage, addReaction, removeReaction, editMessage, deleteMessage, markRead, isSending } =
     useChatActions(did);
   const { typingUsers, sendTyping, stopTyping, lastMessage } = useChatWebSocket(did);
   const { uploadFile } = useFileUpload();
@@ -92,11 +92,19 @@ export function Chat({
     }
   }, [access.isLoading, access.allowed, onAccessDenied]);
 
+  // Mark as read when messages load
+  useEffect(() => {
+    if (!isLoading && messages.length > 0) {
+      markRead();
+    }
+  }, [isLoading, messages.length, markRead]);
+
   // Push new WebSocket messages into the list; apply edits/deletes/reactions from other clients
   useEffect(() => {
     if (!lastMessage) return;
     if (lastMessage.type === 'new_message' && lastMessage.message) {
       pushMessage(lastMessage.message as ChatMessage);
+      markRead();
     } else if (lastMessage.type === 'message_edited' && lastMessage.message) {
       const edited = lastMessage.message as ChatMessage;
       updateMessage(edited.id, { content: edited.content, editedAt: edited.editedAt });

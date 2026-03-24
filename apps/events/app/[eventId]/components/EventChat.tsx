@@ -189,6 +189,18 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
     fetchPolicy();
   }, [eventId]);
 
+  // Mark conversation as read
+  const markRead = useCallback(async () => {
+    try {
+      await fetch(
+        `${CHAT_SERVICE_URL}/api/d/${encodeURIComponent(did)}/read`,
+        { method: 'POST', credentials: 'include' }
+      );
+    } catch {
+      // non-fatal
+    }
+  }, [did, CHAT_SERVICE_URL]);
+
   // Initial message fetch (DID-based route)
   const fetchMessages = useCallback(async () => {
     try {
@@ -204,11 +216,12 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
       const data = await res.json();
       setMessages(data.messages || []);
       setLoading(false);
+      markRead();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load messages');
       setLoading(false);
     }
-  }, [did, CHAT_SERVICE_URL]);
+  }, [did, CHAT_SERVICE_URL, markRead]);
 
   useEffect(() => {
     fetchMessages();
@@ -224,6 +237,7 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
           if (prev.some(m => m.id === msg.id)) return prev;
           return [...prev, msg];
         });
+        markRead();
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
         }, 100);
