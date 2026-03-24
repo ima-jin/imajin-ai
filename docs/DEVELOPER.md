@@ -34,9 +34,9 @@ node -e "const kp = require('crypto').generateKeyPairSync('ed25519'); console.lo
 # 6. Disable invite gate for local dev (in apps/auth/.env.local)
 #    NEXT_PUBLIC_DISABLE_INVITE_GATE=true
 
-# 7. Push all database schemas
+# 7. Push all database schemas (reads DATABASE_URL from .env.local automatically)
 for app in auth profile registry connections pay events chat input media coffee dykil links learn market; do
-  (cd apps/$app && DATABASE_URL="postgresql://..." npx drizzle-kit push --force)
+  (cd apps/$app && npx drizzle-kit push --force)
 done
 
 # 8. Start auth (minimum viable service)
