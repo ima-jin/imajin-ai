@@ -36,7 +36,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const title = `${listing.title} — ${priceStr} | Market | Imajin`;
   const description = listing.description
-    ? listing.description.slice(0, 200)
+    ? listing.description.replace(/\s+/g, ' ').trim().slice(0, 200)
     : `${listing.title} for ${priceStr} on Imajin Market`;
 
   const images = ((listing.images as string[]) || [])
