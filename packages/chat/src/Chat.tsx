@@ -373,14 +373,7 @@ export function Chat({
           </div>
         )}
 
-        {voiceActive && enableVoice ? (
-          <div className="flex items-center gap-2 flex-1">
-            {voiceSending && (
-              <span className="text-xs text-slate-400 flex-shrink-0">Sending…</span>
-            )}
-          </div>
-        ) : (
-          <div className="flex items-end gap-2">
+        <div className="flex items-end gap-2">
             {enableMedia && (
               <input
                 ref={fileInputRef}
@@ -390,7 +383,7 @@ export function Chat({
               />
             )}
             <div className="flex-1 flex items-end min-w-0 bg-slate-100 dark:bg-zinc-800 rounded-2xl px-2 py-2">
-              {enableMedia && (
+              {!voiceActive && enableMedia && (
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isSending}
@@ -400,16 +393,18 @@ export function Chat({
                   {'\uD83D\uDCCE'}
                 </button>
               )}
-              <textarea
-                ref={textareaRef}
-                value={composerText}
-                onChange={handleTextChange}
-                placeholder="Message…"
-                rows={1}
-                className="flex-1 min-w-0 resize-none overflow-hidden bg-transparent px-2 py-0.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none"
-                style={{ minHeight: '24px', maxHeight: '160px' }}
-              />
-              {enableLocation && (
+              {!voiceActive && (
+                <textarea
+                  ref={textareaRef}
+                  value={composerText}
+                  onChange={handleTextChange}
+                  placeholder="Message…"
+                  rows={1}
+                  className="flex-1 min-w-0 resize-none overflow-hidden bg-transparent px-2 py-0.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none"
+                  style={{ minHeight: '24px', maxHeight: '160px' }}
+                />
+              )}
+              {!voiceActive && enableLocation && (
                 <button
                   onClick={handleShareLocation}
                   disabled={isSending}
@@ -426,6 +421,9 @@ export function Chat({
                   onCancel={() => setVoiceActive(false)}
                   disabled={isSending}
                 />
+              )}
+              {voiceActive && voiceSending && (
+                <span className="text-xs text-slate-400 flex-shrink-0">Sending…</span>
               )}
             </div>
             <button
