@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
       trustThreshold,
       rangeKm,
       metadata,
+      imageAssetIds,
     } = body;
 
     // Validate required fields
