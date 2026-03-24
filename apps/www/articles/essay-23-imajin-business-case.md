@@ -3,6 +3,7 @@ title: "The Business Case for Building on Human Trust"
 subtitle: "$800B flows through platforms. What if it flowed through people?"
 description: "The numbers for operators and builders. Three industries — advertising, music, journalism — representing ~$800B in annual revenue."
 date: "2026-02-22"
+updated: "2026-03-25"
 author: "Ryan Veteze"
 status: "REVIEW"
 ---
@@ -96,6 +97,36 @@ For the network this means: creative work compounds transparently. The lineage o
 The extraction model survives on opacity. Labels don't show artists the full accounting. Platforms don't show creators the full reach. Rights databases are controlled by the entities with the most to gain from complexity. The .fair manifest makes the chain legible — and legibility is the enemy of extraction.
 
 This is not just a feature of the payment system. It is infrastructure for how human creativity has always actually worked — building on what came before, acknowledging the debt, honoring the chain — finally encoded in software that executes automatically and belongs to everyone.
+
+---
+
+## Your Identity Survives the Platform
+
+There's a quiet assumption in everything above — that the node you publish on will always be there. That the catalogue will persist. That the manifests will remain verifiable.
+
+It's worth making explicit why that assumption holds.
+
+Every identity on the network is backed by a cryptographic chain — a signed, append-only log that records every key rotation, every attestation, every significant action. That chain doesn't live in a database controlled by Imajin. It lives on a federated relay network. Multiple independent relays hold copies. If one goes down, the others still have your chain. If Imajin itself disappeared tomorrow, your identity and your attestation history persist on every relay that ever synced with it.
+
+Your catalogue's .fair manifests are content-addressed — the hash of the content IS the identifier. Move the file anywhere, and anyone can verify it matches the manifest. No central authority needed. No phone-home to confirm authenticity. The proof travels with the work.
+
+This is what makes the trust graph real and not just another platform promise. The infrastructure is designed to survive the infrastructure provider. The identity belongs to the human, not the service. The work belongs to the creator, not the host.
+
+And for those keeping track: the relay protocol (DFOS) already has multiple independent implementations passing conformance. This isn't theoretical. It's running.
+
+## Your Agent Works While You Sleep
+
+There's a fourth persona emerging that the original version of this essay didn't anticipate.
+
+The Creator/Consumer who builds standing over years — reliable taste, consistent curation, trusted recommendations — is doing work. Real work. The kind of work that used to happen in record stores, in newsrooms, in the social infrastructure of small communities.
+
+Now imagine they don't have to do all of it manually.
+
+A sovereign agent — running on your hardware, operating under your identity, bounded by permissions you set — can route queries, surface recommendations, manage your catalogue, and earn on your behalf. It knows your taste because it's been watching you curate for three years. It gets cheaper to operate over time because the context is embedded. It can't exceed the scope you defined because the permissions are cryptographic, not policy-based.
+
+The agent doesn't replace the human judgment that built the standing. It amplifies it. The Creator/Consumer who spent a decade building trust now has infrastructure that compounds that trust while they plant trees.
+
+And the economics work: a personal agent costs $1.50–3 a month in actual compute. Running on hardware you own. Getting smarter and cheaper the longer you use it. Compare that to the $20/month chatbot that can't book a table and doesn't know your name.
 
 ---
 
@@ -201,7 +232,7 @@ The network compounds not through engineered virality but through the same mecha
 
 The moat is not the technology. Any sufficiently funded team can build the technology.
 
-The moat is the accumulated human trust that no competitor can replicate by training a better model or raising a bigger round. The Creator who has thirty years of catalogue on their node. The Consumer whose visible ledger represents three years of genuine cultural engagement. The Creator/Consumer whose curation has been reliable for a decade and whose standing in the network reflects it.
+The moat is the accumulated human trust — expressed as bilateral attestations, signed by both parties, verifiable by anyone, portable across the network — that no competitor can replicate by training a better model or raising a bigger round. The Creator who has thirty years of catalogue on their node. The Consumer whose visible ledger represents three years of genuine cultural engagement. The Creator/Consumer whose curation has been reliable for a decade and whose standing in the network reflects it.
 
 The extractors built their mountains by owning rails and optimizing them for accumulation at the top. The Creator who built for thirty years got the same algorithmic treatment as the person who arrived last week. The Consumer whose attention was genuinely discerning got the same feed as everyone else. The wisdom of the elder and the noise of the newcomer were worth exactly the same to the platform — because the platform was monetizing attention, not judgment.
 
@@ -211,7 +242,7 @@ The way it used to be.
 
 The way it should always have been.
 
-Come build on rails that can't be owned.
+Come build on rails that can't be owned — and that can't be killed.
 
 *— Ryan VETEZE, Founder, imajin.ai aka b0b*
 
@@ -221,6 +252,7 @@ Come build on rails that can't be owned.
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](imajin.ai)
 - Jin's party: April 1st, 2026
-- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-17-imajin-business-case.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-17-imajin-business-case.md)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-23-imajin-business-case.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-23-imajin-business-case.md)
+- The compute argument: [Essay 32 — How to Save Compute From Eating Itself](/articles/essay-32-how-to-save-compute)
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-17-imajin-business-case) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-23-imajin-business-case) on February 22, 2026. Updated March 25, 2026 with federation, agent, and attestation additions. Imajin is building sovereign technology infrastructure — identity, payments, and AI governance without platform lock-in. Learn more → (https://www.imajin.ai/)
