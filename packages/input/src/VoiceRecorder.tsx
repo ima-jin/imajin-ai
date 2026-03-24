@@ -141,7 +141,11 @@ export function VoiceRecorder({ onRecordingComplete, onRecorded, onCancel, onRec
 
         setState('processing');
         setWaveform(Array(WAVEFORM_BARS).fill(0));
-        handleComplete(blob, durationMs);
+        // Fire completion, then reset to idle
+        Promise.resolve(handleComplete(blob, durationMs)).finally(() => {
+          setState('idle');
+          setElapsedMs(0);
+        });
       };
 
       recorder.start(100);

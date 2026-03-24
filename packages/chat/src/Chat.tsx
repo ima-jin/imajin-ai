@@ -440,7 +440,6 @@ export function Chat({
               </svg>
             </button>
           </div>
-        )}
       </div>
     </div>
   );
