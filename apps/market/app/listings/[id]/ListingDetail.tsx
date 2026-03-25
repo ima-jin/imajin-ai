@@ -97,6 +97,22 @@ function ContactSection({ contactInfo }: { contactInfo: ContactInfo }) {
   );
 }
 
+function OwnerStatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    active: 'bg-green-900/50 text-green-400 border-green-700/50',
+    paused: 'bg-yellow-900/50 text-yellow-400 border-yellow-700/50',
+    sold: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+    rented: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
+    unavailable: 'bg-gray-700 text-gray-300 border-gray-600',
+    removed: 'bg-gray-800 text-gray-400 border-gray-700',
+  };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${styles[status] ?? 'bg-gray-800 text-gray-400 border-gray-700'}`}>
+      {status.charAt(0).toUpperCase() + status.slice(1)}
+    </span>
+  );
+}
+
 export default function ListingDetail() {
   const { id } = useParams<{ id: string }>();
   const [listing, setListing] = useState<Listing | null>(null);
@@ -107,6 +123,10 @@ export default function ListingDetail() {
   const [buyLoading, setBuyLoading] = useState(false);
   const [buyError, setBuyError] = useState<string | null>(null);
   const [sellerName, setSellerName] = useState<string | null>(null);
+  const [sellerHandle, setSellerHandle] = useState<string | null>(null);
+  const [sessionDid, setSessionDid] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [otherListings, setOtherListings] = useState<RelatedListing[]>([]);
 
   async function handleBuyNow() {
@@ -166,11 +186,26 @@ export default function ListingDetail() {
           );
           if (lookupRes.ok) {
             const identity = await lookupRes.json();
-            const name = identity?.handle ? `@${identity.handle}` : identity?.name || null;
-            if (name) setSellerName(name);
+            if (identity?.handle) {
+              setSellerHandle(identity.handle);
+              setSellerName(`@${identity.handle}`);
+            } else if (identity?.name) {
+              setSellerName(identity.name);
+            }
           }
         } catch {
           // Silently fall back to truncated DID
+        }
+
+        // Fetch current session DID to detect ownership
+        try {
+          const meRes = await fetch('/api/me', { credentials: 'include' });
+          if (meRes.ok) {
+            const me = await meRes.json();
+            if (me?.did) setSessionDid(me.did);
+          }
+        } catch {
+          // Not authenticated — no management strip
         }
 
         // Fetch other listings by this seller
@@ -254,6 +289,32 @@ export default function ListingDetail() {
     );
   }
 
+  const isOwner = !!sessionDid && sessionDid === listing.sellerDid;
+
+  async function updateStatus(newStatus: string) {
+    if (!listing) return;
+    setActionLoading(newStatus);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/listings/${listing.id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setActionError(data.error || 'Action failed.');
+        return;
+      }
+      setListing(data);
+    } catch {
+      setActionError('Action failed. Please try again.');
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   const images = (listing.images || []).filter(Boolean);
   const detailImages = images.map((ref: string) => resolveMediaRef(ref, 'detail'));
   const thumbImages = images.map((ref: string) => resolveMediaRef(ref, 'thumbnail'));
@@ -292,6 +353,70 @@ export default function ListingDetail() {
         <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-orange-500 transition mb-6">
           ← Back to listings
         </Link>
+
+        {/* Owner management strip */}
+        {isOwner && (
+          <div className="mb-6 bg-gray-900 border border-gray-700 rounded-xl p-4 flex flex-wrap items-center gap-3">
+            <span className="text-xs text-gray-400 uppercase tracking-wide font-semibold">Your listing</span>
+            <OwnerStatusBadge status={listing.status} />
+            <div className="flex flex-wrap gap-2 ml-auto">
+              <Link
+                href={`/listings/${listing.id}/edit`}
+                className="px-3 py-1.5 text-sm rounded-lg bg-gray-700 text-gray-200 hover:bg-gray-600 transition"
+              >
+                Edit
+              </Link>
+              {listing.status === 'active' && (
+                <button
+                  onClick={() => updateStatus('paused')}
+                  disabled={!!actionLoading}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-yellow-900/50 text-yellow-400 hover:bg-yellow-900 border border-yellow-700/50 transition disabled:opacity-50"
+                >
+                  {actionLoading === 'paused' ? '…' : 'Pause'}
+                </button>
+              )}
+              {listing.status === 'paused' && (
+                <button
+                  onClick={() => updateStatus('active')}
+                  disabled={!!actionLoading}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-green-900/50 text-green-400 hover:bg-green-900 border border-green-700/50 transition disabled:opacity-50"
+                >
+                  {actionLoading === 'active' ? '…' : 'Resume'}
+                </button>
+              )}
+              {listing.type === 'sale' && listing.status === 'active' && (
+                <button
+                  onClick={() => updateStatus('sold')}
+                  disabled={!!actionLoading}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-blue-900/50 text-blue-400 hover:bg-blue-900 border border-blue-700/50 transition disabled:opacity-50"
+                >
+                  {actionLoading === 'sold' ? '…' : 'Mark Sold'}
+                </button>
+              )}
+              {listing.type === 'rental' && listing.status === 'active' && (
+                <button
+                  onClick={() => updateStatus('rented')}
+                  disabled={!!actionLoading}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-purple-900/50 text-purple-400 hover:bg-purple-900 border border-purple-700/50 transition disabled:opacity-50"
+                >
+                  {actionLoading === 'rented' ? '…' : 'Mark Rented'}
+                </button>
+              )}
+              {(listing.status === 'active' || listing.status === 'paused') && (
+                <button
+                  onClick={() => updateStatus('unavailable')}
+                  disabled={!!actionLoading}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600 transition disabled:opacity-50"
+                >
+                  {actionLoading === 'unavailable' ? '…' : 'Mark Unavailable'}
+                </button>
+              )}
+            </div>
+            {actionError && (
+              <p className="w-full text-sm text-red-400 mt-1">{actionError}</p>
+            )}
+          </div>
+        )}
 
         <div className="grid md:grid-cols-2 gap-8">
 
@@ -403,7 +528,7 @@ export default function ListingDetail() {
             <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
               <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Listed by</p>
               <a
-                href={`${profileUrl}/${encodeURIComponent(listing.sellerDid)}`}
+                href={`${profileUrl}/${encodeURIComponent(sellerHandle ?? listing.sellerDid)}`}
                 className="text-sm text-orange-500 hover:text-orange-600 transition break-all"
               >
                 {sellerName ?? truncateDid(listing.sellerDid)}
