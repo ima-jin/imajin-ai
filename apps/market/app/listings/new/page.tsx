@@ -29,12 +29,15 @@ export default function NewListingPage() {
         body.quantity = data.quantity;
       }
 
-      if (data.sellerTier === 'public_offplatform') {
+      body.type = data.type;
+      body.showContactInfo = data.showContactInfo;
+
+      if (data.sellerTier === 'public_offplatform' || data.showContactInfo) {
         const ci: Record<string, string> = {};
         if (data.contactInfo.phone) ci.phone = data.contactInfo.phone;
         if (data.contactInfo.email) ci.email = data.contactInfo.email;
         if (data.contactInfo.whatsapp) ci.whatsapp = data.contactInfo.whatsapp;
-        body.contactInfo = ci;
+        if (Object.keys(ci).length > 0) body.contactInfo = ci;
       }
 
       const res = await fetch('/api/listings', {

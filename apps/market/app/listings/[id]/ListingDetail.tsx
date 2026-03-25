@@ -22,10 +22,24 @@ interface Listing {
   images: string[];
   sellerDid: string;
   sellerTier: string;
+  showContactInfo: boolean;
   contactInfo: ContactInfo | null;
   status: string;
+  type: string;
   createdAt: string;
   updatedAt: string;
+}
+
+interface RelatedListing {
+  id: string;
+  title: string;
+  price: number;
+  currency: string;
+  images: string[];
+  sellerTier: string;
+  status: string;
+  type: string;
+  createdAt: string;
 }
 
 function formatRelativeTime(dateStr: string): string {
@@ -45,15 +59,54 @@ function truncateDid(did: string): string {
   return `${did.slice(0, 12)}…${did.slice(-8)}`;
 }
 
+function ContactSection({ contactInfo }: { contactInfo: ContactInfo }) {
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-3">
+      <p className="text-sm font-semibold">Contact Seller</p>
+      {contactInfo.phone && (
+        <a
+          href={`tel:${contactInfo.phone}`}
+          className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 hover:text-orange-500 transition"
+        >
+          <span>📞</span>
+          <span>{contactInfo.phone}</span>
+        </a>
+      )}
+      {contactInfo.email && (
+        <a
+          href={`mailto:${contactInfo.email}`}
+          className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 hover:text-orange-500 transition"
+        >
+          <span>✉️</span>
+          <span>{contactInfo.email}</span>
+        </a>
+      )}
+      {contactInfo.whatsapp && (
+        <a
+          href={`https://wa.me/${contactInfo.whatsapp.replace(/\D/g, '')}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 hover:text-orange-500 transition"
+        >
+          <span>💬</span>
+          <span>WhatsApp</span>
+        </a>
+      )}
+    </div>
+  );
+}
+
 export default function ListingDetail() {
   const { id } = useParams<{ id: string }>();
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [gated, setGated] = useState(false);
   const [activeImage, setActiveImage] = useState(0);
   const [buyLoading, setBuyLoading] = useState(false);
   const [buyError, setBuyError] = useState<string | null>(null);
   const [sellerName, setSellerName] = useState<string | null>(null);
+  const [otherListings, setOtherListings] = useState<RelatedListing[]>([]);
 
   async function handleBuyNow() {
     if (!listing) return;
@@ -82,6 +135,7 @@ export default function ListingDetail() {
   const servicePrefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
   const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
   const profileUrl = `${servicePrefix}profile.${domain}`;
+  const authUrl = `${servicePrefix}auth.${domain}`;
 
   useEffect(() => {
     async function fetchListing() {
@@ -91,14 +145,23 @@ export default function ListingDetail() {
           setError('Listing not found.');
           return;
         }
+        if (res.status === 403) {
+          const body = await res.json().catch(() => ({}));
+          if (body.gated) {
+            setGated(true);
+          } else {
+            setError('Access denied.');
+          }
+          return;
+        }
         if (!res.ok) throw new Error('Failed to load listing');
         const data: Listing = await res.json();
         setListing(data);
 
-        // Resolve seller name from auth lookup (works for all DID tiers)
+        // Resolve seller name from auth lookup
         try {
           const lookupRes = await fetch(
-            `${servicePrefix}auth.${domain}/api/lookup/${encodeURIComponent(data.sellerDid)}`
+            `${authUrl}/api/lookup/${encodeURIComponent(data.sellerDid)}`
           );
           if (lookupRes.ok) {
             const identity = await lookupRes.json();
@@ -108,6 +171,19 @@ export default function ListingDetail() {
         } catch {
           // Silently fall back to truncated DID
         }
+
+        // Fetch other listings by this seller
+        try {
+          const relatedRes = await fetch(
+            `/api/listings?seller_did=${encodeURIComponent(data.sellerDid)}&status=active&limit=4&exclude=${data.id}`
+          );
+          if (relatedRes.ok) {
+            const relatedData = await relatedRes.json();
+            setOtherListings(relatedData.listings ?? []);
+          }
+        } catch {
+          // Best-effort
+        }
       } catch {
         setError('Could not load this listing. Please try again.');
       } finally {
@@ -115,7 +191,7 @@ export default function ListingDetail() {
       }
     }
     fetchListing();
-  }, [id, servicePrefix, domain]);
+  }, [id, authUrl]);
 
   if (loading) {
     return (
@@ -130,6 +206,33 @@ export default function ListingDetail() {
               <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-full" />
               <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-5/6" />
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (gated) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="text-center px-4 max-w-sm">
+          <div className="text-5xl mb-4">🔒</div>
+          <p className="text-lg font-medium mb-2 text-gray-900 dark:text-gray-100">
+            Members only
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+            This listing is only available to verified members.
+          </p>
+          <a
+            href={`${authUrl}/login?next=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+            className="inline-block px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition"
+          >
+            Sign in to view
+          </a>
+          <div className="mt-4">
+            <Link href="/" className="text-sm text-orange-500 hover:text-orange-600 transition">
+              ← Back to listings
+            </Link>
           </div>
         </div>
       </div>
@@ -154,11 +257,31 @@ export default function ListingDetail() {
   const detailImages = images.map((ref: string) => resolveMediaRef(ref, 'detail'));
   const thumbImages = images.map((ref: string) => resolveMediaRef(ref, 'thumbnail'));
   const hasImages = detailImages.length > 0;
-  const tierLabel = listing.sellerTier === 'public_onplatform' ? 'Protected' : 'Direct';
+
+  const isSold = listing.status === 'sold';
+  const isRented = listing.status === 'rented';
+  const isUnavailable = listing.status === 'unavailable';
+  const isInactive = isSold || isRented || isUnavailable;
+
+  const isRental = listing.type === 'rental';
+  const isOnplatform = listing.sellerTier === 'public_onplatform' || listing.sellerTier === 'trust_gated';
+
+  const tierLabel =
+    listing.sellerTier === 'public_onplatform'
+      ? 'Protected'
+      : listing.sellerTier === 'trust_gated'
+      ? 'Trusted'
+      : 'Direct';
   const tierColor =
     listing.sellerTier === 'public_onplatform'
       ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+      : listing.sellerTier === 'trust_gated'
+      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
       : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300';
+
+  const showContactSection =
+    listing.sellerTier === 'public_offplatform' ||
+    (isOnplatform && listing.showContactInfo && listing.contactInfo);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
@@ -173,16 +296,31 @@ export default function ListingDetail() {
 
           {/* Image gallery */}
           <div>
-            <div className="aspect-square bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden flex items-center justify-center mb-3">
+            <div className="aspect-square bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden flex items-center justify-center mb-3 relative">
               {hasImages ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={detailImages[activeImage]}
                   alt={listing.title}
-                  className="w-full h-full object-cover"
+                  className={`w-full h-full object-cover ${isInactive ? 'opacity-60' : ''}`}
                 />
               ) : (
                 <span className="text-7xl">🏪</span>
+              )}
+              {isSold && (
+                <div className="absolute top-3 left-3 px-3 py-1 bg-red-600 text-white text-sm font-bold rounded-lg">
+                  SOLD
+                </div>
+              )}
+              {isRented && (
+                <div className="absolute top-3 left-3 px-3 py-1 bg-blue-600 text-white text-sm font-bold rounded-lg">
+                  RENTED
+                </div>
+              )}
+              {isUnavailable && (
+                <div className="absolute top-3 left-3 px-3 py-1 bg-gray-600 text-white text-sm font-bold rounded-lg">
+                  UNAVAILABLE
+                </div>
               )}
             </div>
 
@@ -211,11 +349,30 @@ export default function ListingDetail() {
             <h1 className="text-2xl font-bold leading-tight">{listing.title}</h1>
 
             {/* Price */}
-            <PriceDisplay
-              price={listing.price}
-              currency={listing.currency}
-              className="text-3xl font-bold text-orange-500"
-            />
+            <div className="flex items-center gap-3">
+              <PriceDisplay
+                price={listing.price}
+                currency={listing.currency}
+                className={`text-3xl font-bold ${
+                  isSold || isRented ? 'line-through text-gray-500' : 'text-orange-500'
+                }`}
+              />
+              {isSold && (
+                <span className="px-2 py-0.5 bg-red-900/50 text-red-400 border border-red-700/50 rounded text-sm font-bold">
+                  SOLD
+                </span>
+              )}
+              {isRented && (
+                <span className="px-2 py-0.5 bg-blue-900/50 text-blue-400 border border-blue-700/50 rounded text-sm font-bold">
+                  RENTED
+                </span>
+              )}
+              {isUnavailable && (
+                <span className="px-2 py-0.5 bg-gray-800 text-gray-400 border border-gray-700 rounded text-sm font-bold">
+                  UNAVAILABLE
+                </span>
+              )}
+            </div>
 
             {/* Badges */}
             <div className="flex flex-wrap gap-2">
@@ -227,6 +384,11 @@ export default function ListingDetail() {
               <span className={`text-sm px-3 py-1 rounded-full font-medium ${tierColor}`}>
                 {tierLabel}
               </span>
+              {isRental && (
+                <span className="text-sm px-3 py-1 rounded-full font-medium bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                  Rental
+                </span>
+              )}
             </div>
 
             {/* Description */}
@@ -245,53 +407,30 @@ export default function ListingDetail() {
               >
                 {sellerName ?? truncateDid(listing.sellerDid)}
               </a>
+              <p className="text-xs text-gray-500 mt-1">
+                Listed {formatRelativeTime(listing.createdAt)}
+              </p>
             </div>
 
-            {/* Tier 1: Direct contact info */}
+            {/* Direct Sale: always show contact info */}
             {listing.sellerTier === 'public_offplatform' && listing.contactInfo && (
-              <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-3">
-                <p className="text-sm font-semibold">Contact Seller</p>
-                {listing.contactInfo.phone && (
-                  <a
-                    href={`tel:${listing.contactInfo.phone}`}
-                    className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 hover:text-orange-500 transition"
-                  >
-                    <span>📞</span>
-                    <span>{listing.contactInfo.phone}</span>
-                  </a>
-                )}
-                {listing.contactInfo.email && (
-                  <a
-                    href={`mailto:${listing.contactInfo.email}`}
-                    className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 hover:text-orange-500 transition"
-                  >
-                    <span>✉️</span>
-                    <span>{listing.contactInfo.email}</span>
-                  </a>
-                )}
-                {listing.contactInfo.whatsapp && (
-                  <a
-                    href={`https://wa.me/${listing.contactInfo.whatsapp.replace(/\D/g, '')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 hover:text-orange-500 transition"
-                  >
-                    <span>💬</span>
-                    <span>WhatsApp</span>
-                  </a>
-                )}
-              </div>
+              <ContactSection contactInfo={listing.contactInfo} />
             )}
 
-            {/* Tier 2: Buy Now */}
-            {listing.sellerTier === 'public_onplatform' && (
+            {/* On-platform/Trust-gated with showContactInfo: show contact info */}
+            {isOnplatform && listing.showContactInfo && listing.contactInfo && (
+              <ContactSection contactInfo={listing.contactInfo} />
+            )}
+
+            {/* On-platform: Buy/Rent button (only when active) */}
+            {isOnplatform && !isInactive && (
               <div className="flex flex-col gap-2">
                 <button
                   onClick={handleBuyNow}
                   disabled={buyLoading}
                   className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {buyLoading ? 'Processing…' : 'Buy Now'}
+                  {buyLoading ? 'Processing…' : isRental ? 'Rent Now' : 'Buy Now'}
                 </button>
                 {buyError && (
                   <p className="text-sm text-red-500">{buyError}</p>
@@ -307,6 +446,50 @@ export default function ListingDetail() {
 
           </div>
         </div>
+
+        {/* Other listings by seller */}
+        {otherListings.length > 0 && (
+          <div className="mt-12">
+            <h2 className="text-lg font-semibold text-gray-100 mb-4">More from this seller</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {otherListings.map((rel) => {
+                const relImages = Array.isArray(rel.images) ? rel.images : [];
+                const relPrimary = relImages.find((img): img is string => typeof img === 'string' && img.length > 0);
+                const relImg = relPrimary ? resolveMediaRef(relPrimary, 'card') : undefined;
+                return (
+                  <Link
+                    key={rel.id}
+                    href={`/listings/${rel.id}`}
+                    className="group bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hover:border-gray-600 transition-all duration-200 hover:scale-[1.01] flex flex-col"
+                  >
+                    <div className="aspect-video bg-gradient-to-br from-gray-800 to-gray-700 relative overflow-hidden">
+                      {relImg ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={relImg} alt={rel.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-gray-600">
+                          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-3">
+                      <p className="text-sm font-medium text-gray-100 group-hover:text-amber-400 transition-colors line-clamp-2">
+                        {rel.title}
+                      </p>
+                      <PriceDisplay
+                        price={rel.price}
+                        currency={rel.currency}
+                        className="text-sm font-bold text-amber-400 mt-1"
+                      />
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
