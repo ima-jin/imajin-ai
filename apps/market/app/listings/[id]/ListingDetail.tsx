@@ -424,11 +424,10 @@ export default function ListingDetail() {
             )}
 
             {/* On-platform: Buy/Rent button (only when active) */}
-            {isOnplatform && !isInactive && (
+            {isOnplatform && !isInactive && listing.sellerTier !== 'trust_gated' && (
               <OnboardGate
                 action={isRental ? 'rent this item' : 'purchase this item'}
                 onIdentity={() => handleBuyNow()}
-                requireVerification={listing.sellerTier === 'trust_gated'}
               >
                 <div className="flex flex-col gap-2">
                   <button
@@ -442,6 +441,25 @@ export default function ListingDetail() {
                   )}
                 </div>
               </OnboardGate>
+            )}
+
+            {/* Trust-gated: requires verified identity (hard DID) */}
+            {listing.sellerTier === 'trust_gated' && !isInactive && (
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleBuyNow}
+                  disabled={buyLoading}
+                  className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {buyLoading ? 'Processing…' : isRental ? 'Rent Now' : 'Buy Now'}
+                </button>
+                {buyError && (
+                  <p className="text-sm text-red-500">{buyError}</p>
+                )}
+                <p className="text-xs text-gray-500">
+                  🔒 Requires a verified identity to purchase
+                </p>
+              </div>
             )}
 
             {/* Metadata */}

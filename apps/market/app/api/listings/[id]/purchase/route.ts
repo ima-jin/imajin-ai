@@ -7,7 +7,7 @@
 
 import { NextRequest } from 'next/server';
 import { db, listings } from '@/db';
-import { getSession } from '@imajin/auth';
+import { getSession, requireHardDID } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
@@ -38,9 +38,18 @@ export async function POST(
       return errorResponse('This listing requires direct contact with the seller', 400);
     }
 
-    // 2. Get buyer session from cookie (optional)
-    const session = await getSession(request);
-    const buyerDid = session?.identity?.id;
+    // 2. Get buyer identity — trust_gated requires hard DID (preliminary+)
+    let buyerDid: string | undefined;
+    if (listing.sellerTier === 'trust_gated') {
+      const authResult = await requireHardDID(request);
+      if ('error' in authResult) {
+        return errorResponse('This listing requires a verified identity to purchase', 403);
+      }
+      buyerDid = authResult.identity.id;
+    } else {
+      const session = await getSession(request);
+      buyerDid = session?.identity?.id;
+    }
 
     // 3. Parse body for quantity
     let quantity = 1;
