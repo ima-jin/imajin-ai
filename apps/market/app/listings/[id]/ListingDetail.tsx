@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { resolveMediaRef } from '@imajin/media';
 import PriceDisplay from '../../components/PriceDisplay';
+import { OnboardGate } from '@imajin/onboard';
 
 interface ContactInfo {
   phone?: string;
@@ -424,18 +425,23 @@ export default function ListingDetail() {
 
             {/* On-platform: Buy/Rent button (only when active) */}
             {isOnplatform && !isInactive && (
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={handleBuyNow}
-                  disabled={buyLoading}
-                  className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {buyLoading ? 'Processing…' : isRental ? 'Rent Now' : 'Buy Now'}
-                </button>
-                {buyError && (
-                  <p className="text-sm text-red-500">{buyError}</p>
-                )}
-              </div>
+              <OnboardGate
+                action={isRental ? 'rent this item' : 'purchase this item'}
+                onIdentity={() => handleBuyNow()}
+                requireVerification={listing.sellerTier === 'trust_gated'}
+              >
+                <div className="flex flex-col gap-2">
+                  <button
+                    disabled={buyLoading}
+                    className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {buyLoading ? 'Processing…' : isRental ? 'Rent Now' : 'Buy Now'}
+                  </button>
+                  {buyError && (
+                    <p className="text-sm text-red-500">{buyError}</p>
+                  )}
+                </div>
+              </OnboardGate>
             )}
 
             {/* Metadata */}
