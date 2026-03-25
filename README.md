@@ -262,6 +262,7 @@ See [articles/ARCHITECTURE.md](./apps/www/articles/ARCHITECTURE.md) for full dep
 | Document | Purpose |
 |----------|---------|
 | [MJN Whitepaper](./docs/mjn-whitepaper.md) | Protocol specification — 4 scopes × 5 primitives |
+| [FAQ](./docs/FAQ.md) | Common questions — chains, privacy, tokens, federation |
 | [Developer Guide](./docs/DEVELOPER.md) | Getting started — quickstart, env vars, local dev |
 | [Environments](./docs/ENVIRONMENTS.md) | Database & deployment config |
 | [Cost Estimate](./COST_ESTIMATE.md) | COCOMO II analysis — what this would cost traditionally |
