@@ -470,6 +470,51 @@ Non-compliant apps get flagged in the registry. Existing user links stay (user c
 
 ---
 
+## Agents as Userspace Apps
+
+A userspace app doesn't have to be a UI. It can be an agent.
+
+An AI agent registers with the kernel the same way any app does: manifest, handshake, scoped delegation, compliance validation. The kernel doesn't care if the app is a React frontend or a Python script or an LLM with tool access. It checks: valid handshake, valid scopes, valid attestations.
+
+### How it works
+
+1. **Agent registers as an app.** Manifest declares it as `type: "agent"` with required scopes.
+2. **User adds the agent.** Consent screen: "🤖 MyAgent wants to: read your identity, read your trust graph, send messages on your behalf."
+3. **Agent gets a sub-identity.** `did:imajin:agent:ryan-jin` — linked to the user's DID via delegation VC. Scoped, revocable, auditable. Clear provenance: agent-authored content is visually distinct from human-authored content.
+4. **Agent operates within scopes.** Reads trust graph, summarizes conversations, manages listings, initiates purchases — all within the granted permissions.
+5. **Gas metering.** Agent actions consume gas from the user's budget. User sets limits: "this agent can spend 10 MJN/day max."
+6. **Compliance suite validates agents too.** Same checks: scope respect, attestation format, session handling, revocation compliance.
+
+### What agents can do
+
+| Scope | Agent capability |
+|-------|-----------------|
+| `identity:read` | Know who the user is, check standing |
+| `trust:read` | Prioritize notifications by relationship strength |
+| `trust:invite` | Suggest connections, accept invitations |
+| `chat:create` | Send messages, summarize conversations |
+| `payment:initiate` | Make purchases within gas budget |
+| `attestation:write` | Emit attestations (countersigned by principal) |
+| `media:read` | Access and organize user's assets |
+
+### What agents CANNOT do
+
+- Exceed granted scopes (token is scoped, kernel rejects)
+- Spend beyond gas budget (metered per session)
+- Sign as the user (agent has its own key, delegation VC proves authority)
+- Survive revocation (user kills agent → token invalidated, sub-identity deactivated)
+- Access other agents' data (same iframe/app isolation model)
+
+### The emergent property
+
+Users bring their own agents. Developers build agent apps. The agent marketplace is just the app marketplace — same registry, same compliance suite, same consent flow. Someone builds a better scheduling agent? Users switch. The chains don't care.
+
+This means the AI tooling layer isn't a feature the platform builds. It's an emergent property of the protocol being open. Anyone can build agent tooling that speaks the protocol, and the kernel treats it exactly like any other app: scoped, metered, revocable.
+
+The platform doesn't have AI features. The platform has a protocol that AI features can plug into.
+
+---
+
 ## Open Questions
 
 1. **Compliance suite scope.** How deep does validation go? Functional tests only, or also security/performance?
