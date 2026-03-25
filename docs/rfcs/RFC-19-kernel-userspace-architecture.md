@@ -295,6 +295,98 @@ MJN accrues to participants, not platforms.
 
 ---
 
+## Shell Architecture
+
+The kernel serves a **shell** — a thin wrapper that provides the toolbar, launcher, notifications, and user menu. Userspace apps render inside it via iframe.
+
+```
+┌──────────────────────────────────────────────┐
+│  🟠 jin    [Chat] [Events] [Market] 🔔  👤  │  ← kernel (always)
+├──────────────────────────────────────────────┤
+│                                              │
+│                                              │
+│       market.somedev.com renders here        │  ← iframe (sandboxed)
+│                                              │
+│                                              │
+└──────────────────────────────────────────────┘
+```
+
+**The kernel controls:**
+- What URL loads in the iframe (only registered, compliant apps)
+- The toolbar, launcher, notifications, user menu (always kernel state)
+- What `postMessage` messages it accepts (typed, scoped)
+- When to kill the iframe (user revokes → gone)
+
+**The app controls:**
+- Everything inside its frame
+- Its own UI, data, hosting, tech stack
+
+**The browser enforces isolation for free.** An iframe from `market.somedev.com` can't read cookies from `jin.imajin.ai`, can't touch the DOM outside its frame, can't sniff the toolbar. The only bridge is `postMessage` — which the kernel validates.
+
+### postMessage Protocol
+
+Typed messages between kernel shell and app iframe:
+
+```typescript
+// App → Kernel
+{ type: "set_title", title: "My Listing" }
+{ type: "set_badge", count: 3 }
+{ type: "navigate", path: "/market/listings/123" }
+{ type: "toast", message: "Purchase complete!", level: "success" }
+{ type: "request_payment", checkout: { items: [...], successUrl: "..." } }
+
+// Kernel → App
+{ type: "session", token: "..." }           // delegated session on load
+{ type: "theme", mode: "dark" }             // sync appearance
+{ type: "scope_revoked", scope: "media:read" }  // permission change
+{ type: "unload" }                          // user navigating away
+```
+
+### Progressive enhancement
+
+- **Phase 1 (now):** Shared `<PlatformHeader>` component via `@imajin/ui`. Userspace apps import it. Works today, ships fast.
+- **Phase 2:** Full shell architecture with iframe embedding. The platform feels like one app while being many.
+
+---
+
+## Threat Model: What Can a Rogue App Do?
+
+**Short answer: basically nothing.**
+
+A userspace app receives a scoped delegated session token. It can ask the kernel questions within its granted scopes. It never receives the user's chain, private key, or raw data — only proofs.
+
+### What a rogue app CAN do
+
+| Attack | Impact |
+|--------|--------|
+| Show garbage in its iframe | User closes it. No platform impact. |
+| Stop responding | Kernel shows "app unavailable." |
+| Spam attestations | Costs gas. Attestations are self-referential (no countersignature from victim). Trust graph ignores them. |
+| Call kernel APIs outside scopes | Rejected. Token is scoped. |
+| Try to exfiltrate data | There's no data to exfiltrate. App only has proofs, not records. |
+
+### What a rogue app CANNOT do
+
+- Read other apps' data (iframe isolation)
+- Access the user's chain directly (only kernel has chain access)
+- Modify the toolbar or launcher (kernel DOM, not app DOM)
+- Impersonate the user (delegated token ≠ user's signing key)
+- Survive revocation (kernel stops loading the iframe, token invalidated)
+- Persist after removal (app never had data, only proofs)
+
+### Ongoing compliance
+
+The compliance suite catches drift — an app passes initially, then ships an update that breaks protocol. Detection:
+
+1. **Periodic re-validation.** Registry re-runs the suite on a schedule.
+2. **User reports.** Flag an app → triggers re-validation.
+3. **Attestation monitoring.** Kernel detects malformed or unauthorized attestations.
+4. **Scope violations.** Kernel logs when an app requests scopes it wasn't granted.
+
+Non-compliant apps get flagged in the registry. Existing user links stay (user choice) but new installs are blocked and a warning shows. This is structurally better than app store review — compliance is deterministic and ongoing, not a one-time human check that you can bypass with post-approval updates.
+
+---
+
 ## Open Questions
 
 1. **Compliance suite scope.** How deep does validation go? Functional tests only, or also security/performance?
