@@ -3,7 +3,7 @@ import { db } from '@/db';
 import { courses, enrollments, lessonProgress, lessons, modules } from '@/db/schema';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
-import { emitAttestation } from '@/lib/attestations';
+import { emitAttestation } from '@imajin/auth';
 import { eq, and, sql } from 'drizzle-orm';
 
 type RouteParams = { params: Promise<{ slug: string; lessonId: string }> };

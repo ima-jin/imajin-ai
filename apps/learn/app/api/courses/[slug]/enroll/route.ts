@@ -3,7 +3,7 @@ import { db } from '@/db';
 import { courses, enrollments, lessons, modules, lessonProgress } from '@/db/schema';
 import { requireAuth } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
-import { emitAttestation } from '@/lib/attestations';
+import { emitAttestation } from '@imajin/auth';
 import { eq, and } from 'drizzle-orm';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
