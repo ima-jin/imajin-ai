@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { db, listings } from '@/db';
 import { requireAuth, getSession } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
+import { resolveMediaRef } from '@imajin/media';
 import { eq, ilike, and, desc, asc, sql } from 'drizzle-orm';
 
 const VALID_SELLER_TIERS = ['public_offplatform', 'public_onplatform', 'trust_gated'] as const;
@@ -156,8 +157,16 @@ export async function GET(request: NextRequest) {
 
     const total = Number(countResult[0]?.count ?? 0);
 
+    // Resolve asset IDs to full URLs so consumers don't need to know about media internals
+    const resolved = rows.map((row) => ({
+      ...row,
+      images: Array.isArray(row.images)
+        ? (row.images as string[]).map((ref) => resolveMediaRef(ref, 'card'))
+        : row.images,
+    }));
+
     return jsonResponse({
-      listings: rows,
+      listings: resolved,
       total,
       page,
       limit,

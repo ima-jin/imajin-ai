@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { db, listings } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
+import { resolveMediaRef } from '@imajin/media';
 import { eq } from 'drizzle-orm';
 
 /**
@@ -18,7 +19,16 @@ export async function GET(
       return errorResponse('Listing not found', 404);
     }
 
-    return jsonResponse({ ...listing, price: Number(listing.price) });
+    // Resolve asset IDs to full URLs at multiple sizes for display
+    const rawImages = Array.isArray(listing.images) ? listing.images as string[] : [];
+    const resolvedImages = rawImages.map((ref) => resolveMediaRef(ref, 'detail'));
+
+    return jsonResponse({
+      ...listing,
+      price: Number(listing.price),
+      images: resolvedImages,
+      imageRefs: rawImages,
+    });
   } catch (error) {
     console.error('Failed to fetch listing:', error);
     return errorResponse('Failed to fetch listing', 500);
