@@ -8,6 +8,10 @@
 For the complete protocol spec, architecture, and API reference:
 https://imajin.ai/llms-full.txt
 
+## The Problem
+
+Every platform you use holds your identity, reputation, and audience hostage. Not because they're evil — because the architecture requires it. Imajin fixes this structurally: users hold the keys. Identity is self-certifying, reputation is portable, data lives on hardware you own.
+
 ## What is Imajin?
 
 Imajin (今人 — "now-person") is sovereign infrastructure. 15 independent HTTP services sharing a cryptographic kernel: signed identity chains (DFOS), .fair attribution manifests, and bilateral attestations.
@@ -36,10 +40,10 @@ HTTPS        ← transport
 | media | media.imajin.ai | Userspace — assets, .fair sidecars |
 | input | input.imajin.ai | Userspace — voice (Whisper), uploads |
 | learn | learn.imajin.ai | Userspace — courses, enrollment |
-| market | market.imajin.ai | Userspace — local commerce |
+| market | market.imajin.ai | Userspace — consent-based local commerce |
 | coffee | coffee.imajin.ai | Userspace — tipping pages |
 | links | links.imajin.ai | Userspace — link-in-bio |
-| dykil | dykil.imajin.ai | Userspace — spending surveys |
+| dykil | dykil.imajin.ai | Userspace — community spending surveys |
 | www | imajin.ai | Userspace — landing, app launcher |
 
 ## Identity
@@ -52,6 +56,8 @@ Ed25519 keypairs → `did:imajin:xxx` (also valid Solana wallet). Three standing
 - **.fair** — JSON manifests: who made it, who gets paid. Kernel primitive — settlement rejects unsigned manifests.
 - **Bilateral attestations** — both parties sign via DFOS countersignatures. Trust is mutual, not unilateral.
 - **Exit credentials** — leave with your reputation. Signed, portable, encrypted under your key.
+- **Two-token model** — MJN (equity, earned through participation, mints on Solana Year 3) + MJNx (payment rail, fiat-pegged, vendor-withdrawable). Every MJN token traces to a signed chain entry — work, contribution, or usage.
+- **Trust-gated commerce** — three seller tiers: direct (off-platform settlement), protected (on-platform with .fair), trust-gated (visible only to verified members with preliminary DID+).
 
 ## Links
 
@@ -66,7 +72,7 @@ Ed25519 keypairs → `did:imajin:xxx` (also valid Solana wallet). Three standing
 
 ## Build Stats (March 2026)
 
-15 services · 122,721 LOC · ~120 identities · 50 days · 1 human + AI · $76K actual ($2.3M traditional estimate)
+15 services · ~123K LOC · ~120 identities · 52 days · 1 human + AI · $77K actual ($2.3M traditional estimate)
 
 ## Contact
 
