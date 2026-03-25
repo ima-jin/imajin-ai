@@ -7,6 +7,7 @@ export {
   getPort,
   getServiceUrl,
   getPublicUrl,
+  buildPublicUrl,
   servicesByTier,
   servicesByVisibility,
   buildServiceUrlMap,

@@ -10,8 +10,7 @@ interface ServiceCheck {
   error?: string;
 }
 
-const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+import { buildPublicUrl } from '@imajin/config';
 
 const SERVICES = [
   // Core platform
@@ -34,7 +33,7 @@ const SERVICES = [
 ];
 
 async function checkService(service: { name: string; label: string }): Promise<ServiceCheck> {
-  const url = `${SERVICE_PREFIX}${service.name}.${DOMAIN}`;
+  const url = buildPublicUrl(service.name);
   const start = Date.now();
 
   try {

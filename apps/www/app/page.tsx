@@ -12,8 +12,7 @@ const MAX_PRESENCES = 1;
 const MAX_HUMANS = 5_000;
 const MAX_BUSINESSES = 200;
 
-const PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+import { buildPublicUrl } from '@imajin/config';
 
 async function getNetworkStats() {
   try {
@@ -154,7 +153,7 @@ export default async function Home() {
       {/* THE EVENT */}
       <section className="w-full max-w-md mb-20">
         <a
-          href={`${PREFIX}events.${DOMAIN}/jins-launch-party`}
+          href={`${buildPublicUrl('events')}/jins-launch-party`}
           className="group block rounded-lg border border-gray-800 hover:border-amber-500/40 p-8 transition-colors text-center"
         >
           <p className="text-xs text-gray-600 uppercase tracking-widest mb-3">April 1, 2026</p>
@@ -182,15 +181,15 @@ export default async function Home() {
             <span>Protocol Spec — mjn-protocol</span>
             <span className="text-gray-700">→</span>
           </a>
-          <a href={`${PREFIX}coffee.${DOMAIN}/b0b`} className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
+          <a href={`${buildPublicUrl('coffee')}/b0b`} className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
             <span>Buy us a coffee</span>
             <span className="text-gray-700">→</span>
           </a>
-          <a href={`${PREFIX}registry.${DOMAIN}/docs`} className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
+          <a href={`${buildPublicUrl('registry')}/docs`} className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
             <span>API Docs</span>
             <span className="text-gray-700">→</span>
           </a>
-          <a href={`${PREFIX}market.${DOMAIN}`} className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
+          <a href={buildPublicUrl('market')} className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
             <span>Market</span>
             <span className="text-gray-700">→</span>
           </a>

@@ -11,6 +11,7 @@ import { corsHeaders } from "@imajin/config";
 const WHISPER_URL = process.env.WHISPER_URL || "http://192.168.1.234:8765";
 const WHISPER_AUTH = process.env.WHISPER_AUTH_TOKEN || "";
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+const MEDIA_DIR = process.env.MEDIA_DIR || "/mnt/media";
 
 function isTranscribable(mime: string): boolean {
   return mime.startsWith("audio/") || mime.startsWith("video/");
@@ -27,7 +28,7 @@ export async function OPTIONS(request: NextRequest) {
  * Stores the transcript in asset metadata.
  * Returns the transcript with segments and timing.
  */
-export async function POST(
+export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -80,16 +81,21 @@ export async function POST(
     );
   }
 
-  // 5. Read file from disk
-  const filePath = path.join(UPLOAD_DIR, asset.filename);
+  // 5. Read file from disk — try storage_path first, fall back to UPLOAD_DIR/filename
+  const filePath = asset.storagePath || path.join(UPLOAD_DIR, asset.filename);
   let fileBuffer: Buffer;
   try {
     fileBuffer = await readFile(filePath);
   } catch {
-    return NextResponse.json(
-      { error: "Asset file not found on disk" },
-      { status: 404, headers: cors }
-    );
+    // Fallback: try UPLOAD_DIR if storage_path failed
+    try {
+      fileBuffer = await readFile(path.join(UPLOAD_DIR, asset.filename));
+    } catch {
+      return NextResponse.json(
+        { error: "Asset file not found on disk" },
+        { status: 404, headers: cors }
+      );
+    }
   }
 
   // 6. Send to Whisper

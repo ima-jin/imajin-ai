@@ -110,7 +110,10 @@ export async function POST(
     const authSql = getClient();
     const onboardToken = randomBytes(36).toString('hex');
     const onboardId = `obt_${randomBytes(8).toString('hex')}`;
-    const redirectUrl = `${EVENTS_URL}/${event.id}`;
+    // Deep link to the specific ticket's registration page
+    const redirectUrl = ticket.registrationStatus === 'pending'
+      ? `${EVENTS_URL}/${event.id}/register/${ticket.id}`
+      : `${EVENTS_URL}/${event.id}/my-tickets`;
 
     await authSql`
       INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)

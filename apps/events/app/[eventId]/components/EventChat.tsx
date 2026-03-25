@@ -7,12 +7,12 @@ import {
   VoiceMessage,
   MediaMessage,
   LocationMessage,
-  VoiceRecorder,
   useChatWebSocket,
   useFileUpload,
   useVoiceRecording,
   useLocationShare,
 } from '@imajin/chat';
+import { VoiceRecorder } from '@imajin/input';
 import type { MessageContent, VoiceContent, MediaContent, LocationContent, TextContent } from '@imajin/chat';
 
 interface RawReaction {

@@ -1,14 +1,15 @@
 import { NextRequest } from 'next/server';
 import { db, listings } from '@/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, getSession } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
+import { resolveMediaRef } from '@imajin/media';
 import { eq } from 'drizzle-orm';
 
 /**
  * GET /api/listings/:id — Single listing detail
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -18,7 +19,28 @@ export async function GET(
       return errorResponse('Listing not found', 404);
     }
 
-    return jsonResponse({ ...listing, price: Number(listing.price) });
+    // Trust-gated listings require a valid session
+    if (listing.sellerTier === 'trust_gated') {
+      const session = await getSession();
+      if (!session) {
+        return Response.json(
+          { error: 'This listing is only available to verified members', gated: true },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Resolve asset IDs to full URLs at multiple sizes for display
+    const rawImages = Array.isArray(listing.images) ? listing.images as string[] : [];
+    const resolvedImages = rawImages.map((ref) => resolveMediaRef(ref, 'detail'));
+
+    return jsonResponse({
+      ...listing,
+      price: Number(listing.price),
+      images: resolvedImages,
+      imageRefs: rawImages,
+      // sellerDid is included via spread — client resolves seller profile from this
+    });
   } catch (error) {
     console.error('Failed to fetch listing:', error);
     return errorResponse('Failed to fetch listing', 500);
@@ -50,10 +72,6 @@ export async function PATCH(
       return errorResponse('Forbidden', 403);
     }
 
-    if (listing.status === 'sold' || listing.status === 'removed') {
-      return errorResponse(`Cannot update a listing with status '${listing.status}'`);
-    }
-
     const body = await request.json();
     const {
       title,
@@ -69,11 +87,28 @@ export async function PATCH(
       rangeKm,
       metadata,
       status,
+      type,
+      showContactInfo,
+      expiresAt,
     } = body;
 
     // Validate status transition
-    if (status !== undefined && status !== 'active' && status !== 'paused') {
-      return errorResponse("status can only be set to 'active' or 'paused'");
+    if (status !== undefined) {
+      const currentStatus = listing.status ?? 'active';
+      const allowed: Record<string, string[]> = {
+        active:      ['paused', 'sold', 'rented', 'unavailable'],
+        paused:      ['active', 'removed'],
+        unavailable: ['active', 'removed'],
+        sold:        ['removed'],
+        rented:      ['removed'],
+        removed:     [],
+      };
+      const validNext = allowed[currentStatus] ?? [];
+      if (!validNext.includes(status)) {
+        return errorResponse(
+          `Cannot transition listing from '${currentStatus}' to '${status}'. Allowed: ${validNext.join(', ') || 'none'}`
+        );
+      }
     }
 
     if (images !== undefined && (!Array.isArray(images) || images.length > 8)) {
@@ -95,6 +130,9 @@ export async function PATCH(
     if (rangeKm !== undefined) updates.rangeKm = rangeKm;
     if (metadata !== undefined) updates.metadata = metadata;
     if (status !== undefined) updates.status = status;
+    if (type !== undefined) updates.type = type;
+    if (showContactInfo !== undefined) updates.showContactInfo = showContactInfo;
+    if (expiresAt !== undefined) updates.expiresAt = expiresAt ? new Date(expiresAt) : null;
 
     const [updated] = await db.update(listings).set(updates).where(eq(listings.id, params.id)).returning();
 

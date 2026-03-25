@@ -12,6 +12,8 @@ interface Listing {
   category: string | null;
   images: unknown;
   sellerTier: string;
+  status?: string;
+  type?: string;
   createdAt: Date;
 }
 
@@ -42,13 +44,23 @@ function TierBadge({ tier }: { tier: string }) {
       </span>
     );
   }
+  if (tier === 'trust_gated') {
+    return (
+      <span className="px-1.5 py-0.5 text-xs font-medium bg-purple-900/50 text-purple-400 border border-purple-700/50 rounded">
+        Trusted
+      </span>
+    );
+  }
   return null;
 }
 
 export default function ListingCard({ listing }: { listing: Listing }) {
   const images = Array.isArray(listing.images) ? listing.images : [];
   const primaryRef = images.find((img): img is string => typeof img === 'string' && img.length > 0);
-  const primaryImage = primaryRef ? resolveMediaRef(primaryRef) : undefined;
+  const primaryImage = primaryRef ? resolveMediaRef(primaryRef, 'card') : undefined;
+
+  const isSold = listing.status === 'sold';
+  const isRental = listing.type === 'rental';
 
   return (
     <Link
@@ -59,7 +71,7 @@ export default function ListingCard({ listing }: { listing: Listing }) {
       <div className="aspect-video bg-gradient-to-br from-gray-800 to-gray-700 relative overflow-hidden">
         {primaryImage ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={primaryImage} alt={listing.title} className="w-full h-full object-cover" />
+          <img src={primaryImage} alt={listing.title} className={`w-full h-full object-cover ${isSold ? 'opacity-60' : ''}`} />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-gray-600">
             <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -72,6 +84,11 @@ export default function ListingCard({ listing }: { listing: Listing }) {
             </svg>
           </div>
         )}
+        {isSold && (
+          <div className="absolute top-2 left-2 px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded">
+            SOLD
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -82,7 +99,7 @@ export default function ListingCard({ listing }: { listing: Listing }) {
         <PriceDisplay
           price={listing.price}
           currency={listing.currency}
-          className="text-lg font-bold text-amber-400 mb-2"
+          className={`text-lg font-bold mb-2 ${isSold ? 'line-through text-gray-500' : 'text-amber-400'}`}
         />
         <div className="flex items-center gap-2 flex-wrap mt-auto pt-2">
           {listing.category && (
@@ -91,6 +108,11 @@ export default function ListingCard({ listing }: { listing: Listing }) {
             </span>
           )}
           <TierBadge tier={listing.sellerTier} />
+          {isRental && (
+            <span className="px-1.5 py-0.5 text-xs font-medium bg-sky-900/50 text-sky-400 border border-sky-700/50 rounded">
+              Rental
+            </span>
+          )}
           <span className="text-xs text-gray-500 ml-auto">{relativeTime(listing.createdAt)}</span>
         </div>
       </div>

@@ -11,7 +11,7 @@ import { useFileUpload } from './hooks/useFileUpload';
 import { useVoiceRecording } from './hooks/useVoiceRecording';
 import { useLocationShare } from './hooks/useLocationShare';
 import { MessageBubble } from './MessageBubble';
-import { VoiceRecorder } from './VoiceRecorder';
+import { VoiceRecorder } from '@imajin/input';
 
 interface ChatProps {
   did: string;
@@ -46,7 +46,7 @@ function toMsgShape(msg: ChatMessage) {
     content: msg.content as any,
     contentType: msg.content.type ?? 'text',
     replyTo: msg.replyTo ?? null,
-    linkPreviews: null,
+    linkPreviews: msg.linkPreviews ?? null,
     createdAt: msg.createdAt,
     editedAt: msg.editedAt ?? null,
     deletedAt: null,
@@ -108,6 +108,9 @@ export function Chat({
     } else if (lastMessage.type === 'message_edited' && lastMessage.message) {
       const edited = lastMessage.message as ChatMessage;
       updateMessage(edited.id, { content: edited.content, editedAt: edited.editedAt });
+    } else if (lastMessage.type === 'message_updated' && lastMessage.message) {
+      const updated = lastMessage.message as ChatMessage;
+      updateMessage(updated.id, { linkPreviews: updated.linkPreviews });
     } else if (lastMessage.type === 'message_deleted' && lastMessage.messageId) {
       removeMessage(lastMessage.messageId as string);
     } else if (lastMessage.type === 'reaction_added') {
@@ -226,18 +229,29 @@ export function Chat({
     setComposerText('');
   };
 
-  const handleVoiceComplete = useCallback(async (blob: Blob, durationMs: number) => {
+  const handleVoiceComplete = useCallback(async (blob: Blob, _durationMs: number) => {
     setVoiceSending(true);
     try {
-      const { assetId, transcript } = await sendVoice(blob);
-      await sendMessage({ type: 'voice', assetId, transcript, durationMs });
+      // Upload and transcribe, then put transcript in the text input
+      const { transcript } = await sendVoice(blob);
+      if (transcript) {
+        setComposerText(prev => prev ? `${prev} ${transcript}` : transcript);
+        // Trigger textarea auto-resize after content changes
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (el) {
+            el.style.height = 'auto';
+            el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+          }
+        });
+      }
     } catch {
       // error tracked in hook
     } finally {
       setVoiceSending(false);
       setVoiceActive(false);
     }
-  }, [sendVoice, sendMessage]);
+  }, [sendVoice]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -373,20 +387,7 @@ export function Chat({
           </div>
         )}
 
-        {voiceActive && enableVoice ? (
-          <div className="flex items-center gap-2">
-            <VoiceRecorder
-              onRecordingStart={() => setVoiceActive(true)}
-              onRecordingComplete={handleVoiceComplete}
-              onCancel={() => setVoiceActive(false)}
-              disabled={voiceSending}
-            />
-            {voiceSending && (
-              <span className="text-xs text-slate-400 flex-shrink-0">Sending…</span>
-            )}
-          </div>
-        ) : (
-          <div className="flex items-end gap-2">
+        <div className="flex items-end gap-2">
             {enableMedia && (
               <input
                 ref={fileInputRef}
@@ -396,7 +397,7 @@ export function Chat({
               />
             )}
             <div className="flex-1 flex items-end min-w-0 bg-slate-100 dark:bg-zinc-800 rounded-2xl px-2 py-2">
-              {enableMedia && (
+              {!voiceActive && enableMedia && (
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isSending}
@@ -406,16 +407,18 @@ export function Chat({
                   {'\uD83D\uDCCE'}
                 </button>
               )}
-              <textarea
-                ref={textareaRef}
-                value={composerText}
-                onChange={handleTextChange}
-                placeholder="Message…"
-                rows={1}
-                className="flex-1 min-w-0 resize-none overflow-hidden bg-transparent px-2 py-0.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none"
-                style={{ minHeight: '24px', maxHeight: '160px' }}
-              />
-              {enableLocation && (
+              {!voiceActive && (
+                <textarea
+                  ref={textareaRef}
+                  value={composerText}
+                  onChange={handleTextChange}
+                  placeholder="Message…"
+                  rows={1}
+                  className="flex-1 min-w-0 resize-none overflow-hidden bg-transparent px-2 py-0.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none"
+                  style={{ minHeight: '24px', maxHeight: '160px' }}
+                />
+              )}
+              {!voiceActive && enableLocation && (
                 <button
                   onClick={handleShareLocation}
                   disabled={isSending}
@@ -433,6 +436,9 @@ export function Chat({
                   disabled={isSending}
                 />
               )}
+              {voiceActive && voiceSending && (
+                <span className="text-xs text-slate-400 flex-shrink-0">Sending…</span>
+              )}
             </div>
             <button
               onClick={handleSend}
@@ -445,7 +451,6 @@ export function Chat({
               </svg>
             </button>
           </div>
-        )}
       </div>
     </div>
   );

@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server';
 import { db, listings } from '@/db';
 import { requireAuth, getSession } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
-import { eq, ilike, and, desc, asc, sql } from 'drizzle-orm';
+import { resolveMediaRef } from '@imajin/media';
+import { eq, ilike, and, desc, asc, sql, ne } from 'drizzle-orm';
 
 const VALID_SELLER_TIERS = ['public_offplatform', 'public_onplatform', 'trust_gated'] as const;
 
@@ -32,6 +33,10 @@ export async function POST(request: NextRequest) {
       trustThreshold,
       rangeKm,
       metadata,
+      imageAssetIds,
+      type,
+      showContactInfo,
+      expiresAt,
     } = body;
 
     // Validate required fields
@@ -75,6 +80,9 @@ export async function POST(request: NextRequest) {
       trustThreshold: trustThreshold || null,
       rangeKm: rangeKm ?? 50,
       metadata: metadata || {},
+      type: type || 'sale',
+      showContactInfo: showContactInfo ?? false,
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
     }).returning();
 
     return jsonResponse(listing, 201);
@@ -95,6 +103,7 @@ export async function GET(request: NextRequest) {
     const currency = searchParams.get('currency');
     const sellerTier = searchParams.get('seller_tier');
     const sellerDid = searchParams.get('seller_did');
+    const exclude = searchParams.get('exclude');
     const sort = searchParams.get('sort') || 'newest';
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10)));
@@ -122,6 +131,16 @@ export async function GET(request: NextRequest) {
       if (sellerDid) {
         conditions.push(eq(listings.sellerDid, sellerDid));
       }
+    }
+
+    // Filter out trust_gated listings for unauthenticated users
+    if (!session) {
+      conditions.push(sql`${listings.sellerTier} != 'trust_gated'`);
+    }
+
+    // Exclude a specific listing ID (e.g. for 'other items by seller' queries)
+    if (exclude) {
+      conditions.push(ne(listings.id, exclude));
     }
 
     if (category) {
@@ -155,8 +174,16 @@ export async function GET(request: NextRequest) {
 
     const total = Number(countResult[0]?.count ?? 0);
 
+    // Resolve asset IDs to full URLs so consumers don't need to know about media internals
+    const resolved = rows.map((row) => ({
+      ...row,
+      images: Array.isArray(row.images)
+        ? (row.images as string[]).map((ref) => resolveMediaRef(ref, 'card'))
+        : row.images,
+    }));
+
     return jsonResponse({
-      listings: rows,
+      listings: resolved,
       total,
       page,
       limit,

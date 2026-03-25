@@ -25,13 +25,15 @@ interface ListingsResponse {
   hasMore: boolean;
 }
 
-type StatusFilter = 'all' | 'active' | 'paused' | 'sold' | 'removed';
+type StatusFilter = 'all' | 'active' | 'paused' | 'sold' | 'rented' | 'unavailable' | 'removed';
 
 const STATUS_TABS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'active', label: 'Active' },
   { value: 'paused', label: 'Paused' },
   { value: 'sold', label: 'Sold' },
+  { value: 'rented', label: 'Rented' },
+  { value: 'unavailable', label: 'Unavailable' },
   { value: 'removed', label: 'Removed' },
 ];
 
@@ -54,6 +56,8 @@ function StatusBadge({ status }: { status: string }) {
     active: 'bg-green-900/50 text-green-400 border-green-700/50',
     paused: 'bg-yellow-900/50 text-yellow-400 border-yellow-700/50',
     sold: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+    rented: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
+    unavailable: 'bg-gray-700 text-gray-300 border-gray-600',
     removed: 'bg-gray-800 text-gray-400 border-gray-700',
   };
   return (
@@ -210,6 +214,8 @@ export default function DashboardPage() {
     active: allListings.filter((l) => l.status === 'active').length,
     paused: allListings.filter((l) => l.status === 'paused').length,
     sold: allListings.filter((l) => l.status === 'sold').length,
+    rented: allListings.filter((l) => l.status === 'rented').length,
+    unavailable: allListings.filter((l) => l.status === 'unavailable').length,
     total: allListings.length,
   };
 
@@ -250,16 +256,18 @@ export default function DashboardPage() {
 
         {/* Stats Bar */}
         {statsLoaded && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-6">
             <StatCard label="Active" value={stats.active} />
             <StatCard label="Paused" value={stats.paused} />
             <StatCard label="Sold" value={stats.sold} />
+            <StatCard label="Rented" value={stats.rented} />
+            <StatCard label="Unavailable" value={stats.unavailable} />
             <StatCard label="Total" value={stats.total} />
           </div>
         )}
         {!statsLoaded && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            {[0, 1, 2, 3].map((i) => (
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-6">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="bg-gray-800 rounded-xl p-4 animate-pulse">
                 <div className="h-3 bg-gray-700 rounded w-1/2 mb-2" />
                 <div className="h-8 bg-gray-700 rounded w-1/3" />
@@ -374,6 +382,7 @@ export default function DashboardPage() {
                       onMarkSold={() =>
                         setConfirmAction({ type: 'sold', id: listing.id, title: listing.title })
                       }
+                      onMarkUnavailable={() => patchStatus(listing.id, 'unavailable')}
                       onRemove={() =>
                         setConfirmAction({ type: 'remove', id: listing.id, title: listing.title })
                       }
@@ -395,6 +404,7 @@ export default function DashboardPage() {
                   onMarkSold={() =>
                     setConfirmAction({ type: 'sold', id: listing.id, title: listing.title })
                   }
+                  onMarkUnavailable={() => patchStatus(listing.id, 'unavailable')}
                   onRemove={() =>
                     setConfirmAction({ type: 'remove', id: listing.id, title: listing.title })
                   }
@@ -483,13 +493,14 @@ interface ListingActionProps {
   onPause: () => void;
   onResume: () => void;
   onMarkSold: () => void;
+  onMarkUnavailable: () => void;
   onRemove: () => void;
 }
 
 function ListingThumbnail({ images }: { images: string[] | null }) {
   const imgs = Array.isArray(images) ? images : [];
   const ref = imgs.find((img) => typeof img === 'string' && img.length > 0);
-  const src = ref ? resolveMediaRef(ref) : undefined;
+  const src = ref ? resolveMediaRef(ref, 'thumbnail') : undefined;
   if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
@@ -505,11 +516,12 @@ function ListingThumbnail({ images }: { images: string[] | null }) {
   );
 }
 
-function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onRemove }: ListingActionProps) {
+function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMarkUnavailable, onRemove }: ListingActionProps) {
   const isActive = listing.status === 'active';
   const isPaused = listing.status === 'paused';
   const canToggle = isActive || isPaused;
   const canSell = isActive;
+  const canMarkUnavailable = isActive;
   const canRemove = isActive || isPaused;
 
   return (
@@ -538,6 +550,16 @@ function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onRemo
           className="px-2.5 py-1 rounded-lg text-xs font-medium text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 transition disabled:opacity-40"
         >
           Mark Sold
+        </button>
+      )}
+
+      {canMarkUnavailable && (
+        <button
+          disabled={pending}
+          onClick={onMarkUnavailable}
+          className="px-2.5 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-gray-200 hover:bg-gray-700 transition disabled:opacity-40"
+        >
+          Unavailable
         </button>
       )}
 

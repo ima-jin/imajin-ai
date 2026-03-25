@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AppLauncher } from './app-launcher';
+import { getPort } from '@imajin/config';
 
 export interface NavIdentity {
   isLoggedIn: boolean;
@@ -39,7 +40,15 @@ export interface NavBarProps {
 
 function buildUrl(service: string, prefix: string, domain: string, overrides?: ServiceUrls) {
   const url = overrides?.[service as keyof ServiceUrls];
-  return url || `${prefix}${service}.${domain}`;
+  if (url) return url;
+
+  // Localhost-aware: use canonical port map instead of subdomain pattern
+  if (domain.includes('localhost') || prefix.includes('localhost')) {
+    const port = getPort(service, 'dev');
+    return port ? `http://localhost:${port}` : `http://localhost:3000`;
+  }
+
+  return `${prefix}${service}.${domain}`;
 }
 
 function buildUserLinks(prefix: string, domain: string, overrides?: ServiceUrls) {

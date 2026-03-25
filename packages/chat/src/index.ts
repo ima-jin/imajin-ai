@@ -16,7 +16,8 @@ export { useChatWebSocket } from './hooks/useChatWebSocket';
 export { useChatAccess } from './hooks/useChatAccess';
 export { useDidNames } from './hooks/useDidNames';
 
-export { VoiceRecorder } from './VoiceRecorder';
+/** @deprecated Use @imajin/input instead */
+export { VoiceRecorder } from '@imajin/input';
 export { useFileUpload } from './hooks/useFileUpload';
 export { useVoiceRecording } from './hooks/useVoiceRecording';
 export { useLocationShare } from './hooks/useLocationShare';

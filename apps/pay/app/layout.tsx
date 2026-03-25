@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { buildPublicUrl } from '@imajin/config';
 import './globals.css';
 import { NavBar } from './components/NavBar';
 import { Providers } from './providers';
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
   keywords: ['payments', 'stripe', 'solana', 'sovereign', 'checkout', 'imajin'],
   openGraph: {
     type: 'website',
-    url: `${prefix}pay.${domain}`,
+    url: buildPublicUrl('pay', prefix, domain),
     siteName: `Imajin Pay${envLabel}`,
     title: `Imajin Pay${envLabel} — Unified Payments`,
     description: 'Unified payment infrastructure for the sovereign stack. Stripe + Solana.',

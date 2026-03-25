@@ -74,15 +74,53 @@ export function getServiceUrl(name: string, env: "dev" | "prod" = "dev"): string
   return port ? `http://localhost:${port}` : undefined;
 }
 
-/** Get the public URL for a service */
+/** Get the public URL for a service.
+ *  Localhost-aware: if domain contains "localhost" or prefix is "http://localhost:",
+ *  returns http://localhost:{devPort} using the canonical port map.
+ */
 export function getPublicUrl(
   name: string,
   options?: { prefix?: string; domain?: string }
 ): string {
   const domain = options?.domain || "imajin.ai";
   const prefix = options?.prefix;
+
+  // Detect localhost dev environment
+  if (domain.includes("localhost") || prefix?.includes("localhost")) {
+    const port = getPort(name, "dev");
+    return port ? `http://localhost:${port}` : `http://localhost:3000`;
+  }
+
   const subdomain = prefix ? `${prefix}-${name}` : name;
   return `https://${subdomain}.${domain}`;
+}
+
+/**
+ * Build the public URL for a service using raw env vars.
+ * Convenience wrapper around getPublicUrl that handles NEXT_PUBLIC_SERVICE_PREFIX
+ * and NEXT_PUBLIC_DOMAIN directly (no need to strip protocol).
+ *
+ * @example
+ *   buildPublicUrl('www')           → uses env vars, localhost-aware
+ *   buildPublicUrl('auth', prefix, domain) → explicit values
+ */
+export function buildPublicUrl(
+  name: string,
+  servicePrefix?: string,
+  domain?: string
+): string {
+  const p = servicePrefix ?? (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_SERVICE_PREFIX : undefined) ?? "https://";
+  const d = domain ?? (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_DOMAIN : undefined) ?? "imajin.ai";
+
+  // Localhost detection
+  if (p.includes("localhost") || d.includes("localhost")) {
+    const port = getPort(name, "dev");
+    return port ? `http://localhost:${port}` : `http://localhost:3000`;
+  }
+
+  // Extract env prefix: "https://dev-" → "dev", "https://" → undefined
+  const match = p.replace(/^https?:\/\//, "").replace(/-$/, "") || undefined;
+  return getPublicUrl(name, { prefix: match, domain: d });
 }
 
 /** All service names */

@@ -419,7 +419,10 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     currency: currency.toUpperCase(),
   }).format(amountTotal / 100 / quantity);
 
-  const registrationUrl = `${EVENTS_URL}/${event.id}`;
+  // Deep link: if registration required, go to the registration form; otherwise my-tickets
+  const registrationUrl = ticketType.requiresRegistration
+    ? `${EVENTS_URL}/${event.id}/register/${ticketIds[0]}`
+    : `${EVENTS_URL}/${event.id}/my-tickets`;
 
   // Always send a purchase receipt to the buyer
   await sendEmail({

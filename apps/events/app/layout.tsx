@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { NavBar } from './components/NavBar';
 import { Providers } from './providers';
+import { buildPublicUrl } from '@imajin/config';
 
 const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -15,11 +16,11 @@ export const metadata: Metadata = {
   },
   description: 'Create and discover events on the sovereign network. No platform lock-in. You own your identity.',
   keywords: ['events', 'tickets', 'sovereign', 'decentralized', 'imajin'],
-  authors: [{ name: 'Imajin', url: `${prefix}www.${domain}` }],
+  authors: [{ name: 'Imajin', url: buildPublicUrl('www', prefix, domain) }],
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: `${prefix}events.${domain}`,
+    url: buildPublicUrl('events', prefix, domain),
     siteName: `Imajin Events${envLabel}`,
     title: `Imajin Events${envLabel}`,
     description: 'Create and discover events on the sovereign network',

@@ -4,9 +4,9 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { resolveMediaRef } from '@imajin/media';
 
 const MAX_IMAGES = 8;
-const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL || `${SERVICE_PREFIX}media.${DOMAIN}`;
+import { buildPublicUrl } from '@imajin/config';
+
+const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL || buildPublicUrl('media');
 
 interface ImageUploadProps {
   images: string[];
@@ -22,6 +22,8 @@ export function ImageUpload({ images, onChange }: ImageUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
   const [pending, setPending] = useState<PendingUpload[]>([]);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   // Keep a ref so concurrent uploads see the latest committed images
   const imagesRef = useRef(images);
@@ -133,6 +135,41 @@ export function ImageUpload({ images, onChange }: ImageUploadProps) {
     [images, onChange]
   );
 
+  // Drag-sort handlers
+  const onThumbDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, index: number) => {
+    setDragIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  }, []);
+
+  const onThumbDragOver = useCallback((e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  }, []);
+
+  const onThumbDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>, dropIndex: number) => {
+      e.preventDefault();
+      if (dragIndex === null || dragIndex === dropIndex) {
+        setDragIndex(null);
+        setDragOverIndex(null);
+        return;
+      }
+      const next = [...images];
+      const [moved] = next.splice(dragIndex, 1);
+      next.splice(dropIndex, 0, moved);
+      onChange(next);
+      setDragIndex(null);
+      setDragOverIndex(null);
+    },
+    [dragIndex, images, onChange]
+  );
+
+  const onThumbDragEnd = useCallback(() => {
+    setDragIndex(null);
+    setDragOverIndex(null);
+  }, []);
+
   const totalCount = images.length + pending.length;
   const isFull = totalCount >= MAX_IMAGES;
 
@@ -141,22 +178,43 @@ export function ImageUpload({ images, onChange }: ImageUploadProps) {
       {/* Thumbnails */}
       {(images.length > 0 || pending.length > 0) && (
         <div className="flex flex-wrap gap-2 mb-3">
-          {/* Committed images */}
+          {/* Committed images — drag sortable */}
           {images.map((src, i) => {
-            const imgUrl = resolveMediaRef(src);
+            const imgUrl = resolveMediaRef(src, 'thumbnail');
+            const isDragged = dragIndex === i;
+            const isDropTarget = dragOverIndex === i && dragIndex !== i;
             return (
-            <div key={src} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-700 group">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={imgUrl} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
-              <button
-                type="button"
-                onClick={() => removeImage(i)}
-                className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition hover:bg-red-600"
-                aria-label="Remove image"
+              <div
+                key={src}
+                draggable
+                onDragStart={(e) => onThumbDragStart(e, i)}
+                onDragOver={(e) => onThumbDragOver(e, i)}
+                onDrop={(e) => onThumbDrop(e, i)}
+                onDragEnd={onThumbDragEnd}
+                className={`relative w-20 h-20 rounded-lg overflow-hidden border group cursor-grab active:cursor-grabbing transition ${
+                  isDragged
+                    ? 'opacity-50 border-gray-700'
+                    : isDropTarget
+                    ? 'border-blue-500 ring-2 ring-blue-500/40'
+                    : 'border-gray-700'
+                }`}
               >
-                ×
-              </button>
-            </div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={imgUrl} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
+                {i === 0 && (
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[9px] text-center py-0.5 pointer-events-none">
+                    Primary
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeImage(i)}
+                  className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition hover:bg-red-600"
+                  aria-label="Remove image"
+                >
+                  ×
+                </button>
+              </div>
             );
           })}
 

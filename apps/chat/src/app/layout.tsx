@@ -3,6 +3,7 @@ import './globals.css';
 import { NavBarWithUnread } from './components/NavBarWithUnread';
 import { IdentityProvider } from '@/contexts/IdentityContext';
 import { UnreadTitleManager } from './components/UnreadTitleManager';
+import { buildPublicUrl } from '@imajin/config';
 
 const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -15,7 +16,7 @@ export const metadata: Metadata = {
   keywords: ['chat', 'messaging', 'encrypted', 'E2EE', 'sovereign', 'imajin'],
   openGraph: {
     type: 'website',
-    url: `${prefix}chat.${domain}`,
+    url: buildPublicUrl('chat', prefix, domain),
     siteName: `Imajin Chat${envLabel}`,
     title: `Imajin Chat${envLabel} — Encrypted Messaging`,
     description: 'End-to-end encrypted messaging for the trust network.',

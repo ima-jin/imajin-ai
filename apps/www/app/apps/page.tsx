@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 
-const PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+import { buildPublicUrl } from '@imajin/config';
 
 interface ServiceEntry {
   name: string;
@@ -16,9 +15,7 @@ interface ServiceEntry {
 }
 
 function buildUrl(service: string): string {
-  const raw = PREFIX.replace(/^https?:\/\//, '').replace(/-$/, '');
-  const subdomain = raw ? `${raw}-${service}` : service;
-  return `https://${subdomain}.${DOMAIN}`;
+  return buildPublicUrl(service);
 }
 
 function getTier(session: { tier?: string } | null): string {

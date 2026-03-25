@@ -1,9 +1,9 @@
 import { notFound } from 'next/navigation';
 import { AcceptSection } from './AcceptSection';
 
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const AUTH_URL = `${SERVICE_PREFIX}auth.${DOMAIN}`;
+import { buildPublicUrl } from '@imajin/config';
+
+const AUTH_URL = buildPublicUrl('auth');
 
 async function getInvite(code: string) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3003}`;
@@ -33,7 +33,7 @@ export default async function InvitePage({
             This invite link is not valid or has been removed.
           </p>
           <a
-            href={`${SERVICE_PREFIX}www.${DOMAIN}`}
+            href={buildPublicUrl('www')}
             className="inline-block mt-6 px-6 py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-lg transition"
           >
             Go to Imajin
@@ -53,7 +53,7 @@ export default async function InvitePage({
             This invite has already been accepted.
           </p>
           <a
-            href={`${SERVICE_PREFIX}connections.${DOMAIN}`}
+            href={buildPublicUrl('connections')}
             className="inline-block mt-6 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition"
           >
             View Your Connections
@@ -64,7 +64,7 @@ export default async function InvitePage({
   }
 
   const displayName = invite.fromHandle ? `@${invite.fromHandle}` : invite.fromDid.slice(0, 20) + '...';
-  const connectionsUrl = `${SERVICE_PREFIX}connections.${DOMAIN}`;
+  const connectionsUrl = buildPublicUrl('connections');
   const acceptUrl = `/api/invites/${params.code}/accept`;
   const loginUrl = `${AUTH_URL}/login?next=${encodeURIComponent(`${connectionsUrl}/invite/${params.did}/${params.code}`)}`;
 

@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react';
 import { useIdentity } from '../../context/IdentityContext';
 import { ConnectionPicker, useToast } from '@imajin/ui';
 
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const AUTH_URL = `${SERVICE_PREFIX}auth.${DOMAIN}`;
-const PROFILE_URL = `${SERVICE_PREFIX}profile.${DOMAIN}`;
+import { buildPublicUrl } from '@imajin/config';
+
+const AUTH_URL = buildPublicUrl('auth');
+const PROFILE_URL = buildPublicUrl('profile');
 
 interface Member {
   podId: string;

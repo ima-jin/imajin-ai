@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import './globals.css';
 
+import { buildPublicUrl } from '@imajin/config';
+
 const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const isDev = prefix.includes('dev-');
 const envLabel = isDev ? ' [DEV]' : '';
 
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
   keywords: ['input', 'transcription', 'upload', 'voice', 'imajin'],
   openGraph: {
     type: 'website',
-    url: `${prefix}input.${domain}`,
+    url: buildPublicUrl('input'),
     siteName: `Imajin Input${envLabel}`,
     title: `Imajin Input${envLabel}`,
     description: 'Voice transcription and file upload processing for the Imajin network.',

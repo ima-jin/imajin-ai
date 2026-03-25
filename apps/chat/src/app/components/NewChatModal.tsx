@@ -24,10 +24,12 @@ async function groupDid(members: string[]): Promise<string> {
   return `did:imajin:group:${hash}`;
 }
 
-const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+import { buildPublicUrl } from '@imajin/config';
+
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const CONNECTIONS_URL = `${SERVICE_PREFIX}connections.${DOMAIN}`;
-const AUTH_URL = `${SERVICE_PREFIX}auth.${DOMAIN}`;
+const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+const CONNECTIONS_URL = buildPublicUrl('connections', SERVICE_PREFIX, DOMAIN);
+const AUTH_URL = buildPublicUrl('auth', SERVICE_PREFIX, DOMAIN);
 
 interface Connection {
   did: string;

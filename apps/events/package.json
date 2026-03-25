@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port ${PORT:-3007}",
+    "dev": "next dev --port ${PORT:-3006}",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -26,7 +26,8 @@
     "drizzle-orm": "^0.45.1",
     "next": "14.2.35",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "@imajin/input": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20",

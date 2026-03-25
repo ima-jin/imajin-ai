@@ -16,8 +16,11 @@ export const listings = marketSchema.table('listings', {
   images: jsonb('images').default([]),                                  // Legacy: URL strings
   imageAssetIds: jsonb('image_asset_ids').default([]),                  // asset_xxx IDs from media service (max 8)
   quantity: integer('quantity').default(1),                             // null = unlimited/service
-  status: text('status').default('active'),                            // active | paused | sold | removed
+  type: text('type').notNull().default('sale'),                        // sale | rental
+  status: text('status').default('active'),                            // active | paused | sold | rented | unavailable | removed
   sellerTier: text('seller_tier').notNull().default('public_offplatform'), // public_offplatform | public_onplatform | trust_gated
+  showContactInfo: boolean('show_contact_info').default(false),        // Show contact info publicly
+  expiresAt: timestamp('expires_at', { withTimezone: true }),          // Optional listing expiry
   contactInfo: jsonb('contact_info'),                                   // Required for Tier 1: { phone, email, whatsapp }
   trustThreshold: jsonb('trust_threshold'),                             // For Tier 3/Phase 2
   rangeKm: integer('range_km').default(50),                            // Discovery radius in km

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { buildPublicUrl } from '@imajin/config';
 import './globals.css';
 import { NavBar } from './components/NavBar';
 import { IdentityProvider } from './context/IdentityContext';
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
   keywords: ['profile', 'identity', 'sovereign', 'DID', 'imajin'],
   openGraph: {
     type: 'website',
-    url: `${prefix}profile.${domain}`,
+    url: buildPublicUrl('profile', prefix, domain),
     siteName: `Imajin Profiles${envLabel}`,
     title: `Imajin Profiles${envLabel}`,
     description: 'Sovereign identity profiles on the Imajin network.',

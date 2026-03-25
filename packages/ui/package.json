@@ -8,6 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@imajin/config": "workspace:*",
     "@mdxeditor/editor": "^3.52.4",
     "react": "^18.2.0",
     "react-markdown": "^10.1.0"

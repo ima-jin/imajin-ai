@@ -113,49 +113,6 @@ importers:
         specifier: ^5
         version: 5.9.3
 
-  ../imajin-karaoke:
-    dependencies:
-      '@imajin/db':
-        specifier: workspace:*
-        version: link:../imajin-ai/packages/db
-      drizzle-orm:
-        specifier: ^0.45.1
-        version: 0.45.1(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@prisma/client@5.22.0(prisma@5.22.0))(@types/pg@8.16.0)(postgres@3.4.8)(prisma@5.22.0)
-      next:
-        specifier: ^14.2.0
-        version: 14.2.35(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      react:
-        specifier: ^18.2.0
-        version: 18.3.1
-      react-dom:
-        specifier: ^18.2.0
-        version: 18.3.1(react@18.3.1)
-    devDependencies:
-      '@types/node':
-        specifier: ^20
-        version: 20.19.33
-      '@types/react':
-        specifier: ^18
-        version: 18.3.28
-      '@types/react-dom':
-        specifier: ^18
-        version: 18.3.7(@types/react@18.3.28)
-      autoprefixer:
-        specifier: ^10
-        version: 10.4.24(postcss@8.5.6)
-      drizzle-kit:
-        specifier: ^0.31.9
-        version: 0.31.9
-      postcss:
-        specifier: ^8
-        version: 8.5.6
-      tailwindcss:
-        specifier: ^3.4.0
-        version: 3.4.19
-      typescript:
-        specifier: ^5
-        version: 5.9.3
-
   apps/auth:
     dependencies:
       '@imajin/auth':
@@ -517,6 +474,9 @@ importers:
       '@imajin/fair':
         specifier: workspace:*
         version: link:../../packages/fair
+      '@imajin/input':
+        specifier: workspace:*
+        version: link:../../packages/input
       '@imajin/onboard':
         specifier: workspace:*
         version: link:../../packages/onboard
@@ -767,6 +727,9 @@ importers:
       '@imajin/media':
         specifier: workspace:*
         version: link:../../packages/media
+      '@imajin/onboard':
+        specifier: workspace:*
+        version: link:../../packages/onboard
       '@imajin/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -1036,8 +999,8 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
       '@metalabel/dfos-web-relay':
-        specifier: ^0.4.0
-        version: 0.4.0(@metalabel/dfos-protocol@0.4.0)
+        specifier: ^0.4.1
+        version: 0.4.1(@metalabel/dfos-protocol@0.4.0)
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.1(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@prisma/client@5.22.0(prisma@5.22.0))(@types/pg@8.16.0)(postgres@3.4.8)(prisma@5.22.0)
@@ -1179,6 +1142,9 @@ importers:
 
   packages/chat:
     dependencies:
+      '@imajin/input':
+        specifier: workspace:*
+        version: link:../input
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -1371,6 +1337,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@imajin/config':
+        specifier: workspace:*
+        version: link:../config
       '@mdxeditor/editor':
         specifier: ^3.52.4
         version: 3.52.4(@codemirror/language@6.12.2)(@lezer/highlight@1.2.3)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(yjs@13.6.29)
@@ -2480,8 +2449,8 @@ packages:
   '@metalabel/dfos-protocol@0.4.0':
     resolution: {integrity: sha512-NsBzWbv8Ekmd8B1I9icNLg/4zMvVFUA0A7Z/jr6MAwt/FlWu3w+22Rw1kriHM3b0KX2o+vvCRBCdq183xJAPHg==}
 
-  '@metalabel/dfos-web-relay@0.4.0':
-    resolution: {integrity: sha512-6enCwKY4jidMiYX351daIne680w1Wmw9+lhBas3tbuQgfaHHJbft0TfEHL3kt1BEF2lf+6ZcuDiSXBU57IiWdQ==}
+  '@metalabel/dfos-web-relay@0.4.1':
+    resolution: {integrity: sha512-+I/KkoW5zK/4I8iQnB8qsoKElSifZjY5tKC7vdnzAjmRO+AdOMt3Eb6Vr9zgUeBAe6RKxRK7IHdS0dnepmyFHQ==}
     peerDependencies:
       '@metalabel/dfos-protocol': ^0.4.0
 
@@ -8025,7 +7994,7 @@ snapshots:
       multiformats: 13.4.2
       zod: 4.3.6
 
-  '@metalabel/dfos-web-relay@0.4.0(@metalabel/dfos-protocol@0.4.0)':
+  '@metalabel/dfos-web-relay@0.4.1(@metalabel/dfos-protocol@0.4.0)':
     dependencies:
       '@metalabel/dfos-protocol': 0.4.0
       hono: 4.12.8

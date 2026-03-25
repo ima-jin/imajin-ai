@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port ${PORT:-3006}",
+    "dev": "next dev --port ${PORT:-3002}",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -16,7 +16,7 @@
     "@imajin/auth": "workspace:*",
     "@imajin/config": "workspace:*",
     "@metalabel/dfos-protocol": "^0.4.0",
-    "@metalabel/dfos-web-relay": "^0.4.0",
+    "@metalabel/dfos-web-relay": "^0.4.1",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.12.5",
     "next": "^14.2.0",

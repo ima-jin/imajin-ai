@@ -24,24 +24,27 @@ async function BugReportWidget() {
   }
 }
 
+import { buildPublicUrl } from '@imajin/config';
+
 const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const isDev = prefix.includes('dev-');
 const envLabel = isDev ? ' [DEV]' : '';
+const wwwUrl = buildPublicUrl('www', prefix, domain);
 
 export const metadata: Metadata = {
-  metadataBase: new URL(`${prefix}www.${domain}`),
+  metadataBase: new URL(wwwUrl),
   title: {
     default: `Imajin — Sovereign Technology${envLabel}`,
     template: `%s | Imajin${envLabel}`,
   },
   description: 'Own your data. Own your identity. Own your devices. Exit infrastructure for the sovereign individual.',
   keywords: ['sovereign', 'decentralized', 'identity', 'self-hosted', 'no-subscription', 'imajin'],
-  authors: [{ name: 'Imajin', url: `${prefix}www.${domain}` }],
+  authors: [{ name: 'Imajin', url: wwwUrl }],
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: `${prefix}www.${domain}`,
+    url: wwwUrl,
     siteName: `Imajin${envLabel}`,
     title: `Imajin — Sovereign Technology${envLabel}`,
     description: 'Own your data. Own your identity. Own your devices. No subscriptions. No cloud dependency. No surveillance capitalism.',
