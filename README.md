@@ -21,7 +21,7 @@ The protocol is organized as a matrix of **four identity scopes** × **five prim
 
 Every problem the protocol solves is a cell in this matrix. Every service in this repo implements cells.
 
-15 services. 37 days. $1,793 in API costs. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
+15 services. 50 days. $4,445 in API costs. 8.59M tokens. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
 
 ```
 ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
@@ -68,7 +68,7 @@ Account-based apps tied to a user's DID, accessible at `{service}.imajin.ai/{han
 | [dykil](./apps/dykil) | 3101 | 7101 | Surveys & polls (event integration) | ✅ Live |
 | [links](./apps/links) | 3102 | 7102 | Curated link collection | ✅ Live |
 | [learn](./apps/learn) | 3103 | 7103 | Courses, lessons, and learning progress | ✅ Live |
-| [market](./apps/market) | 3104 | 7104 | Local commerce, trust-based discovery | 🧪 Alpha |
+| [market](./apps/market) | 3104 | 7104 | Marketplace — listings, trust-gated commerce | 🧪 Alpha |
 
 ### Client Apps (3400+/7400+)
 
@@ -99,12 +99,15 @@ Shared libraries used across all apps.
 | [@imajin/email](./packages/email) | Email sending (SendGrid), templates, QR generation |
 | [@imajin/chat](./packages/chat) | Chat components (Chat orchestrator, MessageBubble, voice, media) |
 | [@imajin/trust-graph](./packages/trust-graph) | Trust graph queries (connection checks) |
+| [@imajin/cid](./packages/cid) | Content-addressed identifiers (CID generation) |
+| [@imajin/dfos](./packages/dfos) | DFOS protocol integration (chain provider, relay) |
+| [@imajin/llm](./packages/llm) | LLM inference abstraction (cost tracking, routing) |
 
 ---
 
 ## Identity Model
 
-Everything that acts gets a DID. See [docs/IDENTITY.md](./docs/IDENTITY.md).
+Everything that acts gets a DID.
 
 ```typescript
 import { generateKeypair, createIdentity, sign, verify } from '@imajin/auth';
@@ -205,23 +208,32 @@ imajin-ai/
 │   ├── coffee/        # Tip jar (3100)
 │   ├── dykil/         # Surveys & polls (3101)
 │   ├── links/         # Link collection (3102)
-│   └── learn/         # Lessons & courses (3103)
+│   ├── learn/         # Lessons & courses (3103)
+│   └── market/        # Marketplace (3104)
 ├── packages/
 │   ├── auth/          # @imajin/auth — signing, DIDs
-│   ├── db/            # @imajin/db — database layer
-│   ├── pay/           # @imajin/pay — payments
-│   ├── config/        # @imajin/config — shared config
-│   ├── ui/            # @imajin/ui — shared components
+│   ├── cid/           # @imajin/cid — content identifiers
 │   ├── chat/          # @imajin/chat — chat components
+│   ├── config/        # @imajin/config — shared config
+│   ├── db/            # @imajin/db — database layer
+│   ├── dfos/          # @imajin/dfos — protocol integration
+│   ├── email/         # @imajin/email — email + templates
+│   ├── fair/          # @imajin/fair — attribution
 │   ├── input/         # @imajin/input — input components
-│   └── media/         # @imajin/media — media components
-├── articles/          # Essays & reference docs
-│   ├── THESIS.md      # Canonical concept definitions
-│   ├── ARCHITECTURE.md # Technical architecture
-│   └── essay-*.md     # The essay series (29 essays)
+│   ├── llm/           # @imajin/llm — inference abstraction
+│   ├── media/         # @imajin/media — media components
+│   ├── onboard/       # @imajin/onboard — DID onboarding
+│   ├── pay/           # @imajin/pay — payments
+│   ├── trust-graph/   # @imajin/trust-graph — trust queries
+│   └── ui/            # @imajin/ui — shared components
+├── articles/          # Essays & grounding docs (30+ essays)
+│   ├── grounding-02-THESIS.md      # Canonical concept definitions
+│   ├── grounding-03-ARCHITECTURE.md # Technical architecture
+│   └── essay-*.md     # The essay series
 ├── docs/
-│   ├── IDENTITY.md    # DID model
+│   ├── DEVELOPER.md   # Getting started guide
 │   ├── ENVIRONMENTS.md # Database & deployment config
+│   ├── MIGRATIONS.md  # Database migration system
 │   └── mjn-whitepaper.md # MJN protocol spec
 └── tests/
     ├── HAPPY_PATH.md  # End-to-end test cases
@@ -245,15 +257,15 @@ See [articles/ARCHITECTURE.md](./apps/www/articles/ARCHITECTURE.md) for full dep
 
 ---
 
-## Grounding Documents
+## Documentation
 
 | Document | Purpose |
 |----------|---------|
 | [MJN Whitepaper](./docs/mjn-whitepaper.md) | Protocol specification — 4 scopes × 5 primitives |
-| [THESIS.md](./apps/www/articles/THESIS.md) | Canonical concept definitions — what we mean |
-| [ARCHITECTURE.md](./apps/www/articles/ARCHITECTURE.md) | Technical architecture — how it works |
-| [essay-00-sequence.md](./apps/www/articles/essay-00-sequence.md) | Essay order & structure |
-| [essay-00-master-timeline.md](./apps/www/articles/essay-00-master-timeline.md) | Biographical chronology |
+| [Developer Guide](./docs/DEVELOPER.md) | Getting started — quickstart, env vars, local dev |
+| [Environments](./docs/ENVIRONMENTS.md) | Database & deployment config |
+| [Cost Estimate](./COST_ESTIMATE.md) | COCOMO II analysis — what this would cost traditionally |
+| [Essays](./apps/www/articles/) | 30+ essays — thesis, architecture, industry applications |
 
 ---
 
