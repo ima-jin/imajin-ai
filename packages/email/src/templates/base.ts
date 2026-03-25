@@ -25,7 +25,7 @@ export function emailWrapper(content: string): string {
               <p style="margin:0;font-size:12px;color:#3f3f46;">
                 Part of the <a href="https://imajin.ai" style="color:#52525b;text-decoration:underline;">Imajin</a> sovereign network
                 &nbsp;·&nbsp;
-                <a href="https://discord.gg/kWGHUY8wbe" style="color:#3f3f46;text-decoration:underline;">Discord</a>
+                <a href="https://app.dfos.com/j/6hnk8e9r9z8eht3k48z474" style="color:#3f3f46;text-decoration:underline;">DFOS Community</a>
                 &nbsp;·&nbsp;
                 <a href="https://github.com/ima-jin/imajin-ai" style="color:#3f3f46;text-decoration:underline;">GitHub</a>
               </p>

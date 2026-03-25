@@ -119,4 +119,4 @@ MJN is earned, never purchased. MJNx is the money that flows through the marketp
 
 ---
 
-*Have a question not covered here? Find us on [Discord](https://discord.gg/kWGHUY8wbe) or [open an issue](https://github.com/ima-jin/imajin-ai/issues).*
+*Have a question not covered here? Find us on [DFOS](https://app.dfos.com/j/6hnk8e9r9z8eht3k48z474) or [open an issue](https://github.com/ima-jin/imajin-ai/issues).*

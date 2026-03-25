@@ -7,7 +7,7 @@ export function ImajinFooter({ className }: { className?: string }) {
         Part of the{" "}
         <a href="https://imajin.ai" className="text-orange-500 hover:underline">Imajin</a>
         {" "}sovereign network{" · "}
-        <a href="https://discord.gg/kWGHUY8wbe" className="hover:underline">Discord</a>
+        <a href="https://app.dfos.com/j/6hnk8e9r9z8eht3k48z474" className="hover:underline">Community</a>
         {" · "}
         <a href="https://github.com/ima-jin/imajin-ai" className="hover:underline">GitHub</a>
         {" · "}

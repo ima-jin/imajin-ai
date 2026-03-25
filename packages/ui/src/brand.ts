@@ -21,6 +21,6 @@ export const BRAND = {
   
   /** Links */
   url: 'https://imajin.ai',
-  discord: 'https://discord.gg/kWGHUY8wbe',
+  community: 'https://app.dfos.com/j/6hnk8e9r9z8eht3k48z474',
   github: 'https://github.com/ima-jin/imajin-ai',
 } as const;
