@@ -4,6 +4,9 @@ import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { resolveMediaRef } from '@imajin/media';
+import { buildPublicUrl } from '@imajin/config';
+
+const CHAT_URL = buildPublicUrl('chat', process.env.NEXT_PUBLIC_SERVICE_PREFIX, process.env.NEXT_PUBLIC_DOMAIN);
 
 interface Listing {
   id: string;
@@ -11,6 +14,7 @@ interface Listing {
   images: string[];
   price: number;
   currency: string;
+  sellerDid?: string;
 }
 
 function CheckoutSuccessContent() {
@@ -60,10 +64,18 @@ function CheckoutSuccessContent() {
         )}
 
         <div className="flex flex-col gap-3">
+          {listing?.sellerDid && listingId && (
+            <Link
+              href={`${CHAT_URL}/start?did=${listing.sellerDid}`}
+              className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition"
+            >
+              Message Seller
+            </Link>
+          )}
           {listingId && (
             <Link
               href={`/listings/${listingId}`}
-              className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition"
+              className="px-6 py-3 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-200 dark:hover:bg-gray-700 transition"
             >
               View Listing
             </Link>
