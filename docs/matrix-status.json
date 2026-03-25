@@ -1,5 +1,5 @@
 {
-  "version": "2026-03-14",
+  "version": "2026-03-25",
   "note": "Curated assessment of protocol implementation status. Updated manually.",
   "scopes": [
     "Actor",
@@ -15,8 +15,8 @@
     "Discovery"
   ],
   "cells": {
-    "Actor\u00d7Attestation": {
-      "percent": 75,
+    "Actor×Attestation": {
+      "percent": 80,
       "done": [
         "Ed25519 keypair generation + DID creation",
         "Soft DID (did:email) + Hard DID (did:imajin)",
@@ -26,16 +26,16 @@
         "auth.attestations table with Ed25519 signing",
         "6 attestation types live (transaction.settled, customer, vouch, connection.invited/accepted, session.created)",
         "Three-tier identity model (soft/preliminary/established)",
-        "DID\u2192public key resolution endpoint"
+        "DID→public key resolution endpoint"
       ],
       "remaining": [
         "Standing computation from attestation history",
-        "Full progressive trust flow (vouch\u2192onboarding\u2192milestones)",
+        "Full progressive trust flow (vouch→onboarding→milestones)",
         "Flag/accountability system"
       ]
     },
-    "Actor\u00d7Communication": {
-      "percent": 72,
+    "Actor×Communication": {
+      "percent": 74,
       "done": [
         "DID-based conversations (v2 schema)",
         "WebSocket real-time messaging",
@@ -50,7 +50,7 @@
         "Offline message queue"
       ]
     },
-    "Actor\u00d7Attribution": {
+    "Actor×Attribution": {
       "percent": 55,
       "done": [
         "@imajin/fair package (types, validator, editor, accordion)",
@@ -67,8 +67,8 @@
         "Universal .fair on all upload paths (#330)"
       ]
     },
-    "Actor\u00d7Settlement": {
-      "percent": 80,
+    "Actor×Settlement": {
+      "percent": 83,
       "done": [
         "Stripe Connect checkout flow",
         "Webhook-driven fulfillment",
@@ -85,13 +85,13 @@
         ".fair-driven automatic distribution"
       ]
     },
-    "Actor\u00d7Discovery": {
-      "percent": 45,
+    "Actor×Discovery": {
+      "percent": 52,
       "done": [
         "Profile pages with handles",
         "Connections/follow system",
         "Registry service (node registration API)",
-        "Sovereign inference \u2014 Ask [Name] with streaming UI",
+        "Sovereign inference — Ask [Name] with streaming UI",
         "Trust-scoped tool injection (6 service tools)",
         "@imajin/llm package with cost tracking",
         "Inference cost settlement (80/20 split)"
@@ -102,7 +102,7 @@
         "Cross-node DID resolution"
       ]
     },
-    "Family\u00d7Attestation": {
+    "Family×Attestation": {
       "percent": 5,
       "done": [
         "Identity model acknowledges Family scope in whitepaper"
@@ -114,7 +114,7 @@
         "Shared credential management"
       ]
     },
-    "Family\u00d7Communication": {
+    "Family×Communication": {
       "percent": 5,
       "done": [
         "Group chat infrastructure exists (could be used for family)"
@@ -125,7 +125,7 @@
         "Shared family inbox"
       ]
     },
-    "Family\u00d7Attribution": {
+    "Family×Attribution": {
       "percent": 0,
       "done": [],
       "remaining": [
@@ -133,7 +133,7 @@
         "Family-level content ownership"
       ]
     },
-    "Family\u00d7Settlement": {
+    "Family×Settlement": {
       "percent": 0,
       "done": [],
       "remaining": [
@@ -142,7 +142,7 @@
         "Family-scoped transaction visibility"
       ]
     },
-    "Family\u00d7Discovery": {
+    "Family×Discovery": {
       "percent": 0,
       "done": [],
       "remaining": [
@@ -150,8 +150,8 @@
         "Family profile/presence"
       ]
     },
-    "Community\u00d7Attestation": {
-      "percent": 35,
+    "Community×Attestation": {
+      "percent": 42,
       "done": [
         "Event check-in model (EventDID)",
         "Cultural DID RFC written (#247)",
@@ -166,8 +166,8 @@
         "Flag/accountability system"
       ]
     },
-    "Community\u00d7Communication": {
-      "percent": 52,
+    "Community×Communication": {
+      "percent": 54,
       "done": [
         "Event lobby chat (DID-based)",
         "<Chat /> component works in event context",
@@ -179,7 +179,7 @@
         "Moderation tools"
       ]
     },
-    "Community\u00d7Attribution": {
+    "Community×Attribution": {
       "percent": 15,
       "done": [
         ".fair on event assets",
@@ -191,8 +191,8 @@
         "Governance over shared creative works"
       ]
     },
-    "Community\u00d7Settlement": {
-      "percent": 60,
+    "Community×Settlement": {
+      "percent": 64,
       "done": [
         "Event ticketing (virtual + physical)",
         "Stripe checkout with webhook fulfillment",
@@ -205,8 +205,8 @@
         "Community-scoped marketplace"
       ]
     },
-    "Community\u00d7Discovery": {
-      "percent": 10,
+    "Community×Discovery": {
+      "percent": 16,
       "done": [
         "Registry service exists",
         "Node registration API"
@@ -218,7 +218,7 @@
         "Event-based identity issuance network"
       ]
     },
-    "Business\u00d7Attestation": {
+    "Business×Attestation": {
       "percent": 5,
       "done": [
         "Org DID RFC written (#248)",
@@ -232,7 +232,7 @@
         "Composite attestation model for vetting"
       ]
     },
-    "Business\u00d7Communication": {
+    "Business×Communication": {
       "percent": 0,
       "done": [],
       "remaining": [
@@ -241,7 +241,7 @@
         "Trust-graph-scoped commercial reach"
       ]
     },
-    "Business\u00d7Attribution": {
+    "Business×Attribution": {
       "percent": 0,
       "done": [],
       "remaining": [
@@ -250,8 +250,8 @@
         "Supply chain attribution"
       ]
     },
-    "Business\u00d7Settlement": {
-      "percent": 12,
+    "Business×Settlement": {
+      "percent": 15,
       "done": [
         "Declared-Intent Marketplace specified",
         "Gas model ceiling specified (Greg)"
@@ -263,10 +263,10 @@
         "QR code point-of-sale flow"
       ]
     },
-    "Business\u00d7Discovery": {
-      "percent": 5,
+    "Business×Discovery": {
+      "percent": 8,
       "done": [
-        "AttMart concept designed \u2014 consent model, access tiers, attestation-based discovery"
+        "AttMart concept designed — consent model, access tiers, attestation-based discovery"
       ],
       "remaining": [
         "Business directory/marketplace",
