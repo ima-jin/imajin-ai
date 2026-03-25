@@ -349,6 +349,89 @@ Typed messages between kernel shell and app iframe:
 
 ---
 
+## Settlement Fee
+
+All transactions that route through the kernel's pay service incur a 1% fee, split three ways:
+
+| Recipient | Share | Why |
+|-----------|-------|-----|
+| Node operator | 0.4% | Hosts the kernel, runs the infrastructure |
+| Protocol (Imajin) | 0.4% | Maintains the protocol, compliance suite, core development |
+| User (as MJN credit) | 0.2% | Every transaction earns toward their chain |
+
+The user's 0.2% is the key: every purchase, tip, or ticket sale returns value to the buyer as virtual MJN. Tiny per transaction, accumulates over time, recorded on chain, mintable at token launch. The internet that pays you back.
+
+App developers pay nothing. They set their price, the 1% comes off the top during settlement, the rest flows to them via Stripe. The fee is infrastructure, not a tax.
+
+---
+
+## Scopes and Consent
+
+### Available scopes
+
+| Scope | Description |
+|-------|-------------|
+| `identity:read` | See user's DID and public profile |
+| `trust:read` | Read trust graph (connections, standing) |
+| `trust:invite` | Invite the user's connections into app contexts |
+| `media:read` | Resolve and display user's media assets |
+| `media:write` | Upload media on user's behalf |
+| `attestation:read` | Read attestations on user's chain |
+| `attestation:write` | Emit attestations to user's chain |
+| `payment:initiate` | Create checkout sessions through pay service |
+| `chat:create` | Create conversations (e.g., post-purchase DM) |
+
+### Consent screen
+
+Lives in the kernel at `jin.imajin.ai/auth/authorize`. The app never renders its own permission request — it redirects here, the user reviews, the kernel mints the delegated token, redirects back.
+
+```
+┌─────────────────────────────────────────┐
+│                                         │
+│  🏪 Market wants to connect             │
+│  by @somedev · ✅ Compliant             │
+│                                         │
+│  This app is requesting:                │
+│                                         │
+│  ✅ Identity        See your DID        │
+│  ✅ Trust graph     See your connections│
+│  ✅ Media           Load your images    │
+│  ⬜ Payments        Initiate purchases  │
+│  ⬜ Attestations    Write to your chain │
+│                                         │
+│  You can change these anytime in        │
+│  Settings → Linked Apps                 │
+│                                         │
+│      [ Cancel ]    [ Connect ]          │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+Users approve specific scopes, not all-or-nothing. The kernel mints a scoped token containing only the approved claims.
+
+### Linked apps manager
+
+Kernel settings page at `jin.imajin.ai/auth/apps`:
+
+- View all linked apps with their scopes and link date
+- Modify scopes per app (grant or revoke individual permissions)
+- Revoke entirely (kills delegated token, removes from launcher)
+- Compliance warnings (app flagged as non-compliant → warning badge)
+- Audit trail (when was each scope used, how many API calls)
+
+### Multi-user / social scopes
+
+Apps that need social features (multiplayer games, collaborative tools, shared workspaces) request `trust:read` and `trust:invite`:
+
+- App sees which of the user's connections also have it linked
+- User can invite connections into an app-scoped context
+- App creates a session/group with the invited DIDs
+- Attestation emitted: `app.session_created` with all participant DIDs countersigned
+
+The app doesn't own the social graph. It reads it from the kernel. Connections are portable across apps — your friends in the game are the same friends in the marketplace are the same friends in the event chat. One trust graph, many surfaces.
+
+---
+
 ## Threat Model: What Can a Rogue App Do?
 
 **Short answer: basically nothing.**
