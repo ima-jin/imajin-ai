@@ -10,6 +10,7 @@ export interface ChatMessage {
   content: { type: string; text?: string; [key: string]: unknown };
   replyTo?: string;
   reactions?: { emoji: string; senderDid: string }[];
+  linkPreviews?: { url: string; title?: string; description?: string; image?: string; favicon?: string; siteName?: string }[] | null;
   createdAt: string;
   editedAt?: string;
 }

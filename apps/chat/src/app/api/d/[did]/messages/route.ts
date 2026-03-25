@@ -4,6 +4,7 @@ import { db, conversationsV2, messagesV2, messageReactionsV2 } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } from '@/lib/utils';
 import { parseConversationDid } from '@/lib/conversation-did';
+import { unfurlLinks } from '@/lib/unfurl';
 import { canonicalize } from '@imajin/auth';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
@@ -276,6 +277,28 @@ export async function POST(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conversationId: did, message }),
+      }).catch(() => {});
+    }
+
+    // Unfurl link previews async — don't block the response
+    if (message && contentType === 'text' && typeof content === 'string') {
+      unfurlLinks(content).then(async (previews) => {
+        if (previews.length === 0) return;
+        await db
+          .update(messagesV2)
+          .set({ linkPreviews: previews })
+          .where(eq(messagesV2.id, messageId));
+        // Broadcast updated message with previews
+        const port = process.env.PORT || '3007';
+        fetch(`http://localhost:${port}/__ws_broadcast`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversationId: did,
+            type: 'message_updated',
+            message: { ...message, linkPreviews: previews },
+          }),
+        }).catch(() => {});
       }).catch(() => {});
     }
 

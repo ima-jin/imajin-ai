@@ -46,7 +46,7 @@ function toMsgShape(msg: ChatMessage) {
     content: msg.content as any,
     contentType: msg.content.type ?? 'text',
     replyTo: msg.replyTo ?? null,
-    linkPreviews: null,
+    linkPreviews: msg.linkPreviews ?? null,
     createdAt: msg.createdAt,
     editedAt: msg.editedAt ?? null,
     deletedAt: null,
@@ -108,6 +108,9 @@ export function Chat({
     } else if (lastMessage.type === 'message_edited' && lastMessage.message) {
       const edited = lastMessage.message as ChatMessage;
       updateMessage(edited.id, { content: edited.content, editedAt: edited.editedAt });
+    } else if (lastMessage.type === 'message_updated' && lastMessage.message) {
+      const updated = lastMessage.message as ChatMessage;
+      updateMessage(updated.id, { linkPreviews: updated.linkPreviews });
     } else if (lastMessage.type === 'message_deleted' && lastMessage.messageId) {
       removeMessage(lastMessage.messageId as string);
     } else if (lastMessage.type === 'reaction_added') {
