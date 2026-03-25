@@ -1,218 +1,320 @@
-# RFC-19: Kernel/Userspace Architecture — Unified Kernel App + Registered Userspace Services
+# RFC-19: Kernel/Userspace Architecture — Sovereign App Federation
 
 **Status:** Draft
 **Authors:** Ryan Veteze, Jin
 **Created:** 2026-03-25
-**Related:** #274 (unified domain), #244 (delegated app sessions), RFC-09 (plugin architecture)
+**Related:** #274, #244, RFC-09, Essay 34
 
 ---
 
 ## Summary
 
-Split the platform into two deployment tiers: a **kernel** (single Next.js app, one domain, one process) and a **userspace** (independent apps on their own domains, registered with the kernel via the registry).
+The Imajin platform splits into a **kernel** (sovereign infrastructure that every node runs) and a **userspace** (federated ecosystem of independent apps that link up with nodes through a protocol handshake, compliance validation, and delegated sessions).
 
-This replaces the current architecture of 15 separate Next.js apps behind Caddy reverse proxy with subdomain routing.
+Apps are not hosted by us. Apps are hosted by anyone, discovered through the registry, validated for protocol compliance, and linked to a user's node through a cryptographic handshake. Our implementations of events, market, learn, etc. are just the first apps in the ecosystem. Anyone can build a better one. Users switch. The chains don't care.
 
-## Motivation
+This is how to save the app store.
 
-### Current state: 15 apps, 15 ports, 15 builds
+---
 
-Every service is a standalone Next.js app with its own port, build, and pm2 process. Cross-service communication happens via HTTP fetch. Auth cookies require `domain: .imajin.ai` and CORS headers everywhere. Local dev requires running 5-10 services simultaneously.
+## The Kernel
 
-Problems:
-- **CORS everywhere.** Every service-to-service call crosses origin boundaries.
-- **Cookie complexity.** Session cookie must be domain-scoped, `SameSite=None`, `Secure=true`. Breaks on localhost.
-- **Redundant auth.** Every app re-implements session verification via HTTP call to auth service.
-- **Build overhead.** 15 separate builds. Change a shared package → rebuild everything anyway.
-- **Developer friction.** Chris's first dev setup took 2 days. Most issues were cross-service URL resolution and cookie handling.
-- **Fragile infrastructure.** Ecosystem configs drift. Services point to stale paths. Missing from pm2. Power surge → manual triage.
+The kernel is the sovereign infrastructure layer. It handles identity, payments, trust, communication, and discovery. It does not handle features. Features are apps.
 
-### The insight: kernel services aren't independent
+### What's in the kernel
 
-Auth, pay, chat, connections, profile, registry, media, input — these share a database, a session, an identity model. They're not microservices with independent scaling needs. They're modules of one application deployed as separate processes for historical reasons.
+| Service | Why it's kernel |
+|---------|----------------|
+| **auth** | Identity is infrastructure. DIDs, sessions, delegation, attestations. |
+| **pay** | Settlement is infrastructure. Stripe, future MJN/MJNx. |
+| **registry** | Discovery is infrastructure. Node federation, app manifests, compliance. |
+| **connections** | Trust is infrastructure. The graph that everything else reads. |
+| **chat** | Communication is infrastructure. Messaging, not a feature. |
+| **media** | Asset resolution is infrastructure. Storage, .fair attribution, CID. |
+| **input** | Processing is infrastructure. Voice, files, transcription. |
+| **profile** | Public identity is infrastructure. Your face to the network. |
 
-Meanwhile, market, coffee, dykil, links, learn — these are genuinely different apps that happen to consume the kernel. They could be built by anyone. They should be independent.
+### What's NOT in the kernel
 
-## Design
+Everything else. Events, market, learn, coffee, links, dykil — these are **userspace apps**. They consume the kernel. They're replaceable. Even ours.
 
-### Kernel: One App, One Domain
+### Kernel deployment
 
-Merge core platform services into a single Next.js application at `jin.imajin.ai`:
+One Next.js application. One domain (`jin.imajin.ai`). One build. One process.
 
 ```
 apps/jin/
 ├── app/
-│   ├── (www)/                    # Landing, essays, public pages
-│   │   ├── page.tsx
-│   │   └── articles/
-│   ├── auth/                     # Identity, registration, sessions
-│   │   ├── api/
-│   │   │   ├── register/
-│   │   │   ├── challenge/
-│   │   │   ├── authenticate/
-│   │   │   ├── access/[did]/
-│   │   │   └── attestations/
-│   │   ├── register/
-│   │   └── login/
-│   ├── pay/                      # Payments, settlements
-│   │   └── api/
-│   ├── chat/                     # Messaging (Next.js routes)
-│   │   ├── api/
-│   │   └── conversations/
-│   ├── connections/              # Trust graph
-│   │   ├── api/
-│   │   └── pods/
-│   ├── profile/                  # Public profiles
-│   │   └── [handle]/
-│   ├── events/                   # Events & ticketing
-│   │   ├── api/
-│   │   └── [eventId]/
-│   ├── registry/                 # Node discovery, DFOS relay
-│   │   └── api/
-│   ├── media/                    # Asset storage, .fair
-│   │   └── api/
-│   └── input/                    # Voice, file processing
-│       └── api/
-├── lib/                          # Shared server utilities
-│   ├── auth.ts                   # Direct function call, no HTTP
-│   ├── db.ts                     # Single DB connection pool
-│   └── session.ts                # Middleware, no cookie dance
-├── middleware.ts                  # Auth middleware for all routes
-├── next.config.js
-└── package.json
+│   ├── (www)/              # Landing, essays
+│   ├── auth/               # Identity
+│   ├── pay/                # Settlement
+│   ├── registry/           # Discovery + app federation
+│   ├── connections/        # Trust graph
+│   ├── chat/               # Messaging
+│   ├── media/              # Assets
+│   ├── input/              # Processing
+│   └── profile/            # Public identity
+├── lib/
+│   ├── auth.ts             # Direct function call, not HTTP
+│   ├── db.ts               # Single connection pool
+│   └── session.ts          # One middleware
+└── middleware.ts            # Auth for all routes
 ```
 
-**What changes:**
-- `requireAuth()` becomes a direct function call, not an HTTP fetch to another service
-- One database connection pool, not 15
-- One session middleware, not 15 cookie-forwarding implementations
-- One build, one pm2 process (or a few workers)
-- `localhost:3000/auth/register` just works — no multi-port setup
-- CORS disappears entirely for kernel routes
+What this eliminates:
+- CORS (same origin)
+- Cookie domain gymnastics (one domain)
+- 15 separate pm2 processes (one process + chat WS)
+- Service-to-service HTTP for auth (direct function call)
+- Multi-port local dev (one `pnpm dev`, one port)
+- Ecosystem config drift (one app, nothing to misconfigure)
 
-**What stays the same:**
-- Route structure: `/auth/...`, `/events/...`, `/chat/...` — identical URLs
-- API contracts: same endpoints, same request/response shapes
-- Database schemas: still per-service schemas in Postgres (`auth.*`, `events.*`, `chat.*`)
-- Package separation: `@imajin/auth`, `@imajin/db`, etc. remain as importable packages
+Chat's WebSocket server stays as a separate process (stateful connection registry). Caddy routes `/chat/ws` to it.
 
-### Chat WebSocket Server
+---
 
-Chat currently uses a custom `server.js` with WebSocket support. Two options:
+## The Userspace
 
-1. **Separate WS process.** Keep chat's WebSocket server as a standalone Node process on its own port. Caddy routes `/chat/ws` to it. The Next.js routes for chat API/pages live in the kernel.
+### What is a userspace app?
 
-2. **Next.js custom server.** The kernel uses a custom `server.js` that handles both Next.js and WebSocket upgrades. More unified but adds complexity to the kernel's entry point.
+An independent application — hosted anywhere, built by anyone — that speaks the Imajin protocol. It authenticates through the kernel, settles through pay, reads trust from connections, and emits attestations that flow back to user chains.
 
-Recommendation: Option 1. The WS server is stateful (connection registry, typing indicators) and benefits from running independently. It's a runtime concern, not a routing concern.
+A userspace app can be:
+- **A Next.js app** in the monorepo (our first-party apps)
+- **A separate repo** (fixready, karaoke)
+- **Built by a third party** in any language or framework
+- **Hosted anywhere** — their server, a VPS, a Raspberry Pi
 
-### Userspace: Independent Apps, Registered with Kernel
+The only requirement: speak the protocol correctly.
 
-Userspace apps run on their own domains and authenticate through the kernel:
+### App manifest
+
+Every userspace app declares itself:
+
+```json
+{
+  "did": "did:imajin:app:market",
+  "name": "Market",
+  "description": "Local commerce, trust-based discovery",
+  "url": "https://market.imajin.ai",
+  "icon": "🏪",
+  "author_did": "did:imajin:6JSKE52ySFid2x7ejUEw6VV1NyJA1idfVKpg3We9b5Nc",
+  "scopes": ["identity:read", "trust:read", "media:read", "attestation:write"],
+  "compliance": {
+    "version": "1.0",
+    "passed_at": "2026-03-25T00:00:00Z",
+    "suite_hash": "sha256:abc123..."
+  },
+  "attestations_emitted": ["market.purchase", "market.listing"],
+  "settlement_model": "pay_service"
+}
+```
+
+### Discovery
+
+Users browse the registry. Search across thousands of apps. Filter by category, trust score, compliance status, author standing. The registry is a phone book, not a gatekeeper.
 
 ```
-market.imajin.ai    → apps/market (standalone Next.js)
-coffee.imajin.ai    → apps/coffee (standalone Next.js)
-learn.imajin.ai     → apps/learn  (standalone Next.js)
-links.imajin.ai     → apps/links  (standalone Next.js)
-dykil.imajin.ai     → apps/dykil  (standalone Next.js)
-fixready.imajin.ai  → separate repo
-karaoke.imajin.ai   → separate repo
+jin.imajin.ai/registry/apps
+├── Featured apps
+├── Categories (commerce, education, creative, community, tools)
+├── Search
+└── Each app shows:
+    ├── Manifest (scopes, attestations, compliance)
+    ├── Author profile + trust standing
+    ├── User reviews (trust-graph-scoped, countersigned)
+    ├── Install count
+    └── [Add to my node]
 ```
 
-**Registration flow (extends #244):**
+### The Handshake
 
-1. App registers with registry: `POST /registry/api/apps`
+When a user adds an app to their node:
+
+1. **Node initiates.** Sends to app:
    ```json
    {
-     "name": "market",
-     "url": "https://market.imajin.ai",
-     "scopes": ["identity:read", "trust:read", "media:read"],
-     "icon": "🏪",
-     "description": "Local commerce, trust-based discovery"
+     "node_did": "did:imajin:node:jin",
+     "user_did": "did:imajin:6JSKE...",
+     "granted_scopes": ["identity:read", "trust:read", "media:read"],
+     "kernel_url": "https://jin.imajin.ai"
    }
    ```
-2. Registry stores the app manifest
-3. Kernel's nav/launcher pulls registered apps and shows them alongside kernel routes
-4. User clicks → navigated to app's own domain
-5. App verifies session via kernel's auth API: `GET jin.imajin.ai/auth/api/session`
 
-**What this means for developers:**
-- Build a Next.js app (or anything — it's just HTTP)
-- Import `@imajin/auth` for client-side identity
-- Call the kernel's APIs for auth, payments, trust, media
-- Register with the registry
-- You're on the platform
+2. **App responds.** Sends back:
+   ```json
+   {
+     "app_did": "did:imajin:app:market",
+     "compliance_attestation": "...",
+     "accepted_scopes": ["identity:read", "trust:read", "media:read"]
+   }
+   ```
 
-This is the "userspace is open" post made architectural. One import, read chains, verify proofs.
+3. **Both sign.** Countersigned attestation on both chains:
+   - User's chain: `app.linked` — "I added Market to my node"
+   - App's chain: `node.linked` — "jin.imajin.ai linked to me"
 
-### Embedding vs Linking
+4. **Delegated session minted.** Scoped token per #244. App can now:
+   - Verify the user's identity via kernel auth API
+   - Read trust graph (within granted scopes)
+   - Resolve media assets
+   - Settle payments through pay
+   - Emit attestations back to the user's chain
 
-Two modes for userspace apps in the kernel UI:
+5. **App appears in launcher.** Kernel's nav pulls from registry, shows linked apps alongside kernel routes.
 
-1. **Linked** (default) — app appears in the nav, clicking navigates to its domain. Cross-domain session via `.imajin.ai` cookie. This is what we do today.
+### Compliance Validation
 
-2. **Embedded** (future) — app renders inside the kernel layout via iframe or module federation. Deeper integration, same-origin feel. Requires trust (app could be malicious). Only for vetted/first-party apps.
+An app must pass the compliance test suite before it's listed. Same principle as DFOS relay conformance (38/38).
 
-Start with linked. Embedding is a Phase 2 optimization.
+The suite validates:
+
+| Check | What it tests |
+|-------|---------------|
+| **Auth conformance** | App correctly verifies DIDs via kernel auth API |
+| **Scope respect** | App only requests/accesses data within declared scopes |
+| **Attestation format** | Emitted attestations match declared types, properly signed |
+| **Settlement integration** | Transactions route through pay service correctly |
+| **Session handling** | Delegated tokens used correctly, not stored/leaked |
+| **Revocation respect** | When user revokes, app stops accessing immediately |
+| **Error handling** | Graceful degradation when kernel is unreachable |
+
+The suite is open source. A developer runs it locally during development. When they're ready, they submit to the registry. The registry runs the suite against the live app. Pass → listed. Fail → feedback on what to fix.
+
+This isn't gatekeeping. It's quality assurance. The difference: anyone can run the suite, anyone can submit, the criteria are public and deterministic. No review board. No policy team. No "we've decided your business model is inconvenient." Just: does your app speak the protocol?
+
+### Revocation
+
+User removes an app:
+1. Handshake attestation marked revoked on user's chain
+2. Delegated session token invalidated
+3. App loses all access
+4. App disappears from launcher
+5. User's data stays on their chain — the app never had it, it only had proofs
+
+The app can't hold you hostage because it never held your data.
+
+---
+
+## The Protocol Surface
+
+What an app needs to implement to join the network:
+
+### Required
+
+```
+1. Accept delegated session token (OAuth 2.1 + PKCE via kernel auth)
+2. Verify identity via kernel: GET {kernel}/auth/api/session
+3. Respect granted scopes (don't request what you weren't given)
+4. Emit attestations in the correct format (signed by app DID)
+```
+
+### Optional (but expected for commerce apps)
+
+```
+5. Route payments through kernel: POST {kernel}/pay/api/checkout
+6. Resolve media via kernel: GET {kernel}/media/api/assets/{id}
+7. Read trust graph: GET {kernel}/connections/api/trust/{did}
+```
+
+### That's it.
+
+Import `@imajin/auth` if you're in TypeScript. Or implement the protocol in any language — it's HTTP + Ed25519 signatures. The barrier is one import for JS devs, a few HTTP calls for everyone else.
+
+---
+
+## Economics
+
+### For app developers
+
+No revenue share. No 30% cut. You host it, you run it, you keep the revenue.
+
+If your app routes transactions through pay, the settlement fee goes to the node operator (not us, not a platform). The app developer's revenue model is their own: subscriptions, transaction fees, freemium, whatever.
+
+### For users
+
+No app store tax. The node operator pays infrastructure costs. The user pays the app directly (if the app charges). Nobody in the middle.
+
+### For the ecosystem
+
+Apps that generate real transactions create real attestations. Those attestations feed the trust graph. The trust graph enriches every other app. Virtuous cycle — more apps → more activity → richer chains → more trust → more apps.
+
+MJN accrues to participants, not platforms.
+
+---
 
 ## Migration Path
 
-### Phase 1: Kernel Merge (blocking for April 1)
+### Phase 1: Kernel merge
 
-1. Create `apps/jin/` with unified Next.js config
-2. Move routes from 10 kernel services into route groups
-3. Merge middleware and auth into direct function calls
-4. Chat WS server stays separate on its own port
-5. Single build, single pm2 process
-6. Caddy: `jin.imajin.ai` → one port + WS port for chat
-7. Subdomain redirects for old URLs (301)
-8. `registry.imajin.ai` stays as permanent alias (DFOS spec)
+1. Create `apps/jin/` — single Next.js app
+2. Move 8 kernel services into route groups
+3. Merge auth into direct function calls
+4. Chat WS stays separate
+5. One domain: `jin.imajin.ai`
+6. Subdomain redirects (301) for old URLs
+7. `registry.imajin.ai` stays permanent (DFOS spec)
 
-### Phase 2: Userspace Registration
+### Phase 2: Userspace extraction
 
-1. Registry gets app manifest endpoints
-2. Kernel nav pulls from registry for launcher
-3. Userspace apps register (market, coffee, learn, links, dykil)
-4. Delegated session flow from #244
+1. Events, market, coffee, learn, links, dykil become standalone apps
+2. Each gets its own app DID
+3. Each registers with the registry
+4. Handshake flow implemented
 
-### Phase 3: External Developer Onboarding
+### Phase 3: Compliance suite
 
-1. Developer guide for building userspace apps
-2. App submission / review process
-3. Bounty model from RFC-09
-4. Settlement fee sharing
+1. Build the test suite (open source)
+2. Run against our own apps first (eat the dog food)
+3. Publish developer guide for building userspace apps
+4. Open the registry to external submissions
+
+### Phase 4: App discovery
+
+1. Registry gets app browsing UI
+2. Launcher shows linked apps
+3. User reviews (trust-graph-scoped)
+4. Developer dashboard (installs, usage)
+
+---
 
 ## What This Decides
 
 | Question | Answer |
 |----------|--------|
-| How many Next.js apps? | 1 kernel + N userspace |
-| How does auth work? | Direct function call in kernel, API call from userspace |
-| Where do cookies live? | `.imajin.ai` — works for both kernel and userspace subdomains |
-| What about CORS? | Gone for kernel. Standard cross-origin for userspace. |
-| Can anyone build an app? | Yes. Register with registry, speak the protocol. |
-| What about local dev? | `pnpm dev` → `localhost:3000`. One process. Everything works. |
-| What about events? | Kernel service. It's part of the sovereign stack. |
-| What about market? | Userspace. It's a replaceable commerce surface. |
+| How many apps does the kernel have? | One. |
+| Can anyone build a userspace app? | Yes. In any language. |
+| How does an app join the network? | Register with registry, pass compliance suite, handshake with user nodes. |
+| Who hosts userspace apps? | The developer. Anywhere they want. |
+| What does the kernel provide? | Identity, payments, trust, communication, media, discovery. |
+| What does the kernel NOT provide? | Features. Features are apps. |
+| Is there a revenue share? | No. |
+| Is there a review board? | No. Compliance suite is deterministic. |
+| Can a user switch apps? | Yes. Revoke one, add another. Chains persist. |
+| What happens to the data? | It was always on the user's chain. The app only had proofs. |
+
+---
 
 ## Open Questions
 
-1. **Where does events live?** It's arguably kernel (ticketing = trust = chat) but also could be userspace (replaceable). Current recommendation: kernel, because ticket purchases create chat memberships and attestations — deep kernel integration.
+1. **Compliance suite scope.** How deep does validation go? Functional tests only, or also security/performance?
+2. **App versioning.** How do breaking changes in the protocol affect existing apps?
+3. **Node-hosted apps.** Can an app package be installed directly on a node (like WordPress plugins)? Or always remote?
+4. **App-to-app communication.** Can userspace apps talk to each other, or only to the kernel?
+5. **Governance.** Who maintains the compliance suite? Protocol team? Community vote?
 
-2. **Build time.** One big Next.js app will build slower than 15 small ones. Acceptable tradeoff? Turbopack helps. Could also split to route-group-level code splitting.
-
-3. **Independent scaling.** If media or input need more resources, they can't scale independently as kernel routes. Counter: they haven't needed to yet, and we can extract later if needed.
-
-4. **Chat's custom server.** Does the WS server stay separate forever, or do we eventually bring it into a custom Next.js server?
-
-5. **Migration strategy.** Big bang (move everything at once) vs incremental (merge 2-3 services at a time)?
+---
 
 ## References
 
-- #274: Unified domain (original basePath approach — superseded by this RFC)
+- #274: Unified domain (superseded — kernel merge replaces basePath)
 - #244: Delegated app sessions
 - RFC-09: Application plugin architecture
 - #232: Slug prefixes
-- #465: Agent sandbox (kneecapped kernel)
+- #465: Agent sandbox
 - Essay 34: How to Save the App Store
+- DFOS relay conformance: Prior art for protocol compliance testing
+
+---
+
+*The kernel is permanent. The userspace is disposable. The protocol is the product.*
