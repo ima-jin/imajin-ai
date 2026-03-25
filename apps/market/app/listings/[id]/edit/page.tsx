@@ -15,7 +15,9 @@ interface Listing {
   images: string[];
   quantity: number | null;
   sellerTier: string;
+  showContactInfo: boolean;
   contactInfo: { phone?: string; email?: string; whatsapp?: string } | null;
+  type: string;
   status: string;
 }
 
@@ -62,14 +64,16 @@ export default function EditListingPage() {
         images: data.images,
         sellerTier: data.sellerTier,
         quantity: data.quantity ?? 1,
+        type: data.type,
+        showContactInfo: data.showContactInfo,
       };
 
-      if (data.sellerTier === 'public_offplatform') {
+      if (data.sellerTier === 'public_offplatform' || data.showContactInfo) {
         const ci: Record<string, string> = {};
         if (data.contactInfo.phone) ci.phone = data.contactInfo.phone;
         if (data.contactInfo.email) ci.email = data.contactInfo.email;
         if (data.contactInfo.whatsapp) ci.whatsapp = data.contactInfo.whatsapp;
-        body.contactInfo = ci;
+        body.contactInfo = Object.keys(ci).length > 0 ? ci : null;
       } else {
         body.contactInfo = null;
       }
@@ -97,7 +101,7 @@ export default function EditListingPage() {
         return;
       }
 
-      router.push(`/listings/${id}`);
+      router.push('/dashboard');
     } catch {
       setSubmitError('Network error. Please check your connection and try again.');
     } finally {
@@ -126,7 +130,7 @@ export default function EditListingPage() {
         return;
       }
 
-      router.push('/');
+      router.push('/dashboard');
     } catch {
       setSubmitError('Network error. Please try again.');
       setShowDeleteConfirm(false);
@@ -140,8 +144,8 @@ export default function EditListingPage() {
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <div className="text-center px-4">
           <p className="text-lg font-medium text-gray-100 mb-4">{loadError}</p>
-          <Link href="/" className="text-blue-400 hover:text-blue-300 transition text-sm">
-            ← Back to listings
+          <Link href="/dashboard" className="text-blue-400 hover:text-blue-300 transition text-sm">
+            ← Back to dashboard
           </Link>
         </div>
       </div>
@@ -162,6 +166,7 @@ export default function EditListingPage() {
   }
 
   const initialData: Partial<ListingFormData> & { price: number } = {
+    type: (listing.type as 'sale' | 'rental') ?? 'sale',
     title: listing.title,
     description: listing.description ?? '',
     price: listing.price,
@@ -169,7 +174,8 @@ export default function EditListingPage() {
     category: listing.category ?? '',
     quantity: listing.quantity,
     images: listing.images ?? [],
-    sellerTier: (listing.sellerTier as 'public_offplatform' | 'public_onplatform') ?? 'public_offplatform',
+    sellerTier: (listing.sellerTier as 'public_offplatform' | 'public_onplatform' | 'trust_gated') ?? 'public_offplatform',
+    showContactInfo: listing.showContactInfo ?? false,
     contactInfo: {
       phone: listing.contactInfo?.phone ?? '',
       email: listing.contactInfo?.email ?? '',
@@ -181,14 +187,21 @@ export default function EditListingPage() {
     <div className="min-h-screen bg-gray-950 text-gray-100">
       <div className="container mx-auto px-4 py-8 max-w-2xl">
         <Link
-          href={`/listings/${id}`}
+          href="/dashboard"
           className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-400 transition mb-6"
         >
-          ← Back to listing
+          ← My Listings
         </Link>
 
-        <h1 className="text-2xl font-bold mb-2">Edit Listing</h1>
-        <p className="text-gray-400 mb-8">Update your listing details.</p>
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-2xl font-bold">Item Details</h1>
+          <Link
+            href={`/listings/${id}`}
+            className="text-sm text-orange-500 hover:text-orange-600 transition"
+          >
+            → View listing
+          </Link>
+        </div>
 
         <ListingForm
           initialData={initialData}

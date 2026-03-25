@@ -24,6 +24,7 @@ const CURRENCIES = [
 ];
 
 export interface ListingFormData {
+  type: 'sale' | 'rental';
   title: string;
   description: string;
   price: number; // in smallest unit (cents)
@@ -31,7 +32,8 @@ export interface ListingFormData {
   category: string;
   quantity: number | null;
   images: string[];
-  sellerTier: 'public_offplatform' | 'public_onplatform';
+  sellerTier: 'public_offplatform' | 'public_onplatform' | 'trust_gated';
+  showContactInfo: boolean;
   contactInfo: {
     phone: string;
     email: string;
@@ -56,6 +58,7 @@ function toDisplayPrice(price: number | undefined, currency: string): string {
 }
 
 export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, error }: ListingFormProps) {
+  const [type, setType] = useState<'sale' | 'rental'>(initialData?.type ?? 'sale');
   const [title, setTitle] = useState(initialData?.title ?? '');
   const [description, setDescription] = useState(initialData?.description ?? '');
   const [currency, setCurrency] = useState(initialData?.currency ?? 'CAD');
@@ -69,13 +72,17 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
       : '1'
   );
   const [images, setImages] = useState<string[]>(initialData?.images ?? []);
-  const [sellerTier, setSellerTier] = useState<'public_offplatform' | 'public_onplatform'>(
-    (initialData?.sellerTier as 'public_offplatform' | 'public_onplatform') ?? 'public_offplatform'
+  const [sellerTier, setSellerTier] = useState<'public_offplatform' | 'public_onplatform' | 'trust_gated'>(
+    (initialData?.sellerTier as 'public_offplatform' | 'public_onplatform' | 'trust_gated') ?? 'public_offplatform'
   );
+  const [showContactInfo, setShowContactInfo] = useState(initialData?.showContactInfo ?? false);
   const [phone, setPhone] = useState(initialData?.contactInfo?.phone ?? '');
   const [email, setEmail] = useState(initialData?.contactInfo?.email ?? '');
   const [whatsapp, setWhatsapp] = useState(initialData?.contactInfo?.whatsapp ?? '');
   const [validationError, setValidationError] = useState('');
+
+  const isOnplatform = sellerTier === 'public_onplatform' || sellerTier === 'trust_gated';
+  const showContactFields = sellerTier === 'public_offplatform' || (isOnplatform && showContactInfo);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,6 +113,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
     const quantity = quantityStr.trim() ? parseInt(quantityStr, 10) : null;
 
     onSubmit({
+      type,
       title: title.trim(),
       description: description.trim(),
       price,
@@ -114,6 +122,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
       quantity,
       images,
       sellerTier,
+      showContactInfo,
       contactInfo: { phone, email, whatsapp },
     });
   };
@@ -122,6 +131,50 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
+
+      {/* Listing Type */}
+      <section>
+        <h2 className="text-lg font-semibold text-gray-100 mb-4 pb-2 border-b border-gray-800">
+          Listing Type
+        </h2>
+        <div className="flex gap-3">
+          <label
+            className={`flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition flex-1 ${
+              type === 'sale'
+                ? 'border-blue-500 bg-blue-500/10'
+                : 'border-gray-700 hover:border-gray-600'
+            }`}
+          >
+            <input
+              type="radio"
+              name="type"
+              value="sale"
+              checked={type === 'sale'}
+              onChange={() => setType('sale')}
+              className="accent-blue-500"
+            />
+            <span className="font-medium text-gray-100">For Sale</span>
+          </label>
+
+          <label
+            className={`flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition flex-1 ${
+              type === 'rental'
+                ? 'border-blue-500 bg-blue-500/10'
+                : 'border-gray-700 hover:border-gray-600'
+            }`}
+          >
+            <input
+              type="radio"
+              name="type"
+              value="rental"
+              checked={type === 'rental'}
+              onChange={() => setType('rental')}
+              className="accent-blue-500"
+            />
+            <span className="font-medium text-gray-100">For Rent</span>
+          </label>
+        </div>
+      </section>
 
       {/* Item Details */}
       <section>
@@ -140,7 +193,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
               onChange={(e) => setTitle(e.target.value)}
               maxLength={200}
               required
-              placeholder="What are you selling?"
+              placeholder={type === 'rental' ? 'What are you renting out?' : 'What are you selling?'}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
@@ -155,7 +208,11 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
               onChange={(e) => setDescription(e.target.value)}
               rows={5}
               required
-              placeholder="Describe your item — condition, size, age, reason for selling..."
+              placeholder={
+                type === 'rental'
+                  ? 'Describe your item — condition, availability, rental terms...'
+                  : 'Describe your item — condition, size, age, reason for selling...'
+              }
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
             />
           </div>
@@ -185,7 +242,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm text-gray-400 mb-1" htmlFor="price">
-                Price <span className="text-red-400">*</span>
+                {type === 'rental' ? 'Price per period' : 'Price'} <span className="text-red-400">*</span>
               </label>
               <input
                 id="price"
@@ -198,6 +255,9 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
                 placeholder="0.00"
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              {type === 'rental' && (
+                <p className="mt-1 text-xs text-gray-500">Specify rental period and terms in the description</p>
+              )}
             </div>
 
             <div>
@@ -244,6 +304,11 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
           Images
         </h2>
         <ImageUpload images={images} onChange={setImages} />
+        {images.length > 0 && images.length < 3 && (
+          <p className="mt-2 text-xs text-gray-500">
+            📸 Listings with 3+ photos get more interest
+          </p>
+        )}
       </section>
 
       {/* Sale Type */}
@@ -293,13 +358,52 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
               <p className="text-sm text-gray-400">Transaction through Imajin. 1% fee. Buyer protection.</p>
             </div>
           </label>
+
+          <label
+            className={`flex items-start gap-4 p-4 rounded-lg border cursor-pointer transition ${
+              sellerTier === 'trust_gated'
+                ? 'border-blue-500 bg-blue-500/10'
+                : 'border-gray-700 hover:border-gray-600'
+            }`}
+          >
+            <input
+              type="radio"
+              name="sellerTier"
+              value="trust_gated"
+              checked={sellerTier === 'trust_gated'}
+              onChange={() => setSellerTier('trust_gated')}
+              className="mt-0.5 accent-blue-500"
+            />
+            <div>
+              <p className="font-medium text-gray-100">Trusted Sale</p>
+              <p className="text-sm text-gray-400">Only visible to verified members. On-platform settlement. 1% fee.</p>
+            </div>
+          </label>
         </div>
 
-        {/* Contact info — Direct Sale only */}
-        {sellerTier === 'public_offplatform' && (
+        {/* Show contact info toggle — for on-platform tiers */}
+        {isOnplatform && (
+          <div className="mt-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showContactInfo}
+                onChange={(e) => setShowContactInfo(e.target.checked)}
+                className="w-4 h-4 rounded accent-blue-500"
+              />
+              <span className="text-sm text-gray-300">Show contact details on listing</span>
+            </label>
+          </div>
+        )}
+
+        {/* Contact info fields */}
+        {showContactFields && (
           <div className="mt-4 p-4 bg-gray-900 rounded-lg border border-gray-700 space-y-4">
             <p className="text-sm text-gray-400 font-medium">
-              Contact Info <span className="text-gray-500">(at least one required)</span>
+              Contact Info{' '}
+              {sellerTier === 'public_offplatform' && (
+                <span className="text-gray-500">(at least one required)</span>
+              )}
             </p>
 
             <div>

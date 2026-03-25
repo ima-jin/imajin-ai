@@ -8,6 +8,37 @@ import { MediaMessage } from './MediaMessage';
 import { LocationMessage } from './LocationMessage';
 import type { MessageContent } from './message-types';
 
+const URL_REGEX = /(https?:\/\/[^\s<]+[^\s<.,;:!?"')\]])/g;
+
+function linkifyText(text: string): (string | JSX.Element)[] {
+  const parts: (string | JSX.Element)[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  const regex = new RegExp(URL_REGEX);
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const url = match[1];
+    parts.push(
+      <a
+        key={match.index}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-400 hover:text-blue-300 underline break-all"
+      >
+        {url}
+      </a>
+    );
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts;
+}
+
 interface LinkPreview {
   url: string;
   title?: string;
@@ -258,8 +289,8 @@ export function MessageBubble({
                   />
                 );
               }
-              // Default: text rendering
-              return text ? <p className="text-sm whitespace-pre-wrap">{text}</p> : null;
+              // Default: text rendering with linkified URLs
+              return text ? <p className="text-sm whitespace-pre-wrap">{linkifyText(text)}</p> : null;
             })()}
 
             {/* Link previews */}

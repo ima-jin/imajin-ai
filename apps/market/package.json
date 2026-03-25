@@ -18,6 +18,7 @@
     "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
     "@imajin/email": "workspace:*",
+    "@imajin/onboard": "workspace:*",
     "@imajin/ui": "workspace:*",
     "@imajin/fair": "workspace:*",
     "drizzle-orm": "^0.45.1",
