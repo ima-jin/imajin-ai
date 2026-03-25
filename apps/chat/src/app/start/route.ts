@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
-import { db, conversationsV2 } from '@/db';
+import { db, conversationsV2, conversationMembers } from '@/db';
 import { requireAuth } from '@/lib/auth';
 import { dmDid } from '@/lib/conversation-did';
 
@@ -13,6 +13,7 @@ function redirect(path: string) {
 /**
  * GET /start?did=DID
  * Finds or creates a v2 direct conversation with the given DID, then redirects to it.
+ * Ensures both participants are in conversation_members.
  */
 export async function GET(request: NextRequest) {
   const did = request.nextUrl.searchParams.get('did');
@@ -41,6 +42,18 @@ export async function GET(request: NextRequest) {
       .values({
         did: convDid,
         createdBy: myDid,
+      })
+      .onConflictDoNothing();
+  }
+
+  // Ensure both participants are in conversation_members
+  for (const memberDid of [myDid, did]) {
+    await db
+      .insert(conversationMembers)
+      .values({
+        conversationDid: convDid,
+        memberDid: memberDid,
+        role: 'participant',
       })
       .onConflictDoNothing();
   }

@@ -128,7 +128,25 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
       }
     }
 
-    router.push(`/conversations/${encodeURIComponent(did)}`);
+    // Go through /start to ensure conversation + members are created
+    // Use fetch to trigger the server-side create, then navigate to the redirect target
+    try {
+      const res = await fetch(`/start?did=${encodeURIComponent(connection.did)}`, {
+        credentials: 'include',
+        redirect: 'manual', // Don't follow redirect, we'll navigate client-side
+      });
+      // Extract redirect location or fall back to derived DID path
+      const location = res.headers.get('Location');
+      if (location) {
+        const url = new URL(location, window.location.origin);
+        router.push(url.pathname);
+      } else {
+        router.push(`/conversations/${encodeURIComponent(did)}`);
+      }
+    } catch {
+      // Fallback: navigate directly (conversation may not have members yet)
+      router.push(`/conversations/${encodeURIComponent(did)}`);
+    }
     onClose();
   }
 
