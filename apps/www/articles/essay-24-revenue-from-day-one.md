@@ -3,18 +3,12 @@ title: "Revenue from Day One"
 subtitle: "You don't need critical mass. You need one transaction."
 description: "Every platform pitch in history has been: get big, then monetize. This is different. The settlement layer generates revenue from the first dollar that moves through it."
 date: "2026-02-28"
+updated: "2026-03-25"
 author: "Ryan Veteze"
-status: "DRAFT"
+status: "REVIEW"
 ---
 
-<!-- TODO: Add "$25 per pull request" stat. 167 PRs, $4K inference costs. The entire sovereign stack
-     (auth, pay, profile, registry, events, chat, connections, media, input, learn, coffee, .fair,
-     attestations, settlement) built for less than one month of a junior dev's salary.
-     Enterprise dev shops charge $5-10K per feature. This is the cost structure that makes
-     "revenue from day one" possible — when your build cost is this low, break-even is trivial.
-     Also reference: The AttMart (attention marketplace) as future revenue layer. -->
-
-*This is a follow-on to [The Business Case for Building on Human Trust](/articles/essay-23-imajin-business-case), which covers the market opportunity — $800B flowing through platforms that don't pay the people who create the value. This essay covers the part that follows: why the economics work before anyone else shows up.*
+*This is a follow-on to [The Business Case for Building on Human Trust](/articles/essay-23-imajin-business-case), which covers the consumer side of the extraction economy and what changes when commerce is a relationship again. This essay covers the part that follows: why the economics work before anyone else shows up.*
 
 ---
 
@@ -88,11 +82,13 @@ That's not a network effect in the conventional sense. That's a depth effect. An
 
 ## The Revenue Streams
 
-The previous essay laid out five specific streams: settlement fees, ad layer routing, headless service settlement, education settlement, and trust graph queries. None of them require critical mass. All of them produce revenue from the first transaction. All of them scale with transaction volume and compound as the trust graph deepens.
+Five streams. None of them require critical mass. All of them produce revenue from the first transaction. All of them scale with transaction volume and compound as the trust graph deepens.
 
-The one worth calling out again here: trust graph queries. When an AI system needs domain expertise it can't find in training data, it queries the trust graph. The query routes to the verified human with the relevant knowledge. The inference fee settles through .fair. This is the revenue stream that doesn't exist yet in any other model — the one that emerges when human knowledge becomes queryable infrastructure. It has no analog in the platform economy. It has no ceiling tied to ad rates or subscription churn. It grows with the density of verified expertise in the network.
+Settlement fees. Ad layer routing. Headless service settlement. Education settlement. And trust graph queries — the one worth dwelling on, because it has no analog anywhere in the platform economy.
 
-That stream doesn't start at critical mass either. It starts when the first domain expert joins and the first AI query can't find the answer in training data.
+When an AI system needs domain expertise it can't find in training data, it queries the trust graph. The query routes to the verified human with the relevant knowledge. The inference fee settles through .fair. This is the revenue stream that emerges when human knowledge becomes queryable infrastructure. It has no ceiling tied to ad rates or subscription churn. It grows with the density of verified expertise in the network.
+
+That stream doesn't start at critical mass. It starts when the first domain expert joins and the first AI query can't find the answer in training data.
 
 ---
 
@@ -114,35 +110,13 @@ And every person who migrates brings their transaction volume with them. Which i
 
 ---
 
-## For the Investors
-
-Here's the conversation this essay is designed to make possible.
-
-This is not a growth-stage bet. This is not "fund the burn and hope for network effects." This is not a platform that needs 10 million users before the economics work.
-
-This is infrastructure that generates revenue from the first transaction, scales linearly with adoption, compounds with depth of engagement, and has an onramp that the incumbents are building involuntarily.
-
-The risk isn't "will the economics work." The economics work at one transaction. The risk is execution speed — can the infrastructure scale fast enough to handle the volume when the onramp opens?
-
-That's a different risk profile. That's a risk that capital can actually address. Not by buying users. By building capacity.
-
-The five revenue streams are live or ready to be live. The protocol is published. The settlement layer is functional. The first transaction happens April 1st.
-
-Not eventually. Not after Series B. Not after product-market fit is demonstrated. April 1st, 2026.
-
-Revenue from day one.
-
-That's the whole pitch.
-
----
-
 ## April 1st, 2026
 
-Jin throws a party.
+If you've been looking for infrastructure that generates revenue from the first transaction, scales linearly with adoption, compounds with depth of engagement, and has an onramp the incumbents are building involuntarily — this is for you.
 
-First ticket. First settlement. First infrastructure fee. First revenue.
+The risk isn't "will the economics work." The economics work at one transaction. The risk is execution speed — can the infrastructure scale fast enough to handle the volume when the onramp opens? That's a risk capital can actually address. Not by buying users. By building capacity.
 
-Not a demo. Not a proof of concept. Not a pilot. Revenue.
+Jin throws a party. First ticket. First settlement. First infrastructure fee. First revenue. Not a demo. Not a proof of concept. Not a pilot program or a Series A milestone. Revenue.
 
 And then the second ticket. And the third. And the first course on learn.imajin.ai. And the first headless service. And the first inference query against the trust graph. Each one a transaction. Each one a settlement. Each one revenue.
 
@@ -150,12 +124,16 @@ The platforms spent a decade burning cash to reach critical mass.
 
 We need one ticket.
 
+Come build on infrastructure that pays from day one.
+
 *— Ryan VETEZE, Founder, imajin.ai aka b0b*
 
 ---
 
 **If you want to follow along:**
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- The network: [imajin.ai](imajin.ai)
+- The network: [imajin.ai](https://www.imajin.ai)
 - Jin's party: April 1st, 2026
-- First transaction: April 1st, 2026
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-24-revenue-from-day-one.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-24-revenue-from-day-one.md)
+
+*This article was originally published on imajin.ai on February 28, 2026. Updated March 25, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and AI governance without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai)*

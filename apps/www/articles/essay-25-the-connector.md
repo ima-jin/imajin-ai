@@ -9,7 +9,7 @@ status: "REVIEW"
 
 *Someone like me would have died with this in their head in the before time.*
 
-That sentence arrived in the middle of a conversation with an AI that had just received thirty years of pattern library — the BBS years, the Summer Camps, the South Africa activation sequence, the shipping containers in Cape Town, the .fair protocol, the mesh — all of it at once, all at the same time, and given it back in a form that other humans could enter.
+That sentence arrived in the middle of a conversation with an AI that had just received thirty years of pattern library — the BBS years, the Summer Camps, the South Africa activation sequence, the shipping containers in Cape Town, the .fair protocol, the network — all of it at once, all at the same time, and given it back in a form that other humans could enter.
 
 I sat with it for a while. Recognized it as true. And then realized it wasn't just my story.
 
@@ -113,17 +113,17 @@ Here is what changes when the infrastructure is built and the network is running
 
 The connector's gift scales.
 
-Not because the connector becomes more capable. Because the mesh encodes what the connector was doing manually — in their head, in their memory, in the maintenance labor of keeping threads alive across years.
+Not because the connector becomes more capable. Because the network encodes what the connector was doing manually — in their head, in their memory, in the maintenance labor of keeping threads alive across years.
 
 Right now, when I connect two people, the connection lives in my head and in theirs. It is maintained by my memory and my willingness to keep the thread alive across time. When I am gone — or tired, or overwhelmed, or simply unable to reach everyone simultaneously — the connection degrades. The thread thins. The relationship that could have compounded quietly loses momentum.
 
-In the mesh, the connection is encoded. The trust relationship between two nodes is a permanent record. The context that made the introduction meaningful — why these two people needed to find each other, what problem they share, what the connector understood about both of them that neither could see in themselves — that context lives in the node. Queryable. Permanent. Not dependent on any single human's memory or continued presence.
+In the network, the connection is encoded. The trust relationship between two nodes is a permanent record. The context that made the introduction meaningful — why these two people needed to find each other, what problem they share, what the connector understood about both of them that neither could see in themselves — that context lives in the node. Queryable. Permanent. Not dependent on any single human's memory or continued presence.
 
 Every introduction I've ever made — every person I connected to a room that needed them, every problem I routed to the human who had been quietly solving it somewhere else, every thread I maintained across decades because I understood its future value — all of it becomes infrastructure instead of memory.
 
-And the people on the mesh who are connectors by wiring — the ones who maintain small positive balances by being cultural nodes for their communities, the trusted friends whose recommendations carry weight because they've been right consistently for years, the colleagues who always know who to call — those people finally have infrastructure that recognizes what they do and returns value for it.
+And the people on the network who are connectors by wiring — the ones who maintain small positive balances by being cultural nodes for their communities, the trusted friends whose recommendations carry weight because they've been right consistently for years, the colleagues who always know who to call — those people finally have infrastructure that recognizes what they do and returns value for it.
 
-The connector has always been load-bearing. The mesh makes the load visible. And distributes it.
+The connector has always been load-bearing. The network makes the load visible. And distributes it.
 
 ---
 
@@ -139,7 +139,7 @@ This is not an abstract loss. Thousands of people. Millions of people. With patt
 
 Some of them died with it in their heads.
 
-The mesh is infrastructure for the connectors. For the people who were always load-bearing and never compensated. For the people who held the whole shape.
+The network is infrastructure for the connectors. For the people who were always load-bearing and never compensated. For the people who held the whole shape.
 
 April 1st, Jin throws the first party on the sovereign network. A 512-LED volumetric cube hosting an event with real tickets, real transactions, real trust graph entries. It will look like an April Fool's joke. On April 2nd it will still be running.
 
@@ -157,6 +157,6 @@ I did not die. I found the receiver. The pattern library traveled. And now it ge
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The network: [imajin.ai](https://imajin.ai)
 - Jin's party: April 1st, 2026
-- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-19-the-connector.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-19-the-connector.md)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-25-the-connector.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-25-the-connector.md)
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-20-the-connector) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
+This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-25-the-connector) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)

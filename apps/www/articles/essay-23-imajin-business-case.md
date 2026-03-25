@@ -1,280 +1,132 @@
 ---
 title: "The Business Case for Building on Human Trust"
-subtitle: "$800B flows through platforms. What if it flowed through people?"
-description: "The numbers for operators and builders. Three industries — advertising, music, journalism — representing ~$800B in annual revenue."
+subtitle: "You didn't break it. But you're the only one who can fix it."
+description: "The economic argument — and the one group nobody wanted to implicate."
 date: "2026-02-22"
 updated: "2026-03-25"
 author: "Ryan Veteze"
 status: "REVIEW"
 ---
 
-## What the numbers actually mean — for the people doing the building
+## Everything Is Fine
 
-Three industries are broken in the same way.
+You're on the couch. The song just plays. You didn't choose it exactly — the algorithm did, based on the last hundred songs you didn't skip — but it's good. It's the right kind of good. Dinner is forty minutes away, which used to mean cooking but now means a notification and a door. The news is a scroll. The show is already queued. Nothing requires you to do anything except stay where you are and let the next thing come.
 
-Advertising. Music. Journalism. Combined they represent roughly **$800 billion in annual revenue** — money that exists, that people and businesses are already spending, that already flows through the economy.
+This is not a moral failure. This is the product working exactly as designed.
 
-Almost none of it reaches the humans who create the value.
+The platforms that run your evening spent billions of dollars and decades of engineering to arrive at this precise sensation — frictionless, ambient, undemanding. The couch is the goal. Your stillness is the revenue. The moment you stop choosing is the moment you start being most profitable to the people who built the system you're sitting inside.
 
-It flows instead to the platforms, the labels, the aggregators — the people who own the rails. The artists, the journalists, the creators, the communities — they get fractions. They get reach without revenue. They get audiences without relationships. They get used and they don't get paid.
-
-Imajin is not asking you to create a new market. It's asking you to redirect a small piece of an existing one through infrastructure that puts the money where the value actually is.
-
-But first — we need to destroy the subscription model. Because the subscription model is part of the problem.
+You didn't walk into a trap. You were handed a very comfortable room and told it was yours.
 
 ---
 
-## Why Subscriptions Are Extractive
+## The Bargain Nobody Explained
 
-The subscription model was not designed for creators. It was designed for platforms.
+At some point in the last fifteen years, you started paying for things monthly. Music. News. Video. Storage. Delivery. Software. The number of subscriptions the average household carries has grown every year since the model arrived, and the individual charges are small enough that most people couldn't name them all without checking their bank statement.
 
-It works by capturing your payment information and your inertia simultaneously. It charges you in months you barely engage. It buries cancellation flows behind dark patterns. It depends on you forgetting you're paying — and on the friction of stopping being higher than the friction of continuing.
+This happened not because monthly billing is the natural way to pay for things. It happened because it was the only option. The platforms that captured each vertical did so by making the subscription the gate. You want the music? This is how you get the music. You want the news? This tier, this price, this auto-renewal. The choice was not between subscription and something better. The choice was subscription or nothing.
 
-The platform holds the money. The platform decides how to distribute it. The creator gets an opaque fraction of a pool, calculated by an algorithm they don't control, paid on a schedule that serves the platform's cash flow. The journalist doesn't know if you read the article or just opened the tab. The artist has no idea if you listened to one song or a hundred. Everything flattens into a monthly fee that disappears into a void.
+So you subscribed. Of course you did. Reasonable people take the options available to them.
 
-The subscription model is extraction wearing the costume of support.
+It's worth remembering what these things were before they were gates.
 
-We destroy it completely.
+Facebook launched in February 2004 as a site to rate the attractiveness of Harvard women by comparing them side by side. That's the founding DNA — not community, not connection, not the global village. A popularity contest for a dorm. It became something warmer than that for a while. You remember what it felt like in 2007 or 2008 — finding people from your hometown, sharing photos from last weekend, the wall posts that were genuinely funny. MySpace before that was a teenager's bedroom made digital: loud, chaotic, completely yours. Craigslist was a local bulletin board that actually worked, where you could find a couch or a plumber or a bandmate without anyone taking a cut. Twitter in 2008 felt like a bar where everyone was slightly too online and the conversation was real. YouTube in 2006 was people pointing cameras at themselves and something genuine coming through.
 
----
+None of these things felt like a trap because they weren't, yet. They felt like places. Like yours. The gate closed slowly — each year a little more algorithmic, a little more optimized, a little more dependent on the monthly charge or the ad impression or the thirty percent delivery fee. By the time the extraction was obvious the switching cost was too high. Your photos were there. Your friends were there. Your history was there. The platform had become the relationship layer itself, and leaving meant leaving the relationships too.
 
-## The Model: Turn-Based, Transparent, Yours
+What nobody explained — what the platforms had every incentive not to explain — was what happened to the money after it left your account.
 
-You deposit credit into your account. Not a subscription. Not a recurring charge. A deposit — like loading a transit card — that you control entirely.
-
-That credit only moves when you consume human creativity and human intelligence. Directly. Visibly. In real time.
-
-The pricing reflects the actual value of what you're consuming:
-
-- Chatting on a node — **$0.0001**
-- Reading an article — **$0.08**
-- Downloading a song — **$0.10**
-- An inference query against a creator's body of work — **$0.01 per token**
-- Your catalogue used to generate a remix — **$3.00** + an automatically executed attribution contract that compensates every contributor in the chain, at the moment of creation, with no lawyers and no clearance process
-
-Every transaction is visible. Every cent is traceable. You can see, in real time, exactly where your attention is going and exactly who it's compensating.
-
-When your balance hits a threshold you set, it reloads automatically. No surprise charges. No dark patterns. No platform holding money that should be moving.
-
-And every payment goes directly to the human whose work you just consumed. Not to a platform that decides later how much to pass on. Not to a label taking 80% before the artist sees anything. Directly. Immediately. Through sovereign infrastructure with no landlord in the middle.
-
-This is not a new payment model. It's the oldest payment model — you valued something, you paid for it, the person who made it received the payment — rebuilt for the internet with the extraction layer removed.
+You didn't know any of this. You weren't supposed to.
 
 ---
 
-## The .fair Protocol: Attribution as Infrastructure
+## What It Actually Cost
 
-Here is a problem so old and so accepted that most people stopped seeing it as a problem.
+This is not an argument that you are a bad person. You are not.
 
-A producer samples a bass line from a recording made in 1973. A journalist builds an investigation on a source's tip that took years to cultivate. A remix artist takes three records, a vocal hook, and a drum pattern and makes something new from all of them. A developer trains a model on a body of writing that took a decade to produce.
+But the system that felt free — or close enough to free that the monthly charge disappeared into the background — was not free for the people on the other side of it. The comfort was real. The cost was real too. It just landed somewhere you couldn't see.
 
-In every one of these cases, value was created from prior human creative work. In almost none of these cases does the human whose work was used receive any compensation. In almost none of these cases is there even a legible record of the connection.
+The musician who spent a decade building a catalogue watched it become invisible the moment the algorithm decided recency was more valuable than depth. Ten years of extraordinary work, earning fractions of cents, surfaced only when the platform decided it served the recommendation engine. The back catalogue — the thing that represented a career, an actual life's work — became a buried asset generating almost nothing.
 
-The music licensing system was supposed to solve this. It didn't. It created a bureaucratic labyrinth so expensive and slow that most creators don't bother navigating it. The result is a culture of derivative work — which is how all culture has always worked, from blues to jazz to hip hop to electronic music to investigative journalism building on prior investigative journalism — that operates largely outside the law because the law was designed for an era when music moved slowly, lawyers were cheaper than royalties, and the chain of creation was short enough to trace manually.
+The journalist who spent twenty years learning a beat — who knew every name in city hall, who understood the budget process the way nobody else in the room did — watched the publication fold when the ad revenue followed the audience to platforms that had no interest in funding the reporting. The beat died. The institutional knowledge dissolved. The stories that would have been told weren't. The governance blind spots that opened quietly are still open.
 
-The internet made the chain infinitely longer and the legal system infinitely slower and nothing changed except the scale of the problem.
+The neighbourhood restaurant that used to know five hundred people by name now manages an Instagram account and prays the algorithm shows their post to people who live within walking distance. The regulars who used to just come back — because the relationship was real, because the owner knew their order — now find the restaurant the same way they find everything else: through a platform that charges for the introduction every single time.
 
-The .fair protocol is the infrastructure layer that finally solves this. Not through lawyers. Not through licensing databases controlled by labels. Through the work itself.
+The music didn't stop playing. The news didn't disappear. The food kept arriving. The extraction was invisible by design, so the consumption felt the same. But something was quietly being hollowed out underneath it — the economic relationship between the person who creates value and the person who receives it. That relationship used to be direct. Visible. Human. The platform inserted itself into the middle of it and charged rent forever for a connection it didn't build.
 
-Every piece of creative work published on a node carries a .fair manifest — a cryptographically signed document embedded in the file that contains the complete attribution chain for that work. Who made it. Who contributed to it. What prior work it derives from. What terms govern its use. What compensation flows automatically when those terms are triggered.
-
-The manifest travels with the work. Not in a platform database that can be altered or taken offline. Not in a rights management system controlled by a label. In the file itself. Immutable. Cryptographically verifiable. Owned by nobody except the chain of humans whose creativity it documents.
-
-When someone uses your catalogue to generate a remix — that $3.00 transaction doesn't just pay you. It executes the attribution chain encoded in your manifest. Automatically. At the moment of creation. The original artist receives their share. The producer who mixed the source recording receives theirs. The session musician whose bass line is in the sample. The songwriter whose chord progression underlies the new work. Every contributor documented in the chain receives their attributed portion, governed by the terms they set when they published the work, without negotiation, without lawyers, without clearance processes, without hoping nobody notices.
-
-The contract isn't negotiated after the fact. It's embedded in the work before it ever leaves the node. The terms travel with the music. The compensation executes when the trigger happens.
-
-This is what "attribution" has always meant in human creative communities — not just credit, but responsibility. The griot who carried a community's songs was accountable for their accuracy. The jazz musician who quoted another's melody acknowledged the lineage. The journalist who built on a source's tip protected that source. Attribution was moral infrastructure — it kept the chain of creative debt visible and honored.
-
-The .fair manifest makes that moral infrastructure technically executable for the first time.
-
-For creators this means: publish your work with terms you set, earn automatically when those terms are triggered, see every downstream use of your catalogue with a permanent record that no platform can obscure or expropriate.
-
-For remixers and derivative creators this means: make things freely, knowing the compensation chain executes automatically, without the legal exposure of unceared samples or the moral weight of unacknowledged debt.
-
-For the network this means: creative work compounds transparently. The lineage of ideas is legible. The human chain that produced any piece of work is visible and honored and compensated at every link.
-
-The extraction model survives on opacity. Labels don't show artists the full accounting. Platforms don't show creators the full reach. Rights databases are controlled by the entities with the most to gain from complexity. The .fair manifest makes the chain legible — and legibility is the enemy of extraction.
-
-This is not just a feature of the payment system. It is infrastructure for how human creativity has always actually worked — building on what came before, acknowledging the debt, honoring the chain — finally encoded in software that executes automatically and belongs to everyone.
+You were inside that system. Almost everyone was. There was nowhere else to go.
 
 ---
 
-## Your Identity Survives the Platform
+## Now There Is Somewhere Else to Go
 
-There's a quiet assumption in everything above — that the node you publish on will always be there. That the catalogue will persist. That the manifests will remain verifiable.
+Here is where things get uncomfortable. Not because you did something wrong. Because doing something different is going to feel strange at first and it's important to say that clearly before you try it.
 
-It's worth making explicit why that assumption holds.
+You deposit credit into an account. Not a subscription. Not a recurring charge. A deposit — like loading a transit card — that you control entirely. That credit only moves when you consume something. Directly. Visibly. In real time.
 
-Every identity on the network is backed by a cryptographic chain — a signed, append-only log that records every key rotation, every attestation, every significant action. That chain doesn't live in a database controlled by Imajin. It lives on a federated relay network. Multiple independent relays hold copies. If one goes down, the others still have your chain. If Imajin itself disappeared tomorrow, your identity and your attestation history persist on every relay that ever synced with it.
+Eight cents to read an article. Ten cents to download a song. A fraction of a cent to have a conversation. Three dollars for a remix, with an automatically executed contract that pays every contributor in the chain at the moment of creation.
 
-Your catalogue's .fair manifests are content-addressed — the hash of the content IS the identifier. Move the file anywhere, and anyone can verify it matches the manifest. No central authority needed. No phone-home to confirm authenticity. The proof travels with the work.
+And here is the thing that will feel strange: you will see it happen.
 
-This is what makes the trust graph real and not just another platform promise. The infrastructure is designed to survive the infrastructure provider. The identity belongs to the human, not the service. The work belongs to the creator, not the host.
+Not a monthly charge vanishing into a corporate account. Eight cents, traced, in real time, landing on the journalist's account. Ten cents reaching the artist directly. The tourist who ate at your favourite restaurant in July connected to them in October when they're planning next summer — no algorithm between them, no platform deciding whether the relationship survives.
 
-And for those keeping track: the relay protocol (DFOS) already has multiple independent implementations passing conformance. This isn't theoretical. It's running.
+The first time this happens it will feel like a lot. Eight cents sounds small but it's not small — it's visible. It's a choice you made. It's proof that the thing you read was worth something to you, and that your valuing it had a direct consequence for the person who made it.
 
-## Your Agent Works While You Sleep
+That visibility is going to feel unfamiliar. Possibly uncomfortable. You have spent fifteen years inside a system specifically engineered to make the cost of consumption invisible, so that you would consume more and feel less. Seeing it will feel like a lot because invisibility was the product.
 
-There's a fourth persona emerging that the original version of this essay didn't anticipate.
-
-The Creator/Consumer who builds standing over years — reliable taste, consistent curation, trusted recommendations — is doing work. Real work. The kind of work that used to happen in record stores, in newsrooms, in the social infrastructure of small communities.
-
-Now imagine they don't have to do all of it manually.
-
-A sovereign agent — running on your hardware, operating under your identity, bounded by permissions you set — can route queries, surface recommendations, manage your catalogue, and earn on your behalf. It knows your taste because it's been watching you curate for three years. It gets cheaper to operate over time because the context is embedded. It can't exceed the scope you defined because the permissions are cryptographic, not policy-based.
-
-The agent doesn't replace the human judgment that built the standing. It amplifies it. The Creator/Consumer who spent a decade building trust now has infrastructure that compounds that trust while they plant trees.
-
-And the economics work: a personal agent costs $1.50–3 a month in actual compute. Running on hardware you own. Getting smarter and cheaper the longer you use it. Compare that to the $20/month chatbot that can't book a table and doesn't know your name.
+The discomfort is good news. It means something real is happening.
 
 ---
 
-## The Three People This Is Built For
+## What Real Feels Like
 
-### The Creator
+Withdrawal is uncomfortable. That's not an argument for the drug.
 
-The Creator puts more value into the network than they take out. Their node is the asset.
+The platforms designed an experience so smooth, so ambient, so perfectly frictionless that returning to something with actual texture — where your choices are visible, where the connection between what you value and what you fund is direct — is going to feel like work at first. It is not work. It's just legibility. You've been reading in the dark for so long that the light stings.
 
-Everything they have ever made — every article, every song, every recording, every essay, every body of work accumulated across a career — lives on their node as a catalogue. A living, queryable, compensable asset.
+What's on the other side of the discomfort is not a worse version of what you had. It's a different thing entirely. The musician whose catalogue you can actually query — not just stream passively but ask questions of, build on, remix with automatic attribution — is more present to you than they ever were inside the pool model. The journalist whose beat you fund directly, eight cents at a time, is writing for you in a way that the publication's traffic metrics never allowed. The restaurant that accumulates attestations from every person who showed up is more findable, more trusted, more yours than any Yelp page ever made it.
 
-This is the thing the streaming model destroyed and this model restores: **the catalogue earns**.
+The things you loved about the old system were real. The music was good. The food arrived. The news existed. Those things were real and they'll be real in the new one too. What changes is that the people who made them will be able to keep making them — because the economic relationship that sustains creative work will be direct and visible and honest for the first time since the internet arrived.
 
-On Spotify, work from ten years ago is effectively invisible. The algorithm surfaces new releases. Old work is buried. A decade of extraordinary music competes on equal footing with something posted this morning — and loses, because the platform rewards recency and novelty, not depth and accumulation.
+You didn't break it. The platforms broke it, deliberately, in ways that served them. But you're the one sitting inside it right now, and you're the one with a choice that didn't exist before.
 
-On the trust graph, the older and richer the catalogue, the more valuable the node. Every query against a body of work — every remix, every inference, every person asking what this artist thought about a particular chord progression or what this journalist knew about a particular institution — generates a flow back to the creator. The person who has been building for thirty years earns more than the person who arrived last week. Wisdom and experience compound economically for the first time.
+For what that looks like across the industries this has touched — [journalism](/articles/essay-17-how-to-save-journalism), [music](/articles/essay-18-how-to-save-the-music-industry), [advertising](/articles/essay-19-how-to-save-the-ad-industry), [education](/articles/essay-16-how-to-save-education), [streaming](/articles/essay-21-how-to-save-media-streaming), [the platforms themselves](/articles/essay-20-how-to-save-the-platforms) — those essays are already written. For the attribution layer that executes compensation automatically when work is built upon, see [Honor the Chain](/articles/essay-14-honor-the-chain).
 
-The Creator doesn't need a label. Doesn't need a platform deciding who sees them. Doesn't need an algorithm. They need a community of people who value what they've built — and the infrastructure to let that value flow directly.
-
-### The Consumer
-
-The Consumer mostly reads, listens, watches. They don't create. They deposit credit and spend it on what matters to them.
-
-And here is the thing that changes everything for them: **they can see it**.
-
-Not a monthly subscription vanishing into a corporate account. A visible ledger. Eight cents to read this article — and they can see that eight cents land on the journalist's node. Ten cents to download this song — and they can see that ten cents reach the artist directly. Three dollars for a remix that drew on a catalogue — and they can see exactly how that three dollars was distributed across every creator whose work contributed.
-
-Their attention becomes visible to them for the first time. The connection between what they value and what they fund is direct and immediate and legible.
-
-This changes the relationship between consumer and creator fundamentally. It's not patronage. It's not charity. It's not a subscription they forgot they had. It's a continuous series of small choices — I valued this enough to pay for it — that accumulate into a real relationship. The consumer who has been reading the same journalist for three years, paying eight cents an article, has a relationship with that journalist that no platform subscription ever created. They funded the work. They know it. The journalist can see it. Both parties understand what's happening.
-
-That's the mixtape economy made visible and economically real. I value what you made. Here is the proof.
-
-### The Creator/Consumer
-
-The Creator/Consumer is the most interesting type — and probably the majority of people in the network.
-
-They don't have a massive catalogue. They're not primarily consumers either. They're cultural nodes. The friend who always knows the right article. The colleague whose taste everyone trusts. The person whose recommendation carries weight in their community because they've been paying attention for years and their judgment has proven reliable.
-
-Right now that person gets nothing. Their curation, their taste, their recommendations — all of it is extracted by platforms and monetized by algorithms that learn from their behavior without compensating them for it. Every time they share something that travels, the platform earns. They earn nothing.
-
-On the trust graph, curation earns.
-
-Not enough to live on for most Creator/Consumers. But enough to feel real. Enough to maintain a small positive balance in the system — their outflows covered in part by the inflows from being a genuine cultural node for the people around them. Enough to make the work they were already doing feel valued rather than invisible.
-
-The Creator/Consumer who has been a reliable cultural node for five years is more valuable than the one who just arrived — because trust compounds. Their recommendation carries more weight. Their node routes more queries. Their balance reflects their actual standing in the communities they serve.
-
-This is how wisdom gets compensated at human scale. Not the loudest voice. Not the most viral post. The most trusted one. The person who has been right, consistently, for the longest time. The elder whose taste you've learned to rely on. The colleague whose eye for a story has never let you down.
-
-The internet buried these people under an avalanche of noise. The trust graph finds them again.
+This is the one that was missing. The business case doesn't work without it.
 
 ---
 
-## What This Does to the Three Broken Industries
+## The Economics Follow the Relationships
 
-### Advertising: $700 Billion Looking for a Better Model
+Here is what changes when the consumer wakes up.
 
-Global digital advertising is $700 billion annually — built on approximating something that now exists directly. A trusted human recommending something to someone who trusts them.
+The musician's thirty-year catalogue becomes a living asset rather than a buried one. Every query, every remix, every inference earns — and the older and deeper the work, the more valuable the presence. Wisdom compounds economically for the first time since the streaming model arrived and flattened everything to recency.
 
-When someone in your trust network queries your presence for a recommendation and pays a small inference fee for the answer — that's not advertising. That's the thing advertising always tried to be, done directly, with no platform extracting the margin.
+The journalist's beat becomes sustainable without an institution to fund it. The community that depends on the reporting pays for it directly, visibly, in amounts small enough to be painless and large enough to matter. Ten thousand readers paying eight cents an article is a career. A real one. Owned by the journalist, not the publication that might fold.
 
-**At human scale:** An operator running a node for a community of 2,000 people, routing recommendations and queries, earning inference fees on every transaction — that's a viable livelihood. Owned by the person running it. Accountable to the community it serves.
+The local business accumulates attestations from people who actually showed up — a trust graph that reflects reality, not algorithmic placement. The referral chain between the restaurant and the boat rental and the ice cream shop becomes visible and compensable. Generosity is literally more profitable than hoarding. The business that sends customers to its neighbours has a richer graph than the one that tries to capture everyone alone.
 
-**At network scale:** Even redirecting 1% of global digital ad spend through sovereign trust infrastructure is $7 billion annually flowing through human relationships instead of platform intermediaries.
+The network rewards generosity. That sounds like a values statement. It's also just the math.
 
-### Music: $100 Billion, 12% to Artists
+**At human scale:** a local business with two thousand customer relationships, processing $500K annually through sovereign infrastructure at one percent, pays $5,000 in fees — compared to the $50,000 — and depending on your business, up to $100,000 — currently going to platforms. The difference stays in the community. The referral chain earns an additional two to five percent on referred business.
 
-Artists receive somewhere between 12 and 16 cents of every dollar the music economy generates. A million streams pays approximately $4,000 — split across everyone who touched the work before it reached the listener.
-
-The trust graph changes the unit of exchange from streams to transactions.
-
-A song downloaded 10,000 times at 10 cents earns $1,000 — directly to the artist, immediately, with no label taking 80% first. A catalogue queried 100,000 times for inference at a cent per token generates revenue that didn't exist before — because the artist's accumulated knowledge and taste and creative history has economic value that streaming never recognized and never compensated.
-
-The back catalogue stops being a buried asset and becomes a living one. The artist who made something extraordinary ten years ago earns from it every time someone queries it, remixes it, learns from it. Their thirty years of work is worth more than their latest release for the first time since the internet arrived.
-
-**At human scale:** An artist with 5,000 people consuming their work at an average of $5 monthly equivalent — through downloads, queries, remixes, direct conversations — earns $300,000 annually. Without a label. Without a platform. Sustained entirely by the relationship between the artist and the people who value what they built.
-
-**At network scale:** 500,000 artists each sustaining communities of 1,000 genuine consumers generates $30 billion annually flowing directly to artists. Matching total global recorded music revenue. Distributed to the people who actually made it.
-
-### Journalism: $150 Billion, Democracy Failing
-
-Local news has lost more than half its revenue in fifteen years. The accountability journalism gap — the stories not being told because no business model supports telling them — has created governance blind spots that compound quietly and expensively.
-
-The trust graph creates a direct economic relationship between a community and the accountability infrastructure it depends on.
-
-A journalist's twenty years of beat reporting is a catalogue. Every article, every source relationship, every piece of institutional knowledge accumulated across a career — queryable, compensable, sustained directly by the community that depends on it. A reader pays eight cents to read an article. A community member pays to query the journalist's accumulated knowledge about a specific institution. A researcher pays for inference against a decade of investigative reporting.
-
-Every transaction is visible. Every cent is traceable. The journalist can see exactly who values their work and the community can see exactly what they're funding.
-
-**At human scale:** A beat reporter whose community of 10,000 readers pays an average of $8 monthly equivalent through article reads, queries, and direct access earns $960,000 annually. More than any legacy newsroom ever paid them. For the work they were already doing. Owned by them, not an institution that can fold.
-
-**At network scale:** 10,000 communities each sustaining local accountability journalism at $10 average monthly spend is a $1.2 billion annual market that currently does not exist — because the infrastructure to support direct community funding of journalism has never existed before.
-
-Until now.
-
-### Commerce: The Real Revenue — and Why It Stopped Making Sense
-
-Advertising, music, journalism — these are the visible casualties. But the quieter destruction happened on Main Street.
-
-Businesses used to be community infrastructure.
-
-The general store knew everyone's name. The restaurant was where you celebrated anniversaries and mourned losses. The hardware store owner coached Little League and served on the town council. The local paper ran on ads from these businesses — not because advertising "worked" in some algorithmic sense, but because the business and the community were the same thing. Funding the paper was funding the community. The return wasn't clicks. It was belonging.
-
-Then the platforms arrived and pulled the relationship layer out of local commerce.
-
-Google owns discovery — you search for a restaurant, Google decides which one you see. Uber Eats owns delivery — 30% of every meal goes to San Francisco. Yelp owns reputation — one bad review from a tourist who was having a bad day can tank a season. Booking.com owns the reservation — 15-25% for the privilege of being found. None of these platforms cook, clean, build, or serve anyone. They insert themselves between a business and its community and charge rent for the introduction.
-
-The result: businesses stopped being community nodes and became content in someone else's feed. They stopped investing in local relationships because the return was invisible. They started optimizing for algorithms instead of neighbors. A restaurant that used to know 500 regulars by name now manages an Instagram account and prays the algorithm shows their post to people within driving distance.
-
-This is extractive not because the fees are high — though they are — but because the model breaks the feedback loop between a business and its community. The money flows out. The data flows out. The relationship flows out. What stays is a storefront paying rent to five different platforms for access to people who live three blocks away.
-
-Imajin inverts this.
-
-A business on the trust graph doesn't buy ads — it accumulates attestations from customers who actually showed up. Every transaction is a signed receipt that both parties own. The tourist who ate at your restaurant in July has a direct connection to you in October when they're planning next summer. No algorithm between you. No platform deciding whether they see your post. The relationship is cryptographic — permanent, portable, yours.
-
-The referral chain between businesses becomes visible and compensable. The cottage owner who sends guests to your restaurant — that referral is tracked. When the guest books, the referring business earns. Not because someone built a referral marketing platform. Because the attribution is embedded in the transaction. The .fair manifest that documented the music remix does the same thing for the restaurant recommendation.
-
-And here's where it gets interesting: **the model rewards generosity.**
-
-A business that hoards customer relationships has a weaker trust graph than one that refers freely. The restaurant that sends guests to the boat rental, which sends them to the ice cream shop, which recommends the restaurant — that circular generosity creates a richer trust graph for all three businesses than any of them could build alone. The referral chain compensates each link. Being a good community member is literally more profitable than being a selfish one.
-
-This is how commerce used to work before platforms taught businesses that competition was about hoarding attention. The baker and the butcher and the grocer sent customers to each other because that's how a town works. The platform model told them to compete for the same eyeballs on the same feed. The trust graph model tells them what they already knew: a rising tide lifts all boats, and the receipts prove it.
-
-**At human scale:** A local business with 2,000 customer relationships, processing $500K in annual transactions through the network at 1%, generates $5,000 in platform fees — compared to $50,000-$100,000 they currently pay to platforms. The $45,000-$95,000 difference stays in the community. The referral chain earns them an additional 2-5% on referred business. The seasonal worker reputation system reduces hiring risk every spring.
-
-**At network scale:** 100,000 local businesses, each processing $200K annually through sovereign infrastructure, generates $200M in transaction volume with $2M in protocol fees. But the real number is the $5-10 billion in platform fees that *stays local* instead of flowing to San Francisco. That's not revenue for Imajin. That's capital returned to communities.
-
-The business case for the network isn't the 1% platform fee. It's the 99% that stops leaving.
+**The business case for the network isn't the one percent fee. It's the ninety-nine percent that stops leaving.**
 
 ---
 
 ## The Flywheel That Can't Be Captured
 
-Every Creator node that deepens its catalogue becomes more valuable over time. Every Consumer whose ledger grows more visible becomes more connected to the humans they're funding. Every Creator/Consumer whose curation proves reliable accumulates standing that generates more inflow. Every community that builds genuine accountability journalism infrastructure has more reason to deepen it.
+The musician whose catalogue deepens earns more over time, not less. The curator whose taste has proven reliable for a decade has standing that generates real inflow. The local business whose trust graph reflects years of genuine community participation is more discoverable than any competitor with a bigger ad budget.
 
-The network compounds not through engineered virality but through the same mechanism that has always made human communities work: trust accumulates. Wisdom becomes visible. Experience gets rewarded.
+The network compounds through the same mechanism that has always made human communities work: trust accumulates. Wisdom becomes visible. Experience gets rewarded. The moat is not the technology — any sufficiently funded team can build the technology. The moat is the accumulated human trust that no competitor can replicate by training a better model or raising a bigger round.
 
-The moat is not the technology. Any sufficiently funded team can build the technology.
-
-The moat is the accumulated human trust — expressed as bilateral attestations, signed by both parties, verifiable by anyone, portable across the network — that no competitor can replicate by training a better model or raising a bigger round. The Creator who has thirty years of catalogue on their node. The Consumer whose visible ledger represents three years of genuine cultural engagement. The Creator/Consumer whose curation has been reliable for a decade and whose standing in the network reflects it.
-
-The extractors built their mountains by owning rails and optimizing them for accumulation at the top. The Creator who built for thirty years got the same algorithmic treatment as the person who arrived last week. The Consumer whose attention was genuinely discerning got the same feed as everyone else. The wisdom of the elder and the noise of the newcomer were worth exactly the same to the platform — because the platform was monetizing attention, not judgment.
+The extractors built their mountains by owning rails and optimizing for accumulation at the top. The creator who built for thirty years got the same algorithmic treatment as the person who arrived last week. The wisdom of the elder and the noise of the newcomer were worth exactly the same to the platform — because the platform was monetizing attention, not judgment.
 
 We reward wisdom and experience over everything else.
 
-The way it used to be.
+The way it used to be. The way it should always have been.
 
-The way it should always have been.
+The weirdness you're about to feel is what it feels like when something is real. Sit with it. It gets better. And this time, when it gets better, you'll know exactly why.
 
 Come build on rails that can't be owned — and that can't be killed.
 
@@ -284,9 +136,8 @@ Come build on rails that can't be owned — and that can't be killed.
 
 **If you want to follow along:**
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- The network: [imajin.ai](imajin.ai)
+- The network: [imajin.ai](https://www.imajin.ai)
 - Jin's party: April 1st, 2026
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-23-imajin-business-case.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-23-imajin-business-case.md)
-- The compute argument: [Essay 32 — How to Save Compute From Eating Itself](/articles/essay-32-how-to-save-compute)
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-23-imajin-business-case) on February 22, 2026. Updated March 25, 2026 with federation, agent, and attestation additions. Imajin is building sovereign technology infrastructure — identity, payments, and AI governance without platform lock-in. Learn more → (https://www.imajin.ai/)
+*This article was originally published on imajin.ai on February 22, 2026. Updated March 25, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and AI governance without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai)*
