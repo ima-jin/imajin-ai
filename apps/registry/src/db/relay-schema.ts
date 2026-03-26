@@ -1,4 +1,4 @@
-import { pgSchema, text, timestamp, jsonb, serial, index, primaryKey, customType } from 'drizzle-orm/pg-core';
+import { pgSchema, text, timestamp, jsonb, serial, bigserial, index, primaryKey, customType } from 'drizzle-orm/pg-core';
 
 const bytea = customType<{ data: Buffer; notNull: false; default: false }>({
   dataType() {
@@ -20,6 +20,8 @@ export const relayIdentityChains = relaySchema.table('relay_identity_chains', {
   did: text('did').primaryKey(),
   log: jsonb('log').$type<string[]>().notNull().default([]),
   state: jsonb('state').notNull(),
+  headCid: text('head_cid'),
+  lastCreatedAt: timestamp('last_created_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
@@ -28,6 +30,7 @@ export const relayContentChains = relaySchema.table('relay_content_chains', {
   genesisCid: text('genesis_cid').notNull(),
   log: jsonb('log').$type<string[]>().notNull().default([]),
   state: jsonb('state').notNull(),
+  lastCreatedAt: timestamp('last_created_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
@@ -55,4 +58,14 @@ export const relayCountersignatures = relaySchema.table('relay_countersignatures
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   operationCidIdx: index('idx_relay_countersignatures_operation_cid').on(table.operationCid),
+}));
+
+export const relayOperationLog = relaySchema.table('relay_operation_log', {
+  seq: bigserial('seq', { mode: 'bigint' }).primaryKey(),
+  cid: text('cid').notNull(),
+  jwsToken: text('jws_token').notNull(),
+  kind: text('kind').notNull(),
+  chainId: text('chain_id').notNull(),
+}, (table) => ({
+  cidIdx: index('idx_relay_operation_log_cid').on(table.cid),
 }));
