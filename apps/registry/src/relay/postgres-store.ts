@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, gt } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type {
   RelayStore,
@@ -7,6 +7,7 @@ import type {
   StoredContentChain,
   StoredBeacon,
   BlobKey,
+  // TODO: import LogEntry and ReadLogResult from @metalabel/dfos-web-relay once 0.5.0 is installed
 } from '@metalabel/dfos-web-relay';
 import { decodeJwsUnsafe } from '@metalabel/dfos-protocol';
 import {
@@ -16,7 +17,21 @@ import {
   relayBeacons,
   relayBlobs,
   relayCountersignatures,
+  relayOperationLog,
 } from '../db/relay-schema';
+
+// TODO: replace with imported types from @metalabel/dfos-web-relay once 0.5.0 is installed
+type OperationKind = 'identity-op' | 'content-op' | 'beacon' | 'artifact' | 'countersign';
+interface LogEntry {
+  cid: string;
+  jwsToken: string;
+  kind: OperationKind;
+  chainId: string;
+}
+interface ReadLogResult {
+  entries: LogEntry[];
+  cursor: string | null;
+}
 
 export class PostgresRelayStore implements RelayStore {
   constructor(private readonly db: PostgresJsDatabase<Record<string, unknown>>) {}
@@ -59,6 +74,8 @@ export class PostgresRelayStore implements RelayStore {
       did: row.did,
       log: row.log as string[],
       state: row.state as StoredIdentityChain['state'],
+      headCID: row.headCid ?? undefined,
+      lastCreatedAt: row.lastCreatedAt ?? undefined,
     };
   }
 
@@ -69,12 +86,16 @@ export class PostgresRelayStore implements RelayStore {
         did: chain.did,
         log: chain.log,
         state: chain.state,
+        headCid: chain.headCID ?? null,
+        lastCreatedAt: chain.lastCreatedAt ?? null,
       })
       .onConflictDoUpdate({
         target: relayIdentityChains.did,
         set: {
           log: chain.log,
           state: chain.state,
+          headCid: chain.headCID ?? null,
+          lastCreatedAt: chain.lastCreatedAt ?? null,
           updatedAt: new Date(),
         },
       });
@@ -92,6 +113,7 @@ export class PostgresRelayStore implements RelayStore {
       genesisCID: row.genesisCid,
       log: row.log as string[],
       state: row.state as StoredContentChain['state'],
+      lastCreatedAt: row.lastCreatedAt ?? undefined,
     };
   }
 
@@ -103,12 +125,14 @@ export class PostgresRelayStore implements RelayStore {
         genesisCid: chain.genesisCID,
         log: chain.log,
         state: chain.state,
+        lastCreatedAt: chain.lastCreatedAt ?? null,
       })
       .onConflictDoUpdate({
         target: relayContentChains.contentId,
         set: {
           log: chain.log,
           state: chain.state,
+          lastCreatedAt: chain.lastCreatedAt ?? null,
           updatedAt: new Date(),
         },
       });
@@ -199,5 +223,50 @@ export class PostgresRelayStore implements RelayStore {
       operationCid,
       jwsToken,
     });
+  }
+
+  async appendToLog(entry: LogEntry): Promise<void> {
+    await this.db.insert(relayOperationLog).values({
+      cid: entry.cid,
+      jwsToken: entry.jwsToken,
+      kind: entry.kind,
+      chainId: entry.chainId,
+    });
+  }
+
+  async readLog(params: { after?: string; limit: number }): Promise<ReadLogResult> {
+    let cursorSeq: bigint | null = null;
+
+    if (params.after) {
+      const cursorRows = await this.db
+        .select({ seq: relayOperationLog.seq })
+        .from(relayOperationLog)
+        .where(eq(relayOperationLog.cid, params.after));
+      const cursorRow = cursorRows[0];
+      if (cursorRow) {
+        cursorSeq = cursorRow.seq as bigint;
+      }
+    }
+
+    const query = this.db
+      .select()
+      .from(relayOperationLog)
+      .orderBy(relayOperationLog.seq)
+      .limit(params.limit);
+
+    const rows = cursorSeq !== null
+      ? await query.where(gt(relayOperationLog.seq, cursorSeq))
+      : await query;
+
+    const entries: LogEntry[] = rows.map((row) => ({
+      cid: row.cid,
+      jwsToken: row.jwsToken,
+      kind: row.kind as OperationKind,
+      chainId: row.chainId,
+    }));
+
+    const cursor = entries.length === params.limit ? entries[entries.length - 1].cid : null;
+
+    return { entries, cursor };
   }
 }
