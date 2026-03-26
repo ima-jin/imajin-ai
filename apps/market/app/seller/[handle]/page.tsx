@@ -20,10 +20,6 @@ function SellerPageContent() {
   const params = useParams();
   const handle = decodeURIComponent(params.handle as string);
 
-  const servicePrefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-  const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-  const authUrl = `${servicePrefix}auth.${domain}`;
-
   const [listings, setListings] = useState<Listing[]>([]);
   const [sellerName, setSellerName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,32 +30,17 @@ function SellerPageContent() {
       setLoading(true);
       setError(null);
       try {
-        // Resolve handle to DID via auth service
-        const lookupRes = await fetch(
-          `${authUrl}/api/lookup/${encodeURIComponent(handle)}`
+        // Server-side handle resolution + listings in one call
+        const res = await fetch(
+          `/api/seller/handle/${encodeURIComponent(handle)}`
         );
-        if (!lookupRes.ok) {
+        if (!res.ok) {
           setError('Seller not found.');
           setLoading(false);
           return;
         }
-        const identity = await lookupRes.json();
-        const did: string = identity?.id ?? identity?.did;
-        const displayHandle: string = identity?.handle ?? handle;
-        setSellerName(`@${displayHandle}`);
-
-        if (!did) {
-          setError('Seller not found.');
-          setLoading(false);
-          return;
-        }
-
-        // Fetch active listings for this seller
-        const listingsRes = await fetch(
-          `/api/listings?seller_did=${encodeURIComponent(did)}&status=active&limit=100&sort=newest`
-        );
-        if (!listingsRes.ok) throw new Error('Failed to load listings');
-        const data = await listingsRes.json();
+        const data = await res.json();
+        setSellerName(`@${data.seller?.handle ?? handle}`);
         setListings(data.listings ?? []);
       } catch {
         setError('Could not load seller listings. Please try again.');
@@ -68,7 +49,7 @@ function SellerPageContent() {
       }
     }
     load();
-  }, [handle, authUrl]);
+  }, [handle]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
