@@ -528,7 +528,7 @@ export default function ListingDetail() {
             <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
               <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Listed by</p>
               <a
-                href={`${profileUrl}/${encodeURIComponent(sellerHandle ?? listing.sellerDid)}`}
+                href={`/seller/${encodeURIComponent(sellerHandle ?? listing.sellerDid)}`}
                 className="text-sm text-orange-500 hover:text-orange-600 transition break-all"
               >
                 {sellerName ?? truncateDid(listing.sellerDid)}
