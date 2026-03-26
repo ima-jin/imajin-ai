@@ -32,7 +32,7 @@ fi
 # Set paths based on environment
 if [ "$ENV" = "prod" ]; then
   BASE_DIR="/home/jin/prod/imajin-ai"
-  PM2_PREFIX=""
+  PM2_PREFIX="prod-"
   LABEL="PROD"
 else
   BASE_DIR="/home/jin/dev/imajin-ai"
