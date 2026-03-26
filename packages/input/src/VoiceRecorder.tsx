@@ -207,7 +207,7 @@ export function VoiceRecorder({ onRecordingComplete, onRecorded, onCancel, onRec
       <button
         onClick={handleClick}
         disabled={disabled}
-        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition disabled:opacity-50"
+        className="ima-btn"
         title="Click to record voice message"
       >
         {'\uD83C\uDFA4'}

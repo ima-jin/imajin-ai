@@ -35,11 +35,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-[#0a0a0a] text-white">
+      <body className="h-screen bg-[#0a0a0a] text-white">
         <NavBarWithUnread />
         <IdentityProvider>
           <UnreadTitleManager />
-          <main className="container mx-auto px-4 py-8">
+          <main className="container mx-auto px-4 py-4">
             {children}
           </main>
         </IdentityProvider>
