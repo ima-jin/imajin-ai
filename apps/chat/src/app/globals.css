@@ -2,11 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #0A0A0A;
-  color: #FAFAFA;
-}
-
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -30,4 +25,13 @@ body {
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(249, 115, 22, 0.3) transparent;
+}
+
+@layer components {
+  .ima-btn {
+    @apply rounded-full w-9 h-9 p-1.5 text-slate-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 transition-colors;
+  }
+  .ima-btn-primary {
+    @apply rounded-full w-9 h-9 p-1.5 text-white bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 transition-colors;
+  }
 }

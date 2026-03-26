@@ -120,6 +120,15 @@ export function Chat({
     }
   }, [lastMessage, pushMessage, updateMessage, removeMessage, addReactionToMessage, removeReactionFromMessage]);
 
+  // Set height every time text changes
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (el) {
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    }
+  }, [composerText]);
+
   // Auto-scroll to bottom on new messages and initial load
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -194,9 +203,6 @@ export function Chat({
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setComposerText(e.target.value);
-    const el = e.target;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
     sendTyping();
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     typingTimerRef.current = setTimeout(stopTyping, 3000);
@@ -236,14 +242,6 @@ export function Chat({
       const { transcript } = await sendVoice(blob);
       if (transcript) {
         setComposerText(prev => prev ? `${prev} ${transcript}` : transcript);
-        // Trigger textarea auto-resize after content changes
-        requestAnimationFrame(() => {
-          const el = textareaRef.current;
-          if (el) {
-            el.style.height = 'auto';
-            el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-          }
-        });
       }
     } catch {
       // error tracked in hook
@@ -307,7 +305,7 @@ export function Chat({
   }
 
   return (
-    <div className={`flex flex-col h-full bg-white dark:bg-zinc-900 ${className ?? ''}`}>
+    <div className={`flex flex-col h-full ${className ?? ''}`}>
       {/* Message list */}
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-1">
         <div ref={sentinelRef} />
@@ -368,14 +366,16 @@ export function Chat({
       </div>
 
       {/* Composer */}
-      <div className="flex-shrink-0 border-t border-slate-200 dark:border-zinc-700 px-3 py-2 bg-white dark:bg-zinc-900 overflow-hidden">
+      <div className="flex flex-wrap items-end gap-1 py-2 border-t border-slate-200 dark:border-zinc-700   overflow-hidden">
         {(replyTo || editingMsg) && (
-          <div className="flex items-start justify-between mb-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 text-xs">
+          <div className="flex items-start justify-between mb-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 text-xs w-full">
             <div className="min-w-0">
-              <p className="font-semibold text-orange-500">{editingMsg ? 'Editing' : '↩ Replying to'}</p>
-              <p className="truncate text-slate-500 dark:text-slate-400">
-                {(editingMsg?.text ?? replyTo?.text ?? '').slice(0, 80)}
-              </p>
+              <p className="font-semibold text-orange-500">{editingMsg ? 'Editing' : 'Replying to'}</p>
+              {replyTo && (
+                <p className="truncate text-slate-500 dark:text-slate-400">
+                  {(replyTo?.text ?? '').slice(0, 80)}
+                </p>
+              )}
             </div>
             <button
               onClick={clearComposerState}
@@ -387,70 +387,65 @@ export function Chat({
           </div>
         )}
 
-        <div className="flex items-end gap-2">
-            {enableMedia && (
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                onChange={handleFileChange}
-              />
-            )}
-            <div className="flex-1 flex items-end min-w-0 bg-slate-100 dark:bg-zinc-800 rounded-2xl px-2 py-2">
-              {!voiceActive && enableMedia && (
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isSending}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 disabled:opacity-50 flex-shrink-0 transition-colors"
-                  title="Attach file"
-                >
-                  {'\uD83D\uDCCE'}
-                </button>
-              )}
-              {!voiceActive && (
-                <textarea
-                  ref={textareaRef}
-                  value={composerText}
-                  onChange={handleTextChange}
-                  placeholder="Message…"
-                  rows={1}
-                  className="flex-1 min-w-0 resize-none overflow-hidden bg-transparent px-2 py-0.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none"
-                  style={{ minHeight: '24px', maxHeight: '160px' }}
-                />
-              )}
-              {!voiceActive && enableLocation && (
-                <button
-                  onClick={handleShareLocation}
-                  disabled={isSending}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 disabled:opacity-50 flex-shrink-0 transition-colors"
-                  title="Share location"
-                >
-                  {'\uD83D\uDCCD'}
-                </button>
-              )}
-              {enableVoice && (
-                <VoiceRecorder
-                  onRecordingStart={() => setVoiceActive(true)}
-                  onRecordingComplete={handleVoiceComplete}
-                  onCancel={() => setVoiceActive(false)}
-                  disabled={isSending}
-                />
-              )}
-              {voiceActive && voiceSending && (
-                <span className="text-xs text-slate-400 flex-shrink-0">Sending…</span>
-              )}
-            </div>
-            <button
-              onClick={handleSend}
-              disabled={isSending || !composerText.trim()}
-              className="flex-shrink-0 w-9 h-9 rounded-full bg-orange-500 text-white flex items-center justify-center hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              aria-label="Send"
-            >
-              <svg className="w-4 h-4 translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
+        {enableMedia && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+        )}
+        {!voiceActive && enableMedia && (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isSending}
+            className="ima-btn"
+            title="Attach file"
+          >
+            {'\uD83D\uDCCE'}
+          </button>
+        )}
+        {!voiceActive && (
+          <textarea
+            ref={textareaRef}
+            value={composerText}
+            onChange={handleTextChange}
+            placeholder="Message…"
+            rows={1}
+            className="flex-1 min-w-0 min-h-9 resize-none overflow-hidden bg-slate-100 dark:bg-zinc-800 rounded-2xl px-4 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none"
+          />
+        )}
+        {!voiceActive && enableLocation && (
+          <button
+            onClick={handleShareLocation}
+            disabled={isSending}
+            className="ima-btn"
+            title="Share location"
+          >
+            {'\uD83D\uDCCD'}
+          </button>
+        )}
+        {enableVoice && (
+          <VoiceRecorder
+            onRecordingStart={() => setVoiceActive(true)}
+            onRecordingComplete={handleVoiceComplete}
+            onCancel={() => setVoiceActive(false)}
+            disabled={isSending}
+          />
+        )}
+        {voiceActive && voiceSending && (
+          <span className="text-xs text-slate-400 flex-shrink-0">Sending…</span>
+        )}
+        <button
+          onClick={handleSend}
+          disabled={isSending || !composerText.trim()}
+          className="ima-btn-primary"
+          aria-label="Send"
+        >
+          <svg className="w-4 h-4 translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
+          </svg>
+        </button>
       </div>
     </div>
   );
