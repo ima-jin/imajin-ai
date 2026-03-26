@@ -2,7 +2,7 @@ import { SESSION_COOKIE_NAME } from "@imajin/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { db, conversationReadsV2, messagesV2 } from '@/db';
 import { getClient } from '@imajin/db';
-import { and, eq, gt, ne, inArray, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { corsHeaders, corsOptions } from '@/lib/utils';
 
 const rawSql = getClient();
@@ -75,43 +75,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ total: 0, conversations: [] }, { headers: cors });
     }
 
-    const readMap = new Map(readRecords.map(r => [r.conversationDid, r.lastReadAt]));
-
     const conversationDids = Array.from(didSet);
 
-    const unreadCounts = await Promise.all(
-      conversationDids.map(async (conversationDid) => {
-        const lastReadAt = readMap.get(conversationDid);
+    const unreadRows = await rawSql<{ conversation_did: string; unread: number }[]>`
+      SELECT m.conversation_did, count(*)::int as unread
+      FROM chat.messages_v2 m
+      LEFT JOIN chat.conversation_reads_v2 cr
+        ON cr.conversation_did = m.conversation_did AND cr.did = ${did}
+      WHERE m.conversation_did = ANY(${conversationDids})
+        AND m.from_did != ${did}
+        AND m.created_at > COALESCE(cr.last_read_at, '-infinity'::timestamptz)
+      GROUP BY m.conversation_did
+    `;
 
-        let unreadCount = 0;
-        if (lastReadAt) {
-          const [result] = await db
-            .select({ count: sql<number>`count(*)::int` })
-            .from(messagesV2)
-            .where(
-              and(
-                eq(messagesV2.conversationDid, conversationDid),
-                gt(messagesV2.createdAt, lastReadAt),
-                ne(messagesV2.fromDid, did),
-              )
-            );
-          unreadCount = result?.count || 0;
-        } else {
-          const [result] = await db
-            .select({ count: sql<number>`count(*)::int` })
-            .from(messagesV2)
-            .where(
-              and(
-                eq(messagesV2.conversationDid, conversationDid),
-                ne(messagesV2.fromDid, did),
-              )
-            );
-          unreadCount = result?.count || 0;
-        }
-
-        return { id: conversationDid, unread: unreadCount };
-      })
-    );
+    const unreadCounts = unreadRows.map(r => ({ id: r.conversation_did, unread: r.unread }));
 
     const conversationsWithUnread = unreadCounts.filter((c) => c.unread > 0);
     const total = conversationsWithUnread.reduce((sum, c) => sum + c.unread, 0);
