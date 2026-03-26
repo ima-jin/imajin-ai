@@ -75,7 +75,7 @@ export class PostgresRelayStore implements RelayStore {
       log: row.log as string[],
       state: row.state as StoredIdentityChain['state'],
       headCID: row.headCid ?? undefined,
-      lastCreatedAt: row.lastCreatedAt ?? undefined,
+      lastCreatedAt: row.lastCreatedAt?.toISOString() ?? undefined,
     };
   }
 
@@ -87,7 +87,7 @@ export class PostgresRelayStore implements RelayStore {
         log: chain.log,
         state: chain.state,
         headCid: chain.headCID ?? null,
-        lastCreatedAt: chain.lastCreatedAt ?? null,
+        lastCreatedAt: chain.lastCreatedAt ? new Date(chain.lastCreatedAt) : null,
       })
       .onConflictDoUpdate({
         target: relayIdentityChains.did,
@@ -95,7 +95,7 @@ export class PostgresRelayStore implements RelayStore {
           log: chain.log,
           state: chain.state,
           headCid: chain.headCID ?? null,
-          lastCreatedAt: chain.lastCreatedAt ?? null,
+          lastCreatedAt: chain.lastCreatedAt ? new Date(chain.lastCreatedAt) : null,
           updatedAt: new Date(),
         },
       });
@@ -113,7 +113,7 @@ export class PostgresRelayStore implements RelayStore {
       genesisCID: row.genesisCid,
       log: row.log as string[],
       state: row.state as StoredContentChain['state'],
-      lastCreatedAt: row.lastCreatedAt ?? undefined,
+      lastCreatedAt: row.lastCreatedAt?.toISOString() ?? undefined,
     };
   }
 
@@ -125,14 +125,14 @@ export class PostgresRelayStore implements RelayStore {
         genesisCid: chain.genesisCID,
         log: chain.log,
         state: chain.state,
-        lastCreatedAt: chain.lastCreatedAt ?? null,
+        lastCreatedAt: chain.lastCreatedAt ? new Date(chain.lastCreatedAt) : null,
       })
       .onConflictDoUpdate({
         target: relayContentChains.contentId,
         set: {
           log: chain.log,
           state: chain.state,
-          lastCreatedAt: chain.lastCreatedAt ?? null,
+          lastCreatedAt: chain.lastCreatedAt ? new Date(chain.lastCreatedAt) : null,
           updatedAt: new Date(),
         },
       });
