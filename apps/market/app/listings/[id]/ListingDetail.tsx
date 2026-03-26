@@ -155,7 +155,6 @@ export default function ListingDetail() {
 
   const servicePrefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
   const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-  const profileUrl = `${servicePrefix}profile.${domain}`;
   const authUrl = `${servicePrefix}auth.${domain}`;
 
   useEffect(() => {
@@ -179,18 +178,18 @@ export default function ListingDetail() {
         const data: Listing = await res.json();
         setListing(data);
 
-        // Resolve seller name from auth lookup
+        // Resolve seller name server-side via profile service
         try {
           const lookupRes = await fetch(
-            `${authUrl}/api/lookup/${encodeURIComponent(data.sellerDid)}`
+            `/api/resolve/${encodeURIComponent(data.sellerDid)}`
           );
           if (lookupRes.ok) {
             const identity = await lookupRes.json();
             if (identity?.handle) {
               setSellerHandle(identity.handle);
               setSellerName(`@${identity.handle}`);
-            } else if (identity?.name) {
-              setSellerName(identity.name);
+            } else if (identity?.displayName) {
+              setSellerName(identity.displayName);
             }
           }
         } catch {
@@ -227,7 +226,7 @@ export default function ListingDetail() {
       }
     }
     fetchListing();
-  }, [id, authUrl]);
+  }, [id]);
 
   if (loading) {
     return (
