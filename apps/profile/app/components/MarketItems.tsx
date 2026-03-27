@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 
 interface MarketItemsProps {
   did: string;
+  handle?: string;
   servicePrefix: string;
   domain: string;
 }
@@ -23,7 +24,7 @@ function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(value);
 }
 
-export function MarketItems({ did, servicePrefix, domain }: MarketItemsProps) {
+export function MarketItems({ did, handle, servicePrefix, domain }: MarketItemsProps) {
   const [listings, setListings] = useState<Listing[] | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -66,7 +67,7 @@ export function MarketItems({ did, servicePrefix, domain }: MarketItemsProps) {
           <span className="ml-1.5 text-gray-500 font-normal">({listings.length})</span>
         </h2>
         <a
-          href={`${marketBase}/listings?seller_did=${encodeURIComponent(did)}`}
+          href={handle ? `${marketBase}/seller/${encodeURIComponent(handle)}` : `${marketBase}/listings?seller_did=${encodeURIComponent(did)}`}
           target="_blank"
           rel="noopener noreferrer"
           className="text-xs text-[#F59E0B] hover:underline"

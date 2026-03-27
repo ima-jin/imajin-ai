@@ -390,7 +390,7 @@ export default async function ProfilePage({ params }: PageProps) {
 
         {/* Market items */}
         {profile.showMarketItems && (
-          <MarketItems did={profile.did} servicePrefix={servicePrefix} domain={domain} />
+          <MarketItems did={profile.did} handle={profile.handle} servicePrefix={servicePrefix} domain={domain} />
         )}
 
         {/* Member since */}
