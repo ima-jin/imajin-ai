@@ -113,7 +113,7 @@ export async function GET(
           AND pm.role IN ('cohost', 'owner', 'host')
           AND pm.removed_at IS NULL
           AND e.status IN ('draft', 'published')
-          AND e.starts_at > ${now}
+          AND e.starts_at > ${now.toISOString()}
       `;
       cohostRows = podEvents.map((r: any) => ({
         eventId: r.event_id,
