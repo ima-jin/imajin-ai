@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, tickets, events, eventAdmins } from '@/src/db';
+import { getClient } from '@imajin/db';
 import { eq, and, inArray, gt } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
@@ -96,10 +97,36 @@ export async function GET(
         )
       );
 
+    // 4. Events this DID is a cohost of (via pod_members)
+    let cohostRows: EventRow[] = [];
+    try {
+      const sql = getClient();
+      const podEvents = await sql`
+        SELECT e.id as event_id, e.title, e.starts_at, e.ends_at, e.venue, e.access_mode
+        FROM connections.pod_members pm
+        JOIN events.events e ON e.pod_id = pm.pod_id
+        WHERE pm.did = ${ownerDid}
+          AND pm.role IN ('cohost', 'owner', 'host')
+          AND pm.removed_at IS NULL
+          AND e.status IN ('draft', 'published')
+          AND e.starts_at > ${now}
+      `;
+      cohostRows = podEvents.map((r: any) => ({
+        eventId: r.event_id,
+        title: r.title,
+        startsAt: new Date(r.starts_at),
+        endsAt: r.ends_at ? new Date(r.ends_at) : null,
+        venue: r.venue,
+        accessMode: r.access_mode,
+      }));
+    } catch (err) {
+      console.warn('Failed to fetch cohost events (non-fatal):', err);
+    }
+
     // Deduplicate by eventId
     const seen = new Set<string>();
     const allRows: EventRow[] = [];
-    for (const row of [...ticketRows, ...createdRows, ...adminRows]) {
+    for (const row of [...ticketRows, ...createdRows, ...adminRows, ...cohostRows]) {
       if (!seen.has(row.eventId)) {
         seen.add(row.eventId);
         allRows.push(row);
@@ -135,7 +162,8 @@ export async function GET(
         // The profile owner (creator/admin) always sees their own private events on their own profile
         // Viewers see them if they also hold a ticket
         const isOwnerEvent = createdRows.some((c) => c.eventId === r.eventId)
-          || adminRows.some((a) => a.eventId === r.eventId);
+          || adminRows.some((a) => a.eventId === r.eventId)
+          || cohostRows.some((c) => c.eventId === r.eventId);
         return isOwnerEvent || viewerAllowed.has(r.eventId);
       });
 
