@@ -1,3 +1,10 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-27 (audit against upstream HEAD `1d943e0`)
+**Evidence:** RFC-01 published at `docs/rfcs/RFC-01-fair-attribution.md`. `FairSignature` and `FairIntent` types live in `packages/fair/src/types.ts`. Ed25519 manifest signing shipped in `packages/fair/src/sign.ts` with `signManifest()` and `verifyManifest()`. Settlement route at `apps/pay/app/api/settle/route.ts` wires signature verification. Canonical serialization in `packages/fair/src/canonical.ts`.
+**Outcome:** Ryan adopted the .fair attribution protocol as RFC-01, the foundational spec for all attribution. Ed25519 signing infrastructure fully operational. Manifests are cryptographically signed and verified at settlement. Remaining implementation work (retroactive generation from commit history, GitHub→DID claim flow) is RFC-level Phase 3 engineering, not proposal-level.
+
+---
+
 ## 15. .fair Attribution from Commit History — ADR-001
 
 **Author:** Ryan Veteze (RFC open for community input)
