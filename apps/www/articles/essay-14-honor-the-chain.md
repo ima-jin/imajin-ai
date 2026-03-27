@@ -2,7 +2,7 @@
 title: "Honor the Chain"
 subtitle: "The attribution layer the internet never built"
 description: "The .fair protocol as attribution infrastructure. A cryptographically signed document embedded in the work itself, carrying the complete chain of human creative labor."
-date: "2026-03-14"
+date: "2026-03-27"
 author: "Ryan Veteze"
 status: "POSTED"
 ---
@@ -25,19 +25,9 @@ That's the sequence. That's always been the sequence.
 
 ## What WeR1 Built
 
-WeR1 is a DJ streaming platform. But that description doesn't carry what's actually significant about it.
+WeR1 built distribution infrastructure that actually worked — real revenue flowing to real producers from real plays, through an algorithm that knew the full chain of contributors in every mix. Not a pitch deck. Not a whitepaper. Running code.
 
-The significant thing is this: inside any DJ mix, dozens of tracks play. Each track has a producer. Each track has a label. Each track has rights holders who are owed something when that music reaches an audience. The traditional music licensing system cannot handle this. The clearance process for a two-hour mix touching sixty tracks would cost more in legal fees than the mix would ever earn. So the industry looked the other way, or demanded DJ culture simply not exist commercially.
-
-The culture persisted anyway, outside the law, because the law built infrastructure that didn't work.
-
-WeR1 built infrastructure that did.
-
-Their distribution algorithm tracked every track in every mix. It knew who produced what. It knew the weights — how long a track played, at what point in the set, against what audience response. And it distributed revenue accordingly. To the producers. To the DJs. To the people who threw the party where the set was recorded and built the room the DJ was reading.
-
-**It was working.** Not as a pitch deck. Not as a whitepaper. As running code. Actual revenue flowing to actual producers from actual plays.
-
-I sat with that codebase for weeks. Brain on fire. The AI toolset I'd watched the team use daily had dissolved every bottleneck I'd carried in my career. I could make meaningful contributions to a stack I'd never worked with before. I was watching the future being built in real time.
+I sat with that codebase for weeks in Johannesburg. Brain on fire. The AI toolset I'd watched the team use daily had dissolved every bottleneck I'd carried in my career. I could make meaningful contributions to a stack I'd never worked with before. I was watching the future being built in real time.
 
 And then I saw the gap.
 
@@ -183,4 +173,4 @@ The infrastructure to honor it exists now.
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-14-honor-the-chain](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-14-honor-the-chain.md)
 
-This article was originally published on [imajin.ai/articles/honor-the-chain](https://www.imajin.ai/articles/honor-the-chain) on March 14, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/honor-the-chain](https://www.imajin.ai/articles/honor-the-chain) on March 27, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)

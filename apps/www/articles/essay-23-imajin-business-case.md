@@ -2,10 +2,9 @@
 title: "The Business Case for Building on Human Trust"
 subtitle: "You didn't break it. But you're the only one who can fix it."
 description: "The economic argument — and the one group nobody wanted to implicate."
-date: "2026-02-22"
-updated: "2026-03-25"
+date: "2026-03-27"
 author: "Ryan Veteze"
-status: "REVIEW"
+status: "POSTED"
 ---
 
 ## Everything Is Fine
@@ -136,8 +135,8 @@ Come build on rails that can't be owned — and that can't be killed.
 
 **If you want to follow along:**
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- The network: [imajin.ai](https://www.imajin.ai)
-- Jin's party: April 1st, 2026
+- The network: [imajin.ai](imajin.ai)
+- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-23-imajin-business-case.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-23-imajin-business-case.md)
 
-*This article was originally published on imajin.ai on February 22, 2026. Updated March 25, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and AI governance without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai)*
+This article was originally published on [imajin.ai/articles/the-business-case](https://www.imajin.ai/articles/the-business-case) on March 27, 2026. Imajin is building sovereign technology infrastructure — identity, attribution, trust, settlement, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)
