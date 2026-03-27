@@ -25,6 +25,7 @@ interface EventRow {
   endsAt: Date | null;
   venue: string | null;
   accessMode: string;
+  imageUrl: string | null;
 }
 
 export async function GET(
@@ -47,6 +48,7 @@ export async function GET(
         endsAt: events.endsAt,
         venue: events.venue,
         accessMode: events.accessMode,
+        imageUrl: events.imageUrl,
       })
       .from(tickets)
       .innerJoin(events, eq(tickets.eventId, events.id))
@@ -67,6 +69,7 @@ export async function GET(
         endsAt: events.endsAt,
         venue: events.venue,
         accessMode: events.accessMode,
+        imageUrl: events.imageUrl,
       })
       .from(events)
       .where(
@@ -86,6 +89,7 @@ export async function GET(
         endsAt: events.endsAt,
         venue: events.venue,
         accessMode: events.accessMode,
+        imageUrl: events.imageUrl,
       })
       .from(eventAdmins)
       .innerJoin(events, eq(eventAdmins.eventId, events.id))
@@ -102,7 +106,7 @@ export async function GET(
     try {
       const sql = getClient();
       const podEvents = await sql`
-        SELECT e.id as event_id, e.title, e.starts_at, e.ends_at, e.venue, e.access_mode
+        SELECT e.id as event_id, e.title, e.starts_at, e.ends_at, e.venue, e.access_mode, e.image_url
         FROM connections.pod_members pm
         JOIN events.events e ON e.pod_id = pm.pod_id
         WHERE pm.did = ${ownerDid}
@@ -118,6 +122,7 @@ export async function GET(
         endsAt: r.ends_at ? new Date(r.ends_at) : null,
         venue: r.venue,
         accessMode: r.access_mode,
+        imageUrl: r.image_url ?? null,
       }));
     } catch (err) {
       console.warn('Failed to fetch cohost events (non-fatal):', err);
@@ -179,6 +184,7 @@ export async function GET(
         startDate: r.startsAt.toISOString(),
         endDate: r.endsAt ? r.endsAt.toISOString() : null,
         venue: r.venue ?? null,
+        imageUrl: r.imageUrl ?? null,
       }))
     );
   } catch (error) {

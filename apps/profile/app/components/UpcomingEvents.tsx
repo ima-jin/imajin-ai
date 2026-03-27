@@ -15,6 +15,7 @@ interface AttendingEvent {
   startDate: string;
   endDate: string | null;
   venue: string | null;
+  imageUrl: string | null;
 }
 
 function formatEventDate(startDate: string, endDate: string | null): string {
@@ -63,13 +64,27 @@ export function UpcomingEvents({ did, servicePrefix, domain, viewerDid }: Upcomi
               href={`${eventsBase}/${event.eventId}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="block px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:border-gray-700 transition"
+              className="flex items-center gap-3 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:border-gray-700 transition"
             >
-              <p className="text-sm text-white font-medium truncate">{event.title}</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {formatEventDate(event.startDate, event.endDate)}
-                {event.venue && <span className="text-gray-500"> · {event.venue}</span>}
-              </p>
+              {event.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={event.imageUrl.startsWith('/') ? `${eventsBase}${event.imageUrl}` : event.imageUrl}
+                  alt={event.title}
+                  className="w-10 h-10 rounded-md object-cover shrink-0"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-md bg-gray-800 flex items-center justify-center shrink-0 text-lg">
+                  📅
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-sm text-white font-medium truncate">{event.title}</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {formatEventDate(event.startDate, event.endDate)}
+                  {event.venue && <span className="text-gray-500"> · {event.venue}</span>}
+                </p>
+              </div>
             </a>
           </li>
         ))}
