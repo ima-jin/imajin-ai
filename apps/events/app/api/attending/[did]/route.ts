@@ -12,10 +12,19 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, tickets, events } from '@/src/db';
+import { db, tickets, events, eventAdmins } from '@/src/db';
 import { eq, and, inArray, gt } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
+
+interface EventRow {
+  eventId: string;
+  title: string;
+  startsAt: Date;
+  endsAt: Date | null;
+  venue: string | null;
+  accessMode: string;
+}
 
 export async function GET(
   request: NextRequest,
@@ -28,8 +37,8 @@ export async function GET(
   try {
     const now = new Date();
 
-    // Find upcoming events this DID has paid tickets for
-    const rows = await db
+    // 1. Events this DID has tickets for
+    const ticketRows: EventRow[] = await db
       .select({
         eventId: events.id,
         title: events.title,
@@ -46,36 +55,94 @@ export async function GET(
           inArray(tickets.status, ['sold', 'used']),
           gt(events.startsAt, now)
         )
-      )
-      .orderBy(events.startsAt);
+      );
+
+    // 2. Events this DID created
+    const createdRows: EventRow[] = await db
+      .select({
+        eventId: events.id,
+        title: events.title,
+        startsAt: events.startsAt,
+        endsAt: events.endsAt,
+        venue: events.venue,
+        accessMode: events.accessMode,
+      })
+      .from(events)
+      .where(
+        and(
+          eq(events.creatorDid, ownerDid),
+          inArray(events.status, ['draft', 'published']),
+          gt(events.startsAt, now)
+        )
+      );
+
+    // 3. Events this DID is an admin of
+    const adminRows: EventRow[] = await db
+      .select({
+        eventId: events.id,
+        title: events.title,
+        startsAt: events.startsAt,
+        endsAt: events.endsAt,
+        venue: events.venue,
+        accessMode: events.accessMode,
+      })
+      .from(eventAdmins)
+      .innerJoin(events, eq(eventAdmins.eventId, events.id))
+      .where(
+        and(
+          eq(eventAdmins.did, ownerDid),
+          inArray(events.status, ['draft', 'published']),
+          gt(events.startsAt, now)
+        )
+      );
+
+    // Deduplicate by eventId
+    const seen = new Set<string>();
+    const allRows: EventRow[] = [];
+    for (const row of [...ticketRows, ...createdRows, ...adminRows]) {
+      if (!seen.has(row.eventId)) {
+        seen.add(row.eventId);
+        allRows.push(row);
+      }
+    }
 
     // Separate public from invite_only
-    const publicEvents = rows.filter((r) => r.accessMode === 'public');
-    const privateEvents = rows.filter((r) => r.accessMode !== 'public');
+    const publicEvents = allRows.filter((r) => r.accessMode === 'public');
+    const privateEvents = allRows.filter((r) => r.accessMode !== 'public');
 
     let result = publicEvents;
 
-    // For invite_only events, only include if viewer also has a ticket
-    if (privateEvents.length > 0 && viewerDid) {
-      const privateEventIds = privateEvents.map((r) => r.eventId);
+    // For invite_only events, only include if viewer also has a ticket (or is the owner/admin)
+    if (privateEvents.length > 0) {
+      // Creator/admin can always see their own private events
+      const viewerAllowed = new Set<string>();
 
-      const viewerTickets = await db
-        .select({ eventId: tickets.eventId })
-        .from(tickets)
-        .where(
-          and(
-            eq(tickets.ownerDid, viewerDid),
-            inArray(tickets.status, ['sold', 'used']),
-            inArray(tickets.eventId, privateEventIds)
-          )
-        );
+      if (viewerDid) {
+        const viewerTickets = await db
+          .select({ eventId: tickets.eventId })
+          .from(tickets)
+          .where(
+            and(
+              eq(tickets.ownerDid, viewerDid),
+              inArray(tickets.status, ['sold', 'used']),
+              inArray(tickets.eventId, privateEvents.map((r) => r.eventId))
+            )
+          );
+        for (const t of viewerTickets) viewerAllowed.add(t.eventId);
+      }
 
-      const viewerEventSet = new Set(viewerTickets.map((t) => t.eventId));
-      const allowedPrivate = privateEvents.filter((r) => viewerEventSet.has(r.eventId));
-      result = [...publicEvents, ...allowedPrivate].sort(
-        (a, b) => a.startsAt.getTime() - b.startsAt.getTime()
-      );
+      const allowedPrivate = privateEvents.filter((r) => {
+        // The profile owner (creator/admin) always sees their own private events on their own profile
+        // Viewers see them if they also hold a ticket
+        const isOwnerEvent = createdRows.some((c) => c.eventId === r.eventId)
+          || adminRows.some((a) => a.eventId === r.eventId);
+        return isOwnerEvent || viewerAllowed.has(r.eventId);
+      });
+
+      result = [...publicEvents, ...allowedPrivate];
     }
+
+    result.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
 
     return NextResponse.json(
       result.map((r) => ({

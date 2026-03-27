@@ -147,7 +147,7 @@ export function ImajinInput({
     textareaRef.current?.focus();
   }
 
-  function handleVoiceRecorded(blob: Blob) {
+  function handleVoiceRecorded(blob: Blob, _durationMs?: number) {
     setTranscribing(true);
     setTranscribeProgress('Transcribing recording...');
     if (onMediaReady) {
@@ -374,9 +374,8 @@ export function ImajinInput({
           {/* Voice record — right side */}
           {hasVoice && (
             <VoiceRecorder
-              onRecorded={handleVoiceRecorded}
-              inputServiceUrl={inputServiceUrl}
-              onTranscribed={handleTranscribed}
+              onRecordingComplete={handleVoiceRecorded}
+              onCancel={() => { setTranscribing(false); setTranscribeProgress(''); }}
               disabled={disabled}
             />
           )}
