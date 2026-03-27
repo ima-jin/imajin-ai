@@ -10,6 +10,7 @@ import { Avatar } from '../components/Avatar';
 import { FollowButton } from '../components/FollowButton';
 import { AskButton } from '../components/AskButton';
 import { MarketItems } from '../components/MarketItems';
+import { UpcomingEvents } from '../components/UpcomingEvents';
 
 interface PageProps {
   params: Promise<{ handle: string }>;
@@ -379,6 +380,9 @@ export default async function ProfilePage({ params }: PageProps) {
             </a>
           </div>
         )}
+
+        {/* Upcoming events */}
+        <UpcomingEvents did={profile.did} servicePrefix={servicePrefix} domain={domain} viewerDid={viewerDid} />
 
         {/* Market items */}
         {profile.showMarketItems && (

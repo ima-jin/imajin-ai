@@ -102,6 +102,10 @@ If you've read any of this — all of these essays, or five of them, or even jus
 
 Come in.
 
+Some people might ask: well, why even do this?
+
+Because look at the alternative. It doesn't stop. It doesn't end. Until we say it does.
+
 *— Ryan VETEZE, Founder, imajin.ai aka b0b*
 
 ---
