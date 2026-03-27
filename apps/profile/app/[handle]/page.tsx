@@ -329,8 +329,8 @@ export default async function ProfilePage({ params }: PageProps) {
           </div>
         )}
 
-        {/* Ask button */}
-        <div className="mb-6">
+        {/* Action buttons — single row */}
+        <div className="flex justify-center gap-3 mb-6 flex-wrap">
           <AskButton
             targetDid={profile.did}
             targetName={profile.displayName}
@@ -338,10 +338,26 @@ export default async function ProfilePage({ params }: PageProps) {
             inferenceEnabled={!!profile.inferenceEnabled}
             canAsk={!!viewerDid}
           />
+          {profile.metadata?.links && (
+            <a
+              href={`${servicePrefix}links.${domain}/${profile.metadata.links}`}
+              className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-white text-sm font-medium"
+            >
+              🔗 Links
+            </a>
+          )}
+          {profile.metadata?.coffee && (
+            <a
+              href={`${servicePrefix}coffee.${domain}/${profile.metadata.coffee}`}
+              className="px-4 py-2 bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B] rounded-lg hover:bg-[#F59E0B]/20 transition border text-sm font-medium"
+            >
+              ☕ Tip Me
+            </a>
+          )}
         </div>
 
-        {/* Links from service or fallback button */}
-        {links.length > 0 ? (
+        {/* Expanded links list (when links service has items) */}
+        {links.length > 0 && (
           <div className="mb-6 space-y-2">
             {links.map((link, i) => (
               <a
@@ -357,29 +373,6 @@ export default async function ProfilePage({ params }: PageProps) {
                 )}
               </a>
             ))}
-          </div>
-        ) : (
-          profile.metadata?.links && (
-            <div className="flex justify-center mb-6">
-              <a
-                href={`${servicePrefix}links.${domain}/${profile.metadata.links}`}
-                className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-white"
-              >
-                🔗 Links
-              </a>
-            </div>
-          )
-        )}
-
-        {/* Coffee button */}
-        {profile.metadata?.coffee && (
-          <div className="flex justify-center mb-6">
-            <a
-              href={`${servicePrefix}coffee.${domain}/${profile.metadata.coffee}`}
-              className="px-4 py-2 bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B] rounded-lg hover:bg-[#F59E0B]/20 transition border"
-            >
-              ☕ Tip Me
-            </a>
           </div>
         )}
 
