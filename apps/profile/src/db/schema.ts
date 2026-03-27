@@ -24,6 +24,7 @@ export const profiles = profileSchema.table('profiles', {
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }), // Online presence tracking
   inferenceEnabled: boolean('inference_enabled').notNull().default(false), // Presence queryable
   showMarketItems: boolean('show_market_items').notNull().default(false),
+  showEvents: boolean('show_events').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

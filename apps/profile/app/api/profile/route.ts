@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       avatarAssetId: avatarAssetId || null,
       bio: bio || null,
       handle: handle || null,
-      email: email || null,
+      contactEmail: email || null,
       phone: phone || null,
       metadata: {
         ...(metadata || {}),

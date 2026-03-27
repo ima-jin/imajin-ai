@@ -25,8 +25,10 @@ interface Profile {
   avatar?: string;
   email?: string;
   phone?: string;
+  contactEmail?: string;
   inferenceEnabled?: boolean;
   showMarketItems?: boolean;
+  showEvents?: boolean;
   createdAt: string;
   metadata?: {
     links?: string;
@@ -382,7 +384,9 @@ export default async function ProfilePage({ params }: PageProps) {
         )}
 
         {/* Upcoming events */}
-        <UpcomingEvents did={profile.did} servicePrefix={servicePrefix} domain={domain} viewerDid={viewerDid} />
+        {profile.showEvents && (
+          <UpcomingEvents did={profile.did} servicePrefix={servicePrefix} domain={domain} viewerDid={viewerDid} />
+        )}
 
         {/* Market items */}
         {profile.showMarketItems && (
