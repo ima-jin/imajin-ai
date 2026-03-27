@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db, listings, sellerSettings } from '@/db';
+import { db, listings } from '@/db';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and, desc } from 'drizzle-orm';
 
@@ -34,21 +34,8 @@ export async function GET(
       return errorResponse('Seller not found', 404);
     }
 
-    // Check seller settings
-    const [settings] = await db
-      .select()
-      .from(sellerSettings)
-      .where(eq(sellerSettings.did, did));
-
-    if (!settings || !settings.showMarketItems) {
-      return jsonResponse({
-        seller: { handle: profile.handle, displayName: profile.displayName },
-        listings: [],
-        enabled: false,
-      });
-    }
-
-    // Fetch active listings
+    // Fetch active listings (no settings gate — this is the market's own seller page,
+    // not the cross-service profile widget)
     const rows = await db
       .select({
         id: listings.id,

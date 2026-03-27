@@ -74,9 +74,14 @@ const reverseSlugMap: Record<string, string> = Object.entries(slugMap).reduce(
   {} as Record<string, string>
 );
 
-function getOrderFromFilename(filename: string): number {
-  const match = filename.match(/essay-(\d+)/);
-  return match ? parseInt(match[1], 10) : 999;
+// Order is determined by position in slugMap, not filename number.
+// This lets us reorder essays by rearranging slugMap entries.
+const slugMapKeys = Object.keys(slugMap);
+
+function getOrderFromSlugMap(filename: string): number {
+  const baseName = filename.replace('.md', '');
+  const idx = slugMapKeys.indexOf(baseName);
+  return idx >= 0 ? idx : 999;
 }
 
 export function getAllArticleSlugs(): string[] {
@@ -131,7 +136,7 @@ export function getAllArticles(): ArticleMeta[] {
         date: data.date || '2026-02-22',
         author: data.author || 'Ryan Veteze',
         status: (data.status as ArticleStatus) || 'DRAFT',
-        order: getOrderFromFilename(filename),
+        order: getOrderFromSlugMap(filename),
       };
     })
     .filter((a) => a.status === 'POSTED')
@@ -193,7 +198,7 @@ export async function getArticleBySlug(slug: string): Promise<Article | null> {
     date: data.date || '2026-02-22',
     author: data.author || 'Ryan Veteze',
     status: (data.status as ArticleStatus) || 'DRAFT',
-    order: getOrderFromFilename(baseName),
+    order: getOrderFromSlugMap(baseName),
     content,
     contentHtml,
   };
