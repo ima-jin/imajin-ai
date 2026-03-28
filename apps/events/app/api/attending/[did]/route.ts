@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, tickets, events, eventAdmins } from '@/src/db';
+import { db, tickets, events } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { eq, and, inArray, gt } from 'drizzle-orm';
 
@@ -80,28 +80,7 @@ export async function GET(
         )
       );
 
-    // 3. Events this DID is an admin of
-    const adminRows: EventRow[] = await db
-      .select({
-        eventId: events.id,
-        title: events.title,
-        startsAt: events.startsAt,
-        endsAt: events.endsAt,
-        venue: events.venue,
-        accessMode: events.accessMode,
-        imageUrl: events.imageUrl,
-      })
-      .from(eventAdmins)
-      .innerJoin(events, eq(eventAdmins.eventId, events.id))
-      .where(
-        and(
-          eq(eventAdmins.did, ownerDid),
-          inArray(events.status, ['draft', 'published']),
-          gt(events.startsAt, now)
-        )
-      );
-
-    // 4. Events this DID is a cohost of (via pod_members)
+    // 3. Events this DID is a cohost of (via pod_members)
     let cohostRows: EventRow[] = [];
     try {
       const sql = getClient();
@@ -131,7 +110,7 @@ export async function GET(
     // Deduplicate by eventId
     const seen = new Set<string>();
     const allRows: EventRow[] = [];
-    for (const row of [...ticketRows, ...createdRows, ...adminRows, ...cohostRows]) {
+    for (const row of [...ticketRows, ...createdRows, ...cohostRows]) {
       if (!seen.has(row.eventId)) {
         seen.add(row.eventId);
         allRows.push(row);
@@ -167,7 +146,6 @@ export async function GET(
         // The profile owner (creator/admin) always sees their own private events on their own profile
         // Viewers see them if they also hold a ticket
         const isOwnerEvent = createdRows.some((c) => c.eventId === r.eventId)
-          || adminRows.some((a) => a.eventId === r.eventId)
           || cohostRows.some((c) => c.eventId === r.eventId);
         return isOwnerEvent || viewerAllowed.has(r.eventId);
       });

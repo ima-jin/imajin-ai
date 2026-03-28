@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, integer, boolean, index, primaryKey, pgSchema } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, integer, boolean, index, pgSchema } from 'drizzle-orm/pg-core';
 
 export const eventsSchema = pgSchema('events');
 
@@ -96,21 +96,6 @@ export const ticketTypes = eventsSchema.table('ticket_types', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   eventIdx: index('idx_ticket_types_event').on(table.eventId),
-}));
-
-/**
- * Event Admins - co-hosts with management permissions
- */
-export const eventAdmins = eventsSchema.table('event_admins', {
-  eventId: text('event_id').references(() => events.id, { onDelete: 'cascade' }).notNull(),
-  did: text('did').notNull(),
-  role: text('role').notNull().default('admin'),            // owner | admin
-  addedBy: text('added_by').notNull(),                      // DID who added them
-  addedAt: timestamp('added_at', { withTimezone: true }).defaultNow(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.eventId, table.did] }),
-  eventIdx: index('idx_event_admins_event').on(table.eventId),
-  didIdx: index('idx_event_admins_did').on(table.did),
 }));
 
 /**
@@ -256,7 +241,6 @@ export const ticketRegistrations = eventsSchema.table('ticket_registrations', {
 // Types
 export type Event = typeof events.$inferSelect;
 export type NewEvent = typeof events.$inferInsert;
-export type EventAdmin = typeof eventAdmins.$inferSelect;
 export type TicketType = typeof ticketTypes.$inferSelect;
 export type Ticket = typeof tickets.$inferSelect;
 export type TicketTransfer = typeof ticketTransfers.$inferSelect;
