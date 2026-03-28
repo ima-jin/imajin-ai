@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@imajin/auth": "workspace:*",
+    "@imajin/notify": "workspace:*",
     "@imajin/chat": "workspace:*",
     "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",

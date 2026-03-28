@@ -6,8 +6,23 @@ import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } fro
 import { parseConversationDid } from '@/lib/conversation-did';
 import { unfurlLinks } from '@/lib/unfurl';
 import { canonicalize } from '@imajin/auth';
+import { notify } from '@imajin/notify';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL || 'http://localhost:3005';
+const MENTION_REGEX = /@([a-zA-Z0-9_-]+)/g;
+
+async function resolveHandleToDid(handle: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${PROFILE_SERVICE_URL}/api/profile/search?q=${encodeURIComponent(handle)}&limit=5`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const profile = (data.profiles || []).find((p: { handle?: string; did?: string }) => p.handle?.toLowerCase() === handle.toLowerCase());
+    return profile?.did ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Sign a message payload with the node's chain key via the auth service.
@@ -278,6 +293,33 @@ export async function POST(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conversationId: did, message }),
       }).catch(() => {});
+    }
+
+    // Detect and notify @mentions — fire and forget
+    const messageText = typeof content === 'object' && (content as any).text ? (content as any).text : typeof content === 'string' ? content : '';
+    const mentionMatches = [...messageText.matchAll(new RegExp(MENTION_REGEX))].map((m: RegExpMatchArray) => m[1]);
+    if (mentionMatches.length > 0) {
+      const uniqueHandles = [...new Set<string>(mentionMatches)];
+      (async () => {
+        for (const handle of uniqueHandles) {
+          try {
+            const mentionedDid = await resolveHandleToDid(handle);
+            if (!mentionedDid || mentionedDid === identity.id) continue;
+            notify.send({
+              to: mentionedDid,
+              scope: 'chat:mention',
+              data: {
+                conversationId: did,
+                messageId,
+                senderName: identity.handle || identity.id.slice(0, 16),
+                messagePreview: messageText.slice(0, 100),
+              },
+            }).catch((err: unknown) => console.error('Mention notify error:', err));
+          } catch (err) {
+            console.error('Handle resolution error:', err);
+          }
+        }
+      })().catch(() => {});
     }
 
     // Unfurl link previews async — don't block the response

@@ -107,6 +107,19 @@ export const templates: NotifyTemplate[] = [
     },
   },
   {
+    scope: "chat:mention",
+    urgency: "normal",
+    title: (data) => `${data.senderName || "Someone"} mentioned you`,
+    body: (data) => data.messagePreview || "You were mentioned in a conversation.",
+    email: {
+      subject: (data) => `${data.senderName || "Someone"} mentioned you — Imajin Chat`,
+      html: (data) => simpleEmailHtml(
+        `${data.senderName || "Someone"} mentioned you`,
+        data.messagePreview || "You were mentioned in a conversation."
+      ),
+    },
+  },
+  {
     scope: "connection:invite-accepted",
     urgency: "normal",
     title: (_data) => "Invitation accepted",
