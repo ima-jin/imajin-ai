@@ -38,13 +38,13 @@
 │   │ verify  │  │ balance │  │ queries      │  │  specs  │  │
 │   └─────────┘  └─────────┘  └──────────────┘  └─────────┘  │
 │                                                              │
-│   ┌─────────┐  ┌─────────┐  ┌──────────────┐               │
-│   │ profile │  │  media  │  │    input     │               │
-│   │         │  │         │  │              │               │
-│   │ handle  │  │ .fair   │  │ upload relay │               │
-│   │ avatar  │  │ storage │  │ transcribe   │               │
-│   │ display │  │ deliver │  │ (Whisper)    │               │
-│   └─────────┘  └─────────┘  └──────────────┘               │
+│   ┌─────────┐  ┌──────────────────────────────┐             │
+│   │ profile │  │            media             │             │
+│   │         │  │                              │             │
+│   │ handle  │  │ .fair storage · upload relay │             │
+│   │ avatar  │  │ transcribe (Whisper via GPU) │             │
+│   │ display │  │ deliver · classify           │             │
+│   └─────────┘  └──────────────────────────────┘             │
 │                                                              │
 └──────────────────────────┬──────────────────────────────────┘
                            │
@@ -183,8 +183,7 @@ Consumer pays $10
 | **profile** | 3005 / 7005 | Identity display — handle, bio, avatar, presence | ✅ Live |
 | **events** | 3006 / 7006 | Event creation, ticketing, surveys, lobby chat | ✅ Live |
 | **chat** | 3007 / 7007 | Messaging — text, voice, media, location, E2EE ready | ✅ Live |
-| **input** | 3008 / 7008 | Upload relay, Whisper transcription | ✅ Live |
-| **media** | 3009 / 7009 | DID-pegged storage, .fair attribution, delivery | ✅ Live (dev) |
+| **media** | 3009 / 7009 | DID-pegged storage, .fair attribution, upload relay, Whisper transcription | ✅ Live (dev) |
 | **coffee** | 3100 / 7100 | Buy someone a coffee — tipping/support pages | ✅ Live |
 | **dykil** | 3101 / 7101 | Survey builder (SurveyJS powered) | ✅ Live |
 | **links** | 3102 / 7102 | Curated link sharing | ✅ Live |
@@ -243,7 +242,7 @@ DID-pegged file storage with .fair attribution at intake:
                        /{assetId}.fair.json
 ```
 
-- **Upload:** via input service → media service → filesystem
+- **Upload:** directly to media service → filesystem
 - **Delivery:** .fair access control (public/private/trust-graph)
 - **Thumbnails:** On-the-fly via sharp (`?w=400`)
 - **Classification:** Heuristic stub now, CLIP on GPU node planned (#189)
@@ -456,9 +455,8 @@ Reserved on Solana mainnet. Not active yet.
 - **Social:** Profile, Connections (trust graph, pods, invites, QR codes)
 - **Communication:** Chat (text, voice, media, location, event lobby)
 - **Events:** Creation, multi-tier ticketing, surveys, lobby chat, .fair manifests
-- **Media:** DID-pegged storage, .fair attribution, authenticated delivery
+- **Media:** DID-pegged storage, .fair attribution, authenticated delivery, Whisper transcription via GPU node
 - **Learning:** Courses, modules, lessons, enrollment, progress, slide presentations
-- **Input:** Upload relay, Whisper transcription via GPU node
 - **Infrastructure:** Registry (node discovery, API specs), full deploy pipeline
 - **Apps:** Coffee (tipping), Links (curation), Dykil (surveys)
 - **Shared:** @imajin/ui (NavBar, AppLauncher), @imajin/fair, @imajin/onboard, @imajin/db, @imajin/config

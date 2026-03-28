@@ -21,7 +21,7 @@ The protocol is organized as a matrix of **four identity scopes** × **five prim
 
 Every problem the protocol solves is a cell in this matrix. Every service in this repo implements cells.
 
-15 services. 50 days. $4,445 in API costs. 8.59M tokens. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
+14 services. 50 days. $4,445 in API costs. 8.59M tokens. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
 
 ```
 ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
@@ -55,8 +55,7 @@ Core services that make up the sovereign stack.
 | [profile](./apps/profile) | 3005 | 7005 | [profile.imajin.ai](https://profile.imajin.ai) | Public identity pages | ✅ Live |
 | [events](./apps/events) | 3006 | 7006 | [events.imajin.ai](https://events.imajin.ai) | Create events, sell tickets | ✅ Live |
 | [chat](./apps/chat) | 3007 | 7007 | [chat.imajin.ai](https://chat.imajin.ai) | E2EE messaging, trust-bound | ✅ Live |
-| [input](./apps/input) | 3008 | 7008 | [input.imajin.ai](https://input.imajin.ai) | Input processing (voice, files) | ✅ Live |
-| [media](./apps/media) | 3009 | 7009 | [media.imajin.ai](https://media.imajin.ai) | Asset storage, .fair attribution | 🧪 Alpha |
+| [media](./apps/media) | 3009 | 7009 | [media.imajin.ai](https://media.imajin.ai) | Asset storage, .fair attribution, transcription | 🧪 Alpha |
 
 ### Imajin Apps (3100+/7100+)
 
@@ -203,8 +202,7 @@ imajin-ai/
 │   ├── profile/       # Profile pages
 │   ├── events/        # Events & ticketing
 │   ├── chat/          # E2EE messaging
-│   ├── input/         # Input processing (voice, files)
-│   ├── media/         # Asset storage, .fair attribution
+│   ├── media/         # Asset storage, .fair attribution, transcription
 │   ├── coffee/        # Tip jar (3100)
 │   ├── dykil/         # Surveys & polls (3101)
 │   ├── links/         # Link collection (3102)

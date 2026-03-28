@@ -7,7 +7,7 @@ import { EventChat } from './components/EventChat';
 const CHAT_URL = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
 // Use same-origin proxy for access checks (cross-origin cookie forwarding is unreliable)
 const AUTH_URL = '';  // empty = same origin, proxied via /api/access/[did]
-const INPUT_URL = process.env.NEXT_PUBLIC_INPUT_URL || 'http://localhost:3008';
+const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL || 'http://localhost:3009';
 
 interface AccordionContentProps {
   eventId: string;
@@ -80,7 +80,7 @@ export function EventLobbyAccordion({ eventId, eventDid }: EventLobbyAccordionPr
   }
 
   return (
-    <ChatProvider chatUrl={CHAT_URL} authUrl={AUTH_URL} inputUrl={INPUT_URL}>
+    <ChatProvider chatUrl={CHAT_URL} authUrl={AUTH_URL} mediaUrl={MEDIA_URL}>
       <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg overflow-hidden">
         {/* Collapsed Header */}
         <button

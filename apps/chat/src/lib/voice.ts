@@ -1,4 +1,4 @@
-const INPUT_URL = process.env.NEXT_PUBLIC_INPUT_URL ?? '';
+const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
 
 export async function sendVoiceMessage(audioBlob: Blob): Promise<{
   assetId: string;
@@ -15,12 +15,12 @@ export async function sendVoiceMessage(audioBlob: Blob): Promise<{
   transcribeForm.append('file', audioBlob, 'voice.webm');
 
   const [uploadRes, transcribeRes] = await Promise.all([
-    fetch(`${INPUT_URL}/api/upload`, {
+    fetch(`${MEDIA_URL}/api/assets`, {
       method: 'POST',
       body: uploadForm,
       credentials: 'include',
     }),
-    fetch(`${INPUT_URL}/api/transcribe`, {
+    fetch(`${MEDIA_URL}/api/transcribe`, {
       method: 'POST',
       body: transcribeForm,
       credentials: 'include',

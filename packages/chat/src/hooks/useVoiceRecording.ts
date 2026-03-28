@@ -10,7 +10,7 @@ interface UseVoiceRecordingResult {
 }
 
 export function useVoiceRecording(): UseVoiceRecordingResult {
-  const { inputUrl, mediaUrl } = useChatConfig();
+  const { mediaUrl } = useChatConfig();
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -19,12 +19,12 @@ export function useVoiceRecording(): UseVoiceRecordingResult {
     setError(null);
     const startTime = Date.now();
     try {
-      // Step 1: Upload audio to get an asset ID
+      // Step 1: Upload audio to media service to get an asset ID
       const uploadForm = new FormData();
       uploadForm.append('file', blob, 'voice.webm');
       uploadForm.append('context', JSON.stringify({ app: 'chat', feature: 'voice' }));
 
-      const uploadRes = await fetch(`${inputUrl}/api/upload`, {
+      const uploadRes = await fetch(`${mediaUrl}/api/assets`, {
         method: 'POST',
         body: uploadForm,
         credentials: 'include',
@@ -66,7 +66,7 @@ export function useVoiceRecording(): UseVoiceRecordingResult {
     } finally {
       setIsSending(false);
     }
-  }, [inputUrl]);
+  }, [mediaUrl]);
 
   return { sendVoice, isSending, error };
 }

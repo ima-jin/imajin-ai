@@ -28,7 +28,6 @@ Each service owns a schema within the shared database:
 | `coffee` | coffee |
 | `chat` | chat |
 | `connections` | connections |
-| `input` | input |
 | `media` | media |
 | `learn` | learn |
 | `market` | market |
@@ -47,7 +46,7 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 ### Port Convention
 
 - `3xxx` = development, `7xxx` = production (1:1 mapping)
-- `x000-x099` — **Core platform** (www, auth, pay, events, input, media, etc.)
+- `x000-x099` — **Core platform** (www, auth, pay, events, media, etc.)
 - `x100-x199` — **Imajin apps** (coffee, dykil, links, learn — account-based, DID-linked)
 - `x400-x499` — **Client apps** (fixready, karaoke — standalone repos, own databases)
 
@@ -61,7 +60,6 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | Core | profile | 3005 | 7005 | profile.imajin.ai |
 | Core | events | 3006 | 7006 | events.imajin.ai |
 | Core | chat | 3007 | 7007 | chat.imajin.ai |
-| Core | input | 3008 | 7008 | input.imajin.ai |
 | Core | media | 3009 | 7009 | media.imajin.ai |
 | Imajin | coffee | 3100 | 7100 | coffee.imajin.ai |
 | Imajin | dykil | 3101 | 7101 | dykil.imajin.ai |
@@ -136,7 +134,7 @@ ML/compute services run on a dedicated GPU node (`192.168.1.124`), not the ProLi
 | Whisper | 8765 | large-v3 (CUDA float16) | Speech-to-text transcription |
 | Ollama | 11434 | qwen2.5-coder:7b, nomic-embed-text | Code refactoring, embeddings |
 
-The input service relays audio to the GPU node over LAN. No public subdomain — internal only.
+The media service relays audio to the GPU node over LAN for transcription. No public subdomain for the GPU node — internal only.
 
 - **Repo:** [ima-jin/imajin-ml](https://github.com/ima-jin/imajin-ml)
 - **Server path:** `~/imajin-ml`
