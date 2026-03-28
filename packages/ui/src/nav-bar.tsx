@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AppLauncher } from './app-launcher';
+import { NotificationBell } from './notification-bell';
 import { getPort } from '@imajin/config';
 
 export interface NavIdentity {
@@ -245,6 +246,13 @@ export function NavBar({
             </>
           )}
         </div>
+
+        {/* Notification Bell (desktop) */}
+        {process.env.NEXT_PUBLIC_NOTIFY_URL && (
+          <div className="hidden sm:flex items-center">
+            <NotificationBell />
+          </div>
+        )}
 
         {/* Mobile hamburger */}
         <button
