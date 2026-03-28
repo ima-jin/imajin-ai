@@ -12,6 +12,7 @@ import { db, tickets, events, ticketTypes, ticketRegistrations } from '@/src/db'
 import { eq, and } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { sendEmail, ticketConfirmationEmail, generateQRCode } from '@/src/lib/email';
+import { notify } from '@imajin/notify';
 
 export async function POST(
   request: NextRequest,
@@ -125,6 +126,18 @@ export async function POST(
       .update(tickets)
       .set({ registrationStatus: 'complete' })
       .where(eq(tickets.id, ticket.id));
+
+    // Notify attendee — fire and forget
+    if (ticket.ownerDid && registration.email) {
+      notify.send({
+        to: ticket.ownerDid,
+        scope: "event:registration",
+        data: {
+          email: registration.email,
+          eventTitle: event.title,
+        },
+      }).catch((err) => console.error("Notify error:", err));
+    }
 
     // Send ticket confirmation email to the registered attendee (skip if no email, e.g. Dykil form)
     if (registration.email) try {

@@ -90,6 +90,7 @@ export async function POST(
         metadata: {
           service: 'market',
           listingId: listing.id,
+          listingTitle: listing.title,
           sellerDid: listing.sellerDid,
           ...(buyerDid && { buyerDid }),
         },

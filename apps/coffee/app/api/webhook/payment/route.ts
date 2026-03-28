@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { db, tips, coffeePages } from '@/db';
 import { eq } from 'drizzle-orm';
 import { settleTip } from '@/lib/settle';
-import { sendEmail, tipReceivedEmail, tipSentEmail } from '@/lib/email';
+import { notify } from '@imajin/notify';
 import { getEmailForDid } from '@imajin/auth';
 
 const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL || 'http://localhost:3005';
@@ -85,44 +85,31 @@ export async function POST(request: NextRequest) {
         const displayFrom = fromName || 'Anonymous';
         const pageUrl = handle ? `${COFFEE_URL}/${handle}` : COFFEE_URL;
 
-        // Email the recipient
+        // Notify recipient
         if (recipientDid) {
-          try {
-            const recipientEmail = await resolveEmailForDid(recipientDid);
-            if (recipientEmail) {
-              await sendEmail({
-                to: recipientEmail,
-                subject: `☕ ${displayFrom} just tipped you ${displayAmount}`,
-                html: tipReceivedEmail({
-                  recipientName: pageTitle || 'there',
-                  fromName: displayFrom,
-                  amount: displayAmount,
-                  message: message || undefined,
-                  pageUrl,
-                }),
-              });
-            }
-          } catch (emailErr) {
-            console.error('[webhook] Recipient email failed (non-fatal):', emailErr);
-          }
+          const recipientEmail = await resolveEmailForDid(recipientDid).catch(() => null);
+          notify.send({
+            to: recipientDid,
+            scope: "coffee:tip",
+            data: {
+              ...(recipientEmail && { email: recipientEmail }),
+              amount: displayAmount,
+              tipperName: displayFrom,
+            },
+          }).catch((err) => console.error('[webhook] Notify recipient error:', err));
         }
 
-        // Email the sender
-        if (fromEmail) {
-          try {
-            await sendEmail({
-              to: fromEmail,
-              subject: `🧡 Thanks for tipping ${pageTitle || 'a creator'} ${displayAmount}`,
-              html: tipSentEmail({
-                fromName: displayFrom,
-                recipientName: pageTitle || 'a creator',
-                amount: displayAmount,
-                pageUrl,
-              }),
-            });
-          } catch (emailErr) {
-            console.error('[webhook] Sender email failed (non-fatal):', emailErr);
-          }
+        // Notify sender
+        if (fromDid) {
+          notify.send({
+            to: fromDid,
+            scope: "coffee:tip-sent",
+            data: {
+              ...(fromEmail && { email: fromEmail }),
+              amount: displayAmount,
+              pageName: pageTitle || 'a creator',
+            },
+          }).catch((err) => console.error('[webhook] Notify sender error:', err));
         }
 
         break;
