@@ -41,6 +41,7 @@ export const SERVICES: readonly ServiceDefinition[] = [
   { name: "profile",     label: "Profile",     icon: "👤", description: "User profiles and social graph",                   devPort: 3005, prodPort: 7005, schema: "profile",     tier: "core",   visibility: "authenticated", category: "core" },
   { name: "events",      label: "Events",      icon: "🎫", description: "Event creation, ticketing, and management",        devPort: 3006, prodPort: 7006, schema: "events",      tier: "core",   visibility: "public",        category: "core" },
   { name: "chat",        label: "Messages",    icon: "💬", description: "Real-time messaging and conversations",            devPort: 3007, prodPort: 7007, schema: "chat",        tier: "core",   visibility: "authenticated", category: "core" },
+  { name: "notify",      label: "Notify",      icon: "🔔", description: "Notification delivery and preferences",              devPort: 3008, prodPort: 7008, schema: "notify",      tier: "core",   visibility: "internal",      category: "infrastructure" },
   { name: "media",       label: "Media",       icon: "🖼️", description: "Media asset management, upload, classification, and Whisper transcription", devPort: 3009, prodPort: 7009, schema: "media",     tier: "core",   visibility: "authenticated", category: "core" },
 
   // Imajin apps
