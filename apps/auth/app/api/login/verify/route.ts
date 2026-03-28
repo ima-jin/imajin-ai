@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, challenges } from '@/src/db';
-import { eq, and, isNull, gt } from 'drizzle-orm';
+import { db, identities, challenges, mfaMethods } from '@/src/db';
+import { eq, and, isNull, gt, isNotNull } from 'drizzle-orm';
 import { verifySignature } from '@/lib/crypto';
-import { createSessionToken, getSessionCookieOptions } from '@/lib/jwt';
+import { createSessionToken, getSessionCookieOptions, createMfaChallengeToken } from '@/lib/jwt';
 import { emitSessionAttestation } from '@/lib/emit-session-attestation';
 
 /**
@@ -82,6 +82,25 @@ export async function POST(request: NextRequest) {
         { error: 'Invalid signature' },
         { status: 401 }
       );
+    }
+
+    // Check for active MFA methods
+    const activeMfa = await db
+      .select({ type: mfaMethods.type })
+      .from(mfaMethods)
+      .where(
+        and(
+          eq(mfaMethods.did, identity.id),
+          isNotNull(mfaMethods.verifiedAt)
+        )
+      );
+
+    if (activeMfa.length > 0) {
+      const methods = activeMfa.map((m: { type: string }) => m.type);
+      const challengeToken = await createMfaChallengeToken(identity.id, methods);
+      // Mark challenge as used
+      await db.update(challenges).set({ usedAt: new Date() }).where(eq(challenges.id, challengeId));
+      return NextResponse.json({ mfaRequired: true, methods, challengeToken });
     }
 
     // Mark challenge as used

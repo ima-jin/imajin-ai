@@ -127,3 +127,35 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 
 // Re-export from @imajin/config — auth's own callers can keep importing from here
 export { getSessionCookieOptions } from '@imajin/config';
+
+export interface MfaChallengePayload {
+  sub: string;  // DID
+  type: 'mfa_challenge';
+  methods: string[];  // enabled MFA method types
+}
+
+export async function createMfaChallengeToken(did: string, methods: string[]): Promise<string> {
+  const { privateKey } = await getKeyPair();
+  return new jose.SignJWT({ type: 'mfa_challenge', methods })
+    .setProtectedHeader({ alg: 'EdDSA' })
+    .setSubject(did)
+    .setIssuer(JWT_ISSUER)
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(privateKey);
+}
+
+export async function verifyMfaChallengeToken(token: string): Promise<MfaChallengePayload | null> {
+  try {
+    const { publicKey } = await getKeyPair();
+    const { payload } = await jose.jwtVerify(token, publicKey, { issuer: JWT_ISSUER });
+    if (payload.type !== 'mfa_challenge') return null;
+    return {
+      sub: payload.sub as string,
+      type: 'mfa_challenge',
+      methods: payload.methods as string[],
+    };
+  } catch {
+    return null;
+  }
+}
