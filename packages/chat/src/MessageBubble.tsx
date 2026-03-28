@@ -9,6 +9,29 @@ import { LocationMessage } from './LocationMessage';
 import type { MessageContent } from './message-types';
 
 const URL_REGEX = /(https?:\/\/[^\s<]+[^\s<.,;:!?"')\]])/g;
+const MENTION_DISPLAY_REGEX = /@([a-zA-Z0-9_-]+)/g;
+
+function renderTextSegment(text: string, keyPrefix: string): (string | JSX.Element)[] {
+  const parts: (string | JSX.Element)[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  const regex = new RegExp(MENTION_DISPLAY_REGEX);
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    parts.push(
+      <span key={`${keyPrefix}-mention-${match.index}`} className="text-amber-400 font-medium">
+        @{match[1]}
+      </span>
+    );
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts;
+}
 
 function linkifyText(text: string): (string | JSX.Element)[] {
   const parts: (string | JSX.Element)[] = [];
@@ -17,7 +40,8 @@ function linkifyText(text: string): (string | JSX.Element)[] {
   const regex = new RegExp(URL_REGEX);
   while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index));
+      // Render non-URL segment with @mention highlighting
+      parts.push(...renderTextSegment(text.slice(lastIndex, match.index), `seg-${lastIndex}`));
     }
     const url = match[1];
     parts.push(
@@ -34,7 +58,7 @@ function linkifyText(text: string): (string | JSX.Element)[] {
     lastIndex = regex.lastIndex;
   }
   if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
+    parts.push(...renderTextSegment(text.slice(lastIndex), `seg-${lastIndex}`));
   }
   return parts;
 }
