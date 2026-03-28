@@ -116,15 +116,15 @@ export function MessageBubble({
     typeof message.content === 'object' && (message.content as any)?.text
       ? (message.content as any).text
       : typeof message.content === 'string'
-      ? message.content
-      : '';
+        ? message.content
+        : '';
 
   const replyToText =
     replyToMessage && typeof replyToMessage.content === 'object' && (replyToMessage.content as any)?.text
       ? (replyToMessage.content as any).text
       : replyToMessage && typeof replyToMessage.content === 'string'
-      ? replyToMessage.content
-      : '';
+        ? replyToMessage.content
+        : '';
 
   // Handle context menu (right-click still works)
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -206,10 +206,6 @@ export function MessageBubble({
   return (
     <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
       <div className="max-w-[90%]">
-        {/* Sender handle */}
-        {!isOwn && showSenderLabel && (
-          <p className="text-xs text-amber-500 mb-1 ml-3 font-medium">{senderLabel}</p>
-        )}
 
         <div
           ref={bubbleRef}
@@ -227,11 +223,10 @@ export function MessageBubble({
               tabIndex={0}
               onClick={() => onScrollToMessage?.(message.replyTo!)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onScrollToMessage?.(message.replyTo!); }}
-              className={`mb-1 px-3 py-1 rounded-lg text-xs cursor-pointer ${
-                isOwn
+              className={`mb-1 px-3 py-1 rounded-lg text-xs cursor-pointer ${isOwn
                   ? 'bg-orange-400/30 text-white'
                   : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
-              }`}
+                }`}
             >
               <p className="font-medium">↩ Reply to</p>
               <p className="truncate opacity-80">{replyToText.slice(0, 50)}{replyToText.length > 50 ? '...' : ''}</p>
@@ -239,12 +234,16 @@ export function MessageBubble({
           )}
 
           <div
-            className={`px-3 py-3 rounded-2xl ${
-              isOwn
-                ? 'bg-orange-500 text-white rounded-br-md'
-                : 'bg-gray-100 dark:bg-gray-800 rounded-bl-md'
-            }`}
+            className={`px-3 py-3 rounded-2xl ${isOwn
+                ? 'bg-orange-500 text-white rounded-br-none'
+                : 'bg-gray-100 dark:bg-gray-800 rounded-bl-none'
+              }`}
           >
+            {/* Sender handle */}
+            {!isOwn && showSenderLabel && (
+              <p className="text-xs text-amber-500 mb-1 font-medium">{senderLabel}</p>
+            )}
+
             {/* Rich content rendering */}
             {(() => {
               const ct = message.contentType || (message.content as any)?.type;
@@ -292,6 +291,12 @@ export function MessageBubble({
               // Default: text rendering with linkified URLs
               return text ? <p className="text-sm whitespace-pre-wrap">{linkifyText(text)}</p> : null;
             })()}
+
+            {/* Timestamp and edited indicator */}
+            <p className={`text-right message-bubble-time`}>
+              {formatMessageTime(message.createdAt)}
+              {message.editedAt && <span className="italic">(edited)</span>}
+            </p>
 
             {/* Link previews */}
             {message.linkPreviews && message.linkPreviews.length > 0 && (
@@ -391,30 +396,24 @@ export function MessageBubble({
 
           {/* Reactions */}
           {reactions.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
+            <div className={`reactions-wrapper flex gap-1 ml-1.5 mr-1.5 ${isOwn ? 'justify-start' : 'justify-end'}`}>
               {reactions.map((reaction) => (
                 <button
                   key={reaction.emoji}
                   onClick={() => onReactionToggle(reaction.emoji, reaction.reacted)}
-                  className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 transition ${
-                    reaction.reacted
+                  className={`px-1 py-0.5 rounded-full text-xs flex items-center gap-1 border border-white dark:border-black transition ${reaction.reacted
                       ? 'bg-orange-500 text-white'
                       : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600'
-                  }`}
+                    }`}
                 >
-                  <span>{reaction.emoji}</span>
-                  <span>{reaction.count}</span>
+                  <span className="reaction-icon">{reaction.emoji}</span>
+                  {reaction.count > 1 && <span className="reaction-count">{reaction.count}</span>}
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        {/* Timestamp and edited indicator */}
-        <p className={`text-xs text-gray-400 mt-1 ${isOwn ? 'text-right mr-1' : 'ml-3'}`}>
-          {formatMessageTime(message.createdAt)}
-          {message.editedAt && <span className="ml-1 italic">(edited)</span>}
-        </p>
       </div>
     </div>
   );
