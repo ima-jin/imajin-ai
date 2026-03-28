@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, requireGraphMember } from '@/lib/auth';
+import { emitAttestation } from '@imajin/auth';
 import { generateId } from '@/lib/id';
 import { db, pods, podMembers } from '@/db';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -44,6 +45,16 @@ export async function POST(request: Request) {
     addedBy: auth.identity.id,
     joinedAt: now,
   });
+
+  // Fire and forget — never block the response
+  emitAttestation({
+    issuer_did: auth.identity.id,
+    subject_did: auth.identity.id,
+    type: 'pod.created',
+    context_id: pod.id,
+    context_type: 'pod',
+    payload: { name: pod.name, type: pod.type },
+  }).catch((err: unknown) => console.error('Attestation emit error:', err));
 
   return NextResponse.json({ pod }, { status: 201 });
 }

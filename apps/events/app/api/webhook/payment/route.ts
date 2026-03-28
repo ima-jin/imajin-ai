@@ -15,6 +15,7 @@ import { sha512 } from '@noble/hashes/sha2.js';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js';
 import { randomBytes } from 'crypto';
 import { getClient } from '@imajin/db';
+import { emitAttestation } from '@imajin/auth';
 
 // Configure ed25519 with sha512
 ed.hashes.sha512 = sha512;
@@ -319,8 +320,18 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     }).returning();
 
     createdTickets.push(ticket);
+
+    // Fire and forget — never block the response
+    emitAttestation({
+      issuer_did: ownerDid,
+      subject_did: event.creatorDid,
+      type: 'ticket.purchased',
+      context_id: event.id,
+      context_type: 'event',
+      payload: { ticketId: ticket.id, amount: amountTotal / quantity, currency },
+    }).catch((err) => console.error('Attestation emit error:', err));
   }
-  
+
   // Update sold count
   await db
     .update(ticketTypes)

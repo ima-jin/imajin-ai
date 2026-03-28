@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, coffeePages, tips } from '@/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, emitAttestation } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
 
@@ -136,6 +136,18 @@ export async function POST(request: NextRequest) {
         status: 'pending',
       });
 
+      // Fire and forget — never block the response
+      if (fromDid) {
+        emitAttestation({
+          issuer_did: fromDid,
+          subject_did: page.did,
+          type: 'tip.received',
+          context_id: tipId,
+          context_type: 'coffee',
+          payload: { amount, currency },
+        }).catch((err) => console.error('Attestation emit error:', err));
+      }
+
       // Return checkout URL for redirect
       return jsonResponse({
         tipId,
@@ -160,6 +172,18 @@ export async function POST(request: NextRequest) {
         paymentId: 'pending',
         status: 'pending',
       });
+
+      // Fire and forget — never block the response
+      if (fromDid) {
+        emitAttestation({
+          issuer_did: fromDid,
+          subject_did: page.did,
+          type: 'tip.received',
+          context_id: tipId,
+          context_type: 'coffee',
+          payload: { amount, currency: 'SOL' },
+        }).catch((err) => console.error('Attestation emit error:', err));
+      }
 
       return jsonResponse({
         tipId,

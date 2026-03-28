@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, listings } from '@/db';
-import { requireAuth, getSession } from '@imajin/auth';
+import { requireAuth, getSession, emitAttestation } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
 import { resolveMediaRef } from '@imajin/media';
 import { eq, ilike, and, desc, asc, sql, ne } from 'drizzle-orm';
@@ -84,6 +84,16 @@ export async function POST(request: NextRequest) {
       showContactInfo: showContactInfo ?? false,
       expiresAt: expiresAt ? new Date(expiresAt) : null,
     }).returning();
+
+    // Fire and forget — never block the response
+    emitAttestation({
+      issuer_did: identity.id,
+      subject_did: identity.id,
+      type: 'listing.created',
+      context_id: listing.id,
+      context_type: 'market',
+      payload: { title, price, currency: listing.currency },
+    }).catch((err) => console.error('Attestation emit error:', err));
 
     return jsonResponse(listing, 201);
   } catch (error) {
