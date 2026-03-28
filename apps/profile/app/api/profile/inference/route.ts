@@ -28,26 +28,28 @@ export async function POST(request: NextRequest) {
 
   const { enabled } = body;
 
+  // Fetch profile once (needed for both seeding and merge)
+  const existing = await db.query.profiles.findFirst({
+    where: (profiles, { eq }) => eq(profiles.did, identity.id),
+  });
+
   // Before enabling, fire-and-forget presence seed in media service
   if (enabled) {
     const mediaUrl = process.env.MEDIA_SERVICE_URL;
     const mediaKey = process.env.MEDIA_INTERNAL_API_KEY;
     if (mediaUrl && mediaKey) {
-      const profile = await db.query.profiles.findFirst({
-        where: (profiles, { eq }) => eq(profiles.did, identity.id),
-      });
       fetch(`${mediaUrl}/api/seed/presence`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${mediaKey}` },
-        body: JSON.stringify({ did: identity.id, handle: profile?.handle || undefined }),
+        body: JSON.stringify({ did: identity.id, handle: existing?.handle || undefined }),
       }).catch(err => console.error('[Presence] Seed failed (non-fatal):', err));
     }
   }
 
-  // Update inference_enabled on the profile row
+  // Merge inference_enabled into feature_toggles
   const result = await db
     .update(profiles)
-    .set({ inferenceEnabled: enabled })
+    .set({ featureToggles: { ...(existing?.featureToggles ?? {}), inference_enabled: enabled } })
     .where(eq(profiles.did, identity.id))
     .returning();
 

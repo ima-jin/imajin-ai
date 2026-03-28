@@ -6,6 +6,16 @@ import * as ed from '@noble/ed25519';
 import { useIdentity } from '../context/IdentityContext';
 import { ImageUpload } from '../components/ImageUpload';
 
+interface FeatureToggles {
+  inference_enabled?: boolean;
+  show_market_items?: boolean;
+  show_events?: boolean;
+  links?: string | null;
+  coffee?: string | null;
+  dykil?: string | null;
+  learn?: string | null;
+}
+
 interface Profile {
   did: string;
   handle?: string;
@@ -17,13 +27,8 @@ interface Profile {
   email?: string;
   phone?: string;
   visibility?: string;
-  metadata?: Record<string, string>;
-  inference_enabled?: boolean;
-  inferenceEnabled?: boolean;
-  show_market_items?: boolean;
-  showMarketItems?: boolean;
-  show_events?: boolean;
-  showEvents?: boolean;
+  feature_toggles?: FeatureToggles;
+  featureToggles?: FeatureToggles;
 }
 
 type AvatarMode = 'emoji' | 'image';
@@ -89,18 +94,19 @@ export default function EditProfilePage() {
       setPhone(profile.phone || '');
       setVisibility((profile.visibility as 'public' | 'incognito') || 'public');
 
-      // Set service toggles from metadata + dedicated columns
+      // Set service toggles from feature_toggles
+      const ft = profile.featureToggles ?? profile.feature_toggles ?? {};
       const toggles: Record<string, boolean> = {};
       for (const svc of SERVICES) {
         if (svc.key === 'inference') {
-          toggles[svc.key] = !!(profile.inferenceEnabled ?? profile.inference_enabled);
+          toggles[svc.key] = !!ft.inference_enabled;
         } else {
-          toggles[svc.key] = !!(profile.metadata && profile.metadata[svc.key]);
+          toggles[svc.key] = !!(ft[svc.key as keyof typeof ft]);
         }
       }
       setServiceToggles(toggles);
-      setShowMarketItems(!!(profile.showMarketItems ?? profile.show_market_items));
-      setShowEvents(!!(profile.showEvents ?? profile.show_events));
+      setShowMarketItems(!!ft.show_market_items);
+      setShowEvents(!!ft.show_events);
 
       // Detect avatar mode based on current avatar
       if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.startsWith('/'))) {
@@ -123,12 +129,15 @@ export default function EditProfilePage() {
     setSaving(true);
 
     try {
-      const metadata: Record<string, string> = {};
+      const featureToggles: FeatureToggles = {
+        inference_enabled: !!serviceToggles['inference'],
+        show_market_items: showMarketItems,
+        show_events: showEvents,
+      };
       for (const svc of SERVICES) {
-        if (svc.key === 'inference') continue; // handled separately
-        if (serviceToggles[svc.key] && handle) {
-          metadata[svc.key] = handle;
-        }
+        if (svc.key === 'inference') continue;
+        (featureToggles as Record<string, string | boolean | null>)[svc.key] =
+          serviceToggles[svc.key] && handle ? handle : null;
       }
 
       const payload = JSON.stringify({
@@ -138,9 +147,7 @@ export default function EditProfilePage() {
         email: email || null,
         phone: phone || null,
         visibility,
-        metadata,
-        show_market_items: showMarketItems,
-        show_events: showEvents,
+        feature_toggles: featureToggles,
       });
 
       // Sign the request body with the user's Ed25519 private key

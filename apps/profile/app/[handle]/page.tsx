@@ -16,6 +16,16 @@ interface PageProps {
   params: Promise<{ handle: string }>;
 }
 
+interface FeatureToggles {
+  inference_enabled?: boolean;
+  show_market_items?: boolean;
+  show_events?: boolean;
+  links?: string | null;
+  coffee?: string | null;
+  dykil?: string | null;
+  learn?: string | null;
+}
+
 interface Profile {
   did: string;
   handle?: string;
@@ -26,14 +36,9 @@ interface Profile {
   email?: string;
   phone?: string;
   contactEmail?: string;
-  inferenceEnabled?: boolean;
-  showMarketItems?: boolean;
-  showEvents?: boolean;
+  featureToggles?: FeatureToggles;
   createdAt: string;
-  metadata?: {
-    links?: string;
-    coffee?: string;
-  };
+  metadata?: Record<string, string>;
 }
 
 interface ProfileCounts {
@@ -241,7 +246,7 @@ export default async function ProfilePage({ params }: PageProps) {
   const [counts, isFollowing, links] = await Promise.all([
     getProfileCounts(profile.did),
     viewerDid && !isSelf ? getFollowStatus(viewerDid, profile.did) : Promise.resolve(false),
-    profile.metadata?.links ? getLinks(profile.metadata.links) : Promise.resolve([]),
+    profile.featureToggles?.links ? getLinks(profile.featureToggles.links) : Promise.resolve([]),
   ]);
 
   const servicePrefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
@@ -335,20 +340,20 @@ export default async function ProfilePage({ params }: PageProps) {
             targetDid={profile.did}
             targetName={profile.displayName}
             targetHandle={profile.handle}
-            inferenceEnabled={!!profile.inferenceEnabled}
+            inferenceEnabled={!!profile.featureToggles?.inference_enabled}
             canAsk={!!viewerDid}
           />
-          {profile.metadata?.links && (
+          {profile.featureToggles?.links && (
             <a
-              href={`${servicePrefix}links.${domain}/${profile.metadata.links}`}
+              href={`${servicePrefix}links.${domain}/${profile.featureToggles.links}`}
               className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-white text-sm font-medium"
             >
               🔗 Links
             </a>
           )}
-          {profile.metadata?.coffee && (
+          {profile.featureToggles?.coffee && (
             <a
-              href={`${servicePrefix}coffee.${domain}/${profile.metadata.coffee}`}
+              href={`${servicePrefix}coffee.${domain}/${profile.featureToggles.coffee}`}
               className="px-4 py-2 bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B] rounded-lg hover:bg-[#F59E0B]/20 transition border text-sm font-medium"
             >
               ☕ Tip Me
@@ -377,12 +382,12 @@ export default async function ProfilePage({ params }: PageProps) {
         )}
 
         {/* Upcoming events */}
-        {profile.showEvents && (
+        {profile.featureToggles?.show_events && (
           <UpcomingEvents did={profile.did} servicePrefix={servicePrefix} domain={domain} viewerDid={viewerDid} />
         )}
 
         {/* Market items */}
-        {profile.showMarketItems && (
+        {profile.featureToggles?.show_market_items && (
           <MarketItems did={profile.did} handle={profile.handle} servicePrefix={servicePrefix} domain={domain} />
         )}
 
