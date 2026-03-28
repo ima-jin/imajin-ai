@@ -127,7 +127,7 @@ function DIDConversationView({ did }: { did: string }) {
   if (!identity) return <LoginPrompt />;
 
   return (
-    <div className="max-w-2xl mx-auto flex flex-col h-[calc(100dvh-200px)]">
+    <div className="mx-auto flex flex-col h-[calc(100dvh-88px)]">
       {/* Header */}
       <div className="flex items-center gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
         <Link
