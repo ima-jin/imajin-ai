@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ReactionPicker } from './ReactionPicker';
+import { ActionSheet } from '@imajin/ui';
 import { LinkPreviewCard } from './LinkPreviewCard';
 import { VoiceMessage } from './VoiceMessage';
 import { MediaMessage } from './MediaMessage';
@@ -90,6 +90,8 @@ function formatMessageTime(dateStr: string): string {
   });
 }
 
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+
 export function MessageBubble({
   message,
   isOwn,
@@ -104,11 +106,8 @@ export function MessageBubble({
   onScrollToMessage,
   mediaUrl = '',
 }: MessageBubbleProps) {
-  const [showContextMenu, setShowContextMenu] = useState(false);
-  const [showReactionPicker, setShowReactionPicker] = useState(false);
-  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [showActionSheet, setShowActionSheet] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const bubbleRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Extract text from content
@@ -126,37 +125,14 @@ export function MessageBubble({
         ? replyToMessage.content
         : '';
 
-  // Handle context menu (right-click still works)
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    setContextMenuPosition({ x: e.clientX, y: e.clientY });
-    setShowContextMenu(true);
+    setShowActionSheet(true);
   };
 
-  // Handle hover with delay (400ms) for desktop
-  const hoverTimer = useRef<NodeJS.Timeout | null>(null);
-  const handleMouseEnter = () => {
-    hoverTimer.current = setTimeout(() => {
-      if (bubbleRef.current) {
-        const rect = bubbleRef.current.getBoundingClientRect();
-        setContextMenuPosition({ x: rect.right - 40, y: rect.top });
-        setShowContextMenu(true);
-      }
-    }, 400);
-  };
-  const handleMouseLeave = () => {
-    if (hoverTimer.current) {
-      clearTimeout(hoverTimer.current);
-      hoverTimer.current = null;
-    }
-  };
-
-  // Handle long press for mobile
-  const handleTouchStart = (e: React.TouchEvent) => {
+  const handleTouchStart = () => {
     longPressTimer.current = setTimeout(() => {
-      const touch = e.touches[0];
-      setContextMenuPosition({ x: touch.clientX, y: touch.clientY });
-      setShowContextMenu(true);
+      setShowActionSheet(true);
     }, 500);
   };
 
@@ -166,22 +142,15 @@ export function MessageBubble({
     }
   };
 
-  // Close context menu on click outside or scroll
+  // Clean up long press timer on unmount
   useEffect(() => {
-    if (!showContextMenu) return;
-
-    const dismiss = () => setShowContextMenu(false);
-    document.addEventListener('click', dismiss);
-    document.addEventListener('scroll', dismiss, true);
     return () => {
-      document.removeEventListener('click', dismiss);
-      document.removeEventListener('scroll', dismiss, true);
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
     };
-  }, [showContextMenu]);
+  }, []);
 
-  // Handle delete confirmation
   const handleDeleteClick = () => {
-    setShowContextMenu(false);
+    setShowActionSheet(false);
     setShowDeleteConfirm(true);
   };
 
@@ -208,10 +177,7 @@ export function MessageBubble({
       <div className="max-w-[90%]">
 
         <div
-          ref={bubbleRef}
           onContextMenu={handleContextMenu}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
           className="relative"
@@ -308,65 +274,26 @@ export function MessageBubble({
             )}
           </div>
 
-          {/* Context Menu */}
-          {showContextMenu && (
-            <div
-              role="menu"
-              className="fixed z-50 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[150px]"
-              style={{ left: contextMenuPosition.x, top: contextMenuPosition.y }}
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
-            >
-              <button
-                onClick={() => {
-                  setShowContextMenu(false);
-                  onReply();
-                }}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                Reply
-              </button>
+          {/* ActionSheet */}
+          <ActionSheet open={showActionSheet} onClose={() => setShowActionSheet(false)} title="Message">
+            <ActionSheet.Reactions
+              emojis={REACTION_EMOJIS}
+              onSelect={(emoji) => {
+                const reaction = reactions.find((r) => r.emoji === emoji);
+                onReactionToggle(emoji, reaction?.reacted || false);
+                setShowActionSheet(false);
+              }}
+            />
+            <ActionSheet.Actions>
+              <ActionSheet.Action icon="↩" label="Reply" onPress={() => { setShowActionSheet(false); onReply(); }} />
               {isOwn && (
-                <button
-                  onClick={() => {
-                    setShowContextMenu(false);
-                    onEdit();
-                  }}
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-                >
-                  Edit
-                </button>
+                <ActionSheet.Action icon="✏️" label="Edit" onPress={() => { setShowActionSheet(false); onEdit(); }} />
               )}
-              <button
-                onClick={handleDeleteClick}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-red-600 dark:text-red-400"
-              >
-                Delete
-              </button>
-              <button
-                onClick={() => {
-                  setShowContextMenu(false);
-                  setShowReactionPicker(true);
-                }}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                React
-              </button>
-            </div>
-          )}
-
-          {/* Reaction Picker */}
-          {showReactionPicker && (
-            <div className="relative">
-              <ReactionPicker
-                onSelect={(emoji) => {
-                  const reaction = reactions.find((r) => r.emoji === emoji);
-                  onReactionToggle(emoji, reaction?.reacted || false);
-                }}
-                onClose={() => setShowReactionPicker(false)}
-              />
-            </div>
-          )}
+            </ActionSheet.Actions>
+            <ActionSheet.Actions>
+              <ActionSheet.Action icon="🗑" label="Delete" onPress={handleDeleteClick} variant="danger" />
+            </ActionSheet.Actions>
+          </ActionSheet>
 
           {/* Delete Confirmation */}
           {showDeleteConfirm && (

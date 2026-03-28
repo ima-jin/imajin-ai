@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "react": "^18.2.0",
-    "@imajin/input": "workspace:*"
+    "@imajin/input": "workspace:*",
+    "@imajin/ui": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^18",
