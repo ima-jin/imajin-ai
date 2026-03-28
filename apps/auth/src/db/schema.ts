@@ -153,6 +153,59 @@ export const identityChains = authSchema.table('identity_chains', {
 export type IdentityChain = typeof identityChains.$inferSelect;
 export type NewIdentityChain = typeof identityChains.$inferInsert;
 
+/**
+ * Stored Keys — server-side encrypted private key storage
+ *
+ * Private key is encrypted client-side before being sent.
+ * Server never sees the plaintext key.
+ */
+export const storedKeys = authSchema.table('stored_keys', {
+  id: text('id').primaryKey(),                          // key_{nanoid}
+  did: text('did').notNull().references(() => identities.id),
+  encryptedKey: text('encrypted_key').notNull(),        // client-side AES-256-GCM ciphertext
+  salt: text('salt').notNull(),                         // PBKDF2 salt (client-side)
+  keyDerivation: text('key_derivation').notNull().default('pbkdf2'),
+  deviceFingerprint: text('device_fingerprint'),        // optional, which device stored this
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+}, (table) => ({
+  didUniq: uniqueIndex('idx_stored_keys_did').on(table.did),
+}));
+
+/**
+ * MFA Methods — registered MFA methods per identity
+ */
+export const mfaMethods = authSchema.table('mfa_methods', {
+  id: text('id').primaryKey(),                          // mfa_{nanoid}
+  did: text('did').notNull().references(() => identities.id),
+  type: text('type').notNull(),                         // 'totp' | 'passkey' | 'recovery_code'
+  secret: text('secret').notNull(),                     // AES-256-GCM encrypted server-side
+  name: text('name').notNull(),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),  // null = setup not completed
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+}, (table) => ({
+  didIdx: index('idx_mfa_methods_did').on(table.did),
+}));
+
+/**
+ * Devices — known devices per identity
+ */
+export const devices = authSchema.table('devices', {
+  id: text('id').primaryKey(),                          // dev_{nanoid}
+  did: text('did').notNull().references(() => identities.id),
+  fingerprint: text('fingerprint').notNull(),           // SHA-256(ip + userAgent)
+  name: text('name'),
+  ip: text('ip'),
+  userAgent: text('user_agent'),
+  trusted: boolean('trusted').notNull().default(false),
+  firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).defaultNow(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  didFingerprintUniq: uniqueIndex('idx_devices_did_fingerprint').on(table.did, table.fingerprint),
+  didIdx: index('idx_devices_did').on(table.did),
+}));
+
 // Types
 export type Identity = typeof identities.$inferSelect;
 export type NewIdentity = typeof identities.$inferInsert;
@@ -163,3 +216,9 @@ export type Attestation = typeof attestations.$inferSelect;
 export type NewAttestation = typeof attestations.$inferInsert;
 export type Credential = typeof credentials.$inferSelect;
 export type NewCredential = typeof credentials.$inferInsert;
+export type StoredKey = typeof storedKeys.$inferSelect;
+export type NewStoredKey = typeof storedKeys.$inferInsert;
+export type MfaMethod = typeof mfaMethods.$inferSelect;
+export type NewMfaMethod = typeof mfaMethods.$inferInsert;
+export type Device = typeof devices.$inferSelect;
+export type NewDevice = typeof devices.$inferInsert;
