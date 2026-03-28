@@ -1,3 +1,10 @@
+## STATUS: RESOLVED
+**Resolved:** 2026-03-27 (audit against upstream HEAD `1d943e0`)
+**Evidence:** RFC-05 published at `docs/rfcs/RFC-05-intent-bearing-transactions.md`. `FairIntent` type with `purpose`, `directive`, `constraints`, `pool` fields live in `packages/fair/src/types.ts`. Contribution pool mechanism with mandatory redistribution fully specified. Whitepaper v0.4 §4 (Settlement) incorporates declared-intent marketplace as a core primitive.
+**Outcome:** Ryan co-authored RFC-05 with Jin, adopting the intent-bearing transaction model and contribution pool mechanism. The `intent` field is part of `FairManifest`. Remaining work (implementation Phase 3, Howey Test legal review) is RFC-level engineering and legal, not proposal-level.
+
+---
+
 ## 17. Intent-Bearing Transactions and Contribution Pools — RFC-05
 
 **Authors:** Ryan Veteze, Jin

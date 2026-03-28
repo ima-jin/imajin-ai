@@ -1,8 +1,9 @@
-## STATUS: SPEC ADOPTED
+## STATUS: RESOLVED
 **Adopted:** 2026-03-17
-**Evidence:** `docs/rfcs/RFC-14-community-issuance-network.md` in upstream main (HEAD 23b9f2a). RFC-14 explicitly credits Greg Mulholland's "The Commons Layer" (March 2026) as the core concept source.
-**Outcome:** The core insight (EventDID check-in as community-anchored identity issuance, generalizing to libraries, credit unions, schools, etc.) adopted verbatim. Institution-as-issuance-point model, the Protocol vs. Product table (Foundation/Inc.), and the public-option-for-digital-identity framing all incorporated. Prior art section added by Ryan (zakat, waqf, potlatch, tithe). Open questions remain: institution registration path, verification standard, Foundation certification role, timeline.
-**Implementation:** In spec only — RFC-14 is a Draft, no code yet.
+**Resolved:** 2026-03-27 (audit against upstream HEAD `1d943e0`)
+**Evidence:** `docs/rfcs/RFC-14-community-issuance-network.md` in upstream main. RFC-14 explicitly credits Greg Mulholland's "The Commons Layer" (March 2026) as the core concept source.
+**Outcome:** The core insight (EventDID check-in as community-anchored identity issuance, generalizing to libraries, credit unions, schools, etc.) adopted verbatim. Institution-as-issuance-point model, the Protocol vs. Product table (Foundation/Inc.), and the public-option-for-digital-identity framing all incorporated. Prior art section added by Ryan (zakat, waqf, potlatch, tithe). Open questions remain in RFC-14 (institution registration path, verification standard) but the proposal itself is fully adopted.
+**Implementation:** RFC-14 Draft — spec adopted; remaining open questions are RFC-level design work, not proposal-level.
 
 ---
 

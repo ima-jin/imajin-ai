@@ -1,9 +1,39 @@
-## STATUS: CORE FINDING SPEC ADOPTED — PATHWAY DECISION PENDING
+## STATUS: RESOLVED
 **Adopted:** 2026-03-17
-**Evidence:** `docs/rfcs/RFC-11-embedded-wallet.md` in upstream main (HEAD 23b9f2a). RFC-11 explicitly records the March 9, 2026 realization event and confirms the Ed25519 convergence as architectural fact. The core thesis of this proposal — that every DID keypair IS a Solana wallet — is now canonical in the protocol spec.
-**Outcome:** Ed25519 convergence confirmed and documented. MJN-scoped-only wallet design adopted (containing blast radius). Three-tier identity model (soft/preliminary/established) is live in code. Pathway 1 (member invitation → keypair → preliminary DID) is the active model for April 1 launch.
-**What remains open:** Pathway 2 (Solana wallet + MJN purchase → preliminary DID) — blocked on legal review. 5 open questions for Ryan (MJN threshold, soft→preliminary upgrade, invite gate replacement, continuous holding requirement, regulatory timeline) still unanswered.
-**Implementation:** Core finding in spec; three-tier model fully shipped in code; Pathway 2 in spec only pending legal.
+**Resolved:** 2026-03-27 (audit against upstream HEAD `1d943e0`)
+**Evidence:** RFC-11 confirms Ed25519 convergence as three-way fact: Imajin DID + Solana wallet + DFOS chain (same Ed25519 keypair). DFOS DID Bridge Phase 1+2 live (PRs #407, #426). `auth.identity_chains` table operational. Whitepaper v0.4 states: "The same keypair produces both `did:imajin:xxx` and `did:dfos:xxx` — byte-compatible, same curve, no derivation. Your DID is also a valid Solana wallet address."
+**Outcome:** Core finding fully adopted and implemented. Pathway 1 (member invitation → keypair → preliminary DID) is live for April 1 launch. DFOS chain anchoring operational. Ed25519 convergence is now a structural fact in the codebase, not just a spec claim.
+**What remains open:** Pathway 2 (Solana wallet → preliminary DID) blocked on legal review. `isValidDID()` bug (C11) still open. These are tracked separately.
+**Implementation:** Core finding in production code; three-tier model fully shipped; Pathway 2 pending legal.
+
+---
+
+## Update — 2026-03-22
+
+### DFOS DID Bridge LIVE — Phase 1+2 Merged (PR #407, #412, #413, #426)
+
+What was filed as issues #395–400 on March 21 shipped as merged PRs within 24 hours.
+
+**Phase 1+2 (PR #407) — now in `main`:**
+- `packages/dfos`: `bridge.ts`, `signer.ts`, `index.ts` — chain creation, verification, DFOS DID prefix
+- `auth.identity_chains` table: `did`, `dfos_did`, `log` (JSONB), `head_cid`, `key_count`, `is_deleted`
+- Register and login routes create DFOS chains at first login for preliminary/hard DIDs
+
+**Tech debt cleared (PR #426):**
+- **#400 (DAG-CBOR)** → `packages/cid` LIVE — `computeCid()` / `verifyCid()` using `@ipld/dag-cbor`
+- **#401 (Key rotation)** → `key_roles` JSONB on `auth.identities`, rotation endpoints LIVE
+- **#402 (Countersignatures)** → `cid`, `author_jws`, `witness_jws`, `attestation_status` on `auth.attestations` LIVE
+
+**Resolution endpoints (PR #412):** Bidirectional `did:dfos` ↔ `did:imajin` lookup — the DID resolution layer is now real.
+
+**Chain-aware middleware (PR #413):** Auth middleware now understands chain state — downstream services can consume this.
+
+**What this means for the proposal:** The three-way convergence (Imajin DID + Solana wallet + DFOS chain) is no longer architectural speculation — it is live in code. Every preliminary/hard DID now has a DFOS chain at login. See P26 (DFOS Adoption Audit) for the service-by-service plan to propagate this.
+
+**Known open items (unchanged):**
+- `isValidDID()` at `packages/auth/src/providers/keypair.ts:223` still validates 16-char hex only — rejects all soft DIDs (44-char nanoid) and all preliminary DIDs (58-char base58). This is a latent bug.
+- `createDID()` at line 49 still truncates to 16-char hex — inconsistent with server format.
+- Pathway 2 (Solana wallet → preliminary DID) — still blocked on legal review.
 
 ---
 

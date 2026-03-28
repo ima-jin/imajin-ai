@@ -1,8 +1,9 @@
-## STATUS: SPEC ADOPTED
+## STATUS: RESOLVED
 **Adopted:** 2026-03-17
-**Evidence:** `docs/rfcs/RFC-11-embedded-wallet.md` in upstream main (HEAD 23b9f2a). RFC-11 is a direct expansion of this proposal — the "discovery" narrative (March 9, 2026), MJN-scoped-only design principle, hierarchical key derivation model, and gas subsidization mechanics all incorporated. RFC-11 also extends with a full hierarchical key type table and open implementation questions.
-**Outcome:** Core architecture confirmed: DID keypair IS the wallet (same Ed25519 keypair, no external wallet app). Scope: MJN only. Child keys for spending/delegation/app sessions. Foundation gas pool covers Solana tx fees. All design principles from this proposal adopted.
-**Implementation:** In spec only — wallet functionality not yet in codebase. Depends on MJN Foundation formation (Q3 2026).
+**Resolved:** 2026-03-27 (audit against upstream HEAD `1d943e0`)
+**Evidence:** `docs/rfcs/RFC-11-embedded-wallet.md` in upstream main. RFC-11 is a direct expansion of this proposal. Ed25519 convergence confirmed as three-way fact (Imajin DID + Solana wallet + DFOS chain) in RFC-11 and whitepaper v0.4. Hierarchical key derivation model and gas subsidization mechanics all incorporated.
+**Outcome:** Core architecture confirmed: DID keypair IS the wallet (same Ed25519 keypair, no external wallet app). Scope: MJN only. Child keys for spending/delegation/app sessions. Foundation gas pool covers Solana tx fees. All design principles from this proposal adopted. RFC-19 extends with delegated session tokens for app-level key scoping.
+**Implementation:** RFC-11 Draft — spec fully adopted. Wallet functionality implementation depends on MJN Foundation formation.
 
 ---
 
