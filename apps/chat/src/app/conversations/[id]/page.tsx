@@ -106,7 +106,6 @@ function DIDConversationView({ did }: { did: string }) {
   const chatUrl = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
   // Use same-origin proxy for access checks (cross-origin cookie forwarding is unreliable)
   const authUrl = '';  // empty = same origin, proxied via /api/access/[did]
-  const inputUrl = process.env.NEXT_PUBLIC_INPUT_URL || 'http://localhost:3008';
   const mediaUrl = MEDIA_URL;
 
   const displayName =
@@ -199,7 +198,7 @@ function DIDConversationView({ did }: { did: string }) {
 
       {/* Chat */}
       <div className="flex-1 overflow-hidden min-h-0">
-        <ChatProvider chatUrl={chatUrl} authUrl={authUrl} inputUrl={inputUrl} mediaUrl={mediaUrl}>
+        <ChatProvider chatUrl={chatUrl} authUrl={authUrl} mediaUrl={mediaUrl}>
           <Chat
             did={did}
             currentUserDid={identity.did}

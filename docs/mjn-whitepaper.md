@@ -31,7 +31,7 @@ Without the chains, each service is a dumb CRUD app. With the chains, they form 
                     JBOS (Just a Bunch Of Services)
 ┌──────────────────────────────────────────────────────────┐
 │  www · events · chat · learn · market · coffee · links   │  ← Userspace
-│  dykil · input · media                                   │     (disposable)
+│  dykil · media                                           │     (disposable)
 ├──────────────────────────────────────────────────────────┤
 │  connections · profile · registry                        │  ← Trust + Discovery
 ├──────────────────────────────────────────────────────────┤
@@ -195,7 +195,6 @@ Federated registry at `registry.imajin.ai`. Nodes announce presence, operators, 
 | events | events.imajin.ai | Userspace — events, tickets, .fair splits |
 | chat | chat.imajin.ai | Userspace — DID messaging, WebSocket |
 | media | media.imajin.ai | Userspace — assets, .fair sidecars |
-| input | input.imajin.ai | Userspace — voice (Whisper), uploads |
 | learn | learn.imajin.ai | Userspace — courses, enrollment |
 | market | market.imajin.ai | Userspace — local commerce |
 | coffee | coffee.imajin.ai | Userspace — tipping pages |

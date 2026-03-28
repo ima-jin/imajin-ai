@@ -229,7 +229,6 @@ At a growth-stage startup ($200K/yr fully loaded staff engineers):
 | chat | chat.imajin.ai | ✅ Live |
 | connections | connections.imajin.ai | ✅ Live |
 | media | media.imajin.ai | ✅ Live |
-| input | input.imajin.ai | ✅ Live |
 | learn | learn.imajin.ai | ✅ Live |
 | coffee | coffee.imajin.ai | ✅ Live |
 | dykil | dykil.imajin.ai | ✅ Live |

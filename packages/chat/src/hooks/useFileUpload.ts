@@ -10,7 +10,7 @@ interface UseFileUploadResult {
 }
 
 export function useFileUpload(): UseFileUploadResult {
-  const { inputUrl } = useChatConfig();
+  const { mediaUrl } = useChatConfig();
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -20,7 +20,7 @@ export function useFileUpload(): UseFileUploadResult {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await fetch(`${inputUrl}/api/upload`, {
+      const res = await fetch(`${mediaUrl}/api/assets`, {
         method: 'POST',
         body: formData,
         credentials: 'include',
@@ -42,7 +42,7 @@ export function useFileUpload(): UseFileUploadResult {
     } finally {
       setIsUploading(false);
     }
-  }, [inputUrl]);
+  }, [mediaUrl]);
 
   return { uploadFile, isUploading, error };
 }

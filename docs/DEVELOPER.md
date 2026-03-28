@@ -20,7 +20,7 @@ pnpm install
 createdb imajin_dev
 
 # 3. Set up env files — copy from examples
-for app in auth profile registry connections pay events chat input media coffee dykil links learn market; do
+for app in auth profile registry connections pay events chat media coffee dykil links learn market; do
   cp apps/$app/.env.example apps/$app/.env.local 2>/dev/null
 done
 
@@ -35,7 +35,7 @@ node -e "const kp = require('crypto').generateKeyPairSync('ed25519'); console.lo
 #    NEXT_PUBLIC_DISABLE_INVITE_GATE=true
 
 # 7. Push all database schemas (reads DATABASE_URL from .env.local automatically)
-for app in auth profile registry connections pay events chat input media coffee dykil links learn market; do
+for app in auth profile registry connections pay events chat media coffee dykil links learn market; do
   (cd apps/$app && npx drizzle-kit push --force)
 done
 
@@ -90,7 +90,7 @@ createdb imajin_dev
 Push **all** schemas (each service owns its own Postgres schema):
 
 ```bash
-for app in auth profile registry connections pay events chat input media coffee dykil links learn market; do
+for app in auth profile registry connections pay events chat media coffee dykil links learn market; do
   (cd apps/$app && DATABASE_URL="postgresql://your_user:pass@localhost:5432/imajin_dev" npx drizzle-kit push --force)
 done
 ```
@@ -197,7 +197,6 @@ Each service owns a Postgres schema within the shared database. They don't share
 | `coffee` | coffee | pages, tips |
 | `chat` | chat | conversations, messages |
 | `connections` | connections | connections |
-| `input` | input | transcriptions |
 | `media` | media | assets, folders |
 | `learn` | learn | courses, modules, lessons, enrollments, lesson_progress |
 

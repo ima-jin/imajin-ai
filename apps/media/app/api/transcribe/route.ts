@@ -1,7 +1,7 @@
 import { optionalAuth } from '@imajin/auth';
 import { NextRequest, NextResponse } from 'next/server';
-import { checkRateLimit } from '@/lib/metering';
-import { corsHeaders, corsOptions } from '@/lib/cors';
+import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
+import { corsHeaders, corsOptions } from '@/src/lib/cors';
 import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -10,6 +10,8 @@ import { randomBytes } from 'crypto';
 const GPU_NODE_URL = process.env.GPU_NODE_URL || 'http://192.168.1.124:8765';
 const GPU_AUTH_TOKEN = process.env.GPU_AUTH_TOKEN || '';
 
+export const dynamic = 'force-dynamic';
+
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
@@ -17,27 +19,28 @@ export async function OPTIONS(request: NextRequest) {
 /**
  * POST /api/transcribe
  *
- * Accepts audio file (multipart), validates session, relays to GPU node for
- * Whisper transcription. Returns transcript text + segments.
+ * Accepts audio file (multipart), validates session (optional — anonymous allowed),
+ * relays to GPU Whisper node for transcription. Returns transcript text + segments.
  *
- * The input service is the public-facing endpoint; the GPU node is internal only.
+ * Moved from apps/input — the media service is now the public-facing endpoint
+ * for both file storage and transcription.
  */
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
-  // Validate session (optional — allow anonymous for now, but track DID if present)
-  const identity = await optionalAuth(request);
-  const callerDid = identity?.id || 'anonymous';
 
-  // Rate limit check
-  const rateCheck = checkRateLimit(callerDid, 'transcribe');
-  if (!rateCheck.allowed) {
+  const ip = getClientIP(request);
+  const rl = rateLimit(ip, 30, 60 * 60 * 1000); // 30 per hour per IP
+  if (rl.limited) {
     return NextResponse.json(
-      { error: 'Rate limit exceeded', retryAfterMs: rateCheck.retryAfterMs },
-      { status: 429, headers: { ...cors, 'Retry-After': String(Math.ceil(rateCheck.retryAfterMs / 1000)) } }
+      { error: 'Rate limit exceeded', retryAfter: rl.retryAfter },
+      { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } }
     );
   }
 
-  // Get the audio file from the request
+  // Optional auth — allow anonymous but track DID if present
+  const identity = await optionalAuth(request);
+  const callerDid = identity?.id || 'anonymous';
+
   const formData = await request.formData();
   const file = formData.get('file');
 
@@ -48,19 +51,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Relay to GPU node — write to temp file then use undici for reliable multipart upload
   const fileBytes = Buffer.from(await file.arrayBuffer());
   const fileName = (file as File).name || 'audio.webm';
   const fileType = file.type || 'audio/webm';
-  const tmpPath = join(tmpdir(), `input-${randomBytes(8).toString('hex')}-${fileName}`);
+  const tmpPath = join(tmpdir(), `transcribe-${randomBytes(8).toString('hex')}-${fileName}`);
 
-  // Pass through optional language param
   const language = formData.get('language');
 
   try {
     await writeFile(tmpPath, fileBytes);
 
-    // Use native FormData with File object
     const gpuForm = new FormData();
     gpuForm.append('file', new File([fileBytes], fileName, { type: fileType }));
     if (language && typeof language === 'string') {
@@ -85,13 +85,11 @@ export async function POST(request: NextRequest) {
       console.error('GPU node transcription failed:', gpuRes.status, errorText);
       return NextResponse.json(
         { error: 'Transcription failed' },
-        { status: 502 }
+        { status: 502, headers: cors }
       );
     }
 
     const result = await gpuRes.json();
-
-    // TODO: Log to jobs table for metering (#172)
 
     return NextResponse.json(result, { headers: cors });
   } catch (error) {

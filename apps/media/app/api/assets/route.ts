@@ -110,10 +110,19 @@ export async function POST(request: NextRequest) {
   }
 
   // Extract original filename first (needed for MIME inference)
-  const originalName =
+  let originalName =
     (formData.get("filename") as string | null) ??
     (file as File).name ??
     "upload";
+
+  // Rename generic audio filenames to a timestamped format (e.g. blob.webm → Audio_2026_01_01_12_00_00.webm)
+  const GENERIC_AUDIO_PATTERN = /^(voice|blob|audio|recording|sound)\./i;
+  if (file.type.startsWith("audio/") && GENERIC_AUDIO_PATTERN.test(originalName)) {
+    const ts = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const ext = originalName.includes(".") ? originalName.slice(originalName.lastIndexOf(".")) : "";
+    originalName = `Audio_${ts.getFullYear()}_${pad(ts.getMonth() + 1)}_${pad(ts.getDate())}_${pad(ts.getHours())}_${pad(ts.getMinutes())}_${pad(ts.getSeconds())}${ext}`;
+  }
 
   // MIME check — infer from extension if browser sent octet-stream
   const mimeType = inferMime(file.type, originalName);
