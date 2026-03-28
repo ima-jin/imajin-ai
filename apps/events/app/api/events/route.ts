@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes } from '@/src/db';
-import { requireHardDID } from '@imajin/auth';
+import { requireHardDID, emitAttestation } from '@imajin/auth';
 import { and, asc, desc, eq, gt } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 
@@ -123,6 +123,16 @@ export async function POST(request: NextRequest) {
       status: 'draft',
       metadata: { fair: fairManifest },
     }).returning();
+
+    // Fire and forget — never block the response
+    emitAttestation({
+      issuer_did: identity.id,
+      subject_did: identity.id,
+      type: 'event.created',
+      context_id: event.id,
+      context_type: 'event',
+      payload: { eventDid: event.did, title },
+    }).catch((err) => console.error('Attestation emit error:', err));
 
     // Create ticket types if provided
     const createdTicketTypes = [];

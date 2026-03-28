@@ -7,6 +7,7 @@
 
 import { NextRequest } from 'next/server';
 import { db, listings } from '@/db';
+import { emitAttestation } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
@@ -60,6 +61,16 @@ export async function POST(request: NextRequest) {
               .where(eq(listings.id, listingId));
           }
         }
+
+        // Fire and forget — never block the response
+        emitAttestation({
+          issuer_did: body.metadata?.buyerDid,
+          subject_did: listing.sellerDid,
+          type: 'listing.purchased',
+          context_id: listingId,
+          context_type: 'market',
+          payload: { amount: body.metadata?.amount },
+        }).catch((err: unknown) => console.error('Attestation emit error:', err));
       }
     }
 

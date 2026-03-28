@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, profiles } from '@/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, emitAttestation } from '@imajin/auth';
 import { jsonResponse, errorResponse, isValidHandle } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
@@ -57,8 +57,18 @@ export async function POST(request: NextRequest) {
       .where(eq(profiles.did, identity.id))
       .returning();
 
-    return jsonResponse({ 
-      success: true, 
+    // Fire and forget — never block the response
+    emitAttestation({
+      issuer_did: identity.id,
+      subject_did: identity.id,
+      type: 'handle.claimed',
+      context_id: handle,
+      context_type: 'profile',
+      payload: { handle },
+    }).catch((err) => console.error('Attestation emit error:', err));
+
+    return jsonResponse({
+      success: true,
       handle: updated.handle,
       profile: updated,
     });

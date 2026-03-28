@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, tickets, ticketTypes, events } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, emitAttestation } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq, sql } from 'drizzle-orm';
 
@@ -67,6 +67,19 @@ export async function POST(
       .update(ticketTypes)
       .set({ sold: sql`${ticketTypes.sold} + 1` })
       .where(eq(ticketTypes.id, ticket.ticketTypeId));
+
+    // Fetch event to get creator DID for attestation
+    const [event] = await db.select().from(events).where(eq(events.id, ticket.eventId)).limit(1);
+
+    // Fire and forget — never block the response
+    emitAttestation({
+      issuer_did: ticket.ownerDid,
+      subject_did: event?.creatorDid ?? ticket.eventId,
+      type: 'ticket.purchased',
+      context_id: ticket.eventId,
+      context_type: 'event',
+      payload: { ticketId: confirmed.id },
+    }).catch((err) => console.error('Attestation emit error:', err));
 
     return NextResponse.json({ ticket: confirmed });
   } catch (error) {
