@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { db, events, ticketTypes, eventAdmins } from '@/src/db';
+import { db, events, ticketTypes } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq } from 'drizzle-orm';
@@ -30,19 +30,12 @@ export async function GET(
       .from(ticketTypes)
       .where(eq(ticketTypes.eventId, id));
 
-    // Get admins
-    const admins = await db
-      .select()
-      .from(eventAdmins)
-      .where(eq(eventAdmins.eventId, id));
-
     return NextResponse.json({
       event,
       ticketTypes: types.map(t => ({
         ...t,
         available: t.quantity ? t.quantity - (t.sold || 0) : null,
       })),
-      admins,
     });
   } catch (error) {
     console.error('Failed to get event:', error);
