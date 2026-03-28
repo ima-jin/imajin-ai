@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@imajin/ui';
+import { TicketScanner } from './ticket-scanner';
 
 interface Profile {
   name: string | null;
@@ -133,6 +134,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   const [surveyLoading, setSurveyLoading] = useState(false);
   const [resendState, setResendState] = useState<Record<string, 'sending' | 'sent'>>({});
   const [resendToast, setResendToast] = useState<{ email: string } | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -168,6 +170,12 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
       setActionLoading(null);
     }
   };
+
+  const handleScannerCheckIn = useCallback((ticketId: string) => {
+    setGuests(prev => prev.map(g =>
+      g.id === ticketId ? { ...g, usedAt: g.usedAt ?? new Date().toISOString() } : g
+    ));
+  }, []);
 
   const handleConfirmETransfer = async (ticketId: string) => {
     setConfirmETransfer(null);
@@ -305,7 +313,28 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
       <div className="px-6 pt-6 pb-4">
-        <h2 className="text-xl font-semibold mb-3">Guest List</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xl font-semibold">Guest List</h2>
+          <button
+            onClick={() => setScannerOpen(v => !v)}
+            className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
+          >
+            {scannerOpen ? '✕ Close Scanner' : '📷 Scan Tickets'}
+          </button>
+        </div>
+
+        {scannerOpen && (
+          <div className="mb-4">
+            <TicketScanner
+              eventId={eventId}
+              onCheckIn={handleScannerCheckIn}
+              lookupGuest={(id) => {
+                const g = guests.find(g => g.id === id);
+                return g ? { attendeeName: g.attendeeName, ticketType: g.ticketType } : undefined;
+              }}
+            />
+          </div>
+        )}
 
         {/* Summary badge */}
         {guests.length > 0 && (

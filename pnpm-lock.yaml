@@ -501,6 +501,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.1(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@prisma/client@5.22.0(prisma@5.22.0))(@types/pg@8.16.0)(postgres@3.4.8)(prisma@5.22.0)
+      html5-qrcode:
+        specifier: ^2.3.8
+        version: 2.3.8
       next:
         specifier: 14.2.35
         version: 14.2.35(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1005,11 +1008,11 @@ importers:
         specifier: workspace:^
         version: link:../../packages/ui
       '@metalabel/dfos-protocol':
-        specifier: ^0.4.0
-        version: 0.4.0
+        specifier: ^0.5.0
+        version: 0.5.0
       '@metalabel/dfos-web-relay':
-        specifier: ^0.4.1
-        version: 0.4.1(@metalabel/dfos-protocol@0.4.0)
+        specifier: ^0.5.0
+        version: 0.5.0(@metalabel/dfos-protocol@0.5.0)
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.1(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@prisma/client@5.22.0(prisma@5.22.0))(@types/pg@8.16.0)(postgres@3.4.8)(prisma@5.22.0)
@@ -1199,8 +1202,8 @@ importers:
         specifier: workspace:*
         version: link:../auth
       '@metalabel/dfos-protocol':
-        specifier: 0.2.0
-        version: 0.2.0
+        specifier: 0.5.0
+        version: 0.5.0
       '@noble/curves':
         specifier: ^1.8.1
         version: 1.9.7
@@ -2452,14 +2455,11 @@ packages:
   '@metalabel/dfos-protocol@0.1.0':
     resolution: {integrity: sha512-wXCyZGQM2L9q1ptERuzFoGyVSytEf3iM7/cAGZ28OMmfZ2vgsFZbJajArk4ZnYx8VLLMNrByCKGmlDs/+CT1sg==}
 
-  '@metalabel/dfos-protocol@0.2.0':
-    resolution: {integrity: sha512-8nprwkeIwEbWTSFvhkeA2iF8L8kckAOheaP4cbdlEAy3hr893z+YoMamwZw6U6w3WYNpdo655u9DFNdOI6CsSA==}
+  '@metalabel/dfos-protocol@0.5.0':
+    resolution: {integrity: sha512-J6vA4PMI7S7aRaw3DtNztfy17fA08hE/QEspAya58m+L/o2umfTx1DvuXob9w1rC0fyiUgtjYp0iQwXLFrZBlQ==}
 
-  '@metalabel/dfos-protocol@0.4.0':
-    resolution: {integrity: sha512-NsBzWbv8Ekmd8B1I9icNLg/4zMvVFUA0A7Z/jr6MAwt/FlWu3w+22Rw1kriHM3b0KX2o+vvCRBCdq183xJAPHg==}
-
-  '@metalabel/dfos-web-relay@0.4.1':
-    resolution: {integrity: sha512-+I/KkoW5zK/4I8iQnB8qsoKElSifZjY5tKC7vdnzAjmRO+AdOMt3Eb6Vr9zgUeBAe6RKxRK7IHdS0dnepmyFHQ==}
+  '@metalabel/dfos-web-relay@0.5.0':
+    resolution: {integrity: sha512-MlKP8KQKJEUFVbbzpbGkO8RDVJQZ3A3m9fXM26HE/+nPRLtLHyxXtq/l5kGvPjybx5P8KTgkXHLG2FA1TX2igA==}
     peerDependencies:
       '@metalabel/dfos-protocol': ^0.4.0
 
@@ -4831,6 +4831,9 @@ packages:
 
   html-void-elements@3.0.0:
     resolution: {integrity: sha512-bEqo66MRXsUGxWHV5IP0PUiAWwoEjba4VCzg0LjFJBpchPaTfyfCKTG6bc5F8ucKec3q5y6qOdGyYTSBEvhCrg==}
+
+  html5-qrcode@2.3.8:
+    resolution: {integrity: sha512-jsr4vafJhwoLVEDW3n1KvPnCCXWaQfRng0/EEYk1vNcQGcG/htAdhJX0be8YyqMoSz7+hZvOZSTAepsabiuhiQ==}
 
   htmlparser2@8.0.2:
     resolution: {integrity: sha512-GYdjWKDkbRLkZ5geuHs5NY1puJ+PXwP7+fHPRz06Eirsb9ugf6d8kkXav6ADhcODhFFPMIXyxkxSuMf3D6NCFA==}
@@ -8011,7 +8014,7 @@ snapshots:
       multiformats: 13.4.2
       zod: 4.3.6
 
-  '@metalabel/dfos-protocol@0.2.0':
+  '@metalabel/dfos-protocol@0.5.0':
     dependencies:
       '@ipld/dag-cbor': 9.2.5
       '@noble/curves': 2.0.1
@@ -8019,17 +8022,9 @@ snapshots:
       multiformats: 13.4.2
       zod: 4.3.6
 
-  '@metalabel/dfos-protocol@0.4.0':
+  '@metalabel/dfos-web-relay@0.5.0(@metalabel/dfos-protocol@0.5.0)':
     dependencies:
-      '@ipld/dag-cbor': 9.2.5
-      '@noble/curves': 2.0.1
-      '@noble/hashes': 2.0.1
-      multiformats: 13.4.2
-      zod: 4.3.6
-
-  '@metalabel/dfos-web-relay@0.4.1(@metalabel/dfos-protocol@0.4.0)':
-    dependencies:
-      '@metalabel/dfos-protocol': 0.4.0
+      '@metalabel/dfos-protocol': 0.5.0
       hono: 4.12.8
       zod: 4.3.6
 
@@ -10788,6 +10783,8 @@ snapshots:
   html-url-attributes@3.0.1: {}
 
   html-void-elements@3.0.0: {}
+
+  html5-qrcode@2.3.8: {}
 
   htmlparser2@8.0.2:
     dependencies:
