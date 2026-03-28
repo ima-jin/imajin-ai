@@ -1,6 +1,16 @@
-import { pgTable, text, timestamp, jsonb, index, integer, real, boolean, pgSchema, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, index, integer, real, pgSchema, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const profileSchema = pgSchema('profile');
+
+export interface FeatureToggles {
+  inference_enabled?: boolean;
+  show_market_items?: boolean;
+  show_events?: boolean;
+  links?: string | null;
+  coffee?: string | null;
+  dykil?: string | null;
+  learn?: string | null;
+}
 
 /**
  * Profiles - public identity pages linked to DIDs
@@ -22,9 +32,7 @@ export const profiles = profileSchema.table('profiles', {
   nextInviteAvailableAt: timestamp('next_invite_available_at', { withTimezone: true }), // NULL = can invite now
   metadata: jsonb('metadata').default({}),                    // location, website, etc.
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }), // Online presence tracking
-  inferenceEnabled: boolean('inference_enabled').notNull().default(false), // Presence queryable
-  showMarketItems: boolean('show_market_items').notNull().default(false),
-  showEvents: boolean('show_events').notNull().default(false),
+  featureToggles: jsonb('feature_toggles').$type<FeatureToggles>().notNull().default({}), // All feature flags
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
