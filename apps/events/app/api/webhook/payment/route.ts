@@ -16,6 +16,7 @@ import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js';
 import { randomBytes } from 'crypto';
 import { getClient } from '@imajin/db';
 import { emitAttestation } from '@imajin/auth';
+import { notify } from '@imajin/notify';
 
 // Configure ed25519 with sha512
 ed.hashes.sha512 = sha512;
@@ -339,6 +340,19 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     .where(eq(ticketTypes.id, ticketType.id));
 
   console.log(`Created ${createdTickets.length} ticket(s) for ${customerEmail}`);
+
+  // Notify buyer — fire and forget
+  notify.send({
+    to: ownerDid,
+    scope: "event:ticket",
+    data: {
+      email: customerEmail,
+      eventTitle: event.title,
+      ticketType: ticketType.name,
+      amount: amountTotal,
+      currency: currency.toUpperCase(),
+    },
+  }).catch((err) => console.error("Notify error:", err));
 
   // Add buyer to event chat conversation_members (non-fatal)
   // The event DID is the conversation DID

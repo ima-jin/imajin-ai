@@ -28,6 +28,7 @@
     "react": "^18",
     "react-dom": "^18",
     "@imajin/input": "workspace:*",
+    "@imajin/notify": "workspace:*",
     "html5-qrcode": "^2.3.8"
   },
   "devDependencies": {

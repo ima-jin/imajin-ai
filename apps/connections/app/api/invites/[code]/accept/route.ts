@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db, invites, profiles, pods, podMembers } from '../../../../../src/db/index';
 import { generateId } from '../../../../../src/lib/id';
 import { emitAttestation } from '@imajin/auth';
+import { notify } from '@imajin/notify';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 const INVITE_COOLDOWN_DAYS = 7;
@@ -119,6 +120,24 @@ export async function POST(
       .set({ nextInviteAvailableAt: cooldownEnd })
       .where(eq(profiles.did, session.did));
   }
+
+  // Notify inviter — fire and forget
+  (async () => {
+    const [inviterProfile] = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.did, invite.fromDid))
+      .limit(1);
+
+    notify.send({
+      to: invite.fromDid,
+      scope: "connection:invite-accepted",
+      data: {
+        ...(inviterProfile?.contactEmail && { email: inviterProfile.contactEmail }),
+        name: session.handle || session.did.slice(0, 16),
+      },
+    }).catch((err: unknown) => console.error("Notify error:", err));
+  })().catch((err: unknown) => console.error("Notify setup error:", err));
 
   emitAttestation({
     issuer_did: session.did,

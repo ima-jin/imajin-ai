@@ -18,6 +18,7 @@ import Stripe from 'stripe';
 import { db, transactions } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { genId } from '@/src/lib/id';
+import { notify } from '@imajin/notify';
 
 // Lazy Stripe initialization to avoid build-time errors in CI
 let _stripe: Stripe | null = null;
@@ -228,8 +229,40 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     await notifyEventsService('checkout.completed', session);
   }
 
-  // Add other service callbacks here as needed
-  // e.g., if (session.metadata?.orderId) { await notifyShopService(...) }
+  // Market: fire sale + purchase notifications
+  if (session.metadata?.service === 'market' && session.metadata?.sellerDid) {
+    const sellerDid = session.metadata.sellerDid;
+    const buyerDid = session.metadata.buyerDid;
+    const listingTitle = session.metadata.listingTitle;
+    const amount = session.amount_total ?? 0;
+    const currency = (session.currency ?? 'usd').toUpperCase();
+    const buyerEmail = session.customer_email || session.customer_details?.email || undefined;
+    const buyerName = session.customer_details?.name || undefined;
+
+    notify.send({
+      to: sellerDid,
+      scope: "market:sale",
+      data: {
+        listingTitle,
+        amount,
+        currency,
+        ...(buyerName && { buyerName }),
+      },
+    }).catch((err) => console.error("Notify market:sale error:", err));
+
+    if (buyerDid) {
+      notify.send({
+        to: buyerDid,
+        scope: "market:purchase",
+        data: {
+          ...(buyerEmail && { email: buyerEmail }),
+          listingTitle,
+          amount,
+          currency,
+        },
+      }).catch((err) => console.error("Notify market:purchase error:", err));
+    }
+  }
 }
 
 /**
