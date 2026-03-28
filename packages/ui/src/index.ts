@@ -20,8 +20,6 @@ export { PayoutSetupBanner } from './PayoutSetupBanner';
 export { ToastProvider, useToast } from './toast';
 export type { ToastType } from './toast';
 
-export { ActionSheet } from './action-sheet';
-
 export { NotificationProvider, useNotifications } from './notification-provider';
 export type { Notification, NotificationContextValue } from './notification-provider';
 export { NotificationBell } from './notification-bell';
