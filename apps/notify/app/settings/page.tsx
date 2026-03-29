@@ -40,13 +40,33 @@ const SCOPE_GROUPS = [
   },
 ];
 
+const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || 'https://dev-auth.imajin.ai';
+
 export default function SettingsPage() {
   const [prefs, setPrefs] = useState<Record<string, Preference>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [authed, setAuthed] = useState(false);
 
+  // Check session first
   useEffect(() => {
+    fetch(`${AUTH_URL}/api/session`, { credentials: 'include' })
+      .then((r) => {
+        if (!r.ok) {
+          window.location.href = `${AUTH_URL}/login?next=${encodeURIComponent(window.location.href)}`;
+          return;
+        }
+        setAuthed(true);
+      })
+      .catch(() => {
+        window.location.href = `${AUTH_URL}/login?next=${encodeURIComponent(window.location.href)}`;
+      });
+  }, []);
+
+  // Load preferences after auth confirmed
+  useEffect(() => {
+    if (!authed) return;
     fetch('/api/preferences', { credentials: 'include' })
       .then((r) => r.json())
       .then((data) => {
@@ -58,7 +78,7 @@ export default function SettingsPage() {
       })
       .catch(() => setError('Failed to load preferences'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [authed]);
 
   async function toggle(scope: string, channel: 'email' | 'inapp', value: boolean) {
     setSaving(`${scope}:${channel}`);
@@ -83,10 +103,10 @@ export default function SettingsPage() {
     return prefs[scope] ?? { email: true, inapp: true };
   }
 
-  if (loading) {
+  if (!authed || loading) {
     return (
       <div className="max-w-2xl mx-auto py-8">
-        <p className="text-zinc-400">Loading preferences...</p>
+        <p className="text-zinc-400">{!authed ? 'Checking session...' : 'Loading preferences...'}</p>
       </div>
     );
   }
