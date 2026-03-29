@@ -27,6 +27,7 @@ export interface ServiceUrls {
   profile?: string;
   pay?: string;
   registry?: string;
+  notify?: string;
 }
 
 export interface NavBarProps {
@@ -314,6 +315,18 @@ export function NavBar({
                           <span>✏️</span> Edit Profile
                         </button>
                       )}
+                      <a
+                        href={`${buildUrl('auth', servicePrefix, domain, serviceUrls)}/settings/security`}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                      >
+                        <span>🔒</span> Security
+                      </a>
+                      <a
+                        href={`${buildUrl('notify', servicePrefix, domain, serviceUrls)}/settings`}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                      >
+                        <span>🔔</span> Notifications
+                      </a>
                       <hr className="my-1 border-gray-200 dark:border-gray-800" />
                       <a
                         href={userLinks.messages}
