@@ -897,12 +897,12 @@ export async function ingestOperations060(
         if (result.status === 'new') {
           await sequencerStore.updatePendingStatus(op.operationCID, 'resolved');
         } else if (result.status === 'rejected') {
-          if (result.error && isDependencyError(result.error)) {
+          if (result.error && isDependencyError(result.error) && op.kind !== 'artifact') {
             // Keep as pending — will be retried by sequencer loop
+            // Return 'rejected' to caller so they see the correct status
             await sequencerStore.updatePendingStatus(op.operationCID, 'pending', result.error, true);
-            // Return 'new' to caller: op is accepted into the pending queue
-            result = { ...result, status: 'new' };
           } else {
+            // Permanent rejection (non-dep error, or artifact from unknown identity)
             await sequencerStore.updatePendingStatus(op.operationCID, 'rejected', result.error);
           }
         }
