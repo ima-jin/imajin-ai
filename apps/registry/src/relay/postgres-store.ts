@@ -1,4 +1,4 @@
-import { eq, and, gt } from 'drizzle-orm';
+import { eq, and, gt, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type {
   RelayStore,
@@ -18,6 +18,7 @@ import {
   relayBlobs,
   relayCountersignatures,
   relayOperationLog,
+  relayPendingOperations,
 } from '../db/relay-schema';
 
 // TODO: replace with imported types from @metalabel/dfos-web-relay once 0.5.0 is installed
@@ -223,6 +224,40 @@ export class PostgresRelayStore implements RelayStore {
       operationCid,
       jwsToken,
     });
+  }
+
+  async putPending(cid: string, jwsToken: string): Promise<void> {
+    await this.db
+      .insert(relayPendingOperations)
+      .values({ cid, jwsToken, status: 'pending' })
+      .onConflictDoNothing();
+  }
+
+  async getPendingOps(): Promise<Array<{ cid: string; jwsToken: string; attempts: number }>> {
+    const rows = await this.db
+      .select()
+      .from(relayPendingOperations)
+      .where(eq(relayPendingOperations.status, 'pending'))
+      .orderBy(relayPendingOperations.receivedAt);
+    return rows.map((r) => ({ cid: r.cid, jwsToken: r.jwsToken, attempts: r.attempts }));
+  }
+
+  async updatePendingStatus(
+    cid: string,
+    status: 'pending' | 'resolved' | 'rejected',
+    error?: string,
+    incrementAttempts?: boolean,
+  ): Promise<void> {
+    await this.db
+      .update(relayPendingOperations)
+      .set({
+        status,
+        lastError: error ?? null,
+        ...(incrementAttempts
+          ? { attempts: sql`${relayPendingOperations.attempts} + 1` }
+          : {}),
+      })
+      .where(eq(relayPendingOperations.cid, cid));
   }
 
   async appendToLog(entry: LogEntry): Promise<void> {

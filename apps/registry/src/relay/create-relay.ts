@@ -13,7 +13,7 @@ import { createRelay } from '@metalabel/dfos-web-relay';
 import type { RelayStore, RelayIdentity } from '@metalabel/dfos-web-relay';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { ingestOperations060 } from './ingest';
+import { ingestOperations060, type SequencerStore } from './ingest';
 
 const IngestBody = z.object({
   operations: z.array(z.string()).min(1).max(100),
@@ -53,7 +53,8 @@ export async function createCustomRelay(options: {
       return c.json({ error: 'invalid request', details: parsed.error.issues }, 400);
     }
 
-    const results = await ingestOperations060(parsed.data.operations, store);
+    const sequencerStore = 'putPending' in store ? (store as unknown as SequencerStore) : undefined;
+    const results = await ingestOperations060(parsed.data.operations, store, sequencerStore);
     return c.json({ results });
   });
 
