@@ -1,6 +1,7 @@
-import { createRelay, MemoryRelayStore } from '@metalabel/dfos-web-relay';
+import { MemoryRelayStore } from '@metalabel/dfos-web-relay';
 import type { Hono } from 'hono';
 import { PostgresRelayStore } from '@/src/relay/postgres-store';
+import { createCustomRelay } from '@/src/relay/create-relay';
 import { db } from '@/src/db';
 
 const RELAY_DID = process.env.RELAY_DID;
@@ -21,7 +22,7 @@ function initRelay(): Promise<Hono> {
       ? { did: RELAY_DID, profileArtifactJws: RELAY_PROFILE_JWS }
       : undefined;
 
-  return createRelay({ store, identity });
+  return createCustomRelay({ store, identity });
 }
 
 async function getRelay(): Promise<Hono> {

@@ -236,6 +236,7 @@ export class PostgresRelayStore implements RelayStore {
 
   async readLog(params: { after?: string; limit: number }): Promise<ReadLogResult> {
     let cursorSeq: bigint | null = null;
+    let cursorNotFound = false;
 
     if (params.after) {
       const cursorRows = await this.db
@@ -245,7 +246,14 @@ export class PostgresRelayStore implements RelayStore {
       const cursorRow = cursorRows[0];
       if (cursorRow) {
         cursorSeq = cursorRow.seq as bigint;
+      } else {
+        // Unknown cursor: return empty page instead of falling back to beginning
+        cursorNotFound = true;
       }
+    }
+
+    if (cursorNotFound) {
+      return { entries: [], cursor: null };
     }
 
     const query = this.db
