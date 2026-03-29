@@ -47,7 +47,7 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/preferences')
+    fetch('/api/preferences', { credentials: 'include' })
       .then((r) => r.json())
       .then((data) => {
         const map: Record<string, Preference> = {};
@@ -66,6 +66,7 @@ export default function SettingsPage() {
       const res = await fetch(`/api/preferences/${encodeURIComponent(scope)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ [channel]: value }),
       });
       if (!res.ok) throw new Error('Save failed');
