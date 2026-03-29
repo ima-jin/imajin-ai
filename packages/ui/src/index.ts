@@ -23,3 +23,5 @@ export type { ToastType } from './toast';
 export { NotificationProvider, useNotifications } from './notification-provider';
 export type { Notification, NotificationContextValue } from './notification-provider';
 export { NotificationBell } from './notification-bell';
+
+export { ActionSheet } from './action-sheet';
