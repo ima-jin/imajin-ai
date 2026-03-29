@@ -210,17 +210,23 @@ The migration runner (`./scripts/migrate.sh`) applies SQL files from each servic
 
 1. **Never use `drizzle-kit push`.** It applies changes directly to the database with no migration record. The next person who runs `migrate.sh` gets errors because their tracker doesn't know the change was already applied. Push is banned.
 
-2. **Always generate a migration file.** Every schema change, no matter how small:
+2. **Always use `drizzle-kit generate`.** Never hand-write SQL migration files. Every schema change, no matter how small:
 
 ```bash
 # 1. Make your schema changes in src/db/schema.ts
-# 2. Generate the migration
+# 2. Generate the migration (from the app directory!)
 cd apps/<service>
 npx drizzle-kit generate
 
-# 3. Review the generated SQL in drizzle/000N_*.sql
-# 4. Commit the schema.ts change AND the new migration file together
+# 3. Verify THREE files were created/updated:
+#    - drizzle/000N_<name>.sql        (the migration SQL)
+#    - drizzle/meta/_journal.json     (migration registry)
+#    - drizzle/meta/000N_snapshot.json (schema snapshot)
+#
+# 4. Commit ALL THREE with your schema.ts change
 ```
+
+**⚠️ If you drop a .sql file into drizzle/ without running `drizzle-kit generate`, the journal won't know it exists and `migrate.sh` will silently skip it.** CI will catch this — the `check-migrations` job verifies that sql/journal/snapshot counts match.
 
 3. **Make initial migrations idempotent.** Use `CREATE SCHEMA IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, and `CREATE INDEX IF NOT EXISTS` in `0000_*.sql` files.
 
