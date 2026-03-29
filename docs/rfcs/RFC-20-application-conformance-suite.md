@@ -133,6 +133,12 @@ Any userspace app registered in the Imajin registry that handles a specific chai
 
 The registry records which chain types an app claims to handle. The compliance suite runs the corresponding projector tests. Failure = non-conformant = not listed.
 
+## Scope
+
+The five chain types defined above are a starting point, not an exhaustive list. New chain types will emerge as userspace apps invent new ways to read DAG state. The framework — DAG fixture in, projected state assertion out — is what matters. The current tests are the first five rows in a table that grows with the ecosystem.
+
+Third-party app developers can define their own chain types with custom projector semantics and register conformance tests alongside them. The pattern is extensible by design.
+
 ## Open Questions
 
 1. **Membership add/remove conflict resolution:** When concurrent forks contain an add and a remove for the same member with no causal relationship, does add win or remove win? Add-wins is more conservative (never silently drop members). Remove-wins respects admin intent. Needs decision.
