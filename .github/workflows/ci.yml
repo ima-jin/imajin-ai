@@ -12,6 +12,19 @@ env:
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 jobs:
+  check-migrations:
+    name: Check Migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify migration artifacts
+        run: ./scripts/check-migrations.sh
+
   lint-and-typecheck:
     name: Lint
     runs-on: ubuntu-latest
