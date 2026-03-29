@@ -33,6 +33,12 @@ const SCOPE_GROUPS = [
     ],
   },
   {
+    label: 'Chat',
+    scopes: [
+      { scope: 'chat:mention', label: 'Mentioned in conversation' },
+    ],
+  },
+  {
     label: 'Connections',
     scopes: [
       { scope: 'connection:invite-accepted', label: 'Invitation accepted' },
