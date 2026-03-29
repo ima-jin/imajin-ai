@@ -193,6 +193,7 @@ Each service owns a Postgres schema within the shared database. They don't share
 |--------|---------|-----------|
 | `auth` | auth | identities, sessions, challenges |
 | `profile` | profile | profiles |
+| `notify` | notify | notifications, preferences |
 | `events` | events | events, tickets |
 | `coffee` | coffee | pages, tips |
 | `chat` | chat | conversations, messages |
@@ -212,6 +213,26 @@ To inspect the schema:
 ```bash
 DATABASE_URL="..." npx drizzle-kit studio
 ```
+
+### Migration Discipline
+
+**Every PR that modifies a `schema.ts` file MUST include the generated migration file.**
+
+The migration runner (`./scripts/migrate.sh`) applies SQL files from each service's `drizzle/` folder. If you change the schema without generating a migration, other developers' databases will be out of sync and the migration runner will silently skip the change.
+
+Steps when changing a schema:
+
+```bash
+# 1. Make your schema changes in src/db/schema.ts
+# 2. Generate the migration
+cd apps/<service>
+npx drizzle-kit generate
+
+# 3. Review the generated SQL in drizzle/000N_*.sql
+# 4. Commit the schema.ts change AND the new migration file together
+```
+
+If `drizzle-kit generate` prompts about column renames, choose **"create column"** unless you are intentionally renaming (rename loses existing data by default).
 
 ## Adding a New Service
 
