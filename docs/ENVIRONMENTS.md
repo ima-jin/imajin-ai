@@ -116,14 +116,19 @@ See [DEPLOYMENT.md](../DEPLOYMENT.md) for the full deployment pipeline.
 ## Database Migrations
 
 ```bash
-# On server — dev
-cd ~/dev/imajin-ai/apps/SERVICE
-DATABASE_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2) npx drizzle-kit push --force
+# On server — dev (runs all services)
+cd ~/dev/imajin-ai
+./scripts/migrate.sh
+
+# On server — single service
+./scripts/migrate.sh auth
 
 # On server — prod (be careful!)
-cd ~/prod/imajin-ai/apps/SERVICE
-DATABASE_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2) npx drizzle-kit push --force
+cd ~/prod/imajin-ai
+./scripts/migrate.sh
 ```
+
+> **⚠️ Never use `drizzle-kit push`.** See DEVELOPER.md for migration discipline rules.
 
 ## GPU Node (imajin-ml)
 

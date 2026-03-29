@@ -34,10 +34,8 @@ node -e "const kp = require('crypto').generateKeyPairSync('ed25519'); console.lo
 # 6. Disable invite gate for local dev (in apps/auth/.env.local)
 #    NEXT_PUBLIC_DISABLE_INVITE_GATE=true
 
-# 7. Push all database schemas (reads DATABASE_URL from .env.local automatically)
-for app in auth profile registry connections pay events chat media coffee dykil links learn market; do
-  (cd apps/$app && npx drizzle-kit push --force)
-done
+# 7. Run all database migrations
+./scripts/migrate.sh
 
 # 8. Start auth (minimum viable service)
 pnpm --filter @imajin/auth dev    # localhost:3001
@@ -63,7 +61,8 @@ Add more as needed. Each service's `.env.example` has all the defaults.
 
 ```bash
 dropdb imajin_dev && createdb imajin_dev
-# Then re-run step 7 above to push schemas
+# Then re-run step 7 above
+./scripts/migrate.sh
 ```
 
 ## Setup (Detailed)
@@ -87,15 +86,15 @@ Create a database and set `DATABASE_URL` in each service's `.env.local`:
 createdb imajin_dev
 ```
 
-Push **all** schemas (each service owns its own Postgres schema):
+Run all migrations (each service owns its own Postgres schema):
 
 ```bash
-for app in auth profile registry connections pay events chat media coffee dykil links learn market; do
-  (cd apps/$app && DATABASE_URL="postgresql://your_user:pass@localhost:5432/imajin_dev" npx drizzle-kit push --force)
-done
+./scripts/migrate.sh
 ```
 
 > **Note:** Tables live in named schemas (`auth`, `profile`, `chat`, etc.) — not in `public`. If your DB browser shows no tables, check the schema dropdown.
+>
+> **⚠️ Never use `drizzle-kit push`.** It applies schema changes directly without tracking, which breaks `migrate.sh` for everyone else. Always use migration files.
 
 ### Option B: SSH Tunnel (team members)
 
@@ -201,26 +200,17 @@ Each service owns a Postgres schema within the shared database. They don't share
 | `media` | media | assets, folders |
 | `learn` | learn | courses, modules, lessons, enrollments, lesson_progress |
 
-To push schema changes:
-
-```bash
-cd apps/SERVICE
-DATABASE_URL="..." npx drizzle-kit push --force
-```
-
-To inspect the schema:
-
-```bash
-DATABASE_URL="..." npx drizzle-kit studio
-```
-
 ### Migration Discipline
 
 **Every PR that modifies a `schema.ts` file MUST include the generated migration file.**
 
-The migration runner (`./scripts/migrate.sh`) applies SQL files from each service's `drizzle/` folder. If you change the schema without generating a migration, other developers' databases will be out of sync and the migration runner will silently skip the change.
+The migration runner (`./scripts/migrate.sh`) applies SQL files from each service's `drizzle/` folder. If you change the schema without generating a migration, other developers' databases will be out of sync.
 
-Steps when changing a schema:
+**The rules:**
+
+1. **Never use `drizzle-kit push`.** It applies changes directly to the database with no migration record. The next person who runs `migrate.sh` gets errors because their tracker doesn't know the change was already applied. Push is banned.
+
+2. **Always generate a migration file.** Every schema change, no matter how small:
 
 ```bash
 # 1. Make your schema changes in src/db/schema.ts
@@ -232,7 +222,18 @@ npx drizzle-kit generate
 # 4. Commit the schema.ts change AND the new migration file together
 ```
 
+3. **Make initial migrations idempotent.** Use `CREATE SCHEMA IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, and `CREATE INDEX IF NOT EXISTS` in `0000_*.sql` files.
+
+4. **Test your migration.** Run `./scripts/migrate.sh <service>` locally before pushing.
+
 If `drizzle-kit generate` prompts about column renames, choose **"create column"** unless you are intentionally renaming (rename loses existing data by default).
+
+To inspect the schema interactively:
+
+```bash
+cd apps/SERVICE
+npx drizzle-kit studio
+```
 
 ## Adding a New Service
 
