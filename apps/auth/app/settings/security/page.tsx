@@ -31,6 +31,38 @@ function truncateUserAgent(ua: string | null): string {
   return ua.slice(0, 57) + '…';
 }
 
+async function encryptPrivateKey(privateKeyJson: string, password: string): Promise<{ encryptedKey: string; salt: string }> {
+  const enc = new TextEncoder();
+  const passwordKey = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const aesKey = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: saltBytes, iterations: 100000, hash: 'SHA-256' },
+    passwordKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt']
+  );
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    aesKey,
+    enc.encode(privateKeyJson)
+  );
+  // Encode iv + ciphertext as base64 for encryptedKey, salt separately
+  const ivAndCipher = new Uint8Array(iv.byteLength + ciphertext.byteLength);
+  ivAndCipher.set(iv, 0);
+  ivAndCipher.set(new Uint8Array(ciphertext), iv.byteLength);
+  const encryptedKey = btoa(String.fromCharCode(...ivAndCipher));
+  const salt = btoa(String.fromCharCode(...saltBytes));
+  return { encryptedKey, salt };
+}
+
 export default function SecuritySettingsPage() {
   const [loading, setLoading] = useState(true);
   const [methods, setMethods] = useState<AccountMethods | null>(null);
@@ -40,6 +72,11 @@ export default function SecuritySettingsPage() {
   const [totpDisableCode, setTotpDisableCode] = useState('');
   const [showTotpSetup, setShowTotpSetup] = useState(false);
   const [showTotpDisable, setShowTotpDisable] = useState(false);
+  const [showEmailSetup, setShowEmailSetup] = useState(false);
+  const [emailCode, setEmailCode] = useState('');
+  const [showPasswordSetup, setShowPasswordSetup] = useState(false);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [actionLoading, setActionLoading] = useState('');
 
@@ -50,7 +87,6 @@ export default function SecuritySettingsPage() {
   async function loadData() {
     setLoading(true);
     try {
-      // Load session first to get DID
       const sessionRes = await fetch('/api/session', { credentials: 'include' });
       if (!sessionRes.ok) {
         window.location.href = '/login?next=/settings/security';
@@ -58,13 +94,11 @@ export default function SecuritySettingsPage() {
       }
       const session = await sessionRes.json();
 
-      // Load methods
       const methodsRes = await fetch(`/api/account/methods?did=${encodeURIComponent(session.did)}`);
       if (methodsRes.ok) {
         setMethods(await methodsRes.json());
       }
 
-      // Load devices
       const devicesRes = await fetch('/api/devices', { credentials: 'include' });
       if (devicesRes.ok) {
         const data = await devicesRes.json();
@@ -161,6 +195,121 @@ export default function SecuritySettingsPage() {
     }
   }
 
+  // Email MFA setup
+  async function handleStartEmailSetup() {
+    setActionLoading('email-setup');
+    try {
+      const res = await fetch('/api/mfa/email/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        credentials: 'include',
+      });
+      if (res.ok) {
+        setShowEmailSetup(true);
+        setEmailCode('');
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to send email code');
+      }
+    } catch {
+      showStatus('error', 'Network error. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  async function handleVerifyEmailSetup(e: React.FormEvent) {
+    e.preventDefault();
+    setActionLoading('email-verify');
+    try {
+      const res = await fetch('/api/mfa/email/verify-setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: emailCode }),
+        credentials: 'include',
+      });
+      if (res.ok) {
+        setShowEmailSetup(false);
+        setEmailCode('');
+        showStatus('success', 'Email MFA enabled successfully.');
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Invalid code. Please try again.');
+      }
+    } catch {
+      showStatus('error', 'Network error. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  async function handleDisableEmailMfa() {
+    setActionLoading('email-disable');
+    try {
+      const res = await fetch('/api/mfa/email/disable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        credentials: 'include',
+      });
+      if (res.ok) {
+        showStatus('success', 'Email MFA disabled.');
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to disable email MFA');
+      }
+    } catch {
+      showStatus('error', 'Network error. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  // Password (stored key) setup
+  async function handlePasswordSetup(e: React.FormEvent) {
+    e.preventDefault();
+    if (password !== confirmPassword) {
+      showStatus('error', 'Passwords do not match.');
+      return;
+    }
+    if (password.length < 8) {
+      showStatus('error', 'Password must be at least 8 characters.');
+      return;
+    }
+    setActionLoading('password-setup');
+    try {
+      const keypairJson = localStorage.getItem('imajin_keypair');
+      if (!keypairJson) {
+        showStatus('error', 'No key found in this browser. Sign in with your key first.');
+        return;
+      }
+      const { encryptedKey, salt } = await encryptPrivateKey(keypairJson, password);
+      const res = await fetch('/api/stored-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ encryptedKey, salt, keyDerivation: 'pbkdf2' }),
+        credentials: 'include',
+      });
+      if (res.ok) {
+        setShowPasswordSetup(false);
+        setPassword('');
+        setConfirmPassword('');
+        showStatus('success', 'Password login enabled. You can now log in with your password.');
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to set up password login');
+      }
+    } catch {
+      showStatus('error', 'Failed to encrypt key. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
   async function handleRemoveDevice(deviceId: string) {
     setActionLoading(`device-${deviceId}`);
     try {
@@ -204,6 +353,8 @@ export default function SecuritySettingsPage() {
   }
 
   const hasTotpEnabled = methods?.mfaMethods.includes('totp');
+  const hasEmailMfa = methods?.mfaMethods.includes('email');
+  const hasMfa = (methods?.mfaMethods.length ?? 0) > 0;
 
   if (loading) {
     return (
@@ -243,28 +394,78 @@ export default function SecuritySettingsPage() {
           </div>
 
           {/* Stored key (password login) */}
-          <div className="flex items-start justify-between py-4">
-            <div>
-              <p className="text-white font-medium">Password login</p>
-              <p className="text-sm text-gray-400 mt-1">
-                {methods?.hasStoredKey
-                  ? 'Your encrypted key is stored. Use your password to log in on this device.'
-                  : 'Store an encrypted copy of your key to log in with a password. Requires TOTP first.'}
-              </p>
-              {!hasTotpEnabled && !methods?.hasStoredKey && (
-                <p className="text-xs text-amber-400 mt-2">Set up an authenticator app first to enable password login.</p>
-              )}
-            </div>
-            <div className="ml-4 flex flex-col items-end gap-2">
-              {methods?.hasStoredKey ? (
-                <>
+          <div className="py-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-white font-medium">Password login</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  {methods?.hasStoredKey
+                    ? 'Your encrypted key is stored. Use your password to log in on this device.'
+                    : 'Store an encrypted copy of your key to log in with a password.'}
+                </p>
+                {methods?.hasStoredKey && !hasMfa && (
+                  <p className="text-xs text-blue-400 mt-2">We recommend setting up an additional MFA method (authenticator app or email code) to protect your account.</p>
+                )}
+              </div>
+              <div className="ml-4 flex flex-col items-end gap-2">
+                {methods?.hasStoredKey ? (
                   <span className="px-2 py-1 text-xs bg-green-900/30 border border-green-800 rounded text-green-400 whitespace-nowrap">Active</span>
-                  {/* TODO: Add change/remove stored key flow */}
-                </>
-              ) : (
-                <span className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-400 whitespace-nowrap">Not set up</span>
-              )}
+                ) : (
+                  <>
+                    <span className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-400 whitespace-nowrap">Not set up</span>
+                    <button
+                      onClick={() => { setShowPasswordSetup(true); setPassword(''); setConfirmPassword(''); }}
+                      className="text-sm px-3 py-1 bg-[#F59E0B] text-black rounded hover:bg-[#D97706] transition"
+                    >
+                      Set up password
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
+
+            {/* Password setup flow */}
+            {showPasswordSetup && !methods?.hasStoredKey && (
+              <div className="mt-4 p-4 bg-gray-900 border border-gray-700 rounded-lg">
+                <h3 className="text-white font-medium mb-2">Set up password login</h3>
+                <p className="text-sm text-gray-400 mb-4">
+                  Your private key will be encrypted in your browser using this password and stored securely.
+                  Choose a strong password — it cannot be recovered if lost.
+                </p>
+                <form onSubmit={handlePasswordSetup} className="space-y-3">
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="New password"
+                    autoFocus
+                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                  />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm password"
+                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={!password || !confirmPassword || actionLoading === 'password-setup'}
+                      className="flex-1 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium disabled:opacity-50"
+                    >
+                      {actionLoading === 'password-setup' ? 'Encrypting…' : 'Enable password login'}
+                    </button>
+                  </div>
+                </form>
+                <button
+                  onClick={() => { setShowPasswordSetup(false); setPassword(''); setConfirmPassword(''); }}
+                  className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -385,13 +586,65 @@ export default function SecuritySettingsPage() {
               <div>
                 <p className="text-white font-medium">Email code</p>
                 <p className="text-sm text-gray-400 mt-1">Receive a one-time code via email as a second factor.</p>
-                <p className="text-xs text-amber-400 mt-1">
-                  {/* TODO: POST /api/mfa/email/setup — implement email MFA setup flow */}
-                  Email MFA setup coming soon.
-                </p>
               </div>
-              <span className="ml-4 px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-500 whitespace-nowrap">Not set up</span>
+              <div className="ml-4 flex flex-col items-end gap-2">
+                {hasEmailMfa ? (
+                  <span className="px-2 py-1 text-xs bg-green-900/30 border border-green-800 rounded text-green-400 whitespace-nowrap">Active</span>
+                ) : (
+                  <span className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-400 whitespace-nowrap">Not set up</span>
+                )}
+                {hasEmailMfa ? (
+                  <button
+                    onClick={handleDisableEmailMfa}
+                    disabled={actionLoading === 'email-disable'}
+                    className="text-sm px-3 py-1 border border-red-800 text-red-400 rounded hover:bg-red-900/20 transition disabled:opacity-50"
+                  >
+                    {actionLoading === 'email-disable' ? 'Disabling…' : 'Disable'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleStartEmailSetup}
+                    disabled={actionLoading === 'email-setup'}
+                    className="text-sm px-3 py-1 bg-[#F59E0B] text-black rounded hover:bg-[#D97706] transition disabled:opacity-50"
+                  >
+                    {actionLoading === 'email-setup' ? 'Sending…' : 'Enable'}
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Email MFA setup flow */}
+            {showEmailSetup && !hasEmailMfa && (
+              <div className="mt-4 p-4 bg-gray-900 border border-gray-700 rounded-lg">
+                <h3 className="text-white font-medium mb-2">Verify your email</h3>
+                <p className="text-sm text-gray-400 mb-4">A 6-digit code was sent to your registered email address. Enter it below to activate email MFA.</p>
+                <form onSubmit={handleVerifyEmailSetup} className="flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={emailCode}
+                    onChange={e => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="000000"
+                    maxLength={6}
+                    autoFocus
+                    className="flex-1 px-4 py-2 border border-gray-700 rounded-lg bg-black text-white text-center font-mono tracking-widest focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                  />
+                  <button
+                    type="submit"
+                    disabled={emailCode.length !== 6 || actionLoading === 'email-verify'}
+                    className="px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium disabled:opacity-50"
+                  >
+                    {actionLoading === 'email-verify' ? 'Verifying…' : 'Confirm'}
+                  </button>
+                </form>
+                <button
+                  onClick={() => { setShowEmailSetup(false); setEmailCode(''); }}
+                  className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
 
           {/* SMS */}
