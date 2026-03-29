@@ -133,7 +133,16 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: P
       // Decrypt stored key client-side
       let privateKeyHex: string;
       try {
-        privateKeyHex = await decryptStoredKey(storedKeyData.encryptedKey, storedKeyData.salt, password);
+        const decrypted = await decryptStoredKey(storedKeyData.encryptedKey, storedKeyData.salt, password);
+
+        // The setup encrypts the full localStorage JSON: {"privateKey":"...","publicKey":"..."}
+        // Try parsing as JSON first, fall back to raw hex
+        try {
+          const parsed = JSON.parse(decrypted);
+          privateKeyHex = parsed.privateKey || parsed.keypair?.privateKey || decrypted;
+        } catch {
+          privateKeyHex = decrypted;
+        }
       } catch {
         setError('Incorrect password. Please try again.');
         return;
