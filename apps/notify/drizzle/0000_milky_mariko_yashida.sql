@@ -1,6 +1,6 @@
-CREATE SCHEMA "notify";
+CREATE SCHEMA IF NOT EXISTS "notify";
 --> statement-breakpoint
-CREATE TABLE "notify"."notifications" (
+CREATE TABLE IF NOT EXISTS "notify"."notifications" (
 	"id" text PRIMARY KEY NOT NULL,
 	"recipient_did" text NOT NULL,
 	"sender_did" text,
@@ -15,7 +15,7 @@ CREATE TABLE "notify"."notifications" (
 	"created_at" timestamp with time zone DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "notify"."preferences" (
+CREATE TABLE IF NOT EXISTS "notify"."preferences" (
 	"id" text PRIMARY KEY NOT NULL,
 	"did" text NOT NULL,
 	"scope" text NOT NULL,
@@ -23,6 +23,6 @@ CREATE TABLE "notify"."preferences" (
 	"inapp" boolean DEFAULT true
 );
 --> statement-breakpoint
-CREATE INDEX "idx_notifications_recipient" ON "notify"."notifications" USING btree ("recipient_did","created_at");--> statement-breakpoint
-CREATE INDEX "idx_notifications_unread" ON "notify"."notifications" USING btree ("recipient_did");--> statement-breakpoint
-CREATE INDEX "idx_preferences_did_scope" ON "notify"."preferences" USING btree ("did","scope");
+CREATE INDEX IF NOT EXISTS "idx_notifications_recipient" ON "notify"."notifications" USING btree ("recipient_did","created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_notifications_unread" ON "notify"."notifications" USING btree ("recipient_did");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_preferences_did_scope" ON "notify"."preferences" USING btree ("did","scope");
