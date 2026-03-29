@@ -28,11 +28,23 @@ function base58Encode(bytes: Uint8Array): string {
 }
 
 /**
- * Client-side PBKDF2 → AES-GCM decryption for stored keys.
- * Format: first 12 bytes = IV, rest = ciphertext (hex-encoded together).
+ * Decode base64 string to Uint8Array.
  */
-async function decryptStoredKey(encryptedKeyHex: string, saltHex: string, password: string): Promise<string> {
-  const salt = hexToBytes(saltHex);
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Client-side PBKDF2 → AES-GCM decryption for stored keys.
+ * Format: base64-encoded (first 12 bytes = IV, rest = ciphertext). Salt is base64-encoded separately.
+ */
+async function decryptStoredKey(encryptedKeyB64: string, saltB64: string, password: string): Promise<string> {
+  const salt = base64ToBytes(saltB64);
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
   const derivedKey = await crypto.subtle.deriveKey(
@@ -43,7 +55,7 @@ async function decryptStoredKey(encryptedKeyHex: string, saltHex: string, passwo
     ['decrypt']
   );
   // Parse: first 12 bytes = IV, rest = ciphertext
-  const combined = hexToBytes(encryptedKeyHex);
+  const combined = base64ToBytes(encryptedKeyB64);
   const iv = combined.slice(0, 12);
   const ciphertext = combined.slice(12);
   const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, derivedKey, ciphertext);
@@ -121,7 +133,16 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: P
       // Decrypt stored key client-side
       let privateKeyHex: string;
       try {
-        privateKeyHex = await decryptStoredKey(storedKeyData.encryptedKey, storedKeyData.salt, password);
+        const decrypted = await decryptStoredKey(storedKeyData.encryptedKey, storedKeyData.salt, password);
+
+        // The setup encrypts the full localStorage JSON: {"privateKey":"...","publicKey":"..."}
+        // Try parsing as JSON first, fall back to raw hex
+        try {
+          const parsed = JSON.parse(decrypted);
+          privateKeyHex = parsed.privateKey || parsed.keypair?.privateKey || decrypted;
+        } catch {
+          privateKeyHex = decrypted;
+        }
       } catch {
         setError('Incorrect password. Please try again.');
         return;
