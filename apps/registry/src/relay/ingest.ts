@@ -36,6 +36,47 @@ export interface IngestionResult060 {
   chainId?: string;
 }
 
+export interface SequencerStore {
+  putPending(cid: string, jwsToken: string): Promise<void>;
+  getPendingOps(): Promise<Array<{ cid: string; jwsToken: string; attempts: number }>>;
+  updatePendingStatus(
+    cid: string,
+    status: 'pending' | 'resolved' | 'rejected',
+    error?: string,
+    incrementAttempts?: boolean,
+  ): Promise<void>;
+}
+
+// ─── Ingest mutex ─────────────────────────────────────────────────────────────
+
+let _ingestLock: Promise<void> = Promise.resolve();
+
+async function withMutex<T>(fn: () => Promise<T>): Promise<T> {
+  let release!: () => void;
+  const next = new Promise<void>((r) => {
+    release = r;
+  });
+  const prev = _ingestLock;
+  _ingestLock = next;
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
+// ─── Dependency error detection ───────────────────────────────────────────────
+
+function isDependencyError(error: string): boolean {
+  return (
+    error.includes('unknown identity:') ||
+    error.includes('unknown key ') ||
+    error.includes('unknown previous operation:') ||
+    error.includes('content chain not found:')
+  );
+}
+
 // ─── Temporal guard ──────────────────────────────────────────────────────────
 
 const MAX_FUTURE_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -744,11 +785,86 @@ function dependencySort(ops: ClassifiedOp[]): ClassifiedOp[] {
   return result;
 }
 
+// ─── Single op dispatch ───────────────────────────────────────────────────────
+
+async function dispatchOp(op: ClassifiedOp, store: RelayStore): Promise<IngestionResult060> {
+  switch (op.kind) {
+    case 'identity-op':
+      return ingestIdentityOp(op.jwsToken, store);
+    case 'content-op':
+      return ingestContentOp(op.jwsToken, store);
+    case 'beacon':
+      return ingestBeacon(op.jwsToken, store);
+    case 'countersign':
+      return ingestCountersign(op.jwsToken, store);
+    case 'artifact':
+      return ingestArtifact(op.jwsToken, store);
+    default:
+      return { cid: op.operationCID ?? '', status: 'rejected', error: 'unrecognized operation type' };
+  }
+}
+
+// ─── Sequencer loop ───────────────────────────────────────────────────────────
+
+const MAX_SEQUENCER_ATTEMPTS = 10;
+
+async function runSequencerLoop(store: RelayStore, sequencerStore: SequencerStore): Promise<void> {
+  while (true) {
+    const pending = await sequencerStore.getPendingOps();
+    if (pending.length === 0) break;
+
+    const classified: ClassifiedOp[] = pending.map((p, i) => ({
+      ...classify(p.jwsToken),
+      originalIndex: i,
+    }));
+    const sorted = dependencySort(classified);
+
+    let madeProgress = false;
+
+    for (const op of sorted) {
+      const info = pending[op.originalIndex];
+
+      if (info.attempts >= MAX_SEQUENCER_ATTEMPTS) {
+        await sequencerStore.updatePendingStatus(
+          info.cid,
+          'rejected',
+          `max retry attempts (${MAX_SEQUENCER_ATTEMPTS}) exceeded`,
+        );
+        madeProgress = true;
+        continue;
+      }
+
+      let result: IngestionResult060;
+      try {
+        result = await dispatchOp(op, store);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'unexpected error';
+        result = { cid: info.cid, status: 'rejected', error: message };
+      }
+
+      if (result.status === 'new' || result.status === 'duplicate') {
+        await sequencerStore.updatePendingStatus(info.cid, 'resolved');
+        madeProgress = true;
+      } else if (result.status === 'rejected') {
+        if (result.error && isDependencyError(result.error)) {
+          await sequencerStore.updatePendingStatus(info.cid, 'pending', result.error, true);
+        } else {
+          await sequencerStore.updatePendingStatus(info.cid, 'rejected', result.error);
+          madeProgress = true;
+        }
+      }
+    }
+
+    if (!madeProgress) break;
+  }
+}
+
 // ─── Public entry point ───────────────────────────────────────────────────────
 
 export async function ingestOperations060(
   tokens: string[],
   store: RelayStore,
+  sequencerStore?: SequencerStore,
 ): Promise<IngestionResult060[]> {
   const classified: ClassifiedOp[] = tokens.map((token, i) => ({
     ...classify(token),
@@ -756,39 +872,53 @@ export async function ingestOperations060(
   }));
   const sorted = dependencySort(classified);
 
-  const indexedResults: Array<{ index: number; result: IngestionResult060 }> = [];
-
-  for (const op of sorted) {
-    try {
-      let result: IngestionResult060;
-      switch (op.kind) {
-        case 'identity-op':
-          result = await ingestIdentityOp(op.jwsToken, store);
-          break;
-        case 'content-op':
-          result = await ingestContentOp(op.jwsToken, store);
-          break;
-        case 'beacon':
-          result = await ingestBeacon(op.jwsToken, store);
-          break;
-        case 'countersign':
-          result = await ingestCountersign(op.jwsToken, store);
-          break;
-        case 'artifact':
-          result = await ingestArtifact(op.jwsToken, store);
-          break;
-        default:
-          result = { cid: '', status: 'rejected', error: 'unrecognized operation type' };
+  // Store all ops as pending before acquiring the mutex (lock-free storage)
+  if (sequencerStore) {
+    for (const op of classified) {
+      if (op.operationCID) {
+        await sequencerStore.putPending(op.operationCID, op.jwsToken);
       }
-      indexedResults.push({ index: op.originalIndex, result });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'unexpected error';
-      indexedResults.push({
-        index: op.originalIndex,
-        result: { cid: '', status: 'rejected', error: message },
-      });
     }
   }
+
+  const indexedResults = await withMutex(async () => {
+    const results: Array<{ index: number; result: IngestionResult060 }> = [];
+
+    for (const op of sorted) {
+      let result: IngestionResult060;
+      try {
+        result = await dispatchOp(op, store);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'unexpected error';
+        result = { cid: op.operationCID ?? '', status: 'rejected', error: message };
+      }
+
+      if (sequencerStore && op.operationCID) {
+        if (result.status === 'new') {
+          await sequencerStore.updatePendingStatus(op.operationCID, 'resolved');
+        } else if (result.status === 'rejected') {
+          if (result.error && isDependencyError(result.error)) {
+            // Keep as pending — will be retried by sequencer loop
+            await sequencerStore.updatePendingStatus(op.operationCID, 'pending', result.error, true);
+            // Return 'new' to caller: op is accepted into the pending queue
+            result = { ...result, status: 'new' };
+          } else {
+            await sequencerStore.updatePendingStatus(op.operationCID, 'rejected', result.error);
+          }
+        }
+        // 'duplicate': no status change needed (already resolved or pending)
+      }
+
+      results.push({ index: op.originalIndex, result });
+    }
+
+    // Run sequencer loop to resolve pending ops (including any from prior batches)
+    if (sequencerStore) {
+      await runSequencerLoop(store, sequencerStore);
+    }
+
+    return results;
+  });
 
   return indexedResults.sort((a, b) => a.index - b.index).map((r) => r.result);
 }
