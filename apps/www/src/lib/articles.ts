@@ -54,7 +54,7 @@ const slugMap: Record<string, string> = {
   'essay-20-how-to-save-the-platforms': 'how-to-save-the-platforms',
   'essay-21-how-to-save-media-streaming': 'how-to-save-media-streaming',
   'essay-14-honor-the-chain': 'honor-the-chain',
-  'essay-22-interstitial-03-cult-of-community-preamble': 'cult-of-community',
+  'essay-22-interstitial-03-cult-of-community': 'cult-of-community',
   'essay-23-imajin-business-case': 'the-business-case',
   'essay-24-revenue-from-day-one': 'revenue-from-day-one',
   'essay-25-the-connector': 'the-connector',
