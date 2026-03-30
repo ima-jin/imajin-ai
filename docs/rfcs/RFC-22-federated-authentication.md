@@ -115,6 +115,40 @@ User            Home Relay           Requesting Service
  │                 │                        │
 ```
 
+## Key Custody Tiers
+
+Different platforms handle private keys differently. The federated auth protocol must work across all of them.
+
+| Platform | Key custody | Who signs | Example |
+|----------|-----------|-----------|---------|
+| **Custodial** | Platform holds keys (e.g., AWS KMS) | Relay signs on behalf of user | DFOS platform |
+| **Stored key** | Browser, password-encrypted | User signs locally | Imajin (password login) |
+| **Self-custody** | User's own key file | User signs with raw key | Imajin (key import) |
+| **Local-first** | SQLite on user's device | User signs on own hardware | Future DFOS Go binary |
+
+### How each tier produces an attestation
+
+**Custodial (relay-signed):**
+1. User authenticates to home relay (email code, password, etc.)
+2. Relay accesses user's key via KMS
+3. Relay signs the attestation with user's custodied key (or relay's own key)
+4. User never interacts with cryptographic material
+
+**Self-sovereign (user-signed):**
+1. User authenticates on home relay (password decrypts stored key, or key file loaded)
+2. User's client signs the challenge directly
+3. Home relay countersigns (wraps in attestation)
+4. Both signatures included — stronger proof
+
+**The requesting service doesn't care which tier.** It verifies the attestation signature against a key it can resolve from the chain. Whether that key was accessed via KMS, decrypted from browser storage, or loaded from a hardware device is the home relay's business. The attestation format is identical.
+
+### Implications
+
+- Custodial relays are functionally OAuth identity providers — the relay vouches for the user
+- Self-sovereign users provide cryptographic proof — the relay witnesses it
+- A requesting service MAY distinguish between tiers (e.g., require self-sovereign for high-value operations) via the optional `authMethod` field in the attestation
+- The custodial layer at DFOS is closed-source (AWS KMS) — the trust model must be attestation-based, not implementation-based
+
 ## Trust Model
 
 The requesting service does NOT trust the user directly. It trusts the **home relay**, which vouches for the user.
@@ -124,7 +158,7 @@ Trust chain:
 Requesting service trusts home relay
   ← because: peered, conformant (RFC-21), identity chain verified
 Home relay trusts user
-  ← because: user proved key possession locally
+  ← because: user authenticated (custodial) or proved key possession (self-sovereign)
 Therefore: requesting service trusts user (transitively)
 ```
 
@@ -230,9 +264,10 @@ This does NOT replace Imajin's existing auth. It adds a federated path:
 
 | Auth method | Key location | Use case |
 |-------------|-------------|----------|
-| Key import | User pastes key | Power users, first registration |
+| Key import | User's own file | Power users, first registration |
 | Password (stored key) | Encrypted in browser | Returning users, same device |
-| **Federated (this RFC)** | **User's home relay** | **Cross-node access, new services** |
+| **Federated — self-sovereign** | **User signs on home relay** | **Cross-node, user holds key** |
+| **Federated — custodial** | **Home relay signs via KMS** | **Cross-node, DFOS platform users** |
 | NFC card | On card | Physical onboarding (Muskoka card) |
 
 ## Implementation Phases
