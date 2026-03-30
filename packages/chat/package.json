@@ -8,8 +8,9 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "@imajin/input": "workspace:*"
+    "@imajin/input": "workspace:*",
+    "@imajin/ui": "workspace:*",
+    "react": "^18.2.0"
   },
   "devDependencies": {
     "@types/react": "^18",

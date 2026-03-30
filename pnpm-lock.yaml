@@ -1163,6 +1163,9 @@ importers:
       '@imajin/input':
         specifier: workspace:*
         version: link:../input
+      '@imajin/ui':
+        specifier: workspace:*
+        version: link:../ui
       react:
         specifier: ^18.2.0
         version: 18.3.1
