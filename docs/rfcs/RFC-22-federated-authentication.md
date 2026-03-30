@@ -8,212 +8,136 @@
 
 ## Summary
 
-A protocol for authenticating users across federated Imajin/DFOS nodes without exposing private keys to foreign services. The user authenticates on their home relay, receives a signed attestation, and presents it to the requesting service. Private keys never leave the user's trust boundary.
+A protocol for authenticating users across federated Imajin/DFOS nodes without exposing private keys to foreign services. Three tiers handle different trust levels and key custody models. The primary cross-platform flow uses a consent-and-sign redirect — the user authenticates on their home platform, consents to share identity data, and returns with a signed JWS artifact.
 
 ## Problem
 
-With peered relays (ATX, NYC, LIS, Imajin), a user registered on one relay should be able to authenticate on another. The naive approach — "enter your DID and sign a challenge" — requires the user to input their private key into a foreign service's UI. This fundamentally breaks the sovereignty model.
+With peered relays (ATX, NYC, LIS, Imajin), a user registered on one platform should be able to authenticate on another. The naive approach — "enter your DID and sign a challenge" — requires the user to input their private key into a foreign service's UI. This fundamentally breaks the sovereignty model.
 
-Users will not (and should not) paste private keys into sites they don't control. We need a redirect-based flow where authentication happens on the user's home turf.
+Users will not (and should not) paste private keys into sites they don't control. Custodial users (DFOS platform) don't even have access to their keys. We need flows that respect key custody boundaries.
 
-## Prior Art
+## Three Authentication Tiers
 
-| Protocol | How it works | Limitation |
-|----------|-------------|------------|
-| OAuth 2.0 / OIDC | Redirect to IdP → authenticate → callback with token | Centralized IdP, not self-sovereign |
-| SIWE (Sign-In with Ethereum) | User signs a message in their wallet | Requires wallet browser extension |
-| DIDComm | Peer-to-peer encrypted messaging between DIDs | Complex, not designed for web auth |
-| Fediverse (ActivityPub) | HTTP Signatures on server-to-server requests | Server-to-server only, no user-facing auth |
+| Tier | User type | Has keys? | Flow | Trust level |
+|------|-----------|-----------|------|-------------|
+| **1. Direct key auth** | Imajin user on verified node | Yes | Sign challenge on requesting service | Highest — cryptographic proof |
+| **2. Consent-and-sign redirect** | Any cross-platform user | Varies | Redirect to home platform consent screen | High — home platform vouches |
+| **3. Email verification** | Fallback when redirect unavailable | No | Email code + chain lookup | Moderate — email ownership only |
 
-DFOS federated auth is closest to OAuth in UX but closest to SIWE in trust model — the user proves key possession, but they do it on their own infrastructure.
+---
 
-## Protocol
+## Tier 1: Direct Key Auth
 
-### Actors
-
-| Actor | Role |
-|-------|------|
-| **User** | Holds private key, has a home relay |
-| **Home Relay** | The relay where the user's identity chain lives. Trusted by the user. |
-| **Requesting Service** | The Imajin node the user wants to access (e.g., events.imajin.ai) |
-| **Requesting Relay** | The relay peered with the requesting service. May or may not be the same as the home relay. |
-
-### Two Authentication Tiers
-
-| Tier | User type | Has keys? | Flow |
-|------|-----------|-----------|------|
-| **1. Direct key auth** | Imajin user (holds keypair) | Yes | Sign challenge on requesting service |
-| **2. Email verification** | Any user (custodial or cross-platform) | No | Email code + chain lookup |
-
-**Tier 1** is the strong path — user signs a challenge directly with their private key. This is existing Imajin login. Used when the user has their key available (stored key, key file, hardware key).
-
-**Tier 2** is the universal path — works for everyone, regardless of key custody. No redirects. No OAuth dance. The user enters their email, we verify they own it, and we look up their identity chain for access level.
-
-### Primary Flow: Email Verification (Tier 2)
-
-This is the default for federated auth. No redirect to home relay needed.
-
-```
-1. User visits requesting service, clicks "Login from another network"
-
-2. User enters their EMAIL ADDRESS
-   — Not a DID. Nobody types did:dfos:7v4vtfnh7v28ka7af3cv79 into a login box.
-
-3. Requesting service resolves email → DID + public key:
-   → Query known peered relays/nodes: GET /auth/resolve?email=user@example.com
-   → A relay claims it, returns: { did, publicKey, homeRelay }
-   → If no relay claims it: "No account found for this email"
-
-4. Requesting service sends email verification code to that address
-   — Standard 6-digit code, 5 minute expiry
-   — Same mechanism as existing MFA email codes
-
-5. User enters the code
-   → Proves they control the email bound to this DID
-   → This IS the authentication — if you own the email, you are the identity
-
-6. Requesting service looks up the DID's chain on its relay (via peering)
-   → Check standing: attestation history, age, diversity
-   → Determine trust level and access permissions
-
-7. Session created
-   — Auto-creates local identity if first visit (from chain state)
-   — Trust level reflects chain standing, not just email ownership
-```
-
-The home relay's only job is answering: "what's the DID and public key for this email?" After that, the requesting service handles everything. The user never leaves the site.
-
-### Direct Key Auth (Tier 1)
-
-For Imajin users who hold their own keys — the stronger path:
+For Imajin users who hold their own keys — the strongest path. No redirects, no third parties.
 
 ```
 1. User chooses "Login with key" (password-stored key, key file, etc.)
 2. Requesting service issues challenge
-3. User signs challenge with private key (client-side)
-4. Verify signature against chain's public key
-5. Session created with higher trust level
+3. User signs challenge with private key (client-side, key never leaves browser)
+4. Requesting service verifies signature against chain's public key
+5. Session created with highest trust level
 ```
 
-This is the existing Imajin login flow. Between verified Imajin nodes, this is preferred over email verification because it provides cryptographic proof of key possession, not just email ownership.
+This is existing Imajin login. Used between verified Imajin nodes running the conformance suite with an approved build. The requesting service trusts the node's software to handle the key safely.
 
-### Fallback: Home Relay Redirect
+**When to use:** Imajin-to-Imajin. User is on a conformant node and holds their own key.
 
-If the home relay won't expose email → DID resolution, or if the user needs to authenticate through a method only available on their home node (biometric, hardware key, etc.), the full redirect flow is available:
+---
 
-```
-1. Redirect to home relay/node auth endpoint
-2. User authenticates there (key never leaves their context)
-3. Home relay signs attestation
-4. Redirect back with signed attestation
-5. Verify attestation against relay's chain key
-6. Session created
-```
+## Tier 2: Consent-and-Sign Redirect (Primary Cross-Platform Flow)
 
-This is the OAuth-style flow — more complex but covers edge cases where email verification isn't sufficient or available.
+The primary flow for cross-platform authentication. Designed with Brandon (DFOS) and Vinny. Solves the custodial key problem: how does a user whose keys are managed by their platform "sign" a challenge for a third party?
 
-### Email Resolution
+**Answer:** A consent screen on the home platform. The user authenticates there, consents to sharing their identity with the requesting service, and the home platform signs a challenge on their behalf. The signed JWS artifact is returned via redirect.
 
-The email → DID lookup requires relays/nodes to expose a resolution endpoint:
+### Flow
 
 ```
-GET /auth/resolve?email=user@example.com
-→ { did: "did:dfos:abc123", publicKey: "z6Mkm...", homeRelay: "https://relay.example.com" }
+1. User visits requesting service (e.g., events.imajin.ai)
+   → Clicks "Login with DFOS" (or "Login from another node")
+
+2. Requesting service generates a challenge nonce and redirects:
+   GET https://home-platform.example.com/auth/consent
+     ?challenge=<random-nonce>
+     &callback=https://events.imajin.ai/auth/callback
+     &requesting_did=<requesting-service-relay-DID>
+     &scopes=identity,email    ← what data the requesting service wants
+
+3. Home platform authenticates the user locally
+   — Email code, password, biometric, KMS-backed — whatever the platform supports
+   — Private key NEVER leaves this context
+
+4. Home platform shows consent screen:
+   "Imajin Events wants to verify your identity and access your email.
+    [Allow]  [Deny]"
+   — User sees exactly what's being shared
+   — Scopes are explicit (identity, email, profile, etc.)
+
+5. User consents → home platform signs the challenge + consented data:
+   — For custodial users: platform signs via KMS using user's managed key
+   — For self-sovereign users: user signs directly, platform countersigns
+   — Result: a JWS artifact containing the challenge, user's DID, consented data
+
+6. Home platform redirects back:
+   GET https://events.imajin.ai/auth/callback
+     ?artifact=<signed-JWS-token>
+
+7. Requesting service verifies:
+   a. Decode JWS, extract signer DID
+   b. Look up signer's identity chain on own relay (via peering)
+   c. Verify signature against chain's public key
+   d. Verify challenge matches what was issued in step 2
+   e. Verify audience matches own DID (prevents replay to other services)
+   f. Verify expiresAt has not passed
+   g. Extract consented data (email, profile info, etc.)
+
+8. Session created
+   — Auto-creates local identity if first visit (from chain state)
+   — Trust level and access based on chain standing + consented scopes
 ```
 
-- **Imajin nodes:** Profile data includes email. Resolution is straightforward.
-- **DFOS platform:** Email → DID mapping is in the closed-source platform layer. Requires an API to be exposed (or proxy through the relay).
-- **Privacy:** The resolve endpoint must be rate-limited and should require the requesting service to identify itself (signed request or mutual TLS). Must not reveal whether an email exists to unauthenticated callers.
+### Why Consent Screen > Email Resolution
 
-### Sequence Diagram (Email Verification — Primary Flow)
+Brandon confirmed: email → DID mapping is private, platform-layer only. No programmatic lookup by design. The consent screen solves this elegantly:
+
+- **Email stays private** until the user explicitly consents to share it
+- **User controls what's shared** — scopes are visible on the consent screen
+- **No email enumeration risk** — there's no resolve endpoint to attack
+- **Works for custodial AND self-sovereign users** — the consent screen is the universal gate
+- **Home platform handles all auth complexity** — KMS, email codes, biometrics, whatever. The requesting service just gets back a signed artifact.
+
+### Sequence Diagram
 
 ```
-User              Home Relay           Requesting Service
+User            Home Platform         Requesting Service
  │                   │                        │
- │  1. Enter email                            │
+ │  1. "Login with DFOS"                      │
  │───────────────────────────────────────────>│
- │                   │  2. Resolve email→DID   │
- │                   │<──────────────────────│
- │                   │  3. Return DID + key    │
- │                   │──────────────────────>│
- │                   │                        │
- │  4. Email code sent                        │
+ │                   │    2. Redirect + challenge
  │<──────────────────────────────────────────│
- │  5. Enter code                             │
+ │  3. Authenticate  │                        │
+ │──────────────────>│                        │
+ │  4. Consent screen│                        │
+ │<─────────────────│                        │
+ │  5. "Allow"       │                        │
+ │──────────────────>│                        │
+ │                   │  6. Sign artifact       │
+ │  7. Redirect back with JWS                 │
+ │<─────────────────│                        │
  │───────────────────────────────────────────>│
- │                   │  6. Lookup chain/standing│
- │                   │                        │
- │  7. Session created                        │
+ │                   │    8. Verify + session  │
  │<──────────────────────────────────────────│
- │                   │                        │
 ```
 
-## Key Custody Tiers
+### Artifact Format
 
-Different platforms handle private keys differently. The federated auth protocol must work across all of them.
-
-| Platform | Key custody | Who signs | Example |
-|----------|-----------|-----------|---------|
-| **Custodial** | Platform holds keys (e.g., AWS KMS) | Relay signs on behalf of user | DFOS platform |
-| **Stored key** | Browser, password-encrypted | User signs locally | Imajin (password login) |
-| **Self-custody** | User's own key file | User signs with raw key | Imajin (key import) |
-| **Local-first** | SQLite on user's device | User signs on own hardware | Future DFOS Go binary |
-
-### How each tier produces an attestation
-
-**Custodial (relay-signed):**
-1. User authenticates to home relay (email code, password, etc.)
-2. Relay accesses user's key via KMS
-3. Relay signs the attestation with user's custodied key (or relay's own key)
-4. User never interacts with cryptographic material
-
-**Self-sovereign (user-signed):**
-1. User authenticates on home relay (password decrypts stored key, or key file loaded)
-2. User's client signs the challenge directly
-3. Home relay countersigns (wraps in attestation)
-4. Both signatures included — stronger proof
-
-**The requesting service doesn't care which tier.** It verifies the attestation signature against a key it can resolve from the chain. Whether that key was accessed via KMS, decrypted from browser storage, or loaded from a hardware device is the home relay's business. The attestation format is identical.
-
-### Implications
-
-- Custodial relays are functionally OAuth identity providers — the relay vouches for the user
-- Self-sovereign users provide cryptographic proof — the relay witnesses it
-- A requesting service MAY distinguish between tiers (e.g., require self-sovereign for high-value operations) via the optional `authMethod` field in the attestation
-- The custodial layer at DFOS is closed-source (AWS KMS) — the trust model must be attestation-based, not implementation-based
-
-## Trust Model
-
-The requesting service does NOT trust the user directly. It trusts the **home relay**, which vouches for the user.
-
-Trust chain:
-```
-Requesting service trusts home relay
-  ← because: peered, conformant (RFC-21), identity chain verified
-Home relay trusts user
-  ← because: user authenticated (custodial) or proved key possession (self-sovereign)
-Therefore: requesting service trusts user (transitively)
-```
-
-### What makes a relay trusted?
-
-A requesting service should only accept federated auth attestations from relays that are:
-
-1. **Peered** — the relay's identity chain is on the requesting service's relay
-2. **Conformant** — the relay has passed the Imajin conformance suite (RFC-21)
-3. **Not revoked** — no revocation attestation exists for the relay
-
-This is configurable per node. A strict node might require conformance certification. A permissive node might accept any peered relay. The requesting service decides its own trust policy.
-
-## Attestation Format
-
-The federated auth attestation is a standard DFOS JWS:
+The consent artifact is a standard DFOS JWS:
 
 ```json
 {
   "alg": "EdDSA",
   "typ": "did:dfos:federated-auth",
-  "kid": "did:dfos:home-relay-did#key_abc123",
+  "kid": "did:dfos:user-did#key_abc123",
   "cid": "bafyrei..."
 }
 .
@@ -226,124 +150,190 @@ The federated auth attestation is a standard DFOS JWS:
   "authenticatedAt": "2026-03-30T14:00:00Z",
   "homeRelay": "did:dfos:home-relay-did",
   "homeRelayUrl": "https://relay.example.com",
-  "authMethod": "password",
+  "authMethod": "custodial|password|hardware-key|biometric",
+  "consented": {
+    "email": "user@example.com",
+    "displayName": "Carmen S.",
+    "profile": true
+  },
   "expiresAt": "2026-03-30T14:05:00Z"
 }
 ```
 
-### Fields
+The `consented` field contains only what the user approved on the consent screen. If they denied email access, the field is absent. The requesting service works with whatever it gets.
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| type | Yes | Always `federated-auth` |
-| version | Yes | Protocol version (1) |
-| subject | Yes | The user's DID |
-| audience | Yes | The requesting service's relay DID — prevents replay to other services |
-| challenge | Yes | Nonce from the auth request — proves freshness |
-| authenticatedAt | Yes | When the user authenticated |
-| homeRelay | Yes | The relay DID that signed this attestation |
-| homeRelayUrl | Yes | URL of the home relay (for discovery) |
-| authMethod | No | How the user authenticated (password, hardware-key, biometric) — informational |
-| expiresAt | Yes | Attestation expiry — should be short (5 minutes) |
+### Key Custody — How Each Platform Signs
 
-## Home Relay Discovery
+| Platform | Key custody | Who signs the artifact |
+|----------|-----------|----------------------|
+| **DFOS platform** | AWS KMS (custodial) | Platform signs via KMS using user's managed key |
+| **Imajin (stored key)** | Browser, password-encrypted | User signs client-side, node countersigns |
+| **Imajin (key import)** | User's own file | User signs directly |
+| **Future (Go binary)** | Local SQLite on device | User signs on own hardware |
 
-The user enters their email. The requesting service needs to find which relay/node owns that email and the associated DID.
+The requesting service doesn't care which method was used. It verifies the JWS signature against the chain's public key. Whether that key was accessed via KMS, decrypted from browser storage, or loaded from hardware is the home platform's business.
 
-### Resolution Strategy (in order)
+The optional `authMethod` field indicates how the user authenticated. A requesting service MAY require a specific method for high-value operations (e.g., "custodial auth is fine for browsing, but purchasing requires direct key proof").
 
-1. **Query peered Imajin nodes** — `GET /auth/resolve?email=user@example.com` on each known node. First match wins. Fast for the common case (user is on a node we peer with).
+---
 
-2. **Query DFOS platform** — if no Imajin node claims the email, ask the DFOS platform API. Requires Brandon to expose email → DID resolution (or a proxy endpoint). Covers DFOS-only users.
+## Tier 3: Email Verification (Fallback)
 
-3. **Beacon-based discovery** — if we already know the DID (e.g., from a previous session or NFC card), the identity chain may include a beacon with the home relay URL. No email lookup needed.
+When the home platform doesn't support the consent redirect (no UI built yet, platform is offline, etc.), email verification is the fallback:
 
-4. **User provides relay URL** — fallback. User enters their relay URL manually. Like entering an email server — only for power users or when automated discovery fails.
+```
+1. User enters their email address
+2. Requesting service sends verification code to that email
+3. User enters code → proves email ownership
+4. Requesting service searches peered relays for an identity chain associated with that email
+5. If found: session created with moderate trust level
+6. If not found: offer to create a new identity
+```
 
-**Privacy consideration:** Email resolution endpoints must be rate-limited, require the requesting service to authenticate (mutual TLS or signed request), and should not expose whether an email exists on the network to unauthenticated callers.
+This is weaker than tier 2 — it proves email ownership but not DID control. The requesting service can't verify a chain signature because it doesn't have a signed artifact. Trust level is lower.
 
-## Security Considerations
+**When to use:** Fallback only. When the home platform can't do the consent redirect.
 
-### Replay attacks
-- **Challenge nonce** prevents replay of old attestations
-- **Audience field** prevents using an attestation meant for service A on service B
-- **Short expiry** (5 min) limits the window
+---
 
-### Relay impersonation
-- Attestation signature is verified against the relay's identity chain
-- Relay identity chain is obtained via peering (not from the attestation itself)
-- A fake relay can't produce a valid signature for a real relay's DID
+## Home Platform Discovery
 
-### Phishing (fake home relay page)
-- Same risk as OAuth phishing (fake Google login page)
-- Mitigation: user verifies they're on their actual home relay URL
-- Future: hardware key / WebAuthn makes phishing ineffective
+How does the requesting service know where to redirect?
 
-### Man-in-the-middle on callback
-- Callback URL should be HTTPS
-- Challenge is bound to the requesting service's session — intercepting the callback without the session is useless
+### For "Login with DFOS"
+The redirect URL is well-known: DFOS platform's consent endpoint. Configured once per integration.
 
-### Home relay compromise
-- If a home relay is compromised, it can forge attestations for its users
-- This is equivalent to "Google gets hacked" in OAuth
-- Mitigation: users can rotate keys and move to a different relay
-- Detection: anomalous attestation patterns visible in the trust graph
+### For "Login from another Imajin node"
+Options, in order:
+1. **User selects their node** from a list of peered nodes (like choosing a Mastodon instance)
+2. **Beacon-based** — if we know the DID (previous session, NFC card), the chain's beacon includes the home node URL
+3. **User enters node URL** — power user fallback
+
+### For NFC card
+The card knows the user's DID and home platform. Tap initiates the redirect automatically — no manual selection needed.
+
+---
+
+## Trust Model
+
+The requesting service trusts the **home platform**, which vouches for the user.
+
+```
+Requesting service trusts home platform
+  ← peered, conformant (RFC-21), identity chain verified
+Home platform trusts user
+  ← authenticated (custodial, password, biometric, key)
+Therefore: requesting service trusts user (transitively)
+```
+
+### What makes a platform trusted?
+
+1. **Peered** — the platform's relay identity chain is on the requesting service's relay
+2. **Conformant** — passed the Imajin conformance suite (RFC-21) — optional but increases trust
+3. **Not revoked** — no revocation attestation exists
+
+Configurable per node. A strict node requires conformance certification. A permissive node accepts any peered relay.
+
+---
 
 ## Relationship to Existing Auth
 
-This does NOT replace Imajin's existing auth. It adds a federated path:
+This does NOT replace Imajin's existing auth. It adds federated paths:
 
 | Auth method | Key location | Use case |
 |-------------|-------------|----------|
 | Key import | User's own file | Power users, first registration |
 | Password (stored key) | Encrypted in browser | Returning users, same device |
-| **Federated — direct key** | **User signs on requesting service** | **Cross-node, user holds key** |
-| **Federated — email verify** | **No key needed** | **Cross-platform, custodial users, universal fallback** |
-| **Federated — redirect** | **User signs on home relay** | **Fallback when email resolution unavailable** |
+| **Tier 1 — Direct key** | **User signs on requesting service** | **Cross-node, verified Imajin nodes** |
+| **Tier 2 — Consent redirect** | **User signs on home platform** | **Cross-platform (DFOS ↔ Imajin), primary federated flow** |
+| **Tier 3 — Email verify** | **No key needed** | **Fallback when redirect unavailable** |
 | NFC card | On card | Physical onboarding (Muskoka card) |
+
+---
+
+## Security Considerations
+
+### Replay attacks
+- **Challenge nonce** prevents replay of old artifacts
+- **Audience field** prevents using an artifact meant for service A on service B
+- **Short expiry** (5 min) limits the window
+
+### Relay impersonation
+- Artifact signature verified against the identity chain obtained via peering (not from the artifact itself)
+- A fake platform can't produce a valid signature for a real DID
+
+### Phishing (fake consent screen)
+- Same risk as OAuth phishing (fake Google login page)
+- Mitigation: user verifies they're on their actual home platform URL
+- Future: hardware key / WebAuthn makes phishing ineffective
+
+### Man-in-the-middle on callback
+- Callback URL must be HTTPS
+- Challenge bound to requesting service's session
+
+### Home platform compromise
+- Compromised platform can forge artifacts for its users (same as "Google gets hacked" in OAuth)
+- Mitigation: users can rotate keys and migrate to another platform
+- Detection: anomalous patterns in the trust graph
+
+### Consent scope creep
+- Requesting service declares scopes up front
+- Home platform shows exactly what's being shared
+- User can deny individual scopes
+- No silent data collection — everything is explicit on the consent screen
+
+---
 
 ## Implementation Phases
 
-### Phase 1: Core flow
-- `/auth/dfos/callback` endpoint on requesting service
-- `/auth/federated` endpoint on home relay (Imajin's relay)
-- Attestation creation and verification
-- Auto-create local identity on first federated login
+### Phase 1: Imajin ↔ DFOS consent flow
+- Implement consent screen on Imajin (`/auth/consent`)
+- Implement callback handler on Imajin (`/auth/callback`)
+- Coordinate with Brandon on DFOS platform consent endpoint
+- Artifact creation and verification
 
-### Phase 2: Discovery
-- Beacon-based home relay discovery
-- DID input with relay URL fallback
+### Phase 2: Imajin ↔ Imajin (multi-node)
+- Node selection UI ("which Imajin node are you from?")
+- Direct key auth between verified nodes (tier 1)
+- Consent redirect between unverified nodes (tier 2)
 
-### Phase 3: Trust policies
-- Configurable trust levels per node
-- Conformance certification requirement (optional)
-- Relay reputation from trust graph
+### Phase 3: Discovery + NFC
+- Beacon-based home platform discovery
+- NFC card auto-redirect
+- "Remember my home platform" for returning users
 
-### Phase 4: Mutual auth
-- Both parties authenticate — the requesting service proves its identity to the home relay too
-- Prevents rogue services from harvesting auth attestations
+### Phase 4: Mutual auth + scopes
+- Requesting service proves its identity to home platform (prevents rogue services)
+- Granular scope negotiation
+- Standing-gated access levels
+
+---
 
 ## Open Questions
 
-1. **DFOS email resolution:** Does the DFOS platform expose email → DID + public key lookup? This is in the closed-source layer. Need Brandon to confirm whether an API exists or can be added. Without this, email verification for DFOS users falls back to the redirect flow.
+1. **Consent endpoint coordination:** Brandon/Vinny identified the consent-and-sign pattern. What's the timeline for DFOS platform to expose a consent endpoint? Is this something we build in parallel and test against each other's implementations?
 
-2. **Email privacy on resolve:** How do we prevent email enumeration attacks on the `/auth/resolve` endpoint? Options: rate limiting + mutual auth between nodes, return identical response shape regardless of existence, or require a signed request from a conformant node.
+2. **Scope vocabulary:** What scopes should be standardized? `identity` (DID only), `email`, `profile` (display name, avatar), `standing` (trust level). Platform-specific scopes beyond these?
 
-3. **Trust level difference:** Email verification proves email ownership. Direct key auth proves key possession. Should these result in different session trust levels? E.g., email-verified federated user gets read access but needs key auth for transactions?
+3. **Artifact signer:** For custodial users, is the artifact signed by the user's managed key (via KMS) or by the platform's relay key? User's key is more verifiable (chain lookup works directly). Platform's key requires trusting the platform's assertion.
 
-4. **Session duration:** Once a federated user has a local session, how long does it last? Same as local users? Or shorter with periodic re-verification?
+4. **Trust level differentiation:** Should tier 2 (consent redirect) result in different permissions than tier 1 (direct key)? E.g., consent auth is fine for browsing/purchasing, but admin operations require direct key proof?
 
-5. **Scope/permissions:** Should the requesting service declare what it needs? E.g., "browsing" vs "purchasing." Higher-trust operations could require tier 1 (direct key auth) even if the user initially authenticated via email.
+5. **Session duration:** Federated sessions — same duration as local? Shorter with periodic re-auth?
 
-6. **Offline/local-first:** When Brandon's single binary lands, the "home relay" might be the user's local device. Email verification still works. Direct key auth works better — local SQLite has the key.
+6. **Offline/local-first:** When Brandon's Go binary ships (local SQLite), the consent screen runs on localhost. Flow still works but UX is different — redirect to `localhost:PORT`.
 
-7. **NFC card integration:** A card tap could skip email entry — card knows the user's DID and home relay. Requesting service reads it and resolves directly. Could also carry a pre-signed short-lived token for instant auth.
+7. **NFC card + consent:** Card tap could pre-populate the redirect (card knows DID + home platform). One-tap federated auth.
+
+8. **Mutual registration:** When a DFOS user authenticates on Imajin via consent, we create a local identity. Should Imajin reciprocally register awareness of that user on the DFOS side? Or is that unnecessary — the peered relay already has the chain.
 
 ## References
 
-- RFC-21: Imajin Conformance Suite (relay trust)
-- RFC-19: Kernel/Userspace Architecture (app auth)
+- RFC-21: Imajin Conformance Suite (relay trust, node verification)
+- RFC-19: Kernel/Userspace Architecture (app auth, userspace compliance)
 - DFOS 0.6.0: Identity chains, beacons, peering
+- Brandon (Clearbyte): Consent-and-sign pattern, KMS key custody model
+- Vinny: Original consent screen concept for custodial DID signing
 - OAuth 2.0 / OpenID Connect (flow inspiration)
 - SIWE — Sign-In with Ethereum (trust model inspiration)
 
