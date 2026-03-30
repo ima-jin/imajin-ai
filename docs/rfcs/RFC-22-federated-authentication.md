@@ -38,84 +38,79 @@ DFOS federated auth is closest to OAuth in UX but closest to SIWE in trust model
 | **Requesting Service** | The Imajin node the user wants to access (e.g., events.imajin.ai) |
 | **Requesting Relay** | The relay peered with the requesting service. May or may not be the same as the home relay. |
 
-### Three Authentication Tiers
+### Two Authentication Tiers
 
-| Tier | User type | Has keys? | Flow | Trust requirement on node |
-|------|-----------|-----------|------|--------------------------|
-| **1. Direct key auth** | Imajin user on verified node | Yes | Sign challenge on requesting service | Conformant + approved build |
-| **2. Home node redirect** | Imajin user on unverified/private node | Yes | Redirect to home node, key stays there | Peered |
-| **3. Home relay redirect** | DFOS platform user OR tier 2 fallback | No (custodial) | Redirect to home relay, relay authenticates | Peered |
+| Tier | User type | Has keys? | Flow |
+|------|-----------|-----------|------|
+| **1. Direct key auth** | Imajin user (holds keypair) | Yes | Sign challenge on requesting service |
+| **2. Email verification** | Any user (custodial or cross-platform) | No | Email code + chain lookup |
 
-**Tier 1** is the fast path — user signs directly, like existing Imajin login. Only allowed between nodes running the conformance suite with an approved build. The requesting service trusts the node's software to handle the key safely.
+**Tier 1** is the strong path — user signs a challenge directly with their private key. This is existing Imajin login. Used when the user has their key available (stored key, key file, hardware key).
 
-**Tier 2** is for Imajin users whose home node isn't fully verified. Their key stays on their own infrastructure. The requesting service doesn't trust the node enough for direct key handling, but trusts it to produce a valid attestation.
+**Tier 2** is the universal path — works for everyone, regardless of key custody. No redirects. No OAuth dance. The user enters their email, we verify they own it, and we look up their identity chain for access level.
 
-**Tier 3** is for DFOS platform users who never touch their keys (custodied in AWS KMS). Also the fallback for any case where the user can't sign directly.
+### Primary Flow: Email Verification (Tier 2)
 
-### Universal Login Flow (Email-Based)
-
-Users don't know their DIDs. They know their email. The login flow starts with email, not a DID:
+This is the default for federated auth. No redirect to home relay needed.
 
 ```
-1. User visits requesting service, clicks "Login with DFOS" or "Login from another node"
+1. User visits requesting service, clicks "Login from another network"
 
 2. User enters their EMAIL ADDRESS
    — Not a DID. Nobody types did:dfos:7v4vtfnh7v28ka7af3cv79 into a login box.
 
-3. Requesting service resolves email → DID → home relay:
-   → Query known peered relays: "who owns user@example.com?"
-   → A relay claims it, returns the DID and home relay URL
+3. Requesting service resolves email → DID + public key:
+   → Query known peered relays/nodes: GET /auth/resolve?email=user@example.com
+   → A relay claims it, returns: { did, publicKey, homeRelay }
    → If no relay claims it: "No account found for this email"
 
-4. Requesting service determines auth tier:
-   → Imajin user + verified home node? → Tier 1 (direct key auth)
-   → Imajin user + unverified home node? → Tier 2 (redirect to home node)
-   → DFOS platform user? → Tier 3 (redirect to home relay)
+4. Requesting service sends email verification code to that address
+   — Standard 6-digit code, 5 minute expiry
+   — Same mechanism as existing MFA email codes
 
-5a. TIER 1 — Direct key auth:
-   → Requesting service issues challenge
-   → User signs challenge locally (key in browser / key file)
-   → Verify signature against chain key
-   → Session created
+5. User enters the code
+   → Proves they control the email bound to this DID
+   → This IS the authentication — if you own the email, you are the identity
 
-5b. TIER 2 — Home node redirect:
-   → Redirect to home node auth endpoint:
-     GET https://home-node.example.com/auth/federated
-       ?did=did:imajin:abc123
-       &callback=https://requesting-service.example.com/auth/callback
-       &challenge=<random-nonce>
-       &requesting_did=<requesting-service-relay-DID>
-   → User authenticates on home node (password, stored key, etc.)
-   → Home node signs attestation
-   → Redirect back with attestation
-   → Verify + session
+6. Requesting service looks up the DID's chain on its relay (via peering)
+   → Check standing: attestation history, age, diversity
+   → Determine trust level and access permissions
 
-5c. TIER 3 — Home relay redirect:
-   → Redirect to home relay auth endpoint:
-     GET https://home-relay.example.com/auth/federated
-       ?did=did:dfos:xyz789
-       &callback=https://requesting-service.example.com/auth/callback
-       &challenge=<random-nonce>
-       &requesting_did=<requesting-service-relay-DID>
-   → Home relay authenticates user (email code, password, KMS-backed signing)
-   → Home relay signs attestation
-   → Redirect back with attestation
-   → Verify + session
-
-6. Requesting service verifies (for tiers 2 & 3):
-   a. Decode JWS, extract signer DID from header
-   b. Look up signer's identity chain on own relay (must be peered)
-   c. Verify JWS signature against signer's public key
-   d. Verify challenge matches what was issued
-   e. Verify audience matches own DID
-   f. Verify timestamp is within acceptable window
-   g. Verify expiresAt has not passed
-   h. Verify signer is trusted (peered + conformant for tier, see trust model)
-
-7. Requesting service creates a local session for the user
+7. Session created
    — Auto-creates local identity if first visit (from chain state)
-   — Returns session token / sets cookie
+   — Trust level reflects chain standing, not just email ownership
 ```
+
+The home relay's only job is answering: "what's the DID and public key for this email?" After that, the requesting service handles everything. The user never leaves the site.
+
+### Direct Key Auth (Tier 1)
+
+For Imajin users who hold their own keys — the stronger path:
+
+```
+1. User chooses "Login with key" (password-stored key, key file, etc.)
+2. Requesting service issues challenge
+3. User signs challenge with private key (client-side)
+4. Verify signature against chain's public key
+5. Session created with higher trust level
+```
+
+This is the existing Imajin login flow. Between verified Imajin nodes, this is preferred over email verification because it provides cryptographic proof of key possession, not just email ownership.
+
+### Fallback: Home Relay Redirect
+
+If the home relay won't expose email → DID resolution, or if the user needs to authenticate through a method only available on their home node (biometric, hardware key, etc.), the full redirect flow is available:
+
+```
+1. Redirect to home relay/node auth endpoint
+2. User authenticates there (key never leaves their context)
+3. Home relay signs attestation
+4. Redirect back with signed attestation
+5. Verify attestation against relay's chain key
+6. Session created
+```
+
+This is the OAuth-style flow — more complex but covers edge cases where email verification isn't sufficient or available.
 
 ### Email Resolution
 
@@ -123,36 +118,34 @@ The email → DID lookup requires relays/nodes to expose a resolution endpoint:
 
 ```
 GET /auth/resolve?email=user@example.com
-→ { did: "did:dfos:abc123", homeRelay: "https://relay.example.com" }
+→ { did: "did:dfos:abc123", publicKey: "z6Mkm...", homeRelay: "https://relay.example.com" }
 ```
 
 - **Imajin nodes:** Profile data includes email. Resolution is straightforward.
-- **DFOS platform:** Email → DID mapping is in the closed-source platform layer. Requires Brandon to expose an API (or proxy through the relay).
-- **Privacy:** The resolve endpoint should be rate-limited and may require the requesting service to identify itself (mutual auth). You don't want arbitrary email enumeration.
+- **DFOS platform:** Email → DID mapping is in the closed-source platform layer. Requires an API to be exposed (or proxy through the relay).
+- **Privacy:** The resolve endpoint must be rate-limited and should require the requesting service to identify itself (signed request or mutual TLS). Must not reveal whether an email exists to unauthenticated callers.
 
-### Sequence Diagram (Tier 2/3 — Redirect Flow)
+### Sequence Diagram (Email Verification — Primary Flow)
 
 ```
-User            Home Relay/Node      Requesting Service
- │                 │                        │
- │  1. Enter email                          │
- │─────────────────────────────────────────>│
- │                 │  2. Resolve email→DID   │
- │                 │<──────────────────────│
- │                 │  3. Return DID + URL    │
- │                 │──────────────────────>│
- │                 │  4. Redirect to home    │
- │<────────────────────────────────────────│
- │  5. Authenticate│locally                 │
- │────────────────>│                        │
- │                 │  6. Sign attestation    │
- │                 │                        │
- │  7. Redirect back with attestation       │
- │<───────────────│                        │
- │─────────────────────────────────────────>│
- │                 │    8. Verify + session  │
- │<────────────────────────────────────────│
- │                 │                        │
+User              Home Relay           Requesting Service
+ │                   │                        │
+ │  1. Enter email                            │
+ │───────────────────────────────────────────>│
+ │                   │  2. Resolve email→DID   │
+ │                   │<──────────────────────│
+ │                   │  3. Return DID + key    │
+ │                   │──────────────────────>│
+ │                   │                        │
+ │  4. Email code sent                        │
+ │<──────────────────────────────────────────│
+ │  5. Enter code                             │
+ │───────────────────────────────────────────>│
+ │                   │  6. Lookup chain/standing│
+ │                   │                        │
+ │  7. Session created                        │
+ │<──────────────────────────────────────────│
+ │                   │                        │
 ```
 
 ## Key Custody Tiers
@@ -304,8 +297,9 @@ This does NOT replace Imajin's existing auth. It adds a federated path:
 |-------------|-------------|----------|
 | Key import | User's own file | Power users, first registration |
 | Password (stored key) | Encrypted in browser | Returning users, same device |
-| **Federated — self-sovereign** | **User signs on home relay** | **Cross-node, user holds key** |
-| **Federated — custodial** | **Home relay signs via KMS** | **Cross-node, DFOS platform users** |
+| **Federated — direct key** | **User signs on requesting service** | **Cross-node, user holds key** |
+| **Federated — email verify** | **No key needed** | **Cross-platform, custodial users, universal fallback** |
+| **Federated — redirect** | **User signs on home relay** | **Fallback when email resolution unavailable** |
 | NFC card | On card | Physical onboarding (Muskoka card) |
 
 ## Implementation Phases
@@ -331,21 +325,19 @@ This does NOT replace Imajin's existing auth. It adds a federated path:
 
 ## Open Questions
 
-1. **DFOS email resolution:** Does the DFOS platform expose email → DID lookup? This is in the closed-source layer (AWS). Need Brandon to confirm whether an API exists or can be added. Without this, tier 3 auth for DFOS users is a non-starter.
+1. **DFOS email resolution:** Does the DFOS platform expose email → DID + public key lookup? This is in the closed-source layer. Need Brandon to confirm whether an API exists or can be added. Without this, email verification for DFOS users falls back to the redirect flow.
 
-2. **Email privacy on resolve:** How do we prevent email enumeration attacks on the `/auth/resolve` endpoint? Rate limiting + mutual auth between nodes? Or return the same response regardless of whether the email exists?
+2. **Email privacy on resolve:** How do we prevent email enumeration attacks on the `/auth/resolve` endpoint? Options: rate limiting + mutual auth between nodes, return identical response shape regardless of existence, or require a signed request from a conformant node.
 
-3. **Attestation storage:** Should federated auth attestations be stored on chain? They're ephemeral (5 min expiry) but could be useful for audit trails. Probably not — they'd bloat chains with noise.
+3. **Trust level difference:** Email verification proves email ownership. Direct key auth proves key possession. Should these result in different session trust levels? E.g., email-verified federated user gets read access but needs key auth for transactions?
 
-4. **Session duration:** Once a federated user has a local session, how long does it last? Same as local users? Or shorter with periodic re-attestation?
+4. **Session duration:** Once a federated user has a local session, how long does it last? Same as local users? Or shorter with periodic re-verification?
 
-5. **Scope/permissions:** Should the auth request include requested scopes (like OAuth scopes)? E.g., "I want to buy tickets" vs "I want admin access." The home relay could display these to the user.
+5. **Scope/permissions:** Should the requesting service declare what it needs? E.g., "browsing" vs "purchasing." Higher-trust operations could require tier 1 (direct key auth) even if the user initially authenticated via email.
 
-6. **Node verification registry:** How does a requesting service determine if a home node is "verified" (tier 1 eligible)? Conformance certification on chain? A registry of approved builds? Manual allowlist?
+6. **Offline/local-first:** When Brandon's single binary lands, the "home relay" might be the user's local device. Email verification still works. Direct key auth works better — local SQLite has the key.
 
-7. **Offline/local-first:** When Brandon's single binary lands, the "home relay" might be the user's local device. The flow still works — redirect to localhost — but the UX is different.
-
-8. **NFC card integration:** A card tap could initiate the federated flow automatically — card knows the user's DID and home relay, requesting service reads it and starts the redirect. Skips email entry entirely.
+7. **NFC card integration:** A card tap could skip email entry — card knows the user's DID and home relay. Requesting service reads it and resolves directly. Could also carry a pre-signed short-lived token for instant auth.
 
 ## References
 
