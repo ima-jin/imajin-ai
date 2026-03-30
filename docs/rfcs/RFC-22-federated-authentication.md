@@ -38,79 +38,119 @@ DFOS federated auth is closest to OAuth in UX but closest to SIWE in trust model
 | **Requesting Service** | The Imajin node the user wants to access (e.g., events.imajin.ai) |
 | **Requesting Relay** | The relay peered with the requesting service. May or may not be the same as the home relay. |
 
-### Flow
+### Three Authentication Tiers
+
+| Tier | User type | Has keys? | Flow | Trust requirement on node |
+|------|-----------|-----------|------|--------------------------|
+| **1. Direct key auth** | Imajin user on verified node | Yes | Sign challenge on requesting service | Conformant + approved build |
+| **2. Home node redirect** | Imajin user on unverified/private node | Yes | Redirect to home node, key stays there | Peered |
+| **3. Home relay redirect** | DFOS platform user OR tier 2 fallback | No (custodial) | Redirect to home relay, relay authenticates | Peered |
+
+**Tier 1** is the fast path — user signs directly, like existing Imajin login. Only allowed between nodes running the conformance suite with an approved build. The requesting service trusts the node's software to handle the key safely.
+
+**Tier 2** is for Imajin users whose home node isn't fully verified. Their key stays on their own infrastructure. The requesting service doesn't trust the node enough for direct key handling, but trusts it to produce a valid attestation.
+
+**Tier 3** is for DFOS platform users who never touch their keys (custodied in AWS KMS). Also the fallback for any case where the user can't sign directly.
+
+### Universal Login Flow (Email-Based)
+
+Users don't know their DIDs. They know their email. The login flow starts with email, not a DID:
 
 ```
-1. User visits requesting service, clicks "Login with DFOS"
+1. User visits requesting service, clicks "Login with DFOS" or "Login from another node"
 
-2. User provides their DID (did:dfos:abc123)
-   — OR the requesting service discovers it (e.g., from a previous session, NFC card, QR)
+2. User enters their EMAIL ADDRESS
+   — Not a DID. Nobody types did:dfos:7v4vtfnh7v28ka7af3cv79 into a login box.
 
-3. Requesting service looks up the DID on its own relay
-   → Finds the identity chain (via peering/gossip)
-   → Extracts the home relay URL from the chain metadata (or beacon)
-   → If not found: "Unknown identity — not on any peered relay"
+3. Requesting service resolves email → DID → home relay:
+   → Query known peered relays: "who owns user@example.com?"
+   → A relay claims it, returns the DID and home relay URL
+   → If no relay claims it: "No account found for this email"
 
-4. Requesting service redirects user to home relay auth endpoint:
-   GET https://home-relay.example.com/auth/federated
-     ?did=did:dfos:abc123
-     &callback=https://requesting-service.example.com/auth/dfos/callback
-     &challenge=<random-nonce>
-     &requesting_did=<requesting-service-relay-DID>
-     &timestamp=<ISO-8601>
+4. Requesting service determines auth tier:
+   → Imajin user + verified home node? → Tier 1 (direct key auth)
+   → Imajin user + unverified home node? → Tier 2 (redirect to home node)
+   → DFOS platform user? → Tier 3 (redirect to home relay)
 
-5. Home relay authenticates the user locally
-   — Password, biometric, hardware key, stored key — whatever the home relay supports
-   — Private key NEVER leaves this context
+5a. TIER 1 — Direct key auth:
+   → Requesting service issues challenge
+   → User signs challenge locally (key in browser / key file)
+   → Verify signature against chain key
+   → Session created
 
-6. Home relay creates a signed attestation (FederatedAuthAttestation):
-   {
-     type: "federated-auth",
-     subject: "did:dfos:abc123",          // the user
-     audience: "<requesting-service-DID>", // who this attestation is for
-     challenge: "<nonce-from-step-4>",     // proves freshness
-     authenticatedAt: "<ISO-8601>",
-     homeRelay: "did:dfos:home-relay-did",
-     expiresAt: "<ISO-8601>",             // short-lived (5 min)
-   }
-   Signed as a JWS by the home relay's DID.
+5b. TIER 2 — Home node redirect:
+   → Redirect to home node auth endpoint:
+     GET https://home-node.example.com/auth/federated
+       ?did=did:imajin:abc123
+       &callback=https://requesting-service.example.com/auth/callback
+       &challenge=<random-nonce>
+       &requesting_did=<requesting-service-relay-DID>
+   → User authenticates on home node (password, stored key, etc.)
+   → Home node signs attestation
+   → Redirect back with attestation
+   → Verify + session
 
-7. Home relay redirects back to requesting service:
-   GET https://requesting-service.example.com/auth/dfos/callback
-     ?attestation=<JWS-token>
+5c. TIER 3 — Home relay redirect:
+   → Redirect to home relay auth endpoint:
+     GET https://home-relay.example.com/auth/federated
+       ?did=did:dfos:xyz789
+       &callback=https://requesting-service.example.com/auth/callback
+       &challenge=<random-nonce>
+       &requesting_did=<requesting-service-relay-DID>
+   → Home relay authenticates user (email code, password, KMS-backed signing)
+   → Home relay signs attestation
+   → Redirect back with attestation
+   → Verify + session
 
-8. Requesting service verifies the attestation:
-   a. Decode JWS, extract home relay DID from header
-   b. Look up home relay's identity chain on own relay (must be peered)
-   c. Verify JWS signature against home relay's public key
-   d. Verify challenge matches what was issued in step 4
+6. Requesting service verifies (for tiers 2 & 3):
+   a. Decode JWS, extract signer DID from header
+   b. Look up signer's identity chain on own relay (must be peered)
+   c. Verify JWS signature against signer's public key
+   d. Verify challenge matches what was issued
    e. Verify audience matches own DID
    f. Verify timestamp is within acceptable window
    g. Verify expiresAt has not passed
-   h. Verify home relay is trusted (peered + conformant)
+   h. Verify signer is trusted (peered + conformant for tier, see trust model)
 
-9. Requesting service creates a local session for the user
+7. Requesting service creates a local session for the user
    — Auto-creates local identity if first visit (from chain state)
    — Returns session token / sets cookie
 ```
 
-### Sequence Diagram
+### Email Resolution
+
+The email → DID lookup requires relays/nodes to expose a resolution endpoint:
 
 ```
-User            Home Relay           Requesting Service
+GET /auth/resolve?email=user@example.com
+→ { did: "did:dfos:abc123", homeRelay: "https://relay.example.com" }
+```
+
+- **Imajin nodes:** Profile data includes email. Resolution is straightforward.
+- **DFOS platform:** Email → DID mapping is in the closed-source platform layer. Requires Brandon to expose an API (or proxy through the relay).
+- **Privacy:** The resolve endpoint should be rate-limited and may require the requesting service to identify itself (mutual auth). You don't want arbitrary email enumeration.
+
+### Sequence Diagram (Tier 2/3 — Redirect Flow)
+
+```
+User            Home Relay/Node      Requesting Service
  │                 │                        │
- │  1. Click "Login with DFOS"              │
+ │  1. Enter email                          │
  │─────────────────────────────────────────>│
- │                 │    2. Redirect to home  │
+ │                 │  2. Resolve email→DID   │
+ │                 │<──────────────────────│
+ │                 │  3. Return DID + URL    │
+ │                 │──────────────────────>│
+ │                 │  4. Redirect to home    │
  │<────────────────────────────────────────│
- │  3. Authenticate│locally                 │
+ │  5. Authenticate│locally                 │
  │────────────────>│                        │
- │                 │  4. Sign attestation    │
+ │                 │  6. Sign attestation    │
  │                 │                        │
- │  5. Redirect back with attestation       │
+ │  7. Redirect back with attestation       │
  │<───────────────│                        │
  │─────────────────────────────────────────>│
- │                 │    6. Verify + session  │
+ │                 │    8. Verify + session  │
  │<────────────────────────────────────────│
  │                 │                        │
 ```
@@ -215,21 +255,19 @@ The federated auth attestation is a standard DFOS JWS:
 
 ## Home Relay Discovery
 
-How does the requesting service know WHERE to redirect the user?
+The user enters their email. The requesting service needs to find which relay/node owns that email and the associated DID.
 
-### Option A: User provides relay URL
+### Resolution Strategy (in order)
 
-Simple. User enters their DID and their home relay URL. Like entering an email — `user@relay.example.com`. The DID format could encode this: `did:dfos:abc123@relay.example.com`.
+1. **Query peered Imajin nodes** — `GET /auth/resolve?email=user@example.com` on each known node. First match wins. Fast for the common case (user is on a node we peer with).
 
-### Option B: Beacon-based discovery
+2. **Query DFOS platform** — if no Imajin node claims the email, ask the DFOS platform API. Requires Brandon to expose email → DID resolution (or a proxy endpoint). Covers DFOS-only users.
 
-The user's identity chain includes a beacon with their home relay URL. The requesting service resolves the DID on its own relay (via peering) and reads the beacon. No user input beyond the DID.
+3. **Beacon-based discovery** — if we already know the DID (e.g., from a previous session or NFC card), the identity chain may include a beacon with the home relay URL. No email lookup needed.
 
-### Option C: Well-known relay registry
+4. **User provides relay URL** — fallback. User enters their relay URL manually. Like entering an email server — only for power users or when automated discovery fails.
 
-A DNS-like lookup: given a DID, query known relays until one claims it. Slow but requires nothing from the user.
-
-**Recommended: Option B** with Option A as fallback. Beacons are already a DFOS primitive. If the beacon exists, zero user friction. If not, ask for the relay URL.
+**Privacy consideration:** Email resolution endpoints must be rate-limited, require the requesting service to authenticate (mutual TLS or signed request), and should not expose whether an email exists on the network to unauthenticated callers.
 
 ## Security Considerations
 
@@ -293,15 +331,21 @@ This does NOT replace Imajin's existing auth. It adds a federated path:
 
 ## Open Questions
 
-1. **Attestation storage:** Should federated auth attestations be stored on chain? They're ephemeral (5 min expiry) but could be useful for audit trails. Probably not — they'd bloat chains with noise.
+1. **DFOS email resolution:** Does the DFOS platform expose email → DID lookup? This is in the closed-source layer (AWS). Need Brandon to confirm whether an API exists or can be added. Without this, tier 3 auth for DFOS users is a non-starter.
 
-2. **Session duration:** Once a federated user has a local session, how long does it last? Same as local users? Or shorter with periodic re-attestation?
+2. **Email privacy on resolve:** How do we prevent email enumeration attacks on the `/auth/resolve` endpoint? Rate limiting + mutual auth between nodes? Or return the same response regardless of whether the email exists?
 
-3. **Scope/permissions:** Should the auth request include requested scopes (like OAuth scopes)? E.g., "I want to buy tickets" vs "I want admin access." The home relay could display these to the user.
+3. **Attestation storage:** Should federated auth attestations be stored on chain? They're ephemeral (5 min expiry) but could be useful for audit trails. Probably not — they'd bloat chains with noise.
 
-4. **Offline/local-first:** When Brandon's single binary lands, the "home relay" might be the user's local device. The flow still works — redirect to localhost — but the UX is different.
+4. **Session duration:** Once a federated user has a local session, how long does it last? Same as local users? Or shorter with periodic re-attestation?
 
-5. **NFC card integration:** A card tap could initiate the federated flow automatically — card knows the user's DID and home relay, requesting service reads it and starts the redirect.
+5. **Scope/permissions:** Should the auth request include requested scopes (like OAuth scopes)? E.g., "I want to buy tickets" vs "I want admin access." The home relay could display these to the user.
+
+6. **Node verification registry:** How does a requesting service determine if a home node is "verified" (tier 1 eligible)? Conformance certification on chain? A registry of approved builds? Manual allowlist?
+
+7. **Offline/local-first:** When Brandon's single binary lands, the "home relay" might be the user's local device. The flow still works — redirect to localhost — but the UX is different.
+
+8. **NFC card integration:** A card tap could initiate the federated flow automatically — card knows the user's DID and home relay, requesting service reads it and starts the redirect. Skips email entry entirely.
 
 ## References
 
