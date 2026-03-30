@@ -1,5 +1,218 @@
 <!-- Build Log — newest first. Source: Discord dev channel + git history. -->
 
+## March 29–30, 2026 — DFOS Identity Bridge, Federated Auth & Fee Model v2
+
+**Every login now creates a DFOS genesis chain. Four-node relay mesh live. The economic model got its first real spec.**
+
+### 🌐 DFOS Identity Bridge — LIVE (#532)
+
+- **Genesis is client-side** — server never holds private keys. `@imajin/dfos` bridge wraps `createIdentityChain()` for browser
+- **Lazy backfill on login** — existing users without relay chains get one silently on next login
+- **Ryan's prod DID backfilled** immediately: `did:dfos:7v4vtfnh7v28ka7af3cv79`
+- **Four-node mesh confirmed:** ATX / NYC / LIS peered with Imajin. Content syncing across US + Portugal
+- Brandon's Go relays push to us; peer-back pending (he'll poll our `/log`)
+
+### 📡 RFC-22: Federated Authentication
+
+Three iterations in one session to get it right.
+
+- **v1:** OAuth-style redirect → too complex
+- **v2:** Email verification primary → but email→DID is private by design (Brandon confirmed)
+- **v3 (final):** Consent-and-sign redirect. User clicks "Login with DFOS" → redirect to home platform → authenticate + consent → platform signs challenge (KMS for custodial, user key for self-sovereign) → redirect back with signed JWS → verify against chain key
+- **Three tiers:** direct key auth (strongest) → consent-and-sign redirect (primary cross-platform) → email verification (fallback)
+
+### 💰 Fee Model v2 (RFC Draft)
+
+Three-party settlement: **1% protocol + 0.5% node + 0.25% user credit.**
+
+- **Dual-token:** MJN (equity, earned through usage) + MJNx (stable, CHF-pegged)
+- **Gas:** 100% to node, MJN-denominated, bilateral signature (relay + user)
+- **Rate integrity:** decreases instant, increases require 24h notice. Rate schedule on-chain. Peering relays audit
+- **Revenue streams:** settlement fees, app licensing, professional services, managed hosting, compliance certification
+
+### 🔧 Fixes
+
+- **Migration system fixed** — `drizzle-kit push` banned, `migrate.sh` is the only path. CI check added (`scripts/check-migrations.sh`)
+- **Carmen email bug** — payment webhook had no try/catch around onboard token insert. One failure killed all subsequent emails silently. Each step now fails independently
+- **RFC-21:** Imajin Conformance Suite — tests ARE the spec, ~35 assertions, 7 categories. Certification as commercial product
+
+### 📊 By the Numbers
+
+- 4 RFCs written or updated (19–22)
+- 4-node relay mesh live
+- Fee model v2 specced (three-party + dual-token)
+
+---
+
+## March 27–28, 2026 — Auth Redesign & the 12-PR Day
+
+**Twenty minutes of conversation redesigned the auth model. Then agents shipped 12 PRs in one session.**
+
+### 🔐 Auth Model Redesign
+
+Started as "MFA screens." Became a fundamental rethink through conversation — **email is not auth.**
+
+- **Two auth methods:** key import/paste, stored key (password-encrypted AES-256-GCM blob)
+- **Three MFA gates:** email code, TOTP, SMS (future) — verification, not login
+- **No password recovery.** Server can't decrypt the blob. Lost password + lost key file = lost identity. Correct sovereign outcome
+- **Session duration per-device** — phone 7 days, laptop 6 months
+- **Chain login removed from login page** — that's federated onboarding, not login
+- Auth MFA UI shipped (PR #496, +2,754 / -653 lines)
+- Three crypto bugs found in password login: base64/hex mismatch, JSON/raw parsing, PBKDF2 iteration count divergence
+
+### 🔔 Notify Service — SHIPPED (#479)
+
+Centralized notifications. Three phases in one day.
+
+- **Phase 1:** `apps/notify` on port 3008/7008 (took input's slot). Schema: `notify.notifications` + `notify.preferences`. 8 templates across market, events, coffee, connections, chat
+- **Phase 2:** `@imajin/notify` caller package wired into pay, events, coffee, connections, chat. Fire-and-forget like `emitAttestation`
+- **Phase 3:** Notification bell + provider + toast in `@imajin/ui` NavBar
+- **Input service retired** — transcribe route migrated to media, notify claimed the port
+
+### 🏗 Also Shipped
+
+- **QR ticket scanner** (#500) — camera scanner on admin dashboard. `html5-qrcode`, audio feedback, auto-resume, debounce
+- **Attestation chain coverage** (#461) — 8 new types across 5 services: `event.created`, `ticket.purchased`, `listing.created`, `listing.purchased`, `handle.claimed`, `tip.received`, `pod.created`
+- **ActionSheet** (#494) — reusable bottom sheet in `@imajin/ui`. MessageBubble: 303 → 131 lines
+- **Chat @mentions** (#503) — detection, `notify.send()`, amber rendering in MessageBubble
+- **Event admins consolidated** — removed `event_admins` table, consolidated on `pod_members`
+- **Profile feature toggles** — migrated to single JSONB column
+
+### 🔗 DFOS 0.6.0 — Chains Are DAGs
+
+Brandon shipped [PR #23](https://github.com/metalabel/dfos/pull/23):
+
+- **Chains are now DAGs**, not linear sequences. Deterministic head: `(createdAt DESC, cid DESC)[0]`
+- **Ingestion statuses:** `new` | `duplicate` | `rejected`
+- **Temporal guards:** reject ops >24h in future
+- **Key insight from Brandon:** chains ARE CRDTs. Fork semantics are application-layer
+
+### 📊 By the Numbers
+
+- **12 PRs merged in one session** (March 28)
+- **8 issues closed**, 4 tickets groomed
+- 8 attestation types added
+- 1 service retired (input), 1 service launched (notify)
+- Agent performance: 12 tasks, all shipped clean. Best: 3 min (feature toggles). Biggest: 17 min (auth MFA UI)
+
+---
+
+## March 25–26, 2026 — Kernel/Userspace, Relay Identity & First External PR
+
+**The architecture got its name. The relay got its identity. And someone else shipped code for the first time.**
+
+### 🏛 RFC-19: Kernel/Userspace Architecture
+
+Emerged from rethinking work order #274 (unified domain). Started as "should we use basePath?" → became the entire platform architecture.
+
+- **Kernel (one app, one domain):** auth, pay, registry, connections, chat, media, profile. Infrastructure, not features
+- **Userspace (federated apps):** events, market, learn, coffee, links, dykil — and any third-party app. Hosted anywhere, by anyone. Registered via cryptographic handshake
+- **Shell architecture:** kernel serves toolbar/launcher, userspace apps render in sandboxed iframes
+- **1% settlement fee:** 0.4% node operator, 0.4% protocol, 0.2% back to user as MJN credit
+- **Agents are apps:** same registration, same compliance, same scopes. Sub-identity DIDs
+
+### 🔗 DFOS Relay 0.5.0 — Full Conformance
+
+- Bumped relay + protocol to 0.5.0. New `relay_operation_log` table, head tracking, async `createRelay`
+- **Persistent relay identity created:** `did:dfos:z8a43zfdd4d4tz34c44tdz` ("Imajin Registry")
+- Signed profile artifact with controller key
+- **86/86 conformance tests** passing on dev and prod
+- Brandon's "Hello, world!" artifact ingested — first external content on 0.5.0
+
+### 👥 Chris Bennett — First External Dev
+
+First PR (#482) merged — chat UI cleanup, Signal-style composer. Getting local dev running exposed every friction point:
+
+- Wrong default ports in 6 `package.json` files
+- `buildUrl` producing `http://localhost:auth.imajin.ai` — localhost detection added
+- `AUTH_PRIVATE_KEY` must be PKCS#8, not random bytes
+- Session cookies rejected on localhost — made cookie config localhost-aware
+- Chat `server.js` doesn't load `.env.local` (plain Node, not Next.js)
+- **Result:** `DEVELOPER.md` overhaul with zero-to-working quickstart
+
+### ⚡ Infrastructure
+
+- **Power surges (×3!)** — server rebooted three times in 30 minutes. `pm2 startup` + `pm2 save` configured after first reboot — second and third auto-recovered
+- **Ecosystem config overhaul** — services had drifted to stale standalone repo paths. Now 34 services (17 dev + 17 prod), all correct
+- **build.sh bug** — prod builds were restarting dev processes (empty `PM2_PREFIX`). Explains multi-day deploy mystery
+- **drizzle-kit .env.local fix** — silently broken on all 15 configs (only reads `.env`). Parsers added everywhere
+
+### 🔧 Also Shipped
+
+- **Market OG meta tags** — proper link previews with resized images, EXIF orientation fix, Content-Length headers
+- **Market seller page** (#485) — `/seller/[handle]` wall of listing cards
+- **`buildPublicUrl` sweep** — replaced ~30 broken URL interpolations across 13 files
+- **RFC-20:** Application conformance suite — chain types extensible, DFOS owns protocol, Imajin owns projectors
+- Discord links replaced with DFOS community space across 7 files
+
+### 📊 By the Numbers
+
+- 86/86 DFOS conformance (0.5.0)
+- First external PR merged
+- 34 pm2 services configured
+- DEVELOPER.md: zero-to-working quickstart
+- 3 power surges survived
+
+---
+
+## March 23–24, 2026 — Whisper, Conformance & Developer Experience
+
+**Voice-to-text finally works end-to-end. The developer experience got its first real test.**
+
+### 🎤 Whisper Transcription — WORKING
+
+The full chain: record → upload → transcribe → text in composer.
+
+- **Bug chain from hell:** MIME whitelist (audio/x-m4a missing) → Next.js RSC intercepting POST → wrong file path (UPLOAD_DIR vs storage_path) → switched to GET
+- **Voice recording 0-byte bug:** dual `VoiceRecorder` instances — `onRecordingStart` triggers re-render → instance unmounts → cleanup kills recorder (8ms, 0 bytes). Fix: VoiceRecorder always stays mounted
+- **Voice-to-text mode:** transcript goes into text input box, not sent as voice attachment
+- Canonical `VoiceRecorder` extracted to `@imajin/input` package
+
+### 🔗 DFOS Relay — 38/38 → 67/71 Conformance
+
+- Bumped to `@metalabel/dfos-web-relay` 0.4.0 with countersig dedup
+- Go + Rust installed on server for conformance test runner
+- Brandon synced: 72 identity chains, 39 content chains, 129 ops on our relay
+- CI workflow added for conformance tests
+
+### 🛡 Agent Governance — Designed
+
+Full sovereign agent stack mapped across 5 work orders:
+
+- **Attestations → MFA → Agent Pairing → Delegation → Sandbox → Trust Graph → Gas**
+- Agent sandbox model (#465): "kneecapped kernel" — message loop, scoped tools, memory, identity. No channel access, no filesystem, no self-configuration
+- Sovereign compute thesis (#466): edge inference at $1.50-3/month vs $20/mo ChatGPT. Context embeds over time → smaller prompts → fewer tokens → cheaper
+
+### 🛒 Market & Profile Fixes
+
+- OG meta tags with resized images, EXIF auto-orient, Content-Length headers
+- `resolveMediaRef` size presets in `@imajin/media` (thumbnail/card/detail/og/original)
+- `.fair` access field: now handles both string `"public"` and object `{type: "public"}`
+- Profile events on profile page (#487)
+
+### 💬 Chat Fixes
+
+- `conversation_members` added to list query — Chris couldn't see OG group
+- Dead `chat.participants` v1 reference removed from auth access
+- Mark-as-read implemented (was never wired up)
+- DM members backfilled for all existing DMs (63 rows)
+
+### 🧠 Memory Restructured
+
+- `MEMORY.md` trimmed from 55KB to 6.6KB (curated highlights)
+- 6 context files created: chat, dfos, events, identity, infrastructure, pitch
+- Full archive at `memory/MEMORY-archive-2026-03-23.md`
+
+### 📊 By the Numbers
+
+- Whisper transcription: end-to-end working
+- 38/38 DFOS conformance (0.4.0)
+- 5 agent governance work orders mapped
+- 63 DM member rows backfilled
+- 43 survey responses matched to tickets
+
+---
+
 ## March 20–22, 2026 — Chain-Backed Identity, DFOS Relay & P26 Epic
 
 **Three days, one thesis: every identity operation gets cryptographic proof underneath.**
