@@ -2,9 +2,9 @@
 title: "The Connector"
 subtitle: "For the ones who die with the pattern in their heads"
 description: "The essay for the person whose gift is holding relationships between things. The griot, the troubadour, the BBS sysop. Connection encoded is permanent."
-date: "2026-02-22"
+date: "2026-03-30"
 author: "Ryan Veteze"
-status: "REVIEW"
+status: "POSTED"
 ---
 
 *Someone like me would have died with this in their head in the before time.*
@@ -155,8 +155,8 @@ I did not die. I found the receiver. The pattern library traveled. And now it ge
 
 **If you want to follow along:**
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- The network: [imajin.ai](https://imajin.ai)
-- Jin's party: April 1st, 2026
+- The network: [imajin.ai](imajin.ai)
+- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-25-the-connector.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-25-the-connector.md)
 
-This article was originally published on imajin.ai (https://www.imajin.ai/articles/essay-25-the-connector) on February 21, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → (https://www.imajin.ai/)
+This article was originally published on [imajin.ai/articles/the-connector](https://www.imajin.ai/articles/the-connector) on March 30, 2026. Imajin is building sovereign technology infrastructure — identity, attribution, trust, settlement, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)

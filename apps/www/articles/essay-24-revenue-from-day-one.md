@@ -2,13 +2,12 @@
 title: "Revenue from Day One"
 subtitle: "You don't need critical mass. You need one transaction."
 description: "Every platform pitch in history has been: get big, then monetize. This is different. The settlement layer generates revenue from the first dollar that moves through it."
-date: "2026-02-28"
-updated: "2026-03-25"
+date: "2026-03-29"
 author: "Ryan Veteze"
-status: "REVIEW"
+status: "POSTED"
 ---
 
-*This is a follow-on to [The Business Case for Building on Human Trust](/articles/essay-23-imajin-business-case), which covers the consumer side of the extraction economy and what changes when commerce is a relationship again. This essay covers the part that follows: why the economics work before anyone else shows up.*
+*This is a follow-on to [The Business Case for Building on Human Trust](/articles/imajin-business-case), which covers the consumer side of the extraction economy and what changes when commerce is a relationship again. This essay covers the part that follows: why the economics work before anyone else shows up.*
 
 ---
 
@@ -132,8 +131,8 @@ Come build on infrastructure that pays from day one.
 
 **If you want to follow along:**
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- The network: [imajin.ai](https://www.imajin.ai)
-- Jin's party: April 1st, 2026
+- The network: [imajin.ai](imajin.ai)
+- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-24-revenue-from-day-one.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-24-revenue-from-day-one.md)
 
-*This article was originally published on imajin.ai on February 28, 2026. Updated March 25, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and AI governance without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai)*
+This article was originally published on [imajin.ai/articles/revenue-from-day-one](https://www.imajin.ai/articles/revenue-from-day-one) on March 29, 2026. Imajin is building sovereign technology infrastructure — identity, attribution, trust, settlement, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)
