@@ -15,13 +15,11 @@ An executable specification for Imajin node compliance. The test suite IS the sp
 | Layer | Owner | What it validates |
 |-------|-------|-------------------|
 | Protocol (DFOS) | Brandon / Clearbyte | Storage, replication, DAG sequencing |
-| Chain-Type (RFC-20) | Imajin | DAG → application state projectors |
+| **Chain-Type (RFC-20)** | **Imajin** | **DAG → application state projectors** |
 | **Node (this RFC)** | **Imajin** | **Economic rules, identity policy, trust, governance** |
 | Userspace App (RFC-19) | Imajin | App registration, shell protocol, scope enforcement |
 
-DFOS conformance: "Can you store operations?"
-RFC-20 conformance: "Can you interpret operations?"
-RFC-21 conformance: "Do you follow the rules of the network?"
+DFOS owns one layer: protocol. Everything above is Imajin. Brandon explicitly offloaded chain-type semantics to the application layer — "how a DAG is projected into application state is application semantics." RFC-20 and RFC-21 together form the **Imajin Conformance Suite**: RFC-20 validates that you read the data correctly, RFC-21 validates that you follow the rules of the network.
 
 ## Principle: Tests Are the Spec
 
