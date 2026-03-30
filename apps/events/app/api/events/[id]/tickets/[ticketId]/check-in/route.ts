@@ -54,24 +54,18 @@ export async function POST(
     // Fire-and-forget attestations — do not block check-in on failure
     if (ticket.owner_did) {
       const attendeeDid = ticket.owner_did as string;
-      Promise.all([
-        emitAttestation({
-          issuer_did: identity.id,
-          subject_did: attendeeDid,
-          type: 'institution.verified',
-          context_id: id,
-          context_type: 'event',
-          payload: { ticketId, checkedInBy: identity.id },
-        }),
-        emitAttestation({
-          issuer_did: identity.id,
-          subject_did: attendeeDid,
-          type: 'event.attendance',
-          context_id: id,
-          context_type: 'event',
-          payload: { ticketId, usedAt: updated.used_at },
-        }),
-      ]).catch((err) => console.error('Attestation emit error:', err));
+      // TODO: institution.verified should be issued BY the event DID, not the organizer.
+      // Event DIDs are not real identities (no keypair, no chain). Need sub-identity
+      // delegation model before this can be cryptographically correct. See #537.
+      // For now, only emit event.attendance (organizer vouches for attendee).
+      emitAttestation({
+        issuer_did: identity.id,
+        subject_did: attendeeDid,
+        type: 'event.attendance',
+        context_id: id,
+        context_type: 'event',
+        payload: { ticketId, usedAt: updated.used_at, checkedInBy: identity.id },
+      }).catch((err) => console.error('Attestation emit error:', err));
     }
 
     return NextResponse.json({ ticket: { id: updated.id, usedAt: updated.used_at } });
