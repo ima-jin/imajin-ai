@@ -19,7 +19,7 @@ export function LocationMessage({ lat, lng, label, isOwn }: LocationMessageProps
   const tileY = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * Math.pow(2, zoom));
   const tileUrl = `https://tile.openstreetmap.org/${zoom}/${tileX}/${tileY}.png`;
 
-  const containerBg = isOwn ? 'bg-white/10' : 'bg-gray-100 dark:bg-gray-700';
+  const containerBg = 'bg-black/30';
   const labelColor = isOwn ? 'text-white' : 'text-gray-800 dark:text-gray-200';
   const subColor = isOwn ? 'text-white/60' : 'text-gray-500 dark:text-gray-400';
 
@@ -28,7 +28,7 @@ export function LocationMessage({ lat, lng, label, isOwn }: LocationMessageProps
       href={mapsUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className={`block max-w-[260px] rounded-xl overflow-hidden transition hover:opacity-90 ${containerBg}`}
+      className={`block max-w-[260px] rounded-xl rounded-bl-none rounded-br-none overflow-hidden transition hover:opacity-90 ${containerBg}`}
       onClick={(e) => e.stopPropagation()}
     >
       {/* Map preview */}
