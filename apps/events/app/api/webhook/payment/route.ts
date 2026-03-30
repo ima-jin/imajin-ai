@@ -399,25 +399,31 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
   const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
 
-  const authSql = getClient();
-  const onboardToken = randomBytes(36).toString('hex');
-  const onboardId = `obt_${randomBytes(8).toString('hex')}`;
-  const redirectUrl = `${EVENTS_URL}/${event.id}`;
+  let onboardToken: string | null = null;
+  try {
+    const authSql = getClient();
+    onboardToken = randomBytes(36).toString('hex');
+    const onboardId = `obt_${randomBytes(8).toString('hex')}`;
+    const redirectUrl = `${EVENTS_URL}/${event.id}`;
 
-  await authSql`
-    INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
-    VALUES (
-      ${onboardId},
-      ${customerEmail.toLowerCase().trim()},
-      ${customerName || null},
-      ${onboardToken},
-      ${redirectUrl},
-      ${'access your ticket for ' + event.title},
-      ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()}
-    )
-  `;
+    await authSql`
+      INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
+      VALUES (
+        ${onboardId},
+        ${customerEmail.toLowerCase().trim()},
+        ${customerName || null},
+        ${onboardToken},
+        ${redirectUrl},
+        ${'access your ticket for ' + event.title},
+        ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()}
+      )
+    `;
+  } catch (onboardError) {
+    console.error(`[webhook] Onboard token creation failed for ${customerEmail} (non-fatal):`, onboardError);
+    onboardToken = null;
+  }
 
-  const magicLink = `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`;
+  const magicLink = onboardToken ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}` : undefined;
 
   // Build absolute event image URL
   const eventImageUrl = event.imageUrl
@@ -450,46 +456,54 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     : `${EVENTS_URL}/${event.id}/my-tickets`;
 
   // Always send a purchase receipt to the buyer
-  await sendEmail({
-    to: customerEmail,
-    subject: `Purchase receipt — ${event.title}`,
-    html: purchaseReceiptEmail({
-      buyerName: customerName || undefined,
-      eventTitle: event.title,
-      eventDate: formattedEventDate,
-      eventTime: formattedEventTime,
-      ticketSummary: [{ typeName: ticketType.name, quantity, unitPrice }],
-      totalPaid: formattedTotal,
-      paymentMethod: paymentId ? 'Credit Card' : 'E-Transfer',
-      registrationUrl,
-      eventImageUrl,
-      hasRegistrationRequired: ticketType.requiresRegistration,
-    }),
-  });
+  try {
+    await sendEmail({
+      to: customerEmail,
+      subject: `Purchase receipt — ${event.title}`,
+      html: purchaseReceiptEmail({
+        buyerName: customerName || undefined,
+        eventTitle: event.title,
+        eventDate: formattedEventDate,
+        eventTime: formattedEventTime,
+        ticketSummary: [{ typeName: ticketType.name, quantity, unitPrice }],
+        totalPaid: formattedTotal,
+        paymentMethod: paymentId ? 'Credit Card' : 'E-Transfer',
+        registrationUrl,
+        eventImageUrl,
+        hasRegistrationRequired: ticketType.requiresRegistration,
+      }),
+    });
+  } catch (emailError) {
+    console.error(`[webhook] Purchase receipt email failed for ${customerEmail}:`, emailError);
+  }
 
   // Only send the ticket confirmation (with QR) immediately for non-registration tickets
   if (!ticketType.requiresRegistration) {
-    // Generate QR code from ticket ID (for check-in scanning)
-    const qrCodeDataUri = await generateQRCode(createdTickets[0].id);
+    try {
+      // Generate QR code from ticket ID (for check-in scanning)
+      const qrCodeDataUri = await generateQRCode(createdTickets[0].id);
 
-    await sendEmail({
-      to: customerEmail,
-      subject: `You're in — ${event.title}`,
-      html: ticketConfirmationEmail({
-        eventTitle: event.title,
-        ticketType: ticketType.name,
-        ticketId: createdTickets[0].id + (quantity > 1 ? ` (+${quantity - 1} more)` : ''),
-        eventDate: formattedEventDate,
-        eventTime: formattedEventTime,
-        isVirtual: event.isVirtual ?? false,
-        venue: event.venue ?? undefined,
-        price: formattedTotal,
-        magicLink,
-        eventImageUrl,
-        eventUrl: `${EVENTS_URL}/${event.id}`,
-        qrCodeDataUri,
-      }),
-    });
+      await sendEmail({
+        to: customerEmail,
+        subject: `You're in — ${event.title}`,
+        html: ticketConfirmationEmail({
+          eventTitle: event.title,
+          ticketType: ticketType.name,
+          ticketId: createdTickets[0].id + (quantity > 1 ? ` (+${quantity - 1} more)` : ''),
+          eventDate: formattedEventDate,
+          eventTime: formattedEventTime,
+          isVirtual: event.isVirtual ?? false,
+          venue: event.venue ?? undefined,
+          price: formattedTotal,
+          magicLink,
+          eventImageUrl,
+          eventUrl: `${EVENTS_URL}/${event.id}`,
+          qrCodeDataUri,
+        }),
+      });
+    } catch (emailError) {
+      console.error(`[webhook] Ticket confirmation email failed for ${customerEmail}:`, emailError);
+    }
   }
 }
 
