@@ -160,6 +160,7 @@ async function getUserTickets(eventId: string, userDid: string) {
     return {
       id: ticket.id,
       status: ticket.status,
+      usedAt: ticket.usedAt?.toISOString() || null,
       registrationStatus: ticket.registrationStatus || 'not_required',
       purchasedAt: (ticket.purchasedAt || ticket.createdAt)?.toISOString() || null,
       pricePaid: ticket.pricePaid,

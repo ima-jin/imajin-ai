@@ -6,9 +6,21 @@ import { TicketPurchase } from './ticket-purchase';
 import { OnboardGate } from '@imajin/onboard';
 import { SurveyAccordion } from './survey-accordion';
 
+function timeAgo(dateStr: string): string {
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 interface UserTicket {
   id: string;
   status: string;
+  usedAt: string | null;
   registrationStatus?: string;
   purchasedAt: string | null;
   pricePaid: number | null;
@@ -203,7 +215,9 @@ function MyTicketCard({ ticket, eventId }: { ticket: UserTicket; eventId: string
                 </div>
               </div>
               <div className="mt-2 text-sm font-medium capitalize text-gray-600 dark:text-gray-400">
-                🎟️ {ticket.status === 'used' ? 'Checked In' : ticket.status}
+                🎟️ {ticket.status === 'used'
+                  ? `Checked In${ticket.usedAt ? ` · ${timeAgo(ticket.usedAt)}` : ''}`
+                  : ticket.status}
               </div>
             </>
           )}
