@@ -119,7 +119,7 @@ Emerged from rethinking work order #274 (unified domain). Started as "should we 
 - **86/86 conformance tests** passing on dev and prod
 - Brandon's "Hello, world!" artifact ingested — first external content on 0.5.0
 
-### 👥 Chris Bennett — First External Dev
+### 👥 Chris Bennett — Second External Dev
 
 First PR (#482) merged — chat UI cleanup, Signal-style composer. Getting local dev running exposed every friction point:
 
