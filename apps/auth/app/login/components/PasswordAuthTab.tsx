@@ -178,16 +178,27 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: P
         return;
       }
 
-      const { challengeId, challenge } = await challengeRes.json();
+      const { challengeId, challenge, hasDfosChain } = await challengeRes.json();
       // Sign the challenge hex string as UTF-8 bytes (matches verifySignature in lib/crypto.ts)
       const challengeBytes = new TextEncoder().encode(challenge);
       const signatureBytes = await ed.signAsync(challengeBytes, privateKeyBytes);
       const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
+      // If the account has no DFOS chain yet, create a genesis block client-side (non-fatal)
+      let dfosChain = null;
+      if (!hasDfosChain) {
+        try {
+          const { createDfosChain } = await import('@/lib/dfos-client');
+          dfosChain = await createDfosChain({ privateKey: privateKeyHex, publicKey: publicKeyHex });
+        } catch (err) {
+          console.warn('[dfos] Chain creation failed (non-fatal):', err);
+        }
+      }
+
       const verifyRes = await fetch('/api/login/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challengeId, signature }),
+        body: JSON.stringify({ challengeId, signature, dfosChain }),
       });
 
       if (!verifyRes.ok) {

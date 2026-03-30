@@ -4,6 +4,52 @@ import { eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { verifyChainLog } from './chain-providers';
 
+const REGISTRY_URL = process.env.REGISTRY_URL;
+
+/**
+ * Ingest a DFOS chain log into the relay.
+ * Submits all JWS tokens to REGISTRY_URL/relay/operations.
+ * Non-fatal — returns false on any error.
+ */
+export async function ingestToRelay(log: string[]): Promise<boolean> {
+  if (!REGISTRY_URL) {
+    console.warn('[dfos] REGISTRY_URL not set — skipping relay ingest');
+    return false;
+  }
+  try {
+    const res = await fetch(`${REGISTRY_URL}/relay/operations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operations: log }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.error(`[dfos] Relay ingest failed (${res.status}):`, text);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[dfos] Relay ingest error:', err);
+    return false;
+  }
+}
+
+/**
+ * Check if a DFOS identity chain exists on the relay.
+ * Returns false on any error or missing REGISTRY_URL.
+ */
+export async function checkRelayChain(dfosDid: string): Promise<boolean> {
+  if (!REGISTRY_URL) return false;
+  try {
+    const res = await fetch(
+      `${REGISTRY_URL}/relay/identities/${encodeURIComponent(dfosDid)}`
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 interface DfosChainPayload {
   did: string;
   log: string[];
@@ -91,7 +137,25 @@ export async function storeDfosChain(
     verifiedAt: new Date(),
   });
 
+  // Also ingest into the relay so it enters the gossip network
+  ingestToRelay(chain.log).catch(err =>
+    console.error(`[dfos] Relay ingest failed for ${imajinDid}:`, err)
+  );
+
   return true;
+}
+
+/**
+ * Check whether an identity has a DFOS chain stored locally.
+ * Lighter than getChainByImajinDid — only selects the DID column.
+ */
+export async function hasDfosChain(imajinDid: string): Promise<boolean> {
+  const [row] = await db
+    .select({ did: identityChains.did })
+    .from(identityChains)
+    .where(eq(identityChains.did, imajinDid))
+    .limit(1);
+  return !!row;
 }
 
 /**

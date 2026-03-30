@@ -110,17 +110,33 @@ export async function POST(request: NextRequest) {
       .where(eq(challenges.id, challengeId));
 
     // Store DFOS chain if provided (login-time bridging)
+    let dfosChainLinked = false;
     if (body.dfosChain) {
       try {
         const { verifyClientChain, storeDfosChain } = await import('@/lib/dfos');
         const verified = await verifyClientChain(body.dfosChain, identity.publicKey);
         if (verified) {
-          await storeDfosChain(identity.id, verified);
+          const stored = await storeDfosChain(identity.id, verified);
+          dfosChainLinked = stored; // true = newly linked, false = already existed
+          // storeDfosChain already calls ingestToRelay — nothing more needed here
         }
       } catch (err) {
         console.error(`[login] DFOS bridge failed for ${identity.id}:`, err);
       }
     }
+
+    // Lazy relay backfill: if user has a local chain not yet on the relay, submit it
+    import('@/lib/dfos').then(async ({ getChainByImajinDid, checkRelayChain, ingestToRelay }) => {
+      const chain = await getChainByImajinDid(identity.id);
+      if (!chain) return; // no local chain — nothing to backfill
+      const onRelay = await checkRelayChain(chain.dfosDid);
+      if (!onRelay) {
+        const ok = await ingestToRelay(chain.log as string[]);
+        if (ok) {
+          console.log(`[login] Backfilled relay chain for ${identity.id} (${chain.dfosDid})`);
+        }
+      }
+    }).catch(err => console.error(`[login] Relay backfill failed for ${identity.id}:`, err));
 
     // Create session token
     const token = await createSessionToken({
@@ -138,6 +154,7 @@ export async function POST(request: NextRequest) {
       handle: identity.handle,
       type: identity.type,
       name: identity.name,
+      dfosChainLinked,
     });
 
     response.cookies.set(cookieConfig.name, token, cookieConfig.options);

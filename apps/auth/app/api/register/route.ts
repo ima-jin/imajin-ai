@@ -111,12 +111,13 @@ export async function POST(request: NextRequest) {
     if (existing.length > 0) {
       if (existing[0].publicKey === publicKey) {
         // Same key - return existing identity (login-via-register flow)
+        let existingDfosLinked = false;
         if (body.dfosChain) {
           try {
             const { verifyClientChain, storeDfosChain } = await import('@/lib/dfos');
             const verified = await verifyClientChain(body.dfosChain, publicKey);
             if (verified) {
-              await storeDfosChain(existing[0].id, verified);
+              existingDfosLinked = await storeDfosChain(existing[0].id, verified);
             }
           } catch (err) {
             console.error(`[register] DFOS bridge failed for ${existing[0].id}:`, err);
@@ -138,6 +139,7 @@ export async function POST(request: NextRequest) {
           type: existing[0].type,
           created: false,
           message: 'Identity already exists',
+          dfosChainLinked: existingDfosLinked,
         });
 
         response.cookies.set(cookieConfig.name, token, cookieConfig.options);
@@ -206,12 +208,13 @@ export async function POST(request: NextRequest) {
       .returning();
 
     // Store DFOS chain if provided
+    let dfosChainLinked = false;
     if (body.dfosChain) {
       try {
         const { verifyClientChain, storeDfosChain } = await import('@/lib/dfos');
         const verified = await verifyClientChain(body.dfosChain, publicKey);
         if (verified) {
-          await storeDfosChain(identity.id, verified);
+          dfosChainLinked = await storeDfosChain(identity.id, verified);
         } else {
           console.warn(`[register] DFOS chain verification failed for ${identity.id} — skipping`);
         }
@@ -238,6 +241,7 @@ export async function POST(request: NextRequest) {
       type: identity.type,
       created: true,
       inviteAccepted: false,
+      dfosChainLinked,
     }, { status: 201 });
 
     response.cookies.set(cookieConfig.name, token, cookieConfig.options);
@@ -281,6 +285,7 @@ export async function POST(request: NextRequest) {
         type: identity.type,
         created: true,
         inviteAccepted: true,
+        dfosChainLinked,
       }, { status: 201 });
       acceptedResponse.cookies.set(cookieConfig.name, token, cookieConfig.options);
       return acceptedResponse;

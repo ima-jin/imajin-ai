@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { generateChallenge } from '@/lib/crypto';
 import { randomUUID } from 'crypto';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
+import { hasDfosChain } from '@/lib/dfos';
 
 /**
  * POST /api/login/challenge
@@ -79,10 +80,15 @@ export async function POST(request: NextRequest) {
       expiresAt,
     });
 
+    // Tell the client whether they need to create + submit a DFOS genesis chain.
+    // If false, the client should include dfosChain in the /login/verify request.
+    const hasChain = await hasDfosChain(identity.id);
+
     return NextResponse.json({
       challengeId,
       challenge,
       expiresAt: expiresAt.toISOString(),
+      hasDfosChain: hasChain,
     });
 
   } catch (error) {
