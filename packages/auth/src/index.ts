@@ -8,7 +8,7 @@ export { requireEstablishedDID } from "./require-established-did";
 export { canonicalize, sign, signSync } from "./sign";
 export { verify, isValidMessageStructure } from "./verify";
 export * as crypto from "./crypto";
-export { hexToBytes, stringToBytes, bytesToHex, bytesToMultibase, multibaseToPubkey, hexToMultibase, multibaseToHex, generateKeypair, generatePrivateKey, getPublicKey, verifySync, isValidPublicKey, isValidPrivateKey, isValidSignature } from "./crypto";
+export { hexToBytes, stringToBytes, bytesToHex, bytesToMultibase, multibaseToPubkey, hexToMultibase, multibaseToHex, generateKeypair, generatePrivateKey, getPublicKey, extractPrivateKeySeed, verifySync, isValidPublicKey, isValidPrivateKey, isValidSignature } from "./crypto";
 export type { Attestation, AttestationType } from "./types/attestation";
 export { ATTESTATION_TYPES } from "./types/attestation";
 export { resolvePublicKey, createDbResolver, createHttpResolver } from "./resolve";

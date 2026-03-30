@@ -46,6 +46,32 @@ export function stringToBytes(str: string): Uint8Array {
 }
 
 /**
+ * PKCS#8 Ed25519 DER prefix (16 bytes / 32 hex chars).
+ * Full PKCS#8 DER = this prefix + 32-byte raw seed = 48 bytes (96 hex chars).
+ */
+const PKCS8_ED25519_PREFIX = '302e020100300506032b657004220420';
+
+/**
+ * Extract the raw 32-byte Ed25519 seed from a private key hex string.
+ * Accepts both raw 32-byte hex (64 chars) and PKCS#8 DER hex (96 chars).
+ * All private key operations should go through this to normalize key format.
+ */
+export function extractPrivateKeySeed(privateKeyHex: string): string {
+  const cleaned = privateKeyHex.toLowerCase().trim();
+  if (cleaned.length === 64) {
+    // Already raw 32-byte seed
+    return cleaned;
+  }
+  if (cleaned.length === 96 && cleaned.startsWith(PKCS8_ED25519_PREFIX)) {
+    // PKCS#8 DER — extract last 32 bytes (64 hex chars)
+    return cleaned.slice(32);
+  }
+  throw new Error(
+    `Invalid Ed25519 private key: expected 64 hex chars (raw) or 96 hex chars (PKCS#8), got ${cleaned.length}`
+  );
+}
+
+/**
  * Generate a new random private key
  */
 export function generatePrivateKey(): string {
@@ -54,10 +80,12 @@ export function generatePrivateKey(): string {
 }
 
 /**
- * Derive public key from private key
+ * Derive public key from private key.
+ * Accepts raw 32-byte hex or PKCS#8 DER hex.
  */
 export function getPublicKey(privateKeyHex: string): string {
-  const privateKey = hexToBytes(privateKeyHex);
+  const seed = extractPrivateKeySeed(privateKeyHex);
+  const privateKey = hexToBytes(seed);
   const publicKey = ed25519.getPublicKey(privateKey);
   return bytesToHex(publicKey);
 }
@@ -80,7 +108,8 @@ export function generateKeypair(): { privateKey: string; publicKey: string } {
  */
 export function signSync(message: string | Uint8Array, privateKeyHex: string): string {
   const messageBytes = typeof message === 'string' ? stringToBytes(message) : message;
-  const privateKey = hexToBytes(privateKeyHex);
+  const seed = extractPrivateKeySeed(privateKeyHex);
+  const privateKey = hexToBytes(seed);
   const signature = ed25519.sign(messageBytes, privateKey);
   return bytesToHex(signature);
 }
