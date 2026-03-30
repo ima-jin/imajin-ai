@@ -46,9 +46,9 @@ export async function POST(
 
     const [updated] = await sql`
       UPDATE events.tickets
-      SET used_at = NOW()
+      SET used_at = NOW(), status = 'used'
       WHERE id = ${ticketId}
-      RETURNING id, used_at
+      RETURNING id, used_at, status
     `;
 
     // Fire-and-forget attestations — do not block check-in on failure

@@ -203,7 +203,7 @@ function MyTicketCard({ ticket, eventId }: { ticket: UserTicket; eventId: string
                 </div>
               </div>
               <div className="mt-2 text-sm font-medium capitalize text-gray-600 dark:text-gray-400">
-                🎟️ {ticket.status}
+                🎟️ {ticket.status === 'used' ? 'Checked In' : ticket.status}
               </div>
             </>
           )}
