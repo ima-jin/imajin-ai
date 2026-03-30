@@ -8,13 +8,13 @@
 
 | Metric | Traditional | Actual |
 |--------|------------|--------|
-| **Cost** | **$2,510,947** | **$93,237** |
-| **Timeline** | 16.8 months | 57 days |
-| **Team** | 8.6 people | 1 person + AI |
-| **Hours** | 21,809 | 440 |
-| **Cost multiplier** | — | **27× cheaper** |
-| **Speed multiplier** | — | **9× faster** |
-| **Hour multiplier** | — | **50× fewer hours** |
+| **Cost** | **$2,421,134** | **$93,237** |
+| **Timeline** | 16.3 months | 57 days |
+| **Team** | 8.5 people | 1 person + AI |
+| **Hours** | 21,029 | 440 |
+| **Cost multiplier** | — | **26× cheaper** |
+| **Speed multiplier** | — | **8.7× faster** |
+| **Hour multiplier** | — | **48× fewer hours** |
 
 ### Actual Cost Breakdown
 
@@ -37,7 +37,7 @@
 | Services shipped | 15 |
 | **Tokens per service** | **~701K** |
 
-10.51 million tokens is the raw computational effort — every architectural decision, code review, debug session, and refactor. At traditional rates, the equivalent human thinking time would be ~21,809 hours of senior engineering work.
+10.51 million tokens is the raw computational effort — every architectural decision, code review, debug session, and refactor. At traditional rates, the equivalent human thinking time would be ~21,029 hours of senior engineering work.
 
 ---
 
@@ -82,44 +82,44 @@ Not all lines are equal. COCOMO weights by type:
 |--------|--------|------:|-----------|
 | Precedentedness | Nominal | 3.0 | Web services familiar; sovereign identity novel |
 | Flexibility | High | 2.0 | Startup, flexible requirements |
-| Risk Resolution | High | 2.0 | Good architecture, evolving rapidly |
+| Risk Resolution | Very High | 1.0 | RFC-19 kernel/userspace, 4 RFCs, clear architecture |
 | Team Cohesion | Nominal | 3.0 | Small team, strong cohesion |
-| Process Maturity | Nominal | 3.0 | GitHub, CI/CD, structured issues |
-| **Exponent (E)** | | **1.04** | B + 0.01 × ΣSF |
+| Process Maturity | High | 2.0 | Migration CI checks, conformance tests, structured work orders |
+| **Exponent (E)** | | **1.02** | B + 0.01 × ΣSF |
 
 **Effort Multipliers (cost drivers):**
 
 | Driver | Rating | Value | Rationale |
 |--------|--------|------:|-----------|
 | Reliability | High | 1.10 | Financial transactions, auth, crypto |
-| Complexity | High | 1.17 | Multi-service, trust graphs, crypto |
-| Reusability | Above Nominal | 1.07 | Shared packages (@imajin/ui, fair, db, chat, config, llm, auth, media) |
+| Complexity | Very High | 1.34 | DFOS DAG chains, relay peering, federated auth, dual-token economics |
+| Reusability | Above Nominal | 1.07 | Shared packages (@imajin/ui, fair, db, chat, config, llm, auth, media, notify, dfos) |
 | Analyst Capability | Very High | 0.85 | 30 years systems architecture |
 | Programmer Capability | High | 0.88 | AI-augmented development |
 | Personnel Continuity | Very High | 0.81 | Solo builder, zero turnover |
-| Application Experience | High | 0.88 | Deep domain experience |
+| Application Experience | Very High | 0.81 | 57 days deep in domain, strong pattern library |
 | Platform Experience | High | 0.91 | Years on Node/Next.js/Postgres |
 | Language Experience | High | 0.91 | Years of TypeScript |
 | Tool Usage | Very High | 0.78 | AI coding agents, modern toolchain |
-| **Product (EM)** | | **0.4743** | |
+| **Product (EM)** | | **0.5000** | |
 
 ### COCOMO II Results
 
 | Metric | Value |
 |--------|-------|
-| Effort | 143.5 person-months |
-| Hours | 21,809 |
-| Duration | 16.8 months |
-| Average team size | 8.6 people |
+| Effort | 138.4 person-months |
+| Hours | 21,029 |
+| Duration | 16.3 months |
+| Average team size | 8.5 people |
 
 ### Cost at Market Rates
 
 | Rate Tier | Annual | Fully Loaded (1.4×) | Project Cost |
 |-----------|-------:|--------------------:|-------------:|
-| Mid-level ($120K) | $120,000 | $168,000 | $2,008,758 |
-| **Blended ($150K)** | **$150,000** | **$210,000** | **$2,510,947** |
-| Senior ($160K) | $160,000 | $224,000 | $2,678,344 |
-| Staff ($200K) | $200,000 | $280,000 | $3,347,930 |
+| Mid-level ($120K) | $120,000 | $168,000 | $1,936,907 |
+| **Blended ($150K)** | **$150,000** | **$210,000** | **$2,421,134** |
+| Senior ($160K) | $160,000 | $224,000 | $2,582,543 |
+| Staff ($200K) | $200,000 | $280,000 | $3,228,179 |
 
 *Fully loaded = salary × 1.4 (benefits, equipment, tools, office, management overhead)*
 
@@ -180,10 +180,10 @@ Three independent estimates converge:
 
 | Method | Delivered | Scoped | Total |
 |--------|----------|--------|-------|
-| **COCOMO II** (code-based) | — | — | **$2,510,947** |
+| **COCOMO II** (code-based) | — | — | **$2,421,134** |
 | **Issue-based** (delivered + scoped) | $1,414,960 | $1,043,280 | **$2,458,240** |
 
-The issue-based total ($2.46M) is lower than COCOMO ($2.51M) because:
+The issue-based total ($2.46M) is close to COCOMO ($2.42M) because:
 - Heuristic tiering underestimates multi-day "medium" tickets
 - COCOMO includes overhead (PM, QA, meetings, ramp-up) that issues don't capture
 - Issues don't account for infrastructure work not tracked in tickets
@@ -194,17 +194,17 @@ The issue-based total ($2.46M) is lower than COCOMO ($2.51M) because:
 
 | | Traditional (COCOMO II) | AI-Augmented (Actual) |
 |--|------------------------|----------------------|
-| **Cost** | $2,510,947 | $93,237 |
-| **Timeline** | 16.8 months | 57 days |
-| **Team** | 8.6 people | 1 person + AI |
-| **Hours** | 21,809 | 440 |
+| **Cost** | $2,421,134 | $93,237 |
+| **Timeline** | 16.3 months | 57 days |
+| **Team** | 8.5 people | 1 person + AI |
+| **Hours** | 21,029 | 440 |
 | | | |
-| **Cost ratio** | — | **27× cheaper** |
-| **Speed ratio** | — | **9× faster** |
-| **Hour ratio** | — | **50× fewer hours** |
+| **Cost ratio** | — | **26× cheaper** |
+| **Speed ratio** | — | **8.7× faster** |
+| **Hour ratio** | — | **48× fewer hours** |
 | | | |
 | **Scoped ahead** | $1,043,280 (130 tickets) | At current pace: weeks |
-| **Total platform value** | **~$3.6M** (built + scoped) | — |
+| **Total platform value** | **~$3.5M** (built + scoped) | — |
 
 ### At Growth Company Rates
 
@@ -212,8 +212,8 @@ At a growth-stage startup ($200K/yr fully loaded staff engineers):
 
 | Metric | Value |
 |--------|-------|
-| COCOMO estimate | $3,347,930 |
-| Cost multiplier vs actual | **36× cheaper** |
+| COCOMO estimate | $3,228,179 |
+| Cost multiplier vs actual | **35× cheaper** |
 
 ---
 
