@@ -220,10 +220,7 @@ export function MessageBubble({
                 tabIndex={0}
                 onClick={() => onScrollToMessage?.(message.replyTo!)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onScrollToMessage?.(message.replyTo!); }}
-                className={`msg-bubble-reply-to my-1 px-2 py-1 rounded-lg text-xs cursor-pointer bg-black/30 rounded-bl-none rounded-br-none border-white/50 border-l-4 text-white ${isOwn
-                    ? ''
-                    : ''
-                  }`}
+                className='msg-bubble-reply-to my-1 px-2 py-1 rounded-lg text-xs cursor-pointer bg-black/30 rounded-bl-none rounded-br-none border-white/50 border-l-4 text-white'
               >
                 <p className="font-medium">{replyToSenderName || '...'}</p>
                 <p className="truncate opacity-80">{replyToText.slice(0, 200)}{replyToText.length > 200 ? '...' : ''}</p>
