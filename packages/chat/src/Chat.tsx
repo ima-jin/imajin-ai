@@ -293,6 +293,22 @@ export function Chat({
     );
   }
 
+  const getComposerLabel = () => {
+    if (editingMsg) return 'Editing message';
+    if (replyTo) return `Replying to ${replyTo.name}`;
+    return 'Replying';
+  };
+
+  const getReplyToName = (replyToMsg: ChatMessage | undefined) => {
+    if (!replyToMsg) return undefined;
+
+    if (replyToMsg.senderDid === currentUserDid) {
+      return 'You';
+    }
+
+    return didNames[replyToMsg.senderDid] || replyToMsg.senderDid.slice(-8);
+  };
+
   if (!access.allowed) {
     return (
       <div className={`flex flex-col items-center justify-center h-full gap-3 text-slate-400 ${className ?? ''}`}>
@@ -318,13 +334,7 @@ export function Chat({
           const prevMsg = idx > 0 ? messages[idx - 1] : null;
           const showSenderLabel = !prevMsg || prevMsg.senderDid !== msg.senderDid;
           const replyToMsg = msg.replyTo ? messageById.get(msg.replyTo) : undefined;
-          const replyToSenderName = replyToMsg
-            ? (
-              replyToMsg.senderDid === currentUserDid
-                ? 'You'
-                : didNames[replyToMsg.senderDid] || replyToMsg.senderDid.slice(-8)
-            )
-            : undefined;
+          const replyToSenderName = getReplyToName(replyToMsg);
           return (
             <div key={msg.id} id={`msg-${msg.id}`}>
               <MessageBubble
@@ -380,7 +390,7 @@ export function Chat({
           <div className="flex items-start justify-between mb-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 text-xs w-full">
             <div className="min-w-0">
               <p className="font-semibold text-orange-500">
-                {editingMsg ? 'Editing message' : (replyTo ? `Replying to ${replyTo.name}` : 'Replying')}
+                {getComposerLabel()}
               </p>
               {replyTo && (
                 <p className="truncate text-slate-500 dark:text-slate-400">
