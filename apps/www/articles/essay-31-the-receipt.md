@@ -79,6 +79,34 @@ Not "we were early." Not "the project says we qualify." Signed cryptographic pro
 
 ---
 
+## Proof of Work, Literally
+
+Bitcoin's innovation was proof of work — a way to make consensus expensive enough that cheating costs more than cooperating. It works. It also wastes the energy output of a mid-sized country on SHA-256 hashes that serve no purpose beyond proving the miner spent the electricity.
+
+The crypto world has been trying to fix this for a decade. Primecoin (2013) made miners find prime number chains — useful to mathematicians, pointless to everyone else. IOHK's Ofelimos framework (2023) formalized "proof of useful work" where mining solves optimization problems. Multiple projects proposed training AI models as the work function. All of them are still asking the same question: *how do we make the consensus mechanism less wasteful?*
+
+They're solving the wrong problem.
+
+The question isn't how to make proof of work useful. The question is what work actually means.
+
+In Bitcoin, "work" is a hash collision. A computational artifact that proves you burned energy. The work is destroyed in the act of proving it happened. Nothing was produced. Nothing was served. Nothing was exchanged between humans. The proof is of waste, not of work.
+
+In Imajin, "work" is a ticket purchase. A review. A check-in. A settlement between a buyer and a seller. An attestation that someone showed up, taught a class, built a thing, served a meal. Real economic and social activity between real people — signed, timestamped, chained.
+
+The attestation chain isn't a proxy for work. It IS the work. The proof isn't that you burned something. The proof is that you did something. The receipt is the proof. The proof is the mint condition.
+
+Nick Szabo theorized "bit gold" in 1998 — a system where the work of creating the artifact IS the value. He was thinking about computational puzzles. We arrived at the same structure from the opposite direction: the artifact is an attestation of real-world participation, and the value is the trust it represents.
+
+Elinor Ostrom won the Nobel Prize in 2009 for demonstrating that communities can govern shared resources without central authority — through repeated interaction, reputation, and graduated sanctions. Her commons are trust-weighted graphs built from participation history. That's what a DFOS identity chain is. The chain doesn't enforce cooperation. It records it. The record becomes the basis for governance. The governance becomes the basis for value.
+
+Every prior token model asks: "how do we distribute value?" This model asks: "how do we recognize value that already exists?" The answer is the same answer it's always been. You keep receipts. You verify them. You honor them.
+
+The difference is that for the first time, the receipts are cryptographic, the verification is independent, and the honoring is a smart contract that nobody — including us — can override.
+
+Proof of work. Literally.
+
+---
+
 ## The Economics of Earning
 
 Let's be concrete.
