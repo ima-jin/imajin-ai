@@ -80,6 +80,20 @@ export async function POST(
   // Prepend event subject and context
   const fullSubject = `${event.title}: ${subject}`;
 
+  // Resolve organizer email for reply-to
+  const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+  let organizerEmail: string | undefined;
+  try {
+    const contactRes = await fetch(
+      `${AUTH_SERVICE_URL}/api/identity/${encodeURIComponent(identity.id)}/contact`,
+      { headers: { 'x-webhook-secret': NOTIFY_WEBHOOK_SECRET }, cache: 'no-store' },
+    );
+    if (contactRes.ok) {
+      const contactData = await contactRes.json();
+      organizerEmail = contactData.email;
+    }
+  } catch {}
+
   // Forward to notify broadcast with event-contextualized HTML
   const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'http://localhost:3006';
   const eventImageHtml = event.image_url
@@ -104,6 +118,7 @@ export async function POST(
           imageUrl: event.image_url,
           eventUrl: `${EVENTS_URL}/${id}`,
         },
+        ...(organizerEmail ? { replyTo: organizerEmail } : {}),
       }),
     });
 

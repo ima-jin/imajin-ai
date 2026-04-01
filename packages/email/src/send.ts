@@ -11,6 +11,8 @@ export interface SendEmailOptions {
   text?: string;
   /** When set, adds List-Unsubscribe / List-Unsubscribe-Post headers and a footer link */
   unsubscribeUrl?: string;
+  /** Reply-To address (e.g. event organizer email) */
+  replyTo?: string;
 }
 
 export async function sendEmail(options: SendEmailOptions): Promise<{ success: boolean; error?: any; messageId?: string }> {
@@ -44,6 +46,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
       body: JSON.stringify({
         personalizations: [{ to: [{ email: options.to }] }],
         from: parseSender(SENDGRID_FROM),
+        ...(options.replyTo && { reply_to: { email: options.replyTo } }),
         subject: options.subject,
         content: [
           { type: 'text/plain', value: textBody },
