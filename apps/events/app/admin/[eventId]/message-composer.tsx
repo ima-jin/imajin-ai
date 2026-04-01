@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { marked } from 'marked';
 
 interface MessageComposerProps {
   eventId: string;
@@ -11,10 +12,18 @@ export function MessageComposer({ eventId, recipientCount }: MessageComposerProp
   const [subject, setSubject] = useState('');
   const [markdown, setMarkdown] = useState('');
   const [preview, setPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ sent: number; skipped: number; errors: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Render preview with marked (same lib the email uses)
+  useEffect(() => {
+    if (preview && markdown.trim()) {
+      setPreviewHtml(marked.parse(markdown) as string);
+    }
+  }, [preview, markdown]);
 
   function handleSendClick() {
     if (!subject.trim() || !markdown.trim()) return;
@@ -49,20 +58,6 @@ export function MessageComposer({ eventId, recipientCount }: MessageComposerProp
     } finally {
       setSending(false);
     }
-  }
-
-  // Simple markdown → HTML preview (basic rendering for the composer)
-  function renderPreview(md: string): string {
-    return md
-      .replace(/^### (.+)$/gm, '<h3 style="font-size:1rem;font-weight:600;margin:0.75em 0 0.25em">$1</h3>')
-      .replace(/^## (.+)$/gm, '<h2 style="font-size:1.125rem;font-weight:700;margin:1em 0 0.25em">$1</h2>')
-      .replace(/^# (.+)$/gm, '<h1 style="font-size:1.25rem;font-weight:700;margin:1em 0 0.5em">$1</h1>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" style="color:#f97316">$1</a>')
-      .replace(/^- (.+)$/gm, '<li style="margin-left:1.25em">$1</li>')
-      .replace(/\n\n/g, '</p><p style="margin:0.5em 0">')
-      .replace(/^(?!<[h1-6li])(.+)$/gm, '<p style="margin:0.5em 0">$1</p>');
   }
 
   const canSend = subject.trim().length > 0 && markdown.trim().length > 0 && !sending;
@@ -126,7 +121,7 @@ export function MessageComposer({ eventId, recipientCount }: MessageComposerProp
         {preview ? (
           <div
             className="min-h-[160px] px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-200 prose dark:prose-invert max-w-none"
-            dangerouslySetInnerHTML={{ __html: markdown.trim() ? renderPreview(markdown) : '<span class="text-gray-400">Nothing to preview</span>' }}
+            dangerouslySetInnerHTML={{ __html: markdown.trim() ? previewHtml : '<span class="text-gray-400">Nothing to preview</span>' }}
           />
         ) : (
           <textarea
@@ -171,7 +166,7 @@ export function MessageComposer({ eventId, recipientCount }: MessageComposerProp
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
             <h3 className="text-lg font-semibold mb-2">Send this message?</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-              This will send <strong>"{subject}"</strong> to{' '}
+              This will send <strong>&ldquo;{subject}&rdquo;</strong> to{' '}
               <strong>{recipientCount} attendee{recipientCount !== 1 ? 's' : ''}</strong>. This cannot be undone.
             </p>
             <div className="flex gap-3 justify-end">
