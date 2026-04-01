@@ -96,9 +96,6 @@ export async function POST(
 
   // Forward to notify broadcast with event-contextualized HTML
   const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'http://localhost:3006';
-  const eventImageHtml = event.image_url
-    ? `<img src="${event.image_url}" alt="${event.title}" style="width:100%;max-width:600px;height:auto;display:block;border-radius:8px 8px 0 0;" />`
-    : '';
 
   let broadcastResult: { sent: number; skipped: number; errors: number };
   try {
@@ -115,7 +112,9 @@ export async function POST(
         markdown,
         eventContext: {
           title: event.title,
-          imageUrl: event.image_url,
+          imageUrl: event.image_url
+            ? (event.image_url.startsWith('http') ? event.image_url : `${EVENTS_URL}${event.image_url}`)
+            : null,
           eventUrl: `${EVENTS_URL}/${id}`,
         },
         ...(organizerEmail ? { replyTo: organizerEmail } : {}),
