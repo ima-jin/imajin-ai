@@ -56,6 +56,7 @@ export function useChatMessages(did: string): UseChatMessagesResult {
           ...msg,
           senderDid: msg.senderDid ?? msg.fromDid,
           did: msg.did ?? msg.conversationDid,
+          replyTo: msg.replyTo ?? msg.replyToMessageId,
           reactions: msg.reactions?.map((r: any) => ({
             ...r,
             senderDid: r.senderDid ?? r.fromDid,
@@ -114,6 +115,7 @@ export function useChatMessages(did: string): UseChatMessagesResult {
       ...message,
       senderDid: message.senderDid ?? raw.fromDid,
       did: message.did ?? raw.conversationDid,
+      replyTo: raw.replyTo ?? raw.replyToMessageId,
     };
     setMessages(prev => {
       if (prev.some(m => m.id === normalized.id)) return prev;

@@ -236,6 +236,7 @@ export async function POST(
     }
 
     // Validate reply if provided
+    let replyToDid: string | null = null;
     if (replyToMessageId) {
       const replyMessage = await db.query.messagesV2.findFirst({
         where: and(
@@ -246,6 +247,7 @@ export async function POST(
       if (!replyMessage) {
         return errorResponse('Reply message not found', 404, cors);
       }
+      replyToDid = replyMessage.fromDid;
     }
 
     const messageId = generateId('msg');
@@ -266,6 +268,7 @@ export async function POST(
       fromDid: identity.id,
       content,
       contentType,
+      replyToDid: replyToDid,
       replyToMessageId: replyToMessageId || null,
       mediaType: mediaType || null,
       mediaPath: mediaPath || null,

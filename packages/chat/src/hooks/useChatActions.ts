@@ -39,7 +39,10 @@ export function useChatActions(did: string): UseChatActionsResult {
     async (content: { type: string; text?: string; [key: string]: unknown }, options?: SendOptions) => {
       setIsSending(true);
       try {
-        await request('POST', `/api/d/${did}/messages`, { content, ...options });
+        await request('POST', `/api/d/${did}/messages`, {
+          content,
+          ...(options?.replyTo && { replyToMessageId: options.replyTo }),
+        });
       } finally {
         setIsSending(false);
       }

@@ -101,6 +101,7 @@ export interface MessageBubbleProps {
   reactions: Reaction[];
   onReactionToggle: (emoji: string, reacted: boolean) => void;
   replyToMessage?: Message | null;
+  replyToSenderName?: string;
   onScrollToMessage?: (messageId: string) => void;
   /** Base URL for the media service (e.g. process.env.NEXT_PUBLIC_MEDIA_URL). Passed down to VoiceMessage and MediaMessage. */
   mediaUrl?: string;
@@ -126,6 +127,7 @@ export function MessageBubble({
   reactions,
   onReactionToggle,
   replyToMessage,
+  replyToSenderName,
   onScrollToMessage,
   mediaUrl = '',
 }: MessageBubbleProps) {
@@ -199,22 +201,6 @@ export function MessageBubble({
           onTouchEnd={handleTouchEnd}
           className="relative"
         >
-          {/* Reply preview */}
-          {replyToMessage && (
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => onScrollToMessage?.(message.replyTo!)}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onScrollToMessage?.(message.replyTo!); }}
-              className={`mb-1 px-3 py-1 rounded-lg text-xs cursor-pointer ${isOwn
-                  ? 'bg-orange-400/30 text-white'
-                  : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
-                }`}
-            >
-              <p className="font-medium">↩ Reply to</p>
-              <p className="truncate opacity-80">{replyToText.slice(0, 50)}{replyToText.length > 50 ? '...' : ''}</p>
-            </div>
-          )}
 
           <div
             className={`px-3 py-3 rounded-2xl ${isOwn
@@ -225,6 +211,20 @@ export function MessageBubble({
             {/* Sender handle */}
             {!isOwn && showSenderLabel && (
               <p className="text-xs text-amber-500 mb-1 font-medium">{senderLabel}</p>
+            )}
+
+            {/* Reply preview */}
+            {replyToMessage && (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => onScrollToMessage?.(message.replyTo!)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onScrollToMessage?.(message.replyTo!); }}
+                className='msg-bubble-reply-to my-1 px-2 py-1 rounded-lg text-xs cursor-pointer bg-black/30 rounded-bl-none rounded-br-none border-white/50 border-l-4 text-white'
+              >
+                <p className="font-medium">{replyToSenderName || '...'}</p>
+                <p className="truncate opacity-80">{replyToText.slice(0, 200)}{replyToText.length > 200 ? '...' : ''}</p>
+              </div>
             )}
 
             {/* Rich content rendering */}

@@ -73,7 +73,7 @@ export function Chat({
   const { shareLocation } = useLocationShare();
 
   const [composerText, setComposerText] = useState('');
-  const [replyTo, setReplyTo] = useState<{ id: string; text: string } | null>(null);
+  const [replyTo, setReplyTo] = useState<{ id: string; text: string; name: string } | null>(null);
   const [editingMsg, setEditingMsg] = useState<{ id: string; text: string } | null>(null);
   const [voiceActive, setVoiceActive] = useState(false);
   const [voiceSending, setVoiceSending] = useState(false);
@@ -211,7 +211,8 @@ export function Chat({
   const handleReply = (msg: ChatMessage) => {
     const text = typeof msg.content === 'object' && 'text' in msg.content
       ? String(msg.content.text ?? '') : '';
-    setReplyTo({ id: msg.id, text });
+    const name = didNames[msg.senderDid] || msg.senderDid.slice(-8);
+    setReplyTo({ id: msg.id, text, name });
     setEditingMsg(null);
     textareaRef.current?.focus();
   };
@@ -292,6 +293,22 @@ export function Chat({
     );
   }
 
+  const getComposerLabel = () => {
+    if (editingMsg) return 'Editing message';
+    if (replyTo) return `Replying to ${replyTo.name}`;
+    return 'Replying';
+  };
+
+  const getReplyToName = (replyToMsg: ChatMessage | undefined) => {
+    if (!replyToMsg) return undefined;
+
+    if (replyToMsg.senderDid === currentUserDid) {
+      return 'You';
+    }
+
+    return didNames[replyToMsg.senderDid] || replyToMsg.senderDid.slice(-8);
+  };
+
   if (!access.allowed) {
     return (
       <div className={`flex flex-col items-center justify-center h-full gap-3 text-slate-400 ${className ?? ''}`}>
@@ -317,6 +334,7 @@ export function Chat({
           const prevMsg = idx > 0 ? messages[idx - 1] : null;
           const showSenderLabel = !prevMsg || prevMsg.senderDid !== msg.senderDid;
           const replyToMsg = msg.replyTo ? messageById.get(msg.replyTo) : undefined;
+          const replyToSenderName = getReplyToName(replyToMsg);
           return (
             <div key={msg.id} id={`msg-${msg.id}`}>
               <MessageBubble
@@ -341,6 +359,7 @@ export function Chat({
                   }
                 }}
                 replyToMessage={replyToMsg ? toMsgShape(replyToMsg) : undefined}
+                replyToSenderName={replyToSenderName}
                 onScrollToMessage={handleScrollToMessage}
                 mediaUrl={mediaUrl}
               />
@@ -370,10 +389,12 @@ export function Chat({
         {(replyTo || editingMsg) && (
           <div className="flex items-start justify-between mb-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 text-xs w-full">
             <div className="min-w-0">
-              <p className="font-semibold text-orange-500">{editingMsg ? 'Editing' : 'Replying to'}</p>
+              <p className="font-semibold text-orange-500">
+                {getComposerLabel()}
+              </p>
               {replyTo && (
                 <p className="truncate text-slate-500 dark:text-slate-400">
-                  {(replyTo?.text ?? '').slice(0, 80)}
+                  {(replyTo?.text ?? '').slice(0, 200)}
                 </p>
               )}
             </div>
