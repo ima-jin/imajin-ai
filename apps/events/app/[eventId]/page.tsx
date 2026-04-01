@@ -41,11 +41,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
   
   const eventDate = new Date(event.startsAt);
+  const eventTzMeta = event.timezone || 'UTC';
   const formattedDate = eventDate.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: eventTzMeta,
   });
   
   const ticketsList = await db
@@ -362,7 +364,7 @@ export default async function EventPage({ params, searchParams }: Props) {
     return true;
   });
   // Use event timezone if available, otherwise fall back to UTC
-  const eventTz = (event as any).timezone || 'UTC';
+  const eventTz = event.timezone || 'UTC';
   const formattedDate = eventDate.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -379,6 +381,7 @@ export default async function EventPage({ params, searchParams }: Props) {
   const formattedEndTime = eventEndDate ? eventEndDate.toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
+    timeZoneName: 'short',
     timeZone: eventTz,
   }) : null;
   // If end date is a different day, show the full date too
