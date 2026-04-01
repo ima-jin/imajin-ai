@@ -64,14 +64,22 @@ export async function POST(request: NextRequest) {
         .where(eq(identities.id, existingCred.did))
         .limit(1);
 
-      // Update name if provided
-      if (name && identity.length > 0) {
-        const [updated] = await db
-          .update(identities)
-          .set({ name: name.trim(), updatedAt: new Date() })
-          .where(eq(identities.id, existingCred.did))
-          .returning();
-        identity = [updated];
+      // Update name if provided and/or backfill contact_email if missing
+      if (identity.length > 0) {
+        const wantNameUpdate = !!name;
+        const missingEmail = !identity[0].contactEmail;
+        if (wantNameUpdate || missingEmail) {
+          const [updated] = await db
+            .update(identities)
+            .set({
+              ...(wantNameUpdate ? { name: name!.trim() } : {}),
+              ...(missingEmail ? { contactEmail: normalizedEmail } : {}),
+              updatedAt: new Date(),
+            })
+            .where(eq(identities.id, existingCred.did))
+            .returning();
+          identity = [updated];
+        }
       }
     } else {
       // Mint a new stable DID
@@ -86,6 +94,7 @@ export async function POST(request: NextRequest) {
           publicKey: placeholderKey,
           handle: null,
           name: name?.trim() || null,
+          contactEmail: normalizedEmail,
           metadata: { email: normalizedEmail, tier: 'soft' },
         })
         .returning();
