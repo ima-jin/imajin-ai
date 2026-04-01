@@ -284,6 +284,13 @@ export default async function EventPage({ params, searchParams }: Props) {
   const userTickets = session?.id ? await getUserTickets(event.id, session.id) : [];
   const hasTicket = userTickets.length > 0;
 
+  // Virtual URL only visible to ticket holders on event day
+  const eventDate = new Date(event.startsAt);
+  const now = new Date();
+  const isEventDay = eventDate.toDateString() === now.toDateString() || 
+    (event.endsAt && now >= new Date(new Date(event.startsAt).setHours(0,0,0,0)) && now <= new Date(event.endsAt));
+  const canSeeVirtualUrl = (hasTicket || isOrganizer) && isEventDay;
+
   // Resolve organizer profile and cohosts
   const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
   const ownerProfile = await resolveOrganizerProfile(event.creatorDid, authUrl);
@@ -501,7 +508,7 @@ export default async function EventPage({ params, searchParams }: Props) {
                       {event.city && (
                         <div className="text-sm text-gray-500 dark:text-gray-500 truncate">{event.city}</div>
                       )}
-                      {event.virtualUrl && (
+                      {canSeeVirtualUrl && event.virtualUrl && (
                         <a
                           href={event.virtualUrl}
                           target="_blank"
@@ -522,7 +529,7 @@ export default async function EventPage({ params, searchParams }: Props) {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-gray-500 dark:text-gray-400 mb-0.5">Location</div>
                       <div className="font-semibold">Virtual Event</div>
-                      {event.virtualUrl && (
+                      {canSeeVirtualUrl && event.virtualUrl && (
                         <a
                           href={event.virtualUrl}
                           target="_blank"
