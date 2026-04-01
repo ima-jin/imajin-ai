@@ -223,6 +223,44 @@ What changes: **the addressable market expands.** Privacy-requiring transactions
 
 ---
 
+## Dual-Token Convergence
+
+Midnight launched with a dual-token model: NIGHT (governance/security) and DUST (transaction fees). This is the same structural separation as Imajin's MJN (equity/governance) and MJNx (stable settlement, CHF-pegged).
+
+| | Midnight | Imajin |
+|---|---|---|
+| **Governance token** | NIGHT | MJN |
+| **Utility token** | DUST (fees) | MJNx (settlement, CHF-pegged) |
+| **Separation rationale** | Predictable tx costs, isolate speculation | Predictable settlement, isolate speculation |
+| **Fee abstraction** | Apps cover DUST fees for users | Gas pool subsidizes, users never see gas |
+| **User experience goal** | "Invisibility" — users don't know it's blockchain | Users tap, pay, chain is plumbing |
+| **Selective disclosure** | ZK proofs at protocol layer | Attestation chains at identity layer |
+| **Funding** | $200M self-funded | ~$80K bootstrapped |
+| **Token distribution** | Airdrop to 37M wallets across 8 chains | Earned through real economic activity, milestone-gated mint |
+| **Valuation at launch** | Briefly >$1B, currently ~$776M | Pre-token, virtual MJN accruing |
+
+The design conclusions are identical. The approach is opposite. Hoskinson built from the protocol layer up — a new L1 with ZK privacy baked into the chain. Imajin built from the application layer down — real services (events, marketplace, chat, payments) with sovereign identity underneath, chain-agnostic settlement.
+
+### Distribution: Airdrop vs Proof-of-Participation
+
+Midnight distributed tokens to 37M wallets on day one. Wide reach, but value is given, not earned. The tokens represent nothing except having a wallet on one of eight chains.
+
+Imajin's model: virtual MJN accrues through real economic activity — buying tickets, selling goods, tipping, creating content. Each credit is an entry on a DFOS chain. Replay the chain = calculate the balance. The milestone gate (10K active DIDs + $2.5M settlement volume) converts virtual to real. Every token at mint represents actual participation in a real economy.
+
+Airdrop is spray-and-pray. Proof-of-participation is earned. The structural consequence: Imajin's token holders are *users of the network*, not speculators who happened to have a wallet.
+
+### Why This Matters for Multi-Chain Settlement
+
+If Imajin integrates Midnight as a settlement rail (Phase 3), the dual-token models are complementary:
+- DUST handles Midnight transaction fees (or Imajin's gas pool covers them)
+- MJN/MJNx handles the actual settlement value
+- NIGHT governance is Midnight's concern, MJN governance is Imajin's concern
+- No token conflict — they operate at different layers
+
+The town doesn't compete with the highway. It uses it.
+
+---
+
 ## Open Questions
 
 1. **Midnight token standard** — details TBD pending Midnight documentation maturity
