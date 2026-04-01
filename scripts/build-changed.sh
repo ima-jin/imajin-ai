@@ -32,7 +32,7 @@ if [[ -f "$LAST_SHA_FILE" ]]; then
     | sort -u || true)
 else
   echo "No previous build SHA — all apps need building"
-  CHANGED_APPS=$(ls -1 apps/)
+  CHANGED_APPS=$(ls apps/*/package.json 2>/dev/null | cut -d/ -f2)
 fi
 
 if [[ -z "$CHANGED_APPS" ]]; then
