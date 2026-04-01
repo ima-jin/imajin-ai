@@ -15,6 +15,13 @@
       "when": 1774857600000,
       "tag": "0001_drop_event_admins",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775078437543,
+      "tag": "0002_add-location-type",
+      "breakpoints": true
     }
   ]
 }

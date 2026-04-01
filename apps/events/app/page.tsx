@@ -4,6 +4,7 @@ import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { db, events } from '@/src/db';
 import { desc, eq, or, and, ne, isNull, inArray } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
+import { getLocationType } from '@/src/lib/location';
 
 const sql = getClient();
 
@@ -183,7 +184,8 @@ export default async function HomePage() {
                       })}
                     </span>
                     {event.city && <span>📍 {event.city}</span>}
-                    {event.isVirtual && <span>💻 Virtual</span>}
+                    {getLocationType(event) === 'virtual' && <span>💻 Virtual</span>}
+                    {getLocationType(event) === 'hybrid' && <span>💻📍 Hybrid</span>}
                   </div>
                 </div>
               </div>

@@ -27,7 +27,7 @@ export default function EventCreateForm({ organizerDid }: Props) {
   const [description, setDescription] = useState('');
   const [dateTime, setDateTime] = useState('');
   const [endDateTime, setEndDateTime] = useState('');
-  const [isVirtual, setIsVirtual] = useState(false);
+  const [locationType, setLocationType] = useState<'physical' | 'virtual' | 'hybrid'>('physical');
   const [virtualUrl, setVirtualUrl] = useState('');
   const [venue, setVenue] = useState('');
   const [address, setAddress] = useState('');
@@ -72,12 +72,13 @@ export default function EventCreateForm({ organizerDid }: Props) {
           description: `${tagline ? tagline + '\n\n' : ''}${description}`,
           startsAt: new Date(dateTime).toISOString(),
           endsAt: endDateTime ? new Date(endDateTime).toISOString() : null,
-          isVirtual,
-          virtualUrl: isVirtual ? virtualUrl : null,
-          venue: !isVirtual ? venue : null,
-          address: !isVirtual ? address : null,
-          city: !isVirtual ? city : null,
-          country: !isVirtual ? country : null,
+          locationType,
+          isVirtual: locationType !== 'physical',
+          virtualUrl: locationType !== 'physical' ? virtualUrl : null,
+          venue: locationType !== 'virtual' ? venue : null,
+          address: locationType !== 'virtual' ? address : null,
+          city: locationType !== 'virtual' ? city : null,
+          country: locationType !== 'virtual' ? country : null,
           imageUrl: coverImageUrl || null,
           courseSlug: courseSlug || null,
           tickets: tiers.filter(t => t.name).map(t => ({
@@ -157,19 +158,24 @@ export default function EventCreateForm({ organizerDid }: Props) {
           </div>
         </div>
 
-        <div>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={isVirtual}
-              onChange={(e) => setIsVirtual(e.target.checked)}
-              className="w-4 h-4 text-orange-500 focus:ring-orange-500 rounded"
-            />
-            <span className="text-sm font-medium">Virtual Event</span>
-          </label>
+        <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+          {(['physical', 'virtual', 'hybrid'] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setLocationType(type)}
+              className={`flex-1 py-2 text-sm font-medium transition ${
+                locationType === type
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
+              }`}
+            >
+              {type.charAt(0).toUpperCase() + type.slice(1)}
+            </button>
+          ))}
         </div>
 
-        {isVirtual ? (
+        {locationType !== 'physical' && (
           <div>
             <label className="block text-sm font-medium mb-1">Virtual URL</label>
             <input
@@ -180,7 +186,9 @@ export default function EventCreateForm({ organizerDid }: Props) {
               className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
             />
           </div>
-        ) : (
+        )}
+
+        {locationType !== 'virtual' && (
           <>
             <div>
               <label className="block text-sm font-medium mb-1">Venue</label>
