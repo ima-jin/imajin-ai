@@ -27,8 +27,8 @@ if [[ -f "$LAST_SHA_FILE" ]]; then
 
   echo "Detecting changes since $(echo $LAST_SHA | cut -c1-7)..."
   CHANGED_APPS=$(pnpm --filter "...[${LAST_SHA}]" ls --depth -1 2>/dev/null \
-    | grep -oP '(?<=workspace/imajin-ai/)apps/\S+' \
-    | sed 's|apps/||' \
+    | grep -oP '(?<=/imajin-ai/)apps/\S+' \
+    | sed 's|apps/||; s| .*||' \
     | sort -u || true)
 else
   echo "No previous build SHA — all apps need building"
