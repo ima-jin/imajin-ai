@@ -10,6 +10,7 @@ import { EventStatusControls } from './event-status-controls';
 import { CohostManager } from './cohost-manager';
 import { GuestList } from './guest-list';
 import { InviteManager } from './invite-manager';
+import { MessageComposer } from './message-composer';
 import { getSession } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 
@@ -72,6 +73,16 @@ export default async function AdminPage({ params }: Props) {
   const totalSold = allTickets.length;
   const totalRevenue = allTickets.reduce((sum, t) => sum + (t.ticket.pricePaid || 0), 0);
   const checkedIn = allTickets.filter(t => t.ticket.usedAt).length;
+
+  // Count distinct confirmed attendees for broadcast
+  const confirmedAttendeeRows = await sql`
+    SELECT COUNT(DISTINCT owner_did) AS count
+    FROM events.tickets
+    WHERE event_id = ${eventId}
+      AND status IN ('sold', 'used')
+      AND owner_did IS NOT NULL
+  `;
+  const confirmedAttendeeCount = Number(confirmedAttendeeRows[0]?.count ?? 0);
   
   return (
     <div className="max-w-6xl mx-auto p-8">
@@ -103,6 +114,9 @@ export default async function AdminPage({ params }: Props) {
 
       {/* Invite Link Management */}
       <InviteManager eventId={event.id} accessMode={event.accessMode || 'public'} />
+
+      {/* Message Attendees */}
+      <MessageComposer eventId={event.id} recipientCount={confirmedAttendeeCount} />
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

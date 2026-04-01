@@ -5,6 +5,7 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
+    "marked": "^12.0.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {

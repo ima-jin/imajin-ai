@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid';
 import { createHmac } from 'crypto';
 import { db } from '@/db';
 import { notifications } from '@/db/schema';
-import { sendEmail } from '@imajin/email';
+import { sendEmail, renderBroadcastEmail } from '@imajin/email';
 
 // TODO(#538): These registry routes will be implemented by Agent 1.
 // Stubbed here with clear fallback behavior.
@@ -155,7 +155,8 @@ export async function POST(request: NextRequest) {
     scope: string;
     dids?: string[];
     subject: string;
-    html: string;
+    html?: string;
+    markdown?: string;
     text?: string;
     channels?: ('email' | 'inapp' | 'chat')[];
   };
@@ -166,13 +167,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
   }
 
-  const { scope, dids: explicitDids, subject, html, text, channels = ['email'] } = body;
+  const { scope, dids: explicitDids, subject, html: htmlInput, markdown, text: textInput, channels = ['email'] } = body;
 
-  if (!scope || !subject || !html) {
+  if (!scope || !subject || (!htmlInput && !markdown)) {
     return NextResponse.json(
-      { error: 'Missing required fields: scope, subject, html' },
+      { error: 'Missing required fields: scope, subject, html (or markdown)' },
       { status: 400, headers: cors },
     );
+  }
+
+  let html: string;
+  let text: string | undefined = textInput;
+
+  if (htmlInput) {
+    html = htmlInput;
+  } else {
+    const rendered = renderBroadcastEmail(markdown!);
+    html = rendered.html;
+    if (!text) text = rendered.text;
   }
 
   // Resolve audience
