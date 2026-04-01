@@ -284,13 +284,6 @@ export default async function EventPage({ params, searchParams }: Props) {
   const userTickets = session?.id ? await getUserTickets(event.id, session.id) : [];
   const hasTicket = userTickets.length > 0;
 
-  // Virtual URL only visible to ticket holders on event day
-  const eventDate = new Date(event.startsAt);
-  const now = new Date();
-  const isEventDay = eventDate.toDateString() === now.toDateString() || 
-    (event.endsAt && now >= new Date(new Date(event.startsAt).setHours(0,0,0,0)) && now <= new Date(event.endsAt));
-  const canSeeVirtualUrl = (hasTicket || isOrganizer) && isEventDay;
-
   // Resolve organizer profile and cohosts
   const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
   const ownerProfile = await resolveOrganizerProfile(event.creatorDid, authUrl);
@@ -308,6 +301,9 @@ export default async function EventPage({ params, searchParams }: Props) {
   const eventDate = new Date(event.startsAt);
   const eventEndDate = event.endsAt ? new Date(event.endsAt) : null;
   const now = new Date();
+  const isEventDay = eventDate.toDateString() === now.toDateString() ||
+    (eventEndDate && now >= new Date(new Date(event.startsAt).setHours(0,0,0,0)) && now <= eventEndDate);
+  const canSeeVirtualUrl = (hasTicket || isOrganizer) && isEventDay;
   const isUpcoming = eventDate > now;
   const isOngoing = eventDate <= now && (!eventEndDate || eventEndDate > now);
   const isCompleted = eventEndDate ? eventEndDate < now : false;
