@@ -137,6 +137,10 @@ export async function POST(
           eventTitle: event.title,
         },
       }).catch((err) => console.error("Notify error:", err));
+
+      // Record interest signal — event.rsvp → events scope
+      notify.interest({ did: ticket.ownerDid, attestationType: 'event.rsvp' })
+        .catch((err) => console.error("Interest signal error:", err));
     }
 
     // Send ticket confirmation email to the registered attendee (skip if no email, e.g. Dykil form)

@@ -8,6 +8,7 @@
 import { NextRequest } from 'next/server';
 import { db, listings } from '@/db';
 import { emitAttestation } from '@imajin/auth';
+import { notify } from '@imajin/notify';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
@@ -71,6 +72,16 @@ export async function POST(request: NextRequest) {
           context_type: 'market',
           payload: { amount: body.metadata?.amount },
         }).catch((err: unknown) => console.error('Attestation emit error:', err));
+
+        // Record interest signals — listing.purchased → market scope (buyer + seller)
+        if (body.metadata?.buyerDid) {
+          notify.interest({ did: body.metadata.buyerDid, attestationType: 'listing.purchased' })
+            .catch((err: unknown) => console.error('Interest signal error:', err));
+        }
+        if (listing.sellerDid) {
+          notify.interest({ did: listing.sellerDid, attestationType: 'listing.purchased' })
+            .catch((err: unknown) => console.error('Interest signal error:', err));
+        }
       }
     }
 
