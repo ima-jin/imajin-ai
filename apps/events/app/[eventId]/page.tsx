@@ -492,8 +492,11 @@ export default async function EventPage({ params, searchParams }: Props) {
                 <div className="font-semibold truncate">
                   {event.isVirtual ? 'Virtual Event' : event.venue || 'TBA'}
                 </div>
+                {!event.isVirtual && event.address && (
+                  <div className="text-sm text-gray-600 dark:text-gray-400">{event.address}</div>
+                )}
                 {!event.isVirtual && event.city && (
-                  <div className="text-sm text-gray-600 dark:text-gray-400 truncate">{event.city}</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-500 truncate">{event.city}</div>
                 )}
               </div>
             </div>
