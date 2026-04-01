@@ -35,3 +35,6 @@ apps/*/drizzle/relations.ts
 *.raw.md
 scripts/launch-local.tsimajin-courses/
 apps/auth/tsconfig.tsbuildinfo
+memory/
+.claire/
+*.tsbuildinfo
