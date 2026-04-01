@@ -1,2 +1,2 @@
-ALTER TABLE "events"."events" ADD COLUMN "location_type" text DEFAULT 'physical';
+ALTER TABLE "events"."events" ADD COLUMN "location_type" text DEFAULT 'physical';--> statement-breakpoint
 UPDATE events.events SET location_type = CASE WHEN is_virtual = true THEN 'virtual' ELSE 'physical' END WHERE location_type IS NULL;
