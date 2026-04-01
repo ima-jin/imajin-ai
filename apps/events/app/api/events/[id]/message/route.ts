@@ -57,7 +57,7 @@ export async function POST(
     SELECT DISTINCT owner_did
     FROM events.tickets
     WHERE event_id = ${id}
-      AND status IN ('sold', 'used')
+      AND status IN ('valid', 'used')
       AND owner_did IS NOT NULL
   `;
 

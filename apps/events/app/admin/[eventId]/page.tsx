@@ -79,7 +79,7 @@ export default async function AdminPage({ params }: Props) {
     SELECT COUNT(DISTINCT owner_did) AS count
     FROM events.tickets
     WHERE event_id = ${eventId}
-      AND status IN ('sold', 'used')
+      AND status IN ('valid', 'used')
       AND owner_did IS NOT NULL
   `;
   const confirmedAttendeeCount = Number(confirmedAttendeeRows[0]?.count ?? 0);
