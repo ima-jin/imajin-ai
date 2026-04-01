@@ -55,7 +55,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
   const [endDateTime, setEndDateTime] = useState(
     event.endsAt ? toLocalDateTimeString(new Date(event.endsAt)) : ''
   );
-  const [timezone, setTimezone] = useState((event as any).timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const [timezone, setTimezone] = useState(event.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [isVirtual, setIsVirtual] = useState(event.isVirtual || false);
   const [virtualUrl, setVirtualUrl] = useState(event.virtualUrl || '');
   const [venue, setVenue] = useState(event.venue || '');
