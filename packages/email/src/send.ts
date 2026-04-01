@@ -2,7 +2,7 @@ const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 const SENDGRID_FROM = process.env.SENDGRID_FROM || 'Jin <jin@imajin.ai>';
 
 // CAN-SPAM required physical address
-const PHYSICAL_ADDRESS = 'Imajin Inc., Bracebridge, ON, Canada';
+const PHYSICAL_ADDRESS = 'Imajin Inc., 118 Sheridan Ave, Toronto, ON, Canada';
 
 export interface SendEmailOptions {
   to: string;
