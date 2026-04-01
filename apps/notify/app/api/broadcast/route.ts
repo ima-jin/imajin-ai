@@ -159,6 +159,7 @@ export async function POST(request: NextRequest) {
     markdown?: string;
     text?: string;
     channels?: ('email' | 'inapp' | 'chat')[];
+    eventContext?: { title: string; imageUrl?: string | null; eventUrl?: string };
   };
 
   try {
@@ -167,7 +168,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
   }
 
-  const { scope, dids: explicitDids, subject, html: htmlInput, markdown, text: textInput, channels = ['email'] } = body;
+  const { scope, dids: explicitDids, subject, html: htmlInput, markdown, text: textInput, channels = ['email'], eventContext } = body;
 
   if (!scope || !subject || (!htmlInput && !markdown)) {
     return NextResponse.json(
@@ -182,7 +183,7 @@ export async function POST(request: NextRequest) {
   if (htmlInput) {
     html = htmlInput;
   } else {
-    const rendered = renderBroadcastEmail(markdown!);
+    const rendered = renderBroadcastEmail(markdown!, eventContext);
     html = rendered.html;
     if (!text) text = rendered.text;
   }

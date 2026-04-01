@@ -8,11 +8,11 @@ import { eq, and } from 'drizzle-orm';
  * Internal endpoint — resolve a DID to its contact email.
  * Used by the notify service to resolve DID → email for broadcast sends.
  *
- * Auth: x-webhook-secret header (same secret as NOTIFY_WEBHOOK_SECRET on notify service).
+ * Auth: x-webhook-secret header (must match NOTIFY_WEBHOOK_SECRET).
  *
  * Lookup order:
- *   1. TODO(#546): auth.identities.contact_email once that column is backfilled
- *   2. auth.credentials where type='email' (login email)
+ *   1. auth.identities.contact_email (backfilled from Stripe / ticket metadata)
+ *   2. auth.credentials where type='email' (login email fallback)
  *
  * Returns: { did, email }
  */
@@ -29,9 +29,8 @@ export async function GET(
   const decodedDid = decodeURIComponent(did);
 
   try {
-    // Verify identity exists
     const [identity] = await db
-      .select({ id: identities.id })
+      .select({ id: identities.id, contactEmail: identities.contactEmail })
       .from(identities)
       .where(eq(identities.id, decodedDid))
       .limit(1);
@@ -40,21 +39,24 @@ export async function GET(
       return NextResponse.json({ error: 'Identity not found' }, { status: 404 });
     }
 
-    // TODO(#546): Once contact_email is backfilled onto identities, prefer it here:
-    // const contactEmail = identity.contactEmail ?? credential.value
-    //
-    // For now, fall back to the credentials table (login email)
-    const [emailCredential] = await db
-      .select({ value: credentials.value })
-      .from(credentials)
-      .where(and(eq(credentials.did, decodedDid), eq(credentials.type, 'email')))
-      .limit(1);
+    // Prefer contact_email, fall back to credentials
+    let email = identity.contactEmail;
 
-    if (!emailCredential?.value) {
+    if (!email) {
+      const [emailCredential] = await db
+        .select({ value: credentials.value })
+        .from(credentials)
+        .where(and(eq(credentials.did, decodedDid), eq(credentials.type, 'email')))
+        .limit(1);
+
+      email = emailCredential?.value ?? null;
+    }
+
+    if (!email) {
       return NextResponse.json({ error: 'No email found for DID' }, { status: 404 });
     }
 
-    return NextResponse.json({ did: decodedDid, email: emailCredential.value });
+    return NextResponse.json({ did: decodedDid, email });
   } catch (error) {
     console.error('Contact resolve error:', error);
     return NextResponse.json({ error: 'Failed to resolve contact' }, { status: 500 });

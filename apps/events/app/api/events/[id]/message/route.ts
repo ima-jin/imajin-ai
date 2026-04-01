@@ -52,6 +52,15 @@ export async function POST(
     return NextResponse.json({ error: 'Broadcast service not configured' }, { status: 500 });
   }
 
+  // Fetch event details for context
+  const [event] = await sql`
+    SELECT title, image_url, starts_at FROM events.events WHERE id = ${id}
+  `;
+
+  if (!event) {
+    return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+  }
+
   // Fetch distinct attendee DIDs for confirmed (paid) tickets
   const ticketRows = await sql`
     SELECT DISTINCT owner_did
@@ -68,7 +77,15 @@ export async function POST(
     return NextResponse.json({ sent: 0, skipped: 0, errors: 0, total: 0 });
   }
 
-  // Forward to notify broadcast
+  // Prepend event subject and context
+  const fullSubject = `${event.title}: ${subject}`;
+
+  // Forward to notify broadcast with event-contextualized HTML
+  const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'http://localhost:3006';
+  const eventImageHtml = event.image_url
+    ? `<img src="${event.image_url}" alt="${event.title}" style="width:100%;max-width:600px;height:auto;display:block;border-radius:8px 8px 0 0;" />`
+    : '';
+
   let broadcastResult: { sent: number; skipped: number; errors: number };
   try {
     const res = await fetch(`${NOTIFY_URL}/api/broadcast`, {
@@ -80,8 +97,13 @@ export async function POST(
       body: JSON.stringify({
         scope: 'events',
         dids,
-        subject,
+        subject: fullSubject,
         markdown,
+        eventContext: {
+          title: event.title,
+          imageUrl: event.image_url,
+          eventUrl: `${EVENTS_URL}/${id}`,
+        },
       }),
     });
 
