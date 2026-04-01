@@ -156,6 +156,7 @@ export async function PUT(
       description,
       startsAt,
       endsAt,
+      locationType,
       isVirtual,
       virtualUrl,
       venue,
@@ -179,7 +180,12 @@ export async function PUT(
     if (startsAt !== undefined) updates.startsAt = new Date(startsAt);
     if (endsAt !== undefined) updates.endsAt = endsAt ? new Date(endsAt) : null;
     if (body.timezone !== undefined) updates.timezone = body.timezone;
-    if (isVirtual !== undefined) updates.isVirtual = isVirtual;
+    if (locationType !== undefined) {
+      updates.locationType = locationType;
+      updates.isVirtual = locationType !== 'physical';
+    } else if (isVirtual !== undefined) {
+      updates.isVirtual = isVirtual;
+    }
     if (virtualUrl !== undefined) updates.virtualUrl = virtualUrl;
     if (venue !== undefined) updates.venue = venue;
     if (address !== undefined) updates.address = address;

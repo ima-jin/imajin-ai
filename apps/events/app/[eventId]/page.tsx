@@ -19,6 +19,7 @@ import { ShareButton } from './share-button';
 import { getSession } from '@imajin/auth';
 import { MarkdownContent } from '@imajin/ui';
 import type { Metadata } from 'next';
+import { getLocationType } from '@/src/lib/location';
 
 interface Props {
   params: Promise<{ eventId: string }>;
@@ -485,21 +486,72 @@ export default async function EventPage({ params, searchParams }: Props) {
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
-              <div className="text-2xl">{event.isVirtual ? '💻' : '📍'}</div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm text-gray-500 dark:text-gray-400 mb-0.5">Location</div>
-                <div className="font-semibold truncate">
-                  {event.isVirtual ? 'Virtual Event' : event.venue || 'TBA'}
+            {(() => {
+              const locType = getLocationType(event);
+              if (locType === 'hybrid') {
+                return (
+                  <div className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
+                    <div className="text-2xl">💻📍</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-gray-500 dark:text-gray-400 mb-0.5">Location</div>
+                      <div className="font-semibold truncate">{event.venue || 'Hybrid Event'}</div>
+                      {event.address && (
+                        <div className="text-sm text-gray-600 dark:text-gray-400">{event.address}</div>
+                      )}
+                      {event.city && (
+                        <div className="text-sm text-gray-500 dark:text-gray-500 truncate">{event.city}</div>
+                      )}
+                      {event.virtualUrl && (
+                        <a
+                          href={event.virtualUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-orange-500 hover:text-orange-600 truncate block mt-1"
+                        >
+                          Join online →
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+              if (locType === 'virtual') {
+                return (
+                  <div className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
+                    <div className="text-2xl">💻</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-gray-500 dark:text-gray-400 mb-0.5">Location</div>
+                      <div className="font-semibold">Virtual Event</div>
+                      {event.virtualUrl && (
+                        <a
+                          href={event.virtualUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-orange-500 hover:text-orange-600 truncate block"
+                        >
+                          {event.virtualUrl}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
+                  <div className="text-2xl">📍</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-gray-500 dark:text-gray-400 mb-0.5">Location</div>
+                    <div className="font-semibold truncate">{event.venue || 'TBA'}</div>
+                    {event.address && (
+                      <div className="text-sm text-gray-600 dark:text-gray-400">{event.address}</div>
+                    )}
+                    {event.city && (
+                      <div className="text-sm text-gray-500 dark:text-gray-500 truncate">{event.city}</div>
+                    )}
+                  </div>
                 </div>
-                {!event.isVirtual && event.address && (
-                  <div className="text-sm text-gray-600 dark:text-gray-400">{event.address}</div>
-                )}
-                {!event.isVirtual && event.city && (
-                  <div className="text-sm text-gray-500 dark:text-gray-500 truncate">{event.city}</div>
-                )}
-              </div>
-            </div>
+              );
+            })()}
           </div>
 
           {/* Countdown */}

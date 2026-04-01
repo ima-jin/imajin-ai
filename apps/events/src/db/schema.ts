@@ -21,7 +21,8 @@ export const events = eventsSchema.table('events', {
   timezone: text('timezone'),
   
   // Location
-  isVirtual: boolean('is_virtual').default(false),
+  locationType: text('location_type').default('physical'), // 'physical' | 'virtual' | 'hybrid'
+  isVirtual: boolean('is_virtual').default(false),         // kept for backward compat
   virtualUrl: text('virtual_url'),
   venue: text('venue'),
   address: text('address'),
