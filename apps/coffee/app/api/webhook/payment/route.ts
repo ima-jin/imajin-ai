@@ -97,6 +97,10 @@ export async function POST(request: NextRequest) {
               tipperName: displayFrom,
             },
           }).catch((err) => console.error('[webhook] Notify recipient error:', err));
+
+          // Record interest signal — tip.received → coffee scope
+          notify.interest({ did: recipientDid, attestationType: 'tip.received' })
+            .catch((err) => console.error('[webhook] Interest signal error:', err));
         }
 
         // Notify sender
@@ -110,6 +114,10 @@ export async function POST(request: NextRequest) {
               pageName: pageTitle || 'a creator',
             },
           }).catch((err) => console.error('[webhook] Notify sender error:', err));
+
+          // Record interest signal — tip.sent → coffee scope
+          notify.interest({ did: fromDid, attestationType: 'tip.sent' })
+            .catch((err) => console.error('[webhook] Interest signal error:', err));
         }
 
         break;

@@ -354,6 +354,10 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     },
   }).catch((err) => console.error("Notify error:", err));
 
+  // Record interest signal — ticket.purchased → events scope
+  notify.interest({ did: ownerDid, attestationType: 'ticket.purchased' })
+    .catch((err) => console.error("Interest signal error:", err));
+
   // Add buyer to event chat conversation_members (non-fatal)
   // The event DID is the conversation DID
   const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;

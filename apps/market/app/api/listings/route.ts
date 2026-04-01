@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db, listings } from '@/db';
 import { requireAuth, getSession, emitAttestation } from '@imajin/auth';
+import { notify } from '@imajin/notify';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
 import { resolveMediaRef } from '@imajin/media';
 import { eq, ilike, and, desc, asc, sql, ne } from 'drizzle-orm';
@@ -94,6 +95,10 @@ export async function POST(request: NextRequest) {
       context_type: 'market',
       payload: { title, price, currency: listing.currency },
     }).catch((err) => console.error('Attestation emit error:', err));
+
+    // Record interest signal — listing.created → market scope
+    notify.interest({ did: identity.id, attestationType: 'listing.created' })
+      .catch((err) => console.error('Interest signal error:', err));
 
     return jsonResponse(listing, 201);
   } catch (error) {

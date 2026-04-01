@@ -315,6 +315,10 @@ export async function POST(
                 messagePreview: messageText.slice(0, 100),
               },
             }).catch((err: unknown) => console.error('Mention notify error:', err));
+
+            // Record interest signal — chat.mention → chat scope
+            notify.interest({ did: mentionedDid, attestationType: 'chat.mention' })
+              .catch((err: unknown) => console.error('Interest signal error:', err));
           } catch (err) {
             console.error('Handle resolution error:', err);
           }

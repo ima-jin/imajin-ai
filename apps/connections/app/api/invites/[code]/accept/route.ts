@@ -137,6 +137,12 @@ export async function POST(
         name: session.handle || session.did.slice(0, 16),
       },
     }).catch((err: unknown) => console.error("Notify error:", err));
+
+    // Record interest signals — connection.accepted → connections scope (both parties)
+    notify.interest({ did: invite.fromDid, attestationType: 'connection.accepted' })
+      .catch((err: unknown) => console.error("Interest signal error:", err));
+    notify.interest({ did: session.did, attestationType: 'connection.accepted' })
+      .catch((err: unknown) => console.error("Interest signal error:", err));
   })().catch((err: unknown) => console.error("Notify setup error:", err));
 
   emitAttestation({
