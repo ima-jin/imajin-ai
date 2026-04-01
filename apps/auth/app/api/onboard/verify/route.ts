@@ -137,11 +137,17 @@ export async function GET(request: NextRequest) {
 
     if (identity) {
       did = identity.id;
-      if (record.name && !identity.name) {
-        // Update name if provided and not already set
+      const wantNameUpdate = !!(record.name && !identity.name);
+      const missingEmail = !identity.contactEmail;
+      if (wantNameUpdate || missingEmail) {
+        // Update name if provided and not already set; backfill contact_email if missing
         [identity] = await db
           .update(identities)
-          .set({ name: record.name, updatedAt: new Date() })
+          .set({
+            ...(wantNameUpdate ? { name: record.name! } : {}),
+            ...(missingEmail ? { contactEmail: normalizedEmail } : {}),
+            updatedAt: new Date(),
+          })
           .where(eq(identities.id, did))
           .returning();
       }
@@ -157,6 +163,7 @@ export async function GET(request: NextRequest) {
           publicKey: placeholderKey,
           handle: null,
           name: record.name || null,
+          contactEmail: normalizedEmail,
           metadata: { email: record.email, tier: 'soft', source: 'onboard' },
         })
         .returning();

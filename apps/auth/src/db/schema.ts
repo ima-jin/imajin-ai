@@ -22,6 +22,7 @@ export const identities = authSchema.table('identities', {
   // SQL: ALTER TABLE auth.identities ADD COLUMN IF NOT EXISTS avatar_asset_id TEXT;
   avatarAssetId: text('avatar_asset_id'),           // asset_xxx from media service
   tier: text('tier').notNull().default('soft'),
+  contactEmail: text('contact_email'),                  // billing/notification email from Stripe or onboard
   keyRoles: jsonb('key_roles').$type<KeyRoles | null>(), // null = single key in all roles
   metadata: jsonb('metadata').default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
