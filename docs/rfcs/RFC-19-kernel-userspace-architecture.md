@@ -71,6 +71,58 @@ What this eliminates:
 
 Chat's WebSocket server stays as a separate process (stateful connection registry). Caddy routes `/chat/ws` to it.
 
+### Embedded relay — the kernel's data layer
+
+Every Imajin node runs an embedded DFOS relay. This is not optional infrastructure — it IS the kernel's data layer. Identity chains, attestation chains, settlement records, connection graphs — all stored locally, all read/written via localhost.
+
+```
+┌──────────────────────────────────────────┐
+│              Imajin Node                 │
+│                                          │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  │
+│  │  auth    │  │   pay   │  │registry │  │
+│  └────┬────┘  └────┬────┘  └────┬────┘  │
+│       │            │            │        │
+│       └────────────┼────────────┘        │
+│                    │                     │
+│            ┌───────┴───────┐             │
+│            │  DFOS Relay   │             │
+│            │  (localhost)  │             │
+│            │   SQLite/PG   │             │
+│            └───────┬───────┘             │
+│                    │                     │
+└────────────────────┼─────────────────────┘
+                     │ sync (background)
+        ┌────────────┼────────────┐
+        │            │            │
+   ┌────┴────┐ ┌────┴────┐ ┌────┴────┐
+   │ Peer ATX│ │ Peer NYC│ │ Peer LIS│
+   └─────────┘ └─────────┘ └─────────┘
+```
+
+**Local-first, always.** All kernel reads and writes hit the local relay — zero network latency, zero external dependency. The node is fully functional offline. This is the same pattern as git: everything is local, syncing with remotes is a secondary operation.
+
+**Sync is background.** The relay peers with other nodes in the mesh. Writes are gossiped to peers. Read-misses proxy out to the mesh. When a node comes back online after being offline, it catches up automatically. The mesh handles eventual consistency — chains are CRDTs (DFOS 0.6.0), so concurrent writes on different nodes converge deterministically.
+
+**What flows through the relay:**
+
+| Chain type | Per... | Data |
+|-----------|--------|------|
+| Identity | DID | Keys, rotation, recovery |
+| Attestations | DID | Trust signals from all services |
+| Settlements | DID | Payment proofs, MJN mint data |
+| Connections | DID | Social graph, portability |
+| .fair | work | Attribution, provenance |
+| App registry | node | App registrations, compliance |
+
+**Implications for the kernel:**
+- Services don't know about DFOS directly. They call `emitAttestation()`, `settle()`, etc. The kernel writes to the local relay behind the scenes.
+- Identity verification always hits the local relay first. If the chain is cached locally, it's instant. If not, the relay fetches from peers.
+- A node operator deploying Imajin runs one command: the kernel starts, the relay starts with it, peering is configured at setup. `dfos serve` is embedded, not separate.
+- The relay is the exit door. If a user leaves the platform, they take their chains. Any DFOS-compatible app can read them.
+
+See also: #555 (DFOS chain strategy), RFC-22 (federated authentication), Brandon's CLI-as-relay (dfos PR #34).
+
 ---
 
 ## The Userspace
