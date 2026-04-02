@@ -1,0 +1,158 @@
+/**
+ * POST /api/refund
+ *
+ * Issue a refund for a Stripe payment.
+ * Service-to-service only — requires PAY_SERVICE_API_KEY.
+ *
+ * Request:
+ * {
+ *   paymentId: string,   // Stripe payment/session ID (= stripeId in transactions)
+ *   amount?: number,     // cents — omit for full refund
+ *   reason?: string
+ * }
+ *
+ * Response:
+ * {
+ *   id: string,
+ *   paymentId: string,
+ *   amount: number,
+ *   status: "pending" | "succeeded" | "failed"
+ * }
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { getPaymentService } from '@/lib/pay';
+import { db, transactions, balances } from '@/src/db';
+import { eq, sql } from 'drizzle-orm';
+import { genId } from '@/src/lib/id';
+import { corsHeaders } from '@/src/lib/cors';
+
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
+}
+
+export async function POST(request: NextRequest) {
+  const cors = corsHeaders(request);
+
+  // Service-to-service auth via API key
+  const apiKey = request.headers.get('authorization')?.replace('Bearer ', '');
+  const expectedKey = process.env.PAY_SERVICE_API_KEY;
+
+  if (!expectedKey || apiKey !== expectedKey) {
+    return NextResponse.json(
+      { error: 'Unauthorized - invalid API key' },
+      { status: 401, headers: cors }
+    );
+  }
+
+  try {
+    const body = await request.json();
+    const { paymentId, amount, reason } = body;
+
+    if (!paymentId || typeof paymentId !== 'string') {
+      return NextResponse.json(
+        { error: 'paymentId is required' },
+        { status: 400, headers: cors }
+      );
+    }
+
+    // Find the original transaction by stripeId
+    const [originalTx] = await db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.stripeId, paymentId))
+      .limit(1);
+
+    if (!originalTx) {
+      return NextResponse.json(
+        { error: 'Transaction not found for paymentId' },
+        { status: 404, headers: cors }
+      );
+    }
+
+    if (originalTx.status === 'refunded') {
+      return NextResponse.json(
+        { error: 'Transaction already refunded' },
+        { status: 400, headers: cors }
+      );
+    }
+
+    // Issue refund via Stripe
+    const pay = getPaymentService();
+    const refundResult = await pay.refund({ paymentId, amount, reason });
+
+    // Convert tx amount (dollars) back to cents for response consistency
+    const txAmountDollars = parseFloat(originalTx.amount);
+    const refundedDollars = amount ? amount / 100 : txAmountDollars;
+
+    // Mark original transaction as refunded
+    await db
+      .update(transactions)
+      .set({ status: 'refunded' })
+      .where(eq(transactions.id, originalTx.id));
+
+    // Create reversal transaction entry
+    const reversalId = genId('tx');
+    await db.insert(transactions).values({
+      id: reversalId,
+      service: originalTx.service,
+      type: 'refund',
+      fromDid: originalTx.toDid,
+      toDid: originalTx.fromDid ?? 'unknown',
+      amount: refundedDollars.toString(),
+      currency: originalTx.currency,
+      status: 'completed',
+      source: 'fiat',
+      stripeId: refundResult.id,
+      metadata: {
+        originalTxId: originalTx.id,
+        originalStripeId: paymentId,
+        ...(reason && { reason }),
+      },
+    });
+
+    // Adjust balances: debit toDid (seller), credit fromDid (buyer)
+    if (originalTx.toDid) {
+      await db
+        .update(balances)
+        .set({
+          cashAmount: sql`GREATEST(${balances.cashAmount} - ${refundedDollars}, 0)`,
+          updatedAt: new Date(),
+        })
+        .where(eq(balances.did, originalTx.toDid));
+    }
+
+    if (originalTx.fromDid) {
+      await db
+        .insert(balances)
+        .values({
+          did: originalTx.fromDid,
+          cashAmount: refundedDollars.toString(),
+          creditAmount: '0',
+          currency: originalTx.currency,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: balances.did,
+          set: {
+            cashAmount: sql`${balances.cashAmount} + ${refundedDollars}`,
+            updatedAt: new Date(),
+          },
+        });
+    }
+
+    return NextResponse.json({
+      id: refundResult.id,
+      paymentId: refundResult.paymentId,
+      amount: refundResult.amount,
+      status: refundResult.status,
+      transactionId: reversalId,
+    }, { headers: cors });
+  } catch (error) {
+    console.error('Refund error:', error);
+    return NextResponse.json(
+      { error: 'Refund failed' },
+      { status: 500, headers: cors }
+    );
+  }
+}
