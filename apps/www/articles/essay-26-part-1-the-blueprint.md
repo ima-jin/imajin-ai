@@ -2,9 +2,9 @@
 title: "The Blueprint"
 subtitle: "Twenty-five essays. Here's what we built."
 description: "The architecture of imajin.ai — what it is, what each piece does, and what we have to show for 57 days of sovereign infrastructure."
-date: "2026-03-30"
+date: "2026-03-31"
 author: "Ryan Veteze"
-status: "DRAFT"
+status: "POSTED"
 ---
 
 There was a gallery show in January. Cry Baby — a bar on Dundas with a small front room. I had six cubes. 512 LEDs each. Made by hand, one at a time, through the fall while the code was off the table and the autodev tools weren't where I needed them.
@@ -197,8 +197,12 @@ That's 57 days.
 
 *15 services. 86/86 conformance. 26× cheaper than traditional development. One cryptographic identity per person. Zero extraction.*
 
-*The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
-*The network: [imajin.ai](https://www.imajin.ai)*
-*The community: [app.dfos.com/j/6hnk8e9r9z8eht3k48z474](https://app.dfos.com/j/c3rff6e96e4ca9hncc43en)*
+**If you want to follow along:**
 
-*This article was originally published on imajin.ai. Imajin is building sovereign technology infrastructure — identity, payments, and AI governance without platform lock-in.*
+- The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
+- The network: [imajin.ai](https://www.imajin.ai)
+- The community: [app.dfos.com/j/6hnk8e9r9z8eht3k48z474](https://app.dfos.com/j/c3rff6e96e4ca9hncc43en)
+- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-26-part-1-the-blueprint.md](github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-26-part-1-the-blueprint.md)
+
+This article was originally published on [imajin.ai/articles/the-blueprint](imajin.ai/articles/the-blueprint) on March 31, 2026. Imajin is building sovereign technology infrastructure — identity, attribution, trust, settlement, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)

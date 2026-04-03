@@ -2,10 +2,9 @@
 title: "I Need Help"
 subtitle: "The thing founders aren't supposed to say"
 description: "The thing founders aren't supposed to say. Twenty-five essays of proof, then the honest ask: financial backing, dev help, other brains, community."
-date: "2026-02-22"
-updated: "2026-03-30"
+date: "2026-04-03"
 author: "Ryan Veteze"
-status: "REVIEW"
+status: "POSTED"
 ---
 
 I have spent these essays proving I know what I'm talking about.
@@ -152,10 +151,11 @@ It doesn't stop on its own. It doesn't end. Until we say it does.
 
 ---
 
-*The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
-*The network: [imajin.ai](https://www.imajin.ai)*
-*Become a micro-founder: [coffee.imajin.ai](https://coffee.imajin.ai)*
-*RFC: Distribution Contracts + Micro-Founder Attribution: [github.com/ima-jin/imajin-ai/discussions](https://github.com/ima-jin/imajin-ai/discussions)*
-*Jin's party: April 1st, 2026*
+- The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
+- The network: [imajin.ai](https://www.imajin.ai)
+- The community: [app.dfos.com/j/6hnk8e9r9z8eht3k48z474](https://app.dfos.com/j/c3rff6e96e4ca9hncc43en)
+- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
+- RFC: Distribution Contracts + Micro-Founder Attribution: [github.com/ima-jin/imajin-ai/discussions](https://github.com/ima-jin/imajin-ai/discussions)
+- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-26-part-1-the-blueprint.md](github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-26-part-1-the-blueprint.md)
 
-*This article was originally published on imajin.ai on February 22, 2026. Updated March 30, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and AI governance without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai)*
+This article was originally published on [imajin.ai/articles/i-need-help](imajin.ai/articles/i-need-help) on April 3, 2026. Imajin is building sovereign technology infrastructure — identity, attribution, trust, settlement, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)
