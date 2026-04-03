@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Adjust balances: debit toDid (seller), credit fromDid (buyer)
+    // Adjust balances for the checkout transaction
     if (originalTx.toDid) {
       await db
         .update(balances)
@@ -165,6 +165,59 @@ export async function POST(request: NextRequest) {
             updatedAt: new Date(),
           },
         });
+    }
+
+    // Reverse settlement entries (host share + platform fee)
+    // Settlement transactions link back via metadata.stripeSessionId matching the checkout's stripeId
+    const checkoutStripeId = originalTx.stripeId;
+    if (checkoutStripeId) {
+      const settlementTxs = await db
+        .select()
+        .from(transactions)
+        .where(sql`${transactions.metadata}->>'stripeSessionId' = ${checkoutStripeId}`);
+
+      for (const stx of settlementTxs) {
+        if (stx.status === 'refunded') continue;
+
+        const stxAmount = parseFloat(stx.amount);
+
+        // Mark settlement entry as refunded
+        await db
+          .update(transactions)
+          .set({ status: 'refunded' })
+          .where(eq(transactions.id, stx.id));
+
+        // Create reversal entry for this settlement
+        const stxReversalId = genId('tx');
+        await db.insert(transactions).values({
+          id: stxReversalId,
+          service: stx.service,
+          type: 'refund',
+          fromDid: stx.toDid,
+          toDid: stx.fromDid ?? 'unknown',
+          amount: stxAmount.toString(),
+          currency: stx.currency,
+          status: 'completed',
+          source: 'fiat',
+          batchId: stx.batchId,
+          metadata: {
+            originalTxId: stx.id,
+            refundOfSettlement: true,
+            ...(reason && { reason }),
+          },
+        });
+
+        // Debit the recipient (host or platform)
+        if (stx.toDid) {
+          await db
+            .update(balances)
+            .set({
+              cashAmount: sql`GREATEST(${balances.cashAmount} - ${stxAmount}, 0)`,
+              updatedAt: new Date(),
+            })
+            .where(eq(balances.did, stx.toDid));
+        }
+      }
     }
 
     return NextResponse.json({
