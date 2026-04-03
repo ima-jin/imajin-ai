@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, events, ticketTypes } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
+import { db, events, ticketTypes, ticketRegistrations } from '@/src/db';
+import { requireAuth, getEmailForDid } from '@imajin/auth';
 import { eq, sql } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
+import { sendEmail, renderBroadcastEmail } from '@imajin/email';
 
 const sqlClient = getClient();
 
@@ -41,7 +42,7 @@ export async function POST(
     }
 
     const [ticket] = await sqlClient`
-      SELECT id, status, price_paid, payment_id, payment_method, ticket_type_id
+      SELECT id, status, price_paid, payment_id, payment_method, ticket_type_id, owner_did, currency
       FROM events.tickets
       WHERE id = ${ticketId} AND event_id = ${id}
       LIMIT 1
@@ -107,6 +108,67 @@ export async function POST(
       WHERE id = ${ticketId}
       RETURNING id, status
     `;
+
+    // Send refund notification email (fire-and-forget, non-fatal)
+    try {
+      // Resolve attendee email: registration > profile > auth credential
+      let customerEmail: string | null = null;
+      const [registration] = await db
+        .select()
+        .from(ticketRegistrations)
+        .where(eq(ticketRegistrations.ticketId, ticketId))
+        .limit(1);
+
+      if (registration?.email) {
+        customerEmail = registration.email;
+      } else if (ticket.owner_did) {
+        const profileRows = await sqlClient`
+          SELECT contact_email FROM profile.profiles WHERE did = ${ticket.owner_did} LIMIT 1
+        `;
+        if (profileRows.length > 0 && profileRows[0].contact_email) {
+          customerEmail = profileRows[0].contact_email;
+        } else {
+          customerEmail = await getEmailForDid(ticket.owner_did);
+        }
+      }
+
+      if (customerEmail) {
+        const priceDollars = (pricePaid / 100).toFixed(2);
+        const currency = ticket.currency || 'CAD';
+
+        let refundMessage: string;
+        if (isStripe && pricePaid > 0) {
+          refundMessage = `Your ticket for **${event.title}** has been refunded.\n\n` +
+            `**Amount:** $${priceDollars} ${currency}\n\n` +
+            `The refund has been processed and should appear on your card within 5–10 business days.`;
+        } else if (manualRefundRequired) {
+          refundMessage = `Your ticket for **${event.title}** has been refunded.\n\n` +
+            `**Amount:** $${priceDollars} ${currency}\n\n` +
+            `Your refund will be returned via e-transfer. Please allow a few business days for processing.`;
+        } else {
+          refundMessage = `Your ticket for **${event.title}** has been cancelled and refunded.`;
+        }
+
+        const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+        const imageUrl = event.imageUrl
+          ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
+          : null;
+        const { html, text } = renderBroadcastEmail(refundMessage, {
+          title: event.title,
+          imageUrl,
+          eventUrl: `${EVENTS_URL}/${event.id}`,
+        });
+
+        await sendEmail({
+          to: customerEmail,
+          subject: `Refund: ${event.title}`,
+          html,
+          text,
+        });
+      }
+    } catch (emailErr) {
+      console.error('[refund] Failed to send refund email (non-fatal):', emailErr);
+    }
 
     return NextResponse.json({
       ticket: { id: updated.id, status: updated.status },
