@@ -150,6 +150,6 @@ That's [the next essay](essay-26).
 
 *The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
 *The network: [imajin.ai](https://www.imajin.ai)*
-*The community: [app.dfos.com/j/6hnk8e9r9z8eht3k48z474](https://app.dfos.com/j/6hnk8e9r9z8eht3k48z474)*
+*The community: [app.dfos.com/j/6hnk8e9r9z8eht3k48z474](https://app.dfos.com/j/c3rff6e96e4ca9hncc43en)*
 
 *This article was originally published on imajin.ai. Imajin is building sovereign technology infrastructure — identity, payments, and AI governance without platform lock-in.*

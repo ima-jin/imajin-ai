@@ -28,7 +28,7 @@ I built this the other way around. You're the vendor. Your presence, your knowle
 
 That's what I need right now. If you want an invitation into the alpha, come find us.
 
-**→ https://app.dfos.com/j/6hnk8e9r9z8eht3k48z474**
+**→ https://app.dfos.com/j/c3rff6e96e4ca9hncc43en**
 
 ---
 

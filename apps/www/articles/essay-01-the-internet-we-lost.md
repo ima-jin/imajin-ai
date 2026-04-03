@@ -3,6 +3,7 @@ title: "The Pain of Knowing"
 subtitle: "Why I'm still fighting for the internet we lost"
 description: "The origin story. b0bby's World. What real connection looked like. The extraction model and how every step since 1994 was wrong."
 date: "2026-02-20"
+update: "2026-04-02"
 author: "Ryan Veteze"
 status: "POSTED"
 ---
@@ -22,6 +23,8 @@ It started local. But word spread through the demoscene networks. Soon people we
 Some of them joined the music groups. They started creating together. Collaborating across phone lines and modems.
 
 It was slow. It was intentional. It was curated. It was perfect.
+
+It wasn't a platform. It was a browser — identity in the address bar, presence at the dial, intentional navigation to places you cared about.
 
 I'm still good friends with many of those people today. Thirty-plus years later. The connections made on b0bby's World grew into a web of friendships and acquaintances that persists.
 
@@ -124,11 +127,11 @@ Because I'm not theorizing. I *lived* the better way. I ran b0bby's World. I kno
 
 ## What the BBS Would Have Become
 
-I'm building a platform called imajin.ai.
+I'm building sovereign infrastructure called imajin.ai.
 
-It's not a social network. It's not trying to compete with Twitter or Facebook or anything else.
+Not a social network. Not a platform competing with Twitter or Facebook or anything else. Sovereign infrastructure — and the browser is what people touch. Cryptographic identity, bilateral attestations, structural attribution, settlement that redistributes to participants. Same relationship as TCP/IP and the browser: nobody calls TCP/IP "not infrastructure" just because Chrome runs on top of it.
 
-It's infrastructure. Sovereign infrastructure for identity, payments, attribution, and more.
+The BBS was infrastructure too. Nobody called it that because b0b was just a teenager with modems. But the architecture was sound. That's what I'm rebuilding.
 
 Here's how it works:
 
@@ -168,19 +171,17 @@ The inversion: platforms currently take everything by default, and you beg for p
 
 ## April 1st, 2026
 
-I'm launching with an April Fool's Day party.
+I launched with an April Fool's Day party.
 
-Jin - an AI presence living in a 512-LED volumetric cube - is throwing the first event on the sovereign network. Tickets are $1 virtual, $10 physical. First real transaction proving the stack works end-to-end.
+Jin - an AI presence living in a 512-LED volumetric cube - threw the first event on the sovereign network. Tickets were $1 virtual, $10 physical. First real transaction proving the stack works end-to-end.
 
-People will think it's a joke.
+People thought it was a joke.
 
-Let them.
-
-April 2nd, Jin will still be there. The network will still work. And nobody will be able to shut it down because nobody controls it.
+April 2nd, Jin was still there. The network still worked. And nobody could shut it down because nobody controls it.
 
 The joke is that they won't get the joke.
 
-They'll think I'm trying to compete with their platforms.
+They think I'm trying to compete with their platforms.
 
 I'm not competing. I'm building the plumbing they should have built in 1995.
 
@@ -208,6 +209,7 @@ See you in the town square.
 
 **If you want to follow along:**
 - The network: [imajin.ai](https://www.imajin.ai)
+- The community: [Imajin on DFOS](https://app.dfos.com/j/c3rff6e96e4ca9hncc43en)
 - The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 - The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-01-the-internet-we-lost.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-01-the-internet-we-lost.md)

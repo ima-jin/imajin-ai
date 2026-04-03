@@ -64,7 +64,7 @@ export default async function SuccessPage({ searchParams }: Props) {
             </Link>
 
             <Link
-              href="https://app.dfos.com/j/6hnk8e9r9z8eht3k48z474"
+              href="https://app.dfos.com/j/c3rff6e96e4ca9hncc43en"
               className="block w-full py-3 px-6 bg-gray-700 hover:bg-gray-600 text-gray-200 font-semibold rounded-xl transition"
             >
               Join the Discord
