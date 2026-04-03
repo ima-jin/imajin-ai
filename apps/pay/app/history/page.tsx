@@ -83,9 +83,9 @@ export default async function HistoryPage({
   // Group transactions by batch_id; standalone entries (no batch_id) pass through as-is.
   // Preserve descending-date order: the batch group appears at the position of its first member.
   const batchMap = new Map<string, SerializedTx[]>();
-  const seen = new Set<string>();
   const displayEntries: DisplayEntry[] = [];
 
+  // Single pass: serialize once, collect batches, and build display list
   for (const tx of txs) {
     const serialized: SerializedTx = {
       ...tx,
@@ -95,24 +95,11 @@ export default async function HistoryPage({
 
     if (tx.batchId) {
       if (!batchMap.has(tx.batchId)) {
-        batchMap.set(tx.batchId, []);
+        const entries: SerializedTx[] = [];
+        batchMap.set(tx.batchId, entries);
+        displayEntries.push({ kind: 'batch', batchId: tx.batchId, entries });
       }
       batchMap.get(tx.batchId)!.push(serialized);
-    }
-  }
-
-  for (const tx of txs) {
-    const serialized: SerializedTx = {
-      ...tx,
-      amount: String(tx.amount),
-      createdAt: tx.createdAt ? tx.createdAt.toISOString() : null,
-    };
-
-    if (tx.batchId) {
-      if (!seen.has(tx.batchId)) {
-        seen.add(tx.batchId);
-        displayEntries.push({ kind: 'batch', batchId: tx.batchId, entries: batchMap.get(tx.batchId)! });
-      }
     } else {
       displayEntries.push({ kind: 'standalone', tx: serialized });
     }
