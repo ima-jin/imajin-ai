@@ -56,12 +56,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find the original transaction by stripeId
-    const [originalTx] = await db
+    // Find the original transaction by stripeId.
+    // Pay stores checkout session ID (cs_xxx) as stripeId, but events tickets
+    // store the payment intent ID (pi_xxx). Try stripeId first, then use
+    // Stripe API to resolve payment intent → checkout session.
+    let [originalTx] = await db
       .select()
       .from(transactions)
       .where(eq(transactions.stripeId, paymentId))
       .limit(1);
+
+    if (!originalTx && paymentId.startsWith('pi_')) {
+      // Events tickets store payment intent ID (pi_xxx), but pay ledger stores
+      // checkout session ID (cs_xxx). Resolve via Stripe API.
+      try {
+        const Stripe = (await import('stripe')).default;
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-04-10' as any });
+        const sessions = await stripe.checkout.sessions.list({
+          payment_intent: paymentId,
+          limit: 1,
+        });
+        if (sessions.data[0]) {
+          const results = await db
+            .select()
+            .from(transactions)
+            .where(eq(transactions.stripeId, sessions.data[0].id))
+            .limit(1);
+          originalTx = results[0];
+        }
+      } catch (e) {
+        console.error('[refund] Failed to resolve payment intent to session:', e);
+      }
+    }
 
     if (!originalTx) {
       return NextResponse.json(
