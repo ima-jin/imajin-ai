@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useIdentity, LoginPrompt } from '@/contexts/IdentityContext';
 import { Chat, ChatProvider } from '@imajin/chat';
@@ -18,19 +18,46 @@ function parseConvDid(did: string): { type: string; slug?: string } {
 
 const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
 
+const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
+const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+
+interface Member {
+  did: string;
+  name?: string | null;
+  handle?: string | null;
+  role: string;
+}
+
+interface Connection {
+  did: string;
+  handle?: string;
+  name?: string;
+}
+
 // ─── DID-based conversation view ─────────────────────────────────────────────
 
 function DIDConversationView({ did }: { did: string }) {
   const { identity, loading: authLoading } = useIdentity();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [convName, setConvName] = useState<string | null>(null);
   const [nameSet, setNameSet] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [memberCount, setMemberCount] = useState<number | null>(null);
-  const [members, setMembers] = useState<{ did: string; name?: string; handle?: string; role: string }[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [showMembers, setShowMembers] = useState(false);
+  const [leaveConfirm, setLeaveConfirm] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [removingDid, setRemovingDid] = useState<string | null>(null);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [loadingConnections, setLoadingConnections] = useState(false);
+  const [addingDid, setAddingDid] = useState<string | null>(null);
   const parsed = parseConvDid(did);
+
+  const callerRole = members.find((m) => m.did === identity?.did)?.role ?? null;
+  const isOwnerOrAdmin = callerRole === 'owner' || callerRole === 'admin';
 
   const handleNameSave = async () => {
     const trimmed = nameInput.trim();
@@ -71,7 +98,7 @@ function DIDConversationView({ did }: { did: string }) {
   }, [identity, did]);
 
   // Fetch members for group conversations
-  useEffect(() => {
+  const fetchMembers = useCallback(() => {
     if (!identity || parsed.type !== 'group') return;
     fetch(`/api/d/${encodeURIComponent(did)}/members`)
       .then((res) => (res.ok ? res.json() : null))
@@ -83,6 +110,106 @@ function DIDConversationView({ did }: { did: string }) {
       })
       .catch(() => {});
   }, [identity, did, parsed.type]);
+
+  useEffect(() => {
+    fetchMembers();
+  }, [fetchMembers]);
+
+  async function handleLeave() {
+    if (!identity) return;
+    setLeaving(true);
+    try {
+      const res = await fetch(`/api/d/${encodeURIComponent(did)}/members/leave`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        router.push('/conversations');
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLeaving(false);
+      setLeaveConfirm(false);
+    }
+  }
+
+  async function handleRemoveMember(memberDid: string) {
+    setRemovingDid(memberDid);
+    try {
+      const res = await fetch(
+        `/api/d/${encodeURIComponent(did)}/members/${encodeURIComponent(memberDid)}`,
+        { method: 'DELETE' }
+      );
+      if (res.ok) fetchMembers();
+    } catch {
+      // ignore
+    } finally {
+      setRemovingDid(null);
+    }
+  }
+
+  async function loadConnections() {
+    if (loadingConnections || connections.length > 0) return;
+    setLoadingConnections(true);
+    try {
+      const connectionsUrl = `${SERVICE_PREFIX}connections.${DOMAIN}`;
+      const authUrl = `${SERVICE_PREFIX}auth.${DOMAIN}`;
+      const res = await fetch(`${connectionsUrl}/api/connections`, { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const memberDids = new Set(members.map((m) => m.did));
+
+      // Deduplicate and resolve names
+      const seen = new Map<string, Connection>();
+      for (const conn of (data.connections || []) as Connection[]) {
+        if (conn.did === identity?.did) continue;
+        if (memberDids.has(conn.did)) continue; // already in group
+        if (!seen.has(conn.did)) seen.set(conn.did, conn);
+      }
+
+      // Resolve names
+      const resolved = await Promise.all(
+        Array.from(seen.values()).map(async (conn) => {
+          try {
+            const lookupRes = await fetch(
+              `${authUrl}/api/lookup/${encodeURIComponent(conn.did)}`,
+              { credentials: 'include' }
+            );
+            if (lookupRes.ok) {
+              const profile = await lookupRes.json();
+              return { ...conn, handle: profile.handle, name: profile.name };
+            }
+          } catch {}
+          return conn;
+        })
+      );
+      setConnections(resolved);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingConnections(false);
+    }
+  }
+
+  async function handleAddMember(memberDid: string) {
+    setAddingDid(memberDid);
+    try {
+      const res = await fetch(`/api/d/${encodeURIComponent(did)}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberDid }),
+      });
+      if (res.ok) {
+        setShowAddMember(false);
+        setConnections([]);
+        fetchMembers();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setAddingDid(null);
+    }
+  }
 
   // If a name was passed in the URL and we haven't stored a proper name yet,
   // save it via PATCH once the conversation exists (after the first message creates it).
@@ -177,12 +304,40 @@ function DIDConversationView({ did }: { did: string }) {
             <p className="text-xs text-gray-500 mt-0.5">Event chat</p>
           )}
         </div>
+        {/* Leave group button */}
+        {parsed.type === 'group' && (
+          leaveConfirm ? (
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-gray-500">Leave group?</span>
+              <button
+                onClick={handleLeave}
+                disabled={leaving}
+                className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition disabled:opacity-50"
+              >
+                {leaving ? '…' : 'Yes, leave'}
+              </button>
+              <button
+                onClick={() => setLeaveConfirm(false)}
+                className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setLeaveConfirm(true)}
+              className="shrink-0 px-3 py-1.5 text-xs text-red-500 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+            >
+              Leave
+            </button>
+          )
+        )}
       </div>
 
       {/* Member list panel */}
-      {showMembers && members.length > 0 && (
-        <div className="border-b border-gray-200 dark:border-gray-700 py-2 px-4 bg-gray-50 dark:bg-zinc-800/50">
-          <div className="flex flex-wrap gap-2">
+      {showMembers && (
+        <div className="border-b border-gray-200 dark:border-gray-700 py-3 px-4 bg-gray-50 dark:bg-zinc-800/50">
+          <div className="flex flex-wrap gap-2 mb-2">
             {members.map((m) => (
               <span
                 key={m.did}
@@ -190,9 +345,62 @@ function DIDConversationView({ did }: { did: string }) {
               >
                 {m.role === 'owner' && <span className="text-orange-500">★</span>}
                 {m.name || (m.handle ? `@${m.handle}` : m.did.slice(-8))}
+                {/* Remove button: owners can remove anyone (except self); admins can remove regular members only */}
+                {isOwnerOrAdmin && m.did !== identity?.did &&
+                  (callerRole === 'owner' || (m.role !== 'owner' && m.role !== 'admin')) && (
+                  <button
+                    onClick={() => handleRemoveMember(m.did)}
+                    disabled={removingDid === m.did}
+                    className="ml-1 text-gray-400 hover:text-red-500 transition disabled:opacity-50"
+                    title="Remove member"
+                  >
+                    {removingDid === m.did ? '…' : '×'}
+                  </button>
+                )}
               </span>
             ))}
           </div>
+          {/* Add Member */}
+          {isOwnerOrAdmin && (
+            showAddMember ? (
+              <div className="mt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-gray-500">Add a member:</span>
+                  <button
+                    onClick={() => { setShowAddMember(false); setConnections([]); }}
+                    className="text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {loadingConnections ? (
+                  <p className="text-xs text-gray-400">Loading connections…</p>
+                ) : connections.length === 0 ? (
+                  <p className="text-xs text-gray-400">No connections available to add.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {connections.map((conn) => (
+                      <button
+                        key={conn.did}
+                        onClick={() => handleAddMember(conn.did)}
+                        disabled={addingDid === conn.did}
+                        className="px-2 py-1 text-xs bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-full hover:border-orange-400 hover:text-orange-500 transition disabled:opacity-50"
+                      >
+                        {addingDid === conn.did ? '…' : (conn.name || (conn.handle ? `@${conn.handle}` : conn.did.slice(-8)))}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => { setShowAddMember(true); loadConnections(); }}
+                className="text-xs text-orange-500 hover:text-orange-600 transition"
+              >
+                + Add member
+              </button>
+            )
+          )}
         </div>
       )}
 
