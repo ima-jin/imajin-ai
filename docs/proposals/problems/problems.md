@@ -1,9 +1,11 @@
 # Problems
 *Concrete code-level bugs and misplacements found in the upstream repo*
-*Last reviewed: March 27, 2026 (upstream HEAD: 1d943e0)*
-*P1–P5 resolved. P1, P2, P4 confirmed in upstream March 23; P3, P5 confirmed March 15. No regressions found in March 27 audit.*
+*Last reviewed: April 3, 2026 (upstream HEAD: 3bc931be)*
+*P1–P5 resolved (March 15–23). P8 resolved March 30 — events settlement wiring live.*
 *P6, P7 added March 27 — extracted from active proposals P24 and P22. Both are missing schema fields, not regressions.*
-*P8, P9 added March 27 — extracted from GitHub issues #25 and #330. P8 is an April 1 demo blocker.*
+*P9 still open — .fair templates exist but not used in upload paths.*
+*New: `institution.verified` attestation disabled (e8a28a1e) — event DIDs lack keypairs. Tracked in P29, not a new problem (architectural, not a code bug).*
+*Refunds system shipped (#561) — settlement entries reversed on refund (3bc931be). No new problems introduced.*
 
 These are distinct from architectural concerns in `outstanding-concerns.md`. Each item here has a specific file, a specific line, and a specific fix. When the upstream repo shows the fix has landed, the item moves to `resolved-problems.md`.
 
@@ -351,32 +353,13 @@ Adding columns to an empty or small table is trivial. Adding them to a table wit
 
 ---
 
-### P8 — .fair Attribution Not Wired to Events or Transactions ⬚ OPEN
+### P8 — .fair Attribution Not Wired to Events or Transactions ✅ RESOLVED 2026-03-30
+
+**Resolved:** `settleTicketPurchase()` in `apps/events/src/lib/settle.ts` calls `POST /api/settle` on pay service. Events payment webhook (`apps/events/app/api/webhook/payment/route.ts:352–370`) invokes settlement with `.fair` manifest on every Stripe checkout. Platform fee deducted at 3% via `PLATFORM_FEE_PERCENT`. Full file: `resolved/p8-fair-not-wired-to-events.md`.
 
 **File:** `apps/events/` webhook handler, `apps/pay/app/api/settle/route.ts`
 **Severity:** Critical for April 1 demo — issue #25 explicit blocker
 **Detected:** March 27, 2026 (from GitHub issue #25 remaining work items)
-
-### The Problem
-
-Issue #25 (April 1 demo) lists three explicit blockers:
-1. `.fair` not yet attached to events or transactions
-2. Settlement not called from events webhook
-3. Platform fee not recorded
-
-The `.fair` template system exists (`packages/fair/src/templates.ts`) but is called from only 2 of 5+ upload/ingestion paths (issue #330). Events create tickets and process payments but never create `.fair` manifests — the attribution chain is broken at the demo's critical path.
-
-### The Fix
-
-1. Wire `createManifestFromTemplate()` into `apps/events` ticket purchase handler — organizer + platform fee split
-2. Call `POST /api/settle` from events payment webhook on successful Stripe charge
-3. Record platform fee as a `.fair` allocation (RFC-19: 0.4% node / 0.4% protocol / 0.2% user MJN credit)
-
-### How to Detect Resolution
-
-- Events webhook calls pay settlement endpoint on ticket purchase
-- `.fair` manifest created with every event transaction
-- Platform fee allocation visible in settlement records
 
 ---
 
