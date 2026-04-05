@@ -212,7 +212,6 @@ function DIDConversationView({ did }: { did: string }) {
     if (loadingConnections || connections.length > 0) return;
     setLoadingConnections(true);
     try {
-      const connectionsUrl = `${SERVICE_PREFIX}connections.${DOMAIN}`;
       const res = await fetch(`${connectionsUrl}/api/connections`, { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json();
@@ -280,6 +279,7 @@ function DIDConversationView({ did }: { did: string }) {
   // Use same-origin proxy for access checks (cross-origin cookie forwarding is unreliable)
   const authUrl = '';  // empty = same origin, proxied via /api/access/[did]
   const mediaUrl = MEDIA_URL;
+  const connectionsUrl = `${SERVICE_PREFIX}connections.${DOMAIN}`;
 
   const displayName =
     convName ||
@@ -299,7 +299,7 @@ function DIDConversationView({ did }: { did: string }) {
   if (!identity) return <LoginPrompt />;
 
   return (
-    <ChatProvider chatUrl={chatUrl} authUrl={authUrl} mediaUrl={mediaUrl}>
+    <ChatProvider chatUrl={chatUrl} authUrl={authUrl} mediaUrl={mediaUrl} connectionsUrl={connectionsUrl}>
     <div className="mx-auto flex flex-col h-[calc(100dvh-88px)]">
       {/* Header */}
       <div className="flex items-center gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
