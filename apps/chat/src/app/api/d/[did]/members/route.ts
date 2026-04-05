@@ -2,6 +2,10 @@ import { NextRequest } from 'next/server';
 import { getClient } from '@imajin/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
+import { notify } from '@imajin/notify';
+import { emitAttestation } from '@imajin/auth';
+
+export const dynamic = 'force-dynamic';
 
 const sql = getClient();
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
@@ -16,9 +20,11 @@ export async function OPTIONS(request: NextRequest) {
 /**
  * POST /api/d/:did/members - Add a member to a conversation
  * Body: { memberDid: string, role?: string }
- * 
- * Used by events webhook to sync ticket holders into event chat.
- * Creates conversation if it doesn't exist (for event chats).
+ *
+ * For group conversations (did:imajin:group:*): requires auth and owner/admin role.
+ * For event chats: no auth required (webhook-friendly for ticket sync).
+ *
+ * If re-adding someone who previously left: clears left_at and updates joined_at.
  */
 export async function POST(
   request: NextRequest,
@@ -35,19 +41,71 @@ export async function POST(
       return errorResponse('memberDid is required', 400, cors);
     }
 
-    // Ensure conversation exists (upsert — event chats may not exist yet)
-    await sql`
-      INSERT INTO chat.conversations_v2 (did, type, name, created_at, updated_at)
-      VALUES (${did}, 'group', '', NOW(), NOW())
-      ON CONFLICT (did) DO NOTHING
-    `;
+    const isGroup = did.startsWith('did:imajin:group:');
 
-    // Add member (idempotent)
-    await sql`
-      INSERT INTO chat.conversation_members (conversation_did, member_did, role, joined_at)
-      VALUES (${did}, ${memberDid}, ${role}, NOW())
-      ON CONFLICT (conversation_did, member_did) DO NOTHING
-    `;
+    if (isGroup) {
+      // Group management requires authentication and owner/admin role
+      const authResult = await requireAuth(request);
+      if ('error' in authResult) {
+        return errorResponse(authResult.error, authResult.status, cors);
+      }
+
+      const { identity } = authResult;
+
+      const callerRows = await sql`
+        SELECT role FROM chat.conversation_members
+        WHERE conversation_did = ${did}
+          AND member_did = ${identity.id}
+          AND left_at IS NULL
+        LIMIT 1
+      `;
+
+      if (callerRows.length === 0) {
+        return errorResponse('You are not a member of this conversation', 403, cors);
+      }
+
+      const callerRole = callerRows[0].role as string;
+      if (callerRole !== 'owner' && callerRole !== 'admin') {
+        return errorResponse('Only owners and admins can add members', 403, cors);
+      }
+
+      // Add or re-activate member (clear left_at if they previously left)
+      await sql`
+        INSERT INTO chat.conversation_members (conversation_did, member_did, role, joined_at)
+        VALUES (${did}, ${memberDid}, ${role}, NOW())
+        ON CONFLICT (conversation_did, member_did)
+          DO UPDATE SET left_at = NULL, joined_at = NOW()
+          WHERE chat.conversation_members.left_at IS NOT NULL
+      `;
+
+      notify.interest({ did: memberDid, attestationType: 'group.member.added' })
+        .catch((err: unknown) => console.error('Interest signal error:', err));
+
+      emitAttestation({
+        issuer_did: identity.id,
+        subject_did: memberDid,
+        type: 'group.member.added',
+        context_id: did,
+        context_type: 'chat.group',
+      }).catch((err: unknown) => console.error('Attestation (group.member.added) error:', err));
+    } else {
+      // Webhook / event-chat mode: no auth required
+      // Ensure conversation exists (event chats may not exist yet)
+      await sql`
+        INSERT INTO chat.conversations_v2 (did, type, name, created_at, updated_at)
+        VALUES (${did}, 'group', '', NOW(), NOW())
+        ON CONFLICT (did) DO NOTHING
+      `;
+
+      // Add or re-activate member
+      await sql`
+        INSERT INTO chat.conversation_members (conversation_did, member_did, role, joined_at)
+        VALUES (${did}, ${memberDid}, ${role}, NOW())
+        ON CONFLICT (conversation_did, member_did)
+          DO UPDATE SET left_at = NULL, joined_at = NOW()
+          WHERE chat.conversation_members.left_at IS NOT NULL
+      `;
+    }
 
     return jsonResponse({ ok: true, did, memberDid, role }, 200, cors);
   } catch (error) {
