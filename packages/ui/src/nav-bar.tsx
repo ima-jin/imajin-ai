@@ -212,8 +212,10 @@ export function NavBar({
 
   // Forests (group identities)
   const authUrl = buildUrl('auth', servicePrefix, domain, serviceUrls);
-  const { forests, activeForest, setActiveForest } = useForests(
-    identity?.isLoggedIn && identity?.tier !== 'soft' ? authUrl : null
+  const profileUrl = buildUrl('profile', servicePrefix, domain, serviceUrls);
+  const { forests, activeForest, activeConfig, setActiveForest } = useForests(
+    identity?.isLoggedIn && identity?.tier !== 'soft' ? authUrl : null,
+    identity?.isLoggedIn && identity?.tier !== 'soft' ? profileUrl : null
   );
   const activeForestData = forests.find((f) => f.groupDid === activeForest) ?? null;
 
@@ -258,6 +260,7 @@ export function NavBar({
             tier={launcherTier}
             variant="grid"
             authUrl={identity?.isLoggedIn && identity?.tier !== 'soft' ? authUrl : undefined}
+            enabledServices={activeConfig?.enabledServices}
           />
           {identity?.isLoggedIn && identity?.tier !== 'soft' && (
             <>
@@ -479,6 +482,7 @@ export function NavBar({
             tier={launcherTier}
             inline
             authUrl={identity?.isLoggedIn && identity?.tier !== 'soft' ? authUrl : undefined}
+            enabledServices={activeConfig?.enabledServices}
           />
           {identity?.isLoggedIn && identity?.tier !== 'soft' && (
             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">

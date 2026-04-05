@@ -3,7 +3,7 @@ import { db, forestConfig } from '@/src/db';
 import { eq } from 'drizzle-orm';
 
 /**
- * GET /api/groups/[groupDid]/config/public
+ * GET /api/forest/[groupDid]/config/public
  * Public forest config — returns enabled services and landing page.
  * No auth required. Empty enabledServices means show all (unconfigured).
  */

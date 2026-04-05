@@ -16,7 +16,7 @@ export interface ForestConfig {
   landingService: string | null;
 }
 
-export function useForests(authUrl: string | null): {
+export function useForests(authUrl: string | null, profileUrl?: string | null): {
   forests: Forest[];
   loading: boolean;
   activeForest: string | null;
@@ -46,17 +46,18 @@ export function useForests(authUrl: string | null): {
   }, [authUrl]);
 
   useEffect(() => {
-    if (!authUrl || !activeForest) {
+    const configBase = profileUrl || authUrl;
+    if (!configBase || !activeForest) {
       setActiveConfig(null);
       return;
     }
-    fetch(`${authUrl}/api/groups/${encodeURIComponent(activeForest)}/config/public`)
+    fetch(`${configBase}/api/forest/${encodeURIComponent(activeForest)}/config/public`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data) setActiveConfig(data as ForestConfig);
       })
       .catch(() => {});
-  }, [authUrl, activeForest]);
+  }, [authUrl, profileUrl, activeForest]);
 
   function setActiveForest(did: string | null) {
     setActingAs(did);

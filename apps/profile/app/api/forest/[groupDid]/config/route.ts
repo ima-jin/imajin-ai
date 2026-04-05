@@ -1,13 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, forestConfig, groupControllers } from '@/src/db';
-import { eq, and, isNull } from 'drizzle-orm';
+import { db, forestConfig } from '@/src/db';
+import { eq } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { SERVICES } from '@imajin/config';
 
 const VALID_SERVICE_NAMES = new Set(SERVICES.map((s) => s.name));
+const AUTH_SERVICE_URL = () => process.env.AUTH_SERVICE_URL!;
 
 /**
- * GET /api/groups/[groupDid]/config
+ * Verify caller is a controller of the group with the given minimum role.
+ */
+async function verifyController(
+  groupDid: string,
+  callerDid: string,
+  minRole: 'member' | 'admin' | 'owner' = 'member'
+): Promise<{ valid: boolean; role?: string }> {
+  try {
+    const res = await fetch(
+      `${AUTH_SERVICE_URL()}/api/groups/${encodeURIComponent(groupDid)}`,
+      {
+        headers: { Cookie: '' },
+        cache: 'no-store',
+      }
+    );
+    // Use the internal API key to check controller status
+    const internalKey = process.env.AUTH_INTERNAL_API_KEY;
+    const ctrlRes = await fetch(
+      `${AUTH_SERVICE_URL()}/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(callerDid)}`,
+      {
+        headers: { Authorization: `Bearer ${internalKey}` },
+        cache: 'no-store',
+      }
+    );
+    if (!ctrlRes.ok) return { valid: false };
+    const data = await ctrlRes.json();
+    if (!data.valid) return { valid: false };
+
+    const roleHierarchy = ['member', 'admin', 'owner'];
+    const callerLevel = roleHierarchy.indexOf(data.role);
+    const minLevel = roleHierarchy.indexOf(minRole);
+    return { valid: callerLevel >= minLevel, role: data.role };
+  } catch {
+    return { valid: false };
+  }
+}
+
+/**
+ * GET /api/forest/[groupDid]/config
  * Get forest config. Caller must be an active controller.
  */
 export async function GET(
@@ -21,19 +60,8 @@ export async function GET(
   const { identity: caller } = authResult;
   const { groupDid } = await params;
 
-  const [membership] = await db
-    .select({ role: groupControllers.role })
-    .from(groupControllers)
-    .where(
-      and(
-        eq(groupControllers.groupDid, groupDid),
-        eq(groupControllers.controllerDid, caller.id),
-        isNull(groupControllers.removedAt)
-      )
-    )
-    .limit(1);
-
-  if (!membership) {
+  const ctrl = await verifyController(groupDid, caller.id);
+  if (!ctrl.valid) {
     return NextResponse.json({ error: 'Not a controller of this group' }, { status: 403 });
   }
 
@@ -47,7 +75,7 @@ export async function GET(
 }
 
 /**
- * PATCH /api/groups/[groupDid]/config
+ * PATCH /api/forest/[groupDid]/config
  * Update forest config. Caller must be owner or admin.
  */
 export async function PATCH(
@@ -61,19 +89,8 @@ export async function PATCH(
   const { identity: caller } = authResult;
   const { groupDid } = await params;
 
-  const [membership] = await db
-    .select({ role: groupControllers.role })
-    .from(groupControllers)
-    .where(
-      and(
-        eq(groupControllers.groupDid, groupDid),
-        eq(groupControllers.controllerDid, caller.id),
-        isNull(groupControllers.removedAt)
-      )
-    )
-    .limit(1);
-
-  if (!membership || !['owner', 'admin'].includes(membership.role)) {
+  const ctrl = await verifyController(groupDid, caller.id, 'admin');
+  if (!ctrl.valid) {
     return NextResponse.json({ error: 'Must be owner or admin' }, { status: 403 });
   }
 

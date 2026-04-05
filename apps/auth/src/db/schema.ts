@@ -235,14 +235,7 @@ export const groupControllers = authSchema.table('group_controllers', {
 /**
  * Forest Config — per-group service visibility and landing page configuration
  */
-export const forestConfig = authSchema.table('forest_config', {
-  groupDid: text('group_did').primaryKey(),
-  enabledServices: text('enabled_services').array().notNull().default([]),
-  landingService: text('landing_service'),
-  theme: jsonb('theme').default({}),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+
 
 // Types
 export type Identity = typeof identities.$inferSelect;
@@ -264,5 +257,4 @@ export type GroupIdentity = typeof groupIdentities.$inferSelect;
 export type NewGroupIdentity = typeof groupIdentities.$inferInsert;
 export type GroupController = typeof groupControllers.$inferSelect;
 export type NewGroupController = typeof groupControllers.$inferInsert;
-export type ForestConfig = typeof forestConfig.$inferSelect;
-export type NewForestConfig = typeof forestConfig.$inferInsert;
+

@@ -94,8 +94,9 @@ export function LandingGrid() {
     ];
 
     if (actingAs) {
+      const profileUrl = buildPublicUrl('profile');
       requests.push(
-        fetch(`${authUrl}/api/groups/${encodeURIComponent(actingAs)}/config/public`)
+        fetch(`${profileUrl}/api/forest/${encodeURIComponent(actingAs)}/config/public`)
           .then((r) => r.ok ? r.json() : null)
       );
     }
