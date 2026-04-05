@@ -97,29 +97,64 @@ export async function GET(
     }
 
     // --- did:imajin:dm:* and did:imajin:group:* ---
-    // DID-based conversations use deterministic DIDs derived from member lists.
-    // The DID itself is the access token — you can only navigate to it if you
-    // derived it from the member DIDs. Conversations auto-create on first message.
+    // DM DIDs are deterministic (derived from sorted member DIDs), so possessing
+    // the DID is proof of membership. Group DIDs are random UUIDs, so membership
+    // must be verified explicitly via conversation_members or created_by.
     if (targetDid.startsWith('did:imajin:dm:') || targetDid.startsWith('did:imajin:group:')) {
       const governance = targetDid.startsWith('did:imajin:dm:') ? 'dm' : 'group';
 
-      // Check if conversation exists yet
+      // Fetch conversation (include created_by for group creator check)
       const convRows = await sql`
-        SELECT did FROM chat.conversations_v2
+        SELECT did, created_by FROM chat.conversations_v2
         WHERE did = ${targetDid}
         LIMIT 1
       `;
 
-      // Conversation doesn't exist yet — allow access. The deterministic DID
-      // is proof of membership (derived from sorted member DIDs).
+      // Conversation doesn't exist yet.
+      // DMs: deterministic DID is proof of membership — allow so the first message auto-creates.
+      // Groups: random UUID DID provides no proof of membership — deny.
       if (convRows.length === 0) {
-        return NextResponse.json(
-          { allowed: true, role: 'participant', governance },
-          { headers: cors }
-        );
+        if (governance === 'dm') {
+          return NextResponse.json(
+            { allowed: true, role: 'participant', governance },
+            { headers: cors }
+          );
+        }
+        return NextResponse.json({ allowed: false }, { headers: cors });
       }
 
-      // Conversation exists — check if requester has participated
+      // --- Group access: members and creator only ---
+      // Check these exclusively — do NOT fall through to read/message history,
+      // which would make access self-granting (visiting and sending a message
+      // would pass the 'has sent messages' check).
+      if (governance === 'group') {
+        const memberRows = await sql`
+          SELECT role FROM chat.conversation_members
+          WHERE conversation_did = ${targetDid}
+            AND member_did = ${requesterDid}
+            AND left_at IS NULL
+          LIMIT 1
+        `;
+
+        if (memberRows.length > 0) {
+          return NextResponse.json(
+            { allowed: true, role: memberRows[0].role as string, governance },
+            { headers: cors }
+          );
+        }
+
+        // Creator always has access
+        if (convRows[0].created_by === requesterDid) {
+          return NextResponse.json(
+            { allowed: true, role: 'owner', governance },
+            { headers: cors }
+          );
+        }
+
+        return NextResponse.json({ allowed: false }, { headers: cors });
+      }
+
+      // --- DM access: check participation history ---
       // 1. Check conversation_reads_v2 (marks who has viewed/sent)
       const readRows = await sql`
         SELECT conversation_did
@@ -151,7 +186,7 @@ export async function GET(
         );
       }
 
-      // 3. Check conversation_members (covers both DMs and groups)
+      // 3. Check conversation_members
       const memberRows = await sql`
         SELECT role FROM chat.conversation_members
         WHERE conversation_did = ${targetDid}
@@ -183,39 +218,6 @@ export async function GET(
           { allowed: true, role: podRows[0].role as string, governance },
           { headers: cors }
         );
-      }
-
-      // 5. For groups, check conversation_members table
-      if (governance === 'group') {
-        const memberRows = await sql`
-          SELECT role FROM chat.conversation_members
-          WHERE conversation_did = ${targetDid}
-            AND member_did = ${requesterDid}
-            AND left_at IS NULL
-          LIMIT 1
-        `;
-
-        if (memberRows.length > 0) {
-          return NextResponse.json(
-            { allowed: true, role: memberRows[0].role as string, governance },
-            { headers: cors }
-          );
-        }
-
-        // Also check created_by — creator always has access
-        const creatorRows = await sql`
-          SELECT created_by FROM chat.conversations_v2
-          WHERE did = ${targetDid}
-            AND created_by = ${requesterDid}
-          LIMIT 1
-        `;
-
-        if (creatorRows.length > 0) {
-          return NextResponse.json(
-            { allowed: true, role: 'owner', governance },
-            { headers: cors }
-          );
-        }
       }
 
       return NextResponse.json({ allowed: false }, { headers: cors });
