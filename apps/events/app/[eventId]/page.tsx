@@ -276,13 +276,13 @@ export default async function EventPage({ params, searchParams }: Props) {
     }
   }
 
-  // Whether we should show the ticket purchase section
-  const canSeeTickets =
-    event.accessMode !== 'invite_only' || inviteValid || isOrganizer || hasTicket;
-
   // Fetch user's tickets if logged in
   const userTickets = session?.id ? await getUserTickets(event.id, session.id) : [];
   const hasTicket = userTickets.length > 0;
+
+  // Whether we should show the ticket purchase section
+  const canSeeTickets =
+    event.accessMode !== 'invite_only' || inviteValid || isOrganizer || hasTicket;
 
   // Resolve organizer profile and cohosts
   const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
