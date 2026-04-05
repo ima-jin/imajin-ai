@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, conversationsV2, conversationMembers } from '@/db';
 import { requireAuth } from '@/lib/auth';
-import { dmDid } from '@/lib/conversation-did';
+import { dmDid, conversationPath } from '@/lib/conversation-did';
 
 const APP_URL = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3007';
 
@@ -58,5 +58,5 @@ export async function GET(request: NextRequest) {
       .onConflictDoNothing();
   }
 
-  return redirect(`/conversations/${encodeURIComponent(convDid)}`);
+  return redirect(`/conversations/${conversationPath(convDid)}`);
 }

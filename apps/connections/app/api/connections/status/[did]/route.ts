@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, podMembers } from '../../../../../src/db/index';
+import { db, connections } from '../../../../../src/db/index';
 import { corsHeaders, corsOptions } from '@/lib/cors';
-import { eq, and, isNull, sql } from 'drizzle-orm';
+import { eq, or, and, isNull } from 'drizzle-orm';
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -11,8 +11,7 @@ export async function OPTIONS(request: NextRequest) {
  * GET /api/connections/status/:did
  *
  * Returns graph membership status for a DID.
- * A user is "in graph" if they have at least one accepted connection
- * (i.e., they are in a 2-person pod)
+ * A user is "in graph" if they have at least one accepted connection.
  */
 export async function GET(
   request: NextRequest,
@@ -26,21 +25,17 @@ export async function GET(
   }
 
   try {
-    // Find all pods this user is in (not removed)
-    const userPodIds = db
-      .select({ podId: podMembers.podId })
-      .from(podMembers)
-      .where(and(eq(podMembers.did, did), isNull(podMembers.removedAt)));
+    const rows = await db
+      .select({ didA: connections.didA })
+      .from(connections)
+      .where(
+        and(
+          or(eq(connections.didA, did), eq(connections.didB, did)),
+          isNull(connections.disconnectedAt)
+        )
+      );
 
-    // Find 2-person pods (connections)
-    const twoPersonPods = await db
-      .select({ podId: podMembers.podId })
-      .from(podMembers)
-      .where(and(isNull(podMembers.removedAt), sql`${podMembers.podId} IN (${userPodIds})`))
-      .groupBy(podMembers.podId)
-      .having(sql`count(*) = 2`);
-
-    const connectionCount = twoPersonPods.length;
+    const connectionCount = rows.length;
     const inGraph = connectionCount > 0;
 
     return NextResponse.json({ inGraph, connectionCount }, { headers: cors });

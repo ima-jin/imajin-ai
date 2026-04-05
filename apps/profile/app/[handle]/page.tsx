@@ -98,14 +98,10 @@ async function getProfileCounts(profileDid: string): Promise<ProfileCounts> {
     const [followingResult] = await db.select({ count: count() }).from(follows).where(eq(follows.followerDid, profileDid));
     const sql = getClient();
     const [connectionsResult] = await sql`
-      SELECT COUNT(DISTINCT pm2.did)::int as count
-      FROM connections.pod_members pm1
-      JOIN connections.pod_members pm2 ON pm1.pod_id = pm2.pod_id AND pm1.did != pm2.did
-      WHERE pm1.did = ${profileDid}
-        AND pm1.removed_at IS NULL AND pm2.removed_at IS NULL
-        AND pm1.pod_id IN (
-          SELECT pod_id FROM connections.pod_members WHERE removed_at IS NULL GROUP BY pod_id HAVING count(*) = 2
-        )
+      SELECT count(*)::int as count
+      FROM connections.connections
+      WHERE (did_a = ${profileDid} OR did_b = ${profileDid})
+        AND disconnected_at IS NULL
     `;
     return {
       followers: Number(followersResult.count),

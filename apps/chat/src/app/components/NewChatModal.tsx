@@ -25,6 +25,7 @@ async function groupDid(members: string[]): Promise<string> {
 }
 
 import { buildPublicUrl } from '@imajin/config';
+import { conversationPath } from '@/lib/conversation-did';
 
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -141,11 +142,11 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
         const url = new URL(location, window.location.origin);
         router.push(url.pathname);
       } else {
-        router.push(`/conversations/${encodeURIComponent(did)}`);
+        router.push(`/conversations/${conversationPath(did)}`);
       }
     } catch {
       // Fallback: navigate directly (conversation may not have members yet)
-      router.push(`/conversations/${encodeURIComponent(did)}`);
+      router.push(`/conversations/${conversationPath(did)}`);
     }
     onClose();
   }
@@ -172,7 +173,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
       const convDid = data.conversation?.did;
 
       if (convDid) {
-        router.push(`/conversations/${encodeURIComponent(convDid)}`);
+        router.push(`/conversations/${conversationPath(convDid)}`);
         onClose();
         return;
       }

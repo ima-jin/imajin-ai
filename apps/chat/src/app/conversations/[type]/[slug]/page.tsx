@@ -446,10 +446,16 @@ function DIDConversationView({ did }: { did: string }) {
   );
 }
 
-// ─── Page: all conversations are now DID-keyed ───────────────────────────────
+// ─── Page: reconstruct full DID from [type]/[slug] URL segments ───────────────
 
 export default function ConversationPage() {
-  const params = useParams<{ id: string }>();
-  const decoded = decodeURIComponent(params.id);
-  return <DIDConversationView did={decoded} />;
+  const params = useParams<{ type: string; slug: string }>();
+  const { type, slug } = params;
+
+  // Legacy event DID format: did:imajin:evt_xxx (type segment starts with 'evt_')
+  const did = type.startsWith('evt_')
+    ? `did:imajin:${type}`
+    : `did:imajin:${type}:${slug}`;
+
+  return <DIDConversationView did={did} />;
 }

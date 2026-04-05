@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useIdentity, LoginPrompt } from '@/contexts/IdentityContext';
 import { NewChatModal } from '@/app/components/NewChatModal';
+import { conversationPath } from '@/lib/conversation-did';
 import { useWebSocket } from '@/hooks/useWebSocket';
 
 interface Conversation {
@@ -180,7 +181,7 @@ export default function ConversationsPage() {
 
       return {
         key: conv.did,
-        href: `/conversations/${encodeURIComponent(conv.did)}`,
+        href: `/conversations/${conversationPath(conv.did)}`,
         name,
         type: conv.type,
         lastMessageAt: conv.lastMessageAt,

@@ -58,6 +58,25 @@ export const podMemberKeys = connectionsSchema.table('pod_member_keys', {
   pk: primaryKey({ columns: [table.podId, table.version, table.did] }),
 }));
 
+export const connections = connectionsSchema.table('connections', {
+  didA: text('did_a').notNull(),
+  didB: text('did_b').notNull(),
+  connectedAt: timestamp('connected_at', { withTimezone: true }).defaultNow().notNull(),
+  disconnectedAt: timestamp('disconnected_at', { withTimezone: true }),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.didA, table.didB] }),
+  didAIdx: index('connections_did_a_idx').on(table.didA),
+  didBIdx: index('connections_did_b_idx').on(table.didB),
+}));
+
+export const nicknames = connectionsSchema.table('nicknames', {
+  did: text('did').notNull(),
+  target: text('target').notNull(),
+  nickname: text('nickname').notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.did, table.target] }),
+}));
+
 export const invites = connectionsSchema.table('invites', {
   id: text('id').primaryKey(),
   code: text('code').notNull().unique(),

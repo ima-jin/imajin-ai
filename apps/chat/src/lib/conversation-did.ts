@@ -67,3 +67,16 @@ export function parseConversationDid(did: string): ParsedConversationDid {
 
   return { type, slug };
 }
+
+/**
+ * Converts a conversation DID to a URL path segment.
+ * did:imajin:group:abc123 → 'group/abc123'
+ * did:imajin:dm:def456 → 'dm/def456'
+ * did:imajin:evt_foo → 'evt_foo' (legacy, single segment)
+ */
+export function conversationPath(did: string): string {
+  const parsed = parseConversationDid(did);
+  if (parsed.type === 'unknown') return encodeURIComponent(did);
+  if (parsed.type === 'event' && !parsed.slug) return did.slice('did:imajin:'.length);
+  return `${parsed.type}/${parsed.slug}`;
+}
