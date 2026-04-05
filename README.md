@@ -55,6 +55,7 @@ Core services that make up the sovereign stack.
 | [profile](./apps/profile) | 3005 | 7005 | [profile.imajin.ai](https://profile.imajin.ai) | Public identity pages | ✅ Live |
 | [events](./apps/events) | 3006 | 7006 | [events.imajin.ai](https://events.imajin.ai) | Create events, sell tickets | ✅ Live |
 | [chat](./apps/chat) | 3007 | 7007 | [chat.imajin.ai](https://chat.imajin.ai) | E2EE messaging, trust-bound | ✅ Live |
+| [notify](./apps/notify) | 3008 | 7008 | notify.imajin.ai | Notifications, preferences, broadcasts | ✅ Live |
 | [media](./apps/media) | 3009 | 7009 | [media.imajin.ai](https://media.imajin.ai) | Asset storage, .fair attribution, transcription | 🧪 Alpha |
 
 ### Imajin Apps (3100+/7100+)
@@ -202,6 +203,7 @@ imajin-ai/
 │   ├── profile/       # Profile pages
 │   ├── events/        # Events & ticketing
 │   ├── chat/          # E2EE messaging
+│   ├── notify/        # Notifications & broadcasts
 │   ├── media/         # Asset storage, .fair attribution, transcription
 │   ├── coffee/        # Tip jar (3100)
 │   ├── dykil/         # Surveys & polls (3101)
