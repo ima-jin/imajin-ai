@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useIdentity } from './context/IdentityContext';
 import InvitationsTab from './invitations-tab';
 
@@ -10,12 +10,11 @@ const AUTH_URL = buildPublicUrl('auth');
 const PROFILE_URL = buildPublicUrl('profile');
 
 interface Connection {
-  podId: string;
-  podName: string;
   did: string;
-  handle?: string;
-  name?: string;
-  joinedAt: string;
+  handle?: string | null;
+  name?: string | null;
+  connectedAt: string;
+  nickname?: string | null;
 }
 
 interface Pod {
@@ -30,6 +29,95 @@ interface Pod {
 
 type GroupFilter = 'all' | 'mine' | 'event';
 
+function NicknameEditor({
+  conn,
+  onSave,
+}: {
+  conn: Connection;
+  onSave: (did: string, nickname: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(conn.nickname ?? '');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      setValue(conn.nickname ?? '');
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing, conn.nickname]);
+
+  async function save() {
+    const trimmed = value.trim();
+    if (trimmed === (conn.nickname ?? '')) {
+      setEditing(false);
+      return;
+    }
+    if (trimmed) {
+      await fetch(`/api/connections/${encodeURIComponent(conn.did)}/nickname`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nickname: trimmed }),
+      });
+      onSave(conn.did, trimmed);
+    } else {
+      await fetch(`/api/connections/${encodeURIComponent(conn.did)}/nickname`, { method: 'DELETE' });
+      onSave(conn.did, null);
+    }
+    setEditing(false);
+  }
+
+  async function clear() {
+    await fetch(`/api/connections/${encodeURIComponent(conn.did)}/nickname`, { method: 'DELETE' });
+    onSave(conn.did, null);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+            if (e.key === 'Escape') setEditing(false);
+          }}
+          onBlur={save}
+          placeholder="Set nickname…"
+          className="bg-white/10 border border-white/20 rounded px-2 py-0.5 text-sm text-white placeholder-gray-500 w-32 focus:outline-none focus:border-amber-500/50"
+        />
+        {value.trim() && (
+          <button
+            onMouseDown={(e) => { e.preventDefault(); clear(); }}
+            className="text-gray-500 hover:text-red-400 transition text-xs"
+            title="Clear nickname"
+          >
+            ×
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 min-w-0">
+      {conn.nickname ? (
+        <span className="font-medium text-white truncate">{conn.nickname}</span>
+      ) : null}
+      <button
+        onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+        className="text-gray-600 hover:text-amber-400 transition shrink-0"
+        title="Edit nickname"
+      >
+        ✏️
+      </button>
+    </div>
+  );
+}
+
 export default function ConnectionsPage() {
   const { did, handle, isLoggedIn, loading } = useIdentity();
   const [activeTab, setActiveTab] = useState<'connections' | 'groups' | 'invitations'>('connections');
@@ -42,6 +130,8 @@ export default function ConnectionsPage() {
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [sortMode, setSortMode] = useState<'date' | 'alpha'>('date');
+  const [sortAsc, setSortAsc] = useState(false); // date defaults descending (newest first)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -77,9 +167,15 @@ export default function ConnectionsPage() {
     } catch {}
   }
 
-  async function disconnectFrom(podId: string) {
+  function updateNickname(targetDid: string, nickname: string | null) {
+    setConnections((prev) =>
+      prev.map((c) => (c.did === targetDid ? { ...c, nickname } : c))
+    );
+  }
+
+  async function disconnectFrom(connDid: string) {
     try {
-      const res = await fetch(`/api/connections/${podId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/connections/${encodeURIComponent(connDid)}`, { method: 'DELETE' });
       if (res.ok) {
         fetchConnections();
       }
@@ -123,7 +219,7 @@ export default function ConnectionsPage() {
         <h1 className="text-3xl font-bold mb-3">Imajin Connections</h1>
         <p className="text-gray-400 mb-8">Sign in to manage your trusted connections.</p>
         <a
-          href={`${PROFILE_URL}/login?next=${encodeURIComponent(`${SERVICE_PREFIX}connections.${DOMAIN}`)}`}
+          href={`${PROFILE_URL}/login?next=${encodeURIComponent(`${AUTH_URL}`)}`}
           className="inline-block px-8 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg transition"
         >
           Sign In
@@ -131,6 +227,18 @@ export default function ConnectionsPage() {
       </div>
     );
   }
+
+    function displayLabel(conn: Connection): string {
+    return (conn.nickname || conn.name || (conn.handle ? `@${conn.handle}` : conn.did)).toLowerCase();
+  }
+
+  const sortedConnections = [...connections].sort((a, b) => {
+    const dir = sortAsc ? 1 : -1;
+    if (sortMode === 'date') {
+      return dir * (new Date(a.connectedAt).getTime() - new Date(b.connectedAt).getTime());
+    }
+    return dir * displayLabel(a).localeCompare(displayLabel(b));
+  });
 
   const filteredPods = pods.filter((p) => {
     if (groupFilter === 'mine') return p.ownerDid === did;
@@ -189,20 +297,42 @@ export default function ConnectionsPage() {
             <p className="text-gray-400 text-sm">
               {connections.length} connection{connections.length !== 1 ? 's' : ''}
             </p>
-            <button
-              onClick={() => setActiveTab('invitations')}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition text-sm"
-            >
-              + Invite Someone
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-0.5">
+                <button
+                  onClick={() => { if (sortMode === 'date') setSortAsc(!sortAsc); else { setSortMode('date'); setSortAsc(false); } }}
+                  className={`px-2 py-1 text-xs rounded transition ${
+                    sortMode === 'date' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                  title={sortMode === 'date' ? (sortAsc ? 'Oldest first' : 'Newest first') : 'Sort by date'}
+                >
+                  🕐 {sortMode === 'date' ? (sortAsc ? '↑' : '↓') : ''}
+                </button>
+                <button
+                  onClick={() => { if (sortMode === 'alpha') setSortAsc(!sortAsc); else { setSortMode('alpha'); setSortAsc(true); } }}
+                  className={`px-2 py-1 text-xs rounded transition ${
+                    sortMode === 'alpha' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                  title={sortMode === 'alpha' ? (sortAsc ? 'A → Z' : 'Z → A') : 'Sort by name'}
+                >
+                  Aa {sortMode === 'alpha' ? (sortAsc ? '↑' : '↓') : ''}
+                </button>
+              </div>
+              <button
+                onClick={() => setActiveTab('invitations')}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition text-sm"
+              >
+                + Invite Someone
+              </button>
+            </div>
           </div>
 
           {/* Connections List */}
           {connections.length > 0 ? (
             <div className="space-y-3 mb-10">
-              {connections.map((conn) => (
+              {sortedConnections.map((conn) => (
                 <div
-                  key={conn.podId}
+                  key={conn.did}
                   onClick={() => window.location.href = `${PROFILE_URL}/${conn.handle || conn.did}`}
                   className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition"
                 >
@@ -210,15 +340,31 @@ export default function ConnectionsPage() {
                     👤
                   </div>
                   <div className="flex-1 min-w-0 group">
-                    <div className="font-medium text-white truncate">
-                      {conn.name || (conn.handle ? `@${conn.handle}` : conn.did.slice(0, 24) + '...')}
-                    </div>
-                    {conn.handle && conn.name && (
-                      <div className="text-gray-400 text-sm">@{conn.handle}</div>
+                    {conn.nickname ? (
+                      <>
+                        <div className="flex items-center gap-1">
+                          <NicknameEditor conn={conn} onSave={updateNickname} />
+                        </div>
+                        <div className="text-gray-400 text-sm truncate">
+                          {conn.name || (conn.handle ? `@${conn.handle}` : conn.did.slice(0, 24) + '...')}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-1">
+                          <span className="font-medium text-white truncate">
+                            {conn.name || (conn.handle ? `@${conn.handle}` : conn.did.slice(0, 24) + '...')}
+                          </span>
+                          <NicknameEditor conn={conn} onSave={updateNickname} />
+                        </div>
+                        {conn.handle && conn.name && (
+                          <div className="text-gray-400 text-sm">@{conn.handle}</div>
+                        )}
+                      </>
                     )}
                     <div className="text-gray-500 text-xs">
                       <span className="group-hover:hidden">
-                        Connected {new Date(conn.joinedAt).toLocaleDateString()}
+                        Connected {new Date(conn.connectedAt).toLocaleDateString()}
                       </span>
                       <span className="hidden group-hover:inline text-gray-600 font-mono text-[10px]">
                         {conn.did}
@@ -236,8 +382,8 @@ export default function ConnectionsPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm(`Disconnect from ${conn.name || conn.handle || 'this person'}? You'll need a new invite to reconnect.`)) {
-                          disconnectFrom(conn.podId);
+                        if (confirm(`Disconnect from ${conn.nickname || conn.name || conn.handle || 'this person'}? You'll need a new invite to reconnect.`)) {
+                          disconnectFrom(conn.did);
                         }
                       }}
                       className="px-3 py-1.5 text-sm bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded-lg transition"

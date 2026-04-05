@@ -2,30 +2,24 @@ export { requireAuth, optionalAuth } from "@imajin/auth";
 export type { Identity, AuthResult, AuthError } from "@imajin/auth";
 
 /**
- * Check if a DID is in the trust graph (has at least one 2-person pod)
+ * Check if a DID is in the trust graph (has at least one active connection)
  */
 async function isInGraph(did: string): Promise<boolean> {
-  const { db, podMembers } = await import("../db/index");
-  const { eq, and, isNull, sql } = await import("drizzle-orm");
+  const { db, connections } = await import("../db/index");
+  const { eq, or, and, isNull } = await import("drizzle-orm");
 
-  const userPodIds = db
-    .select({ podId: podMembers.podId })
-    .from(podMembers)
-    .where(and(eq(podMembers.did, did), isNull(podMembers.removedAt)));
-
-  const twoPersonPods = await db
-    .select({ podId: podMembers.podId })
-    .from(podMembers)
+  const result = await db
+    .select({ didA: connections.didA })
+    .from(connections)
     .where(
       and(
-        isNull(podMembers.removedAt),
-        sql`${podMembers.podId} IN (${userPodIds})`
+        or(eq(connections.didA, did), eq(connections.didB, did)),
+        isNull(connections.disconnectedAt)
       )
     )
-    .groupBy(podMembers.podId)
-    .having(sql`count(*) = 2`);
+    .limit(1);
 
-  return twoPersonPods.length > 0;
+  return result.length > 0;
 }
 
 /**

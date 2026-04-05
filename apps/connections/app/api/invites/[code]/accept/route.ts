@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
-import { db, invites, profiles, pods, podMembers } from '../../../../../src/db/index';
+import { db, invites, profiles, pods, podMembers, connections } from '../../../../../src/db/index';
 import { generateId } from '../../../../../src/lib/id';
 import { emitAttestation } from '@imajin/auth';
 import { notify } from '@imajin/notify';
@@ -93,6 +93,13 @@ export async function POST(
     { podId, did: invite.fromDid, role: 'member', addedBy: invite.fromDid },
     { podId, did: session.did, role: 'member', addedBy: session.did },
   ]);
+
+  // Insert into first-class connections table
+  const [connDidA, connDidB] = [invite.fromDid, session.did].sort((a, b) => a.localeCompare(b));
+  await db.insert(connections).values({
+    didA: connDidA,
+    didB: connDidB,
+  }).onConflictDoNothing();
 
   const now = new Date();
 

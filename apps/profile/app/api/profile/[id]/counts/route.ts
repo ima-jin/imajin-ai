@@ -34,23 +34,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .from(follows)
       .where(eq(follows.followerDid, profile.did));
 
-    // Query connections from connections schema (pod-based model)
-    // A connection = being in the same pod as someone else
-    // Only count members from 2-person pods (actual connections, not event/group pods)
     const sql = getClient();
     const [connectionsResult] = await sql`
-      SELECT COUNT(DISTINCT pm2.did)::int as count
-      FROM connections.pod_members pm1
-      JOIN connections.pod_members pm2 ON pm1.pod_id = pm2.pod_id AND pm1.did != pm2.did
-      WHERE pm1.did = ${profile.did}
-        AND pm1.removed_at IS NULL
-        AND pm2.removed_at IS NULL
-        AND pm1.pod_id IN (
-          SELECT pod_id FROM connections.pod_members
-          WHERE removed_at IS NULL
-          GROUP BY pod_id
-          HAVING count(*) = 2
-        )
+      SELECT count(*)::int as count
+      FROM connections.connections
+      WHERE (did_a = ${profile.did} OR did_b = ${profile.did})
+        AND disconnected_at IS NULL
     `;
 
     return jsonResponse({
