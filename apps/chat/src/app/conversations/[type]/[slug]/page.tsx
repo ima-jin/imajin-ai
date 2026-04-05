@@ -110,6 +110,7 @@ function DIDConversationView({ did }: { did: string }) {
 
   const callerRole = members.find((m) => m.did === identity?.did)?.role ?? null;
   const isOwnerOrAdmin = callerRole === 'owner' || callerRole === 'admin';
+  const memberDidNames = useDidNames(members.map((m) => m.did));
 
   const handleNameSave = async () => {
     const trimmed = nameInput.trim();
@@ -391,7 +392,7 @@ function DIDConversationView({ did }: { did: string }) {
                 className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white dark:bg-zinc-700 text-xs text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-zinc-600"
               >
                 {m.role === 'owner' && <span className="text-orange-500">★</span>}
-                {m.name || (m.handle ? `@${m.handle}` : m.did.slice(-8))}
+                {memberDidNames[m.did] || m.name || (m.handle ? `@${m.handle}` : m.did.slice(-8))}
                 {/* Remove button: owners can remove anyone (except self); admins can remove regular members only */}
                 {isOwnerOrAdmin && m.did !== identity?.did &&
                   (callerRole === 'owner' || (m.role !== 'owner' && m.role !== 'admin')) && (
