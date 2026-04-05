@@ -85,9 +85,9 @@ export default async function AdminPage({ params }: Props) {
   const confirmedAttendeeCount = Number(confirmedAttendeeRows[0]?.count ?? 0);
   
   return (
-    <div className="max-w-6xl mx-auto p-8">
+    <div className="max-w-6xl mx-auto p-4 md:p-8">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-4 md:mb-8">
         <h1 className="text-3xl font-bold">{event.title}</h1>
         <p className="text-gray-600 dark:text-gray-400">Admin Dashboard</p>
       </div>
@@ -96,7 +96,7 @@ export default async function AdminPage({ params }: Props) {
       <EventStatusControls eventId={event.id} currentStatus={event.status || 'draft'} />
 
       {/* Name Display Policy */}
-      <div className="mb-8 flex items-center gap-3">
+      <div className="mb-4 md:mb-6 flex items-center gap-3">
         <span className="text-sm text-gray-500 dark:text-gray-400">Attendee name display:</span>
         <NamePolicyBadge policy={(event as any).nameDisplayPolicy || 'attendee_choice'} />
         <a
@@ -108,7 +108,7 @@ export default async function AdminPage({ params }: Props) {
       </div>
 
       {/* Co-host Management */}
-      <div className="mb-8">
+      <div className="mb-4 md:mb-8">
         <CohostManager eventId={event.id} isOwner={isOwner} />
       </div>
 
@@ -119,7 +119,7 @@ export default async function AdminPage({ params }: Props) {
       <MessageComposer eventId={event.id} recipientCount={confirmedAttendeeCount} />
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4 md:mb-8">
         <StatCard label="Tickets Sold" value={totalSold} />
         <StatCard label="Revenue" value={formatCurrency(totalRevenue, 'CAD')} />
         <StatCard label="Checked In" value={`${checkedIn} / ${totalSold}`} />
@@ -133,13 +133,13 @@ export default async function AdminPage({ params }: Props) {
       </div>
       
       {/* Ticket Tiers */}
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold mb-4">Ticket Tiers</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="mb-4 md:mb-8">
+        <h2 className="text-xl font-semibold mb-2 md:mb-4">Ticket Tiers</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-4">
           {tiers.map(tier => (
             <div 
               key={tier.id} 
-              className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow"
+              className="bg-white dark:bg-gray-800 rounded-lg p-3 md:p-4 shadow"
             >
               <h3 className="font-semibold">{tier.name}</h3>
               <p className="text-2xl font-bold mt-2">
@@ -161,7 +161,7 @@ export default async function AdminPage({ params }: Props) {
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+    <div className="bg-white dark:bg-gray-800 rounded-lg p-3 md:p-4 shadow">
       <p className="text-sm text-gray-500">{label}</p>
       <p className="text-2xl font-bold">{value}</p>
     </div>
