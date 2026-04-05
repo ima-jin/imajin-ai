@@ -3,6 +3,7 @@ import { getClient } from '@imajin/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
 import { notify } from '@imajin/notify';
+import { emitAttestation } from '@imajin/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +80,14 @@ export async function POST(
 
       notify.interest({ did: memberDid, attestationType: 'group.member.added' })
         .catch((err: unknown) => console.error('Interest signal error:', err));
+
+      emitAttestation({
+        issuer_did: identity.id,
+        subject_did: memberDid,
+        type: 'group.member.added',
+        context_id: did,
+        context_type: 'chat.group',
+      }).catch((err: unknown) => console.error('Attestation (group.member.added) error:', err));
     } else {
       // Webhook / event-chat mode: no auth required
       // Ensure conversation exists (event chats may not exist yet)

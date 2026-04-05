@@ -3,6 +3,7 @@ import { getClient } from '@imajin/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
 import { notify } from '@imajin/notify';
+import { emitAttestation } from '@imajin/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,6 +89,14 @@ export async function POST(
 
     notify.interest({ did: identity.id, attestationType: 'group.member.left' })
       .catch((err: unknown) => console.error('Interest signal error:', err));
+
+    emitAttestation({
+      issuer_did: identity.id,
+      subject_did: identity.id,
+      type: 'group.member.left',
+      context_id: did,
+      context_type: 'chat.group',
+    }).catch((err: unknown) => console.error('Attestation (group.member.left) error:', err));
 
     return jsonResponse({ ok: true }, 200, cors);
   } catch (error) {

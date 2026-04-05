@@ -3,6 +3,7 @@ import { getClient } from '@imajin/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
 import { notify } from '@imajin/notify';
+import { emitAttestation } from '@imajin/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,6 +90,14 @@ export async function DELETE(
 
     notify.interest({ did: memberDid, attestationType: 'group.member.removed' })
       .catch((err: unknown) => console.error('Interest signal error:', err));
+
+    emitAttestation({
+      issuer_did: identity.id,
+      subject_did: memberDid,
+      type: 'group.member.removed',
+      context_id: did,
+      context_type: 'chat.group',
+    }).catch((err: unknown) => console.error('Attestation (group.member.removed) error:', err));
 
     return jsonResponse({ ok: true }, 200, cors);
   } catch (error) {
