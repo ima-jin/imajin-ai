@@ -8,8 +8,9 @@ export interface LauncherService {
   icon: string;
   label: string;
   visibility: 'public' | 'authenticated' | 'creator' | 'internal';
-  category: 'core' | 'creator' | 'developer' | 'infrastructure';
+  category: 'core' | 'creator' | 'developer' | 'infrastructure' | 'meta';
   url: string;
+  externalUrl?: string;
 }
 
 export interface AppLauncherProps {
@@ -37,11 +38,12 @@ function filterByTier(services: LauncherService[], tier: string): LauncherServic
   });
 }
 
-function groupByCategory(services: LauncherService[]): { core: LauncherService[]; creator: LauncherService[]; developer: LauncherService[] } {
+function groupByCategory(services: LauncherService[]): { core: LauncherService[]; creator: LauncherService[]; developer: LauncherService[]; meta: LauncherService[] } {
   return {
     core: services.filter((s) => s.category === 'core'),
     creator: services.filter((s) => s.category === 'creator'),
     developer: services.filter((s) => s.category === 'developer'),
+    meta: services.filter((s) => s.category === 'meta'),
   };
 }
 
@@ -71,16 +73,18 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   }, [showPanel]);
 
   const visible = filterByTier(services, tier);
-  const { core, creator, developer } = groupByCategory(visible);
+  const { core, creator, developer, meta } = groupByCategory(visible);
 
   const wwwUrl = services.find((s) => s.name === 'www')?.url || '#';
 
   function renderTile(service: LauncherService) {
     const isCurrent = service.name === currentService;
+    const isExternal = !!service.externalUrl;
     return (
       <a
         key={service.name}
         href={service.url}
+        {...(isExternal && { target: '_blank', rel: 'noopener noreferrer' })}
         className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition no-underline ${
           isCurrent
             ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium'
@@ -172,6 +176,14 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
             Developers
           </div>
           {developer.map(renderTile)}
+        </div>
+      )}
+      {meta.length > 0 && (
+        <div>
+          <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            Project
+          </div>
+          {meta.map(renderTile)}
         </div>
       )}
       {footer}
