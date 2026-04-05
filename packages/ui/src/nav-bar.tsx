@@ -400,25 +400,34 @@ export function NavBar({
                       {forests.map((forest) => {
                         const isActive = forest.groupDid === activeForest;
                         return (
-                          <button
-                            key={forest.groupDid}
-                            onClick={() => {
-                              setActiveForest(isActive ? null : forest.groupDid);
-                              setShowDropdown(false);
-                            }}
-                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
-                          >
-                            <span>{scopeIcon(forest.scope)}</span>
-                            <span className={isActive ? 'font-medium' : ''}>
-                              {forest.name || forest.handle || forest.groupDid.slice(0, 12)}
-                            </span>
-                            <span className="text-[10px] text-gray-400 dark:text-gray-500 capitalize">
-                              ({forest.scope})
-                            </span>
-                            {isActive && (
-                              <span className="ml-auto text-amber-600 dark:text-amber-400 font-bold text-xs">✓</span>
-                            )}
-                          </button>
+                          <div key={forest.groupDid} className="flex items-center group/forest">
+                            <button
+                              onClick={() => {
+                                setActiveForest(isActive ? null : forest.groupDid);
+                                setShowDropdown(false);
+                              }}
+                              className="flex-1 text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
+                            >
+                              <span>{scopeIcon(forest.scope)}</span>
+                              <span className={isActive ? 'font-medium' : ''}>
+                                {forest.name || forest.handle || forest.groupDid.slice(0, 12)}
+                              </span>
+                              <span className="text-[10px] text-gray-400 dark:text-gray-500 capitalize">
+                                ({forest.scope})
+                              </span>
+                              {isActive && (
+                                <span className="ml-auto text-amber-600 dark:text-amber-400 font-bold text-xs">✓</span>
+                              )}
+                            </button>
+                            <a
+                              href={`${authUrl}/groups/${encodeURIComponent(forest.groupDid)}/settings`}
+                              onClick={e => e.stopPropagation()}
+                              className="pr-3 py-2 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition opacity-0 group-hover/forest:opacity-100 no-underline text-sm"
+                              title="Forest settings"
+                            >
+                              ⚙️
+                            </a>
+                          </div>
                         );
                       })}
                       <a
