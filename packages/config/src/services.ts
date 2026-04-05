@@ -6,7 +6,7 @@
 
 export type ServiceTier = "core" | "imajin";
 export type ServiceVisibility = "public" | "authenticated" | "creator" | "internal";
-export type ServiceCategory = "core" | "creator" | "developer" | "infrastructure";
+export type ServiceCategory = "core" | "creator" | "developer" | "infrastructure" | "meta";
 
 export interface ServiceDefinition {
   /** Subdomain / app directory name */
@@ -29,6 +29,8 @@ export interface ServiceDefinition {
   visibility: ServiceVisibility;
   /** Grouping category */
   category: ServiceCategory;
+  /** External URL override (bypasses subdomain convention) */
+  externalUrl?: string;
 }
 
 export const SERVICES: readonly ServiceDefinition[] = [
@@ -50,6 +52,11 @@ export const SERVICES: readonly ServiceDefinition[] = [
   { name: "links",       label: "Links",       icon: "🔗", description: "Link-in-bio pages and click tracking",             devPort: 3102, prodPort: 7102, schema: "links",       tier: "imajin", visibility: "creator",       category: "creator" },
   { name: "learn",       label: "Learn",       icon: "📚", description: "Courses, lessons, and learning progress",          devPort: 3103, prodPort: 7103, schema: "learn",       tier: "imajin", visibility: "public",        category: "core" },
   { name: "market",      label: "Market",      icon: "🏪", description: "Local commerce — buy and sell with trust",           devPort: 3104, prodPort: 7104, schema: "market",      tier: "imajin", visibility: "public",        category: "core" },
+
+  // Meta — project info and external resources surfaced in the launcher
+  { name: 'project', label: 'Project',  icon: '📖', description: 'Thesis, whitepaper, essays, RFCs',   devPort: 0, prodPort: 0, schema: null, tier: 'core',   visibility: 'public', category: 'meta' },
+  { name: 'github',  label: 'GitHub',   icon: '🐙', description: 'Source code',                         devPort: 0, prodPort: 0, schema: null, tier: 'core',   visibility: 'public', category: 'meta', externalUrl: 'https://github.com/ima-jin/imajin-ai' },
+  { name: 'docs',    label: 'Docs',     icon: '📄', description: 'API documentation',                   devPort: 0, prodPort: 0, schema: null, tier: 'core',   visibility: 'public', category: 'meta' },
 
   // Connected apps (separate repos) will use the plugin architecture (#249).
   // Not included here — they authenticate via delegated sessions, not the monorepo manifest.
