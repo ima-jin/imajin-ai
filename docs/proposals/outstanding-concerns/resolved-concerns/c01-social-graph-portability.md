@@ -1,3 +1,12 @@
+## STATUS: SUBSTANTIALLY RESOLVED
+**Resolved:** 2026-03-22
+**Evidence:** PRs #444 (chain-backed pod membership), #447 (external chain onboarding), #441 (registry chain resolution), #453 (DFOS relay live). P27 thesis adopted: "Trust relationships are attestation records on the chain, verifiable by anyone with the chain and the issuer's public key. Portability is mathematical, not contractual."
+**Outcome:** The original question — "are trust relationships stored on the node or on the DID?" — is now answered architecturally and in code. Pod membership changes emit `pod.member.added`/`pod.member.removed` attestations on-chain. A user migrating to a new node presents their chain; the new node verifies it mathematically with no call back to the origin node. Standing recomputes locally from chain data.
+**What remains open:** Cultural DID Phase B (collective chain governance for communities) — still needs a DFOS protocol proposal for multi-signer chains. Federation itself (DFOS relay propagation across multiple nodes) is the remaining runtime dependency — relay is live but only one node.
+**Implementation:** Core architecture in code; full federation runtime requires multiple nodes running relay.
+
+---
+
 ### 1. Social Graph Portability (Exit Guarantee)
 
 **From:** Historical Context §4.6, Concerns & Resolutions §7
