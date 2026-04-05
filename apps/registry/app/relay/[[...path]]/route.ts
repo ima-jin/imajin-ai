@@ -16,11 +16,23 @@ const store =
 let relayInstance: Hono | null = null;
 let relayInitPromise: Promise<Hono> | null = null;
 
-function initRelay(): Promise<Hono> {
-  const identity =
+async function initRelay(): Promise<Hono> {
+  let identity =
     RELAY_DID && RELAY_PROFILE_JWS
       ? { did: RELAY_DID, profileArtifactJws: RELAY_PROFILE_JWS }
       : undefined;
+
+  // If a relay identity is configured, verify its chain exists in the store.
+  // If not, clear it so the library bootstraps a fresh one (and persists it).
+  if (identity) {
+    const chain = await store.getIdentityChain(identity.did);
+    if (!chain) {
+      console.warn(
+        `[relay] Configured RELAY_DID ${identity.did} has no identity chain in store — bootstrapping fresh identity`,
+      );
+      identity = undefined;
+    }
+  }
 
   return createCustomRelay({ store, identity });
 }
