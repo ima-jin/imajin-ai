@@ -1,11 +1,47 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { db, linkPages, links } from '@/db';
 import { eq, and, asc } from 'drizzle-orm';
 import { getSession } from '@imajin/auth';
+import { buildPublicUrl } from '@imajin/config';
 import LinkButton from './link-button';
 
 interface PageProps {
   params: { handle: string };
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const page = await db.query.linkPages.findFirst({
+    where: eq(linkPages.handle, params.handle),
+  });
+
+  if (!page || !page.isPublic) {
+    return { title: 'Links | Imajin' };
+  }
+
+  const title = `${page.title} | Links | Imajin`;
+  const description = page.bio || 'Sovereign link-in-bio page on the Imajin network';
+  const url = `${buildPublicUrl('links')}/${page.handle}`;
+  const avatarIsImage = page.avatar && (page.avatar.startsWith('http') || page.avatar.startsWith('/'));
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: 'Imajin',
+      type: 'profile',
+      ...(avatarIsImage ? { images: [{ url: page.avatar! }] } : {}),
+    },
+    twitter: {
+      card: avatarIsImage ? 'summary_large_image' : 'summary',
+      title,
+      description,
+      ...(avatarIsImage ? { images: [page.avatar!] } : {}),
+    },
+  };
 }
 
 interface Theme {

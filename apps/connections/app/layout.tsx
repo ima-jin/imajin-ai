@@ -12,6 +12,17 @@ const envLabel = isDev ? ' [DEV]' : '';
 export const metadata: Metadata = {
   title: `Imajin Connections${envLabel}`,
   description: 'Trust-based connections on the Imajin network.',
+  openGraph: {
+    title: `Imajin Connections${envLabel}`,
+    description: 'Trust-based connections on the Imajin network.',
+    siteName: 'Imajin',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: `Imajin Connections${envLabel}`,
+    description: 'Trust-based connections on the Imajin network.',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

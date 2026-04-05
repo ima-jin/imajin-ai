@@ -5,6 +5,17 @@ import { themeInitScript } from "@imajin/ui";
 export const metadata: Metadata = {
   title: "Imajin Media",
   description: "Sovereign media storage for the imajin network.",
+  openGraph: {
+    title: "Imajin Media",
+    description: "Sovereign media storage for the imajin network.",
+    siteName: "Imajin",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "Imajin Media",
+    description: "Sovereign media storage for the imajin network.",
+  },
 };
 
 export default function RootLayout({
