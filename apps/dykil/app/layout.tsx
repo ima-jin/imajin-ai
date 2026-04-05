@@ -5,6 +5,17 @@ import { Providers } from './providers';
 export const metadata: Metadata = {
   title: 'Dykil | Imajin',
   description: 'Sovereign surveys and forms on the Imajin network',
+  openGraph: {
+    title: 'Dykil | Imajin',
+    description: 'Sovereign surveys and forms on the Imajin network',
+    siteName: 'Imajin',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Dykil | Imajin',
+    description: 'Sovereign surveys and forms on the Imajin network',
+  },
 };
 
 export default function RootLayout({

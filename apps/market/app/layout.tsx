@@ -5,6 +5,17 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Market | Imajin',
   description: 'Local commerce — buy and sell with trust on the Imajin network',
+  openGraph: {
+    title: 'Market | Imajin',
+    description: 'Local commerce — buy and sell with trust on the Imajin network',
+    siteName: 'Imajin',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Market | Imajin',
+    description: 'Local commerce — buy and sell with trust on the Imajin network',
+  },
 };
 
 export default function RootLayout({

@@ -6,6 +6,17 @@ import { Providers } from './providers';
 export const metadata: Metadata = {
   title: 'Coffee | Imajin',
   description: 'Support creators with sovereign tip pages on the Imajin network',
+  openGraph: {
+    title: 'Coffee | Imajin',
+    description: 'Support creators with sovereign tip pages on the Imajin network',
+    siteName: 'Imajin',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Coffee | Imajin',
+    description: 'Support creators with sovereign tip pages on the Imajin network',
+  },
 };
 
 export default function RootLayout({

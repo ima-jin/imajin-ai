@@ -1,9 +1,45 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { db, coffeePages } from '@/db';
+import { buildPublicUrl } from '@imajin/config';
 import TipForm from './tip-form';
 
 interface PageProps {
   params: { handle: string };
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const page = await db.query.coffeePages.findFirst({
+    where: (pages, { eq }) => eq(pages.handle, params.handle),
+  });
+
+  if (!page || !page.isPublic) {
+    return { title: 'Coffee | Imajin' };
+  }
+
+  const title = `${page.title} | Coffee | Imajin`;
+  const description = page.bio || 'Support this creator on the Imajin network';
+  const url = `${buildPublicUrl('coffee')}/${page.handle}`;
+  const avatarIsImage = page.avatar && (page.avatar.startsWith('http') || page.avatar.startsWith('/'));
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: 'Imajin',
+      type: 'profile',
+      ...(avatarIsImage ? { images: [{ url: page.avatar! }] } : {}),
+    },
+    twitter: {
+      card: avatarIsImage ? 'summary_large_image' : 'summary',
+      title,
+      description,
+      ...(avatarIsImage ? { images: [page.avatar!] } : {}),
+    },
+  };
 }
 
 export default async function CoffeePage({ params }: PageProps) {

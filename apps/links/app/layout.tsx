@@ -7,6 +7,17 @@ import { Providers } from './providers';
 export const metadata: Metadata = {
   title: 'Links | Imajin',
   description: 'Sovereign link-in-bio pages on the Imajin network',
+  openGraph: {
+    title: 'Links | Imajin',
+    description: 'Sovereign link-in-bio pages on the Imajin network',
+    siteName: 'Imajin',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Links | Imajin',
+    description: 'Sovereign link-in-bio pages on the Imajin network',
+  },
 };
 
 export default function RootLayout({

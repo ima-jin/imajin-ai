@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, forestConfig } from '@/src/db';
+import { db, forestConfig } from '@/db';
 import { eq } from 'drizzle-orm';
 
 /**
