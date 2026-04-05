@@ -207,6 +207,31 @@ export const devices = authSchema.table('devices', {
   didIdx: index('idx_devices_did').on(table.did),
 }));
 
+/**
+ * Group Identities — multi-controller DIDs for orgs, communities, families
+ */
+export const groupIdentities = authSchema.table('group_identities', {
+  groupDid: text('group_did').primaryKey(),               // references identities.id
+  scope: text('scope').notNull(),                         // 'org' | 'community' | 'family'
+  createdBy: text('created_by').notNull(),                // DID of creator
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+/**
+ * Group Controllers — members that control a group DID
+ */
+export const groupControllers = authSchema.table('group_controllers', {
+  groupDid: text('group_did').notNull(),
+  controllerDid: text('controller_did').notNull(),
+  role: text('role').notNull().default('member'),         // 'owner' | 'admin' | 'member'
+  addedBy: text('added_by'),
+  addedAt: timestamp('added_at', { withTimezone: true }).defaultNow(),
+  removedAt: timestamp('removed_at', { withTimezone: true }),
+}, (table) => ({
+  pk: index('idx_group_controllers_pk').on(table.groupDid, table.controllerDid),
+  controllerIdx: index('idx_group_controllers_controller').on(table.controllerDid),
+}));
+
 // Types
 export type Identity = typeof identities.$inferSelect;
 export type NewIdentity = typeof identities.$inferInsert;
@@ -223,3 +248,7 @@ export type MfaMethod = typeof mfaMethods.$inferSelect;
 export type NewMfaMethod = typeof mfaMethods.$inferInsert;
 export type Device = typeof devices.$inferSelect;
 export type NewDevice = typeof devices.$inferInsert;
+export type GroupIdentity = typeof groupIdentities.$inferSelect;
+export type NewGroupIdentity = typeof groupIdentities.$inferInsert;
+export type GroupController = typeof groupControllers.$inferSelect;
+export type NewGroupController = typeof groupControllers.$inferInsert;

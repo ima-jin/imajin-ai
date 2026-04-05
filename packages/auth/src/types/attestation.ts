@@ -22,6 +22,7 @@ export const ATTESTATION_TYPES = [
   'pod.member.added',
   'pod.member.removed',
   'pod.role.changed',
+  'group.created',
   'group.member.added',
   'group.member.removed',
   'group.member.left'
