@@ -1,4 +1,4 @@
-import { eq, and, gt, sql } from 'drizzle-orm';
+import { eq, and, gt, sql, inArray } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type {
   RelayStore,
@@ -7,9 +7,11 @@ import type {
   StoredContentChain,
   StoredBeacon,
   BlobKey,
-  // TODO: import LogEntry and ReadLogResult from @metalabel/dfos-web-relay once 0.5.0 is installed
+  LogEntry,
 } from '@metalabel/dfos-web-relay';
-import { decodeJwsUnsafe } from '@metalabel/dfos-protocol';
+import { createKeyResolver } from '@metalabel/dfos-web-relay';
+import { decodeJwsUnsafe } from '@metalabel/dfos-protocol/crypto';
+import { verifyIdentityChain, verifyContentChain } from '@metalabel/dfos-protocol/chain';
 import {
   relayOperations,
   relayIdentityChains,
@@ -19,16 +21,10 @@ import {
   relayCountersignatures,
   relayOperationLog,
   relayPendingOperations,
+  relayPeerCursors,
 } from '../db/relay-schema';
 
-// TODO: replace with imported types from @metalabel/dfos-web-relay once 0.5.0 is installed
 type OperationKind = 'identity-op' | 'content-op' | 'beacon' | 'artifact' | 'countersign';
-interface LogEntry {
-  cid: string;
-  jwsToken: string;
-  kind: OperationKind;
-  chainId: string;
-}
 interface ReadLogResult {
   entries: LogEntry[];
   cursor: string | null;
@@ -226,40 +222,6 @@ export class PostgresRelayStore implements RelayStore {
     });
   }
 
-  async putPending(cid: string, jwsToken: string): Promise<void> {
-    await this.db
-      .insert(relayPendingOperations)
-      .values({ cid, jwsToken, status: 'pending' })
-      .onConflictDoNothing();
-  }
-
-  async getPendingOps(): Promise<Array<{ cid: string; jwsToken: string; attempts: number }>> {
-    const rows = await this.db
-      .select()
-      .from(relayPendingOperations)
-      .where(eq(relayPendingOperations.status, 'pending'))
-      .orderBy(relayPendingOperations.receivedAt);
-    return rows.map((r) => ({ cid: r.cid, jwsToken: r.jwsToken, attempts: r.attempts }));
-  }
-
-  async updatePendingStatus(
-    cid: string,
-    status: 'pending' | 'resolved' | 'rejected',
-    error?: string,
-    incrementAttempts?: boolean,
-  ): Promise<void> {
-    await this.db
-      .update(relayPendingOperations)
-      .set({
-        status,
-        lastError: error ?? null,
-        ...(incrementAttempts
-          ? { attempts: sql`${relayPendingOperations.attempts} + 1` }
-          : {}),
-      })
-      .where(eq(relayPendingOperations.cid, cid));
-  }
-
   async appendToLog(entry: LogEntry): Promise<void> {
     await this.db.insert(relayOperationLog).values({
       cid: entry.cid,
@@ -311,5 +273,192 @@ export class PostgresRelayStore implements RelayStore {
     const cursor = entries.length === params.limit ? entries[entries.length - 1].cid : null;
 
     return { entries, cursor };
+  }
+
+  async getIdentityStateAtCID(
+    did: string,
+    cid: string,
+  ): Promise<{ state: StoredIdentityChain['state']; lastCreatedAt: string } | null> {
+    const chain = await this.getIdentityChain(did);
+    if (!chain) return null;
+
+    // build CID → { jws, previousCID } map from log
+    const opsByCID = new Map<string, { jws: string; previousCID: string | null }>();
+    for (const jws of chain.log) {
+      const decoded = decodeJwsUnsafe(jws);
+      if (!decoded) continue;
+      const payload = decoded.payload as Record<string, unknown>;
+      const opCID = typeof decoded.header.cid === 'string' ? decoded.header.cid : '';
+      const prevCID =
+        typeof payload['previousOperationCID'] === 'string'
+          ? payload['previousOperationCID']
+          : null;
+      opsByCID.set(opCID, { jws, previousCID: prevCID });
+    }
+
+    if (!opsByCID.has(cid)) return null;
+
+    // walk backward from target CID to genesis
+    const path: string[] = [];
+    let currentCID: string | null = cid;
+    while (currentCID) {
+      const op = opsByCID.get(currentCID);
+      if (!op) return null;
+      path.unshift(op.jws);
+      currentCID = op.previousCID;
+    }
+
+    const state = await verifyIdentityChain({ didPrefix: 'did:dfos', log: path });
+
+    const targetDecoded = decodeJwsUnsafe(opsByCID.get(cid)!.jws);
+    const lastCreatedAt =
+      typeof (targetDecoded?.payload as Record<string, unknown>)?.['createdAt'] === 'string'
+        ? ((targetDecoded?.payload as Record<string, unknown>)['createdAt'] as string)
+        : '';
+
+    return { state, lastCreatedAt };
+  }
+
+  async getContentStateAtCID(
+    contentId: string,
+    cid: string,
+  ): Promise<{ state: StoredContentChain['state']; lastCreatedAt: string } | null> {
+    const chain = await this.getContentChain(contentId);
+    if (!chain) return null;
+
+    // build CID → { jws, previousCID } map from log
+    const opsByCID = new Map<string, { jws: string; previousCID: string | null }>();
+    for (const jws of chain.log) {
+      const decoded = decodeJwsUnsafe(jws);
+      if (!decoded) continue;
+      const payload = decoded.payload as Record<string, unknown>;
+      const opCID = typeof decoded.header.cid === 'string' ? decoded.header.cid : '';
+      const prevCID =
+        typeof payload['previousOperationCID'] === 'string'
+          ? payload['previousOperationCID']
+          : null;
+      opsByCID.set(opCID, { jws, previousCID: prevCID });
+    }
+
+    if (!opsByCID.has(cid)) return null;
+
+    // walk backward from target CID to genesis
+    const path: string[] = [];
+    let currentCID: string | null = cid;
+    while (currentCID) {
+      const op = opsByCID.get(currentCID);
+      if (!op) return null;
+      path.unshift(op.jws);
+      currentCID = op.previousCID;
+    }
+
+    const resolveKey = createKeyResolver(this);
+    const state = await verifyContentChain({ log: path, resolveKey, enforceAuthorization: true });
+
+    const targetDecoded = decodeJwsUnsafe(opsByCID.get(cid)!.jws);
+    const lastCreatedAt =
+      typeof (targetDecoded?.payload as Record<string, unknown>)?.['createdAt'] === 'string'
+        ? ((targetDecoded?.payload as Record<string, unknown>)['createdAt'] as string)
+        : '';
+
+    return { state, lastCreatedAt };
+  }
+
+  async getPeerCursor(peerUrl: string): Promise<string | undefined> {
+    const rows = await this.db
+      .select()
+      .from(relayPeerCursors)
+      .where(eq(relayPeerCursors.peerUrl, peerUrl));
+    return rows[0]?.cursor ?? undefined;
+  }
+
+  async setPeerCursor(peerUrl: string, cursor: string): Promise<void> {
+    await this.db
+      .insert(relayPeerCursors)
+      .values({ peerUrl, cursor, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: relayPeerCursors.peerUrl,
+        set: { cursor, updatedAt: new Date() },
+      });
+  }
+
+  async putRawOp(cid: string, jwsToken: string): Promise<void> {
+    await this.db
+      .insert(relayPendingOperations)
+      .values({ cid, jwsToken, status: 'pending' })
+      .onConflictDoNothing();
+  }
+
+  async getUnsequencedOps(limit: number): Promise<string[]> {
+    const rows = await this.db
+      .select({ jwsToken: relayPendingOperations.jwsToken })
+      .from(relayPendingOperations)
+      .where(eq(relayPendingOperations.status, 'pending'))
+      .orderBy(relayPendingOperations.receivedAt)
+      .limit(limit);
+    return rows.map((r) => r.jwsToken);
+  }
+
+  async markOpsSequenced(cids: string[]): Promise<void> {
+    if (cids.length === 0) return;
+    await this.db
+      .update(relayPendingOperations)
+      .set({ status: 'sequenced' })
+      .where(inArray(relayPendingOperations.cid, cids));
+  }
+
+  async markOpRejected(cid: string, reason: string): Promise<void> {
+    await this.db
+      .update(relayPendingOperations)
+      .set({ status: 'rejected', lastError: reason })
+      .where(eq(relayPendingOperations.cid, cid));
+  }
+
+  async countUnsequenced(): Promise<number> {
+    const rows = await this.db
+      .select({ count: sql<string>`count(*)` })
+      .from(relayPendingOperations)
+      .where(eq(relayPendingOperations.status, 'pending'));
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  async resetSequencer(): Promise<void> {
+    await this.db
+      .update(relayPendingOperations)
+      .set({ status: 'pending' })
+      .where(sql`${relayPendingOperations.status} != 'rejected'`);
+  }
+
+  // --- legacy sequencer interface (kept for backwards compatibility) ---
+
+  async putPending(cid: string, jwsToken: string): Promise<void> {
+    return this.putRawOp(cid, jwsToken);
+  }
+
+  async getPendingOps(): Promise<Array<{ cid: string; jwsToken: string; attempts: number }>> {
+    const rows = await this.db
+      .select()
+      .from(relayPendingOperations)
+      .where(eq(relayPendingOperations.status, 'pending'))
+      .orderBy(relayPendingOperations.receivedAt);
+    return rows.map((r) => ({ cid: r.cid, jwsToken: r.jwsToken, attempts: r.attempts }));
+  }
+
+  async updatePendingStatus(
+    cid: string,
+    status: 'pending' | 'resolved' | 'rejected',
+    error?: string,
+    incrementAttempts?: boolean,
+  ): Promise<void> {
+    await this.db
+      .update(relayPendingOperations)
+      .set({
+        status,
+        lastError: error ?? null,
+        ...(incrementAttempts
+          ? { attempts: sql`${relayPendingOperations.attempts} + 1` }
+          : {}),
+      })
+      .where(eq(relayPendingOperations.cid, cid));
   }
 }
