@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getClient } from '@imajin/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
+import { notify } from '@imajin/notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,6 +76,9 @@ export async function POST(
           DO UPDATE SET left_at = NULL, joined_at = NOW()
           WHERE chat.conversation_members.left_at IS NOT NULL
       `;
+
+      notify.interest({ did: memberDid, attestationType: 'group.member.added' })
+        .catch((err: unknown) => console.error('Interest signal error:', err));
     } else {
       // Webhook / event-chat mode: no auth required
       // Ensure conversation exists (event chats may not exist yet)

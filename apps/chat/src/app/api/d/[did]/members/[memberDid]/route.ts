@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getClient } from '@imajin/db';
 import { requireAuth } from '@/lib/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
+import { notify } from '@imajin/notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,6 +86,9 @@ export async function DELETE(
       WHERE conversation_did = ${did}
         AND member_did = ${memberDid}
     `;
+
+    notify.interest({ did: memberDid, attestationType: 'group.member.removed' })
+      .catch((err: unknown) => console.error('Interest signal error:', err));
 
     return jsonResponse({ ok: true }, 200, cors);
   } catch (error) {

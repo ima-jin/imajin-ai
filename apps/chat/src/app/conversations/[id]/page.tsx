@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useIdentity, LoginPrompt } from '@/contexts/IdentityContext';
-import { Chat, ChatProvider } from '@imajin/chat';
+import { Chat, ChatProvider, useDidNames } from '@imajin/chat';
+import { useToast } from '@imajin/ui';
 
 // Inline DID parser (avoids importing Node.js crypto in client bundle)
 function parseConvDid(did: string): { type: string; slug?: string } {
@@ -34,12 +35,63 @@ interface Connection {
   name?: string;
 }
 
+// ─── Add member picker (inside ChatProvider context for useDidNames) ──────────
+
+function AddMemberPicker({
+  connections,
+  addingDid,
+  loadingConnections,
+  onAdd,
+  onCancel,
+}: {
+  connections: Connection[];
+  addingDid: string | null;
+  loadingConnections: boolean;
+  onAdd: (did: string) => void;
+  onCancel: () => void;
+}) {
+  const didNames = useDidNames(connections.map((c) => c.did));
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium text-gray-500">Add a member:</span>
+        <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600">
+          Cancel
+        </button>
+      </div>
+      {loadingConnections ? (
+        <p className="text-xs text-gray-400">Loading connections…</p>
+      ) : connections.length === 0 ? (
+        <p className="text-xs text-gray-400">No connections available to add.</p>
+      ) : (
+        <div className="flex flex-wrap gap-1">
+          {connections.map((conn) => {
+            const label = didNames[conn.did] || (conn.handle ? `@${conn.handle}` : conn.did.slice(-8));
+            return (
+              <button
+                key={conn.did}
+                onClick={() => onAdd(conn.did)}
+                disabled={addingDid === conn.did}
+                className="px-2 py-1 text-xs bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-full hover:border-orange-400 hover:text-orange-500 transition disabled:opacity-50"
+              >
+                {addingDid === conn.did ? '…' : label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── DID-based conversation view ─────────────────────────────────────────────
 
 function DIDConversationView({ did }: { did: string }) {
   const { identity, loading: authLoading } = useIdentity();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { toast } = useToast();
   const [convName, setConvName] = useState<string | null>(null);
   const [nameSet, setNameSet] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -123,10 +175,13 @@ function DIDConversationView({ did }: { did: string }) {
         method: 'POST',
       });
       if (res.ok) {
+        toast.success('You left the group');
         router.push('/conversations');
+      } else {
+        toast.error('Failed to leave group');
       }
     } catch {
-      // ignore
+      toast.error('Failed to leave group');
     } finally {
       setLeaving(false);
       setLeaveConfirm(false);
@@ -140,9 +195,14 @@ function DIDConversationView({ did }: { did: string }) {
         `/api/d/${encodeURIComponent(did)}/members/${encodeURIComponent(memberDid)}`,
         { method: 'DELETE' }
       );
-      if (res.ok) fetchMembers();
+      if (res.ok) {
+        toast.success('Member removed');
+        fetchMembers();
+      } else {
+        toast.error('Failed to remove member');
+      }
     } catch {
-      // ignore
+      toast.error('Failed to remove member');
     } finally {
       setRemovingDid(null);
     }
@@ -153,13 +213,12 @@ function DIDConversationView({ did }: { did: string }) {
     setLoadingConnections(true);
     try {
       const connectionsUrl = `${SERVICE_PREFIX}connections.${DOMAIN}`;
-      const authUrl = `${SERVICE_PREFIX}auth.${DOMAIN}`;
       const res = await fetch(`${connectionsUrl}/api/connections`, { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json();
       const memberDids = new Set(members.map((m) => m.did));
 
-      // Deduplicate and resolve names
+      // Deduplicate — names are resolved reactively via useDidNames in AddMemberPicker
       const seen = new Map<string, Connection>();
       for (const conn of (data.connections || []) as Connection[]) {
         if (conn.did === identity?.did) continue;
@@ -167,23 +226,7 @@ function DIDConversationView({ did }: { did: string }) {
         if (!seen.has(conn.did)) seen.set(conn.did, conn);
       }
 
-      // Resolve names
-      const resolved = await Promise.all(
-        Array.from(seen.values()).map(async (conn) => {
-          try {
-            const lookupRes = await fetch(
-              `${authUrl}/api/lookup/${encodeURIComponent(conn.did)}`,
-              { credentials: 'include' }
-            );
-            if (lookupRes.ok) {
-              const profile = await lookupRes.json();
-              return { ...conn, handle: profile.handle, name: profile.name };
-            }
-          } catch {}
-          return conn;
-        })
-      );
-      setConnections(resolved);
+      setConnections(Array.from(seen.values()));
     } catch {
       // ignore
     } finally {
@@ -200,12 +243,15 @@ function DIDConversationView({ did }: { did: string }) {
         body: JSON.stringify({ memberDid }),
       });
       if (res.ok) {
+        toast.success('Member added');
         setShowAddMember(false);
         setConnections([]);
         fetchMembers();
+      } else {
+        toast.error('Failed to add member');
       }
     } catch {
-      // ignore
+      toast.error('Failed to add member');
     } finally {
       setAddingDid(null);
     }
@@ -253,6 +299,7 @@ function DIDConversationView({ did }: { did: string }) {
   if (!identity) return <LoginPrompt />;
 
   return (
+    <ChatProvider chatUrl={chatUrl} authUrl={authUrl} mediaUrl={mediaUrl}>
     <div className="mx-auto flex flex-col h-[calc(100dvh-88px)]">
       {/* Header */}
       <div className="flex items-center gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
@@ -363,35 +410,13 @@ function DIDConversationView({ did }: { did: string }) {
           {/* Add Member */}
           {isOwnerOrAdmin && (
             showAddMember ? (
-              <div className="mt-2">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-gray-500">Add a member:</span>
-                  <button
-                    onClick={() => { setShowAddMember(false); setConnections([]); }}
-                    className="text-xs text-gray-400 hover:text-gray-600"
-                  >
-                    Cancel
-                  </button>
-                </div>
-                {loadingConnections ? (
-                  <p className="text-xs text-gray-400">Loading connections…</p>
-                ) : connections.length === 0 ? (
-                  <p className="text-xs text-gray-400">No connections available to add.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-1">
-                    {connections.map((conn) => (
-                      <button
-                        key={conn.did}
-                        onClick={() => handleAddMember(conn.did)}
-                        disabled={addingDid === conn.did}
-                        className="px-2 py-1 text-xs bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-full hover:border-orange-400 hover:text-orange-500 transition disabled:opacity-50"
-                      >
-                        {addingDid === conn.did ? '…' : (conn.name || (conn.handle ? `@${conn.handle}` : conn.did.slice(-8)))}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <AddMemberPicker
+                connections={connections}
+                addingDid={addingDid}
+                loadingConnections={loadingConnections}
+                onAdd={handleAddMember}
+                onCancel={() => { setShowAddMember(false); setConnections([]); }}
+              />
             ) : (
               <button
                 onClick={() => { setShowAddMember(true); loadConnections(); }}
@@ -406,19 +431,18 @@ function DIDConversationView({ did }: { did: string }) {
 
       {/* Chat */}
       <div className="flex-1 overflow-hidden min-h-0">
-        <ChatProvider chatUrl={chatUrl} authUrl={authUrl} mediaUrl={mediaUrl}>
-          <Chat
-            did={did}
-            currentUserDid={identity.did}
-            mediaUrl={mediaUrl}
-            enableVoice
-            enableMedia
-            enableLocation
-            className="h-full"
-          />
-        </ChatProvider>
+        <Chat
+          did={did}
+          currentUserDid={identity.did}
+          mediaUrl={mediaUrl}
+          enableVoice
+          enableMedia
+          enableLocation
+          className="h-full"
+        />
       </div>
     </div>
+    </ChatProvider>
   );
 }
 
