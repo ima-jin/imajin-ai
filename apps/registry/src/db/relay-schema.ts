@@ -69,6 +69,12 @@ export const relayPendingOperations = relaySchema.table('relay_pending_operation
   status: text('status').default('pending').notNull(),
 });
 
+export const relayPeerCursors = relaySchema.table('relay_peer_cursors', {
+  peerUrl: text('peer_url').primaryKey(),
+  cursor: text('cursor').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
 export const relayOperationLog = relaySchema.table('relay_operation_log', {
   seq: bigserial('seq', { mode: 'bigint' }).primaryKey(),
   cid: text('cid').notNull(),

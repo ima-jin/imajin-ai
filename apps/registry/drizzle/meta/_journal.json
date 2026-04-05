@@ -29,6 +29,13 @@
       "when": 1743379200000,
       "tag": "0003_interest_did_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1775370293174,
+      "tag": "0004_old_lenny_balinger",
+      "breakpoints": true
     }
   ]
 }
