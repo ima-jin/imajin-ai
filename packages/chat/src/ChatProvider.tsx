@@ -7,6 +7,7 @@ interface ChatConfig {
   authUrl: string;
   inputUrl?: string;
   mediaUrl?: string;
+  connectionsUrl?: string;
 }
 
 const ChatContext = createContext<ChatConfig | null>(null);
@@ -22,10 +23,11 @@ export function ChatProvider({
   authUrl,
   inputUrl,
   mediaUrl,
+  connectionsUrl,
   children,
 }: ChatConfig & { children: React.ReactNode }) {
   return (
-    <ChatContext.Provider value={{ chatUrl, authUrl, inputUrl, mediaUrl }}>
+    <ChatContext.Provider value={{ chatUrl, authUrl, inputUrl, mediaUrl, connectionsUrl }}>
       {children}
     </ChatContext.Provider>
   );
