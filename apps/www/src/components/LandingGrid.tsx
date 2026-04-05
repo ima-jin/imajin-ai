@@ -81,20 +81,36 @@ export function LandingGrid() {
   const [services, setServices] = useState<ServiceEntry[]>([]);
   const [authed, setAuthed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [forestEnabledServices, setForestEnabledServices] = useState<string[] | null>(null);
 
   useEffect(() => {
     const registryUrl = buildPublicUrl('registry');
     const authUrl = buildPublicUrl('auth');
+    const actingAs = typeof localStorage !== 'undefined' ? localStorage.getItem('imajin:acting-as') : null;
 
-    Promise.all([
+    const requests: Promise<unknown>[] = [
       fetch(`${registryUrl}/api/specs`).then((r) => r.ok ? r.json() : null),
       fetch(`${authUrl}/api/session`, { credentials: 'include' }).then((r) => r.ok ? r.json() : null),
-    ]).then(([specData, session]) => {
-      if (specData?.services) {
-        setServices(specData.services.filter((s: ServiceEntry) => s.visibility !== 'internal'));
+    ];
+
+    if (actingAs) {
+      const profileUrl = buildPublicUrl('profile');
+      requests.push(
+        fetch(`${profileUrl}/api/forest/${encodeURIComponent(actingAs)}/config/public`)
+          .then((r) => r.ok ? r.json() : null)
+      );
+    }
+
+    Promise.all(requests).then(([specData, session, forestConfig]) => {
+      if ((specData as { services?: ServiceEntry[] } | null)?.services) {
+        setServices((specData as { services: ServiceEntry[] }).services.filter((s) => s.visibility !== 'internal'));
       }
-      const tier = session?.tier;
+      const tier = (session as { tier?: string } | null)?.tier;
       setAuthed(tier === 'hard' || tier === 'creator');
+      if (forestConfig) {
+        const cfg = forestConfig as { enabledServices?: string[] };
+        setForestEnabledServices(cfg.enabledServices ?? null);
+      }
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -109,9 +125,13 @@ export function LandingGrid() {
     );
   }
 
-  const visibleServices = authed
+  let visibleServices = authed
     ? services
     : services.filter((s) => s.visibility === 'public' || s.visibility === 'authenticated' || s.visibility === 'creator');
+
+  if (forestEnabledServices && forestEnabledServices.length > 0) {
+    visibleServices = visibleServices.filter((s) => forestEnabledServices.includes(s.name));
+  }
 
   const { core, creator, developer, meta } = groupServices(visibleServices);
 

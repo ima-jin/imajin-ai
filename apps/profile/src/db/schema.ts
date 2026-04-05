@@ -127,7 +127,21 @@ export const queryLogs = profileSchema.table('query_logs', {
   targetIdx: index('idx_query_logs_target').on(table.targetDid),
 }));
 
+/**
+ * Forest Config — per-group service toggles and landing page
+ */
+export const forestConfig = profileSchema.table('forest_config', {
+  groupDid: text('group_did').primaryKey(),
+  enabledServices: text('enabled_services').array().notNull().default([]),
+  landingService: text('landing_service'),
+  theme: jsonb('theme').default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
 // Types
+export type ForestConfig = typeof forestConfig.$inferSelect;
+export type NewForestConfig = typeof forestConfig.$inferInsert;
 export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
 export type Connection = typeof connections.$inferSelect;

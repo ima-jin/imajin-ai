@@ -232,6 +232,11 @@ export const groupControllers = authSchema.table('group_controllers', {
   controllerIdx: index('idx_group_controllers_controller').on(table.controllerDid),
 }));
 
+/**
+ * Forest Config — per-group service visibility and landing page configuration
+ */
+
+
 // Types
 export type Identity = typeof identities.$inferSelect;
 export type NewIdentity = typeof identities.$inferInsert;
@@ -252,3 +257,4 @@ export type GroupIdentity = typeof groupIdentities.$inferSelect;
 export type NewGroupIdentity = typeof groupIdentities.$inferInsert;
 export type GroupController = typeof groupControllers.$inferSelect;
 export type NewGroupController = typeof groupControllers.$inferInsert;
+

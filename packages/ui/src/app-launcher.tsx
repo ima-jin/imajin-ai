@@ -24,6 +24,8 @@ export interface AppLauncherProps {
   variant?: 'list' | 'grid';
   /** Auth service URL — enables forest switcher when provided */
   authUrl?: string;
+  /** If set, only show services in this list (from active forest config) */
+  enabledServices?: string[];
 }
 
 /** Services that belong in the profile dropdown, not the launcher flyout */
@@ -57,7 +59,7 @@ function scopeIcon(scope: string): string {
   return '🌲';
 }
 
-export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', inline = false, variant = 'list', authUrl }: AppLauncherProps) {
+export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', inline = false, variant = 'list', authUrl, enabledServices }: AppLauncherProps) {
   const [services, setServices] = useState<LauncherService[]>([]);
   const [showPanel, setShowPanel] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -85,7 +87,10 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showPanel]);
 
-  const visible = filterByTier(services, tier);
+  let visible = filterByTier(services, tier);
+  if (enabledServices && enabledServices.length > 0) {
+    visible = visible.filter((s) => enabledServices.includes(s.name));
+  }
   const { core, creator, developer, meta } = groupByCategory(visible);
 
   const wwwUrl = services.find((s) => s.name === 'www')?.url || '#';
