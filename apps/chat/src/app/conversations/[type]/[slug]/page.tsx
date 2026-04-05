@@ -110,6 +110,7 @@ function DIDConversationView({ did }: { did: string }) {
 
   const callerRole = members.find((m) => m.did === identity?.did)?.role ?? null;
   const isOwnerOrAdmin = callerRole === 'owner' || callerRole === 'admin';
+  const memberDidNames = useDidNames(members.map((m) => m.did));
 
   const handleNameSave = async () => {
     const trimmed = nameInput.trim();
@@ -212,7 +213,6 @@ function DIDConversationView({ did }: { did: string }) {
     if (loadingConnections || connections.length > 0) return;
     setLoadingConnections(true);
     try {
-      const connectionsUrl = `${SERVICE_PREFIX}connections.${DOMAIN}`;
       const res = await fetch(`${connectionsUrl}/api/connections`, { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json();
@@ -280,6 +280,7 @@ function DIDConversationView({ did }: { did: string }) {
   // Use same-origin proxy for access checks (cross-origin cookie forwarding is unreliable)
   const authUrl = '';  // empty = same origin, proxied via /api/access/[did]
   const mediaUrl = MEDIA_URL;
+  const connectionsUrl = `${SERVICE_PREFIX}connections.${DOMAIN}`;
 
   const displayName =
     convName ||
@@ -299,7 +300,7 @@ function DIDConversationView({ did }: { did: string }) {
   if (!identity) return <LoginPrompt />;
 
   return (
-    <ChatProvider chatUrl={chatUrl} authUrl={authUrl} mediaUrl={mediaUrl}>
+    <ChatProvider chatUrl={chatUrl} authUrl={authUrl} mediaUrl={mediaUrl} connectionsUrl={connectionsUrl}>
     <div className="mx-auto flex flex-col h-[calc(100dvh-88px)]">
       {/* Header */}
       <div className="flex items-center gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
@@ -391,7 +392,7 @@ function DIDConversationView({ did }: { did: string }) {
                 className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white dark:bg-zinc-700 text-xs text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-zinc-600"
               >
                 {m.role === 'owner' && <span className="text-orange-500">★</span>}
-                {m.name || (m.handle ? `@${m.handle}` : m.did.slice(-8))}
+                {memberDidNames[m.did] || m.name || (m.handle ? `@${m.handle}` : m.did.slice(-8))}
                 {/* Remove button: owners can remove anyone (except self); admins can remove regular members only */}
                 {isOwnerOrAdmin && m.did !== identity?.did &&
                   (callerRole === 'owner' || (m.role !== 'owner' && m.role !== 'admin')) && (
