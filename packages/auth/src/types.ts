@@ -5,6 +5,7 @@ export interface Identity {
   handle?: string;
   tier?: "soft" | "preliminary" | "established";
   chainVerified?: boolean;
+  actingAs?: string; // DID of group the caller is acting on behalf of
 }
 
 export interface AuthResult {

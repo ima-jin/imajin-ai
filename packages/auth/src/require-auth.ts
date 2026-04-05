@@ -84,7 +84,39 @@ async function validateBearerToken(
 }
 
 /**
+ * Validate that a caller is an active owner or admin controller of a group DID.
+ * Uses the internal API to avoid recursive auth checks.
+ */
+async function validateActingAs(
+  callerDid: string,
+  groupDid: string
+): Promise<boolean> {
+  const authUrl = getAuthUrl();
+  const internalApiKey = process.env.ATTESTATION_INTERNAL_API_KEY;
+  if (!internalApiKey) {
+    console.warn("[AUTH] ATTESTATION_INTERNAL_API_KEY not set — cannot validate act-as");
+    return false;
+  }
+  try {
+    const res = await fetch(
+      `${authUrl}/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(callerDid)}`,
+      {
+        headers: { Authorization: `Bearer ${internalApiKey}` },
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.valid === true && (data.role === "owner" || data.role === "admin");
+  } catch (err) {
+    console.error("[AUTH] Act-as validation failed:", err);
+    return false;
+  }
+}
+
+/**
  * Require authentication. Checks session cookie first, then Bearer token.
+ * Also handles X-Acting-As header for group identity impersonation.
  *
  * Works with both `Request` and `NextRequest`.
  */
@@ -123,6 +155,18 @@ export async function requireAuth(
     } catch (err) {
       console.error("[AUTH] Chain verification failed:", err);
       result.identity.chainVerified = false;
+    }
+  }
+
+  // Handle X-Acting-As header for group identity impersonation
+  if ("identity" in result && result.identity) {
+    const actingAs = request.headers.get("x-acting-as");
+    if (actingAs) {
+      const allowed = await validateActingAs(result.identity.id, actingAs);
+      if (!allowed) {
+        return { error: "Not authorized to act as this group", status: 403 };
+      }
+      result.identity.actingAs = actingAs;
     }
   }
 

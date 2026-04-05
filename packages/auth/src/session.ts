@@ -27,12 +27,14 @@ export async function getSession(): Promise<Identity | null> {
     if (!response.ok) return null;
 
     const data = await response.json();
+    const actingAs = cookieStore.get("x-acting-as")?.value;
     return {
       id: data.did,
       type: data.type || "human",
       name: data.name,
       handle: data.handle,
       tier: data.tier || "soft",
+      actingAs: actingAs || undefined,
     };
   } catch (error) {
     console.error("[AUTH] Session fetch failed:", error);
