@@ -278,7 +278,7 @@ export default async function EventPage({ params, searchParams }: Props) {
 
   // Whether we should show the ticket purchase section
   const canSeeTickets =
-    event.accessMode !== 'invite_only' || inviteValid || isOrganizer;
+    event.accessMode !== 'invite_only' || inviteValid || isOrganizer || hasTicket;
 
   // Fetch user's tickets if logged in
   const userTickets = session?.id ? await getUserTickets(event.id, session.id) : [];
