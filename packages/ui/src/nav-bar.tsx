@@ -150,6 +150,23 @@ export function NavBar({
   const [showDropdown, setShowDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  useEffect(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('theme') : null;
+    setTheme(saved === 'light' ? 'light' : 'dark');
+  }, []);
+
+  function toggleTheme() {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    localStorage.setItem('theme', next);
+    if (next === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }
 
   // Auto-fetch identity if no prop provided
   const autoIdentity = useAutoIdentity(servicePrefix, domain, serviceUrls);
@@ -346,6 +363,12 @@ export function NavBar({
                         <span>🤝</span> Connections
                       </a>
                       <hr className="my-1 border-gray-200 dark:border-gray-800" />
+                      <button
+                        onClick={toggleTheme}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
+                      >
+                        <span>{theme === 'dark' ? '☀️' : '🌙'}</span> {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                      </button>
                       <a
                         href={`${buildUrl('www', servicePrefix, domain, serviceUrls)}/bugs`}
                         className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"

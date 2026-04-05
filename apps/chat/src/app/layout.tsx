@@ -4,7 +4,7 @@ import { NavBarWithUnread } from './components/NavBarWithUnread';
 import { IdentityProvider } from '@/contexts/IdentityContext';
 import { UnreadTitleManager } from './components/UnreadTitleManager';
 import { UnreadCountProvider } from '@/contexts/UnreadCountContext';
-import { ToastProvider } from '@imajin/ui';
+import { ToastProvider, themeInitScript } from '@imajin/ui';
 import { buildPublicUrl } from '@imajin/config';
 
 const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
@@ -36,8 +36,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="h-screen bg-[#0a0a0a] text-white">
+    <html lang="en">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="h-screen bg-white dark:bg-[#0a0a0a] text-gray-900 dark:text-white">
         <ToastProvider>
           <UnreadCountProvider>
             <NavBarWithUnread />

@@ -3,6 +3,7 @@ import './globals.css';
 import { NavBar } from './components/NavBar';
 import { Providers } from './providers';
 import { buildPublicUrl } from '@imajin/config';
+import { themeInitScript } from '@imajin/ui';
 
 const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -42,8 +43,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-screen bg-[#0a0a0a] text-white">
+    <html lang="en">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="min-h-screen bg-white dark:bg-[#0a0a0a] text-gray-900 dark:text-white">
         <NavBar currentService="Events" />
         <Providers>
           <main className="container mx-auto px-4 py-8">

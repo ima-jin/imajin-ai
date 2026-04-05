@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { NavBar } from '@imajin/ui';
+import { NavBar, themeInitScript } from '@imajin/ui';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -16,7 +16,10 @@ export default function RootLayout({
   const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
         <NavBar
           currentService="Market"
