@@ -59,7 +59,7 @@ export function useChatMessages(did: string): UseChatMessagesResult {
           replyTo: msg.replyTo ?? msg.replyToMessageId,
           reactions: msg.reactions?.map((r: any) => ({
             ...r,
-            senderDid: r.senderDid ?? r.fromDid,
+            senderDid: r.senderDid ?? r.fromDid ?? r.did,
           })),
         };
       });
