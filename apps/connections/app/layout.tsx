@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { NavBar } from '@imajin/ui';
+import { NavBar, themeInitScript } from '@imajin/ui';
 import { IdentityProvider } from './context/IdentityContext';
 import './globals.css';
 import { Providers } from './providers';
@@ -16,8 +16,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-screen bg-[#0a0a0a] text-white">
+    <html lang="en">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="min-h-screen bg-white dark:bg-[#0a0a0a] text-gray-900 dark:text-white">
         <NavBar currentService="Connections" servicePrefix={prefix} domain={domain} />
         <Providers>
           <IdentityProvider>

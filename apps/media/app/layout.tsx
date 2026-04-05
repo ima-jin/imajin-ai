@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { themeInitScript } from "@imajin/ui";
 
 export const metadata: Metadata = {
   title: "Imajin Media",
@@ -12,8 +13,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="h-screen flex flex-col overflow-hidden bg-[#1a1a1a] text-white">
+    <html lang="en">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="h-screen flex flex-col overflow-hidden bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white">
         {children}
       </body>
     </html>

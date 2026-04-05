@@ -1,5 +1,6 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import { themeInitScript } from '@imajin/ui';
 import { cookies } from 'next/headers';
 import { NavBar } from './components/NavBar';
 import { BugReportButton } from '@/components/bug-report-button';
@@ -75,8 +76,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-screen antialiased bg-[#0a0a0a] text-white">
+    <html lang="en">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="min-h-screen antialiased bg-white dark:bg-[#0a0a0a] text-gray-900 dark:text-white">
         <NavBar currentService="Home" />
         <Providers>{children}</Providers>
         <BugReportWidget />

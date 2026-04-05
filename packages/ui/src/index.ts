@@ -25,3 +25,5 @@ export type { Notification, NotificationContextValue } from './notification-prov
 export { NotificationBell } from './notification-bell';
 
 export { ActionSheet } from './action-sheet';
+
+export { themeInitScript } from './theme-init';
