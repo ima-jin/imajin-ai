@@ -75,6 +75,13 @@ export const relayPeerCursors = relaySchema.table('relay_peer_cursors', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
+export const relayConfig = relaySchema.table('relay_config', {
+  id: text('id').primaryKey().default('singleton'),
+  did: text('did').notNull(),
+  profileArtifactJws: text('profile_artifact_jws').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
 export const relayOperationLog = relaySchema.table('relay_operation_log', {
   seq: bigserial('seq', { mode: 'bigint' }).primaryKey(),
   cid: text('cid').notNull(),

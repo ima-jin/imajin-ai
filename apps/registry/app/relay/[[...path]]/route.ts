@@ -1,8 +1,10 @@
 import { MemoryRelayStore } from '@metalabel/dfos-web-relay';
 import type { Hono } from 'hono';
+import { eq } from 'drizzle-orm';
 import { PostgresRelayStore } from '@/src/relay/postgres-store';
 import { createCustomRelay } from '@/src/relay/create-relay';
 import { db } from '@/src/db';
+import { relayConfig } from '@/src/db/relay-schema';
 
 const RELAY_DID = process.env.RELAY_DID;
 const RELAY_PROFILE_JWS = process.env.RELAY_PROFILE_JWS;
@@ -13,35 +15,73 @@ const store =
     : new PostgresRelayStore(db);
 
 // Lazy singleton — top-level await is not available in Next.js route files
-let relayInstance: Hono | null = null;
+let relayApp: Hono | null = null;
 let relayInitPromise: Promise<Hono> | null = null;
 
 async function initRelay(): Promise<Hono> {
-  let identity =
-    RELAY_DID && RELAY_PROFILE_JWS
-      ? { did: RELAY_DID, profileArtifactJws: RELAY_PROFILE_JWS }
-      : undefined;
-
-  // If a relay identity is configured, verify its chain exists in the store.
-  // If not, clear it so the library bootstraps a fresh one (and persists it).
-  if (identity) {
-    const chain = await store.getIdentityChain(identity.did);
-    if (!chain) {
-      console.warn(
-        `[relay] Configured RELAY_DID ${identity.did} has no identity chain in store — bootstrapping fresh identity`,
-      );
-      identity = undefined;
+  // 1. Env override takes priority (if chain exists in store)
+  if (RELAY_DID && RELAY_PROFILE_JWS) {
+    const chain = await store.getIdentityChain(RELAY_DID);
+    if (chain) {
+      const { app } = await createCustomRelay({
+        store,
+        identity: { did: RELAY_DID, profileArtifactJws: RELAY_PROFILE_JWS },
+      });
+      return app;
     }
+    console.warn(`[relay] RELAY_DID ${RELAY_DID} configured but chain missing — falling through to DB`);
   }
 
-  return createCustomRelay({ store, identity });
+  // 2. Check DB for persisted identity
+  const configs = await db.select().from(relayConfig).where(eq(relayConfig.id, 'singleton'));
+  const config = configs[0];
+  if (config) {
+    const chain = await store.getIdentityChain(config.did);
+    if (chain) {
+      console.log(`[relay] Using persisted identity: ${config.did}`);
+      const { app } = await createCustomRelay({
+        store,
+        identity: { did: config.did, profileArtifactJws: config.profileArtifactJws },
+      });
+      return app;
+    }
+    console.warn(`[relay] Persisted identity ${config.did} has no chain — re-bootstrapping`);
+  }
+
+  // 3. Bootstrap fresh — library creates identity + ingests chain
+  const { app, did } = await createCustomRelay({ store });
+
+  // Fetch the profile JWS from the well-known endpoint
+  const wellKnownReq = new Request('http://localhost/.well-known/dfos-relay');
+  const wellKnownRes = await app.fetch(wellKnownReq);
+  const wellKnown = await wellKnownRes.json() as { did: string; profile: string };
+
+  // Persist to DB
+  await db
+    .insert(relayConfig)
+    .values({
+      id: 'singleton',
+      did,
+      profileArtifactJws: wellKnown.profile,
+    })
+    .onConflictDoUpdate({
+      target: relayConfig.id,
+      set: {
+        did,
+        profileArtifactJws: wellKnown.profile,
+        createdAt: new Date(),
+      },
+    });
+
+  console.log(`[relay] Bootstrapped and persisted new relay identity: ${did}`);
+  return app;
 }
 
 async function getRelay(): Promise<Hono> {
-  if (relayInstance) return relayInstance;
+  if (relayApp) return relayApp;
   if (!relayInitPromise) {
     relayInitPromise = initRelay().then((r) => {
-      relayInstance = r;
+      relayApp = r;
       return r;
     });
   }
