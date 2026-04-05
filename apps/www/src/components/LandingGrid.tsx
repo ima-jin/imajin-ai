@@ -70,6 +70,13 @@ function TileGroup({ label, services, onAuthRequired }: { label?: string; servic
   );
 }
 
+const SKELETON_KEYS = ['sk0', 'sk1', 'sk2', 'sk3', 'sk4', 'sk5', 'sk6', 'sk7', 'sk8', 'sk9'];
+
+function handleAuthRequired(nextUrl: string) {
+  const authUrl = buildPublicUrl('auth');
+  globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(nextUrl)}`;
+}
+
 export function LandingGrid() {
   const [services, setServices] = useState<ServiceEntry[]>([]);
   const [authed, setAuthed] = useState(false);
@@ -92,16 +99,11 @@ export function LandingGrid() {
     }).catch(() => setLoading(false));
   }, []);
 
-  function handleAuthRequired(nextUrl: string) {
-    const authUrl = buildPublicUrl('auth');
-    window.location.href = `${authUrl}/login?next=${encodeURIComponent(nextUrl)}`;
-  }
-
   if (loading) {
     return (
       <div className="flex flex-wrap gap-3">
-        {Array.from({ length: 10 }).map((_, i) => (
-          <div key={i} className="w-20 h-20 md:w-24 md:h-24 rounded-xl border border-gray-800 bg-gray-900/40 animate-pulse" />
+        {SKELETON_KEYS.map((id) => (
+          <div key={id} className="w-20 h-20 md:w-24 md:h-24 rounded-xl border border-gray-800 bg-gray-900/40 animate-pulse" />
         ))}
       </div>
     );
@@ -111,15 +113,7 @@ export function LandingGrid() {
     ? services
     : services.filter((s) => s.visibility === 'public' || s.visibility === 'authenticated' || s.visibility === 'creator');
 
-  const authedServices = authed
-    ? visibleServices
-    : visibleServices.map((s) =>
-        (s.visibility === 'authenticated' || s.visibility === 'creator')
-          ? s
-          : s
-      );
-
-  const { core, creator, developer, meta } = groupServices(authedServices);
+  const { core, creator, developer, meta } = groupServices(visibleServices);
 
   return (
     <div className="space-y-8">

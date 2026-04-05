@@ -227,7 +227,9 @@ export function NavBar({
           href={buildUrl('www', servicePrefix, domain, serviceUrls)}
           className="flex items-center hover:opacity-80 transition shrink-0"
         >
-          <img src={`${buildUrl("www", servicePrefix, domain, serviceUrls)}/images/logo.svg`} alt="Imajin" className="h-8" />
+          <span className="w-8 h-8 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 flex items-center justify-center">
+            <span className="text-xl font-bold text-amber-500">今</span>
+          </span>
         </a>
 
         {/* Children slot (center, fills available space) */}
@@ -239,6 +241,7 @@ export function NavBar({
             registryUrl={registryUrl}
             currentService={currentService}
             tier={launcherTier}
+            variant="grid"
           />
           {identity?.isLoggedIn && identity?.tier !== 'soft' && (
             <>
