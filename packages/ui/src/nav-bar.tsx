@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { AppLauncher } from './app-launcher';
 import { NotificationBell } from './notification-bell';
 import { getPort } from '@imajin/config';
+import { useForests } from './use-forests';
 
 export interface NavIdentity {
   isLoggedIn: boolean;
@@ -51,6 +52,13 @@ function buildUrl(service: string, prefix: string, domain: string, overrides?: S
   }
 
   return `${prefix}${service}.${domain}`;
+}
+
+function scopeIcon(scope: string): string {
+  if (scope === 'community') return '🏛️';
+  if (scope === 'org') return '🏢';
+  if (scope === 'family') return '👨‍👩‍👦';
+  return '🌲';
 }
 
 function buildUserLinks(prefix: string, domain: string, overrides?: ServiceUrls) {
@@ -202,6 +210,13 @@ export function NavBar({
     return () => clearInterval(interval);
   }, [identity?.isLoggedIn, identity?.tier, servicePrefix, domain, serviceUrls]);
 
+  // Forests (group identities)
+  const authUrl = buildUrl('auth', servicePrefix, domain, serviceUrls);
+  const { forests, activeForest, setActiveForest } = useForests(
+    identity?.isLoggedIn && identity?.tier !== 'soft' ? authUrl : null
+  );
+  const activeForestData = forests.find((f) => f.groupDid === activeForest) ?? null;
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -242,6 +257,7 @@ export function NavBar({
             currentService={currentService}
             tier={launcherTier}
             variant="grid"
+            authUrl={identity?.isLoggedIn && identity?.tier !== 'soft' ? authUrl : undefined}
           />
           {identity?.isLoggedIn && identity?.tier !== 'soft' && (
             <>
@@ -305,14 +321,23 @@ export function NavBar({
                 onClick={() => setShowDropdown(!showDropdown)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               >
-                <span className="text-xl">👤</span>
+                <span className="text-xl">
+                  {activeForestData ? scopeIcon(activeForestData.scope) : '👤'}
+                </span>
                 <span className="text-sm font-medium">
-                  {identity.handle
+                  {activeForestData
+                    ? (activeForestData.name || activeForestData.handle || 'Forest')
+                    : identity.handle
                     ? `@${identity.handle}`
                     : identity.name
                     ? identity.name
                     : identity.did?.slice(0, 12) + '...'}
                 </span>
+                {activeForestData && (
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium leading-none">
+                    acting as
+                  </span>
+                )}
               </button>
 
               {showDropdown && (
@@ -364,6 +389,40 @@ export function NavBar({
                         className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
                       >
                         <span>🤝</span> Connections
+                      </a>
+                      <hr className="my-1 border-gray-200 dark:border-gray-800" />
+                      <div className="px-4 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                        🌲 Your Forests
+                      </div>
+                      {forests.map((forest) => {
+                        const isActive = forest.groupDid === activeForest;
+                        return (
+                          <button
+                            key={forest.groupDid}
+                            onClick={() => {
+                              setActiveForest(isActive ? null : forest.groupDid);
+                              setShowDropdown(false);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
+                          >
+                            <span>{scopeIcon(forest.scope)}</span>
+                            <span className={isActive ? 'font-medium' : ''}>
+                              {forest.name || forest.handle || forest.groupDid.slice(0, 12)}
+                            </span>
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500 capitalize">
+                              ({forest.scope})
+                            </span>
+                            {isActive && (
+                              <span className="ml-auto text-amber-600 dark:text-amber-400 font-bold text-xs">✓</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                      <a
+                        href={`${authUrl}/groups/new`}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit text-gray-500 dark:text-gray-400"
+                      >
+                        <span>🌱</span> Grow a forest
                       </a>
                       <hr className="my-1 border-gray-200 dark:border-gray-800" />
                       <button
@@ -419,6 +478,7 @@ export function NavBar({
             currentService={currentService}
             tier={launcherTier}
             inline
+            authUrl={identity?.isLoggedIn && identity?.tier !== 'soft' ? authUrl : undefined}
           />
           {identity?.isLoggedIn && identity?.tier !== 'soft' && (
             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
