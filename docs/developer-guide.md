@@ -22,6 +22,7 @@ You interact with MJN the same way you interact with Stripe or Auth0 — by call
 | **pay** | pay.imajin.ai | Payments — Stripe checkout, balances, settlement with .fair verification |
 | **events** | events.imajin.ai | Events, tickets, check-in, registration surveys |
 | **chat** | chat.imajin.ai | DID-based messaging — conversations, media, reactions, WebSocket |
+| **notify** | notify.imajin.ai | Notifications, preferences, event broadcasts |
 | **media** | media.imajin.ai | Asset storage with .fair attribution, DID-pegged folders |
 | **learn** | learn.imajin.ai | Courses, modules, presentations, enrollment, progress |
 | **market** | market.imajin.ai | Consent-based local commerce, listings, seller dashboards |
@@ -315,7 +316,7 @@ npx ajv-cli validate -s node_modules/.fair/schema/fair.schema.json -d my-project
 ```
 ┌─────────────────────────────────────────┐
 │           Trust-Gated Services          │
-│ events · chat · media · learn           │
+│ events · chat · media · learn · notify  │
 │ market · coffee · links · dykil         │
 ├─────────────────────────────────────────┤
 │          Attestation Layer              │

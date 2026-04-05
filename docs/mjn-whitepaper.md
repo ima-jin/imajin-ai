@@ -31,7 +31,7 @@ Without the chains, each service is a dumb CRUD app. With the chains, they form 
                     JBOS (Just a Bunch Of Services)
 ┌──────────────────────────────────────────────────────────┐
 │  www · events · chat · learn · market · coffee · links   │  ← Userspace
-│  dykil · media                                           │     (disposable)
+│  dykil · media · notify                                  │     (disposable)
 ├──────────────────────────────────────────────────────────┤
 │  connections · profile · registry                        │  ← Trust + Discovery
 ├──────────────────────────────────────────────────────────┤
@@ -194,6 +194,7 @@ Federated registry at `registry.imajin.ai`. Nodes announce presence, operators, 
 | registry | registry.imajin.ai | Federation — node discovery, DFOS relay |
 | events | events.imajin.ai | Userspace — events, tickets, .fair splits |
 | chat | chat.imajin.ai | Userspace — DID messaging, WebSocket |
+| notify | notify.imajin.ai | Userspace — notifications, preferences, broadcasts |
 | media | media.imajin.ai | Userspace — assets, .fair sidecars |
 | learn | learn.imajin.ai | Userspace — courses, enrollment |
 | market | market.imajin.ai | Userspace — local commerce |
@@ -204,7 +205,7 @@ Federated registry at `registry.imajin.ai`. Nodes announce presence, operators, 
 
 Every service exposes OpenAPI at `/api/spec`.
 
-Shared packages: `@imajin/auth` · `@imajin/db` · `@imajin/fair` · `@imajin/chat` · `@imajin/ui` · `@imajin/config` · `@imajin/llm` · `@imajin/media`
+Shared packages: `@imajin/auth` · `@imajin/db` · `@imajin/fair` · `@imajin/chat` · `@imajin/ui` · `@imajin/config` · `@imajin/llm` · `@imajin/media` · `@imajin/notify`
 
 ---
 
