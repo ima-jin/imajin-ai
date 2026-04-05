@@ -10,41 +10,55 @@
 
 ---
 
-### 1. The Problem Nobody Is Talking About
+### 1. The Problem — and the March 28 Response
 
-The attestation infrastructure is live. Six attestation types are emitting. The signing primitives work. `emitAttestation()` exists as a package-level utility in `@imajin/auth`. The whitepaper says "standing is computed from attestation history."
+When this proposal was written (March 27), six attestation types were emitting. The signing primitives worked but the wiring was incomplete.
 
-But the attestation graph is **structurally sparse**. Issue #461 audits this directly: attestations should be emitted at every trust-relevant seam, and they're not. The infrastructure was built; the wiring was not completed. This is the same category of gap as P8 (`.fair` not wired to events) — but across the entire attestation surface area.
+**On March 28, Ryan shipped #461 — "attestation chain coverage: emit at all trust-relevant seams."** This commit added 8 new attestation types across 8 files (coffee, connections, events, market, profile). This is a direct response to this proposal's audit.
 
-### 2. The Coverage Audit
+### 2. The Coverage Audit — UPDATED April 3
 
-Here is the complete audit of trust-relevant seams across all 15 services:
+**Pre-#461 state (March 27):** 12 types across 6 services.
+**Post-#461 state (March 28):** 19 types across 8 services.
+**Post-April 1 regression:** `institution.verified` disabled (commit e8a28a1e) — event DIDs lack keypairs. **18 of 26 seams now emitting.**
 
-| Seam | Service | Emitting? | Type | Impact of Gap |
-|------|---------|-----------|------|---------------|
-| Payment settled | pay | **Yes** | `transaction.settled` | — |
-| First purchase | pay | **Yes** | `customer` | — |
-| Connection invited | connections | **Yes** | `connection.invited` | — |
-| Connection accepted | connections | **Yes** | `connection.accepted` | — |
-| Vouch given | connections | **Yes** | `vouch` | — |
-| Session created | auth | **Yes** | `session.created` | — |
-| **Ticket purchased** | events | **No** | `ticket.purchased` | Event attendance invisible to trust graph |
-| **Event check-in** | events | **No** | `event.attended` | Physical presence — highest-value signal — not recorded |
-| **Event created** | events | **No** | `event.created` | Organizer contribution invisible |
-| **Course enrolled** | learn | **No** | `course.enrolled` | Education engagement invisible |
-| **Course completed** | learn | **No** | `course.completed` | Verifiable credentials impossible |
-| **Market listing created** | market | **No** | `listing.created` | Seller reputation has no attestation basis |
-| **Market purchase** | market | **No** | `market.purchased` | Buyer-seller trust signal lost |
-| **Media uploaded** | media | **No** | `media.uploaded` | Creative contribution not recorded as attestation |
+| Seam | Service | Emitting? | Type | Notes |
+|------|---------|-----------|------|-------|
+| Payment settled | pay | **Yes** | `transaction.settled` | Pre-existing |
+| First purchase | pay | **Yes** | `customer` | Pre-existing |
+| Connection invited | connections | **Yes** | `connection.invited` | Pre-existing (×2 paths) |
+| Connection accepted | connections | **Yes** | `connection.accepted` | Pre-existing |
+| Vouch given | connections | **Yes** | `vouch` | Pre-existing |
+| Pod member added | connections | **Yes** | `pod.member.added` | Pre-existing (pods + groups) |
+| Pod member removed | connections | **Yes** | `pod.member.removed` | Pre-existing (pods + groups) |
+| Pod role changed | connections | **Yes** | `pod.role.changed` | Pre-existing (pods + groups) |
+| Event check-in (institution) | events | **DISABLED** | `institution.verified` | **REGRESSED** — event DIDs lack keypairs (#537). Requires sub-identity delegation model. |
+| Event check-in (attendance) | events | **Yes** | `event.attendance` | Pre-existing |
+| Course enrolled | learn | **Yes** | `learn.enrolled` | Pre-existing |
+| Course completed | learn | **Yes** | `learn.completed` | Pre-existing |
+| **Tip received** | coffee | **Yes** | `tip.received` | **NEW — #461** (fiat + SOL paths) |
+| **Pod created** | connections | **Yes** | `pod.created` | **NEW — #461** |
+| **Event created** | events | **Yes** | `event.created` | **NEW — #461** |
+| **Ticket purchased** | events | **Yes** | `ticket.purchased` | **NEW — #461** (confirm + webhook paths) |
+| **Listing created** | market | **Yes** | `listing.created` | **NEW — #461** |
+| **Listing purchased** | market | **Yes** | `listing.purchased` | **NEW — #461** |
+| **Handle claimed** | profile | **Yes** | `handle.claimed` | **NEW — #461** |
+| **Media uploaded** | media | **No** | `media.uploaded` | Creative contribution not recorded |
 | **Chat message signed** | chat | **Partial** (#422) | `message.signed` | Signing works; not emitting as attestation |
-| **Profile updated** | profile | **No** | `profile.updated` | Activity signal absent from standing |
 | **Founding contribution** | pay | **No** | `supporter.founding` | Early supporter proof missing (#474) |
 | **Agent action** | auth | **No** | `agent.action` | Agent behavior untraceable |
 | **Check-in at business** | places (not built) | **No** | `checkin.verified` | Business trust signal absent |
 | **DID key rotated** | auth | **No** | `key.rotated` | Key rotation events invisible to trust graph |
 | **Chain presented** | auth | **No** | `chain.presented` | External DFOS onboarding invisible |
 
-**Six out of twenty-one trust-relevant seams are emitting.** Standing computation over this graph produces a thin, unreliable signal. The progressive trust model (P01, #321) can't differentiate a genuinely active community member from someone who just connected and vouched — because most meaningful actions don't produce attestations.
+**Eighteen of twenty-six identified seams are now emitting.** The remaining 8 gaps fall into four categories:
+
+1. **Regressed (needs sub-identity model):** `institution.verified` — event DIDs are service identities without keypairs. Fix requires #537 (sub-identity delegation).
+2. **Deferred (not blocking launch):** `media.uploaded`, `message.signed` (as attestation), `key.rotated`, `chain.presented`
+3. **Post-fundraise:** `agent.action`, `checkin.verified` (requires places service)
+4. **Immediate priority:** `supporter.founding` (#474 — needed for Founding Supporter tier)
+
+Standing computation has 18 signal types to work with — still sufficient for meaningful trust differentiation. The `institution.verified` regression is architectural (event DIDs need keypairs) rather than a wiring gap.
 
 ### 3. Why This Matters More Than It Looks
 

@@ -12,13 +12,29 @@
 
 ### 1. The Situation
 
-April 1 is 5 days away. The demo (#25) validates the core thesis: sovereign identity → attribution → settlement in one flow. Three items are explicitly not done:
+**Updated March 29:** April 1 is 3 days away. Since this proposal was written (March 27), Ryan shipped 32 commits resolving multiple blockers:
 
-1. `.fair` manifests not attached to event transactions
-2. Settlement not called from events webhook
-3. Platform fee not recorded
+| Blocker | Status | What Shipped |
+|---------|--------|-------------|
+| MFA / secure login | **RESOLVED** | #432 + #493: TOTP, device tracking, stored keys, auth method management UI |
+| Ticket scanner | **RESOLVED** | #500: QR scanner on event admin dashboard |
+| Attestation coverage | **RESOLVED** | #461: 19 attestation types emitting across 8 services |
+| Notification system | **NEW** | #479: Notify service + UI bell + toasts + @mentions in chat |
+| DFOS relay | **UPGRADED** | #518: DFOS 0.6.0 conformance |
 
-These are **wiring problems, not architecture problems**. The primitives exist. They are not connected. This is the highest-leverage work in the entire project right now — connecting three existing endpoints turns a collection of services into a working protocol demonstration.
+**Updated March 30:** All three wiring blockers are now resolved:
+
+| Blocker | Status | What Shipped |
+|---------|--------|-------------|
+| `.fair` manifests on events | **RESOLVED** | `settleTicketPurchase()` in `apps/events/src/lib/settle.ts` |
+| Settlement from webhook | **RESOLVED** | Events webhook calls `POST /api/settle` on Stripe checkout |
+| Platform fee recording | **RESOLVED** | 3% `PLATFORM_FEE_PERCENT` deducted before attribution chain |
+| Auth bridge to DFOS | **RESOLVED** | #532: genesis on register, lazy backfill on login |
+
+**Remaining post-demo:**
+1. Founding supporter tier (#474) — `supporter.founding` attestation type not yet in vocabulary
+2. Issue triage — 119 open issues, ~30 structurally superseded
+3. `.fair` template wiring to all upload paths (P9 — only events path wired)
 
 ### 2. What the Demo Actually Proves (and What It Doesn't)
 

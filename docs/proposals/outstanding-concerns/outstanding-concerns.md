@@ -1,29 +1,39 @@
 # Outstanding Concerns
 *Unresolved and partially-resolved questions from architectural review — March 2026*
-*Last cross-referenced against upstream: March 27, 2026 (HEAD: 1d943e0)*
+*Last cross-referenced against upstream: April 3, 2026 (HEAD: 3bc931be)*
 
-**March 27 audit:**
-- **C09 (Migration System Integrity) → RESOLVED** — `build.sh` pre-flight validation, per-service migration tracking (`migrate-service.mjs`), build-fail-on-error. Moved to `resolved-concerns/`.
+**April 3 audit:**
+- C10 (Relay auth) — PARTIALLY RESOLVED. RFC-22 rewritten three times; final model: consent-and-sign redirect as primary cross-platform auth. JWS-signed operations for chain integrity. Middleware enforcement on relay POST /operations still missing.
+- C11 (isValidDID) — STILL OPEN. Both bugs unchanged.
+- C12 (Consent primitive) — PARTIALLY RESOLVED. DID consent preferences + interest signals shipped in registry (#538/#539). Unsubscribe flow with HMAC verification + RFC 8058 headers. Still no `ConsentDeclaration` type or per-transaction consent.
 - C02 (.fair automated nodes) — PARTIALLY RESOLVED. Signing infra live; agent scope encoding + enforcement toggle pending.
-- C03 (Governance equity) — PARTIALLY RESOLVED. Community-layer done (RFC-07/17); Foundation governance mechanism unspecified.
+- C03 (Governance equity) — PARTIALLY RESOLVED. Community-layer done; Foundation governance unspecified.
 - C04 (Org DID vetting) — PARTIALLY RESOLVED. Design complete (RFC-08); attestation types and covenant missing.
-- C05 (Gas model ceiling) — Spec in whitepaper v0.4 (frequency-scaled depth gating, exact multiplier curve). No code — blocked on Stream 2.
+- C05 (Gas model ceiling) — Spec in whitepaper v0.4. No code — blocked on Stream 2. RFC-21 conformance suite defines gas test cases.
 - C06 (Declaration granularity) — k-anonymity mentioned in whitepaper v0.4. No code — blocked on Stream 2.
 - C08 (Dark graph clustering) — PARTIALLY RESOLVED. RFC-13/15 model; cluster detection primitives pending.
-- C10 (Relay auth) — STILL OPEN. Relay bumped to v0.5.0 but writes still unauthenticated.
-- C11 (isValidDID) — STILL OPEN. Both bugs unchanged since March 13.
-- F6 (Consent primitive) — PARTIALLY RESOLVED. P18 specced; RFC-19 consent screen at app level; no per-transaction consent implementation.
+- C13 (Org DID covenant) — STILL OPEN. No covenant document drafted.
+- C14 (Foundation governance) — STILL OPEN. Foundation governance mechanism entirely unspecified.
+- C15 (Agent authority scope) — STILL OPEN. `FairEntry` still cannot distinguish human/agent.
+- C16 (Family DID primitive) — STILL OPEN. Governance exists (RFC-17), identity container absent.
+- C17 (Stale issue taxonomy) — STILL OPEN. Issue triage deferred; issue #25 still open.
+- F6 (Consent primitive) — PARTIALLY RESOLVED. P18 specced; RFC-19 consent screen; email infra adds DID consent preferences.
 
-**March 27 extraction — new concerns from proposal audit:**
-- **C12 (Consent primitive unspecified)** — NEW. Named protocol primitive with one-sentence TODO. Blocks Stream 2+3. Extracted from P18/F6.
-- **C13 (Org DID covenant missing)** — NEW. Must exist before first Org DID claim. Extracted from P10.
-- **C14 (Foundation governance unspecified)** — NEW. Three-layer governance mapping incomplete. Extracted from P14.
-- **C15 (Agent authority scope / forge gap)** — NEW. `FairEntry` can't distinguish human/agent. Extracted from P24/P06.
-- **C16 (Family DID primitive missing)** — NEW. Governance exists (RFC-17), identity container absent. Extracted from P25.
-- **C17 (Stale issue taxonomy)** — NEW. 119 open issues; ~30 are pre-DFOS/pre-RFC-19 and structurally superseded. Extracted from GitHub audit.
-- **C18 (April 1 demo blockers)** — NEW. 3 explicit blockers on #25 (P8). 5 days remaining.
+**New upstream since March 30:**
+- **RFC-22 rewrite** — Consent-and-sign redirect as primary flow; three auth tiers (direct key, consent redirect, email fallback)
+- **RFC-23 (Multi-Chain Settlement)** — Chain-agnostic payment rails: Solana + Cardano + Midnight. Same Ed25519 key = all chains. Privacy-routed per transaction.
+- **RFC-19 update** — Embedded relay section: every node runs local DFOS relay as data layer. Offline-first, sync secondary.
+- **Email infrastructure** (#538–#543) — DID consent preferences, interest signals, broadcast, unsubscribe (RFC 8058), CAN-SPAM
+- **Refunds system** (#561) — End-to-end ticket refunds with settlement entry reversal
+- **Events features** — Hybrid virtual+physical (#558), check-in webhook + WLED bridge (#551), host broadcast (#552)
+- **`institution.verified` disabled** (e8a28a1e) — Event DIDs lack keypairs; P29 attestation count regressed 19→18
+- **Cost estimate updated** — Day 57, 132K LOC, $93K actual vs. $2.5M COCOMO (27×)
+- **`apps/input` retired** — Transcribe → media, notify takes input's slot. Service count remains 15.
+- **PR #526 merged** — Our P31 + questions-for-ryan now in upstream `docs/proposals/`
 
-**Previously resolved:** C01 (social graph portability), C07 (Cultural DID specification), C09 (migration system integrity)
+**Previously resolved:** C01, C07, C09, C18
+
+**Previously resolved:** C01 (social graph portability), C07 (Cultural DID specification), C09 (migration system integrity), C18 (April 1 demo blockers)
 
 Items are ordered by priority. Each entry includes the concern, current status, and what a resolution requires.
 
@@ -38,17 +48,20 @@ Ryan kept file-based migrations but added per-service tracking (`scripts/migrate
 
 ---
 
-### C10. Relay Authorization Gap
+### C10. Relay Authorization Gap — PARTIALLY RESOLVED
 
 **Flagged:** March 23, 2026
 **Priority:** HIGH — pre-production blocker
 **Source:** Issue #454
+**Updated:** March 30, 2026
 
-DFOS relay is live in registry (`/relay/[[...path]]`, PR #453). Relay writes are currently unauthenticated — any client can commit operations to chains hosted on the relay. Chain integrity requires that only the DID holder or authorized delegates can append to their chain.
+DFOS relay is live in registry. DFOS 0.6.0 (PR #518) provides chain-level integrity via JWS-signed operations — each operation is cryptographically signed by the DID holder, and the relay verifies JWS signatures during ingestion (`ingestOperations060()` in `apps/registry/src/relay/ingest.ts`). This means forged operations are rejected at the protocol level.
 
-Must be resolved before: external nodes participate, relay promotes to `registry.imajin.ai`, or #433 (virtual MJN gas credits) writes ledger entries.
+**RFC-22 (Federated Authentication)** — drafted March 30 — provides the full architecture for cross-relay auth: signed attestations, challenge-nonce freshness, four key custody tiers (custodial KMS, stored key, self-custody, local-first). This is the design that will gate relay write endpoints.
 
-**Resolution:** JWT auth via `@imajin/auth` middleware on write paths; reads remain open; decide on external DFOS DID write scope. See `c10-relay-authorization-gap.md`.
+**What's still missing:** The relay POST `/operations` endpoint (`apps/registry/src/relay/create-relay.ts:42–54`) has no session/JWT middleware — any client can submit operations. The JWS validation catches forged operations but does not prevent DoS (submitting valid but unwanted operations). RFC-22's attestation-based auth is the designed solution but not yet deployed.
+
+**Resolution path:** Implement RFC-22's attestation-based auth on relay write paths; reads remain open. See `c10-relay-authorization-gap.md`.
 
 ---
 
@@ -301,26 +314,34 @@ Blast radius is limited today (chain-based resolution bypasses `isValidDID()`), 
 
 ## New — March 27 Extraction from Resolved and Active Proposals
 
-### C12. Consent Primitive Remains Unspecified
+### C12. Consent Primitive Remains Unspecified — PARTIALLY RESOLVED
 
 **Extracted from:** P18 (Consent Primitive), F6 (Architecture Doc TODO)
 **Priority:** HIGH — blocks Stream 2 and Stream 3 launch claims
 **Filed:** March 27, 2026
+**Updated:** April 3, 2026
 
-Consent is one of four named protocol-level primitives (Identity, Attribution, Consent, Settlement). The architecture doc (`grounding-03-ARCHITECTURE.md:149–151`) lists it as a one-sentence TODO. RFC-19's consent screen handles app-level authorization (OAuth 2.1 + PKCE), but per-transaction consent — a signed declaration attached to each exchange — does not exist.
+Consent is one of four named protocol-level primitives (Identity, Attribution, Consent, Settlement). The architecture doc lists it as a one-sentence TODO. RFC-19's consent screen handles app-level authorization, but per-transaction consent — a signed declaration attached to each exchange — does not exist.
 
-**What's missing:**
-- No `ConsentDeclaration` type anywhere in the codebase
+**What's shipped since March 30:**
+- **DID consent preferences** in registry (`apps/registry/app/api/preferences/`) — per-DID globalMarketing, autoSubscribe toggles
+- **Per-scope interest channels** — fine-grained consent per app scope (events, learn, coffee, etc.)
+- **Unsubscribe flow** — RFC 8058 one-click unsubscribe with HMAC token verification + CAN-SPAM compliance
+- **Interest signals** — attestation types automatically create interest records (e.g., `ticket.purchased` → events interest)
+- **RFC-22 consent-and-sign redirect** — consent screen is now the primary cross-platform auth flow
+
+**What's still missing:**
+- No `ConsentDeclaration` type as a protocol primitive
 - No `consent.given` / `consent.revoked` attestation types in the controlled vocabulary
 - Settlement routes do not check for consent
-- Stream 2 opt-in is a database flag, not a signed protocol record
-- Embedded Wallet RFC (#268) does not specify consent for delegated key actions
+- Stream 2 opt-in remains a database flag, not a signed protocol record
+- Per-transaction consent for Stream 3 automated settlement not designed
 
-**Why it matters now:** Stream 3 (automated node-to-node settlement) cannot ship without a consent primitive. Automated settlement without a signed consent record is structurally identical to the unsigned .fair manifests that P3 flagged. RFC-19's consent screen covers the app-level gap but not the per-exchange gap.
+**Assessment:** The email/notification infrastructure implements app-level consent (preferences, unsubscribe). RFC-22's consent-and-sign redirect implements cross-platform consent. But the protocol-level primitive — a signed declaration attached to each exchange — still does not exist. The gap is narrowing but the structural piece is not yet specified.
 
 **Resolution requires:** `ConsentDeclaration` type, `consent.given`/`consent.revoked` attestation types, settlement route enforcement, Stream 2 opt-in migration from DB flag to attestation.
 
-**Related:** F6, P18, C02 (.fair signing), RFC-19 §consent
+**Related:** F6, P18, C02 (.fair signing), RFC-19 §consent, RFC-22 §consent-and-sign
 
 ---
 

@@ -78,14 +78,35 @@ The app studio model (vertical leads + platform licensing + professional service
 
 The open-core model (kernel open source, production verticals commercial) means revenue comes from studio operations, not just protocol fees. This fundamentally changes the fee governance calculus — the 1% fee doesn't need to fund the company alone.
 
-### 7. Relationship to MJN Tokenomics
+### 7. Upstream Fee Model v2 (March 30)
+
+**UPDATE:** Ryan drafted `docs/rfcs/drafts/fee-model-v2.md` (commit 162b47e3) which advances beyond P31's 1% flat model:
+
+| Participant | Range | Default | Set by |
+|-------------|-------|---------|--------|
+| Protocol | 0.25% – 2% | 1.0% | Governance (Foundation → trust graph) |
+| Node | 0.25% – 2% | 0.5% | Node operator (market-driven) |
+| User credit | 0.25% – 2% | 0.25% | Node operator |
+
+**Default total: 1.75%** (vs P31's 1% flat). Key differences:
+- Three independent configurable rates instead of one flat rate
+- Node fee is market-driven (nodes compete on margin) — federation creates fee competition
+- User credit accumulates as MJN on DFOS chain — transacting = mining
+- Only protocol fee is governance-controlled; node rates are market competition
+- Bounds are per-component (0.25%–2% each) not per-total
+
+**Impact on P31:** P31's governance mechanism (bounds + chain-recorded adjustments + transition path) is adopted for the protocol fee component. P31's DID-scoped fee analysis (§3) is not adopted — replaced by market-driven node competition. The governance bounds P31 recommended (0.75%–3%) are narrowed to 0.25%–2% per component.
+
+**Impact on business plan:** Protocol revenue at $1M volume is $10K (vs $4K at 1% flat). Business plan financials need updating.
+
+### 7.1 Relationship to MJN Tokenomics
 
 The tokenomics draft specifies fee decay at cumulative volume thresholds:
 - $0–$100M: 1.0%
 - $100M–$1B: 0.75%
 - $1B+: 0.5%
 
-The governance mechanism and fee decay interact: governance sets the base rate within bounds, and fee decay applies on top of that as volume thresholds are crossed. The floor (0.75%) ensures governance can't decay below the lowest volume-triggered rate.
+The governance mechanism and fee decay interact: governance sets the base rate within bounds, and fee decay applies on top of that as volume thresholds are crossed.
 
 ### 8. Open Questions
 
@@ -101,3 +122,5 @@ The governance mechanism and fee decay interact: governance sets the base rate w
 - [ ] Business plan reflects governance-adjustable fee (not "immutable 1%")
 - [ ] Fee adjustment authority defined (Foundation → trust graph transition)
 - [ ] Interaction between governance and fee decay clarified
+
+---
