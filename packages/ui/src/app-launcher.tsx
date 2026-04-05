@@ -18,6 +18,8 @@ export interface AppLauncherProps {
   tier?: 'anonymous' | 'soft' | 'hard' | 'creator';
   /** Render inline (for mobile menu) instead of as a flyout */
   inline?: boolean;
+  /** Layout variant: 'list' (default) or 'grid' (4-column icon grid) */
+  variant?: 'list' | 'grid';
 }
 
 /** Services that belong in the profile dropdown, not the launcher flyout */
@@ -43,7 +45,7 @@ function groupByCategory(services: LauncherService[]): { core: LauncherService[]
   };
 }
 
-export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', inline = false }: AppLauncherProps) {
+export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', inline = false, variant = 'list' }: AppLauncherProps) {
   const [services, setServices] = useState<LauncherService[]>([]);
   const [showPanel, setShowPanel] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -91,7 +93,65 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
     );
   }
 
-  const content = (
+  function renderGridTile(service: LauncherService) {
+    const isCurrent = service.name === currentService;
+    return (
+      <a
+        key={service.name}
+        href={service.url}
+        className={`flex flex-col items-center justify-center w-16 h-16 rounded-lg text-center transition no-underline ${
+          isCurrent
+            ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
+            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+        }`}
+      >
+        <span className="text-2xl">{service.icon}</span>
+        <span className="text-[10px] mt-0.5 leading-tight">{service.label}</span>
+      </a>
+    );
+  }
+
+  const footer = (
+    <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-1">
+      <a
+        href={`${wwwUrl}/apps`}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
+      >
+        See all apps →
+      </a>
+    </div>
+  );
+
+  const content = variant === 'grid' ? (
+    <>
+      {core.length > 0 && (
+        <div className="grid grid-cols-4 gap-1 px-2">
+          {core.map(renderGridTile)}
+        </div>
+      )}
+      {creator.length > 0 && (
+        <div>
+          <div className="col-span-4 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            Creator Tools
+          </div>
+          <div className="grid grid-cols-4 gap-1 px-2">
+            {creator.map(renderGridTile)}
+          </div>
+        </div>
+      )}
+      {developer.length > 0 && (
+        <div>
+          <div className="col-span-4 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            Developers
+          </div>
+          <div className="grid grid-cols-4 gap-1 px-2">
+            {developer.map(renderGridTile)}
+          </div>
+        </div>
+      )}
+      {footer}
+    </>
+  ) : (
     <>
       {core.length > 0 && (
         <div>
@@ -114,14 +174,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
           {developer.map(renderTile)}
         </div>
       )}
-      <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-1">
-        <a
-          href={`${wwwUrl}/apps`}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
-        >
-          See all apps →
-        </a>
-      </div>
+      {footer}
     </>
   );
 
@@ -140,11 +193,22 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
             : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
         }`}
       >
-        <span>🚀</span>
-        <span className="hidden sm:inline">Launcher</span>
+        {variant === 'grid' ? (
+          <span className="grid grid-cols-2 gap-0.5 w-4 h-4">
+            <span className="w-1.5 h-1.5 rounded-sm bg-current" />
+            <span className="w-1.5 h-1.5 rounded-sm bg-current" />
+            <span className="w-1.5 h-1.5 rounded-sm bg-current" />
+            <span className="w-1.5 h-1.5 rounded-sm bg-current" />
+          </span>
+        ) : (
+          <>
+            <span>🚀</span>
+            <span className="hidden sm:inline">Launcher</span>
+          </>
+        )}
       </button>
       {showPanel && (
-        <div className="absolute left-0 mt-2 w-56 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl py-2 z-50">
+        <div className={`absolute left-0 mt-2 ${variant === 'grid' ? 'w-72' : 'w-56'} bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl py-2 z-50`}>
           {visible.length === 0 ? (
             <div className="px-4 py-3 text-sm text-gray-400">Loading...</div>
           ) : (
