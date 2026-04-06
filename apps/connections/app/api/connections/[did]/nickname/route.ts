@@ -12,13 +12,14 @@ export async function GET(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   const { did: targetDid } = params;
 
   const [row] = await db
     .select()
     .from(nicknames)
-    .where(and(eq(nicknames.did, identity.id), eq(nicknames.target, targetDid)));
+    .where(and(eq(nicknames.did, did), eq(nicknames.target, targetDid)));
 
   return NextResponse.json({ nickname: row?.nickname ?? null });
 }
@@ -32,13 +33,14 @@ export async function PATCH(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   const { did: targetDid } = params;
   const { nickname } = await request.json();
 
   await db
     .insert(nicknames)
-    .values({ did: identity.id, target: targetDid, nickname })
+    .values({ did, target: targetDid, nickname })
     .onConflictDoUpdate({
       target: [nicknames.did, nicknames.target],
       set: { nickname },
@@ -56,12 +58,13 @@ export async function DELETE(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   const { did: targetDid } = params;
 
   await db
     .delete(nicknames)
-    .where(and(eq(nicknames.did, identity.id), eq(nicknames.target, targetDid)));
+    .where(and(eq(nicknames.did, did), eq(nicknames.target, targetDid)));
 
   return NextResponse.json({ ok: true });
 }

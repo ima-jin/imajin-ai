@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   const body = await request.json();
   const dids: string[] = body.dids ?? [];
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
   const rows = await db
     .select({ target: nicknames.target, nickname: nicknames.nickname })
     .from(nicknames)
-    .where(and(eq(nicknames.did, identity.id), inArray(nicknames.target, dids)));
+    .where(and(eq(nicknames.did, did), inArray(nicknames.target, dids)));
 
   const result: Record<string, string> = {};
   for (const row of rows) {

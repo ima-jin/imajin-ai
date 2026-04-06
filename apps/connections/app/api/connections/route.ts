@@ -17,20 +17,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   const rows = await db
     .select()
     .from(connections)
     .where(
       and(
-        or(eq(connections.didA, identity.id), eq(connections.didB, identity.id)),
+        or(eq(connections.didA, did), eq(connections.didB, did)),
         isNull(connections.disconnectedAt)
       )
     );
 
   // Map so `did` is the OTHER person's DID
   const mapped = rows.map((row) => ({
-    did: row.didA === identity.id ? row.didB : row.didA,
+    did: row.didA === did ? row.didB : row.didA,
     connectedAt: row.connectedAt,
   }));
 
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
     ? await db
         .select()
         .from(nicknames)
-        .where(and(eq(nicknames.did, identity.id), inArray(nicknames.target, targetDids)))
+        .where(and(eq(nicknames.did, did), inArray(nicknames.target, targetDids)))
     : [];
   const nicknameMap = new Map(nicknameRows.map((n) => [n.target, n.nickname]));
 

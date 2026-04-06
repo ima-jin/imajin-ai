@@ -22,11 +22,12 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+  const effectiveDid = auth.identity.actingAs || auth.identity.id;
   const body = await request.json();
   const [updated] = await db
     .update(pods)
     .set({ ...body, updatedAt: new Date() })
-    .where(and(eq(pods.id, params.id), eq(pods.ownerDid, auth.identity.id)))
+    .where(and(eq(pods.id, params.id), eq(pods.ownerDid, effectiveDid)))
     .returning();
 
   if (!updated) return NextResponse.json({ error: 'Pod not found or unauthorized' }, { status: 404 });
@@ -37,9 +38,10 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+  const effectiveDid = auth.identity.actingAs || auth.identity.id;
   const [deleted] = await db
     .delete(pods)
-    .where(and(eq(pods.id, params.id), eq(pods.ownerDid, auth.identity.id)))
+    .where(and(eq(pods.id, params.id), eq(pods.ownerDid, effectiveDid)))
     .returning();
 
   if (!deleted) return NextResponse.json({ error: 'Pod not found or unauthorized' }, { status: 404 });

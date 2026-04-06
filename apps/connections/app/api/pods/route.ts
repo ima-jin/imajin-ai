@@ -9,11 +9,13 @@ export async function GET(request: Request) {
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+  const did = auth.identity.actingAs || auth.identity.id;
+
   const myPods = await db
     .select({ pod: pods })
     .from(podMembers)
     .innerJoin(pods, eq(pods.id, podMembers.podId))
-    .where(and(eq(podMembers.did, auth.identity.id), isNull(podMembers.removedAt)));
+    .where(and(eq(podMembers.did, did), isNull(podMembers.removedAt)));
 
   return NextResponse.json({ pods: myPods.map((r) => r.pod) });
 }
@@ -25,13 +27,14 @@ export async function POST(request: Request) {
   const body = await request.json();
   const id = generateId('pod_');
   const now = new Date();
+  const effectiveDid = auth.identity.actingAs || auth.identity.id;
 
   const [pod] = await db.insert(pods).values({
     id,
     name: body.name,
     description: body.description || null,
     avatar: body.avatar || null,
-    ownerDid: auth.identity.id,
+    ownerDid: effectiveDid,
     type: body.type || 'personal',
     visibility: body.visibility || 'private',
     createdAt: now,
@@ -40,7 +43,7 @@ export async function POST(request: Request) {
 
   await db.insert(podMembers).values({
     podId: id,
-    did: auth.identity.id,
+    did: effectiveDid,
     role: 'owner',
     addedBy: auth.identity.id,
     joinedAt: now,
@@ -49,7 +52,7 @@ export async function POST(request: Request) {
   // Fire and forget — never block the response
   emitAttestation({
     issuer_did: auth.identity.id,
-    subject_did: auth.identity.id,
+    subject_did: effectiveDid,
     type: 'pod.created',
     context_id: pod.id,
     context_type: 'pod',
