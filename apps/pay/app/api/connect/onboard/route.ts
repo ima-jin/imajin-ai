@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     }
 
     const stripe = getStripe();
-    const did = identity.id;
+    const did = identity.actingAs || identity.id;
 
     // Check if DID already has a connected account
     const existing = await db

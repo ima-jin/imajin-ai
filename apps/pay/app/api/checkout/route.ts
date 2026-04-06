@@ -24,7 +24,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/lib/pay';
-import { extractToken, validateToken } from '@/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import type { CheckoutRequest, FiatCurrency } from '@/lib';
 import { DEFAULT_PLATFORM_FEE_BPS } from '@/lib';
 import { db, transactions, connectedAccounts } from '@/src/db';
@@ -121,14 +121,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Optional: validate auth token if provided
-    const token = extractToken(request.headers.get('authorization'));
-    let identity = null;
-    if (token) {
-      const validation = await validateToken(token);
-      if (validation.valid) {
-        identity = validation.identity;
-      }
+    // Optional: capture identity if authenticated
+    let identity: { id: string; actingAs?: string } | null = null;
+    const authResult = await requireAuth(request);
+    if (!('error' in authResult)) {
+      identity = authResult.identity;
     }
     
     const pay = getPaymentService();
@@ -184,7 +181,7 @@ export async function POST(request: NextRequest) {
       id: txId,
       service: body.metadata?.service || 'unknown',
       type: body.metadata?.type || 'checkout',
-      fromDid: identity?.id || null,
+      fromDid: (identity?.actingAs || identity?.id) || null,
       toDid: body.metadata?.to_did || body.metadata?.recipient_did || 'platform',
       amount: (totalAmount / 100).toString(), // Convert cents to dollars
       currency: body.currency || 'USD',

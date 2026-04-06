@@ -30,7 +30,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/lib/pay';
-import { extractToken, validateToken } from '@/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import type { ChargeRequest, Currency, Recipient } from '@/lib';
 import { corsHeaders } from '@/src/lib/cors';
 
@@ -74,14 +74,11 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Optional: validate auth token if provided
-    const token = extractToken(request.headers.get('authorization'));
+    // Optional: capture fromDid if authenticated
     let fromDid: string | undefined;
-    if (token) {
-      const validation = await validateToken(token);
-      if (validation.valid && validation.identity) {
-        fromDid = validation.identity.id;
-      }
+    const authResult = await requireAuth(request);
+    if (!('error' in authResult)) {
+      fromDid = authResult.identity.actingAs || authResult.identity.id;
     }
     
     const pay = getPaymentService();
