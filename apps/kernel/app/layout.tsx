@@ -6,23 +6,13 @@ import { NavBar } from './components/NavBar';
 import { BugReportButton } from '@/src/components/www/bug-report-button';
 import { Providers } from './providers';
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-import { SESSION_COOKIE_NAME as SESSION_COOKIE } from '@imajin/config';
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
 async function BugReportWidget() {
-  const cookieStore = cookies();
-  const session = cookieStore.get(SESSION_COOKIE);
+  const cookieStore = await cookies();
+  const session = await getSessionFromCookies(cookieStore.toString());
   if (!session) return null;
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      headers: { Cookie: `${SESSION_COOKIE}=${session.value}` },
-      cache: 'no-store',
-    });
-    if (!res.ok) return null;
-    return <BugReportButton />;
-  } catch {
-    return null;
-  }
+  return <BugReportButton />;
 }
 
 import { buildPublicUrl } from '@imajin/config';

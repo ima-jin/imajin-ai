@@ -23,19 +23,21 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, balances, transactions } from '@/src/db';
+import { db, balances, transactions, identities, identityChains } from '@/src/db';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { verifyManifest } from '@imajin/fair';
-import { createHttpResolver, emitAttestation } from '@imajin/auth';
+import { createDbResolver, emitAttestation } from '@imajin/auth';
 
-async function verifyChainStatus(did: string, authServiceUrl: string): Promise<boolean> {
+async function verifyChainStatus(did: string): Promise<boolean> {
   try {
-    const res = await fetch(`${authServiceUrl}/api/identity/${encodeURIComponent(did)}/verify`);
-    if (!res.ok) return false;
-    const data = await res.json();
-    return data.chain?.valid ?? false;
+    const [row] = await db
+      .select({ did: identityChains.did })
+      .from(identityChains)
+      .where(eq(identityChains.did, did))
+      .limit(1);
+    return !!row;
   } catch {
     return false;
   }
@@ -164,7 +166,7 @@ export async function POST(request: NextRequest) {
 
     if (!funded) {
       if (fair_manifest.signature !== undefined) {
-        const resolver = createHttpResolver(process.env.AUTH_SERVICE_URL!);
+        const resolver = createDbResolver(db, identities);
         const wrappedResolver = async (did: string): Promise<string> => {
           const identity = await resolver(did);
           if (!identity) throw new Error(`Could not resolve public key for DID: ${did}`);
@@ -227,11 +229,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify chain status for payer and all payees (non-blocking — don't fail payment)
-    const authServiceUrl = process.env.AUTH_SERVICE_URL!;
     const payeeDids = [...new Set(fair_manifest.chain.map((r) => r.did))];
     const [payerChainVerified, ...payeeVerifications] = await Promise.all([
-      verifyChainStatus(from_did, authServiceUrl),
-      ...payeeDids.map((did) => verifyChainStatus(did, authServiceUrl)),
+      verifyChainStatus(from_did),
+      ...payeeDids.map((did) => verifyChainStatus(did)),
     ]);
     const payeeChainVerified = payeeVerifications.every(Boolean);
 

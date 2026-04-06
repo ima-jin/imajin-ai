@@ -1,23 +1,27 @@
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
-import { getSession } from "@imajin/auth";
-import { MediaPageClient } from "@/src/components/MediaPageClient";
+import { cookies } from "next/headers";
+import { getSessionFromCookies } from "@/src/lib/kernel/session";
+import type { Identity } from "@imajin/auth";
+import { MediaPageClient } from "@/src/components/media/MediaPageClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const session = await getSession();
+  const cookieStore = await cookies();
+  const session = await getSessionFromCookies(cookieStore.toString());
 
   if (!session) {
-    const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_SERVICE_URL || "";
-    const headersList = await headers();
-    const host = headersList.get("x-forwarded-host") || headersList.get("host") || "";
-    const proto = headersList.get("x-forwarded-proto") || "https";
-    const currentUrl = host ? `${proto}://${host}` : "";
-    const next = currentUrl ? `?next=${encodeURIComponent(currentUrl)}` : "";
-    const loginUrl = authUrl ? `${authUrl}/login${next}` : "/api/auth/login";
-    redirect(loginUrl);
+    redirect("/auth/login");
   }
 
-  return <MediaPageClient session={session} />;
+  const identity: Identity = {
+    id: session.did,
+    type: session.type as Identity["type"],
+    name: session.name,
+    handle: session.handle,
+    tier: session.tier as Identity["tier"],
+    chainVerified: session.chainVerified,
+  };
+
+  return <MediaPageClient session={identity} />;
 }

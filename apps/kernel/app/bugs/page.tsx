@@ -5,25 +5,7 @@ import { db, bugReports } from '@/src/db';
 import type { BugReport } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import { BugReporterOpenButton } from '@/src/components/www/BugReporterOpenButton';
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-import { SESSION_COOKIE_NAME as SESSION_COOKIE } from '@imajin/config';
-
-async function getSession() {
-  const cookieStore = cookies();
-  const session = cookieStore.get(SESSION_COOKIE);
-  if (!session) return null;
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      headers: { Cookie: `${SESSION_COOKIE}=${session.value}` },
-      cache: 'no-store',
-    });
-    if (!res.ok) return null;
-    return res.json() as Promise<{ did: string; name?: string; tier?: string }>;
-  } catch {
-    return null;
-  }
-}
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
 const STATUS_STYLES: Record<string, string> = {
   new: 'bg-gray-700 text-gray-300',
@@ -104,7 +86,8 @@ function ReportCard({ r }: { r: BugReport }) {
 }
 
 export default async function BugsPage() {
-  const session = await getSession();
+  const cookieStore = await cookies();
+  const session = await getSessionFromCookies(cookieStore.toString());
   if (!session) redirect('/');
 
   const [myReports, allReports] = await Promise.all([

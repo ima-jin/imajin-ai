@@ -2,15 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { nanoid } from 'nanoid';
 import { createHmac } from 'crypto';
-import { db } from '@/src/db';
-import { notifications } from '@/src/db';
+import { db, notifications, identities } from '@/src/db';
+import { eq } from 'drizzle-orm';
 import { sendEmail, renderBroadcastEmail } from '@imajin/email';
 
 // TODO(#538): These registry routes will be implemented by Agent 1.
 // Stubbed here with clear fallback behavior.
 
 const REGISTRY_URL = process.env.REGISTRY_URL;
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL;
 const UNSUBSCRIBE_HMAC_SECRET = process.env.UNSUBSCRIBE_HMAC_SECRET;
 
 const NOTIFY_URL = process.env.NEXT_PUBLIC_NOTIFY_URL || 'https://notify.imajin.ai';
@@ -100,21 +99,16 @@ async function checkRegistryPreferences(
 }
 
 /**
- * Resolve a DID to a contact email via the auth service internal endpoint.
+ * Resolve a DID to a contact email via direct DB query.
  */
-async function resolveEmail(did: string, webhookSecret: string): Promise<string | null> {
-  if (!AUTH_SERVICE_URL) {
-    console.warn('[broadcast] AUTH_SERVICE_URL not set — cannot resolve email for', did);
-    return null;
-  }
+async function resolveEmail(did: string): Promise<string | null> {
   try {
-    const res = await fetch(
-      `${AUTH_SERVICE_URL}/api/identity/${encodeURIComponent(did)}/contact`,
-      { headers: { 'x-webhook-secret': webhookSecret }, cache: 'no-store' },
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.email ?? null;
+    const [row] = await db
+      .select({ contactEmail: identities.contactEmail })
+      .from(identities)
+      .where(eq(identities.id, did))
+      .limit(1);
+    return row?.contactEmail ?? null;
   } catch {
     return null;
   }
@@ -222,7 +216,7 @@ export async function POST(request: NextRequest) {
             return;
           }
 
-          const email = await resolveEmail(did, secret);
+          const email = await resolveEmail(did);
           if (!email) {
             skipped++;
             return;
