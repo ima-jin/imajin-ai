@@ -65,9 +65,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const did = identity.actingAs || identity.id;
+
     const [listing] = await db.insert(listings).values({
       id: generateId('lst'),
-      sellerDid: identity.id,
+      sellerDid: did,
       title,
       description: description || null,
       price,
@@ -126,9 +128,9 @@ export async function GET(request: NextRequest) {
 
     // Check if requester is the seller (can see all their own statuses)
     let authSellerDid: string | null = null;
-    const session = await getSession();
+    const session = await getSession(request);
     if (session) {
-      authSellerDid = session.id;
+      authSellerDid = session.actingAs || session.id;
     }
 
     // Build where conditions
