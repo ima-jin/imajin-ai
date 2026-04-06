@@ -1,14 +1,16 @@
 import { NextRequest } from 'next/server';
+import { getClient } from '@imajin/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
+import { lookupIdentity } from '@/src/lib/kernel/lookup';
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+const sql = getClient();
 
 /**
  * GET /api/conversations/:id/participants
  * :id is a URL-encoded conversation DID.
- * Returns members by proxying to the auth service access/members endpoint.
+ * Returns members via direct DB query on chat.conversation_members.
  */
 export async function GET(
   request: NextRequest,
@@ -29,20 +31,27 @@ export async function GET(
   }
 
   try {
-    // Proxy to auth service members endpoint
-    const cookieHeader = request.headers.get('Cookie');
-    const res = await fetch(
-      `${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(conversationDid)}/members`,
-      { headers: cookieHeader ? { Cookie: cookieHeader } : {} }
+    const rows = await sql`
+      SELECT member_did as did, role
+      FROM chat.conversation_members
+      WHERE conversation_did = ${conversationDid}
+        AND left_at IS NULL
+      ORDER BY role DESC, joined_at ASC
+    `;
+
+    const participants = await Promise.all(
+      rows.map(async (row: Record<string, string>) => {
+        try {
+          const identity = await lookupIdentity(row.did);
+          if (identity) {
+            return { did: row.did, role: row.role, name: identity.name || null, handle: identity.handle || null };
+          }
+        } catch {}
+        return { did: row.did, role: row.role, name: null, handle: null };
+      })
     );
 
-    if (res.ok) {
-      const data = await res.json();
-      return jsonResponse({ participants: data.members || data });
-    }
-
-    // Auth service doesn't support members endpoint — return access granted but no list
-    return jsonResponse({ participants: [] });
+    return jsonResponse({ participants });
   } catch (error) {
     console.error('Failed to list participants:', error);
     return errorResponse('Failed to list participants', 500);
@@ -51,7 +60,7 @@ export async function GET(
 
 /**
  * POST /api/conversations/:id/participants - Add a member
- * Delegates to the /api/d/:did/members endpoint pattern.
+ * Body: { memberDid: string, role?: string }
  */
 export async function POST(
   request: NextRequest,
@@ -72,27 +81,22 @@ export async function POST(
   }
 
   try {
-    const cookieHeader = request.headers.get('Cookie');
     const body = await request.json();
+    const { memberDid, role = 'member' } = body;
 
-    const res = await fetch(
-      `${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(conversationDid)}/members`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-        },
-        body: JSON.stringify(body),
-      }
-    );
-
-    if (res.ok) {
-      const data = await res.json();
-      return jsonResponse(data, 201);
+    if (!memberDid) {
+      return errorResponse('memberDid is required', 400);
     }
 
-    return errorResponse('Failed to add participant', res.status);
+    await sql`
+      INSERT INTO chat.conversation_members (conversation_did, member_did, role, joined_at)
+      VALUES (${conversationDid}, ${memberDid}, ${role}, NOW())
+      ON CONFLICT (conversation_did, member_did)
+        DO UPDATE SET left_at = NULL, joined_at = NOW()
+        WHERE chat.conversation_members.left_at IS NOT NULL
+    `;
+
+    return jsonResponse({ ok: true, did: conversationDid, memberDid, role }, 201);
   } catch (error) {
     console.error('Failed to add participant:', error);
     return errorResponse('Failed to add participant', 500);

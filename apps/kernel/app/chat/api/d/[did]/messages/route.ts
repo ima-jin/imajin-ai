@@ -34,6 +34,7 @@ async function signMessagePayload(fromDid: string, payload: string): Promise<str
   const apiKey = process.env.INTERNAL_API_KEY;
   if (!apiKey) return null;
 
+  // TODO(#615): Replace with direct signing function when crypto logic is extracted
   const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
   try {
     const res = await fetch(
