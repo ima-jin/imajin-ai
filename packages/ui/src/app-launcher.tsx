@@ -158,7 +158,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
       })}
       {authUrl && (
         <a
-          href={`${authUrl}/groups/new`}
+          href={`${authUrl}/groups`}
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
         >
           <span className="text-lg flex-shrink-0">🌱</span>

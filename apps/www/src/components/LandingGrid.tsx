@@ -179,23 +179,25 @@ export function EmailCapture() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-2">
-      <span className="text-sm text-gray-500 shrink-0">Stay in the loop</span>
-      <input
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="your@email.com"
-        required
-        className="bg-gray-900 border border-gray-800 rounded-md px-3 py-1.5 text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:border-amber-500/60 w-48"
-      />
-      <button
-        type="submit"
-        disabled={status === 'loading'}
-        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 text-sm font-medium rounded-md transition-colors"
-      >
-        {status === 'loading' ? '…' : 'Subscribe'}
-      </button>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-1.5">
+      <span className="text-sm text-gray-500">Stay in the loop</span>
+      <div className="flex items-center gap-2">
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="your@email.com"
+          required
+          className="bg-gray-900 border border-gray-800 rounded-md px-3 py-1.5 text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:border-amber-500/60 w-48"
+        />
+        <button
+          type="submit"
+          disabled={status === 'loading'}
+          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 text-sm font-medium rounded-md transition-colors"
+        >
+          {status === 'loading' ? '…' : 'Subscribe'}
+        </button>
+      </div>
       {status === 'error' && <span className="text-xs text-red-400">{message}</span>}
     </form>
   );
