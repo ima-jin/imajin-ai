@@ -6,9 +6,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { onboardTokens, identities, credentials } from '@/src/db/schema';
+import { onboardTokens, identities, credentials, groupControllers } from '@/src/db/schema';
 import { createSessionToken, getSessionCookieOptions, verifySessionToken } from '@/lib/jwt';
 import { emitSessionAttestation } from '@/lib/emit-session-attestation';
+import { emitAttestation } from '@imajin/auth';
 import { eq, and, gt, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
@@ -198,6 +199,33 @@ export async function GET(request: NextRequest) {
       sessionToken,
       cookieOptions.options,
     );
+
+    // If onboard was scoped to a forest, add user as member and set active forest cookie
+    if (record.scopeDid) {
+      const scopeDid = record.scopeDid;
+      // Add as forest member directly (same-app operation)
+      try {
+        const [existing] = await db
+          .select({ removedAt: groupControllers.removedAt })
+          .from(groupControllers)
+          .where(and(eq(groupControllers.groupDid, scopeDid), eq(groupControllers.controllerDid, did)))
+          .limit(1);
+        if (!existing) {
+          await db.insert(groupControllers).values({ groupDid: scopeDid, controllerDid: did, role: 'member', addedBy: scopeDid });
+        } else if (existing.removedAt) {
+          await db.update(groupControllers)
+            .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedAt: new Date() })
+            .where(and(eq(groupControllers.groupDid, scopeDid), eq(groupControllers.controllerDid, did)));
+        }
+      } catch (err) {
+        console.error('[onboard/verify] Forest member add failed (non-fatal):', err);
+      }
+      // Emit scope.onboard attestation
+      emitAttestation({ issuer_did: scopeDid, subject_did: did, type: 'scope.onboard', context_id: scopeDid, context_type: 'forest' })
+        .catch(err => console.error('[onboard/verify] Scope attestation failed (non-fatal):', err));
+      // Set active forest cookie
+      response.cookies.set('x-acting-as', scopeDid, { path: '/', maxAge: 31536000, sameSite: 'lax' });
+    }
 
     emitSessionAttestation({
       did,

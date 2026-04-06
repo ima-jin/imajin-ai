@@ -47,6 +47,9 @@ export default function ForestSettingsPage({ params }: { params: { groupDid: str
     ? window.location.origin
     : (process.env.NEXT_PUBLIC_AUTH_URL ?? '');
   const profileUrl = buildPublicUrl('profile');
+  const [copyLabel, setCopyLabel] = useState('Copy');
+
+  const onboardUrl = `${authUrl}/onboard?scope=${encodeURIComponent(groupDid)}`;
 
   useEffect(() => {
     loadData();
@@ -208,6 +211,29 @@ export default function ForestSettingsPage({ params }: { params: { groupDid: str
           {enabledServiceOptions.length === 0 && (
             <p className="text-xs text-gray-600 mt-2">Enable at least one service to set a landing page.</p>
           )}
+        </div>
+
+        {/* Onboarding section */}
+        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Onboarding</h2>
+          <p className="text-sm text-gray-400 mb-6">Share this link to invite people to your forest.</p>
+
+          <div className="flex items-center gap-2">
+            <code className="flex-1 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-300 font-mono overflow-x-auto whitespace-nowrap">
+              {onboardUrl}
+            </code>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(onboardUrl).then(() => {
+                  setCopyLabel('Copied!');
+                  setTimeout(() => setCopyLabel('Copy'), 2000);
+                });
+              }}
+              className="px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition whitespace-nowrap"
+            >
+              {copyLabel}
+            </button>
+          </div>
         </div>
 
         {/* Controllers section */}
