@@ -26,7 +26,9 @@ export async function GET(
 
   const { did } = await params;
 
-  if (authResult.identity.id !== did) {
+  const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+
+  if (effectiveDid !== did) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: cors });
   }
 
@@ -79,7 +81,9 @@ export async function PUT(
 
   const { did } = await params;
 
-  if (authResult.identity.id !== did) {
+  const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+
+  if (effectiveDid !== did) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: cors });
   }
 
