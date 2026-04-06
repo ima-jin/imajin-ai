@@ -8,9 +8,10 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const auth = await requireAuth(request, { verifyChain: true });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+  const effectiveDid = auth.identity.actingAs || auth.identity.id;
   const [pod] = await db.select().from(pods).where(eq(pods.id, params.id));
   if (!pod) return NextResponse.json({ error: 'Pod not found' }, { status: 404 });
-  if (pod.ownerDid !== auth.identity.id) return NextResponse.json({ error: 'Only the owner can add members' }, { status: 403 });
+  if (pod.ownerDid !== effectiveDid) return NextResponse.json({ error: 'Only the owner can add members' }, { status: 403 });
 
   const body = await request.json();
   if (!body.did) return NextResponse.json({ error: 'did is required' }, { status: 400 });
@@ -43,9 +44,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   const auth = await requireAuth(request, { verifyChain: true });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+  const effectiveDid = auth.identity.actingAs || auth.identity.id;
   const [pod] = await db.select().from(pods).where(eq(pods.id, params.id));
   if (!pod) return NextResponse.json({ error: 'Pod not found' }, { status: 404 });
-  if (pod.ownerDid !== auth.identity.id) return NextResponse.json({ error: 'Only the owner can change roles' }, { status: 403 });
+  if (pod.ownerDid !== effectiveDid) return NextResponse.json({ error: 'Only the owner can change roles' }, { status: 403 });
 
   const body = await request.json();
   if (!body.did) return NextResponse.json({ error: 'did is required' }, { status: 400 });
@@ -79,9 +81,10 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   const auth = await requireAuth(request, { verifyChain: true });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+  const effectiveDid = auth.identity.actingAs || auth.identity.id;
   const [pod] = await db.select().from(pods).where(eq(pods.id, params.id));
   if (!pod) return NextResponse.json({ error: 'Pod not found' }, { status: 404 });
-  if (pod.ownerDid !== auth.identity.id) return NextResponse.json({ error: 'Only the owner can remove members' }, { status: 403 });
+  if (pod.ownerDid !== effectiveDid) return NextResponse.json({ error: 'Only the owner can remove members' }, { status: 403 });
 
   const body = await request.json();
   if (!body.did) return NextResponse.json({ error: 'did is required' }, { status: 400 });

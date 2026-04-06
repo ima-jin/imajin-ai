@@ -16,11 +16,12 @@ export async function DELETE(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
 
   const { did: targetDid } = await params;
 
   // Sort DIDs lexically to find the connection row
-  const [didA, didB] = [identity.id, targetDid].sort((a, b) => a.localeCompare(b));
+  const [didA, didB] = [effectiveDid, targetDid].sort((a, b) => a.localeCompare(b));
 
   const result = await db
     .update(connections)
