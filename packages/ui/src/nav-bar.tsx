@@ -431,7 +431,7 @@ export function NavBar({
                         );
                       })}
                       <a
-                        href={`${authUrl}/groups/new`}
+                        href={`${authUrl}/groups`}
                         className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit text-gray-500 dark:text-gray-400"
                       >
                         <span>🌱</span> Grow a forest
