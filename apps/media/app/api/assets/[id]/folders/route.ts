@@ -15,7 +15,7 @@ export async function PUT(
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const ownerDid = authResult.identity.id;
+  const ownerDid = authResult.identity.actingAs || authResult.identity.id;
 
   // Verify asset belongs to the authenticated user
   const [asset] = await db

@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const { identity } = authResult;
-  const ownerDid = identity.id;
+  const ownerDid = identity.actingAs || identity.id;
 
   // Parse multipart form data
   let formData: FormData;
@@ -324,7 +324,7 @@ export async function GET(request: NextRequest) {
     if ("error" in authResult) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
     }
-    ownerDid = authResult.identity.id;
+    ownerDid = authResult.identity.actingAs || authResult.identity.id;
   }
 
   const { searchParams } = new URL(request.url);

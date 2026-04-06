@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const ownerDid = authResult.identity.id;
+  const ownerDid = authResult.identity.actingAs || authResult.identity.id;
 
   try {
     const rows = await db
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const ownerDid = authResult.identity.id;
+  const ownerDid = authResult.identity.actingAs || authResult.identity.id;
 
   let body: { name?: string; parentId?: string; icon?: string };
   try {

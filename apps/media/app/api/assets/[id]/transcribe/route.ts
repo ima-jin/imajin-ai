@@ -56,7 +56,8 @@ export async function GET(
   }
 
   // 2. Check ownership
-  if (asset.ownerDid !== identity.id) {
+  const ownerDid = identity.actingAs || identity.id;
+  if (asset.ownerDid !== ownerDid) {
     return NextResponse.json({ error: "Not your asset" }, { status: 403, headers: cors });
   }
 

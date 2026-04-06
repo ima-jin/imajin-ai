@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const ownerDid = authResult.identity.id;
+  const ownerDid = authResult.identity.actingAs || authResult.identity.id;
 
   // Check if any folders already exist for this user
   const existing = await db
