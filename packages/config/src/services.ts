@@ -56,7 +56,7 @@ export const SERVICES: readonly ServiceDefinition[] = [
   // Meta — project info and external resources surfaced in the launcher
   { name: 'project',     label: 'Project',     icon: '📖', description: 'Thesis, whitepaper, essays, RFCs',                  devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', externalUrl: 'https://dev-www.imajin.ai/project' },
   { name: 'github',      label: 'GitHub',      icon: '🐙', description: 'Source code',                                       devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', externalUrl: 'https://github.com/ima-jin/imajin-ai' },
-  { name: 'docs',        label: 'Docs',        icon: '📄', description: 'API documentation',                                 devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', externalUrl: 'https://dev-www.imajin.ai/develper-guide' },
+  { name: 'docs',        label: 'Docs',        icon: '📄', description: 'API documentation',                                 devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', externalUrl: 'https://dev-www.imajin.ai/developer-guide' },
 
   // Connected apps (separate repos) will use the plugin architecture (#249).
   // Not included here — they authenticate via delegated sessions, not the monorepo manifest.
