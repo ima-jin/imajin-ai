@@ -8,6 +8,9 @@ import { unfurlLinks } from '@/src/lib/chat/unfurl';
 import { canonicalize } from '@imajin/auth';
 import { notify } from '@imajin/notify';
 import { checkAccess } from '@/src/lib/kernel/access';
+import { crypto as authCrypto } from '@imajin/auth';
+import { getChainByImajinDid } from '@/src/lib/auth/dfos';
+import { verifyChain } from '@imajin/dfos';
 
 const MENTION_REGEX = /@([a-zA-Z0-9_-]+)/g;
 
@@ -26,31 +29,22 @@ async function resolveHandleToDid(handle: string): Promise<string | null> {
 }
 
 /**
- * Sign a message payload with the node's chain key via the auth service.
- * Best-effort: returns null on any failure rather than blocking message delivery.
- * TODO(#615): Replace with direct import when identity signing logic is extracted to kernel lib
+ * Sign a message payload with the node's platform key.
+ * Only signs for chain-verified identities. Best-effort: returns null on failure.
  */
 async function signMessagePayload(fromDid: string, payload: string): Promise<string | null> {
-  const apiKey = process.env.INTERNAL_API_KEY;
-  if (!apiKey) return null;
+  const privateKey = process.env.AUTH_PRIVATE_KEY;
+  if (!privateKey) return null;
 
-  // TODO(#615): Replace with direct signing function when crypto logic is extracted
-  const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
   try {
-    const res = await fetch(
-      `${authUrl}/api/identity/${encodeURIComponent(fromDid)}/sign`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({ payload }),
-      }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.signature ?? null;
+    const chain = await getChainByImajinDid(fromDid);
+    if (!chain) return null;
+
+    const verified = await verifyChain(chain.log as string[]);
+    if (verified.isDeleted || verified.authKeys.length === 0) return null;
+
+    const signature = authCrypto.signSync(payload, privateKey);
+    return signature;
   } catch {
     return null;
   }
