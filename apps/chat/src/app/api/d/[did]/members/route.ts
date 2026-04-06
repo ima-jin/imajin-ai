@@ -51,11 +51,12 @@ export async function POST(
       }
 
       const { identity } = authResult;
+      const effectiveDid = identity.actingAs || identity.id;
 
       const callerRows = await sql`
         SELECT role FROM chat.conversation_members
         WHERE conversation_did = ${did}
-          AND member_did = ${identity.id}
+          AND member_did = ${effectiveDid}
           AND left_at IS NULL
         LIMIT 1
       `;

@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
 
   try {
     // Discover all conversation DIDs this user participates in (same logic as conversations-v2)
@@ -28,27 +29,27 @@ export async function GET(request: NextRequest) {
       db
         .select()
         .from(conversationReadsV2)
-        .where(eq(conversationReadsV2.did, identity.id)),
+        .where(eq(conversationReadsV2.did, effectiveDid)),
       db
         .selectDistinct({ conversationDid: messagesV2.conversationDid })
         .from(messagesV2)
-        .where(eq(messagesV2.fromDid, identity.id)),
+        .where(eq(messagesV2.fromDid, effectiveDid)),
       db
         .select({ did: conversationsV2.did })
         .from(conversationsV2)
-        .where(eq(conversationsV2.createdBy, identity.id)),
+        .where(eq(conversationsV2.createdBy, effectiveDid)),
       rawSql`
         SELECT p.conversation_did
         FROM connections.pods p
         JOIN connections.pod_members pm ON pm.pod_id = p.id
-        WHERE pm.did = ${identity.id}
+        WHERE pm.did = ${effectiveDid}
           AND pm.removed_at IS NULL
           AND p.conversation_did IS NOT NULL
       `,
       rawSql`
         SELECT conversation_did
         FROM chat.conversation_members
-        WHERE member_did = ${identity.id}
+        WHERE member_did = ${effectiveDid}
           AND left_at IS NULL
       `,
     ]);
@@ -96,7 +97,7 @@ export async function GET(request: NextRequest) {
               and(
                 eq(messagesV2.conversationDid, conv.did),
                 gt(messagesV2.createdAt, lastReadAt),
-                ne(messagesV2.fromDid, identity.id),
+                ne(messagesV2.fromDid, effectiveDid),
               )
             );
           unread = row?.count ?? 0;
@@ -107,7 +108,7 @@ export async function GET(request: NextRequest) {
             .where(
               and(
                 eq(messagesV2.conversationDid, conv.did),
-                ne(messagesV2.fromDid, identity.id),
+                ne(messagesV2.fromDid, effectiveDid),
               )
             );
           unread = row?.count ?? 0;
@@ -140,7 +141,7 @@ export async function GET(request: NextRequest) {
             .where(
               and(
                 eq(messagesV2.conversationDid, conv.did),
-                ne(messagesV2.fromDid, identity.id),
+                ne(messagesV2.fromDid, effectiveDid),
               )
             )
             .limit(1);
@@ -154,7 +155,7 @@ export async function GET(request: NextRequest) {
               .where(
                 and(
                   eq(conversationReadsV2.conversationDid, conv.did),
-                  ne(conversationReadsV2.did, identity.id),
+                  ne(conversationReadsV2.did, effectiveDid),
                 )
               )
               .limit(1);
@@ -166,7 +167,7 @@ export async function GET(request: NextRequest) {
             const otherMembers = await rawSql`
               SELECT member_did FROM chat.conversation_members
               WHERE conversation_did = ${conv.did}
-                AND member_did != ${identity.id}
+                AND member_did != ${effectiveDid}
               LIMIT 1
             `;
             if (otherMembers.length > 0) {
@@ -175,7 +176,7 @@ export async function GET(request: NextRequest) {
           }
 
           // 4. Fallback: created_by != me means I'm the other party
-          if (!otherDid && conv.createdBy !== identity.id) {
+          if (!otherDid && conv.createdBy !== effectiveDid) {
             otherDid = conv.createdBy;
           }
           if (otherDid) {
@@ -242,6 +243,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { identity } = authResult;
+    const effectiveDid = identity.actingAs || identity.id;
 
     if (!participantDids || !Array.isArray(participantDids) || participantDids.length === 0) {
       return errorResponse('participantDids is required');
@@ -259,7 +261,7 @@ export async function POST(request: NextRequest) {
       }
 
       const otherDid = participantDids[0];
-      const convDid = dmDid(identity.id, otherDid);
+      const convDid = dmDid(effectiveDid, otherDid);
 
       const existing = await db.query.conversationsV2.findFirst({
         where: eq(conversationsV2.did, convDid),
@@ -272,13 +274,13 @@ export async function POST(request: NextRequest) {
       await db.insert(conversationsV2).values({
         did: convDid,
         type: 'dm',
-        createdBy: identity.id,
+        createdBy: effectiveDid,
       }).onConflictDoNothing();
 
       // Track both parties so we can resolve names without reversing the hash
       await rawSql`
         INSERT INTO chat.conversation_members (conversation_did, member_did, role)
-        VALUES (${convDid}, ${identity.id}, 'member'), (${convDid}, ${otherDid}, 'member')
+        VALUES (${convDid}, ${effectiveDid}, 'member'), (${convDid}, ${otherDid}, 'member')
         ON CONFLICT (conversation_did, member_did) DO NOTHING
       `;
 
@@ -294,7 +296,7 @@ export async function POST(request: NextRequest) {
       return errorResponse('Group conversations require a name');
     }
 
-    const allMembers = [...new Set([identity.id, ...participantDids])];
+    const allMembers = [...new Set([effectiveDid, ...participantDids])];
 
     // Random group DID — group identity is the room, not the members
     const groupId = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
@@ -304,21 +306,21 @@ export async function POST(request: NextRequest) {
       did: convDid,
       type: 'group',
       name,
-      createdBy: identity.id,
+      createdBy: effectiveDid,
     }).onConflictDoNothing();
 
     // Insert members
     await rawSql`
       INSERT INTO chat.conversation_members (conversation_did, member_did, role)
       SELECT ${convDid}, unnest(${allMembers}::text[]),
-        CASE WHEN unnest = ${identity.id} THEN 'owner' ELSE 'member' END
+        CASE WHEN unnest = ${effectiveDid} THEN 'owner' ELSE 'member' END
       ON CONFLICT (conversation_did, member_did) DO NOTHING
     `.catch(() => {
       // Fallback: insert one by one if unnest approach fails
       return Promise.all(allMembers.map(did =>
         rawSql`
           INSERT INTO chat.conversation_members (conversation_did, member_did, role)
-          VALUES (${convDid}, ${did}, ${did === identity.id ? 'owner' : 'member'})
+          VALUES (${convDid}, ${did}, ${did === effectiveDid ? 'owner' : 'member'})
           ON CONFLICT (conversation_did, member_did) DO NOTHING
         `
       ));

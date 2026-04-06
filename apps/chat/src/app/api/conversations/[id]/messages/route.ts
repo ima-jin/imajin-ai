@@ -137,6 +137,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
 
@@ -185,7 +186,7 @@ export async function POST(
       await db.insert(conversationsV2).values({
         did: conversationDid,
         name,
-        createdBy: identity.id,
+        createdBy: effectiveDid,
       }).onConflictDoNothing();
     }
 
@@ -207,7 +208,7 @@ export async function POST(
     await db.insert(messagesV2).values({
       id: messageId,
       conversationDid,
-      fromDid: identity.id,
+      fromDid: effectiveDid,
       content,
       contentType,
       replyToMessageId: replyToMessageId || null,
@@ -245,7 +246,7 @@ export async function POST(
         for (const handle of uniqueHandles) {
           try {
             const mentionedDid = await resolveHandleToDid(handle);
-            if (!mentionedDid || mentionedDid === identity.id) continue;
+            if (!mentionedDid || mentionedDid === effectiveDid) continue;
             notify.send({
               to: mentionedDid,
               scope: 'chat:mention',

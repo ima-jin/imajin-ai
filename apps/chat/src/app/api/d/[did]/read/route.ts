@@ -24,12 +24,13 @@ export async function POST(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { did } = await params;
 
   try {
     await db.insert(conversationReadsV2).values({
       conversationDid: did,
-      did: identity.id,
+      did: effectiveDid,
       lastReadAt: new Date(),
     }).onConflictDoUpdate({
       target: [conversationReadsV2.conversationDid, conversationReadsV2.did],

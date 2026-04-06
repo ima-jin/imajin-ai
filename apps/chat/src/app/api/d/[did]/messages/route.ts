@@ -177,6 +177,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { did } = await params;
 
   // Soft DIDs cannot send messages — they must verify their account first
@@ -231,7 +232,7 @@ export async function POST(
       await db.insert(conversationsV2).values({
         did,
         name: name || did,
-        createdBy: identity.id,
+        createdBy: effectiveDid,
       }).onConflictDoNothing();
     }
 
@@ -257,15 +258,15 @@ export async function POST(
     const signaturePayload = canonicalize({
       conversationDid: did,
       content,
-      fromDid: identity.id,
+      fromDid: effectiveDid,
       createdAt: createdAt.toISOString(),
     });
-    const signature = await signMessagePayload(identity.id, signaturePayload);
+    const signature = await signMessagePayload(effectiveDid, signaturePayload);
 
     await db.insert(messagesV2).values({
       id: messageId,
       conversationDid: did,
-      fromDid: identity.id,
+      fromDid: effectiveDid,
       content,
       contentType,
       replyToDid: replyToDid,
@@ -307,7 +308,7 @@ export async function POST(
         for (const handle of uniqueHandles) {
           try {
             const mentionedDid = await resolveHandleToDid(handle);
-            if (!mentionedDid || mentionedDid === identity.id) continue;
+            if (!mentionedDid || mentionedDid === effectiveDid) continue;
             notify.send({
               to: mentionedDid,
               scope: 'chat:mention',

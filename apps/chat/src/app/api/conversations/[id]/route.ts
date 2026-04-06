@@ -67,6 +67,7 @@ export async function PATCH(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
 
@@ -88,10 +89,10 @@ export async function PATCH(
       await db.insert(conversationsV2).values({
         did: conversationDid,
         name: name || null,
-        createdBy: identity.id,
+        createdBy: effectiveDid,
       }).onConflictDoNothing();
     } else {
-      if (conv.createdBy !== identity.id) {
+      if (conv.createdBy !== effectiveDid) {
         return errorResponse('Only the creator can update the name', 403);
       }
       await db
@@ -120,6 +121,7 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
 
@@ -132,7 +134,7 @@ export async function DELETE(
       return errorResponse('Conversation not found', 404);
     }
 
-    if (conv.createdBy !== identity.id) {
+    if (conv.createdBy !== effectiveDid) {
       return errorResponse('Only the creator can delete a conversation', 403);
     }
 

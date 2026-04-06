@@ -19,7 +19,8 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
-  const token = createWsToken(identity.id);
+  const effectiveDid = identity.actingAs || identity.id;
+  const token = createWsToken(effectiveDid);
 
   return jsonResponse({ token }, 200, cors);
 }
