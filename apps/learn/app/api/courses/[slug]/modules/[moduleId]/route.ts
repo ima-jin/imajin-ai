@@ -29,7 +29,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const authResult = await requireHardDID(request);
   if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
 
-  const result = await getOwnerCourseModule(slug, moduleId, authResult.identity.id);
+  const did = authResult.identity.actingAs || authResult.identity.id;
+  const result = await getOwnerCourseModule(slug, moduleId, did);
   if ('error' in result) return errorResponse(result.error, result.status);
 
   const body = await request.json();
@@ -55,7 +56,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const authResult = await requireHardDID(request);
   if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
 
-  const result = await getOwnerCourseModule(slug, moduleId, authResult.identity.id);
+  const did = authResult.identity.actingAs || authResult.identity.id;
+  const result = await getOwnerCourseModule(slug, moduleId, did);
   if ('error' in result) return errorResponse(result.error, result.status);
 
   await db.delete(modules).where(eq(modules.id, moduleId));

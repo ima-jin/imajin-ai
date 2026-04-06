@@ -23,7 +23,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   const course = await getCourseBySlug(slug);
   if (!course) return errorResponse('Course not found', 404);
-  if (course.creatorDid !== authResult.identity.id) return errorResponse('Not authorized', 403);
+  const did = authResult.identity.actingAs || authResult.identity.id;
+  if (course.creatorDid !== did) return errorResponse('Not authorized', 403);
 
   const body = await request.json();
   if (!body.title?.trim()) return errorResponse('Title is required');

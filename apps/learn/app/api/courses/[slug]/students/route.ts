@@ -18,6 +18,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return errorResponse(authResult.error, authResult.status);
   }
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   // Get course
   const [course] = await db.select()
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     .limit(1);
 
   if (!course) return errorResponse('Course not found', 404);
-  if (course.creatorDid !== identity.id) return errorResponse('Not authorized', 403);
+  if (course.creatorDid !== did) return errorResponse('Not authorized', 403);
 
   // Count total lessons
   const courseModules = await db.select({ id: modules.id })

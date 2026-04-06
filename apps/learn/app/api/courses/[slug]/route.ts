@@ -26,7 +26,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   // Single session lookup for visibility, creator check, and enrollment
   const identity = await optionalAuth(request);
-  const isCreator = identity?.id === course.creatorDid;
+  const isCreator = (identity?.actingAs || identity?.id) === course.creatorDid;
 
   // Check visibility
   if (course.visibility === 'private') {
@@ -113,6 +113,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   const result = await db.select()
     .from(courses)
@@ -124,7 +125,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 
   const course = result[0];
-  if (course.creatorDid !== identity.id) {
+  if (course.creatorDid !== did) {
     return errorResponse('Not authorized', 403);
   }
 
@@ -186,6 +187,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   const result = await db.select()
     .from(courses)
@@ -196,7 +198,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     return errorResponse('Course not found', 404);
   }
 
-  if (result[0].creatorDid !== identity.id) {
+  if (result[0].creatorDid !== did) {
     return errorResponse('Not authorized', 403);
   }
 

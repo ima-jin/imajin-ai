@@ -13,10 +13,11 @@ export async function GET(request: NextRequest) {
   if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   const myCourses = await db.select()
     .from(courses)
-    .where(eq(courses.creatorDid, identity.id))
+    .where(eq(courses.creatorDid, did))
     .orderBy(desc(courses.createdAt));
 
   const result = await Promise.all(myCourses.map(async (course) => {
