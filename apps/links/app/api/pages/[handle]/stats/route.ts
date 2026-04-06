@@ -21,6 +21,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     // Fetch page
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check ownership
-    if (page.did !== identity.id) {
+    if (page.did !== did) {
       return errorResponse('Not authorized to view stats', 403);
     }
 

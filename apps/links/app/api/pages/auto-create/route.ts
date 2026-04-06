@@ -14,11 +14,12 @@ export async function POST(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     // Check if page already exists
     const existing = await db.query.linkPages.findFirst({
-      where: eq(linkPages.did, identity.id),
+      where: eq(linkPages.did, did),
     });
 
     if (existing) {
@@ -26,13 +27,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Use identity data to create the page
-    const handle = identity.handle || identity.id.slice(-12);
+    const handle = identity.handle || did.slice(-12);
     const title = identity.name || handle;
 
     // Create page
     const [page] = await db.insert(linkPages).values({
       id: generateId('page'),
-      did: identity.id,
+      did: did,
       handle,
       title,
       bio: null,
