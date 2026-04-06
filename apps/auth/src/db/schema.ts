@@ -225,6 +225,7 @@ export const groupControllers = authSchema.table('group_controllers', {
   groupDid: text('group_did').notNull(),
   controllerDid: text('controller_did').notNull(),
   role: text('role').notNull().default('member'),         // 'owner' | 'admin' | 'member'
+  allowedServices: text('allowed_services').array(),      // null = full access, ['events','pay'] = restricted
   addedBy: text('added_by'),
   addedAt: timestamp('added_at', { withTimezone: true }).defaultNow(),
   removedAt: timestamp('removed_at', { withTimezone: true }),

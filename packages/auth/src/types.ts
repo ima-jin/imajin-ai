@@ -5,7 +5,8 @@ export interface Identity {
   handle?: string;
   tier?: "soft" | "preliminary" | "established";
   chainVerified?: boolean;
-  actingAs?: string; // DID of group the caller is acting on behalf of
+  actingAs?: string;            // DID of group the caller is acting on behalf of
+  actingAsServices?: string[];  // Services this controller can access (undefined = full access)
 }
 
 export interface AuthResult {

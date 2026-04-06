@@ -5,6 +5,7 @@ const getAuthUrl = () => process.env.AUTH_SERVICE_URL!;
 
 export interface AuthOptions {
   verifyChain?: boolean; // If true, also verify the chain is valid (not just session)
+  service?: string;      // If set, validate that acting-as controller has access to this service
 }
 
 /**
@@ -83,19 +84,26 @@ async function validateBearerToken(
   }
 }
 
+interface ActingAsResult {
+  valid: boolean;
+  allowedServices?: string[] | null; // null = full access
+}
+
 /**
  * Validate that a caller is an active owner or admin controller of a group DID.
+ * Optionally checks if the controller has access to a specific service.
  * Uses the internal API to avoid recursive auth checks.
  */
 async function validateActingAs(
   callerDid: string,
-  groupDid: string
-): Promise<boolean> {
+  groupDid: string,
+  service?: string
+): Promise<ActingAsResult> {
   const authUrl = getAuthUrl();
   const internalApiKey = process.env.ATTESTATION_INTERNAL_API_KEY;
   if (!internalApiKey) {
     console.warn("[AUTH] ATTESTATION_INTERNAL_API_KEY not set — cannot validate act-as");
-    return false;
+    return { valid: false };
   }
   try {
     const res = await fetch(
@@ -105,12 +113,25 @@ async function validateActingAs(
         cache: "no-store",
       }
     );
-    if (!res.ok) return false;
+    if (!res.ok) return { valid: false };
     const data = await res.json();
-    return data.valid === true && (data.role === "owner" || data.role === "admin");
+    if (data.valid !== true || (data.role !== "owner" && data.role !== "admin")) {
+      return { valid: false };
+    }
+
+    const allowedServices: string[] | null = data.allowedServices ?? null;
+
+    // If a service is specified and the controller has a restricted list, check it
+    if (service && allowedServices && allowedServices.length > 0) {
+      if (!allowedServices.includes(service)) {
+        return { valid: false };
+      }
+    }
+
+    return { valid: true, allowedServices };
   } catch (err) {
     console.error("[AUTH] Act-as validation failed:", err);
-    return false;
+    return { valid: false };
   }
 }
 
@@ -162,11 +183,16 @@ export async function requireAuth(
   if ("identity" in result && result.identity) {
     const actingAs = request.headers.get("x-acting-as");
     if (actingAs) {
-      const allowed = await validateActingAs(result.identity.id, actingAs);
-      if (!allowed) {
+      const actingAsResult = await validateActingAs(
+        result.identity.id,
+        actingAs,
+        options?.service
+      );
+      if (!actingAsResult.valid) {
         return { error: "Not authorized to act as this group", status: 403 };
       }
       result.identity.actingAs = actingAs;
+      result.identity.actingAsServices = actingAsResult.allowedServices ?? undefined;
     }
   }
 

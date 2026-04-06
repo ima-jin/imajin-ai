@@ -108,7 +108,11 @@ export async function GET(
 
   try {
     const [membership] = await db
-      .select({ role: groupControllers.role, removedAt: groupControllers.removedAt })
+      .select({
+        role: groupControllers.role,
+        removedAt: groupControllers.removedAt,
+        allowedServices: groupControllers.allowedServices,
+      })
       .from(groupControllers)
       .where(
         and(
@@ -123,7 +127,11 @@ export async function GET(
       return NextResponse.json({ valid: false }, { status: 200 });
     }
 
-    return NextResponse.json({ valid: true, role: membership.role });
+    return NextResponse.json({
+      valid: true,
+      role: membership.role,
+      allowedServices: membership.allowedServices ?? null, // null = full access
+    });
   } catch (error) {
     console.error('[groups] Controller check error:', error);
     return NextResponse.json({ error: 'Failed to check controller' }, { status: 500 });
