@@ -6,10 +6,9 @@ import { requireAuth } from '@imajin/auth';
 import { requireGraphMember } from '@/src/lib/kernel/require-graph-member';
 import { jsonResponse, errorResponse, isValidDid } from '@/src/lib/kernel/utils';
 import { dmDid, parseConversationDid } from '@/src/lib/chat/conversation-did';
+import { lookupIdentity } from '@/src/lib/kernel/lookup';
 
 const rawSql = getClient();
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 
 /**
  * GET /api/conversations - List v2 conversations for authenticated user
@@ -131,7 +130,7 @@ export async function GET(request: NextRequest) {
 
         // For DMs, resolve other participant info by parsing the DID slug
         let otherParticipant: { did: string; handle: string | null; name: string | null } | null = null;
-        if (parsed.type === 'dm' && AUTH_SERVICE_URL) {
+        if (parsed.type === 'dm') {
           // DM DIDs don't embed participant DIDs — look up from messages and reads
           let otherDid: string | undefined;
 
@@ -182,10 +181,8 @@ export async function GET(request: NextRequest) {
           }
           if (otherDid) {
             try {
-              const lookupRes = await fetch(`${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(otherDid)}`);
-              if (lookupRes.ok) {
-                const data = await lookupRes.json();
-                const ident = data.identity || data;
+              const ident = await lookupIdentity(otherDid);
+              if (ident) {
                 otherParticipant = {
                   did: otherDid,
                   handle: ident.handle || null,

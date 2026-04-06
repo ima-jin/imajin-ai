@@ -1,36 +1,26 @@
 import { NextRequest } from 'next/server';
-import { eq, and, desc, lt, isNull, inArray } from 'drizzle-orm';
-import { db, conversationsV2, messagesV2, messageReactionsV2 } from '@/src/db';
+import { eq, and, desc, lt, isNull, inArray, ilike } from 'drizzle-orm';
+import { db, conversationsV2, messagesV2, messageReactionsV2, profiles } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';
 import { hasCapability, requiredCapability, CAPABILITY_MESSAGES } from '@/src/lib/chat/capabilities';
 import { notify } from '@imajin/notify';
+import { checkAccess } from '@/src/lib/kernel/access';
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL || 'http://localhost:3005';
 const MENTION_REGEX = /@([a-zA-Z0-9_-]+)/g;
 
 async function resolveHandleToDid(handle: string): Promise<string | null> {
   try {
-    const res = await fetch(`${PROFILE_SERVICE_URL}/api/profile/search?q=${encodeURIComponent(handle)}&limit=5`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const profile = (data.profiles || []).find((p: { handle?: string; did?: string }) => p.handle?.toLowerCase() === handle.toLowerCase());
+    const result = await db
+      .select({ did: profiles.did, handle: profiles.handle })
+      .from(profiles)
+      .where(ilike(profiles.handle, handle))
+      .limit(5);
+    const profile = result.find((p) => p.handle?.toLowerCase() === handle.toLowerCase());
     return profile?.did ?? null;
   } catch {
     return null;
-  }
-}
-
-async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
-      headers: cookieHeader ? { Cookie: cookieHeader } : {},
-    });
-    return res.ok;
-  } catch {
-    return false;
   }
 }
 
@@ -49,9 +39,10 @@ export async function GET(
 
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
+  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
 
-  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
-  if (!hasAccess) {
+  const access = await checkAccess(requesterDid, conversationDid);
+  if (!access.allowed) {
     return errorResponse('Conversation not found or access denied', 404);
   }
 
@@ -146,8 +137,8 @@ export async function POST(
     return errorResponse('Please verify your account to send messages', 403);
   }
 
-  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
-  if (!hasAccess) {
+  const access = await checkAccess(effectiveDid, conversationDid);
+  if (!access.allowed) {
     return errorResponse('Conversation not found or access denied', 404);
   }
 

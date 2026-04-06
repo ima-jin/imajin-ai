@@ -1,19 +1,9 @@
 import { NextRequest } from 'next/server';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { checkAccess } from '@/src/lib/kernel/access';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-
-async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
-      headers: cookieHeader ? { Cookie: cookieHeader } : {},
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * GET /api/conversations/:id/participants
@@ -31,9 +21,10 @@ export async function GET(
 
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
+  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
 
-  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
-  if (!hasAccess) {
+  const access = await checkAccess(requesterDid, conversationDid);
+  if (!access.allowed) {
     return errorResponse('Conversation not found or access denied', 404);
   }
 
@@ -73,9 +64,10 @@ export async function POST(
 
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
+  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
 
-  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
-  if (!hasAccess) {
+  const access = await checkAccess(requesterDid, conversationDid);
+  if (!access.allowed) {
     return errorResponse('Access denied', 403);
   }
 

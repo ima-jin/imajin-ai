@@ -3,24 +3,12 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { db, invites } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
+import { checkAccess } from '@/src/lib/kernel/access';
 
 // TODO(#435-followup): The invites table still references chat.conversations.id (v1 FK).
 // The conversationId field here now accepts a conversation DID as a plain text column
 // (FK constraint should be dropped in a follow-up migration).
 // Until then, invite creation/acceptance works with both v1 conv IDs (legacy) and v2 DIDs.
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-
-async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
-      headers: cookieHeader ? { Cookie: cookieHeader } : {},
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * POST /api/invites - Create an invite link for a v2 conversation
@@ -43,8 +31,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has access to the conversation
-    const hasAccess = await verifyAccess(conversationId, request.headers.get('Cookie'));
-    if (!hasAccess) {
+    const access = await checkAccess(effectiveDid, conversationId);
+    if (!access.allowed) {
       return errorResponse('Permission denied', 403);
     }
 
@@ -94,8 +82,10 @@ export async function GET(request: NextRequest) {
     return errorResponse('conversationId is required');
   }
 
-  const hasAccess = await verifyAccess(conversationId, request.headers.get('Cookie'));
-  if (!hasAccess) {
+  const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
+  const access = await checkAccess(effectiveDid, conversationId);
+  if (!access.allowed) {
     return errorResponse('Permission denied', 403);
   }
 

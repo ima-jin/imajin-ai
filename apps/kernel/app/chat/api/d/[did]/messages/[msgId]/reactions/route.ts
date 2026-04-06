@@ -3,19 +3,7 @@ import { eq, and } from 'drizzle-orm';
 import { db, messagesV2, messageReactionsV2 } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-
-async function verifyDidAccess(did: string, cookieHeader: string | null): Promise<boolean> {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
-      headers: cookieHeader ? { Cookie: cookieHeader } : {},
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
+import { checkAccess } from '@/src/lib/kernel/access';
 
 /**
  * OPTIONS /api/d/:did/messages/:msgId/reactions - CORS preflight
@@ -41,9 +29,8 @@ export async function POST(
   const effectiveDid = identity.actingAs || identity.id;
   const { did, msgId } = await params;
 
-  const cookieHeader = request.headers.get('Cookie');
-  const hasAccess = await verifyDidAccess(did, cookieHeader);
-  if (!hasAccess) {
+  const access = await checkAccess(effectiveDid, did);
+  if (!access.allowed) {
     return errorResponse('Access denied', 403, cors);
   }
 
@@ -103,9 +90,8 @@ export async function DELETE(
   const effectiveDid = identity.actingAs || identity.id;
   const { did, msgId } = await params;
 
-  const cookieHeader = request.headers.get('Cookie');
-  const hasAccess = await verifyDidAccess(did, cookieHeader);
-  if (!hasAccess) {
+  const access = await checkAccess(effectiveDid, did);
+  if (!access.allowed) {
     return errorResponse('Access denied', 403, cors);
   }
 

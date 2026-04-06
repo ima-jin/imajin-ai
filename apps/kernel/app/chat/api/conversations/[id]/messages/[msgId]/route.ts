@@ -3,21 +3,9 @@ import { eq, and } from 'drizzle-orm';
 import { db, messagesV2 } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { checkAccess } from '@/src/lib/kernel/access';
 
 export const dynamic = 'force-dynamic';
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-
-async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
-      headers: cookieHeader ? { Cookie: cookieHeader } : {},
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * PUT /api/conversations/:id/messages/:msgId - Edit a message
@@ -117,10 +105,10 @@ export async function DELETE(
       return errorResponse('Message not found', 404);
     }
 
-    // Author can always delete their own; for others, check access via auth service
+    // Author can always delete their own; for others, check access
     if (message.fromDid !== effectiveDid) {
-      const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
-      if (!hasAccess) {
+      const access = await checkAccess(effectiveDid, conversationDid);
+      if (!access.allowed) {
         return errorResponse('You do not have permission to delete this message', 403);
       }
     }

@@ -3,19 +3,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { db, messagesV2, messageReactionsV2 } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-
-async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
-      headers: cookieHeader ? { Cookie: cookieHeader } : {},
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
+import { checkAccess } from '@/src/lib/kernel/access';
 
 /**
  * GET /api/messages/:msgId/reactions - Get reactions for a v2 message
@@ -43,8 +31,8 @@ export async function GET(
     }
 
     // Verify access to the conversation
-    const hasAccess = await verifyAccess(message.conversationDid, request.headers.get('Cookie'));
-    if (!hasAccess) {
+    const access = await checkAccess(effectiveDid, message.conversationDid);
+    if (!access.allowed) {
       return errorResponse('Access denied', 403);
     }
 
@@ -97,8 +85,8 @@ export async function POST(
       return errorResponse('Message not found', 404);
     }
 
-    const hasAccess = await verifyAccess(message.conversationDid, request.headers.get('Cookie'));
-    if (!hasAccess) {
+    const access = await checkAccess(effectiveDid, message.conversationDid);
+    if (!access.allowed) {
       return errorResponse('Access denied', 403);
     }
 
@@ -170,8 +158,8 @@ export async function DELETE(
       return errorResponse('Message not found', 404);
     }
 
-    const hasAccess = await verifyAccess(message.conversationDid, request.headers.get('Cookie'));
-    if (!hasAccess) {
+    const access = await checkAccess(effectiveDid, message.conversationDid);
+    if (!access.allowed) {
       return errorResponse('Access denied', 403);
     }
 

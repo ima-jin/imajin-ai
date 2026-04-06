@@ -3,22 +3,10 @@ import { eq } from 'drizzle-orm';
 import { db, invites } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
+import { checkAccess } from '@/src/lib/kernel/access';
 
 // TODO(#435-followup): invites.conversationId FK to chat.conversations.id needs to be
 // dropped and the column treated as plain text pointing to a conversation DID.
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-
-async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
-      headers: cookieHeader ? { Cookie: cookieHeader } : {},
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * GET /api/invites/:id - Get invite info (public — for preview before joining)
@@ -149,8 +137,8 @@ export async function DELETE(
 
     if (invite.createdBy !== effectiveDid) {
       // Check if user has access to the conversation
-      const hasAccess = await verifyAccess(invite.conversationId, request.headers.get('Cookie'));
-      if (!hasAccess) {
+      const access = await checkAccess(effectiveDid, invite.conversationId);
+      if (!access.allowed) {
         return errorResponse('Permission denied', 403);
       }
     }

@@ -5,6 +5,7 @@ import path from 'path';
 import sharp from 'sharp';
 import { requireAuth } from '@imajin/auth';
 import { errorResponse } from '@/src/lib/kernel/utils';
+import { checkAccess } from '@/src/lib/kernel/access';
 
 const UPLOAD_DIR = '/mnt/media/chat';
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
@@ -19,19 +20,6 @@ const FILE_TYPES = [
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ];
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-
-async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
-      headers: cookieHeader ? { Cookie: cookieHeader } : {},
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * POST /api/conversations/:id/upload - Upload media to conversation
@@ -49,8 +37,10 @@ export async function POST(
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
 
-  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
-  if (!hasAccess) {
+  const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
+  const access = await checkAccess(effectiveDid, conversationDid);
+  if (!access.allowed) {
     return errorResponse('Conversation not found or access denied', 404);
   }
 

@@ -4,11 +4,11 @@ import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
 import { notify } from '@imajin/notify';
 import { emitAttestation } from '@imajin/auth';
+import { lookupIdentity } from '@/src/lib/kernel/lookup';
 
 export const dynamic = 'force-dynamic';
 
 const sql = getClient();
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 
 /**
  * OPTIONS /api/d/:did/members - CORS preflight
@@ -140,16 +140,12 @@ export async function GET(
       ORDER BY role DESC, joined_at ASC
     `;
 
-    // Resolve names via auth lookup
+    // Resolve names via identity lookup
     const members = await Promise.all(
       rows.map(async (row: Record<string, string>) => {
         try {
-          const res = await fetch(
-            `${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(row.did)}`
-          );
-          if (res.ok) {
-            const data = await res.json();
-            const identity = data.identity || data;
+          const identity = await lookupIdentity(row.did);
+          if (identity) {
             return {
               did: row.did,
               role: row.role,

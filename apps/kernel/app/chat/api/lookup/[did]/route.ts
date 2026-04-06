@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
+import { lookupIdentity } from '@/src/lib/kernel/lookup';
 
 /**
  * GET /api/lookup/:did - Resolve a DID to handle/name
- * Proxies to auth service's lookup endpoint
  */
 export async function GET(
   _request: NextRequest,
@@ -13,14 +11,12 @@ export async function GET(
   const { did } = await params;
 
   try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(did)}`);
-    if (!res.ok) {
+    const identity = await lookupIdentity(did);
+    if (!identity) {
       return NextResponse.json({ did, tier: null }, { status: 200 });
     }
-    const data = await res.json();
-    const identity = data.identity || data;
     return NextResponse.json({
-      did: identity.id || did,
+      did: identity.did,
       handle: identity.handle || null,
       name: identity.name || null,
       tier: identity.tier || null,
