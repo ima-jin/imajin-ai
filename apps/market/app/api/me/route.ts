@@ -11,5 +11,5 @@ export async function GET(request: NextRequest) {
     return jsonResponse({ did: null });
   }
   const { identity } = authResult;
-  return jsonResponse({ did: identity.id });
+  return jsonResponse({ did: identity.actingAs || identity.id });
 }

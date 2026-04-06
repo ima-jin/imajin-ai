@@ -15,17 +15,18 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     let [settings] = await db
       .select()
       .from(sellerSettings)
-      .where(eq(sellerSettings.did, identity.id));
+      .where(eq(sellerSettings.did, did));
 
     if (!settings) {
       [settings] = await db
         .insert(sellerSettings)
-        .values({ did: identity.id, showMarketItems: false })
+        .values({ did, showMarketItems: false })
         .returning();
     }
 
@@ -47,6 +48,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     const body = await request.json();
@@ -58,7 +60,7 @@ export async function PATCH(request: NextRequest) {
 
     const [settings] = await db
       .insert(sellerSettings)
-      .values({ did: identity.id, showMarketItems, updatedAt: new Date() })
+      .values({ did, showMarketItems, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: sellerSettings.did,
         set: { showMarketItems, updatedAt: new Date() },

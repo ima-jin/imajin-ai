@@ -23,7 +23,8 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10)));
     const offset = (page - 1) * limit;
 
-    const conditions = [eq(listings.sellerDid, identity.id)];
+    const did = identity.actingAs || identity.id;
+    const conditions = [eq(listings.sellerDid, did)];
 
     if (status) {
       conditions.push(eq(listings.status, status));

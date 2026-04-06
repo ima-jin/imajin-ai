@@ -68,7 +68,8 @@ export async function PATCH(
       return errorResponse('Listing not found', 404);
     }
 
-    if (listing.sellerDid !== identity.id) {
+    const did = identity.actingAs || identity.id;
+    if (listing.sellerDid !== did) {
       return errorResponse('Forbidden', 403);
     }
 
@@ -164,7 +165,8 @@ export async function DELETE(
       return errorResponse('Listing not found', 404);
     }
 
-    if (listing.sellerDid !== identity.id) {
+    const did = identity.actingAs || identity.id;
+    if (listing.sellerDid !== did) {
       return errorResponse('Forbidden', 403);
     }
 
