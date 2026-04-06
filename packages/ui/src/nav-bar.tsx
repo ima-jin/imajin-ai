@@ -490,6 +490,7 @@ export function NavBar({
             currentService={currentService}
             tier={launcherTier}
             inline
+            variant="grid"
             authUrl={identity?.isLoggedIn && identity?.tier !== 'soft' ? authUrl : undefined}
             enabledServices={activeConfig?.enabledServices}
           />
