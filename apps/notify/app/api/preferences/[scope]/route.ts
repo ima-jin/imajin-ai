@@ -21,7 +21,7 @@ export async function PUT(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const { identity } = authResult;
-  const did = identity.id;
+  const did = identity.actingAs || identity.id;
 
   const { scope } = await params;
 
