@@ -1,25 +1,27 @@
-# Fee Model v2 — Three-Party Settlement Fees
+# Fee Model — Settlement Fee Structure
 
-**Status:** DRAFT
-**Date:** March 29, 2026
-**Supersedes:** Original 1% split model (0.4% node / 0.4% protocol / 0.2% user credit), RFC-12 exchange rate strategy (USD → CHF peg)
-**Related:** P31 (Fee Governance), RFC-12 (MJN Token Economics), FAQ dual-token model
+**Version:** 3
+**Status:** Living Document
+**Updated:** April 5, 2026
+**Related:** P31 (Fee Governance), RFC-12 (MJN Token Economics), RFC-23 (Multi-Chain Settlement)
 
 ---
 
 ## Summary
 
-Settlement fees are composed of three independent, bounded, configurable rates:
+Settlement fees are composed of three protocol-controlled layers plus one sovereign layer:
 
-| Participant | Range | Default | Set by |
-|-------------|-------|---------|--------|
-| Protocol | 0.25% – 2% | 1.0% | Governance (Foundation → trust graph) |
-| Node | 0.25% – 2% | 0.5% | Node operator |
-| User credit | 0.25% – 2% | 0.25% | Node operator (from gross, not node margin) |
+| Layer | Range | Default | Set by |
+|-------|-------|---------|--------|
+| Protocol (MJN) | 0.25% – 2% | 1.0% | Governance (Foundation → trust graph) |
+| Node operator | 0.25% – 2% | 0.5% | Node operator |
+| Buyer credit | 0.25% – 2% | 0.25% | Node operator (from gross, not node margin) |
+| Scope fee | 0% – no cap | 0.25% | Scope owner (individual, family, community, business) |
 
-**Default total fee:** 1.75%
-**Maximum total fee:** 6% (theoretical; market competition prevents this)
-**Minimum total fee:** 0.75% (0.25% × 3)
+**Default total fee:** 2.0% (1.75% protocol-controlled + 0.25% scope)
+**Minimum total fee:** 0.75% (0.25% × 3, scope at 0%)
+**Maximum protocol fee:** 6% (theoretical; market competition prevents this)
+**Scope fee:** sovereign — no protocol-imposed ceiling, publicly advertised
 
 ## How It Works
 
@@ -27,21 +29,45 @@ On a **$100 transaction** at default rates:
 
 | Line item | Amount | Recipient |
 |-----------|--------|-----------|
-| Protocol fee | $1.00 | Protocol treasury |
+| Protocol fee | $1.00 | MJN Foundation (Swiss entity) |
 | Node fee | $0.50 | Node operator |
-| User credit | $0.25 | Buyer (as virtual MJN credit) |
-| **Seller receives** | **$98.25** | |
-| **Total fee** | **$1.75** | |
+| Buyer credit | $0.25 | Buyer (as virtual MJN credit) |
+| Scope fee | $0.25 | Scope owner (community/business/individual) |
+| **Seller receives** | **$98.00** | |
+| **Total fee** | **$2.00** | |
 
-The buyer pays $100, the seller receives $98.25, and the buyer accumulates $0.25 in MJN credit on their DFOS chain.
+The buyer pays $100, the seller receives $98.00. The buyer accumulates $0.25 in MJN credit. The scope owner accumulates $0.25 (or whatever they've set).
 
-## Why Three-Party
+### Scope fee examples
+
+A community like Mooi sets its scope fee based on its own economics:
+- **0%** — subsidizes members, no community take. Attracts vendors.
+- **0.25%** (default) — passive MJN accrual for the community treasury.
+- **3%** — funds community operations, events, infrastructure.
+- **10%** — premium community with significant value-add (curation, foot traffic, exclusive access).
+
+The scope fee is publicly advertised. Users and vendors see it before transacting. Market competition governs what's sustainable — the protocol doesn't impose a ceiling.
+
+## Why Four Layers
 
 **Protocol fee is the floor.** Non-negotiable revenue to fund protocol development, managed by governance within structural bounds. This is the number in the pitch: "1%."
 
 **Node fee is market-driven.** Node operators compete on margin. A node charging 0.25% attracts more traffic than one charging 2%. Federation creates a competitive market for settlement infrastructure — this is the economic incentive to run a node.
 
-**User credit is an accumulation incentive.** Every transaction plants seeds. Credits are chain entries on the user's DFOS chain. At token launch, chain replay = mint proof. The more you transact, the more MJN you hold before the token exists.
+**Buyer credit is an accumulation incentive.** Every transaction plants seeds. Credits are chain entries on the user's DFOS chain. At token launch, chain replay = mint proof. The more you transact, the more MJN you hold before the token exists.
+
+**Scope fee is sovereign economics.** The scope owner — whether an individual, family, community, or business — sets their own fee. This is NOT protocol-governed. We don't control their policies. The protocol enforces transparency (rates are advertised) but not pricing. This is how communities fund themselves: Mooi takes a cut of transactions within its scope, uses it to fund events, pay staff, build infrastructure. Or takes 0% and competes on access.
+
+### Scope Surcharge
+
+The scope fee is the key differentiator from traditional payment platforms. It enables:
+
+- **Community-funded infrastructure** — a venue community charges 2% to fund equipment, events, marketing
+- **Business margin** — a marketplace operator charges 5% as their business model, on top of protocol fees
+- **Family economics** — a family scope charges 0% because it's internal
+- **Individual sovereignty** — a solo creator charges whatever they want on their own services
+
+The scope owner can change their rate at any time. Like all rate changes: decreases instant, increases require 24h notice (advertised to participants).
 
 ## Governance
 
@@ -68,17 +94,66 @@ The **protocol fee** is enforced at the settlement layer:
 - Compliance suite verifies correct fee accounting
 - Nodes that don't comply fail conformance testing
 
+## Cross-Platform Settlement
+
+When a transaction crosses a peering boundary (traffic between two platforms), the scope/platform fees split between the platforms involved. The protocol fee (MJN) is unaffected — MJN always collects its percentage regardless of how many platforms are in the path.
+
+### Example: Cross-Platform Purchase
+
+A buyer on Platform A purchases from a seller on Platform B:
+
+| Layer | Amount | Recipient |
+|-------|--------|-----------|
+| Protocol (MJN) | 1% | MJN Foundation (unchanged) |
+| Node operator | 0.5% | Node that processed the transaction |
+| Buyer credit | 0.25% | Buyer |
+| Platform fee | split | Negotiated between Platform A and Platform B |
+
+Platform fee splitting is a bilateral agreement between peered platforms, recorded as signed chain entries. The protocol doesn't dictate the split — it ensures the split is transparent and auditable.
+
+### Platform Affiliation
+
+Platform DID exists at two levels:
+
+| Level | Where | Default | Purpose |
+|-------|-------|---------|---------|
+| Node | `relay_config.platform_did` | Self (sovereign) | Node's primary mesh affiliation |
+| Scope | `forest_config.platform_did` | Null (inherit from node) | Per-scope platform override |
+
+**The node provides a default platform for every scope it hosts.** When a scope launches on a node, it inherits the node's platform automatically. No configuration needed. This is how the mesh grows — communities spin up on existing nodes and are immediately part of the platform's network.
+
+**Scopes can override.** A scope on an Imajin node can set its platform DID to a different platform — or to itself (sovereign). The scope's platform choice determines where the platform fee routes. The node doesn't care; it collects its 0.5% regardless.
+
+**Scopes are portable.** A scope's platform affiliation travels with it. Move to a different node → keep your platform. Change your platform → your node doesn't flinch. Two independent axes of sovereignty: where you run (node) and who you peer with (platform).
+
+**The node collects node fees from all scopes it hosts**, regardless of those scopes' platform affiliations. A single node can host scopes peered to Imajin, scopes peered to an ag platform, and fully sovereign scopes — all on the same hardware, all paying the node 0.5%.
+
+### Bootstrap & Sovereignty
+
+A new system boots with no relay config → genesis. It IS the platform:
+- Its relay DID (auto-bootstrapped per #575) = node operator DID = platform DID
+- Grows organically. Users join, transactions happen, own mesh.
+- All fee layers resolve to the same entity on a genesis node.
+
+When the network finds it (or it finds the network), a choice:
+- **Peer in** → set platform DID to the mesh. Collect node fee. Gain full connectivity. Platform fee splits with peering partner. New scopes launched on this node default to the peered platform.
+- **Stay sovereign** → own network, platform-to-platform peering only through a single edge. Full independence, less connectivity.
+
+Imajin is not special. It's the first node that booted without a parent. The mesh effect — not the code — is the competitive position. Economic gravity pulls toward peering: more users, more services, more settlements, and the node becomes the default onramp for every scope that launches on it. But sovereignty is always one setting away.
+
 ## Comparison to Original Model
 
-| | Original (1% split) | v2 (Three-party) |
-|---|---|---|
-| Total fee | 1.0% | 1.75% (default) |
-| Protocol revenue on $1M volume | $4,000 | $10,000 |
-| Node incentive | $4,000 (fixed) | Market-driven |
-| User benefit | $2,000 (fixed) | Node-configurable |
-| Competitiveness vs Stripe (2.9%+30¢) | Very competitive | Still competitive |
-| Node competition | None (fixed rate) | Rate competition |
-| Governance complexity | All three rates | Protocol rate only |
+| | Original (1% split) | v2 (Three-party) | v3 (Four-layer) |
+|---|---|---|---|
+| Total fee | 1.0% | 1.75% (default) | 2.0% (default) |
+| Protocol revenue on $1M volume | $4,000 | $10,000 | $10,000 |
+| Node incentive | $4,000 (fixed) | Market-driven | Market-driven |
+| User benefit | $2,000 (fixed) | Node-configurable | Node-configurable |
+| Scope/community revenue | None | None | Sovereign (0%+) |
+| Competitiveness vs Stripe (2.9%+30¢) | Very competitive | Still competitive | Still competitive |
+| Node competition | None (fixed rate) | Rate competition | Rate competition |
+| Cross-platform | N/A | N/A | Platform fee splits on peering |
+| Governance complexity | All three rates | Protocol rate only | Protocol rate + scope transparency |
 
 ## Comparison to Alternatives
 
@@ -88,8 +163,8 @@ The **protocol fee** is enforced at the settlement layer:
 | PayPal | 3.49% + 49¢ |
 | Square | 2.6% + 10¢ |
 | Shopify Payments | 2.4% – 2.9% + 30¢ |
-| **Imajin (default)** | **1.75%** |
-| **Imajin (minimum)** | **0.75%** |
+| **Imajin (default)** | **2.0%** (1.75% protocol + 0.25% scope) |
+| **Imajin (minimum)** | **0.75%** (scope at 0%) |
 
 ## Gas Fees
 
@@ -228,16 +303,18 @@ Supersedes RFC-12 exchange rate strategy. See also: FAQ ("What's the difference 
 
 ### How It Flows
 
-A $25 CAD event ticket (≈18.50 CHF at current rates):
+A $25 CAD event ticket (≈18.50 CHF at current rates), within a community scope charging 0.25%:
 
 1. Buyer pays $25 CAD via Stripe
 2. Platform records 18.50 MJNx settlement
 3. Settlement fees (at defaults):
-   - 0.185 MJNx → protocol (1%)
-   - 0.0925 MJNx → node (0.5%)
+   - 0.185 MJNx → protocol/MJN Foundation (1%)
+   - 0.0925 MJNx → node operator (0.5%)
    - 0.04625 MJNx → buyer as **~1.16 MJN** credit (0.25%, converted at 25:1)
-4. Seller receives 17.18 MJNx (withdrawable as CHF → local currency)
+   - 0.04625 MJNx → scope owner/community (0.25%)
+4. Seller receives 17.13 MJNx (withdrawable as CHF → local currency)
 5. Buyer's 1.16 MJN funds future gas ops and becomes a mint proof at token launch
+6. Community's 0.04625 MJNx funds community operations (or accrues as MJN)
 
 **The protocol only speaks MJN internally.** Fiat translation is always at the edges. Users see local currency prices; the settlement engine records MJNx; governance and gas operate in MJN.
 
