@@ -14,10 +14,11 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     const page = await db.query.coffeePages.findFirst({
-      where: (pages, { eq }) => eq(pages.did, identity.id),
+      where: (pages, { eq }) => eq(pages.did, did),
     });
 
     if (!page) {

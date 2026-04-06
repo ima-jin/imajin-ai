@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     const body = await request.json();
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     // Check if page already exists for this DID
     const existingDid = await db.query.coffeePages.findFirst({
-      where: (pages, { eq }) => eq(pages.did, identity.id),
+      where: (pages, { eq }) => eq(pages.did, did),
     });
 
     if (existingDid) {
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
     // Create page
     const [page] = await db.insert(coffeePages).values({
       id: generateId('page'),
-      did: identity.id,
+      did,
       handle,
       title,
       bio: bio || null,

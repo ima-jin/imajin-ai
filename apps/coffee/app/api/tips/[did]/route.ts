@@ -21,9 +21,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
 
-  // Check ownership
-  if (identity.id !== did) {
+  // Check ownership — allow viewing tips for the effective DID (scope's income)
+  if (effectiveDid !== did) {
     return errorResponse('Not authorized to view these tips', 403);
   }
 
