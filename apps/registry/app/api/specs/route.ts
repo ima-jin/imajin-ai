@@ -15,8 +15,8 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     services: SERVICES.map((s) => {
-      const computedUrl = getPublicUrl(s.name, { prefix, domain: DOMAIN });
-      const url = s.externalUrl ?? computedUrl;
+      const url = getPublicUrl(s.name, { prefix, domain: DOMAIN });
+      const isExternal = !!(s.externalUrl || s.wwwPath);
       return {
         name: s.name,
         description: s.description,
@@ -25,8 +25,8 @@ export async function GET(request: NextRequest) {
         visibility: s.visibility as ServiceVisibility,
         category: s.category as ServiceCategory,
         url,
-        ...(s.externalUrl && { externalUrl: s.externalUrl }),
-        spec: `${computedUrl}/api/spec`,
+        ...(isExternal && { externalUrl: url }),
+        ...(!isExternal && { spec: `${url}/api/spec` }),
       };
     }),
   }, { headers: cors });
