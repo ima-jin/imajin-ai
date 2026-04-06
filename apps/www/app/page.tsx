@@ -52,13 +52,7 @@ export default async function Home() {
       {/* LOGO + TAGLINE */}
       <section className="flex flex-col items-center text-center mb-12">
         <div className="w-12 h-12 flex items-center justify-center mb-3">
-          <Image
-            src="/images/logo-kanji.svg"
-            alt="今"
-            width={48}
-            height={48}
-            priority
-          />
+          今人 (ima-jin)
         </div>
         <p className="text-lg text-gray-400">The sovereign browser.</p>
         <p className="text-sm text-gray-500 mt-1">
