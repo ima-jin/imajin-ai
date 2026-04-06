@@ -38,7 +38,8 @@ export async function POST(
   }
 
   // Owner check
-  if (asset.ownerDid !== identity.id) {
+  const ownerDid = identity.actingAs || identity.id;
+  if (asset.ownerDid !== ownerDid) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
