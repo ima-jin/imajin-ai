@@ -44,7 +44,11 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { did, role = 'member' } = body as { did?: string; role?: string };
+  const { did, role = 'member', allowedServices = null } = body as {
+    did?: string;
+    role?: string;
+    allowedServices?: string[] | null;
+  };
 
   if (!did || typeof did !== 'string') {
     return NextResponse.json({ error: 'did required' }, { status: 400 });
@@ -77,7 +81,7 @@ export async function POST(
       // Reactivate
       await db
         .update(groupControllers)
-        .set({ removedAt: null, role, addedBy: caller.id, addedAt: new Date() })
+        .set({ removedAt: null, role, allowedServices, addedBy: caller.id, addedAt: new Date() })
         .where(
           and(
             eq(groupControllers.groupDid, groupDid),
@@ -89,6 +93,7 @@ export async function POST(
         groupDid,
         controllerDid: did,
         role,
+        allowedServices,
         addedBy: caller.id,
       });
     }

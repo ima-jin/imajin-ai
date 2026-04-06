@@ -3,6 +3,7 @@ export { requireAuth } from "./require-auth";
 export type { AuthOptions } from "./require-auth";
 export { optionalAuth } from "./optional-auth";
 export { getSession } from "./session";
+export type { SessionOptions } from "./session";
 export { requireHardDID } from "./require-hard-did";
 export { requireEstablishedDID } from "./require-established-did";
 export { canonicalize, sign, signSync } from "./sign";
