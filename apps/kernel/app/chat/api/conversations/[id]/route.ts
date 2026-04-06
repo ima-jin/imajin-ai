@@ -3,19 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, conversationsV2 } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-
-async function verifyAccess(did: string, cookieHeader: string | null): Promise<boolean> {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
-      headers: cookieHeader ? { Cookie: cookieHeader } : {},
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
+import { checkAccess } from '@/src/lib/kernel/access';
 
 /**
  * GET /api/conversations/:id - Get v2 conversation details
@@ -30,11 +18,13 @@ export async function GET(
     return errorResponse(authResult.error, authResult.status);
   }
 
+  const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
 
-  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
-  if (!hasAccess) {
+  const access = await checkAccess(effectiveDid, conversationDid);
+  if (!access.allowed) {
     return errorResponse('Conversation not found or access denied', 404);
   }
 
@@ -71,8 +61,8 @@ export async function PATCH(
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
 
-  const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
-  if (!hasAccess) {
+  const access = await checkAccess(effectiveDid, conversationDid);
+  if (!access.allowed) {
     return errorResponse('Access denied', 403);
   }
 

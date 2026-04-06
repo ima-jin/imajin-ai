@@ -3,20 +3,7 @@ import { db, pods, podMembers } from '../../../src/db/index';
 import { eq, and, isNull, inArray, sql, ne } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders, corsOptions } from '@imajin/config';
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
-
-async function getSession(request: NextRequest) {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      headers: { Cookie: request.headers.get('cookie') || '' },
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -24,7 +11,7 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
-  const session = await getSession(request);
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401, headers: cors });
   }
@@ -69,7 +56,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
-  const session = await getSession(request);
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401, headers: cors });
   }

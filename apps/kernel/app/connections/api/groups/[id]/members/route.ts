@@ -2,23 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, pods, podMembers } from '../../../../../src/db/index';
 import { emitAttestation } from '@imajin/auth';
 import { eq, and, isNull } from 'drizzle-orm';
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
-
-async function getSession(request: NextRequest) {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      headers: { Cookie: request.headers.get('cookie') || '' },
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getSession(request);
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
@@ -66,7 +53,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getSession(request);
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
@@ -105,7 +92,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getSession(request);
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }

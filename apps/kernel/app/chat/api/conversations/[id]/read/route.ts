@@ -1,24 +1,7 @@
-import { SESSION_COOKIE_NAME } from "@imajin/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { db, conversationReadsV2 } from '@/src/db';
 import { sql } from 'drizzle-orm';
-
-async function getSessionDid(req: NextRequest): Promise<string | null> {
-  const cookie = req.cookies.get(SESSION_COOKIE_NAME);
-  if (!cookie) return null;
-
-  const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-  try {
-    const res = await fetch(`${authUrl}/api/session`, {
-      headers: { Cookie: `${SESSION_COOKIE_NAME}=${cookie.value}` },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.did || data.identity?.did || null;
-  } catch {
-    return null;
-  }
-}
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
 /**
  * POST /api/conversations/:id/read
@@ -30,8 +13,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const did = await getSessionDid(req);
-    if (!did) {
+    const session = await getSessionFromCookies(req.headers.get('cookie'));
+    if (!session?.did) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -42,7 +25,7 @@ export async function POST(
       .insert(conversationReadsV2)
       .values({
         conversationDid,
-        did,
+        did: session.did,
         lastReadAt: sql`NOW()`,
       })
       .onConflictDoUpdate({

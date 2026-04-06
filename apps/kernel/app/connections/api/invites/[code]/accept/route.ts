@@ -5,26 +5,15 @@ import { generateId } from '../../../../../src/lib/id';
 import { emitAttestation } from '@imajin/auth';
 import { notify } from '@imajin/notify';
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
-const INVITE_COOLDOWN_DAYS = 7;
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
-async function getSession(request: NextRequest) {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      headers: { Cookie: request.headers.get('cookie') || '' },
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
+const INVITE_COOLDOWN_DAYS = 7;
 
 export async function POST(
   request: NextRequest,
   { params }: { params: { code: string } }
 ) {
-  const session = await getSession(request);
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }

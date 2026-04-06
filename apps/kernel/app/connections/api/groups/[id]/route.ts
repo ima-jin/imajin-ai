@@ -1,35 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, pods, podMembers } from '../../../../src/db/index';
 import { eq, and, isNull, sql } from 'drizzle-orm';
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
-
-async function getSession(request: NextRequest) {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      headers: { Cookie: request.headers.get('cookie') || '' },
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
+import { lookupIdentity } from '@/src/lib/kernel/lookup';
 
 async function resolveIdentity(did: string) {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(did)}`);
-    if (res.ok) {
-      const data = await res.json();
-      const identity = data.identity || data;
-      return { handle: identity.handle || null, name: identity.name || null };
-    }
-  } catch {}
-  return { handle: null, name: null };
+  const identity = await lookupIdentity(did);
+  if (!identity) return { handle: null, name: null };
+  return { handle: identity.handle, name: identity.name };
 }
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getSession(request);
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
@@ -60,7 +42,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getSession(request);
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
@@ -111,7 +93,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getSession(request);
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }

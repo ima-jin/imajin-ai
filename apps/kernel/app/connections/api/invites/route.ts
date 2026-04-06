@@ -7,7 +7,8 @@ import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
 import { emitAttestation } from '@imajin/auth';
 import { buildPublicUrl } from '@imajin/config';
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
+
 const INVITE_COOLDOWN_DAYS = 7;
 const INVITE_EXPIRY_DAYS = 7;
 
@@ -28,18 +29,6 @@ function getInviteLimit(role: string): number {
   return INVITE_LIMITS[role] ?? INVITE_LIMITS.member;
 }
 
-async function getSession(request: NextRequest) {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      headers: { Cookie: request.headers.get('cookie') || '' },
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
 async function isInTrustGraph(did: string): Promise<boolean> {
   const [membership] = await db
     .select({ podId: podMembers.podId })
@@ -50,7 +39,7 @@ async function isInTrustGraph(did: string): Promise<boolean> {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession(request);
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
@@ -222,7 +211,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getSession(request);
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }

@@ -3,22 +3,10 @@ import { eq } from 'drizzle-orm';
 import { db, invites, profiles } from '../../../../src/db/index';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
-}
-
-async function getSession(request: NextRequest) {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      headers: { Cookie: request.headers.get('cookie') || '' },
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
 }
 
 export async function GET(
@@ -58,7 +46,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { code: string } }
 ) {
-  const session = await getSession(request);
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }

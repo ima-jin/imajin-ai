@@ -1,39 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SESSION_COOKIE_NAME } from '@imajin/config';
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
 export const dynamic = 'force-dynamic';
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
-
 /**
- * GET /api/auth/session - Proxy to auth service session check
- * Forwards the session cookie to auth service
+ * GET /api/auth/session - Direct session check via kernel session lib
  */
 export async function GET(request: NextRequest) {
   try {
-    const cookie = request.cookies.get(SESSION_COOKIE_NAME);
+    const session = await getSessionFromCookies(request.headers.get('cookie'));
 
-    // Forward request to auth service with cookie
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-
-    if (cookie) {
-      headers['Cookie'] = `${cookie.name}=${cookie.value}`;
+    if (!session) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const response = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      method: 'GET',
-      headers,
-    });
-
-    const data = await response.json();
-
-    return NextResponse.json(data, { status: response.status });
+    return NextResponse.json(session);
   } catch (error) {
     console.error('Auth session proxy error:', error);
     return NextResponse.json(
-      { error: 'Failed to connect to auth service' },
+      { error: 'Failed to get session' },
       { status: 500 }
     );
   }

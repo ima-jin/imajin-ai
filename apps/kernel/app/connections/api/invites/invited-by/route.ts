@@ -1,27 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, or, isNotNull } from 'drizzle-orm';
 import { db, invites, profiles } from '../../../../src/db/index';
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
-
-async function getSession(request: NextRequest) {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      headers: { Cookie: request.headers.get('cookie') || '' },
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
 /**
  * GET /api/invites/invited-by
  * Returns who invited the current user, or null if founding member.
  */
 export async function GET(request: NextRequest) {
-  const session = await getSession(request);
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }

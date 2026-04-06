@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
 export async function GET(request: NextRequest) {
   try {
-    const response = await fetch(`${AUTH_SERVICE_URL}/api/session`, {
-      headers: { Cookie: request.headers.get('cookie') || '' },
-    });
+    const session = await getSessionFromCookies(request.headers.get('cookie'));
 
-    if (!response.ok) {
+    if (!session) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const data = await response.json();
-    return NextResponse.json(data);
+    return NextResponse.json(session);
   } catch (error) {
     console.error('Auth session proxy error:', error);
     return NextResponse.json({ error: 'Auth service unavailable' }, { status: 502 });

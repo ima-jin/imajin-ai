@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
-import { db, profiles } from '@/src/db';
+import { db, profiles, connections } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
-import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
-import { eq } from 'drizzle-orm';
+import { eq, or, and, isNull } from 'drizzle-orm';
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
 // Configure ed25519 with sha512 (required for @noble/ed25519 v3)
 ed.hashes.sha512 = sha512;
@@ -66,35 +66,31 @@ async function verifySignedRequest(request: NextRequest, body: string): Promise<
   }
 }
 
-const CONNECTIONS_SERVICE_URL = process.env.CONNECTIONS_SERVICE_URL;
-
 /** Try to get viewer DID from session cookie (non-blocking) */
 async function getViewerDid(request: NextRequest): Promise<string | null> {
-  const authUrl = process.env.AUTH_SERVICE_URL;
-  if (!authUrl) return null;
-  const cookie = request.headers.get('cookie') || '';
-  const match = cookie.match(new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`));
-  if (!match) return null;
   try {
-    const res = await fetch(`${authUrl}/api/session`, {
-      headers: { Cookie: `${SESSION_COOKIE_NAME}=${match[1]}` },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.did || data.identity?.did || null;
+    const session = await getSessionFromCookies(request.headers.get('cookie'));
+    return session?.did ?? null;
   } catch { return null; }
 }
 
-/** Check if viewer is connected to target */
-async function checkConnected(viewerCookie: string, targetDid: string): Promise<boolean> {
-  if (!CONNECTIONS_SERVICE_URL) return false;
+/** Check if viewerDid is connected to targetDid */
+async function checkConnected(viewerDid: string, targetDid: string): Promise<boolean> {
   try {
-    const res = await fetch(`${CONNECTIONS_SERVICE_URL}/api/connections`, {
-      headers: { Cookie: viewerCookie },
-    });
-    if (!res.ok) return false;
-    const data = await res.json();
-    return (data.connections || []).some((c: any) => c.did === targetDid);
+    const [conn] = await db
+      .select({ id: connections.didA })
+      .from(connections)
+      .where(
+        and(
+          or(
+            and(eq(connections.didA, viewerDid), eq(connections.didB, targetDid)),
+            and(eq(connections.didA, targetDid), eq(connections.didB, viewerDid))
+          ),
+          isNull(connections.disconnectedAt)
+        )
+      )
+      .limit(1);
+    return !!conn;
   } catch { return false; }
 }
 
@@ -129,8 +125,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (profile.contactEmail || profile.phone) {
       const viewerDid = await getViewerDid(request);
       const isSelf = viewerDid === profile.did;
-      const cookie = request.headers.get('cookie') || '';
-      const connected = viewerDid && !isSelf ? await checkConnected(cookie, profile.did) : false;
+      const connected = viewerDid && !isSelf ? await checkConnected(viewerDid, profile.did) : false;
       if (!isSelf && !connected) {
         delete result.contactEmail;
         delete result.phone;
