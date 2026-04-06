@@ -1,23 +1,24 @@
 import { NextRequest } from 'next/server';
-import { eq, and, desc, lt, isNull, inArray } from 'drizzle-orm';
-import { db, conversationsV2, messagesV2, messageReactionsV2 } from '@/src/db';
+import { eq, and, desc, lt, isNull, inArray, ilike, or } from 'drizzle-orm';
+import { db, conversationsV2, messagesV2, messageReactionsV2, profiles } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';
 import { unfurlLinks } from '@/src/lib/chat/unfurl';
 import { canonicalize } from '@imajin/auth';
 import { notify } from '@imajin/notify';
+import { checkAccess } from '@/src/lib/kernel/access';
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL || 'http://localhost:3005';
 const MENTION_REGEX = /@([a-zA-Z0-9_-]+)/g;
 
 async function resolveHandleToDid(handle: string): Promise<string | null> {
   try {
-    const res = await fetch(`${PROFILE_SERVICE_URL}/api/profile/search?q=${encodeURIComponent(handle)}&limit=5`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const profile = (data.profiles || []).find((p: { handle?: string; did?: string }) => p.handle?.toLowerCase() === handle.toLowerCase());
+    const result = await db
+      .select({ did: profiles.did, handle: profiles.handle })
+      .from(profiles)
+      .where(ilike(profiles.handle, handle))
+      .limit(1);
+    const profile = result.find((p) => p.handle?.toLowerCase() === handle.toLowerCase());
     return profile?.did ?? null;
   } catch {
     return null;
@@ -27,14 +28,16 @@ async function resolveHandleToDid(handle: string): Promise<string | null> {
 /**
  * Sign a message payload with the node's chain key via the auth service.
  * Best-effort: returns null on any failure rather than blocking message delivery.
+ * TODO(#615): Replace with direct import when identity signing logic is extracted to kernel lib
  */
 async function signMessagePayload(fromDid: string, payload: string): Promise<string | null> {
   const apiKey = process.env.INTERNAL_API_KEY;
   if (!apiKey) return null;
 
+  const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
   try {
     const res = await fetch(
-      `${AUTH_SERVICE_URL}/api/identity/${encodeURIComponent(fromDid)}/sign`,
+      `${authUrl}/api/identity/${encodeURIComponent(fromDid)}/sign`,
       {
         method: 'POST',
         headers: {
@@ -52,15 +55,9 @@ async function signMessagePayload(fromDid: string, payload: string): Promise<str
   }
 }
 
-async function verifyDidAccess(did: string, cookieHeader: string | null): Promise<boolean> {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/access/${encodeURIComponent(did)}`, {
-      headers: cookieHeader ? { Cookie: cookieHeader } : {},
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
+async function verifyDidAccess(requesterDid: string, targetDid: string): Promise<boolean> {
+  const result = await checkAccess(requesterDid, targetDid);
+  return result.allowed;
 }
 
 /**
@@ -86,8 +83,7 @@ export async function GET(
   const { did } = await params;
 
   // Verify access
-  const cookieHeader = request.headers.get('Cookie');
-  const hasAccess = await verifyDidAccess(did, cookieHeader);
+  const hasAccess = await verifyDidAccess(authResult.identity.actingAs || authResult.identity.id, did);
   if (!hasAccess) {
     return errorResponse('Access denied', 403, cors);
   }
@@ -186,8 +182,7 @@ export async function POST(
   }
 
   // Verify access
-  const cookieHeader = request.headers.get('Cookie');
-  const hasAccess = await verifyDidAccess(did, cookieHeader);
+  const hasAccess = await verifyDidAccess(effectiveDid, did);
   if (!hasAccess) {
     return errorResponse('Access denied', 403, cors);
   }

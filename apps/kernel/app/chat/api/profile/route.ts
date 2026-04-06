@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL!;
+import { db, profiles } from '@/src/db';
+import { or, eq } from 'drizzle-orm';
 
 /**
- * GET /api/profile?handle=xxx - Proxy to profile service
+ * GET /api/profile?handle=xxx - Look up profile directly from DB
  * Used by new chat flow to search users
  */
 export async function GET(request: NextRequest) {
@@ -14,19 +14,17 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const response = await fetch(`${PROFILE_SERVICE_URL}/api/profile/${encodeURIComponent(handle)}`);
+    const profile = await db.query.profiles.findFirst({
+      where: (p, { or, eq }) => or(eq(p.did, handle), eq(p.handle, handle)),
+    });
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        return NextResponse.json({ error: 'User not found' }, { status: 404 });
-      }
-      return NextResponse.json({ error: 'Profile lookup failed' }, { status: response.status });
+    if (!profile) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const data = await response.json();
-    return NextResponse.json(data);
+    return NextResponse.json(profile);
   } catch (error) {
     console.error('Profile lookup failed:', error);
-    return NextResponse.json({ error: 'Profile service unavailable' }, { status: 503 });
+    return NextResponse.json({ error: 'Profile lookup failed' }, { status: 500 });
   }
 }

@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSessionCookieOptions } from '@/src/lib/auth/jwt';
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
-
-export async function POST(request: NextRequest) {
-  try {
-    const response = await fetch(`${AUTH_SERVICE_URL}/api/logout`, {
-      method: 'POST',
-      headers: { Cookie: request.headers.get('cookie') || '' },
-    });
-    const headers = new Headers();
-    const setCookie = response.headers.get('set-cookie');
-    if (setCookie) headers.set('set-cookie', setCookie);
-    return NextResponse.json({ ok: true }, { headers });
-  } catch {
-    return NextResponse.json({ error: 'Failed' }, { status: 502 });
-  }
+export async function POST(_request: NextRequest) {
+  const cookieConfig = getSessionCookieOptions();
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set(cookieConfig.name, '', {
+    ...cookieConfig.options,
+    maxAge: 0,
+  });
+  return response;
 }

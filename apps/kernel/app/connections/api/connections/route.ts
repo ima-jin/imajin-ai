@@ -3,8 +3,7 @@ import { db, connections, nicknames } from '../../../src/db/index';
 import { corsHeaders, corsOptions, withCors } from '@/src/lib/kernel/cors';
 import { requireAuth } from '@imajin/auth';
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
+import { lookupIdentity } from '@/src/lib/kernel/lookup';
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -45,18 +44,14 @@ export async function GET(request: NextRequest) {
     : [];
   const nicknameMap = new Map(nicknameRows.map((n) => [n.target, n.nickname]));
 
-  // Resolve handles from auth service
+  // Resolve handles directly from identities table
   const resolved = await Promise.all(
     mapped.map(async (conn) => {
       const nickname = nicknameMap.get(conn.did) ?? null;
-      try {
-        const lookupRes = await fetch(`${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(conn.did)}`);
-        if (lookupRes.ok) {
-          const data = await lookupRes.json();
-          const identity = data.identity || data;
-          return { ...conn, nickname, handle: identity.handle || null, name: identity.name || null };
-        }
-      } catch {}
+      const identity = await lookupIdentity(conn.did);
+      if (identity) {
+        return { ...conn, nickname, handle: identity.handle || null, name: identity.name || null };
+      }
       return { ...conn, nickname, handle: null, name: null };
     })
   );

@@ -1,21 +1,26 @@
 export { requireAuth, optionalAuth } from "@imajin/auth";
 export type { Identity, AuthResult, AuthError } from "@imajin/auth";
 
+import { db, connections } from '@/src/db';
+import { or, and, eq, isNull } from 'drizzle-orm';
+
 /**
  * Check if a DID is in the trust graph (has at least one connection)
  */
 export async function isInGraph(did: string): Promise<boolean> {
-  const connectionsUrl =
-    process.env.CONNECTIONS_SERVICE_URL || "https://connections.imajin.ai";
-
   try {
-    const response = await fetch(
-      `${connectionsUrl}/api/connections/status/${encodeURIComponent(did)}`
-    );
-    if (!response.ok) return false;
+    const rows = await db
+      .select({ didA: connections.didA })
+      .from(connections)
+      .where(
+        and(
+          or(eq(connections.didA, did), eq(connections.didB, did)),
+          isNull(connections.disconnectedAt)
+        )
+      )
+      .limit(1);
 
-    const data = await response.json();
-    return data.inGraph === true;
+    return rows.length > 0;
   } catch (error) {
     console.error("Failed to check graph membership:", error);
     return false;

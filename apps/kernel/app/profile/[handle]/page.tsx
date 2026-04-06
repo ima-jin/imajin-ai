@@ -3,9 +3,10 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
-import { db, profiles, follows } from '@/src/db';
+import { db, profiles, follows, connections } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { eq, count } from 'drizzle-orm';
+import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { Avatar } from '../components/Avatar';
 import { FollowButton } from '../components/FollowButton';
 import { AskButton } from '../components/AskButton';
@@ -54,34 +55,26 @@ interface LinkItem {
 }
 
 async function getViewerDid(): Promise<string | null> {
-  const authUrl = process.env.AUTH_SERVICE_URL;
-  if (!authUrl) return null;
   try {
     const cookieStore = await cookies();
     const session = cookieStore.get(SESSION_COOKIE_NAME);
     if (!session?.value) return null;
-    const res = await fetch(`${authUrl}/api/session`, {
-      headers: { Cookie: `${SESSION_COOKIE_NAME}=${session.value}` },
-      cache: 'no-store',
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.did || data.identity?.did || null;
+    const kernelSession = await getSessionFromCookies(`${SESSION_COOKIE_NAME}=${session.value}`);
+    return kernelSession?.did ?? null;
   } catch { return null; }
 }
 
 async function isConnected(viewerDid: string, targetDid: string): Promise<boolean> {
-  const connectionsUrl = process.env.CONNECTIONS_SERVICE_URL;
-  if (!connectionsUrl) return false;
   try {
-    const cookieStore = await cookies();
-    const session = cookieStore.get(SESSION_COOKIE_NAME);
-    const res = await fetch(`${connectionsUrl}/api/connections`, {
-      headers: session?.value ? { Cookie: `${SESSION_COOKIE_NAME}=${session.value}` } : {},
+    const [connDidA, connDidB] = [viewerDid, targetDid].sort((a, b) => a.localeCompare(b));
+    const row = await db.query.connections.findFirst({
+      where: (c, { eq, and, isNull }) => and(
+        eq(c.didA, connDidA),
+        eq(c.didB, connDidB),
+        isNull(c.disconnectedAt)
+      ),
     });
-    if (!res.ok) return false;
-    const data = await res.json();
-    return (data.connections || []).some((c: any) => c.did === targetDid);
+    return !!row;
   } catch { return false; }
 }
 

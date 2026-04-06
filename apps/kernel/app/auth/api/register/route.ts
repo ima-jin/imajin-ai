@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities } from '@/src/db';
-import { eq, or } from 'drizzle-orm';
+import { db, identities, profiles, invitesInConnections as invites, podsInConnections as pods, podMembersInConnections as podMembers, connections } from '@/src/db';
+import { eq, or, sql } from 'drizzle-orm';
 import { didFromPublicKey, verifySignature } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
-
-const CONNECTIONS_SERVICE_URL = process.env.CONNECTIONS_SERVICE_URL!;
-const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL!;
+import { generateId } from '@/src/lib/kernel/utils';
+import { emitAttestation } from '@imajin/auth';
+import { notify } from '@imajin/notify';
 
 /**
  * POST /api/register
@@ -167,28 +167,21 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Validate invite code against connections service
-      try {
-        const inviteRes = await fetch(`${CONNECTIONS_SERVICE_URL}/api/invites/${inviteCode}`);
-        if (!inviteRes.ok) {
-          return NextResponse.json(
-            { error: 'Invalid or expired invite code' },
-            { status: 403 }
-          );
-        }
-        inviteData = await inviteRes.json();
-        if (!inviteData || (inviteData as any).used) {
-          return NextResponse.json(
-            { error: 'This invite has already been used' },
-            { status: 403 }
-          );
-        }
-      } catch {
+      // Validate invite code directly from DB
+      const [invite] = await db
+        .select()
+        .from(invites)
+        .where(eq(invites.code, inviteCode))
+        .limit(1);
+
+      if (!invite || invite.status !== 'pending' || invite.usedCount >= invite.maxUses) {
         return NextResponse.json(
-          { error: 'Unable to validate invite. Try again later.' },
-          { status: 503 }
+          { error: invite?.usedCount >= invite?.maxUses ? 'This invite has already been used' : 'Invalid or expired invite code' },
+          { status: 403 }
         );
       }
+
+      inviteData = { fromDid: invite.fromDid, fromHandle: invite.fromHandle ?? undefined };
     }
 
     // Generate DID from public key
@@ -249,21 +242,15 @@ export async function POST(request: NextRequest) {
     // Create profile row so the user is visible/discoverable
     try {
       const displayType = ['human', 'agent', 'presence'].includes(type) ? type : 'human';
-      await fetch(`${PROFILE_SERVICE_URL}/api/profile`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Cookie: `${cookieConfig.name}=${token}`,
-        },
-        body: JSON.stringify({
-          displayName: name?.trim().slice(0, 100) || handle || 'Anonymous',
-          displayType,
-          handle: handle || undefined,
-          email: email?.trim() || undefined,
-          phone: phone?.trim() || undefined,
-          optInUpdates: optInUpdates || false,
-        }),
-      });
+      await db.insert(profiles).values({
+        did: identity.id,
+        displayName: name?.trim().slice(0, 100) || handle || 'Anonymous',
+        displayType,
+        handle: handle || null,
+        contactEmail: email?.trim() || null,
+        phone: phone?.trim() || null,
+        metadata: { optInUpdates: optInUpdates || false },
+      }).onConflictDoNothing();
     } catch (err) {
       console.error('Profile creation failed (non-fatal):', err);
       // Non-fatal — user can still use the platform, profile can be created later
