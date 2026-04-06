@@ -1,0 +1,80 @@
+# Imajin — A Cryptographic Operating System for Sovereign Commerce
+
+> imajin.ai runs a JBOS (Just a Bunch Of Services) on a cryptographic substrate.
+> Services are commodity. Chains are permanent. Identity, attribution, trust, and settlement are structural.
+
+## Full specification
+
+For the complete protocol spec, architecture, and API reference:
+https://imajin.ai/llms-full.txt
+
+## The Problem
+
+Every platform you use holds your identity, reputation, and audience hostage. Not because they're evil — because the architecture requires it. Imajin fixes this structurally: users hold the keys. Identity is self-certifying, reputation is portable, data lives on hardware you own.
+
+## What is Imajin?
+
+Imajin (今人 — "now-person") is sovereign infrastructure. 15 independent HTTP services sharing a cryptographic kernel: signed identity chains (DFOS), .fair attribution manifests, and bilateral attestations.
+
+The kernel (auth + pay) enforces identity and settlement. Userspace services (events, chat, market, learn, etc.) are disposable — swap, rewrite, or add more without touching the chain layer.
+
+## Architecture
+
+```
+MJN (L6)     ← identity + attribution + trust + settlement
+DFOS (L0–L5) ← proof chains, key rotation, countersignatures
+HTTPS        ← transport
+```
+
+## Services (15 live)
+
+| Service | URL | Role |
+|---------|-----|------|
+| auth | auth.imajin.ai | Kernel — DIDs, sessions, attestations, DFOS bridge |
+| pay | pay.imajin.ai | Kernel — Stripe, settlement, .fair verification |
+| connections | connections.imajin.ai | Trust — pods, invites, groups, vouches |
+| profile | profile.imajin.ai | Discovery — public profiles, handles |
+| registry | registry.imajin.ai | Federation — node discovery, DFOS relay |
+| events | events.imajin.ai | Userspace — events, tickets, .fair splits |
+| chat | chat.imajin.ai | Userspace — DID messaging, WebSocket |
+| media | media.imajin.ai | Userspace — assets, .fair sidecars |
+| input | input.imajin.ai | Userspace — voice (Whisper), uploads |
+| learn | learn.imajin.ai | Userspace — courses, enrollment |
+| market | market.imajin.ai | Userspace — consent-based local commerce |
+| coffee | coffee.imajin.ai | Userspace — tipping pages |
+| links | links.imajin.ai | Userspace — link-in-bio |
+| dykil | dykil.imajin.ai | Userspace — community spending surveys |
+| www | imajin.ai | Userspace — landing, app launcher |
+
+## Identity
+
+Ed25519 keypairs → `did:imajin:xxx` (also valid Solana wallet). Three standing tiers: soft (email), preliminary (keypair), established (earned). Chain-backed via DFOS.
+
+## Key Concepts
+
+- **JBOS** — Just a Bunch Of Services. No orchestration. Services verify chains, not each other.
+- **.fair** — JSON manifests: who made it, who gets paid. Kernel primitive — settlement rejects unsigned manifests.
+- **Bilateral attestations** — both parties sign via DFOS countersignatures. Trust is mutual, not unilateral.
+- **Exit credentials** — leave with your reputation. Signed, portable, encrypted under your key.
+- **Two-token model** — MJN (equity, earned through participation, mints on Solana Year 3) + MJNx (payment rail, fiat-pegged, vendor-withdrawable). Every MJN token traces to a signed chain entry — work, contribution, or usage.
+- **Trust-gated commerce** — three seller tiers: direct (off-platform settlement), protected (on-platform with .fair), trust-gated (visible only to verified members with preliminary DID+).
+
+## Links
+
+- Full spec: https://imajin.ai/llms-full.txt
+- Source: https://github.com/ima-jin/imajin-ai
+- .fair spec: https://github.com/ima-jin/.fair
+- MJN protocol: https://github.com/ima-jin/mjn-protocol
+- DFOS: https://protocol.dfos.com
+- DFOS relay: https://registry.imajin.ai/relay/
+- OpenAPI specs: https://<service>.imajin.ai/api/spec
+- Developer guide: https://imajin.ai/developer-guide
+
+## Build Stats (March 2026)
+
+15 services · ~123K LOC · ~120 identities · 52 days · 1 human + AI · $77K actual ($2.3M traditional estimate)
+
+## Contact
+
+Ryan Veteze — ryan@imajin.ai
+This is exit infrastructure from platform dependency, not a competing platform.
