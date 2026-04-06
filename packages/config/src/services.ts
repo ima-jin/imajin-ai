@@ -35,28 +35,28 @@ export interface ServiceDefinition {
 
 export const SERVICES: readonly ServiceDefinition[] = [
   // Core platform
-  { name: "www",         label: "Home",        icon: "🏠", description: "Home — the Imajin network",                       devPort: 3000, prodPort: 7000, schema: "public",      tier: "core",   visibility: "public",        category: "core" },
-  { name: "auth",        label: "Auth",        icon: "🔐", description: "Authentication and identity",                     devPort: 3001, prodPort: 7001, schema: "auth",        tier: "core",   visibility: "internal",      category: "infrastructure" },
-  { name: "registry",    label: "Registry",    icon: "📡", description: "Node registration, heartbeat, and subdomain provisioning", devPort: 3002, prodPort: 7002, schema: "registry", tier: "core", visibility: "authenticated", category: "developer" },
-  { name: "connections", label: "Connections", icon: "🤝", description: "Social connections, pods, and trust invites",      devPort: 3003, prodPort: 7003, schema: "connections", tier: "core",   visibility: "authenticated", category: "core" },
-  { name: "pay",         label: "Pay",         icon: "💳", description: "Payments, escrow, and balance management",         devPort: 3004, prodPort: 7004, schema: "pay",         tier: "core",   visibility: "authenticated", category: "core" },
-  { name: "profile",     label: "Profile",     icon: "👤", description: "User profiles and social graph",                   devPort: 3005, prodPort: 7005, schema: "profile",     tier: "core",   visibility: "authenticated", category: "core" },
-  { name: "events",      label: "Events",      icon: "🎫", description: "Event creation, ticketing, and management",        devPort: 3006, prodPort: 7006, schema: "events",      tier: "core",   visibility: "public",        category: "core" },
-  { name: "chat",        label: "Messages",    icon: "💬", description: "Real-time messaging and conversations",            devPort: 3007, prodPort: 7007, schema: "chat",        tier: "core",   visibility: "authenticated", category: "core" },
-  { name: "notify",      label: "Notify",      icon: "🔔", description: "Notification delivery and preferences",              devPort: 3008, prodPort: 7008, schema: "notify",      tier: "core",   visibility: "internal",      category: "infrastructure" },
-  { name: "media",       label: "Media",       icon: "🖼️", description: "Media asset management, upload, classification, and Whisper transcription", devPort: 3009, prodPort: 7009, schema: "media",     tier: "core",   visibility: "authenticated", category: "core" },
+  { name: "www",         label: "Home",        icon: "🏠", description: "Home — the Imajin network",                         devPort: 3000, prodPort: 7000, schema: "public",      tier: "core",   visibility: "public",        category: "core" },
+  { name: "auth",        label: "Auth",        icon: "🔐", description: "Authentication and identity",                       devPort: 3001, prodPort: 7001, schema: "auth",        tier: "core",   visibility: "internal",      category: "infrastructure" },
+  { name: "registry",    label: "Registry",    icon: "📡", description: "Node registration, heartbeat, and provisioning",    devPort: 3002, prodPort: 7002, schema: "registry",    tier: "core",   visibility: "authenticated", category: "developer" },
+  { name: "connections", label: "Connections", icon: "🤝", description: "Social connections, pods, and trust invites",       devPort: 3003, prodPort: 7003, schema: "connections", tier: "core",   visibility: "authenticated", category: "core" },
+  { name: "pay",         label: "Pay",         icon: "💳", description: "Payments, escrow, and balance management",          devPort: 3004, prodPort: 7004, schema: "pay",         tier: "core",   visibility: "authenticated", category: "core" },
+  { name: "profile",     label: "Profile",     icon: "👤", description: "User profiles and social graph",                    devPort: 3005, prodPort: 7005, schema: "profile",     tier: "core",   visibility: "authenticated", category: "core" },
+  { name: "events",      label: "Events",      icon: "🎫", description: "Event creation, ticketing, and management",         devPort: 3006, prodPort: 7006, schema: "events",      tier: "core",   visibility: "public",        category: "core" },
+  { name: "chat",        label: "Messages",    icon: "💬", description: "Real-time messaging and conversations",             devPort: 3007, prodPort: 7007, schema: "chat",        tier: "core",   visibility: "authenticated", category: "core" },
+  { name: "notify",      label: "Notify",      icon: "🔔", description: "Notification delivery and preferences",             devPort: 3008, prodPort: 7008, schema: "notify",      tier: "core",   visibility: "internal",      category: "infrastructure" },
+  { name: "media",       label: "Media",       icon: "🖼️", description: "Media management, upload, classification, whisper", devPort: 3009, prodPort: 7009, schema: "media",       tier: "core",   visibility: "authenticated", category: "core" },
 
   // Imajin apps
-  { name: "coffee",      label: "Coffee",      icon: "☕", description: "Tipping and creator support pages",                devPort: 3100, prodPort: 7100, schema: "coffee",      tier: "imajin", visibility: "creator",       category: "creator" },
-  { name: "dykil",       label: "Surveys",     icon: "📋", description: "Surveys and do-you-know-if-I-like polls",          devPort: 3101, prodPort: 7101, schema: "dykil",       tier: "imajin", visibility: "creator",       category: "creator" },
-  { name: "links",       label: "Links",       icon: "🔗", description: "Link-in-bio pages and click tracking",             devPort: 3102, prodPort: 7102, schema: "links",       tier: "imajin", visibility: "creator",       category: "creator" },
-  { name: "learn",       label: "Learn",       icon: "📚", description: "Courses, lessons, and learning progress",          devPort: 3103, prodPort: 7103, schema: "learn",       tier: "imajin", visibility: "public",        category: "core" },
-  { name: "market",      label: "Market",      icon: "🏪", description: "Local commerce — buy and sell with trust",           devPort: 3104, prodPort: 7104, schema: "market",      tier: "imajin", visibility: "public",        category: "core" },
+  { name: "coffee",      label: "Coffee",      icon: "☕", description: "Tipping and creator support pages",                 devPort: 3100, prodPort: 7100, schema: "coffee",      tier: "imajin", visibility: "creator",       category: "creator" },
+  { name: "dykil",       label: "Surveys",     icon: "📋", description: "Surveys and do-you-know-if-I-like polls",           devPort: 3101, prodPort: 7101, schema: "dykil",       tier: "imajin", visibility: "creator",       category: "creator" },
+  { name: "links",       label: "Links",       icon: "🔗", description: "Link-in-bio pages and click tracking",              devPort: 3102, prodPort: 7102, schema: "links",       tier: "imajin", visibility: "creator",       category: "creator" },
+  { name: "learn",       label: "Learn",       icon: "📚", description: "Courses, lessons, and learning progress",           devPort: 3103, prodPort: 7103, schema: "learn",       tier: "imajin", visibility: "public",        category: "core" },
+  { name: "market",      label: "Market",      icon: "🏪", description: "Local commerce — buy and sell with trust",          devPort: 3104, prodPort: 7104, schema: "market",      tier: "imajin", visibility: "public",        category: "core" },
 
   // Meta — project info and external resources surfaced in the launcher
-  { name: 'project', label: 'Project',  icon: '📖', description: 'Thesis, whitepaper, essays, RFCs',   devPort: 0, prodPort: 0, schema: null, tier: 'core',   visibility: 'public', category: 'meta' },
-  { name: 'github',  label: 'GitHub',   icon: '🐙', description: 'Source code',                         devPort: 0, prodPort: 0, schema: null, tier: 'core',   visibility: 'public', category: 'meta', externalUrl: 'https://github.com/ima-jin/imajin-ai' },
-  { name: 'docs',    label: 'Docs',     icon: '📄', description: 'API documentation',                   devPort: 0, prodPort: 0, schema: null, tier: 'core',   visibility: 'public', category: 'meta' },
+  { name: 'project',     label: 'Project',     icon: '📖', description: 'Thesis, whitepaper, essays, RFCs',                  devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', externalUrl: 'https://dev-www.imajin.ai/project' },
+  { name: 'github',      label: 'GitHub',      icon: '🐙', description: 'Source code',                                       devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', externalUrl: 'https://github.com/ima-jin/imajin-ai' },
+  { name: 'docs',        label: 'Docs',        icon: '📄', description: 'API documentation',                                 devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', externalUrl: 'https://dev-www.imajin.ai/develper-guide' },
 
   // Connected apps (separate repos) will use the plugin architecture (#249).
   // Not included here — they authenticate via delegated sessions, not the monorepo manifest.

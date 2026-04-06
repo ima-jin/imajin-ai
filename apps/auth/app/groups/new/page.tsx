@@ -97,7 +97,7 @@ export default function NewGroupPage() {
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="Mooi Summer Camp"
+              placeholder="Display name of group, collective, business"
               required
               maxLength={100}
               className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/60"
@@ -116,7 +116,7 @@ export default function NewGroupPage() {
                 type="text"
                 value={handle}
                 onChange={e => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                placeholder="mooi"
+                placeholder="handle"
                 maxLength={30}
                 className="flex-1 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/60"
               />
