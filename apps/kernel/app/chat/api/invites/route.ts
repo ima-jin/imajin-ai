@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import { eq, and, isNull } from 'drizzle-orm';
 import { db, invites } from '@/src/db';
-import { requireAuth } from '@/src/lib/chat/auth';
-import { jsonResponse, errorResponse, generateId } from '@/src/lib/chat/utils';
+import { requireAuth } from '@imajin/auth';
+import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 
 // TODO(#435-followup): The invites table still references chat.conversations.id (v1 FK).
 // The conversationId field here now accepts a conversation DID as a plain text column

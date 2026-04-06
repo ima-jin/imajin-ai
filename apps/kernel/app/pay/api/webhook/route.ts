@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { db, transactions } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { genId } from '@/src/lib/pay/id';
+import { generateId } from '@/src/lib/kernel/id';
 import { notify } from '@imajin/notify';
 
 // Lazy Stripe initialization to avoid build-time errors in CI
@@ -364,7 +364,7 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
 
   // Create a new transaction for the subscription
   const amount = subscription.items.data[0]?.price.unit_amount || 0;
-  const txId = genId('tx');
+  const txId = generateId('tx');
 
   await db.insert(transactions).values({
     id: txId,
@@ -422,7 +422,7 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
   // Extract metadata from the subscription object on the invoice
   const subscriptionMetadata = (invoice.subscription_details?.metadata || {}) as Record<string, string>;
 
-  const txId = genId('tx');
+  const txId = generateId('tx');
   await db.insert(transactions).values({
     id: txId,
     service: subscriptionMetadata.service || 'subscription',

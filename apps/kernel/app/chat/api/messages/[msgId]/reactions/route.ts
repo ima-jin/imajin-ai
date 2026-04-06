@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import { eq, and, sql } from 'drizzle-orm';
 import { db, messagesV2, messageReactionsV2 } from '@/src/db';
-import { requireAuth } from '@/src/lib/chat/auth';
-import { jsonResponse, errorResponse } from '@/src/lib/chat/utils';
+import { requireAuth } from '@imajin/auth';
+import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 

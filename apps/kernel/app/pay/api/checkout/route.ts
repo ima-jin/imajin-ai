@@ -29,9 +29,9 @@ import type { CheckoutRequest, FiatCurrency } from '@/src/lib/pay';
 import { DEFAULT_PLATFORM_FEE_BPS } from '@/src/lib/pay';
 import { db, transactions, connectedAccounts } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { genId } from '@/src/lib/pay/id';
-import { corsHeaders } from '@/src/lib/pay/cors';
-import { rateLimit, getClientIP } from '@/src/lib/pay/rate-limit';
+import { generateId } from '@/src/lib/kernel/id';
+import { corsHeaders } from '@/src/lib/kernel/cors';
+import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 
 interface CheckoutBody {
   items: Array<{
@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
 
     // Create a pending transaction
     const totalAmount = body.items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
-    const txId = genId('tx');
+    const txId = generateId('tx');
 
     await db.insert(transactions).values({
       id: txId,

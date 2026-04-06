@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, balances } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { corsHeaders } from '@/src/lib/pay/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { requireAuth } from '@imajin/auth';
 
 export async function OPTIONS(request: NextRequest) {

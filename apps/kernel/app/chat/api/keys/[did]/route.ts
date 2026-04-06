@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, publicKeys, preKeys } from '@/src/db';
-import { jsonResponse, errorResponse, isValidDid } from '@/src/lib/chat/utils';
+import { jsonResponse, errorResponse, isValidDid } from '@/src/lib/kernel/utils';
 
 /**
  * GET /api/keys/:did - Get public keys for E2EE

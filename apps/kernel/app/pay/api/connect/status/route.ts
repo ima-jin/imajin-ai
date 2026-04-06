@@ -9,8 +9,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
-import { corsHeaders } from '@/src/lib/pay/cors';
-import { rateLimit, getClientIP } from '@/src/lib/pay/rate-limit';
+import { corsHeaders } from '@/src/lib/kernel/cors';
+import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { requireAuth } from '@imajin/auth';
 import { db, connectedAccounts } from '@/src/db';
 

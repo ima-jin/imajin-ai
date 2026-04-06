@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { resolveWsToken } from '@/src/lib/chat/ws-tokens';
-import { jsonResponse, errorResponse } from '@/src/lib/chat/utils';
+import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 
 /**
  * POST /api/ws-token/validate - Validate a WS auth token (internal use by ws-server)

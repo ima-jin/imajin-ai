@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
-import { errorResponse } from '@/src/lib/profile/utils';
+import { errorResponse } from '@/src/lib/kernel/utils';
 
 const UPLOAD_DIR = '/mnt/media/avatars';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB

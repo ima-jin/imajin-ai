@@ -24,8 +24,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
 import { db, transactions, balances } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
-import { genId } from '@/src/lib/pay/id';
-import { corsHeaders } from '@/src/lib/pay/cors';
+import { generateId } from '@/src/lib/kernel/id';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
       .where(eq(transactions.id, originalTx.id));
 
     // Create reversal transaction entry
-    const reversalId = genId('tx');
+    const reversalId = generateId('tx');
     await db.insert(transactions).values({
       id: reversalId,
       service: originalTx.service,
@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
           .where(eq(transactions.id, stx.id));
 
         // Create reversal entry for this settlement
-        const stxReversalId = genId('tx');
+        const stxReversalId = generateId('tx');
         await db.insert(transactions).values({
           id: stxReversalId,
           service: stx.service,

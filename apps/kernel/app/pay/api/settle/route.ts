@@ -25,8 +25,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, balances, transactions } from '@/src/db';
 import { eq, inArray, sql } from 'drizzle-orm';
-import { genId } from '@/src/lib/pay/id';
-import { corsHeaders } from '@/src/lib/pay/cors';
+import { generateId } from '@/src/lib/kernel/id';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { verifyManifest } from '@imajin/fair';
 import { createHttpResolver, emitAttestation } from '@imajin/auth';
 
@@ -235,7 +235,7 @@ export async function POST(request: NextRequest) {
     ]);
     const payeeChainVerified = payeeVerifications.every(Boolean);
 
-    const batchId = genId('batch');
+    const batchId = generateId('batch');
     const txIds: string[] = [];
 
     // Atomic settlement
@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
 
       // Credit each recipient (earnings go to cash — real value created)
       for (const recipient of fair_manifest.chain) {
-        const txId = genId('tx');
+        const txId = generateId('tx');
         txIds.push(txId);
 
         // Insert transaction

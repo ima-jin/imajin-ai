@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
-import { requireAuth } from '@/src/lib/chat/auth';
-import { jsonResponse, errorResponse } from '@/src/lib/chat/utils';
+import { requireAuth } from '@imajin/auth';
+import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 

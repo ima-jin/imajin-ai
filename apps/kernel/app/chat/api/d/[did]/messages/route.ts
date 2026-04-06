@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import { eq, and, desc, lt, isNull, inArray } from 'drizzle-orm';
 import { db, conversationsV2, messagesV2, messageReactionsV2 } from '@/src/db';
-import { requireAuth } from '@/src/lib/chat/auth';
-import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } from '@/src/lib/chat/utils';
+import { requireAuth } from '@imajin/auth';
+import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';
 import { unfurlLinks } from '@/src/lib/chat/unfurl';
 import { canonicalize } from '@imajin/auth';

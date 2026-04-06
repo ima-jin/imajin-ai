@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
-import { requireAuth, isInGraph } from '@/src/lib/chat/auth';
+import { requireAuth } from '@imajin/auth';
+import { isInGraph } from '@/src/lib/kernel/require-graph-member';
 import { getCapabilities } from '@/src/lib/chat/capabilities';
-import { errorResponse } from '@/src/lib/chat/utils';
+import { errorResponse } from '@/src/lib/kernel/utils';
 
 /**
  * GET /api/capabilities - Return current user's capabilities based on identity tier

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, profiles } from '@/src/db';
-import { jsonResponse, errorResponse } from '@/src/lib/profile/utils';
+import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 
 // Reserved handles that cannot be claimed
 const RESERVED_HANDLES = [

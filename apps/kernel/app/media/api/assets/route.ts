@@ -5,10 +5,10 @@ import { extname } from "path";
 import { nanoid } from "nanoid";
 import { db, assets, folders, assetFolders } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
-import { corsHeaders, corsOptions } from "@/src/lib/media/cors";
+import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
 import { eq, and } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/classify";
-import { rateLimit, getClientIP } from "@/src/lib/media/rate-limit";
+import { rateLimit, getClientIP } from "@/src/lib/kernel/rate-limit";
 
 // Context → folder mapping
 const CONTEXT_FOLDER_MAP: Record<string, { name: string; icon: string }> = {

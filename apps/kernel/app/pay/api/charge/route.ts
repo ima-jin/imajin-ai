@@ -32,7 +32,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
 import { requireAuth } from '@imajin/auth';
 import type { ChargeRequest, Currency, Recipient } from '@/src/lib/pay';
-import { corsHeaders } from '@/src/lib/pay/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 
 interface ChargeBody {
   amount: number;

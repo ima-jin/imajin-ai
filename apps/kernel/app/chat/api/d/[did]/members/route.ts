@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getClient } from '@imajin/db';
-import { requireAuth } from '@/src/lib/chat/auth';
-import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/src/lib/chat/utils';
+import { requireAuth } from '@imajin/auth';
+import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
 import { notify } from '@imajin/notify';
 import { emitAttestation } from '@imajin/auth';
 

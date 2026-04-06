@@ -17,8 +17,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { db, balances, transactions } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
-import { genId } from '@/src/lib/pay/id';
-import { corsHeaders } from '@/src/lib/pay/cors';
+import { generateId } from '@/src/lib/kernel/id';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { requireAuth } from '@imajin/auth';
 
 const MIN_WITHDRAWAL_CENTS = 100; // $1.00 minimum
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const txId = genId('tx');
+    const txId = generateId('tx');
 
     // Atomic: deduct cash balance + record transaction
     await db.transaction(async (tx) => {

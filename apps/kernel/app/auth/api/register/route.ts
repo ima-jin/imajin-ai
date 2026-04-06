@@ -3,7 +3,7 @@ import { db, identities } from '@/src/db';
 import { eq, or } from 'drizzle-orm';
 import { didFromPublicKey, verifySignature } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { rateLimit, getClientIP } from '@/src/lib/auth/rate-limit';
+import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 
 const CONNECTIONS_SERVICE_URL = process.env.CONNECTIONS_SERVICE_URL!;
 const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL!;

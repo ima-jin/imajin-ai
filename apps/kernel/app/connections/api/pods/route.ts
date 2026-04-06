@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { requireAuth, requireGraphMember } from '@/src/lib/connections/auth';
+import { requireAuth } from '@imajin/auth';
+import { requireGraphMember } from '@/src/lib/kernel/require-graph-member';
 import { emitAttestation } from '@imajin/auth';
-import { generateId } from '@/src/lib/connections/id';
+import { generateId } from '@/src/lib/kernel/id';
 import { db, pods, podMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 

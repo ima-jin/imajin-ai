@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, pods, podMembers } from '../../../src/db/index';
 import { eq, and, isNull, inArray, sql, ne } from 'drizzle-orm';
-import { generateId } from '@/src/lib/connections/id';
+import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders, corsOptions } from '@imajin/config';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;

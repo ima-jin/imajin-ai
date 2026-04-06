@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { db, messagesV2 } from '@/src/db';
-import { requireAuth } from '@/src/lib/chat/auth';
-import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/src/lib/chat/utils';
+import { requireAuth } from '@imajin/auth';
+import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
 
 /**
  * OPTIONS /api/d/:did/messages/:msgId - CORS preflight

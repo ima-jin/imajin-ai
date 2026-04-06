@@ -32,9 +32,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
-import { extractToken, validateToken } from '@/src/lib/pay/auth';
+import { requireAuth } from '@imajin/auth';
 import type { EscrowRequest, Currency } from '@/src/lib/pay';
-import { corsHeaders } from '@/src/lib/pay/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 
 interface EscrowBody {
   amount: number;
@@ -74,24 +74,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Require authentication for escrow
-    const token = extractToken(request.headers.get('authorization'));
-    if (!token) {
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
       return NextResponse.json(
-        { error: 'Authentication required for escrow' },
-        { status: 401, headers: cors }
-      );
-    }
-
-    const validation = await validateToken(token);
-    if (!validation.valid) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401, headers: cors }
+        { error: authResult.error },
+        { status: authResult.status, headers: cors }
       );
     }
 
     // Verify the authenticated user is the depositor
-    if (validation.identity?.id !== body.from) {
+    if (authResult.identity.id !== body.from) {
       return NextResponse.json(
         { error: 'Authenticated identity must match depositor (from)' },
         { status: 403, headers: cors }
@@ -154,19 +146,11 @@ export async function PUT(request: NextRequest) {
     }
     
     // Require authentication
-    const token = extractToken(request.headers.get('authorization'));
-    if (!token) {
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
       return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
-    }
-    
-    const validation = await validateToken(token);
-    if (!validation.valid) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
+        { error: authResult.error },
+        { status: authResult.status }
       );
     }
     

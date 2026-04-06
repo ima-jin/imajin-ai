@@ -4,7 +4,7 @@ import { sha512 } from '@noble/hashes/sha2.js';
 import { db, profiles } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
-import { corsHeaders, corsOptions } from '@/src/lib/profile/utils';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
 import { eq } from 'drizzle-orm';
 
 // Configure ed25519 with sha512 (required for @noble/ed25519 v3)

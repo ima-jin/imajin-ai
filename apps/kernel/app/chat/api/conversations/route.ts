@@ -2,8 +2,9 @@ import { NextRequest } from 'next/server';
 import { eq, desc, and, gt, ne, inArray, sql } from 'drizzle-orm';
 import { db, conversationsV2, messagesV2, conversationReadsV2 } from '@/src/db';
 import { getClient } from '@imajin/db';
-import { requireAuth, requireGraphMember } from '@/src/lib/chat/auth';
-import { jsonResponse, errorResponse, isValidDid } from '@/src/lib/chat/utils';
+import { requireAuth } from '@imajin/auth';
+import { requireGraphMember } from '@/src/lib/kernel/require-graph-member';
+import { jsonResponse, errorResponse, isValidDid } from '@/src/lib/kernel/utils';
 import { dmDid, parseConversationDid } from '@/src/lib/chat/conversation-did';
 
 const rawSql = getClient();

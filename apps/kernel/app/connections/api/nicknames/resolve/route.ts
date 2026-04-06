@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, nicknames } from '../../../../src/db/index';
-import { corsHeaders, corsOptions, withCors } from '@/src/lib/connections/cors';
+import { corsHeaders, corsOptions, withCors } from '@/src/lib/kernel/cors';
 import { requireAuth } from '@imajin/auth';
 import { eq, and, inArray } from 'drizzle-orm';
 

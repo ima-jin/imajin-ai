@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, invites, profiles } from '../../../../src/db/index';
-import { corsHeaders, corsOptions } from '@/src/lib/connections/cors';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
 

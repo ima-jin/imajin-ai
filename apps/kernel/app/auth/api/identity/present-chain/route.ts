@@ -6,7 +6,7 @@ import { db, identities, credentials } from '@/src/db';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { randomUUID } from 'crypto';
-import { rateLimit, getClientIP } from '@/src/lib/auth/rate-limit';
+import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 
 /**
  * POST /api/identity/present-chain

@@ -2,8 +2,8 @@ import { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { ed25519 } from '@noble/curves/ed25519';
 import { db, publicKeys, preKeys } from '@/src/db';
-import { requireAuth } from '@/src/lib/chat/auth';
-import { jsonResponse, errorResponse, generateId } from '@/src/lib/chat/utils';
+import { requireAuth } from '@imajin/auth';
+import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 
 /**
  * POST /api/keys - Upload/update public key bundle

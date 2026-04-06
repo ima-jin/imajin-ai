@@ -3,7 +3,7 @@ import { db, identities, challenges } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { generateChallenge } from '@/src/lib/auth/crypto';
 import { randomUUID } from 'crypto';
-import { rateLimit, getClientIP } from '@/src/lib/auth/rate-limit';
+import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { hasDfosChain } from '@/src/lib/auth/dfos';
 
 /**

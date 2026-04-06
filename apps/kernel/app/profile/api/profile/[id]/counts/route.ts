@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db, follows, profiles } from '@/src/db';
 import { getClient } from '@imajin/db';
-import { jsonResponse, errorResponse } from '@/src/lib/profile/utils';
+import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { eq, count } from 'drizzle-orm';
 
 interface RouteParams {

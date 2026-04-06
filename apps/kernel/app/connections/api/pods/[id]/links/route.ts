@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/src/lib/connections/auth';
+import { requireAuth } from '@imajin/auth';
 import { db, podLinks } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 

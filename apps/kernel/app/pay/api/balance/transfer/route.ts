@@ -18,8 +18,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, balances, transactions } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
-import { genId } from '@/src/lib/pay/id';
-import { corsHeaders } from '@/src/lib/pay/cors';
+import { generateId } from '@/src/lib/kernel/id';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
       source = 'mixed';
     }
 
-    const txId = genId('tx');
+    const txId = generateId('tx');
 
     // Atomic operation: debit sender, credit recipient, log transaction
     await db.transaction(async (tx) => {

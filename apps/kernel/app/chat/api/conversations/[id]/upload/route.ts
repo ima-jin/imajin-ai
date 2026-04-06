@@ -3,8 +3,8 @@ import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import sharp from 'sharp';
-import { requireAuth } from '@/src/lib/chat/auth';
-import { errorResponse } from '@/src/lib/chat/utils';
+import { requireAuth } from '@imajin/auth';
+import { errorResponse } from '@/src/lib/kernel/utils';
 
 const UPLOAD_DIR = '/mnt/media/chat';
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB

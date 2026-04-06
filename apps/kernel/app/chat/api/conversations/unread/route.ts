@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, conversationReadsV2, messagesV2 } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { eq } from 'drizzle-orm';
-import { requireAuth } from '@/src/lib/chat/auth';
-import { corsHeaders, corsOptions } from '@/src/lib/chat/utils';
+import { requireAuth } from '@imajin/auth';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
 
 const rawSql = getClient();
 

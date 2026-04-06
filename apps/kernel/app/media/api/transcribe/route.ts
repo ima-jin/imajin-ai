@@ -1,7 +1,7 @@
 import { optionalAuth } from '@imajin/auth';
 import { NextRequest, NextResponse } from 'next/server';
-import { rateLimit, getClientIP } from '@/src/lib/media/rate-limit';
-import { corsHeaders, corsOptions } from '@/src/lib/media/cors';
+import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';

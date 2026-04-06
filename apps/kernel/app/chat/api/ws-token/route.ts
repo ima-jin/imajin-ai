@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
-import { requireAuth } from '@/src/lib/chat/auth';
-import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/src/lib/chat/utils';
+import { requireAuth } from '@imajin/auth';
+import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
 import { createWsToken } from '@/src/lib/chat/ws-tokens';
 
 export async function OPTIONS(request: NextRequest) {

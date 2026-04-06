@@ -13,7 +13,7 @@ import { onboardTokens } from '@/src/db';
 import { sendEmail } from '@imajin/email';
 import { nanoid } from 'nanoid';
 import { corsHeaders } from '@imajin/config';
-import { rateLimit, getClientIP } from '@/src/lib/auth/rate-limit';
+import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 
 const AUTH_URL = process.env.AUTH_URL || process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
 

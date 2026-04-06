@@ -16,9 +16,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
-import { corsHeaders } from '@/src/lib/pay/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { db, connectedAccounts } from '@/src/db';
-import { genId } from '@/src/lib/pay/id';
+import { generateId } from '@/src/lib/kernel/id';
 import { getStripe } from '@/src/lib/pay/stripe';
 
 export async function OPTIONS(request: NextRequest) {
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
 
     // Persist to DB
     await db.insert(connectedAccounts).values({
-      id: genId('ca'),
+      id: generateId('ca'),
       did,
       stripeAccountId: account.id,
     });

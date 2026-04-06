@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import { eq, and, desc, lt, isNull, inArray } from 'drizzle-orm';
 import { db, conversationsV2, messagesV2, messageReactionsV2 } from '@/src/db';
-import { requireAuth } from '@/src/lib/chat/auth';
-import { jsonResponse, errorResponse, generateId } from '@/src/lib/chat/utils';
+import { requireAuth } from '@imajin/auth';
+import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';
 import { hasCapability, requiredCapability, CAPABILITY_MESSAGES } from '@/src/lib/chat/capabilities';
 import { notify } from '@imajin/notify';

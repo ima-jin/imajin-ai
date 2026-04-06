@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, storedKeys, mfaMethods } from '@/src/db';
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
-import { rateLimit, getClientIP } from '@/src/lib/auth/rate-limit';
+import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });

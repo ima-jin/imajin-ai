@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db, profiles } from '@/src/db';
 import { requireAuth, emitAttestation } from '@imajin/auth';
-import { jsonResponse, errorResponse, isValidHandle } from '@/src/lib/profile/utils';
+import { jsonResponse, errorResponse, isValidHandle } from '@/src/lib/kernel/utils';
 import { eq } from 'drizzle-orm';
 
 /**

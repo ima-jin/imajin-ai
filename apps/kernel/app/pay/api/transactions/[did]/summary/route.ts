@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, transactions } from '@/src/db';
 import { eq, and, sql, or } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
-import { corsHeaders } from '@/src/lib/pay/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });

@@ -4,7 +4,7 @@ export type { Identity, AuthResult, AuthError } from "@imajin/auth";
 /**
  * Check if a DID is in the trust graph (has at least one active connection)
  */
-async function isInGraph(did: string): Promise<boolean> {
+export async function isInGraph(did: string): Promise<boolean> {
   const { db, connections } = await import("../db/index");
   const { eq, or, and, isNull } = await import("drizzle-orm");
 
