@@ -32,8 +32,9 @@ export async function GET(
     );
   }
 
-  // Must be requesting your own balance
-  if (authResult.identity.id !== decoded) {
+  // Must be requesting your own balance (or acting as scope)
+  const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+  if (effectiveDid !== decoded) {
     return NextResponse.json(
       { error: 'Forbidden - can only access your own balance' },
       { status: 403, headers: cors }

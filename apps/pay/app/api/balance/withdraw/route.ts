@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const did = authResult.identity.id;
+  const did = authResult.identity.actingAs || authResult.identity.id;
 
   try {
     const body = await request.json();

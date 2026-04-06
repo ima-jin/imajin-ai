@@ -23,7 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, balances, transactions } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
-import { extractToken, validateToken } from '@/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { genId } from '@/src/lib/id';
 import { corsHeaders } from '@/src/lib/cors';
 
@@ -35,21 +35,15 @@ export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
   try {
-    const token = extractToken(request.headers.get('authorization'));
-    if (!token) {
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
       return NextResponse.json(
-        { error: 'Unauthorized - no token provided' },
+        { error: 'Unauthorized' },
         { status: 401, headers: cors }
       );
     }
 
-    const validation = await validateToken(token);
-    if (!validation.valid || !validation.identity) {
-      return NextResponse.json(
-        { error: 'Unauthorized - invalid token' },
-        { status: 401, headers: cors }
-      );
-    }
+    const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
 
     const body = await request.json();
     const { from_did, event_id, multiplier, recipient_dids, metadata = {} } = body;
@@ -76,8 +70,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Auth check: from_did must match session
-    if (validation.identity.id !== from_did) {
+    // Auth check: from_did must match session (or acting-as scope)
+    if (effectiveDid !== from_did) {
       return NextResponse.json(
         { error: 'Forbidden - can only top up from your own DID' },
         { status: 403, headers: cors }

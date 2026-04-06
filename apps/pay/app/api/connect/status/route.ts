@@ -48,7 +48,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (authResult.identity.id !== did) {
+  const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+  if (effectiveDid !== did) {
     return NextResponse.json(
       { error: 'Not authorized to access this account' },
       { status: 403, headers: cors }

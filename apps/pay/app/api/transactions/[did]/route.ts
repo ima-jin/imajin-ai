@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, transactions } from '@/src/db';
 import { eq, and, desc, or } from 'drizzle-orm';
-import { extractToken, validateToken } from '@/lib/auth';
+import { requireAuth } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/cors';
 
 export async function OPTIONS(request: NextRequest) {
@@ -25,24 +25,17 @@ export async function GET(
   try {
     const { did } = params;
 
-    // Auth: must be the DID owner
-    const token = extractToken(request.headers.get('authorization'));
-    if (!token) {
+    // Auth: must be the DID owner (or acting as scope)
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
       return NextResponse.json(
-        { error: 'Unauthorized - no token provided' },
+        { error: 'Unauthorized' },
         { status: 401, headers: cors }
       );
     }
 
-    const validation = await validateToken(token);
-    if (!validation.valid || !validation.identity) {
-      return NextResponse.json(
-        { error: 'Unauthorized - invalid token' },
-        { status: 401, headers: cors }
-      );
-    }
-
-    if (validation.identity.id !== did) {
+    const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+    if (effectiveDid !== did) {
       return NextResponse.json(
         { error: 'Forbidden - can only access your own transactions' },
         { status: 403, headers: cors }
