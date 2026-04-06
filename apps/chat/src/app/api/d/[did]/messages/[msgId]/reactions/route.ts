@@ -38,6 +38,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { did, msgId } = await params;
 
   const cookieHeader = request.headers.get('Cookie');
@@ -67,7 +68,7 @@ export async function POST(
 
     await db.insert(messageReactionsV2).values({
       messageId: msgId,
-      did: identity.id,
+      did: effectiveDid,
       emoji,
     }).onConflictDoNothing();
 
@@ -75,7 +76,7 @@ export async function POST(
     fetch(`http://localhost:${port}/__ws_broadcast`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId: did, type: 'reaction_added', messageId: msgId, emoji, senderDid: identity.id }),
+      body: JSON.stringify({ conversationId: did, type: 'reaction_added', messageId: msgId, emoji, senderDid: effectiveDid }),
     }).catch(() => {});
 
     return jsonResponse({ ok: true }, 201, cors);
@@ -99,6 +100,7 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { did, msgId } = await params;
 
   const cookieHeader = request.headers.get('Cookie');
@@ -118,7 +120,7 @@ export async function DELETE(
     await db.delete(messageReactionsV2).where(
       and(
         eq(messageReactionsV2.messageId, msgId),
-        eq(messageReactionsV2.did, identity.id),
+        eq(messageReactionsV2.did, effectiveDid),
         eq(messageReactionsV2.emoji, emoji)
       )
     );
@@ -127,7 +129,7 @@ export async function DELETE(
     fetch(`http://localhost:${port}/__ws_broadcast`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId: did, type: 'reaction_removed', messageId: msgId, emoji, senderDid: identity.id }),
+      body: JSON.stringify({ conversationId: did, type: 'reaction_removed', messageId: msgId, emoji, senderDid: effectiveDid }),
     }).catch(() => {});
 
     return new Response(null, { status: 204, headers: cors });

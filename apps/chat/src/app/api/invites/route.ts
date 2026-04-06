@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
 
   try {
     const body = await request.json();
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
     await db.insert(invites).values({
       id: inviteId,
       conversationId,
-      createdBy: identity.id,
+      createdBy: effectiveDid,
       forDid: forDid || null,
       maxUses: maxUses?.toString() || null,
       expiresAt,

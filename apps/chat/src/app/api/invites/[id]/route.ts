@@ -77,6 +77,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { id: inviteId } = await params;
 
   try {
@@ -100,7 +101,7 @@ export async function POST(
       return errorResponse('Invite has reached maximum uses', 410);
     }
 
-    if (invite.forDid && invite.forDid !== identity.id) {
+    if (invite.forDid && invite.forDid !== effectiveDid) {
       return errorResponse('This invite is for a different user', 403);
     }
 
@@ -134,6 +135,7 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { id: inviteId } = await params;
 
   try {
@@ -145,7 +147,7 @@ export async function DELETE(
       return errorResponse('Invite not found', 404);
     }
 
-    if (invite.createdBy !== identity.id) {
+    if (invite.createdBy !== effectiveDid) {
       // Check if user has access to the conversation
       const hasAccess = await verifyAccess(invite.conversationId, request.headers.get('Cookie'));
       if (!hasAccess) {

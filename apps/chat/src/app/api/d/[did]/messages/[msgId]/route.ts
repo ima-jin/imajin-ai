@@ -25,6 +25,7 @@ export async function PATCH(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { did, msgId } = await params;
 
   try {
@@ -39,7 +40,7 @@ export async function PATCH(
       return errorResponse('Message not found', 404, cors);
     }
 
-    if (existing.fromDid !== identity.id) {
+    if (existing.fromDid !== effectiveDid) {
       return errorResponse('You can only edit your own messages', 403, cors);
     }
 
@@ -94,6 +95,7 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { did, msgId } = await params;
 
   try {
@@ -108,7 +110,7 @@ export async function DELETE(
       return errorResponse('Message not found', 404, cors);
     }
 
-    if (existing.fromDid !== identity.id) {
+    if (existing.fromDid !== effectiveDid) {
       return errorResponse('You can only delete your own messages', 403, cors);
     }
 

@@ -34,11 +34,12 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { did, memberDid } = await params;
 
   try {
     // Cannot remove yourself — use leave instead
-    if (memberDid === identity.id) {
+    if (memberDid === effectiveDid) {
       return errorResponse('Cannot remove yourself — use the leave endpoint instead', 400, cors);
     }
 
@@ -46,7 +47,7 @@ export async function DELETE(
     const callerRows = await sql`
       SELECT role FROM chat.conversation_members
       WHERE conversation_did = ${did}
-        AND member_did = ${identity.id}
+        AND member_did = ${effectiveDid}
         AND left_at IS NULL
       LIMIT 1
     `;

@@ -32,6 +32,7 @@ export async function PUT(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { id, msgId } = await params;
   const conversationDid = decodeURIComponent(id);
 
@@ -47,7 +48,7 @@ export async function PUT(
       return errorResponse('Message not found', 404);
     }
 
-    if (message.fromDid !== identity.id) {
+    if (message.fromDid !== effectiveDid) {
       return errorResponse('You can only edit your own messages', 403);
     }
 
@@ -100,6 +101,7 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { id, msgId } = await params;
   const conversationDid = decodeURIComponent(id);
 
@@ -116,7 +118,7 @@ export async function DELETE(
     }
 
     // Author can always delete their own; for others, check access via auth service
-    if (message.fromDid !== identity.id) {
+    if (message.fromDid !== effectiveDid) {
       const hasAccess = await verifyAccess(conversationDid, request.headers.get('Cookie'));
       if (!hasAccess) {
         return errorResponse('You do not have permission to delete this message', 403);

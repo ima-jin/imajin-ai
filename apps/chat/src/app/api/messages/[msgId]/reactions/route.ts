@@ -30,6 +30,7 @@ export async function GET(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { msgId } = await params;
 
   try {
@@ -51,7 +52,7 @@ export async function GET(
       .select({
         emoji: messageReactionsV2.emoji,
         count: sql<number>`count(*)::int`,
-        reacted: sql<boolean>`bool_or(${messageReactionsV2.did} = ${identity.id})`,
+        reacted: sql<boolean>`bool_or(${messageReactionsV2.did} = ${effectiveDid})`,
       })
       .from(messageReactionsV2)
       .where(eq(messageReactionsV2.messageId, msgId))
@@ -77,6 +78,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { msgId } = await params;
 
   try {
@@ -102,14 +104,14 @@ export async function POST(
 
     await db
       .insert(messageReactionsV2)
-      .values({ messageId: msgId, did: identity.id, emoji })
+      .values({ messageId: msgId, did: effectiveDid, emoji })
       .onConflictDoNothing();
 
     const reactions = await db
       .select({
         emoji: messageReactionsV2.emoji,
         count: sql<number>`count(*)::int`,
-        reacted: sql<boolean>`bool_or(${messageReactionsV2.did} = ${identity.id})`,
+        reacted: sql<boolean>`bool_or(${messageReactionsV2.did} = ${effectiveDid})`,
       })
       .from(messageReactionsV2)
       .where(eq(messageReactionsV2.messageId, msgId))
@@ -124,7 +126,7 @@ export async function POST(
         type: 'reaction_added',
         messageId: msgId,
         emoji,
-        did: identity.id,
+        did: effectiveDid,
         reactions,
       }),
     }).catch(() => {});
@@ -149,6 +151,7 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { msgId } = await params;
 
   try {
@@ -177,7 +180,7 @@ export async function DELETE(
       .where(
         and(
           eq(messageReactionsV2.messageId, msgId),
-          eq(messageReactionsV2.did, identity.id),
+          eq(messageReactionsV2.did, effectiveDid),
           eq(messageReactionsV2.emoji, emoji)
         )
       );
@@ -186,7 +189,7 @@ export async function DELETE(
       .select({
         emoji: messageReactionsV2.emoji,
         count: sql<number>`count(*)::int`,
-        reacted: sql<boolean>`bool_or(${messageReactionsV2.did} = ${identity.id})`,
+        reacted: sql<boolean>`bool_or(${messageReactionsV2.did} = ${effectiveDid})`,
       })
       .from(messageReactionsV2)
       .where(eq(messageReactionsV2.messageId, msgId))
@@ -201,7 +204,7 @@ export async function DELETE(
         type: 'reaction_removed',
         messageId: msgId,
         emoji,
-        did: identity.id,
+        did: effectiveDid,
         reactions,
       }),
     }).catch(() => {});
