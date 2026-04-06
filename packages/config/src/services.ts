@@ -31,6 +31,8 @@ export interface ServiceDefinition {
   category: ServiceCategory;
   /** External URL override (bypasses subdomain convention) */
   externalUrl?: string;
+  /** Path on www service (env-aware — resolves against www's URL at runtime) */
+  wwwPath?: string;
 }
 
 export const SERVICES: readonly ServiceDefinition[] = [
@@ -54,9 +56,9 @@ export const SERVICES: readonly ServiceDefinition[] = [
   { name: "market",      label: "Market",      icon: "🏪", description: "Local commerce — buy and sell with trust",          devPort: 3104, prodPort: 7104, schema: "market",      tier: "imajin", visibility: "public",        category: "core" },
 
   // Meta — project info and external resources surfaced in the launcher
-  { name: 'project',     label: 'Project',     icon: '📖', description: 'Thesis, whitepaper, essays, RFCs',                  devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', externalUrl: 'https://dev-www.imajin.ai/project' },
+  { name: 'project',     label: 'Project',     icon: '📖', description: 'Thesis, whitepaper, essays, RFCs',                  devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', wwwPath: '/project' },
   { name: 'github',      label: 'GitHub',      icon: '🐙', description: 'Source code',                                       devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', externalUrl: 'https://github.com/ima-jin/imajin-ai' },
-  { name: 'docs',        label: 'Docs',        icon: '📄', description: 'API documentation',                                 devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', externalUrl: 'https://dev-www.imajin.ai/develper-guide' },
+  { name: 'docs',        label: 'Docs',        icon: '📄', description: 'API documentation',                                 devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', wwwPath: '/developer-guide' },
 
   // Connected apps (separate repos) will use the plugin architecture (#249).
   // Not included here — they authenticate via delegated sessions, not the monorepo manifest.
@@ -89,8 +91,19 @@ export function getPublicUrl(
   name: string,
   options?: { prefix?: string; domain?: string }
 ): string {
+  const svc = SERVICES.find((s) => s.name === name);
+
+  // External URL takes absolute priority (e.g. GitHub)
+  if (svc?.externalUrl) return svc.externalUrl;
+
   const domain = options?.domain || "imajin.ai";
   const prefix = options?.prefix;
+
+  // wwwPath: resolve against www's URL (env-aware)
+  if (svc?.wwwPath) {
+    const wwwUrl = getPublicUrl("www", options);
+    return `${wwwUrl}${svc.wwwPath}`;
+  }
 
   // Detect localhost dev environment
   if (domain.includes("localhost") || prefix?.includes("localhost")) {
