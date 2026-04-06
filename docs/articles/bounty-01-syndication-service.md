@@ -98,4 +98,36 @@ The meta-point: the first working demonstration of .fair attribution in producti
 
 ---
 
+## Media Manager Integration (April 2026 Update)
+
+The syndication service should live inside the **media manager** as a publishing feature, not as a standalone CLI tool. Media already handles assets, folders, and references — publishing is another output surface.
+
+### Flow
+1. Write content as markdown in the media manager (or import from `docs/articles/`)
+2. Select distribution targets (per-scope — each forest/community has its own connected platforms)
+3. Hit publish → syndication adapters push to all targets simultaneously
+4. Receipts written back as media asset references (platform post ID, URL, timestamp)
+
+### Architecture
+- **Kernel service:** Publishing routes live in `apps/kernel/app/media/api/publish/`
+- **Userspace capable:** Any Imajin app can trigger syndication via the media API
+- **Scope-aware:** Distribution targets are per-scope. Mooi publishes to Mooi's channels, not yours.
+- **Credential storage:** Platform OAuth tokens stored on `media.assets` or a new `media.platform_credentials` table, scoped to the acting DID
+
+### Current Platform Status (April 2026)
+| Platform | API | Method | Status |
+|----------|-----|--------|--------|
+| imajin.ai | ✅ Native | Commit to `docs/articles/` | Ready |
+| DFOS/Cleartxt | ✅ Native | Relay ingest (already working — Essay 1, Day 61) | Ready |
+| LinkedIn | ✅ Official | Community Management API, OAuth 2.0 | Needs app + token |
+| Substack | 🟡 Unofficial | Session cookie-based Python client (`substackapi.dev`) | Fragile but functional |
+
+### Revenue Surface
+Managed syndication as a service — connect your platforms, publish everywhere, attribution baked in via `.fair`. This is one of the Imajin business model lines: infrastructure that earns by being useful, not by capturing content.
+
+### Weekly Updates
+First use case: weekly project updates (Week 9+). Write once in markdown, publish to imajin.ai + DFOS + LinkedIn + Substack. The syndication service eats its own dog food from day one.
+
+---
+
 *Questions? Comment below or reach out via imajin.ai*
