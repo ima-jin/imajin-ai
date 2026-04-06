@@ -35,7 +35,7 @@ function scopeIcon(scope: string): string {
 }
 
 export default function ForestSettingsPage({ params }: { params: { groupDid: string } }) {
-  const { groupDid } = params;
+  const groupDid = decodeURIComponent(params.groupDid);
   const [loading, setLoading] = useState(true);
   const [group, setGroup] = useState<GroupDetails | null>(null);
   const [enabledServices, setEnabledServices] = useState<string[]>([]);
