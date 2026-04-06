@@ -51,8 +51,8 @@ export default async function Home() {
 
       {/* LOGO + TAGLINE */}
       <section className="flex flex-col items-center text-center mb-12">
-        <div className="w-12 h-12 flex items-center justify-center mb-3">
-          今人 (ima-jin)
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-3">
+          <span className="text-4xl font-bold text-amber-500">今</span>
         </div>
         <p className="text-lg text-gray-400">The sovereign browser.</p>
         <p className="text-sm text-gray-500 mt-1">
