@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     const body = await request.json();
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
         { did: PLATFORM_DID, role: 'platform', share: PLATFORM_FEE },
       ],
       distributions: [
-        { did: identity.id, role: 'creator', share: 1.0 },
+        { did, role: 'creator', share: 1.0 },
       ],
     };
 
@@ -104,7 +105,7 @@ export async function POST(request: NextRequest) {
       did: eventDid,
       publicKey: eventKeypair.publicKey,
       privateKey: eventKeypair.privateKey,
-      creatorDid: identity.id,
+      creatorDid: did,
       title,
       description,
       startsAt: new Date(startsAt),
@@ -162,7 +163,7 @@ export async function POST(request: NextRequest) {
         await fetch(`${CHAT_URL}/api/d/${encodeURIComponent(eventDid)}/members`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ memberDid: identity.id, role: 'admin' }),
+          body: JSON.stringify({ memberDid: did, role: 'admin' }),
         });
         // Update conversation name (the POST creates with empty name)
         const { getClient: getChatClient } = await import('@imajin/db');

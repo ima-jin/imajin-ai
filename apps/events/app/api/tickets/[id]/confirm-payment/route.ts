@@ -22,6 +22,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
   const { id } = await params;
 
   try {
@@ -41,7 +42,7 @@ export async function POST(
     }
 
     // Verify caller is an event organizer
-    const orgCheck = await isEventOrganizer(ticket.eventId, identity.id);
+    const orgCheck = await isEventOrganizer(ticket.eventId, did);
     if (!orgCheck.authorized) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
