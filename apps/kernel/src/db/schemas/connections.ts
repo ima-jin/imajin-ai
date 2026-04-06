@@ -1,8 +1,8 @@
 import { pgTable, pgSchema, index, text, timestamp, unique, integer, foreignKey, primaryKey } from "drizzle-orm/pg-core";
 
-export const connections = pgSchema("connections");
+export const connectionsSchema = pgSchema("connections");
 
-export const podsInConnections = connections.table("pods", {
+export const podsInConnections = connectionsSchema.table("pods", {
   id: text().primaryKey().notNull(),
   name: text().notNull(),
   description: text(),
@@ -18,7 +18,7 @@ export const podsInConnections = connections.table("pods", {
   index("trust_pods_owner_idx").using("btree", table.ownerDid.asc().nullsLast().op("text_ops")),
 ]);
 
-export const invitesInConnections = connections.table("invites", {
+export const invitesInConnections = connectionsSchema.table("invites", {
   id: text().primaryKey().notNull(),
   code: text().notNull(),
   fromDid: text("from_did").notNull(),
@@ -47,24 +47,7 @@ export const invitesInConnections = connections.table("invites", {
   unique("trust_invites_code_unique").on(table.code),
 ]);
 
-export const graphInvitesInConnections = connections.table("graph_invites", {
-  id: text().primaryKey().notNull(),
-  inviterDid: text("inviter_did").notNull(),
-  inviteeEmail: text("invitee_email"),
-  inviteeDid: text("invitee_did"),
-  status: text().default('pending').notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-  acceptedAt: timestamp("accepted_at", { withTimezone: true, mode: 'string' }),
-  expiresAt: timestamp("expires_at", { withTimezone: true, mode: 'string' }).notNull(),
-  note: text(),
-}, (table) => [
-  index("idx_trust_graph_invites_did").using("btree", table.inviteeDid.asc().nullsLast().op("text_ops")),
-  index("idx_trust_graph_invites_email").using("btree", table.inviteeEmail.asc().nullsLast().op("text_ops")),
-  index("idx_trust_graph_invites_inviter").using("btree", table.inviterDid.asc().nullsLast().op("text_ops")),
-  index("idx_trust_graph_invites_status").using("btree", table.status.asc().nullsLast().op("text_ops")),
-]);
-
-export const podKeysInConnections = connections.table("pod_keys", {
+export const podKeysInConnections = connectionsSchema.table("pod_keys", {
   podId: text("pod_id").notNull(),
   version: integer().notNull(),
   rotatedAt: timestamp("rotated_at", { mode: 'string' }).defaultNow().notNull(),
@@ -78,7 +61,7 @@ export const podKeysInConnections = connections.table("pod_keys", {
   primaryKey({ columns: [table.podId, table.version], name: "trust_pod_keys_pod_id_version_pk" }),
 ]);
 
-export const podMemberKeysInConnections = connections.table("pod_member_keys", {
+export const podMemberKeysInConnections = connectionsSchema.table("pod_member_keys", {
   podId: text("pod_id").notNull(),
   version: integer().notNull(),
   did: text().notNull(),
@@ -87,7 +70,7 @@ export const podMemberKeysInConnections = connections.table("pod_member_keys", {
   primaryKey({ columns: [table.podId, table.version, table.did], name: "trust_pod_member_keys_pod_id_version_did_pk" }),
 ]);
 
-export const podLinksInConnections = connections.table("pod_links", {
+export const podLinksInConnections = connectionsSchema.table("pod_links", {
   parentPodId: text("parent_pod_id").notNull(),
   childPodId: text("child_pod_id").notNull(),
   linkedBy: text("linked_by"),
@@ -107,7 +90,7 @@ export const podLinksInConnections = connections.table("pod_links", {
   primaryKey({ columns: [table.parentPodId, table.childPodId], name: "trust_pod_links_parent_pod_id_child_pod_id_pk" }),
 ]);
 
-export const podMembersInConnections = connections.table("pod_members", {
+export const podMembersInConnections = connectionsSchema.table("pod_members", {
   podId: text("pod_id").notNull(),
   did: text().notNull(),
   role: text().default('member').notNull(),
@@ -123,3 +106,22 @@ export const podMembersInConnections = connections.table("pod_members", {
   }).onDelete("cascade"),
   primaryKey({ columns: [table.podId, table.did], name: "trust_pod_members_pod_id_did_pk" }),
 ]);
+
+export const connections = connectionsSchema.table('connections', {
+  didA: text('did_a').notNull(),
+  didB: text('did_b').notNull(),
+  connectedAt: timestamp('connected_at', { withTimezone: true }).defaultNow().notNull(),
+  disconnectedAt: timestamp('disconnected_at', { withTimezone: true }),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.didA, table.didB] }),
+  didAIdx: index('connections_did_a_idx').on(table.didA),
+  didBIdx: index('connections_did_b_idx').on(table.didB),
+}));
+
+export const nicknames = connectionsSchema.table('nicknames', {
+  did: text('did').notNull(),
+  target: text('target').notNull(),
+  nickname: text('nickname').notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.did, table.target] }),
+}));
