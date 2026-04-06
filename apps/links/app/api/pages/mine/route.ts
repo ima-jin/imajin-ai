@@ -14,10 +14,11 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     const page = await db.query.linkPages.findFirst({
-      where: eq(linkPages.did, identity.id),
+      where: eq(linkPages.did, did),
     });
 
     if (!page) {

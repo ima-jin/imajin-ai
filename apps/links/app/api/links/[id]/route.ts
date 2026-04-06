@@ -21,6 +21,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     // Fetch link with page
@@ -39,7 +40,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       where: eq(linkPages.id, link.pageId),
     });
 
-    if (!page || page.did !== identity.id) {
+    if (!page || page.did !== did) {
       return errorResponse('Not authorized to update this link', 403);
     }
 
@@ -91,6 +92,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     // Fetch link with page
@@ -109,7 +111,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       where: eq(linkPages.id, link.pageId),
     });
 
-    if (!page || page.did !== identity.id) {
+    if (!page || page.did !== did) {
       return errorResponse('Not authorized to delete this link', 403);
     }
 

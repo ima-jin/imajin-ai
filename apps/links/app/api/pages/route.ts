@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     const body = await request.json();
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     // Check if page already exists for this DID
     const existingDid = await db.query.linkPages.findFirst({
-      where: eq(linkPages.did, identity.id),
+      where: eq(linkPages.did, did),
     });
 
     if (existingDid) {
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
     // Create page
     const [page] = await db.insert(linkPages).values({
       id: generateId('page'),
-      did: identity.id,
+      did: did,
       handle,
       title,
       bio: bio || null,
