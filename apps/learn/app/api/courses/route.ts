@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
   const body = await request.json();
 
   const { title, description, slug, price, currency, visibility, imageUrl, imageAssetId, tags, metadata } = body;
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
 
   const course = {
     id: generateId('crs'),
-    creatorDid: identity.id,
+    creatorDid: did,
     title: title.trim(),
     description: description?.trim() || null,
     slug: courseSlug,

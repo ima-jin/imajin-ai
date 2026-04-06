@@ -19,7 +19,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   const courseResult = await db.select().from(courses).where(eq(courses.slug, slug)).limit(1);
   if (!courseResult[0]) return errorResponse('Course not found', 404);
-  if (courseResult[0].creatorDid !== authResult.identity.id) return errorResponse('Not authorized', 403);
+  const did = authResult.identity.actingAs || authResult.identity.id;
+  if (courseResult[0].creatorDid !== did) return errorResponse('Not authorized', 403);
 
   const body = await request.json();
   const { order } = body;
