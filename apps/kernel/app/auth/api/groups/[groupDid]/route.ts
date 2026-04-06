@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, groupIdentities, groupControllers } from '@/src/db';
+import { db, identities, groupIdentities, groupControllers, profiles } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
-
-const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL!;
 const VALID_SCOPES = ['org', 'community', 'family'];
 
 /**
@@ -132,11 +130,10 @@ export async function PATCH(
 
       // Update profile (fire-and-forget)
       try {
-        await fetch(`${PROFILE_SERVICE_URL}/api/profiles/${encodeURIComponent(groupDid)}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ displayName: name.trim().slice(0, 100), description }),
-        });
+        await db
+          .update(profiles)
+          .set({ displayName: name.trim().slice(0, 100), bio: description || null, updatedAt: new Date() })
+          .where(eq(profiles.did, groupDid));
       } catch (err) {
         console.error('[groups] Profile update failed (non-fatal):', err);
       }

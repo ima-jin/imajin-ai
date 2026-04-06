@@ -117,7 +117,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const tools = createPresenceTools({
     eventsUrl: process.env.EVENTS_SERVICE_URL ?? '',
     connectionsUrl: CONNECTIONS_URL,
-    authUrl: process.env.AUTH_SERVICE_URL ?? '',
+    authUrl: '',
     payUrl: process.env.PAY_SERVICE_URL ?? '',
     profileUrl: process.env.NEXT_PUBLIC_PROFILE_URL ?? '',
     learnUrl: process.env.LEARN_SERVICE_URL ?? '',

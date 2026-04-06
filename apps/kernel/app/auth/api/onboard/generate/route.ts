@@ -9,8 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/src/db';
-import { identities, credentials, groupControllers } from '@/src/db';
+import { db, identities, credentials, groupControllers, profiles } from '@/src/db';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { emitAttestation } from '@imajin/auth';
@@ -18,8 +17,6 @@ import { corsHeaders } from '@imajin/config';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-
-const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL!;
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -130,17 +127,11 @@ export async function POST(request: NextRequest) {
     // Create profile row (fire-and-forget)
     if (created) {
       try {
-        await fetch(`${PROFILE_SERVICE_URL}/api/profile`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Cookie: `${cookieOptions.name}=${sessionToken}`,
-          },
-          body: JSON.stringify({
-            displayName: name?.trim().slice(0, 100) || 'Anonymous',
-            displayType: 'human',
-          }),
-        });
+        await db.insert(profiles).values({
+          did,
+          displayName: name?.trim().slice(0, 100) || 'Anonymous',
+          displayType: 'human',
+        }).onConflictDoNothing();
       } catch (err) {
         console.error('[onboard/generate] Profile creation failed (non-fatal):', err);
       }

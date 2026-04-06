@@ -258,28 +258,94 @@ export async function POST(request: NextRequest) {
 
     // Auto-accept the invite (create the connection)
     // We do this server-side so the new user lands with their first connection
-    try {
-      await fetch(`${CONNECTIONS_SERVICE_URL}/api/invites/${inviteCode}/accept`, {
-        method: 'POST',
-        headers: {
-          Cookie: `${cookieConfig.name}=${token}`,
-        },
-      });
-      // Update response to reflect accepted invite
-      const acceptedResponse = NextResponse.json({
-        did: identity.id,
-        handle: identity.handle,
-        type: identity.type,
-        created: true,
-        inviteAccepted: true,
-        dfosChainLinked,
-      }, { status: 201 });
-      acceptedResponse.cookies.set(cookieConfig.name, token, cookieConfig.options);
-      return acceptedResponse;
-    } catch {
-      // Registration succeeded but auto-accept failed — they can accept manually
-      return response;
+    if (inviteData && inviteCode) {
+      try {
+        const podId = generateId('pod_');
+        const senderLabel = inviteData.fromHandle || inviteData.fromDid.slice(0, 16);
+        const accepterLabel = identity.handle || identity.id.slice(0, 16);
+
+        await db.insert(pods).values({
+          id: podId,
+          name: `${senderLabel} ↔ ${accepterLabel}`,
+          ownerDid: inviteData.fromDid,
+          type: 'personal',
+          visibility: 'private',
+        });
+
+        await db.insert(podMembers).values([
+          { podId, did: inviteData.fromDid, role: 'member', addedBy: inviteData.fromDid },
+          { podId, did: identity.id, role: 'member', addedBy: identity.id },
+        ]);
+
+        const [connDidA, connDidB] = [inviteData.fromDid, identity.id].sort((a, b) => a.localeCompare(b));
+        await db.insert(connections).values({ didA: connDidA, didB: connDidB }).onConflictDoNothing();
+
+        const now = new Date();
+        await db
+          .update(invites)
+          .set({
+            status: 'accepted',
+            acceptedAt: now,
+            usedCount: sql`${invites.usedCount} + 1`,
+            consumedBy: identity.id,
+            toDid: identity.id,
+          })
+          .where(eq(invites.code, inviteCode));
+
+        emitAttestation({
+          issuer_did: identity.id,
+          subject_did: inviteData.fromDid,
+          type: 'connection.accepted',
+          context_id: podId,
+          context_type: 'connection',
+          payload: { invite_code: inviteCode },
+        }).catch((err) => console.error('[register] Attestation (connection.accepted) error (non-fatal):', err));
+
+        emitAttestation({
+          issuer_did: inviteData.fromDid,
+          subject_did: identity.id,
+          type: 'vouch',
+          context_id: podId,
+          context_type: 'connection',
+          payload: { invite_code: inviteCode },
+        }).catch((err) => console.error('[register] Attestation (vouch) error (non-fatal):', err));
+
+        // Notify inviter — fire and forget
+        (async () => {
+          const [inviterProfile] = await db
+            .select()
+            .from(profiles)
+            .where(eq(profiles.did, inviteData.fromDid))
+            .limit(1);
+
+          notify.send({
+            to: inviteData.fromDid,
+            scope: 'connection:invite-accepted',
+            data: {
+              ...(inviterProfile?.contactEmail && { email: inviterProfile.contactEmail }),
+              name: identity.handle || identity.id.slice(0, 16),
+            },
+          }).catch((err: unknown) => console.error('[register] Notify error (non-fatal):', err));
+        })().catch((err: unknown) => console.error('[register] Notify setup error (non-fatal):', err));
+
+        const acceptedResponse = NextResponse.json({
+          did: identity.id,
+          handle: identity.handle,
+          type: identity.type,
+          created: true,
+          inviteAccepted: true,
+          dfosChainLinked,
+        }, { status: 201 });
+        acceptedResponse.cookies.set(cookieConfig.name, token, cookieConfig.options);
+        return acceptedResponse;
+      } catch (err) {
+        console.error('[register] Auto-accept failed (non-fatal):', err);
+        // Registration succeeded but auto-accept failed — they can accept manually
+        return response;
+      }
     }
+
+    return response;
 
   } catch (error) {
     console.error('Register error:', error);

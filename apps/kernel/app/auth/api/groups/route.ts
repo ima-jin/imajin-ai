@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, storedKeys, groupIdentities, groupControllers } from '@/src/db';
+import { db, identities, storedKeys, groupIdentities, groupControllers, profiles } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { generateKeypair } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { emitAttestation } from '@imajin/auth';
 
-const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL!;
 const VALID_SCOPES = ['org', 'community', 'family'] as const;
 type GroupScope = typeof VALID_SCOPES[number];
 
@@ -146,17 +145,13 @@ export async function POST(request: NextRequest) {
 
     // Create profile (fire-and-forget)
     try {
-      await fetch(`${PROFILE_SERVICE_URL}/api/profiles`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          did: groupDid,
-          displayName: name.trim().slice(0, 100),
-          handle: handle || undefined,
-          description: description || undefined,
-          type: scope,
-        }),
-      });
+      await db.insert(profiles).values({
+        did: groupDid,
+        displayName: name.trim().slice(0, 100),
+        handle: handle || null,
+        bio: description || null,
+        displayType: scope,
+      }).onConflictDoNothing();
     } catch (err) {
       console.error('[groups] Profile creation failed (non-fatal):', err);
     }
