@@ -171,7 +171,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   const footer = (
     <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-1">
       <a
-        href={`${wwwUrl}/apps`}
+        href={`${wwwUrl}/`}
         className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
       >
         See all apps →
