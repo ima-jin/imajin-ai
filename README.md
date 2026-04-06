@@ -21,7 +21,7 @@ The protocol is organized as a matrix of **four identity scopes** × **five prim
 
 Every problem the protocol solves is a cell in this matrix. Every service in this repo implements cells.
 
-14 services. 50 days. $4,445 in API costs. 8.59M tokens. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
+7 apps. 50 days. $4,445 in API costs. 8.59M tokens. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
 
 ```
 ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
@@ -47,16 +47,8 @@ Core services that make up the sovereign stack.
 
 | App | Dev Port | Prod Port | Domain | Purpose | Status |
 |-----|----------|-----------|--------|---------|--------|
-| [www](./apps/www) | 3000 | 7000 | [imajin.ai](https://imajin.ai) | Landing page, essays | ✅ Live |
-| [auth](./apps/auth) | 3001 | 7001 | [auth.imajin.ai](https://auth.imajin.ai) | Identity (keypair, DID, sign/verify) | ✅ Live |
-| [registry](./apps/registry) | 3002 | 7002 | [registry.imajin.ai](https://registry.imajin.ai) | Node discovery & federation | ✅ Live |
-| [connections](./apps/connections) | 3003 | 7003 | [connections.imajin.ai](https://connections.imajin.ai) | Trust graph | ✅ Live |
-| [pay](./apps/pay) | 3004 | 7004 | [pay.imajin.ai](https://pay.imajin.ai) | Payments (Stripe + Solana) | ✅ Live |
-| [profile](./apps/profile) | 3005 | 7005 | [profile.imajin.ai](https://profile.imajin.ai) | Public identity pages | ✅ Live |
+| [kernel](./apps/kernel) | 3000 | 7000 | [imajin.ai](https://imajin.ai) | Core platform — auth, identity, pay, profile, connections, registry, chat, media, notify | ✅ Live |
 | [events](./apps/events) | 3006 | 7006 | [events.imajin.ai](https://events.imajin.ai) | Create events, sell tickets | ✅ Live |
-| [chat](./apps/chat) | 3007 | 7007 | [chat.imajin.ai](https://chat.imajin.ai) | E2EE messaging, trust-bound | ✅ Live |
-| [notify](./apps/notify) | 3008 | 7008 | [notify.imajin.ai](notify.imajin.ai) | Notifications, preferences, broadcasts | ✅ Live |
-| [media](./apps/media) | 3009 | 7009 | [media.imajin.ai](https://media.imajin.ai) | Asset storage, .fair attribution, transcription | 🧪 Alpha |
 
 ### Imajin Apps (3100+/7100+)
 
@@ -195,16 +187,8 @@ cd apps/auth && pnpm db:push
 ```
 imajin-ai/
 ├── apps/
-│   ├── www/           # imajin.ai — landing, essays
-│   ├── auth/          # Identity service
-│   ├── registry/      # Node federation
-│   ├── connections/   # Trust graph
-│   ├── pay/           # Payment service
-│   ├── profile/       # Profile pages
-│   ├── events/        # Events & ticketing
-│   ├── chat/          # E2EE messaging
-│   ├── notify/        # Notifications & broadcasts
-│   ├── media/         # Asset storage, .fair attribution, transcription
+│   ├── kernel/        # Core platform — auth, identity, pay, profile, connections, registry, chat, media, notify (3000)
+│   ├── events/        # Events & ticketing (3006)
 │   ├── coffee/        # Tip jar (3100)
 │   ├── dykil/         # Surveys & polls (3101)
 │   ├── links/         # Link collection (3102)
@@ -251,7 +235,7 @@ Self-hosted on HP ProLiant ML350p Gen8 (Ubuntu 24.04). Caddy for reverse proxy +
 - `x100-x199` — Imajin apps (account-based, DID-linked)
 - `x400-x499` — Client apps (standalone repos, own databases)
 
-**pm2 naming:** Bare names = prod (`www`, `auth`, `events`). Prefixed = dev (`dev-www`, `dev-auth`, `dev-events`).
+**pm2 naming:** Bare names = prod (`kernel`, `events`). Prefixed = dev (`dev-kernel`, `dev-events`).
 
 See [articles/ARCHITECTURE.md](./apps/www/articles/ARCHITECTURE.md) for full deployment topology.
 
