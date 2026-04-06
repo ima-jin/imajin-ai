@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { email, name, redirectUrl, context } = body;
+    const { email, name, redirectUrl, context, scopeDid } = body;
 
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       return NextResponse.json(
@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
       token,
       redirectUrl: redirectUrl || null,
       context: context || null,
+      scopeDid: scopeDid || null,
       expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     });
 

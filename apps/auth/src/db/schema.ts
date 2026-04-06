@@ -74,6 +74,7 @@ export const onboardTokens = authSchema.table('onboard_tokens', {
   token: text('token').notNull().unique(),
   redirectUrl: text('redirect_url'),
   context: text('context'),                       // Human-readable: "Enroll in Intro to AI"
+  scopeDid: text('scope_did'),                    // Forest DID to join on completion
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
