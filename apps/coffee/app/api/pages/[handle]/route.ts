@@ -47,6 +47,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     // Fetch existing page
@@ -59,7 +60,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check ownership
-    if (existing.did !== identity.id) {
+    if (existing.did !== did) {
       return errorResponse('Not authorized to update this page', 403);
     }
 
@@ -122,6 +123,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     // Fetch existing page
@@ -134,7 +136,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check ownership
-    if (existing.did !== identity.id) {
+    if (existing.did !== did) {
       return errorResponse('Not authorized to delete this page', 403);
     }
 
