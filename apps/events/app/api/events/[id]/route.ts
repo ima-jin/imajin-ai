@@ -67,6 +67,7 @@ export async function PATCH(
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
   const { id } = await params;
 
   try {
@@ -80,7 +81,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    if (event.creatorDid !== identity.id) {
+    if (event.creatorDid !== did) {
       return NextResponse.json({ error: 'Only the event creator can change status' }, { status: 403 });
     }
 
@@ -130,6 +131,7 @@ export async function PUT(
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
   const { id } = await params;
 
   try {
@@ -145,7 +147,7 @@ export async function PUT(
     }
 
     // Check authorization: must be creator, admin, or cohost
-    const orgCheck = await isEventOrganizer(id, identity.id);
+    const orgCheck = await isEventOrganizer(id, did);
     if (!orgCheck.authorized) {
       return NextResponse.json({ error: 'Not authorized to update this event' }, { status: 403 });
     }

@@ -18,10 +18,11 @@ export async function POST(
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
   const { id, ticketId } = await params;
 
   try {
-    const orgCheck = await isEventOrganizer(id, identity.id);
+    const orgCheck = await isEventOrganizer(id, did);
     if (!orgCheck.authorized) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

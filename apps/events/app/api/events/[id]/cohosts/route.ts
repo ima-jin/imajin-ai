@@ -84,6 +84,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
   const { id } = params;
 
   try {
@@ -93,7 +94,7 @@ export async function POST(
     }
 
     // Only owner can add cohosts
-    if (event.creatorDid !== identity.id) {
+    if (event.creatorDid !== did) {
       return NextResponse.json({ error: 'Only the event owner can add cohosts' }, { status: 403 });
     }
 
@@ -143,7 +144,7 @@ export async function POST(
     }
 
     // Can't add yourself
-    if (coHostDid === identity.id) {
+    if (coHostDid === did) {
       return NextResponse.json({ error: 'Cannot add yourself as cohost' }, { status: 400 });
     }
 

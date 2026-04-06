@@ -22,7 +22,8 @@ export async function GET(
   }
 
   const { id } = await params;
-  const check = await isEventOrganizer(id, authResult.identity.id);
+  const did = authResult.identity.actingAs || authResult.identity.id;
+  const check = await isEventOrganizer(id, did);
   if (!check.authorized) {
     return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
   }
@@ -50,7 +51,8 @@ export async function POST(
   }
 
   const { id } = await params;
-  const check = await isEventOrganizer(id, authResult.identity.id);
+  const did = authResult.identity.actingAs || authResult.identity.id;
+  const check = await isEventOrganizer(id, did);
   if (!check.authorized) {
     return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
   }

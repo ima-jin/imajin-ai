@@ -15,10 +15,11 @@ export async function GET(
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
   const { id: eventId, ticketId } = await params;
 
   try {
-    const orgCheck = await isEventOrganizer(eventId, identity.id);
+    const orgCheck = await isEventOrganizer(eventId, did);
     if (!orgCheck.authorized) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

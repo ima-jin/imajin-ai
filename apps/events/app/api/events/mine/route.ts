@@ -14,13 +14,14 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     // Get all events created by this user
     const userEvents = await db
       .select()
       .from(events)
-      .where(eq(events.creatorDid, identity.id))
+      .where(eq(events.creatorDid, did))
       .orderBy(desc(events.createdAt));
 
     // For each event, get ticket types and calculate sold/revenue

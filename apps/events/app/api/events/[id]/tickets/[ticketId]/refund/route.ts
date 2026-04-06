@@ -28,6 +28,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
   const { id, ticketId } = await params;
 
   try {
@@ -37,7 +38,7 @@ export async function POST(
     }
 
     // Refund is owner-only (not cohosts)
-    if (event.creatorDid !== identity.id) {
+    if (event.creatorDid !== did) {
       return NextResponse.json({ error: 'Only the event owner can issue refunds' }, { status: 403 });
     }
 
