@@ -282,7 +282,7 @@ function DIDConversationView({ did }: { did: string }) {
 
   const chatUrl = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
   // Use same-origin proxy for access checks (cross-origin cookie forwarding is unreliable)
-  const authUrl = '';  // empty = same origin, proxied via /api/access/[did]
+  const authUrl = '/chat';  // kernel: access route is at /chat/api/access/[did]
   const mediaUrl = MEDIA_URL;
   const connectionsUrl = `${SERVICE_PREFIX}connections.${DOMAIN}`;
 
