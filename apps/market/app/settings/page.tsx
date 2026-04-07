@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { apiFetch } from '@imajin/config';
+import { apiFetch, buildPublicUrl } from '@imajin/config';
 
 export default function SettingsPage() {
   const [showMarketItems, setShowMarketItems] = useState(false);
@@ -11,7 +11,7 @@ export default function SettingsPage() {
   const [toast, setToast] = useState('');
   const [error, setError] = useState('');
 
-  const authUrl = `${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}auth.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`;
+  const authUrl = buildPublicUrl('auth');
 
   useEffect(() => {
     apiFetch('/api/seller/settings', { credentials: 'include' })

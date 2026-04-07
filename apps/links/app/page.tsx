@@ -7,7 +7,7 @@ import { ImajinFooter } from '@imajin/ui';
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const AUTH_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX + 'auth.' + process.env.NEXT_PUBLIC_DOMAIN;
+  const AUTH_URL = buildPublicUrl('auth');
 
   useEffect(() => {
     async function checkAuth() {

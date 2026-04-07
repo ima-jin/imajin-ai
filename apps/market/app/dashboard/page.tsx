@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { apiFetch } from '@imajin/config';
 import PriceDisplay from '../components/PriceDisplay';
 import { resolveMediaRef } from '@imajin/media';
+import { buildPublicUrl } from '@imajin/config';
 
 interface Listing {
   id: string;
@@ -100,7 +101,7 @@ export default function DashboardPage() {
   const [allListings, setAllListings] = useState<Listing[]>([]);
   const [statsLoaded, setStatsLoaded] = useState(false);
 
-  const authUrl = `${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}auth.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`;
+  const authUrl = buildPublicUrl('auth');
 
   const fetchStats = useCallback(async () => {
     try {
