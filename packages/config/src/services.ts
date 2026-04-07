@@ -6,7 +6,7 @@
 
 export type ServiceTier = "core" | "imajin";
 export type ServiceVisibility = "public" | "authenticated" | "creator" | "internal";
-export type ServiceCategory = "core" | "creator" | "developer" | "infrastructure" | "meta";
+export type ServiceCategory = "kernel" | "core" | "creator" | "developer" | "infrastructure" | "meta";
 
 export interface ServiceDefinition {
   /** Subdomain / app directory name */
@@ -36,8 +36,18 @@ export interface ServiceDefinition {
 }
 
 export const SERVICES: readonly ServiceDefinition[] = [
-  // Core platform — kernel consolidates www, auth, pay, profile, registry, connections, chat, media, notify
-  { name: "kernel",      label: "Kernel",      icon: "⚙️", description: "Core platform — auth, identity, pay, profile, connections, registry, chat, media, notify", devPort: 3000, prodPort: 7000, schema: null, tier: "core", visibility: "public", category: "core" },
+  // Kernel services — individually visible, all run on the kernel process (port 3000/7000)
+  { name: "kernel",      label: "Home",        icon: "🏠", description: "Network home — launcher, articles, stats",           devPort: 3000, prodPort: 7000, schema: null,          tier: "core",   visibility: "public",        category: "kernel" },
+  { name: "auth",        label: "Identity",    icon: "🔑", description: "Authentication, keys, and identity management",      devPort: 3000, prodPort: 7000, schema: "auth",        tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "profile",     label: "Profile",     icon: "👤", description: "Your profile, settings, and display preferences",    devPort: 3000, prodPort: 7000, schema: "profile",     tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "connections", label: "Connections", icon: "🤝", description: "Your network — people you know and trust",           devPort: 3000, prodPort: 7000, schema: "connections", tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "chat",        label: "Chat",        icon: "💬", description: "Conversations and group messaging",                  devPort: 3000, prodPort: 7000, schema: "chat",        tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "pay",         label: "Wallet",      icon: "💰", description: "Payments, settlements, and MJN balance",             devPort: 3000, prodPort: 7000, schema: "pay",         tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "media",       label: "Media",       icon: "📁", description: "Files, images, and .fair attribution",               devPort: 3000, prodPort: 7000, schema: "media",       tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "registry",    label: "Registry",    icon: "📡", description: "Service registry and DFOS relay",                    devPort: 3000, prodPort: 7000, schema: "registry",    tier: "core",   visibility: "public",        category: "kernel" },
+  { name: "notify",      label: "Notify",      icon: "🔔", description: "Notifications and preferences",                     devPort: 3000, prodPort: 7000, schema: "notify",      tier: "core",   visibility: "internal",      category: "kernel" },
+
+  // Core apps — separate processes
   { name: "events",      label: "Events",      icon: "🎫", description: "Event creation, ticketing, and management",         devPort: 3006, prodPort: 7006, schema: "events",      tier: "core",   visibility: "public",        category: "core" },
 
   // Imajin apps

@@ -15,6 +15,7 @@ interface ServiceEntry {
 }
 
 interface Groups {
+  kernel: ServiceEntry[];
   core: ServiceEntry[];
   creator: ServiceEntry[];
   developer: ServiceEntry[];
@@ -23,6 +24,7 @@ interface Groups {
 
 function groupServices(services: ServiceEntry[]): Groups {
   return {
+    kernel:    services.filter((s) => s.category === 'kernel'),
     core:      services.filter((s) => s.category === 'core'),
     creator:   services.filter((s) => s.category === 'creator'),
     developer: services.filter((s) => s.category === 'developer'),
@@ -133,10 +135,11 @@ export function LandingGrid() {
     visibleServices = visibleServices.filter((s) => forestEnabledServices.includes(s.name));
   }
 
-  const { core, creator, developer, meta } = groupServices(visibleServices);
+  const { kernel, core, creator, developer, meta } = groupServices(visibleServices);
 
   return (
     <div className="space-y-8">
+      <TileGroup label="Kernel Services" services={kernel} onAuthRequired={handleAuthRequired} />
       <TileGroup services={core} onAuthRequired={handleAuthRequired} />
       <TileGroup label="Creator Tools" services={creator} onAuthRequired={handleAuthRequired} />
       <TileGroup label="Developers" services={developer} onAuthRequired={handleAuthRequired} />
