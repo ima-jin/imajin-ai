@@ -6,6 +6,7 @@ import * as profileSchema from './schemas/profile';
 import * as registrySchema from './schemas/registry';
 import * as connectionsSchema from './schemas/connections';
 import * as chatSchema from './schemas/chat';
+import * as chatV2Schema from './schemas/chat-v2';
 import * as mediaSchema from './schemas/media';
 import * as notifySchema from './schemas/notify';
 import * as wwwSchema from './schemas/www';
@@ -17,6 +18,7 @@ const schema = {
   ...registrySchema,
   ...connectionsSchema,
   ...chatSchema,
+  ...chatV2Schema,
   ...mediaSchema,
   ...notifySchema,
   ...wwwSchema,
@@ -43,3 +45,4 @@ export { invitesInConnections as invites } from "./schemas/connections";
 export { podKeysInConnections as podKeys } from "./schemas/connections";
 export { podMemberKeysInConnections as podMemberKeys } from "./schemas/connections";
 export { podLinksInConnections as podLinks } from "./schemas/connections";
+export * from './schemas/chat-v2';
