@@ -3,11 +3,39 @@
 **Author:** Greg Mulholland
 **Date:** April 3, 2026
 **Priority:** HIGH — first real CulturalDID onboarding; validates the app studio thesis
+**Status:** NEAR-COMPLETE — Ryan built forest infrastructure independently (April 3–7, 93 commits). See §11 below.
 **Matrix cells:** Community scope x All primitives
-**Related issues:** #254 (Application Plugin Architecture), #474 (Founding Supporter)
+**Related issues:** #254 (Application Plugin Architecture), #474 (Founding Supporter), #587 (Group Identities), #592 (Forest Config), #597 (Contextual Onboard)
 **Related RFCs:** RFC-07 (Cultural DID), RFC-09 (Plugin Architecture), RFC-19 (Kernel/Userspace)
 **Related concerns:** C04 (Org DID vetting), C13 (covenant), C16 (Family DID primitive)
 **Connects to:** P10 (Org DID Vetting), P14 (Governance Equity), P28 (Launch Readiness)
+
+---
+
+### 11. Upstream Implementation Status (April 7 audit)
+
+**Ryan built the core forest infrastructure in a 93-commit sprint (April 3–7), independently validating most of P32's thesis:**
+
+| P32 Section | What P32 Proposed | What Shipped | Status |
+|-------------|-------------------|-------------|--------|
+| §3 Node Management Interface | Router-style admin page with service toggles | Forest settings page: service toggle grid, landing page selector, onboard URL, controller list (#593) | **SHIPPED** |
+| §4 Client-Focused Landing Pages | Per-node landing page showing only enabled services | Launcher as landing page + forest-aware filtering. `forest_config.landingService` sets default. | **SHIPPED** |
+| §5 UI Simplification (nav consolidation) | Shrink nav dropdown, user feature preferences | Forest config `enabledServices` filters launcher. Forest switcher in NavBar (#588). Light/dark mode (#534). | **PARTIALLY SHIPPED** (per-user feature prefs still TODO) |
+| §6 Crowd-Funded Events | 4-stage flow: proposal → polling → funding → booking | Not implemented. No escrow or interest-polling mechanism. | **OPEN** |
+| §1 CulturalDID Formation | 5–7 founding Person DIDs, Borzoo as founder | Group identities (#587): org/community/family with real Ed25519 keypairs, multi-controller access | **SHIPPED** (as `scope: 'community'`) |
+| §7 The Mooi Node mockup | Mooi-specific configuration example | Fee model v3 cites Mooi by name. Contextual onboard (#597) supports `/onboard?scope={mooi_did}` | **SHIPPED** |
+| Progressive disclosure principle | Features appear through trust graph expansion | Scope-aware services (all 12 userspace). Launcher filtering. Contextual onboard auto-joins scope. | **SHIPPED** |
+
+**What remains from P32:**
+1. **Crowd-funded events (§6)** — The 4-stage escrow flow (proposal → interest polling → funding → booking) has no upstream implementation. This is the most novel part of P32.
+2. **BBS/forum view** — No forum-style UI. Chat has group membership management but no threaded discussion or event proposal workflow.
+3. **Per-user feature preferences** — `profile.feature_toggles` JSONB exists but no UI. Forest config handles node-level; user-level still TODO.
+4. **Theme customization** — `forest_config.theme` JSONB column exists but no UI for it.
+
+**Architectural notes:**
+- Group DIDs get server-generated, server-encrypted Ed25519 keypairs (AES-256-GCM). The server signs on behalf of the group — simpler UX, but a trust tradeoff (node holds group secrets).
+- Scope fee (fee model v3) gives Mooi a sovereign revenue stream: 0.25% default, no protocol ceiling. This was not in P32 but directly addresses Mooi's sustainability.
+- `actingAs` pattern (`identity.actingAs || identity.id`) applied universally across all 12 userspace services.
 
 ---
 

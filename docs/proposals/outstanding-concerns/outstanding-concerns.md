@@ -1,37 +1,37 @@
 # Outstanding Concerns
 *Unresolved and partially-resolved questions from architectural review — March 2026*
-*Last cross-referenced against upstream: April 3, 2026 (HEAD: 3bc931be)*
+*Last cross-referenced against upstream: April 7, 2026 (HEAD: 227b2785)*
+
+**April 7 audit (93 commits since April 3):**
+- C04 (Org DID vetting) — **SUBSTANTIALLY RESOLVED.** Group identities with real Ed25519 keypairs, multi-controller access, service-scoped permissions. External vetting/attestation by third parties still missing.
+- C05 (Gas model ceiling) — **SPEC COMPLETE.** Fee model v3: 1¢ per non-economic op, 100% to node, bilateral signing. No code yet. Governance bounds flagged as open question.
+- C10 (Relay auth) — **ADVANCED.** DFOS 0.7.0 adopted. Relay auto-bootstraps identity (#575). `requireAuth` validates `actingAs` across all services. Cross-service relay auth middleware still TODO.
+- C11 (isValidDID) — **STILL OPEN.** Both bugs unchanged in `packages/auth/src/providers/keypair.ts`.
+- C13 (Org DID covenant) — STILL OPEN. No covenant document drafted. Group identities have no covenant/terms mechanism.
+- C14 (Foundation governance) — STILL OPEN. Fee model v3 defers protocol fee governance to "trust-graph-weighted voting" but no mechanism specified.
+- C15 (Agent authority scope) — STILL OPEN. `FairEntry` still cannot distinguish human/agent.
+- C16 (Family DID primitive) — **SCHEMA COMPLETE.** `scope: 'family'` in group identities. No family-specific UX.
+- C17 (Stale issue taxonomy) — STILL OPEN. No triage work observed.
 
 **April 3 audit:**
-- C10 (Relay auth) — PARTIALLY RESOLVED. RFC-22 rewritten three times; final model: consent-and-sign redirect as primary cross-platform auth. JWS-signed operations for chain integrity. Middleware enforcement on relay POST /operations still missing.
+- C10 (Relay auth) — PARTIALLY RESOLVED. RFC-22 rewritten three times; final model: consent-and-sign redirect as primary cross-platform auth.
 - C11 (isValidDID) — STILL OPEN. Both bugs unchanged.
 - C12 (Consent primitive) — PARTIALLY RESOLVED. DID consent preferences + interest signals shipped in registry (#538/#539). Unsubscribe flow with HMAC verification + RFC 8058 headers. Still no `ConsentDeclaration` type or per-transaction consent.
 - C02 (.fair automated nodes) — PARTIALLY RESOLVED. Signing infra live; agent scope encoding + enforcement toggle pending.
-- C03 (Governance equity) — PARTIALLY RESOLVED. Community-layer done; Foundation governance unspecified.
-- C04 (Org DID vetting) — PARTIALLY RESOLVED. Design complete (RFC-08); attestation types and covenant missing.
-- C05 (Gas model ceiling) — Spec in whitepaper v0.4. No code — blocked on Stream 2. RFC-21 conformance suite defines gas test cases.
-- C06 (Declaration granularity) — k-anonymity mentioned in whitepaper v0.4. No code — blocked on Stream 2.
+- C03 (Governance equity) — PARTIALLY RESOLVED. Community-layer done + service-scoped controller access; Foundation governance unspecified.
 - C08 (Dark graph clustering) — PARTIALLY RESOLVED. RFC-13/15 model; cluster detection primitives pending.
-- C13 (Org DID covenant) — STILL OPEN. No covenant document drafted.
-- C14 (Foundation governance) — STILL OPEN. Foundation governance mechanism entirely unspecified.
-- C15 (Agent authority scope) — STILL OPEN. `FairEntry` still cannot distinguish human/agent.
-- C16 (Family DID primitive) — STILL OPEN. Governance exists (RFC-17), identity container absent.
-- C17 (Stale issue taxonomy) — STILL OPEN. Issue triage deferred; issue #25 still open.
-- F6 (Consent primitive) — PARTIALLY RESOLVED. P18 specced; RFC-19 consent screen; email infra adds DID consent preferences.
+- F6 (Consent primitive) — PARTIALLY RESOLVED. P18 specced; RFC-19 consent screen; email infra adds DID consent preferences. No new consent work in April 7 sprint.
 
-**New upstream since March 30:**
-- **RFC-22 rewrite** — Consent-and-sign redirect as primary flow; three auth tiers (direct key, consent redirect, email fallback)
-- **RFC-23 (Multi-Chain Settlement)** — Chain-agnostic payment rails: Solana + Cardano + Midnight. Same Ed25519 key = all chains. Privacy-routed per transaction.
-- **RFC-19 update** — Embedded relay section: every node runs local DFOS relay as data layer. Offline-first, sync secondary.
-- **Email infrastructure** (#538–#543) — DID consent preferences, interest signals, broadcast, unsubscribe (RFC 8058), CAN-SPAM
-- **Refunds system** (#561) — End-to-end ticket refunds with settlement entry reversal
-- **Events features** — Hybrid virtual+physical (#558), check-in webhook + WLED bridge (#551), host broadcast (#552)
-- **`institution.verified` disabled** (e8a28a1e) — Event DIDs lack keypairs; P29 attestation count regressed 19→18
-- **Cost estimate updated** — Day 57, 132K LOC, $93K actual vs. $2.5M COCOMO (27×)
-- **`apps/input` retired** — Transcribe → media, notify takes input's slot. Service count remains 15.
-- **PR #526 merged** — Our P31 + questions-for-ryan now in upstream `docs/proposals/`
-
-**Previously resolved:** C01, C07, C09, C18
+**New upstream since April 3:**
+- **Forest infrastructure** — Group identities (#587), forest config (#592/#593), forest switcher (#588), contextual onboard (#597), scope-aware services (all 12 userspace)
+- **Fee model v3** — Four-layer (protocol + node + buyer credit + scope fee = 2.0% default). Dual-token (MJN + MJNx). Gas fees (1¢/op).
+- **DFOS 0.7.0** (#535) — Library conformance, deleted 924 lines custom ingest, relay auto-bootstrap (#575)
+- **Connections refactor** (#577) — First-class connections table, nicknames table, O(1) DID pair lookup
+- **Chat** — Nicknames (#579), reactions fix (#533), group access (#582), group membership management (#570/#571)
+- **Light mode** (#534) — Dark/light toggle across all services
+- **OG metadata** (#8) — 7 services gained social cards
+- **RFC-24** — Knowledge Surfaces (learn + MCP + queryable profile)
+- **Launcher as landing page** — Service grid with live stats, forest-aware filtering, old content moved to `/project`
 
 **Previously resolved:** C01 (social graph portability), C07 (Cultural DID specification), C09 (migration system integrity), C18 (April 1 demo blockers)
 

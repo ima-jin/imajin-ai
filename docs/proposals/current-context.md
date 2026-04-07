@@ -1,5 +1,5 @@
 # Current Context
-*Last updated: April 3, 2026*
+*Last updated: April 7, 2026*
 
 This document tracks Ryan's current direction in the upstream repo and his responses — explicit or architectural — to the concerns in `outstanding-concerns.md`. It is a living document. As the upstream repo evolves, update this file to reflect what has moved, what has been acknowledged, and what remains open.
 
@@ -15,7 +15,79 @@ Remote: `https://github.com/ima-jin/imajin-ai`
 cd upstream && git pull
 ```
 
-**Current HEAD:** `3bc931be` — April 3, 2026
+**Current HEAD:** `227b2785` — April 7, 2026
+
+---
+
+## April 3–7 — Forest Infrastructure Sprint (Scope-Aware Everything)
+
+**93 commits since April 3 (3bc931be → 227b2785).** Massive multi-tenant infrastructure buildout. Every userspace service is now scope-aware. Group identities, forest config, contextual onboarding, and launcher filtering all shipped.
+
+### Forest Infrastructure (The Big Move)
+
+**Group Identities (#587):** New `groupIdentities` and `groupControllers` tables in auth schema. Group DIDs (org/community/family) get real Ed25519 keypairs (server-generated, AES-256-GCM encrypted). Multi-controller access with role-based permissions (owner/admin/member). Service-scoped access via `allowedServices`. API: `POST/GET /api/groups`, `POST /api/groups/[groupDid]/controllers`. UI: `/groups` list page, `/groups/new` creation form ("Grow a Forest").
+
+**Forest Config (#592, #593):** `forest_config` table in profile schema (`groupDid PK, enabledServices TEXT[], landingService TEXT, theme JSONB`). Admin settings page at `/groups/[groupDid]/settings` with four sections: service toggle grid, landing page selector, onboard URL generator, controller list with role badges. Public API at `GET /api/forest/[groupDid]/config/public` (no auth — lets launcher filter services for anonymous visitors).
+
+**Forest Switcher (#588):** `useForests` hook reads groups from auth, manages `x-acting-as` cookie + localStorage. AppLauncher renders "Your Forests" section with scope icons and active forest checkmark. On switch: sets cookie/localStorage, reloads page.
+
+**Contextual Onboard (#597):** `/onboard?scope={groupDid}` shows forest name/avatar/badge. Two flows: email verification (existing) and new keypair onboard (generate Ed25519 client-side via `@noble/ed25519`, download as JSON, register). Scope auto-join: if `scopeDid` provided, adds user as member + sets `x-acting-as` cookie + emits `scope.onboard` attestation.
+
+**Scope-Aware Services (all 12 userspace):** Universal pattern: `const did = identity.actingAs || identity.id;` applied to every route in events, connections, pay, media, chat, coffee, learn, market, links, registry, notify, plus auth controllers. `requireAuth` validates `X-Acting-As` header against controllers table. `getSession` validates `x-acting-as` cookie (security fix — was previously unvalidated).
+
+**Launcher as Landing Page:** `apps/www` root is now a service launcher grid with live network stats (ISR, 15-min revalidation). Forest-aware: if `localStorage['imajin:acting-as']` set, filters visible services to forest's `enabledServices`. Old content moved to `/project`.
+
+### Fee Model v3 (`docs/rfcs/drafts/fee-model.md`)
+
+Four-layer model replacing v2's three-party:
+
+| Layer | Range | Default | Set by |
+|-------|-------|---------|--------|
+| Protocol (MJN) | 0.25%–2% | 1.0% | Governance |
+| Node operator | 0.25%–2% | 0.5% | Node operator |
+| Buyer credit | 0.25%–2% | 0.25% | Node operator |
+| **Scope fee** (NEW) | 0%–no cap | 0.25% | Scope owner |
+
+Default total: **2.0%** (was 1.75%). Scope fee is sovereign (no protocol-imposed ceiling), publicly advertised, market-governed. Mooi cited by name as example.
+
+Additional: dual-token model (MJN equity/governance + MJNx stable at 1 CHF), gas fees (1¢ per non-economic op, 100% to node), platform affiliation (`relay_config.platform_did` + `forest_config.platform_did`), cross-platform settlement.
+
+### DFOS 0.7.0 (#535)
+
+Deleted 924 lines of custom ingest code. Adopted `@metalabel/dfos-protocol` library conformance. Relay auto-bootstraps identity on first boot (#575) — `RELAY_DID` removed from `.env.example`, persisted in `relay.relay_config` DB table.
+
+### Connections Refactor (#577)
+
+New first-class `connections` table (`did_a, did_b, connected_at, disconnected_at`). Migration backfills from 2-person pods. New `nicknames` table for per-user display name overrides. O(1) lookup by DID pair.
+
+### Chat Improvements
+
+- Nicknames (#579) — `useDidNames` hook fetches nicknames from connections, merges with auth names. Nicknames take priority.
+- Reactions fix (#533) — `?? r.did` fallback for reaction sender DIDs.
+- Group access (#582) — Restricted to conversation members/creator only.
+- Group membership (#570/#571) — Add/remove members (owner/admin only), leave group (auto-promote oldest member if owner leaves). Attestations: `group.member.added`, `group.member.removed`, `group.member.left`.
+
+### Other
+
+- **Light mode (#534)** — Dark/light toggle in NavBar, persisted in localStorage, applied across all services via `theme-init.ts`.
+- **OG metadata (#8)** — 7 services gained social cards (coffee, links, learn, connections, dykil, market, media).
+- **RFC-24 (Knowledge Surfaces)** — Draft. Profiles as queryable knowledge surfaces: MCP server, organizational skill, learn, profile, .fair.
+- **Work order wo-602-scope-aware-services** — Documents the actingAs pattern for all 11 services.
+
+### Impact on Proposals/Concerns
+
+| Item | Change |
+|------|--------|
+| **P32 (Mooi)** | Near-complete. Forest config + contextual onboard + scope-aware services + launcher filtering = everything P32 proposed minus crowd-funded events and BBS/forum view |
+| **P10 (Org DID)** | Schema + API complete. Group identities with keypairs, controllers, service-scoped permissions. External vetting gap remains |
+| **P25 (Family DID)** | Schema complete (`scope: 'family'` in group identities) |
+| **P23 (Node Operator)** | Substantially advanced. Two revenue streams (fee + gas), forest config gives UI control |
+| **P31 (Fee Governance)** | v3 supersedes. Scope fee is the new layer |
+| **P14 (Governance Equity)** | Service-scoped controller access is a governance primitive |
+| **P29 (Attestation)** | 5 new types (group.created, group.member.added/removed/left, scope.onboard). Total 24. institution.verified still disabled |
+| **C10 (Relay)** | DFOS 0.7.0 + auto-bootstrap. Cross-service auth middleware still TODO |
+| **C11 (isValidDID)** | Still broken. No changes to keypair.ts |
+| **C16 (Family DID)** | Schema complete via group identities |
 
 ---
 

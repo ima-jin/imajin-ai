@@ -1,11 +1,12 @@
 # Problems
 *Concrete code-level bugs and misplacements found in the upstream repo*
-*Last reviewed: April 3, 2026 (upstream HEAD: 3bc931be)*
+*Last reviewed: April 7, 2026 (upstream HEAD: 227b2785)*
 *P1–P5 resolved (March 15–23). P8 resolved March 30 — events settlement wiring live.*
 *P6, P7 added March 27 — extracted from active proposals P24 and P22. Both are missing schema fields, not regressions.*
 *P9 still open — .fair templates exist but not used in upload paths.*
-*New: `institution.verified` attestation disabled (e8a28a1e) — event DIDs lack keypairs. Tracked in P29, not a new problem (architectural, not a code bug).*
-*Refunds system shipped (#561) — settlement entries reversed on refund (3bc931be). No new problems introduced.*
+*`institution.verified` attestation disabled (e8a28a1e) — event DIDs lack keypairs. Tracked in P29, not a new problem (architectural, not a code bug).*
+*isValidDID/createDID 16-char hex truncation (C11) — still unfixed as of April 7. No changes to keypair.ts in 93-commit sprint.*
+*April 7: 93 new commits. No new code-level bugs detected. Group identities, forest config, scope-aware services all clean.*
 
 These are distinct from architectural concerns in `outstanding-concerns.md`. Each item here has a specific file, a specific line, and a specific fix. When the upstream repo shows the fix has landed, the item moves to `resolved-problems.md`.
 
