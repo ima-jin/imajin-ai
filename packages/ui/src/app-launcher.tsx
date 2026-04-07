@@ -28,14 +28,10 @@ export interface AppLauncherProps {
   enabledServices?: string[];
 }
 
-/** Services that belong in the profile dropdown, not the launcher flyout */
-const PROFILE_DROPDOWN_SERVICES = new Set(['connections', 'chat']);
-
 function filterByTier(services: LauncherService[], tier: string): LauncherService[] {
   const hasProfile = tier === 'hard' || tier === 'creator';
   return services.filter((s) => {
     if (s.visibility === 'internal') return false;
-    if (PROFILE_DROPDOWN_SERVICES.has(s.name)) return false;
     if (s.visibility === 'public') return true;
     if (s.visibility === 'authenticated') return hasProfile;
     if (s.visibility === 'creator') return hasProfile;
