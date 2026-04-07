@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, connections } from '../../../../src/db/index';
+import { db, connections } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 

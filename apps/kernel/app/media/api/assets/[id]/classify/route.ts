@@ -3,7 +3,7 @@ import { readFile } from "fs/promises";
 import { db, assets } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
-import { classifyAsset } from "@/src/lib/classify";
+import { classifyAsset } from "@/src/lib/media/classify";
 
 // ---------------------------------------------------------------------------
 // POST /api/assets/[id]/classify — re-classify an existing asset

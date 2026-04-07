@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
     let dfosChainLinked = false;
     if (body.dfosChain) {
       try {
-        const { verifyClientChain, storeDfosChain } = await import('@/lib/dfos');
+        const { verifyClientChain, storeDfosChain } = await import('@/src/lib/auth/dfos');
         const verified = await verifyClientChain(body.dfosChain, identity.publicKey);
         if (verified) {
           const stored = await storeDfosChain(identity.id, verified);
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Lazy relay backfill: if user has a local chain not yet on the relay, submit it
-    import('@/lib/dfos').then(async ({ getChainByImajinDid, checkRelayChain, ingestToRelay }) => {
+    import('@/src/lib/auth/dfos').then(async ({ getChainByImajinDid, checkRelayChain, ingestToRelay }) => {
       const chain = await getChainByImajinDid(identity.id);
       if (!chain) return; // no local chain — nothing to backfill
       const onRelay = await checkRelayChain(chain.dfosDid);
@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
       userAgent: request.headers.get("user-agent"),
     }).catch(err => console.error("Session attestation error:", err));
 
-    import('@/lib/log-device').then(({ logDevice }) => {
+    import('@/src/lib/auth/log-device').then(({ logDevice }) => {
       const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim()
         ?? request.headers.get('x-real-ip');
       const userAgent = request.headers.get('user-agent');

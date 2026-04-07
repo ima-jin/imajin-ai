@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  basePath: "/coffee",
   transpilePackages: ['@imajin/auth','@imajin/config','@imajin/db','@imajin/email','@imajin/ui'],
   typescript: { ignoreBuildErrors: true },
   reactStrictMode: true,

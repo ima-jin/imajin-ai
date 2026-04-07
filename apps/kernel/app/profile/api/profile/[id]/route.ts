@@ -3,7 +3,7 @@ import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { db, profiles, connections } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
+import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { eq, or, and, isNull } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 

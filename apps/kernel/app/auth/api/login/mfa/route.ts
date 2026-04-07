@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
       userAgent: request.headers.get('user-agent'),
     }).catch(err => console.error('Session attestation error:', err));
 
-    import('@/lib/log-device').then(({ logDevice }) => {
+    import('@/src/lib/auth/log-device').then(({ logDevice }) => {
       const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim()
         ?? request.headers.get('x-real-ip');
       const userAgent = request.headers.get('user-agent');

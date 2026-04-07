@@ -35,3 +35,11 @@ export * from './schemas/chat';
 export * from './schemas/media';
 export * from './schemas/notify';
 export * from './schemas/www';
+
+// Aliases for backward-compatible imports
+export { podsInConnections as pods } from "./schemas/connections";
+export { podMembersInConnections as podMembers } from "./schemas/connections";
+export { invitesInConnections as invites } from "./schemas/connections";
+export { podKeysInConnections as podKeys } from "./schemas/connections";
+export { podMemberKeysInConnections as podMemberKeys } from "./schemas/connections";
+export { podLinksInConnections as podLinks } from "./schemas/connections";

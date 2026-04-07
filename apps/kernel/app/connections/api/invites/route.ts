@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { eq, desc, and, sql, isNull } from 'drizzle-orm';
-import { db, invites, profiles, podMembers } from '../../../src/db/index';
-import { generateId } from '../../../src/lib/id';
+import { db, invites, profiles, podMembers } from '@/src/db';
+import { generateId } from '@/src/lib/kernel/id';
 import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
 import { emitAttestation } from '@imajin/auth';
 import { buildPublicUrl } from '@imajin/config';

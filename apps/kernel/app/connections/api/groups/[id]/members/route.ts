@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, pods, podMembers } from '../../../../../src/db/index';
+import { db, pods, podMembers } from '@/src/db';
 import { emitAttestation } from '@imajin/auth';
 import { eq, and, isNull } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';

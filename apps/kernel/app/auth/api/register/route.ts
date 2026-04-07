@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
         let existingDfosLinked = false;
         if (body.dfosChain) {
           try {
-            const { verifyClientChain, storeDfosChain } = await import('@/lib/dfos');
+            const { verifyClientChain, storeDfosChain } = await import('@/src/lib/auth/dfos');
             const verified = await verifyClientChain(body.dfosChain, publicKey);
             if (verified) {
               existingDfosLinked = await storeDfosChain(existing[0].id, verified);
@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
     let dfosChainLinked = false;
     if (body.dfosChain) {
       try {
-        const { verifyClientChain, storeDfosChain } = await import('@/lib/dfos');
+        const { verifyClientChain, storeDfosChain } = await import('@/src/lib/auth/dfos');
         const verified = await verifyClientChain(body.dfosChain, publicKey);
         if (verified) {
           dfosChainLinked = await storeDfosChain(identity.id, verified);

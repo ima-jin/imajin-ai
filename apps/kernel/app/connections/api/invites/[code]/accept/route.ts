@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
-import { db, invites, profiles, pods, podMembers, connections } from '../../../../../src/db/index';
-import { generateId } from '../../../../../src/lib/id';
+import { db, invites, profiles, pods, podMembers, connections } from '@/src/db';
+import { generateId } from '@/src/lib/kernel/id';
 import { emitAttestation } from '@imajin/auth';
 import { notify } from '@imajin/notify';
 

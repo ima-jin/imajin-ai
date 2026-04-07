@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, connections } from '../../../../../src/db/index';
+import { db, connections } from '@/src/db';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { eq, or, and, isNull } from 'drizzle-orm';
 

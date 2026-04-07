@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, or, isNotNull } from 'drizzle-orm';
-import { db, invites, profiles } from '../../../../src/db/index';
+import { db, invites, profiles } from '@/src/db';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
 /**

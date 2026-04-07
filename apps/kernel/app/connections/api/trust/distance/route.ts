@@ -6,7 +6,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, trustDistance } from '../../../../src/db/index';
+import { db } from "@/src/db";
+import { trustDistance } from "@imajin/trust-graph";;
 
 export async function GET(request: NextRequest) {
   // Internal API key auth

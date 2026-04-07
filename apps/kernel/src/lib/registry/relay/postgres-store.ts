@@ -22,7 +22,7 @@ import {
   relayOperationLog,
   relayPendingOperations,
   relayPeerCursors,
-} from '../db/relay-schema';
+} from '@/src/db/schemas/relay';
 
 type OperationKind = 'identity-op' | 'content-op' | 'beacon' | 'artifact' | 'countersign';
 interface ReadLogResult {

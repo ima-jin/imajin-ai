@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import "./globals.css";
+import "../globals.css";
 import { themeInitScript } from "@imajin/ui";
 
 export const metadata: Metadata = {

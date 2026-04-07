@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, profiles } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
+import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);

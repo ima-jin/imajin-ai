@@ -14,7 +14,7 @@ async function generateKeypair(): Promise<{ publicKey: string; privateKey: strin
   crypto.getRandomValues(privateKeyBytes);
   
   const ed = await import('@noble/ed25519');
-  const { sha512 } = await import('@noble/hashes/sha512');
+  const { sha512 } = await import('@noble/hashes/sha2.js');
   ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
   
   const publicKeyBytes = await ed.getPublicKeyAsync(privateKeyBytes);
@@ -27,7 +27,7 @@ async function generateKeypair(): Promise<{ publicKey: string; privateKey: strin
 
 async function sign(message: string, privateKeyHex: string): Promise<string> {
   const ed = await import('@noble/ed25519');
-  const { sha512 } = await import('@noble/hashes/sha512');
+  const { sha512 } = await import('@noble/hashes/sha2.js');
   ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
   
   const messageBytes = new TextEncoder().encode(message);
@@ -140,7 +140,7 @@ function RegisterPage() {
       // Create DFOS identity chain (client-side, non-blocking)
       let dfosChain = null;
       try {
-        const { createDfosChain } = await import('@/lib/dfos-client');
+        const { createDfosChain } = await import('@/src/lib/auth/dfos-client');
         dfosChain = await createDfosChain(keypair);
       } catch (err) {
         console.warn('DFOS chain creation failed (non-fatal):', err);

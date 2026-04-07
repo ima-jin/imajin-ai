@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { db, conversationReadsV2 } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
-import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
+import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 
 /**
  * OPTIONS /api/d/:did/read - CORS preflight

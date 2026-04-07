@@ -7,7 +7,7 @@ import { db, assets, folders, assetFolders } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
 import { eq, and } from "drizzle-orm";
-import { classifyAsset } from "@/src/lib/classify";
+import { classifyAsset } from "@/src/lib/media/classify";
 import { rateLimit, getClientIP } from "@/src/lib/kernel/rate-limit";
 
 // Context → folder mapping

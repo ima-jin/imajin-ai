@@ -135,7 +135,7 @@ async function verifyRawSignature(
   try {
     // Import the low-level verify function
     const { verify } = await import('@noble/ed25519');
-    const { sha512 } = await import('@noble/hashes/sha512');
+    const { sha512 } = await import('@noble/hashes/sha2.js');
     const ed = await import('@noble/ed25519');
     
     // Configure sha512 (required for @noble/ed25519 v2)

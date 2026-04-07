@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { getClient } from '@imajin/db';
 import { requireAuth } from '@imajin/auth';
-import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/src/lib/kernel/utils';
+import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { notify } from '@imajin/notify';
 import { emitAttestation } from '@imajin/auth';
 import { lookupIdentity } from '@/src/lib/kernel/lookup';

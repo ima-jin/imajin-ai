@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import './globals.css';
+import '../globals.css';
 import { NavBarWithUnread } from './components/NavBarWithUnread';
 import { IdentityProvider } from '@/src/contexts/IdentityContext';
 import { UnreadTitleManager } from './components/UnreadTitleManager';

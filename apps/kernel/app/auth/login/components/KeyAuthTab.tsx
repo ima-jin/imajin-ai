@@ -42,7 +42,7 @@ async function loginWithKeypair(privateKeyHex: string): Promise<LoginResult> {
   }
 
   const ed = await import('@noble/ed25519');
-  const { sha512 } = await import('@noble/hashes/sha512');
+  const { sha512 } = await import('@noble/hashes/sha2.js');
   ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
 
   const privateKeyBytes = hexToBytes(privateKeyHex);
@@ -90,7 +90,7 @@ async function loginWithKeypair(privateKeyHex: string): Promise<LoginResult> {
 
   let dfosChain = null;
   try {
-    const { createDfosChain } = await import('@/lib/dfos-client');
+    const { createDfosChain } = await import('@/src/lib/auth/dfos-client');
     dfosChain = await createDfosChain({ privateKey: privateKeyHex, publicKey: publicKeyHex });
   } catch {
     // non-fatal
