@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { buildPublicUrl } from '@imajin/config';
 import Link from 'next/link';
 import { ImajinFooter } from '@imajin/ui';
 
