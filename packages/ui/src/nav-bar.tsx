@@ -324,9 +324,12 @@ export function NavBar({
           ) : identity?.isLoggedIn ? (
             <div className="flex items-center gap-2">
               {balance !== null && balance > 0 && (
-                <span className="text-sm font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full">
+                <a
+                  href={buildUrl('pay', servicePrefix, domain, serviceUrls)}
+                  className="text-sm font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full hover:bg-green-100 dark:hover:bg-green-900/40 transition no-underline"
+                >
                   ${balance.toFixed(2)}
-                </span>
+                </a>
               )}
             <div className="relative" ref={dropdownRef}>
               <button
@@ -401,6 +404,24 @@ export function NavBar({
                         className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
                       >
                         <span>🤝</span> Connections
+                      </a>
+                      <a
+                        href={buildUrl('pay', servicePrefix, domain, serviceUrls)}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                      >
+                        <span>💰</span> Wallet
+                      </a>
+                      <a
+                        href={buildUrl('media', servicePrefix, domain, serviceUrls)}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                      >
+                        <span>📁</span> Media
+                      </a>
+                      <a
+                        href={buildUrl('auth', servicePrefix, domain, serviceUrls)}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                      >
+                        <span>🔑</span> Identity
                       </a>
                       <hr className="my-1 border-gray-200 dark:border-gray-800" />
                       <div className="px-4 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
