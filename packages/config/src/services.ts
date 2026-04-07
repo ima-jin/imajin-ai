@@ -121,6 +121,13 @@ export function buildPublicUrl(
   servicePrefix?: string,
   domain?: string
 ): string {
+  // Check for explicit NEXT_PUBLIC_{NAME}_URL env var first (kernel single-domain mode)
+  if (!servicePrefix && !domain && typeof process !== "undefined") {
+    const envKey = `NEXT_PUBLIC_${name.toUpperCase()}_URL`;
+    const explicit = process.env[envKey];
+    if (explicit) return explicit;
+  }
+
   const p = servicePrefix ?? (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_SERVICE_PREFIX : undefined) ?? "https://";
   const d = domain ?? (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_DOMAIN : undefined) ?? "imajin.ai";
 
