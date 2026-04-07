@@ -30,7 +30,7 @@ export default function GroupsPage() {
           const data = await res.json();
           setGroups(data.groups ?? data ?? []);
         } else if (res.status === 401) {
-          window.location.href = '/login?next=/groups';
+          window.location.href = '/auth/login?next=/auth/groups';
         }
       } catch (err) {
         console.error('Failed to load forests:', err);
@@ -62,7 +62,7 @@ export default function GroupsPage() {
           <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
             <p className="text-gray-500 mb-4">You don&apos;t have any forests yet.</p>
             <a
-              href="/groups/new"
+              href="/auth/groups/new"
               className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold rounded-lg transition no-underline"
             >
               🌱 Grow a forest
@@ -100,7 +100,7 @@ export default function GroupsPage() {
             ))}
 
             <a
-              href="/groups/new"
+              href="/auth/groups/new"
               className="block border border-dashed border-gray-800 hover:border-gray-600 rounded-2xl p-6 transition no-underline text-center text-gray-500 hover:text-gray-300"
             >
               🌱 Grow a forest

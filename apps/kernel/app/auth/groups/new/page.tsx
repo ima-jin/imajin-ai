@@ -44,7 +44,7 @@ export default function NewGroupPage() {
       }
 
       // Redirect to the new group's settings
-      window.location.href = `/groups/${encodeURIComponent(data.did)}/settings`;
+      window.location.href = `/auth/groups/${encodeURIComponent(data.did)}/settings`;
     } catch {
       setStatus('error');
       setError('Failed to create forest');
@@ -56,7 +56,7 @@ export default function NewGroupPage() {
       <div className="max-w-lg mx-auto space-y-6">
 
         <div>
-          <a href="/groups" className="text-sm text-gray-500 hover:text-gray-300 transition">
+          <a href="/auth/groups" className="text-sm text-gray-500 hover:text-gray-300 transition">
             ← Back to forests
           </a>
           <h1 className="text-2xl font-bold text-white mt-2 mb-1">🌱 Grow a Forest</h1>

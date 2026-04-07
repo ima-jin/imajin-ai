@@ -18,12 +18,12 @@ function redirect(path: string) {
 export async function GET(request: NextRequest) {
   const did = request.nextUrl.searchParams.get('did');
   if (!did) {
-    return redirect('/conversations');
+    return redirect('/chat/conversations');
   }
 
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return redirect('/conversations');
+    return redirect('/chat/conversations');
   }
 
   const myDid = authResult.identity.id;
@@ -58,5 +58,5 @@ export async function GET(request: NextRequest) {
       .onConflictDoNothing();
   }
 
-  return redirect(`/conversations/${conversationPath(convDid)}`);
+  return redirect(`/chat/conversations/${conversationPath(convDid)}`);
 }

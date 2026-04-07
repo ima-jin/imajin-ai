@@ -89,7 +89,7 @@ export default function SecuritySettingsPage() {
     try {
       const sessionRes = await fetch('/auth/api/session', { credentials: 'include' });
       if (!sessionRes.ok) {
-        window.location.href = '/login?next=/settings/security';
+        window.location.href = '/auth/login?next=/auth/settings/security';
         return;
       }
       const session = await sessionRes.json();

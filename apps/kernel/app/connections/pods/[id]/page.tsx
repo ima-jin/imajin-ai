@@ -135,7 +135,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
     try {
       const res = await fetch(`/auth/api/groups/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        window.location.href = '/?tab=groups';
+        window.location.href = '/connections?tab=groups';
       } else {
         toast.error('Failed to delete group');
       }
@@ -174,7 +174,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
         <div className="text-gray-400 mb-4">{error}</div>
-        <a href="/?tab=groups" className="text-amber-400 hover:underline">Back to Groups</a>
+        <a href="/connections?tab=groups" className="text-amber-400 hover:underline">Back to Groups</a>
       </div>
     );
   }
@@ -185,7 +185,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
     <div className="max-w-2xl mx-auto">
       {/* Back link */}
       <div className="mb-6">
-        <a href="/?tab=groups" className="text-gray-400 hover:text-white text-sm transition">
+        <a href="/connections?tab=groups" className="text-gray-400 hover:text-white text-sm transition">
           ← Back to Groups
         </a>
       </div>

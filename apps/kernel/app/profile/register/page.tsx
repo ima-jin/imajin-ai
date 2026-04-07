@@ -302,7 +302,7 @@ function RegisterPage() {
             Already have an account?
           </p>
           <a
-            href="/login"
+            href="/auth/login"
             className="inline-block px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold"
           >
             Login
@@ -358,7 +358,7 @@ function RegisterPage() {
             </a>
           ) : (
             <button
-              onClick={() => router.push(`/${profile.handle || profile.did}`)}
+              onClick={() => router.push(`/profile/${profile.handle || profile.did}`)}
               className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold"
             >
               View Your Profile →
@@ -411,7 +411,7 @@ function RegisterPage() {
             </p>
             <div className="flex gap-2 mt-2">
               <button
-                onClick={() => router.push(`/${loggedInHandle || did}`)}
+                onClick={() => router.push(`/profile/${loggedInHandle || did}`)}
                 className="text-xs text-[#F59E0B] hover:underline"
               >
                 Go to profile

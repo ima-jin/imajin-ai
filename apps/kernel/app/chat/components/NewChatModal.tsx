@@ -142,11 +142,11 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
         const url = new URL(location, window.location.origin);
         router.push(url.pathname);
       } else {
-        router.push(`/conversations/${conversationPath(did)}`);
+        router.push(`/chat/conversations/${conversationPath(did)}`);
       }
     } catch {
       // Fallback: navigate directly (conversation may not have members yet)
-      router.push(`/conversations/${conversationPath(did)}`);
+      router.push(`/chat/conversations/${conversationPath(did)}`);
     }
     onClose();
   }
@@ -173,7 +173,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
       const convDid = data.conversation?.did;
 
       if (convDid) {
-        router.push(`/conversations/${conversationPath(convDid)}`);
+        router.push(`/chat/conversations/${conversationPath(convDid)}`);
         onClose();
         return;
       }

@@ -36,10 +36,10 @@ export function NavBar({ currentService = 'Profile' }: { currentService?: string
         handle,
         did,
         onLogout: () => { logout(); router.push('/'); },
-        onViewProfile: () => router.push(`/${handle || did}`),
-        onEditProfile: () => router.push('/edit'),
-        onLogin: () => router.push('/login'),
-        onRegister: () => router.push('/register'),
+        onViewProfile: () => router.push(`/profile/${handle || did}`),
+        onEditProfile: () => router.push('/profile/edit'),
+        onLogin: () => router.push('/auth/login'),
+        onRegister: () => router.push('/auth/register'),
       }}
     />
   );

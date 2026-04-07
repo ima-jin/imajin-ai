@@ -181,7 +181,7 @@ function DIDConversationView({ did }: { did: string }) {
       });
       if (res.ok) {
         toast.success('You left the group');
-        router.push('/conversations');
+        router.push('/chat/conversations');
       } else {
         toast.error('Failed to leave group');
       }
@@ -309,7 +309,7 @@ function DIDConversationView({ did }: { did: string }) {
       {/* Header */}
       <div className="flex items-center gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
         <Link
-          href="/conversations"
+          href="/chat/conversations"
           className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition"
         >
           ← Back

@@ -181,7 +181,7 @@ export default function ConversationsPage() {
 
       return {
         key: conv.did,
-        href: `/conversations/${conversationPath(conv.did)}`,
+        href: `/chat/conversations/${conversationPath(conv.did)}`,
         name,
         type: conv.type,
         lastMessageAt: conv.lastMessageAt,

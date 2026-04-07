@@ -213,7 +213,7 @@ function RegisterPage() {
           )}
           <div className="space-y-3">
             <Link
-              href="/login"
+              href="/auth/login"
               className="block w-full py-3 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition text-center"
             >
               Already have an account? Login
