@@ -24,3 +24,5 @@ export {
   getSessionCookieName,
   getSessionCookieOptions,
 } from "./session";
+
+export { apiFetch, apiUrl } from "./base-path";
