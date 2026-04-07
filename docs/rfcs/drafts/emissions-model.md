@@ -48,14 +48,31 @@ The **record .fair** is critical — it's the snapshot that proves what rate was
 # /.fair/emissions.yaml (root — protocol defaults)
 
 emissions:
-  # === Identity lifecycle ===
+  # === Identity lifecycle (tiered verification) ===
+  # Total for fully verified identity: 210 MJN ($2.10)
   identity.created:
+    gas: 0
+    emit:
+      - to: subject
+        amount: 10
+        unit: MJN
+        reason: "Soft DID — welcome to the network"
+
+  identity.verified.preliminary:
     gas: 0
     emit:
       - to: subject
         amount: 100
         unit: MJN
-        reason: "Welcome credit — seed capital for gas and participation"
+        reason: "Preliminary verification — email confirmed"
+
+  identity.verified.hard:
+    gas: 0
+    emit:
+      - to: subject
+        amount: 100
+        unit: MJN
+        reason: "Hard verification — full identity confirmed"
 
   # === Connections ===
   connection.accepted:
@@ -155,6 +172,21 @@ emissions:
 | `scope` | Active scope DID (from `X-Acting-As` or forest context) |
 | `node` | Node operator DID |
 
+## MJN Valuation (Pre-Token)
+
+| Property | Value |
+|----------|-------|
+| **1 MJN** | **0.01 CHF (≈1¢ USD/CAD)** |
+| 100 MJN | 1 MJNx (1 CHF) |
+| Signup (soft DID) | 10 MJN = $0.10 |
+| Preliminary verified | +100 MJN = $1.00 |
+| Hard verified | +100 MJN = $1.00 |
+| **Fully verified total** | **210 MJN = $2.10** |
+| Gas per operation | 0.001 MJN = $0.001 |
+| 10 MJN covers | ~10,000 gas operations |
+
+Post-token launch, MJN floats at market rate. The pre-token peg is a utility definition: **1 MJN = the cost of one unit of platform compute.** This grounds the token in real resource consumption rather than speculation.
+
 ## How It Connects to Fee Model v3
 
 The fee model's "buyer credit" (0.25%) becomes an emission defined in .fair:
@@ -206,7 +238,7 @@ Gas and emissions are inverse flows of the same currency:
 | Recipient | Node operator (100%) | Varies per .fair (user, scope, node) |
 | Chain entry | Gas debit on user's chain | Emission credit on recipient's chain |
 
-**Net flow for active participants is positive.** 100 MJN starter balance covers thousands of gas operations (at 0.001–0.01 MJN per op). Every attestation emits new MJN. Active users accumulate, not deplete.
+**Net flow for active participants is positive.** A soft DID gets 10 MJN ($0.10) which covers 10,000 gas operations at 0.001 MJN per op. Preliminary verification adds 100 MJN ($1.00), hard adds another 100 MJN ($1.00). Every attestation emits new MJN. Active users accumulate, not deplete.
 
 **Net flow for the network is inflationary** — bounded by real economic activity (attestations require signed actions from real participants). Sybil farming is uneconomical: creating 1000 identities costs gas on each, and the $100 settlement threshold for mint eligibility means fake accounts can't extract real value.
 
@@ -217,12 +249,20 @@ Gas and emissions are inverse flows of the same currency:
 - **Scope overrides are transparent.** Identity .fair is on-chain and auditable. A scope advertising 5% emission is verifiable.
 - **Double-emission is prevented.** Each attestation has a unique CID. Emission handler is idempotent on attestation CID.
 
+## Resolved Questions
+
+1. **Emission caps:** No cap for now. Gas cost + attestation requirement + $100 settlement threshold for mint eligibility provides sufficient friction. May revisit once we see real data flow patterns.
+
+2. **Scope emission funding:** Scope treasury. If a scope wants to give more than the protocol default (e.g., 200 MJN signup instead of 100), the extra comes from the scope's own MJN balance. Gift/transfer mechanism. The protocol does not subsidize and there is no dilution — scope funds its own generosity.
+
+3. **MJN valuation (pre-token):** **1 MJN = 0.01 CHF (≈1¢).** Conversion: **100 MJN = 1 MJNx.** Grounded definition: 1 MJN = the minimum unit of compute (one gas operation). Post-token, MJN floats at market rate. This does not affect the Howey analysis — MJN is still earned through participation, never purchased. The peg makes gas costs legible, not speculative.
+
+4. **Retroactive emissions:** Yes — backfill existing identities using tiered verification emissions (see below). Run as a script replaying existing identities through the emission handler after the engine is built.
+
 ## Open Questions
 
-1. **Emission caps:** Should there be a per-identity daily/weekly emission cap to limit abuse? Or does the gas cost + attestation requirement provide sufficient friction?
-2. **Scope emission funding:** When a scope overrides emissions upward (e.g., 200 MJN instead of 100 for signup), where does the extra come from? Scope treasury? Protocol subsidy? Dilution?
-3. **Percentage emission conversion:** For commerce emissions defined as percentages — what's the MJN/MJNx conversion rate pre-token? Fixed ratio from fee-model (25:1)?
-4. **Retroactive emissions:** Should we backfill emissions for existing attestations? Or start fresh from implementation date?
+1. **Commerce emission rounding:** On small transactions, 0.25% of a $5 ticket = 0.0125 MJNx = 1.25 MJN. Round up or down? Floor is simpler, ceil is more generous.
+2. **Scope treasury seeding:** When a forest is created, does the creator's MJN seed the treasury? Or does the treasury start at 0 and accumulate from `scope.onboard` emissions?
 
 ---
 
