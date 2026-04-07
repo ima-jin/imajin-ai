@@ -2,7 +2,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { themeInitScript } from '@imajin/ui';
 import { cookies } from 'next/headers';
-import { NavBar } from './components/NavBar';
+import { NavBarWithUnread } from './components/NavBarWithUnread';
 import { BugReportButton } from '@/src/components/www/bug-report-button';
 import { Providers } from './providers';
 
@@ -71,8 +71,10 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-screen antialiased bg-white dark:bg-[#0a0a0a] text-gray-900 dark:text-white">
-        <NavBar currentService="Home" />
-        <Providers>{children}</Providers>
+        <Providers>
+          <NavBarWithUnread currentService="Home" />
+          {children}
+        </Providers>
         <BugReportWidget />
       </body>
     </html>
