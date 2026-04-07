@@ -56,7 +56,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
   async function fetchPod() {
     setLoadingPod(true);
     try {
-      const res = await fetch(`/connections/api/groups/${id}`);
+      const res = await fetch(`/auth/api/groups/${id}`);
       if (res.ok) {
         const data = await res.json();
         setPod(data.pod);
@@ -75,7 +75,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
     if (!editName.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch(`/connections/api/groups/${id}`, {
+      const res = await fetch(`/auth/api/groups/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: editName, description: editDesc }),
@@ -93,7 +93,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
   async function addMember(memberDid: string) {
     setAdding(true);
     try {
-      const res = await fetch(`/connections/api/groups/${id}/members`, {
+      const res = await fetch(`/auth/api/groups/${id}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ did: memberDid }),
@@ -116,7 +116,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
     if (!confirm(`Remove ${label} from this group?`)) return;
 
     try {
-      const res = await fetch(`/connections/api/groups/${id}/members`, {
+      const res = await fetch(`/auth/api/groups/${id}/members`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ did: memberDid }),
@@ -133,7 +133,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
   async function deleteGroup() {
     if (!confirm(`Delete "${pod?.name}"? This cannot be undone.`)) return;
     try {
-      const res = await fetch(`/connections/api/groups/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/auth/api/groups/${id}`, { method: 'DELETE' });
       if (res.ok) {
         window.location.href = '/?tab=groups';
       } else {

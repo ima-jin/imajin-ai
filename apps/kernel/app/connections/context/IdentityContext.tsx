@@ -26,7 +26,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 
   async function checkSession() {
     try {
-      const res = await fetch('/connections/api/auth/session');
+      const res = await fetch('/auth/api/session');
       if (res.ok) {
         const data = await res.json();
         setDid(data.did);
@@ -43,7 +43,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 
   async function logout() {
     try {
-      await fetch('/connections/api/auth/logout', { method: 'POST' });
+      await fetch('/auth/api/logout', { method: 'POST' });
     } catch {}
     setDid(null);
     setHandle(null);

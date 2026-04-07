@@ -64,7 +64,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 
     // Check auth session first
     try {
-      const authResponse = await fetch('/profile/api/auth/session');
+      const authResponse = await fetch('/auth/api/session');
       if (authResponse.ok) {
         const authSession = await authResponse.json();
         setDid(authSession.did);
@@ -105,7 +105,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 
     // Clear auth session cookie
     try {
-      await fetch('/profile/api/auth/logout', { method: 'POST' });
+      await fetch('/auth/api/logout', { method: 'POST' });
     } catch (error) {
       console.error('Failed to clear auth session:', error);
     }
@@ -156,7 +156,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       const signatureBytes = await ed.signAsync(msgBytes, privateKeyBytes);
       const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
-      const authResponse = await fetch('/profile/api/auth/register', {
+      const authResponse = await fetch('/auth/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

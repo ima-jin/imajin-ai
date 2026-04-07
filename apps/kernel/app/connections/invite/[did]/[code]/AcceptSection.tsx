@@ -21,7 +21,7 @@ export function AcceptSection({ loginUrl, code, connectionsUrl }: Props) {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    fetch('/connections/api/auth/session', { credentials: 'include' })
+    fetch('/auth/api/session', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.did) setSession(data);

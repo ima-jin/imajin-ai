@@ -198,7 +198,7 @@ function RegisterPage() {
       const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
       // 3. Register with auth service (sets JWT cookie)
-      const authResponse = await fetch('/profile/api/auth/register', {
+      const authResponse = await fetch('/auth/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
