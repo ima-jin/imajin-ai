@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { apiFetch } from '@imajin/config';
 
 export default function SettingsPage() {
   const [showMarketItems, setShowMarketItems] = useState(false);
@@ -13,7 +14,7 @@ export default function SettingsPage() {
   const authUrl = `${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}auth.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`;
 
   useEffect(() => {
-    fetch('/api/seller/settings', { credentials: 'include' })
+    apiFetch('/api/seller/settings', { credentials: 'include' })
       .then(async (res) => {
         if (res.status === 401) {
           window.location.href = `${authUrl}/login?next=${encodeURIComponent(window.location.href)}`;
@@ -32,7 +33,7 @@ export default function SettingsPage() {
     setSaving(true);
     setError('');
     try {
-      const res = await fetch('/api/seller/settings', {
+      const res = await apiFetch('/api/seller/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

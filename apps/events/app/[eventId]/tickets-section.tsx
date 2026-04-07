@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { TicketType } from '@/src/db/schema';
+import { apiFetch } from '@imajin/config';
 import { TicketPurchase } from './ticket-purchase';
 import { OnboardGate } from '@imajin/onboard';
 import { SurveyAccordion } from './survey-accordion';
@@ -139,7 +140,7 @@ function MyTicketCard({ ticket, eventId }: { ticket: UserTicket; eventId: string
 
   async function handleRegistrationComplete() {
     try {
-      const res = await fetch(`/api/register/${ticket.id}`, {
+      const res = await apiFetch(`/api/register/${ticket.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ formId: ticket.ticketType?.registrationFormId }),
@@ -148,7 +149,7 @@ function MyTicketCard({ ticket, eventId }: { ticket: UserTicket; eventId: string
         setRegStatus('complete');
         // Fetch QR code for the newly registered ticket
         try {
-          const qrRes = await fetch(`/api/tickets/${ticket.id}/qr`);
+          const qrRes = await apiFetch(`/api/tickets/${ticket.id}/qr`);
           if (qrRes.ok) {
             const data = await qrRes.json();
             setQrCode(data.qrCodeDataUri);

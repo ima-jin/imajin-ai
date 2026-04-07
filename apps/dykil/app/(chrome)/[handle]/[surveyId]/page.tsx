@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { apiFetch } from '@imajin/config';
 import { useToast } from '@imajin/ui';
 import { Model } from 'survey-core';
 import { Survey } from 'survey-react-ui';
@@ -34,7 +35,7 @@ export default function SurveyResponsePage() {
 
   const fetchSurvey = async () => {
     try {
-      const res = await fetch(`/api/surveys/${surveyId}`, {
+      const res = await apiFetch(`/api/surveys/${surveyId}`, {
         credentials: 'include',
       });
 
@@ -71,7 +72,7 @@ export default function SurveyResponsePage() {
   const submitResponse = async (data: any) => {
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/surveys/${surveyId}/respond`, {
+      const res = await apiFetch(`/api/surveys/${surveyId}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

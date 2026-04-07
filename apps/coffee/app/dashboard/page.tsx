@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { PayoutSetupBanner } from '@imajin/ui';
+import { apiFetch } from '@imajin/config';
 
 const PAY_URL = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
 
@@ -35,7 +36,7 @@ export default function DashboardPage() {
     async function loadData() {
       try {
         // First, get user's page
-        const pageRes = await fetch('/api/pages/mine', {
+        const pageRes = await apiFetch('/api/pages/mine', {
           credentials: 'include',
         });
 
@@ -53,7 +54,7 @@ export default function DashboardPage() {
         setUserPage(page);
 
         // Then get tips stats
-        const tipsRes = await fetch(`/api/tips/${page.did}`, {
+        const tipsRes = await apiFetch(`/api/tips/${page.did}`, {
           credentials: 'include',
         });
 

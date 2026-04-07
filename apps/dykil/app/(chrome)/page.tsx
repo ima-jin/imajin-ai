@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { ImajinFooter } from '@imajin/ui';
+import Link from 'next/link';
 
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -39,9 +40,9 @@ export default function Home() {
           <div className="flex justify-center mb-12">
             {!checkingAuth && (
               isLoggedIn ? (
-                <a href="/dashboard" className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
+                <Link href="/dashboard" className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
                   Go to Dashboard →
-                </a>
+                </Link>
               ) : (
                 <a href={`${AUTH_URL}/login?next=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin + '/dashboard' : '/dashboard')}`} className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
                   Sign In to Get Started

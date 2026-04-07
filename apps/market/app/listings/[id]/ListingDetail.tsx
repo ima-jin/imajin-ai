@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { resolveMediaRef } from '@imajin/media';
+import { apiFetch } from '@imajin/config';
 import PriceDisplay from '../../components/PriceDisplay';
 import { OnboardGate } from '@imajin/onboard';
 
@@ -134,7 +135,7 @@ export default function ListingDetail() {
     setBuyLoading(true);
     setBuyError(null);
     try {
-      const res = await fetch(`/api/listings/${listing.id}/purchase`, {
+      const res = await apiFetch(`/api/listings/${listing.id}/purchase`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -160,7 +161,7 @@ export default function ListingDetail() {
   useEffect(() => {
     async function fetchListing() {
       try {
-        const res = await fetch(`/api/listings/${id}`);
+        const res = await apiFetch(`/api/listings/${id}`);
         if (res.status === 404) {
           setError('Listing not found.');
           return;
@@ -180,7 +181,7 @@ export default function ListingDetail() {
 
         // Resolve seller name server-side via profile service
         try {
-          const lookupRes = await fetch(
+          const lookupRes = await apiFetch(
             `/api/resolve/${encodeURIComponent(data.sellerDid)}`
           );
           if (lookupRes.ok) {
@@ -198,7 +199,7 @@ export default function ListingDetail() {
 
         // Fetch current session DID to detect ownership
         try {
-          const meRes = await fetch('/api/me', { credentials: 'include' });
+          const meRes = await apiFetch('/api/me', { credentials: 'include' });
           if (meRes.ok) {
             const me = await meRes.json();
             if (me?.did) setSessionDid(me.did);
@@ -209,7 +210,7 @@ export default function ListingDetail() {
 
         // Fetch other listings by this seller
         try {
-          const relatedRes = await fetch(
+          const relatedRes = await apiFetch(
             `/api/listings?seller_did=${encodeURIComponent(data.sellerDid)}&status=active&limit=4&exclude=${data.id}`
           );
           if (relatedRes.ok) {
@@ -295,7 +296,7 @@ export default function ListingDetail() {
     setActionLoading(newStatus);
     setActionError(null);
     try {
-      const res = await fetch(`/api/listings/${listing.id}`, {
+      const res = await apiFetch(`/api/listings/${listing.id}`, {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

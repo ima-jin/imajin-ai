@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ImageUpload } from '@/app/components/ImageUpload';
 import { MarkdownEditor } from '@imajin/ui';
+import { apiFetch } from '@imajin/config';
 
 interface Props {
   organizerDid: string;
@@ -63,7 +64,7 @@ export default function EventCreateForm({ organizerDid }: Props) {
     setError('');
 
     try {
-      const response = await fetch('/api/events', {
+      const response = await apiFetch('/api/events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include', // Include cookies for auth

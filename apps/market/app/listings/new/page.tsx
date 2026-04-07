@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { apiFetch } from '@imajin/config';
 import { ListingForm, ListingFormData } from '../../components/ListingForm';
 
 export default function NewListingPage() {
@@ -40,7 +41,7 @@ export default function NewListingPage() {
         if (Object.keys(ci).length > 0) body.contactInfo = ci;
       }
 
-      const res = await fetch('/api/listings', {
+      const res = await apiFetch('/api/listings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

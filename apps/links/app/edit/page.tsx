@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useToast } from '@imajin/ui';
+import { apiFetch } from '@imajin/config';
 
 interface Link {
   id: string;
@@ -99,7 +100,7 @@ export default function EditPage() {
 
   const fetchPage = async () => {
     try {
-      const res = await fetch('/api/pages/mine', {
+      const res = await apiFetch('/api/pages/mine', {
         credentials: 'include',
       });
 
@@ -123,14 +124,14 @@ export default function EditPage() {
 
   const autoCreatePage = async () => {
     try {
-      const res = await fetch('/api/pages/auto-create', {
+      const res = await apiFetch('/api/pages/auto-create', {
         method: 'POST',
         credentials: 'include',
       });
 
       if (res.ok) {
         // Fetch the full page with links
-        const fullPageRes = await fetch('/api/pages/mine', {
+        const fullPageRes = await apiFetch('/api/pages/mine', {
           credentials: 'include',
         });
         if (fullPageRes.ok) {
@@ -152,7 +153,7 @@ export default function EditPage() {
 
     try {
       const theme = THEME_PRESETS[formData.theme as keyof typeof THEME_PRESETS];
-      const res = await fetch(`/api/pages/${page.handle}`, {
+      const res = await apiFetch(`/api/pages/${page.handle}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -177,7 +178,7 @@ export default function EditPage() {
     if (!page) return;
 
     try {
-      const res = await fetch(`/api/pages/${page.handle}/links`, {
+      const res = await apiFetch(`/api/pages/${page.handle}/links`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -211,7 +212,7 @@ export default function EditPage() {
     if (!editingLink) return;
 
     try {
-      const res = await fetch(`/api/links/${editingLink.id}`, {
+      const res = await apiFetch(`/api/links/${editingLink.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -242,7 +243,7 @@ export default function EditPage() {
     if (!confirm('Delete this link?')) return;
 
     try {
-      const res = await fetch(`/api/links/${linkId}`, {
+      const res = await apiFetch(`/api/links/${linkId}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -272,13 +273,13 @@ export default function EditPage() {
 
     try {
       await Promise.all([
-        fetch(`/api/links/${linkId}`, {
+        apiFetch(`/api/links/${linkId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ position: targetLink.position }),
         }),
-        fetch(`/api/links/${targetLink.id}`, {
+        apiFetch(`/api/links/${targetLink.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',

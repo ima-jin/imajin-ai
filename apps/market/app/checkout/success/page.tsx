@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { resolveMediaRef } from '@imajin/media';
-import { buildPublicUrl } from '@imajin/config';
+import { buildPublicUrl, apiFetch } from '@imajin/config';
 
 const CHAT_URL = buildPublicUrl('chat', process.env.NEXT_PUBLIC_SERVICE_PREFIX, process.env.NEXT_PUBLIC_DOMAIN);
 
@@ -25,7 +25,7 @@ function CheckoutSuccessContent() {
 
   useEffect(() => {
     if (!listingId) return;
-    fetch(`/api/listings/${listingId}`)
+    apiFetch(`/api/listings/${listingId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => setListing(data))
       .catch(() => null);

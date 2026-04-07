@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { apiFetch } from '@imajin/config';
 
 interface EventChatButtonProps {
   eventId: string;
@@ -18,7 +19,7 @@ export function EventChatButton({ eventId, chatUrl }: EventChatButtonProps) {
   useEffect(() => {
     async function checkAccess() {
       try {
-        const res = await fetch(`/api/events/${eventId}/my-ticket`);
+        const res = await apiFetch(`/api/events/${eventId}/my-ticket`);
         if (res.ok) {
           const data = await res.json();
           if (data.hasTicket) {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { MarkdownContent } from '@imajin/ui';
+import { apiFetch } from '@imajin/config';
 
 const MarkdownEditor = dynamic(
   () => import('@imajin/ui').then((m) => ({ default: m.MarkdownEditor })),
@@ -62,7 +63,7 @@ export default function EditPage() {
   useEffect(() => {
     async function loadPage() {
       try {
-        const res = await fetch('/api/pages/mine', {
+        const res = await apiFetch('/api/pages/mine', {
           credentials: 'include',
         });
 
@@ -140,7 +141,7 @@ export default function EditPage() {
       let res;
       if (existingPage) {
         // Update existing page
-        res = await fetch(`/api/pages/${existingPage.handle}`, {
+        res = await apiFetch(`/api/pages/${existingPage.handle}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -148,7 +149,7 @@ export default function EditPage() {
         });
       } else {
         // Create new page
-        res = await fetch('/api/pages', {
+        res = await apiFetch('/api/pages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',

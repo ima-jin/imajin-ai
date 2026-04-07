@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { apiFetch } from '@imajin/config';
 
 interface GuestInfo {
   attendeeName: string | null;
@@ -60,7 +61,7 @@ export function TicketScanner({ eventId, onCheckIn, lookupGuest }: TicketScanner
     processingRef.current = true;
 
     try {
-      const res = await fetch(`/api/events/${eventId}/tickets/${ticketId}/check-in`, { method: 'POST' });
+      const res = await apiFetch(`/api/events/${eventId}/tickets/${ticketId}/check-in`, { method: 'POST' });
       const data = await res.json();
 
       if (res.ok) {

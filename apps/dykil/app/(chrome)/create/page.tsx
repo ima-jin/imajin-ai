@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { apiFetch } from '@imajin/config';
 import { useToast } from '@imajin/ui';
 import { Model } from 'survey-core';
 import { Survey } from 'survey-react-ui';
@@ -195,7 +196,7 @@ function CreateSurveyContent() {
 
   const fetchSurvey = async () => {
     try {
-      const res = await fetch(`/api/surveys/${editId}`, {
+      const res = await apiFetch(`/api/surveys/${editId}`, {
         credentials: 'include',
       });
 
@@ -325,7 +326,7 @@ function CreateSurveyContent() {
         status: publish ? 'published' : survey.status,
       };
 
-      const res = await fetch(
+      const res = await apiFetch(
         editId ? `/api/surveys/${editId}` : '/api/surveys',
         {
           method: editId ? 'PUT' : 'POST',

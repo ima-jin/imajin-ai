@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { apiFetch } from '@imajin/config';
 
 interface Props {
   ticketId: string;
@@ -32,7 +33,7 @@ export default function RegisterForm({
     setError('');
 
     try {
-      const res = await fetch(`/api/register/${ticketId}`, {
+      const res = await apiFetch(`/api/register/${ticketId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), email: email.trim(), formId }),

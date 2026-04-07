@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { apiFetch } from '@imajin/config';
 
 interface Invite {
   id: string;
@@ -34,7 +35,7 @@ export function InviteManager({ eventId, accessMode }: Props) {
 
   const fetchInvites = useCallback(async () => {
     try {
-      const res = await fetch(`/api/events/${eventId}/invites`, { credentials: 'include' });
+      const res = await apiFetch(`/api/events/${eventId}/invites`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setInvites(data.invites || []);
@@ -54,7 +55,7 @@ export function InviteManager({ eventId, accessMode }: Props) {
     setFormError('');
 
     try {
-      const res = await fetch(`/api/events/${eventId}/invites`, {
+      const res = await apiFetch(`/api/events/${eventId}/invites`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -86,7 +87,7 @@ export function InviteManager({ eventId, accessMode }: Props) {
   async function handleDelete(inviteId: string) {
     if (!confirm('Revoke this invite link? Anyone with this link will no longer be able to use it.')) return;
 
-    const res = await fetch(`/api/events/${eventId}/invites/${inviteId}`, {
+    const res = await apiFetch(`/api/events/${eventId}/invites/${inviteId}`, {
       method: 'DELETE',
       credentials: 'include',
     });

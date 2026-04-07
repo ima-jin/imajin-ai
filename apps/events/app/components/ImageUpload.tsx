@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
+import { apiFetch } from '@imajin/config';
 
 interface ImageUploadProps {
   currentImage?: string;
@@ -73,7 +74,7 @@ export function ImageUpload({ currentImage, onUploadComplete }: ImageUploadProps
         const formData = new FormData();
         formData.append('image', resized, `event-${Date.now()}.jpg`);
 
-        const response = await fetch('/api/upload', {
+        const response = await apiFetch('/api/upload', {
           method: 'POST',
           body: formData,
         });

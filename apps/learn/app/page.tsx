@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ImajinFooter } from '@imajin/ui';
+import { apiFetch } from '@imajin/config';
 
 interface Course {
   id: string;
@@ -26,7 +27,7 @@ export default function DiscoveryPage() {
   useEffect(() => {
     async function loadCourses() {
       try {
-        const res = await fetch('/api/courses?status=published');
+        const res = await apiFetch('/api/courses?status=published');
         if (res.ok) {
           const data = await res.json();
           setCourses(data.courses);

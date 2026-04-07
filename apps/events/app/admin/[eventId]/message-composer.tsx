@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { marked } from 'marked';
+import { apiFetch } from '@imajin/config';
 
 interface MessageComposerProps {
   eventId: string;
@@ -37,7 +38,7 @@ export function MessageComposer({ eventId, recipientCount }: MessageComposerProp
     setResult(null);
 
     try {
-      const res = await fetch(`/api/events/${eventId}/message`, {
+      const res = await apiFetch(`/api/events/${eventId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subject: subject.trim(), markdown: markdown.trim() }),

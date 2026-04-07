@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ImageUpload } from '@/app/components/ImageUpload';
 import { MarkdownEditor } from '@imajin/ui';
 import { FairEditor } from '@imajin/fair';
+import { apiFetch } from '@imajin/config';
 import type { FairManifest } from '@imajin/fair';
 import type { Event, TicketType } from '@/src/db/schema';
 
@@ -175,7 +176,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
     }
 
     try {
-      const response = await fetch(`/api/events/${event.id}`, {
+      const response = await apiFetch(`/api/events/${event.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -221,7 +222,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         const tier = tiers[i];
         if (tier.id) {
           // Update existing tier
-          const tierRes = await fetch(`/api/events/${event.id}/tiers`, {
+          const tierRes = await apiFetch(`/api/events/${event.id}/tiers`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -243,7 +244,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
           }
         } else {
           // Create new tier
-          const tierRes = await fetch(`/api/events/${event.id}/tiers`, {
+          const tierRes = await apiFetch(`/api/events/${event.id}/tiers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -287,7 +288,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
     setFairSaveError('');
     setFairSaved(false);
     try {
-      const res = await fetch(`/api/events/${event.id}/fair`, {
+      const res = await apiFetch(`/api/events/${event.id}/fair`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

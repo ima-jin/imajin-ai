@@ -2,6 +2,8 @@
 
 import { Suspense, useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import { apiFetch } from '@imajin/config';
 import { ImajinFooter } from '@imajin/ui';
 import ListingCard from '../../components/ListingCard';
 
@@ -31,7 +33,7 @@ function SellerPageContent() {
       setError(null);
       try {
         // Server-side handle resolution + listings in one call
-        const res = await fetch(
+        const res = await apiFetch(
           `/api/seller/handle/${encodeURIComponent(handle)}`
         );
         if (!res.ok) {
@@ -59,7 +61,7 @@ function SellerPageContent() {
         <div className="flex items-start justify-between mb-8">
           <div>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-              <a href="/" className="hover:text-orange-500 transition">Market</a>
+              <Link href="/" className="hover:text-orange-500 transition">Market</Link>
               {' / '}
               <span>Seller</span>
             </p>
@@ -72,12 +74,12 @@ function SellerPageContent() {
               </p>
             )}
           </div>
-          <a
+          <Link
             href="/"
             className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition font-medium whitespace-nowrap text-sm"
           >
             ← Browse All
-          </a>
+          </Link>
         </div>
 
         {/* Results */}
@@ -96,9 +98,9 @@ function SellerPageContent() {
         ) : error ? (
           <div className="text-center py-16">
             <p className="text-red-500 mb-4">{error}</p>
-            <a href="/" className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition">
+            <Link href="/" className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition">
               Back to Market
-            </a>
+            </Link>
           </div>
         ) : listings.length === 0 ? (
           <div className="text-center py-16 text-gray-500 dark:text-gray-400">

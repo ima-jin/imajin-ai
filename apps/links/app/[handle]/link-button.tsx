@@ -1,6 +1,7 @@
 'use client';
 
 import { getSocialPlatform, SocialIcon } from './social-icons';
+import { apiFetch } from '@imajin/config';
 
 interface Link {
   id: string;
@@ -26,7 +27,7 @@ export default function LinkButton({
 
   const handleClick = async () => {
     // Record click (fire and forget)
-    fetch(`/api/links/${link.id}/click`, { method: 'POST' }).catch(() => {});
+    apiFetch(`/api/links/${link.id}/click`, { method: 'POST' }).catch(() => {});
   };
 
   const socialPlatform = getSocialPlatform(link.url);
