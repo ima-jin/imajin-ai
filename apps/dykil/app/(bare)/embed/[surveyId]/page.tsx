@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { apiFetch } from '@imajin/config';
+import { apiFetch, apiUrl } from '@imajin/config';
 import { Model } from 'survey-core';
 import { Survey } from 'survey-react-ui';
 import 'survey-core/survey-core.min.css';
@@ -195,7 +195,7 @@ export default function SurveyEmbedPage() {
             // Skip check — show fresh form for this ticket
           } else {
 
-          const checkUrl = new URL(`/api/surveys/${surveyId}/responses/check`, window.location.origin);
+          const checkUrl = new URL(apiUrl(`/api/surveys/${surveyId}/responses/check`), window.location.origin);
           checkUrl.searchParams.set('include', 'answers');
           if (storedResponseId) checkUrl.searchParams.set('responseId', storedResponseId);
           if (ticketId) checkUrl.searchParams.set('skipDid', 'true');
