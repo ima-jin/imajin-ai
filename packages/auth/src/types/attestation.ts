@@ -26,7 +26,15 @@ export const ATTESTATION_TYPES = [
   'group.member.added',
   'group.member.removed',
   'group.member.left',
-  'scope.onboard'
+  'scope.onboard',
+  'identity.created',
+  'identity.verified.preliminary',
+  'identity.verified.hard',
+  'event.created',
+  'handle.claimed',
+  'ticket.purchased',
+  'listing.purchased',
+  'tip.received',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];

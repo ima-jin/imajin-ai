@@ -239,6 +239,16 @@ export async function POST(request: NextRequest) {
 
     response.cookies.set(cookieConfig.name, token, cookieConfig.options);
 
+    // Emit identity.created attestation → triggers 10 MJN emission
+    emitAttestation({
+      issuer_did: identity.id,
+      subject_did: identity.id,
+      type: 'identity.created',
+      context_id: identity.id,
+      context_type: 'identity',
+      payload: { tier: 'preliminary', type: identity.type },
+    }).catch((err) => console.error('[register] Attestation (identity.created) error (non-fatal):', err));
+
     // Create profile row so the user is visible/discoverable
     try {
       const displayType = ['human', 'agent', 'presence'].includes(type) ? type : 'human';

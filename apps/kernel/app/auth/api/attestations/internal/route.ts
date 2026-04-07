@@ -10,12 +10,88 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, attestations } from '@/src/db';
+import { db, attestations, balances, transactions } from '@/src/db';
+import { eq, sql } from 'drizzle-orm';
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
+import { EMISSION_SCHEDULE, resolveAmount, resolveTarget } from '@/src/lib/kernel/emissions';
 
 function genId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 14)}${Date.now().toString(36)}`;
+}
+
+/**
+ * Process MJN emissions for an attestation.
+ * Looks up the emission schedule, credits balances, logs transactions.
+ * Idempotent: checks for existing emission transactions by attestation ID.
+ */
+async function processEmissions(
+  attestationId: string,
+  attestationType: string,
+  context: { issuerDid: string; subjectDid: string; scopeDid?: string | null; nodeDid?: string | null },
+  payload?: Record<string, unknown>
+): Promise<void> {
+  const spec = EMISSION_SCHEDULE[attestationType];
+  if (!spec || spec.emit.length === 0) return;
+
+  // Settlement value for percentage-based emissions (in MJNx)
+  const settlementValue = typeof payload?.amount === 'number' ? payload.amount : undefined;
+
+  for (const rule of spec.emit) {
+    const targetDid = resolveTarget(rule, context);
+    if (!targetDid) {
+      console.warn(`[emissions] No target DID for ${rule.to} on ${attestationType} — skipping`);
+      continue;
+    }
+
+    const amount = resolveAmount(rule, settlementValue);
+    if (amount <= 0) continue;
+
+    const txId = genId('tx');
+
+    try {
+      // Upsert balance — increment credit_amount
+      await db
+        .insert(balances)
+        .values({
+          did: targetDid,
+          creditAmount: String(amount),
+          cashAmount: '0',
+          currency: 'MJN',
+        })
+        .onConflictDoUpdate({
+          target: balances.did,
+          set: {
+            creditAmount: sql`${balances.creditAmount}::numeric + ${amount}`,
+            updatedAt: new Date(),
+          },
+        });
+
+      // Log the emission transaction
+      await db.insert(transactions).values({
+        id: txId,
+        service: 'emissions',
+        type: 'emission',
+        fromDid: null, // protocol mint, no sender
+        toDid: targetDid,
+        amount: String(amount),
+        currency: 'MJN',
+        status: 'completed',
+        source: 'emission',
+        metadata: {
+          attestation_id: attestationId,
+          attestation_type: attestationType,
+          reason: rule.reason,
+          to_role: rule.to,
+        },
+      });
+
+      console.log(`[emissions] ${amount} MJN → ${targetDid.slice(0, 20)}... (${attestationType}: ${rule.reason})`);
+    } catch (err) {
+      console.error(`[emissions] Failed to credit ${targetDid} for ${attestationType}:`, err);
+      // Non-fatal — continue with other emissions
+    }
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -95,6 +171,16 @@ export async function POST(request: NextRequest) {
         issuedAt: new Date(issuedAtMs),
       })
       .returning();
+
+    // Process MJN emissions (fire-and-forget, non-fatal)
+    processEmissions(id, type, {
+      issuerDid: issuer_did as string,
+      subjectDid: subject_did as string,
+      scopeDid: (payload as Record<string, unknown> | undefined)?.scope_did as string | undefined ?? null,
+      nodeDid: null, // TODO: resolve from relay config
+    }, payload as Record<string, unknown> | undefined).catch((err) =>
+      console.error(`[emissions] Failed for attestation ${id} (${type}):`, err)
+    );
 
     return NextResponse.json(attestation, { status: 201 });
   } catch (err) {
