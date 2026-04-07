@@ -1,34 +1,7 @@
-import type { Metadata } from 'next';
-import '../globals.css';
-import { NavBarWithUnread } from './components/NavBarWithUnread';
 import { IdentityProvider } from '@/src/contexts/IdentityContext';
 import { UnreadTitleManager } from './components/UnreadTitleManager';
 import { UnreadCountProvider } from '@/src/contexts/UnreadCountContext';
 import { ToastProvider } from '@imajin/ui';
-import { buildPublicUrl } from '@imajin/config';
-
-const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-const isDev = prefix.includes('dev-');
-const envLabel = isDev ? ' [DEV]' : '';
-
-export const metadata: Metadata = {
-  title: `Imajin Chat${envLabel}`,
-  description: 'End-to-end encrypted messaging for the trust network. X25519 + XChaCha20-Poly1305.',
-  keywords: ['chat', 'messaging', 'encrypted', 'E2EE', 'sovereign', 'imajin'],
-  openGraph: {
-    type: 'website',
-    url: buildPublicUrl('chat', prefix, domain),
-    siteName: `Imajin Chat${envLabel}`,
-    title: `Imajin Chat${envLabel} — Encrypted Messaging`,
-    description: 'End-to-end encrypted messaging for the trust network.',
-  },
-  twitter: {
-    card: 'summary',
-    title: `Imajin Chat${envLabel}`,
-    description: 'End-to-end encrypted messaging for the trust network.',
-  },
-};
 
 export default function ChatLayout({
   children,
@@ -38,7 +11,6 @@ export default function ChatLayout({
   return (
     <ToastProvider>
       <UnreadCountProvider>
-        <NavBarWithUnread />
         <IdentityProvider>
           <UnreadTitleManager />
           <main className="container mx-auto px-4 py-4">
