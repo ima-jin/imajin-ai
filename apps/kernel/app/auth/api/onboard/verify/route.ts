@@ -176,6 +176,16 @@ export async function GET(request: NextRequest) {
         value: normalizedEmail,
         verifiedAt: new Date(),
       });
+
+      // Emit identity.created attestation → triggers 10 MJN emission (soft DID)
+      emitAttestation({
+        issuer_did: did,
+        subject_did: did,
+        type: 'identity.created',
+        context_id: did,
+        context_type: 'identity',
+        payload: { tier: 'soft', source: 'onboard' },
+      }).catch((err) => console.error('[onboard/verify] Attestation (identity.created) error (non-fatal):', err));
     }
 
     // Create session token — use actual tier (supports hard DID re-auth via magic link)
