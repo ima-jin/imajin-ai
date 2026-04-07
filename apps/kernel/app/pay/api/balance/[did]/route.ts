@@ -56,6 +56,7 @@ export async function GET(
         did: decoded,
         cashAmount,
         creditAmount,
+        mjnBalance: creditAmount,
         total: cashAmount + creditAmount,
         currency: row?.currency || 'USD',
         updatedAt: row?.updatedAt?.toISOString() || new Date().toISOString(),

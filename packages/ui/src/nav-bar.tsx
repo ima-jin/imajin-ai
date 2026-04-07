@@ -193,13 +193,19 @@ export function NavBar({
   const launcherTier = getLauncherTier(identity);
 
   // Fetch balance from pay service
-  const [balance, setBalance] = useState<number | null>(null);
+  const [cashBalance, setCashBalance] = useState<number | null>(null);
+  const [mjnBalance, setMjnBalance] = useState<number | null>(null);
   useEffect(() => {
-    if (!identity?.isLoggedIn || !identity?.did) { setBalance(null); return; }
+    if (!identity?.isLoggedIn || !identity?.did) { setCashBalance(null); setMjnBalance(null); return; }
     const payUrl = buildUrl('pay', servicePrefix, domain, serviceUrls);
     fetch(`${payUrl}/api/balance/${encodeURIComponent(identity.did)}`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.total) setBalance(parseFloat(data.total)); })
+      .then(data => {
+        if (data) {
+          setCashBalance(data.cashAmount != null ? parseFloat(data.cashAmount) : null);
+          setMjnBalance(data.creditAmount != null ? parseFloat(data.creditAmount) : null);
+        }
+      })
       .catch(() => {});
   }, [identity?.isLoggedIn, identity?.did, servicePrefix, domain, serviceUrls]);
 
@@ -323,12 +329,20 @@ export function NavBar({
             </button>
           ) : identity?.isLoggedIn ? (
             <div className="flex items-center gap-2">
-              {balance !== null && balance > 0 && (
+              {(cashBalance !== null && cashBalance > 0) && (
                 <a
                   href={buildUrl('pay', servicePrefix, domain, serviceUrls)}
                   className="text-sm font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full hover:bg-green-100 dark:hover:bg-green-900/40 transition no-underline"
                 >
-                  ${balance.toFixed(2)}
+                  ${cashBalance.toFixed(2)}
+                </a>
+              )}
+              {(mjnBalance !== null && mjnBalance > 0) && (
+                <a
+                  href={buildUrl('pay', servicePrefix, domain, serviceUrls)}
+                  className="text-sm font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-full hover:bg-amber-100 dark:hover:bg-amber-900/40 transition no-underline"
+                >
+                  {Math.round(mjnBalance)} MJN
                 </a>
               )}
             <div className="relative" ref={dropdownRef}>

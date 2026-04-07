@@ -8,6 +8,7 @@ import { PayoutSetupBanner } from './components/PayoutSetupBanner';
 
 const SERVICE_ICONS: Record<string, string> = {
   coffee: '☕',
+  emissions: '✨',
   events: '🎟',
   inference: '🤖',
   shop: '🛍',
@@ -127,14 +128,18 @@ export default async function Home() {
                   </div>
                   <div
                     className={`text-base font-semibold shrink-0 ${
-                      isIncoming ? 'text-green-400' : 'text-red-400'
+                      tx.currency === 'MJN'
+                        ? 'text-amber-400'
+                        : isIncoming ? 'text-green-400' : 'text-red-400'
                     }`}
                   >
                     {isIncoming ? '+' : '-'}
-                    {new Intl.NumberFormat('en-US', {
-                      style: 'currency',
-                      currency: tx.currency,
-                    }).format(amount)}
+                    {tx.currency === 'MJN'
+                      ? `${Math.round(amount)} MJN`
+                      : new Intl.NumberFormat('en-US', {
+                          style: 'currency',
+                          currency: tx.currency,
+                        }).format(amount)}
                   </div>
                 </div>
               );

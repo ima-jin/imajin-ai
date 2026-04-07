@@ -32,6 +32,7 @@ interface TransactionListProps {
 
 const SERVICE_ICONS: Record<string, string> = {
   coffee: '☕',
+  emissions: '✨',
   events: '🎟',
   inference: '🤖',
   shop: '🛍',
@@ -40,6 +41,7 @@ const SERVICE_ICONS: Record<string, string> = {
 };
 
 function fmt(amount: number, currency: string) {
+  if (currency === 'MJN') return `${Math.round(amount)} MJN`;
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
 }
 
@@ -107,7 +109,11 @@ function StandaloneRow({ tx, sessionId }: { tx: SerializedTx; sessionId: string 
         <div className="text-right shrink-0 flex items-center gap-3">
           <div>
             <div
-              className={`text-base font-semibold ${isIncoming ? 'text-green-400' : 'text-red-400'}`}
+              className={`text-base font-semibold ${
+                tx.currency === 'MJN'
+                  ? 'text-amber-400'
+                  : isIncoming ? 'text-green-400' : 'text-red-400'
+              }`}
             >
               {isIncoming ? '+' : '-'}
               {fmt(amount, tx.currency)}
@@ -234,7 +240,11 @@ function BatchGroupRow({
         <div className="text-right shrink-0 flex items-center gap-3">
           <div>
             <div
-              className={`text-base font-semibold ${isIncoming ? 'text-green-400' : 'text-red-400'}`}
+              className={`text-base font-semibold ${
+                userEntry.currency === 'MJN'
+                  ? 'text-amber-400'
+                  : isIncoming ? 'text-green-400' : 'text-red-400'
+              }`}
             >
               {isIncoming ? '+' : '-'}
               {fmt(displayAmount, userEntry.currency)}

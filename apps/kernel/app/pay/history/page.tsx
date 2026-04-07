@@ -1,12 +1,13 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@imajin/auth';
 import { db, transactions } from '@/src/db';
-import { eq, and, or, desc, gte, lte } from 'drizzle-orm';
+import { eq, and, or, desc, gte, lte, inArray } from 'drizzle-orm';
 import Link from 'next/link';
 import TransactionList, { type DisplayEntry, type SerializedTx } from './TransactionList';
 
 const SERVICE_ICONS: Record<string, string> = {
   coffee: '☕',
+  emissions: '✨',
   events: '🎟',
   inference: '🤖',
   shop: '🛍',
@@ -18,6 +19,7 @@ const PAGE_SIZE = 20;
 
 interface SearchParams {
   service?: string;
+  currency?: string;
   from?: string;
   to?: string;
   page?: string;
@@ -36,7 +38,7 @@ export default async function HistoryPage({
     redirect(`${authUrl}/login?next=${encodeURIComponent(`${payUrl}/history`)}`);
   }
 
-  const { service, from, to } = searchParams;
+  const { service, currency, from, to } = searchParams;
   const page = Math.max(1, parseInt(searchParams.page || '1'));
   const offset = (page - 1) * PAGE_SIZE;
 
@@ -47,6 +49,8 @@ export default async function HistoryPage({
 
   const conditions = [userTxCondition];
   if (service) conditions.push(eq(transactions.service, service));
+  if (currency === 'MJN') conditions.push(eq(transactions.currency, 'MJN'));
+  if (currency === 'Fiat') conditions.push(inArray(transactions.currency, ['USD', 'CHF', 'EUR', 'GBP']));
   if (from) conditions.push(gte(transactions.createdAt, new Date(from)));
   if (to) {
     const toDate = new Date(to);
@@ -74,11 +78,12 @@ export default async function HistoryPage({
 
   const filterParams = {
     ...(service ? { service } : {}),
+    ...(currency ? { currency } : {}),
     ...(from ? { from } : {}),
     ...(to ? { to } : {}),
   };
 
-  const hasFilters = service || from || to;
+  const hasFilters = service || currency || from || to;
 
   // Group transactions by batch_id; standalone entries (no batch_id) pass through as-is.
   // Preserve descending-date order: the batch group appears at the position of its first member.
@@ -133,6 +138,19 @@ export default async function HistoryPage({
                 {SERVICE_ICONS[s] || ''} {s}
               </option>
             ))}
+          </select>
+        </div>
+
+        <div className="flex-1 min-w-[120px]">
+          <label className="block text-xs text-zinc-500 mb-1.5">Currency</label>
+          <select
+            name="currency"
+            defaultValue={currency || ''}
+            className="w-full bg-black border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+          >
+            <option value="">All</option>
+            <option value="Fiat">Fiat</option>
+            <option value="MJN">✨ MJN</option>
           </select>
         </div>
 
