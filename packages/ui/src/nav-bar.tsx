@@ -51,6 +51,15 @@ function buildUrl(service: string, prefix: string, domain: string, overrides?: S
     return port ? `http://localhost:${port}` : `http://localhost:3000`;
   }
 
+  // Single-domain mode: prefix is a full URL like "https://dev-jin.imajin.ai/"
+  // Strip protocol and check for dots to detect
+  const stripped = prefix.replace(/^https?:\/\//, '');
+  if (stripped.includes('.')) {
+    const base = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
+    if (service === 'www' || service === 'kernel') return base;
+    return `${base}/${service}`;
+  }
+
   return `${prefix}${service}.${domain}`;
 }
 
