@@ -23,7 +23,7 @@ export default function NewGroupPage() {
     setError('');
 
     try {
-      const res = await fetch('/api/groups', {
+      const res = await fetch('/auth/api/groups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

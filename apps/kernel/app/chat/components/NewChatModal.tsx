@@ -157,7 +157,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
 
     // Server creates the group with a random DID and tracks members
     try {
-      const res = await fetch(`/api/conversations`, {
+      const res = await fetch(`/chat/api/conversations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

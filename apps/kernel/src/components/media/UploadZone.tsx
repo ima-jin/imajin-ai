@@ -36,7 +36,7 @@ export const UploadZone = forwardRef<UploadZoneHandle, UploadZoneProps>(
         formData.append("filename", file.name);
 
         try {
-          const res = await fetch("/api/assets", {
+          const res = await fetch("/media/api/assets", {
             method: "POST",
             credentials: "include",
             body: formData,

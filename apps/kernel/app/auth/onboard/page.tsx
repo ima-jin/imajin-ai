@@ -64,7 +64,7 @@ function OnboardContent() {
     }
     setEmailLoading(true);
     try {
-      const res = await fetch('/api/onboard', {
+      const res = await fetch('/auth/api/onboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -123,7 +123,7 @@ function OnboardContent() {
     setFlow('keypair-loading');
     setKeypairError('');
     try {
-      const res = await fetch('/api/onboard/generate', {
+      const res = await fetch('/auth/api/onboard/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

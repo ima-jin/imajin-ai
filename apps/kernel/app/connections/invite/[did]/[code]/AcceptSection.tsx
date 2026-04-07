@@ -21,7 +21,7 @@ export function AcceptSection({ loginUrl, code, connectionsUrl }: Props) {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    fetch('/api/auth/session', { credentials: 'include' })
+    fetch('/connections/api/auth/session', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.did) setSession(data);
@@ -34,7 +34,7 @@ export function AcceptSection({ loginUrl, code, connectionsUrl }: Props) {
     setAccepting(true);
     setError(null);
     try {
-      const res = await fetch(`/api/invites/${code}/accept`, {
+      const res = await fetch(`/connections/api/invites/${code}/accept`, {
         method: 'POST',
         credentials: 'include',
       });

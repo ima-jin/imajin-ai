@@ -122,7 +122,7 @@ function DIDConversationView({ did }: { did: string }) {
     if (!trimmed) return;
     setConvName(trimmed); // optimistic update
     try {
-      await fetch(`/api/conversations/${encodeURIComponent(did)}`, {
+      await fetch(`/chat/api/conversations/${encodeURIComponent(did)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: trimmed }),
@@ -138,7 +138,7 @@ function DIDConversationView({ did }: { did: string }) {
   // Fetch stored conversation name
   useEffect(() => {
     if (!identity) return;
-    fetch(`/api/conversations/${encodeURIComponent(did)}`)
+    fetch(`/chat/api/conversations/${encodeURIComponent(did)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         const conv = data?.conversation;
@@ -157,7 +157,7 @@ function DIDConversationView({ did }: { did: string }) {
   // Fetch members for group conversations
   const fetchMembers = useCallback(() => {
     if (!identity || parsed.type !== 'group') return;
-    fetch(`/api/d/${encodeURIComponent(did)}/members`)
+    fetch(`/chat/api/d/${encodeURIComponent(did)}/members`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.members) {
@@ -176,7 +176,7 @@ function DIDConversationView({ did }: { did: string }) {
     if (!identity) return;
     setLeaving(true);
     try {
-      const res = await fetch(`/api/d/${encodeURIComponent(did)}/members/leave`, {
+      const res = await fetch(`/chat/api/d/${encodeURIComponent(did)}/members/leave`, {
         method: 'POST',
       });
       if (res.ok) {
@@ -241,7 +241,7 @@ function DIDConversationView({ did }: { did: string }) {
   async function handleAddMember(memberDid: string) {
     setAddingDid(memberDid);
     try {
-      const res = await fetch(`/api/d/${encodeURIComponent(did)}/members`, {
+      const res = await fetch(`/chat/api/d/${encodeURIComponent(did)}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ memberDid }),
@@ -267,7 +267,7 @@ function DIDConversationView({ did }: { did: string }) {
     if (!identity || !nameParam || nameSet) return;
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/conversations/${encodeURIComponent(did)}`, {
+        const res = await fetch(`/chat/api/conversations/${encodeURIComponent(did)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: nameParam }),

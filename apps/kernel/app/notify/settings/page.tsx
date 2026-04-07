@@ -73,7 +73,7 @@ export default function SettingsPage() {
   // Load preferences after auth confirmed
   useEffect(() => {
     if (!authed) return;
-    fetch('/api/preferences', { credentials: 'include' })
+    fetch('/notify/api/preferences', { credentials: 'include' })
       .then((r) => r.json())
       .then((data) => {
         const map: Record<string, Preference> = {};
@@ -89,7 +89,7 @@ export default function SettingsPage() {
   async function toggle(scope: string, channel: 'email' | 'inapp', value: boolean) {
     setSaving(`${scope}:${channel}`);
     try {
-      const res = await fetch(`/api/preferences/${encodeURIComponent(scope)}`, {
+      const res = await fetch(`/notify/api/preferences/${encodeURIComponent(scope)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

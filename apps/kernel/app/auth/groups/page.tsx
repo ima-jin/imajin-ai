@@ -25,7 +25,7 @@ export default function GroupsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch('/api/groups', { credentials: 'include' });
+        const res = await fetch('/auth/api/groups', { credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           setGroups(data.groups ?? data ?? []);

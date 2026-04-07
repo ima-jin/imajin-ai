@@ -34,7 +34,7 @@ export function FileUpload({
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch(`/api/conversations/${conversationId}/upload`, {
+      const res = await fetch(`/chat/api/conversations/${conversationId}/upload`, {
         method: 'POST',
         body: formData,
       });

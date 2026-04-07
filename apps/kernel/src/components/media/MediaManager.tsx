@@ -50,7 +50,7 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const loadFolders = useCallback(async () => {
-    const res = await fetch("/api/folders", { credentials: "include" });
+    const res = await fetch("/media/api/folders", { credentials: "include" });
     if (res.ok) {
       const data = await res.json() as { folders?: FolderWithCount[] };
       setFolders(data.folders ?? []);
@@ -61,7 +61,7 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
     setLoading(true);
     const params = new URLSearchParams({ sort, order });
     if (typeFilter) params.set("type", typeFilter);
-    const res = await fetch(`/api/assets?${params}`, { credentials: "include" });
+    const res = await fetch(`/media/api/assets?${params}`, { credentials: "include" });
     if (res.ok) {
       const data = await res.json() as { assets?: Asset[] };
       setAllAssets(data.assets ?? []);
@@ -71,7 +71,7 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
 
   // Init folders on first mount, then load everything
   useEffect(() => {
-    fetch("/api/folders/init", { method: "POST", credentials: "include" })
+    fetch("/media/api/folders/init", { method: "POST", credentials: "include" })
       .then(() => loadFolders())
       .catch(() => loadFolders());
   }, [loadFolders]);
@@ -117,7 +117,7 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
   const handleCreateFolder = useCallback(async (parentId: string | null) => {
     const name = window.prompt("Folder name:");
     if (!name?.trim()) return;
-    await fetch("/api/folders", {
+    await fetch("/media/api/folders", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -127,7 +127,7 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
   }, [loadFolders]);
 
   const handleRenameFolder = useCallback(async (id: string, name: string) => {
-    await fetch(`/api/folders/${id}`, {
+    await fetch(`/media/api/folders/${id}`, {
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -138,7 +138,7 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
 
   const handleDeleteFolder = useCallback(async (id: string) => {
     if (!window.confirm("Delete this folder? Assets will remain unlinked.")) return;
-    await fetch(`/api/folders/${id}`, { method: "DELETE", credentials: "include" });
+    await fetch(`/media/api/folders/${id}`, { method: "DELETE", credentials: "include" });
     if (selectedFolderId === id) setSelectedFolderId(null);
     loadFolders();
   }, [loadFolders, selectedFolderId]);

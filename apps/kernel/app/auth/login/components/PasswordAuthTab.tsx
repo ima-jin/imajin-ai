@@ -90,7 +90,7 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: P
 
     try {
       const cleanHandle = handle.trim().replace(/^@/, '');
-      const res = await fetch(`/api/account/methods?handle=${encodeURIComponent(cleanHandle)}&includeKey=true`);
+      const res = await fetch(`/auth/api/account/methods?handle=${encodeURIComponent(cleanHandle)}&includeKey=true`);
 
       if (!res.ok) {
         if (res.status === 404) {
@@ -166,7 +166,7 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: P
       const publicKeyBase58 = base58Encode(publicKeyBytes);
       const derivedDid = `did:imajin:${publicKeyBase58}`;
 
-      const challengeRes = await fetch('/api/login/challenge', {
+      const challengeRes = await fetch('/auth/api/login/challenge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ did: storedKeyData.did }),
@@ -195,7 +195,7 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: P
         }
       }
 
-      const verifyRes = await fetch('/api/login/verify', {
+      const verifyRes = await fetch('/auth/api/login/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ challengeId, signature, dfosChain }),

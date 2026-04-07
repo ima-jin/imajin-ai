@@ -15,7 +15,7 @@ export function UnreadCountProvider({ children }: { children: React.ReactNode })
 
   const fetchUnreadCount = useCallback(async () => {
     try {
-      const res = await fetch('/api/conversations/unread');
+      const res = await fetch('/chat/api/conversations/unread');
       if (res.ok) {
         const data = await res.json();
         setTotal(data.total || 0);

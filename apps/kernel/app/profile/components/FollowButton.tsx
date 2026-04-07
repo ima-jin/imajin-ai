@@ -14,7 +14,7 @@ export function FollowButton({ targetDid, initialFollowing }: FollowButtonProps)
   async function handleClick() {
     setLoading(true);
     try {
-      const res = await fetch('/api/follow', {
+      const res = await fetch('/profile/api/follow', {
         method: following ? 'DELETE' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ did: targetDid }),

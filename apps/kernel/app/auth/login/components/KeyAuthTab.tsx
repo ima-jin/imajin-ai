@@ -52,7 +52,7 @@ async function loginWithKeypair(privateKeyHex: string): Promise<LoginResult> {
   const derivedDid = `did:imajin:${publicKeyBase58}`;
 
   // Try challenge-response login first
-  const challengeRes = await fetch('/api/login/challenge', {
+  const challengeRes = await fetch('/auth/api/login/challenge', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ did: derivedDid }),
@@ -65,7 +65,7 @@ async function loginWithKeypair(privateKeyHex: string): Promise<LoginResult> {
     const signatureBytes = await ed.signAsync(challengeBytes, privateKeyBytes);
     const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    const verifyRes = await fetch('/api/login/verify', {
+    const verifyRes = await fetch('/auth/api/login/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ challengeId, signature }),
@@ -96,7 +96,7 @@ async function loginWithKeypair(privateKeyHex: string): Promise<LoginResult> {
     // non-fatal
   }
 
-  const authResponse = await fetch('/api/register', {
+  const authResponse = await fetch('/auth/api/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ publicKey: publicKeyHex, type: 'human', signature, dfosChain }),

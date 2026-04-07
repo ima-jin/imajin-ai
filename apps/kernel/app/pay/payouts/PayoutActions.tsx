@@ -19,7 +19,7 @@ export function PayoutActions({ status, did }: PayoutActionsProps) {
     try {
       const currentUrl = window.location.href;
 
-      const response = await fetch('/api/connect/onboard', {
+      const response = await fetch('/pay/api/connect/onboard', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -50,7 +50,7 @@ export function PayoutActions({ status, did }: PayoutActionsProps) {
 
     setLoading(true);
     try {
-      const response = await fetch(`/api/connect/dashboard?did=${did}`, {
+      const response = await fetch(`/pay/api/connect/dashboard?did=${did}`, {
         method: 'GET',
       });
 

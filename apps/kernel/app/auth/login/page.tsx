@@ -80,7 +80,7 @@ function LoginForm() {
     // If localStorage says logged in, verify the session is still valid
     const storedDid = localStorage.getItem('imajin_did');
     if (storedDid) {
-      fetch('/api/session', { credentials: 'include' })
+      fetch('/auth/api/session', { credentials: 'include' })
         .then(res => {
           if (res.ok) {
             window.location.href = nextUrl || '/';

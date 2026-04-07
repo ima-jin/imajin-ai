@@ -104,7 +104,7 @@ export default function ConversationsPage() {
     if (!identity) return;
 
     try {
-      const res = await fetch('/api/conversations');
+      const res = await fetch('/chat/api/conversations');
 
       if (res.status === 401) {
         window.location.reload();

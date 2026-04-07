@@ -17,7 +17,7 @@ export default function DocsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/specs')
+    fetch('/registry/api/specs')
       .then(r => r.json())
       .then(data => {
         setServices(data.services);
@@ -33,7 +33,7 @@ export default function DocsPage() {
     setSpec(null);
 
     // Fetch through local proxy to avoid CORS
-    fetch(`/api/specs/${selected}`)
+    fetch(`/registry/api/specs/${selected}`)
       .then(r => {
         if (!r.ok) throw new Error(`${r.status}`);
         return r.text();

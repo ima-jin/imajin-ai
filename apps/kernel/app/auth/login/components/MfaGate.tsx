@@ -29,7 +29,7 @@ export default function MfaGate({ methods, challengeToken, did, nextUrl, onSucce
     setEmailSending(true);
     setError('');
     try {
-      const res = await fetch('/api/mfa/email/send', {
+      const res = await fetch('/auth/api/mfa/email/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ challengeToken }),
@@ -55,7 +55,7 @@ export default function MfaGate({ methods, challengeToken, did, nextUrl, onSucce
     setLoading(true);
 
     try {
-      const res = await fetch('/api/login/mfa', {
+      const res = await fetch('/auth/api/login/mfa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ challengeToken, method: selectedMethod, code, trustDevice }),

@@ -34,7 +34,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function checkSession() {
       try {
-        const res = await fetch('/api/session');
+        const res = await fetch('/auth/api/session');
         if (res.ok) {
           const data = await res.json();
           // Session API returns { identity: { id, handle, name, type } }

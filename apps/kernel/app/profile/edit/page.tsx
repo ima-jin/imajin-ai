@@ -80,7 +80,7 @@ export default function EditProfilePage() {
     if (!did) return;
 
     try {
-      const response = await fetch(`/api/profile/${did}`);
+      const response = await fetch(`/profile/api/profile/${did}`);
       if (!response.ok) {
         throw new Error('Failed to load profile');
       }
@@ -166,7 +166,7 @@ export default function EditProfilePage() {
         signedHeaders['X-DID'] = did!;
       }
 
-      const response = await fetch(`/api/profile/${did}`, {
+      const response = await fetch(`/profile/api/profile/${did}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -181,7 +181,7 @@ export default function EditProfilePage() {
       }
 
       // Toggle inference via dedicated endpoint (handles .imajin folder seeding)
-      await fetch('/api/profile/inference', {
+      await fetch('/profile/api/profile/inference', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...signedHeaders },
         body: JSON.stringify({ enabled: !!serviceToggles['inference'] }),

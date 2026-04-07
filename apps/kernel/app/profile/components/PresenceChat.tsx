@@ -50,7 +50,7 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
     abortRef.current = new AbortController();
 
     try {
-      const res = await fetch(`/api/profile/${encodeURIComponent(targetDid)}/stream`, {
+      const res = await fetch(`/profile/api/profile/${encodeURIComponent(targetDid)}/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: history }),

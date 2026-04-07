@@ -103,7 +103,7 @@ function RegisterPage() {
     // Debounce for 500ms
     debounceTimer.current = setTimeout(async () => {
       try {
-        const response = await fetch(`/api/handle-check?handle=${encodeURIComponent(handle)}`);
+        const response = await fetch(`/profile/api/handle-check?handle=${encodeURIComponent(handle)}`);
         const data = await response.json();
 
         if (data.available) {
@@ -198,7 +198,7 @@ function RegisterPage() {
       const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
       // 3. Register with auth service (sets JWT cookie)
-      const authResponse = await fetch('/api/auth/register', {
+      const authResponse = await fetch('/profile/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -218,7 +218,7 @@ function RegisterPage() {
       }
 
       // 4. Register profile
-      const profileResponse = await fetch('/api/register', {
+      const profileResponse = await fetch('/profile/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

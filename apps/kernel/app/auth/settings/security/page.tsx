@@ -87,19 +87,19 @@ export default function SecuritySettingsPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const sessionRes = await fetch('/api/session', { credentials: 'include' });
+      const sessionRes = await fetch('/auth/api/session', { credentials: 'include' });
       if (!sessionRes.ok) {
         window.location.href = '/login?next=/settings/security';
         return;
       }
       const session = await sessionRes.json();
 
-      const methodsRes = await fetch(`/api/account/methods?did=${encodeURIComponent(session.did)}`);
+      const methodsRes = await fetch(`/auth/api/account/methods?did=${encodeURIComponent(session.did)}`);
       if (methodsRes.ok) {
         setMethods(await methodsRes.json());
       }
 
-      const devicesRes = await fetch('/api/devices', { credentials: 'include' });
+      const devicesRes = await fetch('/auth/api/devices', { credentials: 'include' });
       if (devicesRes.ok) {
         const data = await devicesRes.json();
         setDevices(data.devices || []);
@@ -120,7 +120,7 @@ export default function SecuritySettingsPage() {
   async function handleStartTotpSetup() {
     setActionLoading('totp-setup');
     try {
-      const res = await fetch('/api/mfa/totp/setup', {
+      const res = await fetch('/auth/api/mfa/totp/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -146,7 +146,7 @@ export default function SecuritySettingsPage() {
     e.preventDefault();
     setActionLoading('totp-verify');
     try {
-      const res = await fetch('/api/mfa/totp/verify', {
+      const res = await fetch('/auth/api/mfa/totp/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: totpCode }),
@@ -173,7 +173,7 @@ export default function SecuritySettingsPage() {
     e.preventDefault();
     setActionLoading('totp-disable');
     try {
-      const res = await fetch('/api/mfa/totp/disable', {
+      const res = await fetch('/auth/api/mfa/totp/disable', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: totpDisableCode }),
@@ -199,7 +199,7 @@ export default function SecuritySettingsPage() {
   async function handleStartEmailSetup() {
     setActionLoading('email-setup');
     try {
-      const res = await fetch('/api/mfa/email/setup', {
+      const res = await fetch('/auth/api/mfa/email/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -223,7 +223,7 @@ export default function SecuritySettingsPage() {
     e.preventDefault();
     setActionLoading('email-verify');
     try {
-      const res = await fetch('/api/mfa/email/verify-setup', {
+      const res = await fetch('/auth/api/mfa/email/verify-setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: emailCode }),
@@ -248,7 +248,7 @@ export default function SecuritySettingsPage() {
   async function handleDisableEmailMfa() {
     setActionLoading('email-disable');
     try {
-      const res = await fetch('/api/mfa/email/disable', {
+      const res = await fetch('/auth/api/mfa/email/disable', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -287,7 +287,7 @@ export default function SecuritySettingsPage() {
         return;
       }
       const { encryptedKey, salt } = await encryptPrivateKey(keypairJson, password);
-      const res = await fetch('/api/stored-keys', {
+      const res = await fetch('/auth/api/stored-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ encryptedKey, salt, keyDerivation: 'pbkdf2' }),
@@ -313,7 +313,7 @@ export default function SecuritySettingsPage() {
   async function handleRemoveDevice(deviceId: string) {
     setActionLoading(`device-${deviceId}`);
     try {
-      const res = await fetch(`/api/devices/${deviceId}`, {
+      const res = await fetch(`/auth/api/devices/${deviceId}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -333,7 +333,7 @@ export default function SecuritySettingsPage() {
   async function handleTrustDevice(deviceId: string) {
     setActionLoading(`trust-${deviceId}`);
     try {
-      const res = await fetch(`/api/devices/trust`, {
+      const res = await fetch(`/auth/api/devices/trust`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deviceId }),

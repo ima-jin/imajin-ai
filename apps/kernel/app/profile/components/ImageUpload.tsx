@@ -96,7 +96,7 @@ export function ImageUpload({
         formData.append('image', resized, `avatar-${Date.now()}.jpg`);
         formData.append('did', did || '');
 
-        const response = await fetch('/api/upload', {
+        const response = await fetch('/profile/api/upload', {
           method: 'POST',
           body: formData,
         });

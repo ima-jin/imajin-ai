@@ -64,7 +64,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 
     // Check auth session first
     try {
-      const authResponse = await fetch('/api/auth/session');
+      const authResponse = await fetch('/profile/api/auth/session');
       if (authResponse.ok) {
         const authSession = await authResponse.json();
         setDid(authSession.did);
@@ -86,7 +86,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         setIsLoggedIn(true);
 
         try {
-          const response = await fetch(`/api/profile/${storedDid}`);
+          const response = await fetch(`/profile/api/profile/${storedDid}`);
           if (response.ok) {
             const profile = await response.json();
             setHandle(profile.handle || null);
@@ -105,7 +105,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 
     // Clear auth session cookie
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await fetch('/profile/api/auth/logout', { method: 'POST' });
     } catch (error) {
       console.error('Failed to clear auth session:', error);
     }
@@ -138,7 +138,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       const derivedDid = `did:imajin:${publicKeyBase58}`;
 
       // Check if profile exists
-      const profileResponse = await fetch(`/api/profile/${derivedDid}`);
+      const profileResponse = await fetch(`/profile/api/profile/${derivedDid}`);
       if (!profileResponse.ok) {
         return { success: false, error: 'No profile found for this key. Please register first.' };
       }
@@ -156,7 +156,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       const signatureBytes = await ed.signAsync(msgBytes, privateKeyBytes);
       const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
-      const authResponse = await fetch('/api/auth/register', {
+      const authResponse = await fetch('/profile/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -198,7 +198,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     if (!did) return;
 
     try {
-      const response = await fetch(`/api/profile/${did}`);
+      const response = await fetch(`/profile/api/profile/${did}`);
       if (response.ok) {
         const profile = await response.json();
         setHandle(profile.handle || null);

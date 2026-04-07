@@ -75,7 +75,7 @@ export function FileEditor({ asset, isOwner }: FileEditorProps) {
   useEffect(() => {
     setLoading(true);
     setContent(null);
-    fetch(`/api/assets/${asset.id}?t=${Date.now()}`, { credentials: "include", cache: "no-store" })
+    fetch(`/media/api/assets/${asset.id}?t=${Date.now()}`, { credentials: "include", cache: "no-store" })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.text();
@@ -95,7 +95,7 @@ export function FileEditor({ asset, isOwner }: FileEditorProps) {
     setSaving(true);
     setSaveStatus("idle");
     try {
-      const res = await fetch(`/api/assets/${asset.id}/content`, {
+      const res = await fetch(`/media/api/assets/${asset.id}/content`, {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

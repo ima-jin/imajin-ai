@@ -138,7 +138,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
 
   const handleDelete = async () => {
     if (!confirm(`Delete "${asset.filename}"? This cannot be undone.`)) return;
-    await fetch(`/api/assets/${asset.id}`, {
+    await fetch(`/media/api/assets/${asset.id}`, {
       method: "DELETE",
       credentials: "include",
     });
@@ -158,7 +158,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
       setEditingFilename(false);
       return;
     }
-    const res = await fetch(`/api/assets/${asset.id}`, {
+    const res = await fetch(`/media/api/assets/${asset.id}`, {
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -173,7 +173,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   const handleTranscribe = async () => {
     setTranscribing(true);
     try {
-      const res = await fetch(`/api/assets/${asset.id}/transcribe`, {
+      const res = await fetch(`/media/api/assets/${asset.id}/transcribe`, {
         credentials: "include",
       });
       if (res.ok) {
@@ -200,7 +200,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   const handleSaveFair = async (manifest: FairManifest) => {
     setFairManifest(manifest);
     // Save to backend — PUT /api/assets/{id}/fair (extension endpoint)
-    await fetch(`/api/assets/${asset.id}/fair`, {
+    await fetch(`/media/api/assets/${asset.id}/fair`, {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -209,7 +209,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   };
 
   const handleMove = async (folderId: string) => {
-    await fetch(`/api/assets/${asset.id}/folders`, {
+    await fetch(`/media/api/assets/${asset.id}/folders`, {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },

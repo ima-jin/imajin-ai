@@ -102,7 +102,7 @@ export function AssetGrid({
       formData.append("filename", file.name);
 
       try {
-        const res = await fetch("/api/assets", {
+        const res = await fetch("/media/api/assets", {
           method: "POST",
           credentials: "include",
           body: formData,
@@ -179,7 +179,7 @@ export function AssetGrid({
     if (!window.confirm(`Delete ${selectedAssetIds.size} file(s)? This cannot be undone.`)) return;
     const results = await Promise.allSettled(
       Array.from(selectedAssetIds).map(async (id) => {
-        const res = await fetch(`/api/assets/${id}`, { method: "DELETE", credentials: "include" });
+        const res = await fetch(`/media/api/assets/${id}`, { method: "DELETE", credentials: "include" });
         if (!res.ok) throw new Error(`${id}: ${res.status}`);
         return id;
       })
@@ -213,7 +213,7 @@ export function AssetGrid({
     if (!moveFolderId) return;
     await Promise.all(
       Array.from(selectedAssetIds).map((id) =>
-        fetch(`/api/assets/${id}`, {
+        fetch(`/media/api/assets/${id}`, {
           method: "PATCH",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
