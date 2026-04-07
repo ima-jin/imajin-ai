@@ -6,9 +6,9 @@ import { buildPublicUrl } from '@imajin/config';
 const AUTH_URL = buildPublicUrl('auth');
 
 async function getInvite(code: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3003}`;
+  const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
   try {
-    const res = await fetch(`${baseUrl}/api/invites/${code}`, { cache: 'no-store' });
+    const res = await fetch(`${baseUrl}/connections/api/invites/${code}`, { cache: 'no-store' });
     if (!res.ok) return null;
     return await res.json();
   } catch {
