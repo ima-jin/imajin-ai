@@ -52,12 +52,9 @@ export default async function Home() {
       {/* LOGO + TAGLINE */}
       <section className="flex flex-col items-center text-center mb-12">
         <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-3">
-          <span className="text-4xl font-bold text-amber-500">今</span>
+          <span className="text-4xl font-bold text-amber-500">人</span>
         </div>
         <p className="text-lg text-gray-400">The sovereign browser.</p>
-        <p className="text-sm text-gray-500 mt-1">
-          {totalIdentities.toLocaleString()} identities · {serviceCount} services · {daysSinceLaunch} days
-        </p>
       </section>
 
       {/* LAUNCHER GRID — this is the product */}

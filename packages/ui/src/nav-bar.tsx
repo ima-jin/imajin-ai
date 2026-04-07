@@ -254,7 +254,7 @@ export function NavBar({
           className="flex items-center hover:opacity-80 transition shrink-0"
         >
           <span className="w-8 h-8 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 flex items-center justify-center">
-            <span className="text-xl font-bold text-amber-500">今</span>
+            <span className="text-xl font-bold text-amber-500">人</span>
           </span>
         </a>
 
