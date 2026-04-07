@@ -457,9 +457,14 @@ export default function ConversationPage() {
   const params = useParams<{ type: string; slug: string }>();
   const { type, slug } = params;
 
-  // Legacy event DID format: did:imajin:evt_xxx (type segment starts with 'evt_')
+  // Reconstruct the full DID from URL segments
+  // Legacy event: did:imajin:evt_xxx (type=evt_xxx, no colon separator)
+  // Identity DID: did:imajin:Base58Key (type=identity, slug=Base58Key)
+  // Standard: did:imajin:type:slug (dm, group, event)
   const did = type.startsWith('evt_')
     ? `did:imajin:${type}`
+    : type === 'identity'
+    ? `did:imajin:${slug}`
     : `did:imajin:${type}:${slug}`;
 
   return <DIDConversationView did={did} />;

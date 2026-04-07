@@ -24,7 +24,7 @@ export function groupDid(members: string[]): string {
   return `did:imajin:group:${hash}`;
 }
 
-export type ConversationDidType = 'dm' | 'group' | 'event' | 'unknown';
+export type ConversationDidType = 'dm' | 'group' | 'event' | 'identity' | 'unknown';
 
 export interface ParsedConversationDid {
   type: ConversationDidType;
@@ -54,7 +54,9 @@ export function parseConversationDid(did: string): ParsedConversationDid {
   const colonIdx = rest.indexOf(':');
 
   if (colonIdx === -1) {
-    return { type: 'unknown' };
+    // No colon after did:imajin: — this is an identity DID used as a conversation
+    // (e.g. event conversations use the event's identity DID directly)
+    return { type: 'identity', slug: rest };
   }
 
   const type = rest.slice(0, colonIdx) as ConversationDidType;
@@ -62,7 +64,8 @@ export function parseConversationDid(did: string): ParsedConversationDid {
 
   const knownTypes: ConversationDidType[] = ['dm', 'group', 'event'];
   if (!knownTypes.includes(type)) {
-    return { type: 'unknown', slug };
+    // Unknown type prefix — treat as identity DID
+    return { type: 'identity', slug: rest };
   }
 
   return { type, slug };
@@ -78,5 +81,8 @@ export function conversationPath(did: string): string {
   const parsed = parseConversationDid(did);
   if (parsed.type === 'unknown') return encodeURIComponent(did);
   if (parsed.type === 'event' && !parsed.slug) return did.slice('did:imajin:'.length);
+  // Identity DIDs (e.g. event conversations using did:imajin:Base58Key)
+  // Route as identity/slug so the page can reconstruct did:imajin:slug
+  if (parsed.type === ('identity')) return `identity/${parsed.slug}`;
   return `${parsed.type}/${parsed.slug}`;
 }
