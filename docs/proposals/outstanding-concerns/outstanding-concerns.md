@@ -409,6 +409,219 @@ Related gaps: threshold signature tooling for multi-guardian custody, family for
 
 ---
 
+## April 7 — Philosophy & Narrative Audit
+
+*These concerns were surfaced by a comprehensive audit comparing public narrative (essays, whitepaper, RFCs) against actual code behavior. They represent gaps between what the project claims and what the implementation delivers.*
+
+### C19. Sovereignty Claim vs. Implementation Reality
+
+**Filed:** April 7, 2026
+**Priority:** HIGH — undermines core pitch
+**Source:** Full codebase audit
+
+The project claims "sovereign identity — you own your keys." In practice:
+- Keys stored in **plaintext `localStorage`** — no encryption at rest, no hardware key support
+- **Custodial users** (soft DIDs) never see, export, or back up a keypair — the platform holds it
+- Group keys are generated but never used for signing (see P33)
+- No key export/migration flow exists
+
+"Sovereign" is doing marketing work, not technical work. The correct claim is "self-custodial for hard-identity users; custodial with migration path for soft-identity users."
+
+**Resolution requires:** (1) Encrypted key storage (WebCrypto `wrapKey` or equivalent), (2) key export/backup flow for hard identity, (3) narrative adjustment: "sovereign-capable" or "self-custodial optional" rather than blanket "sovereign."
+
+**Related:** P33 (Group Key Sovereignty), C11 (isValidDID)
+
+---
+
+### C20. MJNx Stable Token — No Peg Mechanism, FINMA Risk
+
+**Filed:** April 7, 2026
+**Priority:** HIGH — legal and regulatory blocker
+**Source:** Fee model v3, biz-dev#1 weak point #8
+
+MJNx is described as "pegged 1:1 to CHF" but:
+- No peg mechanism specified (reserve-backed? algorithmic? redemption window?)
+- No redemption flow designed
+- A CHF-pegged token likely classified as a **payment token** by FINMA, triggering Swiss banking regulations
+- No legal opinion obtained
+
+This is not just a spec gap — it's a regulatory risk that could block token launch or require a banking license.
+
+**Resolution requires:** Legal opinion from Swiss fintech counsel on MJNx classification. Peg mechanism design (reserve vs. algorithmic). FINMA pre-consultation if payment token classification likely. May need to restructure as a utility token or drop the CHF peg.
+
+**Related:** biz-dev#1 (Swiss Foundation), P31 (Fee Governance), RFC-23 (Multi-Chain Settlement)
+
+---
+
+### C21. Scope Fee Uncapped — Extractive Risk
+
+**Filed:** April 7, 2026
+**Priority:** MEDIUM — design risk, not urgent
+**Source:** Fee model v3 audit
+
+Fee model v3 makes scope fees "sovereign and uncapped" — forest operators set their own rate with no protocol ceiling. While this is framed as operator autonomy, it creates extractive risk: an operator could set a 30% scope fee on a captive community (Apple App Store parallel).
+
+The protocol's thesis is anti-rent-seeking, but uncapped scope fees enable exactly that at the operator layer.
+
+**Resolution requires:** One of: (1) marketplace pressure (users can leave forests — but social lock-in is real), (2) disclosure requirement (scope fee displayed at join time), (3) protocol-level soft cap with override transparency, (4) explicit documentation that this is an accepted trade-off.
+
+**Related:** P31 (Fee Governance), P23 (Node Operator)
+
+---
+
+### C22. No Fee Implementation in Settlement Code
+
+**Filed:** April 7, 2026
+**Priority:** CRITICAL — entire economic model is spec-only
+**Source:** `apps/pay/app/api/settle/route.ts`, `apps/events/src/lib/settle.ts`
+
+The fee model v3 specifies four fee layers (protocol 1% + node 0.5% + buyer credit 0.25% + scope fee 0.25%). The settlement code calls Stripe but distributes nothing to protocol, node, or scope treasuries. `settleTicketPurchase()` uses a hardcoded `PLATFORM_FEE_PERCENT` (3%) with no breakdown.
+
+The Day 61 essay says "every transaction mints MJN for four parties." Zero transactions do this today.
+
+**Resolution requires:** Settlement route must: (1) compute four-layer fee split, (2) record protocol/node/scope shares in a ledger table, (3) distribute to respective treasuries (or escrow for MJN conversion). This is the most important missing feature for revenue viability.
+
+**Related:** P31 (Fee Governance), P34 (Crowd-Funded Events), #560 (Stripe Connect settlement)
+
+---
+
+### C23. Federation Enforcement Gap
+
+**Filed:** April 7, 2026
+**Priority:** LOW — one node exists, but the claim is present-tense
+**Source:** Registry service, whitepaper federation claims
+
+The whitepaper describes federated nodes discovering each other. In practice:
+- One node exists (the self-hosted ProLiant)
+- No mechanism to enforce protocol fees on remote/rogue nodes
+- A rogue node can skip the 1% protocol fee entirely
+- No node compliance verification beyond build attestation
+
+The claim "federation" is aspirational. This is acceptable for Year 1 but the narrative should use future tense.
+
+**Resolution requires:** Node compliance enforcement (fee reporting + attestation of protocol fee payment), or explicit documentation that federation is a roadmap item, not a current feature.
+
+**Related:** C10 (Relay Auth), RFC-21 (Node Conformance), RFC-22 (Federated Authentication)
+
+---
+
+### C24. Attestations Are Server-Signed, Not Bilateral
+
+**Filed:** April 7, 2026
+**Priority:** HIGH — contradicts trust model's core claim
+**Source:** `apps/auth/src/attestation/`, P33 audit
+
+The whitepaper claims "bilateral attestation" — both parties sign. In practice:
+- All attestations are signed by `AUTH_PRIVATE_KEY` (the platform's server key)
+- `verifyCountersignature` is a TODO in code
+- Group keypairs exist but are "dead keys" (P33) — never used for signing
+- The anti-gaming claim ("bilateral attestation = Sybil gate") is therefore unimplemented
+
+Without bilateral signing, attestations are platform assertions, not mutual proofs. The trust model's load-bearing primitive (standing computation from attestation history) depends on attestations being credible, which requires bilateral signing.
+
+**Resolution requires:** P33 Phase 1 (activate group keys for signing) unblocks this. Then: implement countersignature verification, require bilateral signing for all trust-relevant attestation types.
+
+**Related:** P33 (Group Key Sovereignty), P29 (Attestation Completeness), F1 (Attestation Data Layer — resolved, but bilateral gap persists)
+
+---
+
+### C25. "Incumbents Can't Build This" — Narrative Risk
+
+**Filed:** April 7, 2026
+**Priority:** LOW — pitch framing, not technical
+**Source:** Business plan, pitch deck
+
+The pitch claims structural inability of incumbents to replicate Imajin. In reality, all primitives are built on available standards:
+- W3C DIDs — open standard
+- Ed25519 — commodity crypto
+- Stripe Connect — available to anyone
+- DFOS — novel but not patented
+
+The moat is **network effect + community + execution speed**, not technical impossibility. An incumbent *could* build this; they *won't* because it cannibalizes their data model. The pitch should say "won't" not "can't."
+
+**Resolution requires:** Reframe pitch language from "can't" to "won't" — structural incentive misalignment, not technical barrier. This is stronger: "They could build it, but it would destroy their business model" is more credible than "they can't."
+
+**Related:** Business plan §03 (market analysis)
+
+---
+
+### C26. Gas at 1¢ — Spam Vector
+
+**Filed:** April 7, 2026
+**Priority:** MEDIUM — exploitable at low cost
+**Source:** Fee model v3 gas specification
+
+Gas is 1¢ per non-economic operation, 100% to node. At this rate:
+- $100 = 10,000 fake attestations
+- $1,000 = 100,000 spam operations
+- No per-DID rate limiting specified
+- No exponential backoff on repeated operations
+
+The gas model prevents zero-cost spam but doesn't prevent funded spam. A motivated actor can manufacture standing cheaply.
+
+**Resolution requires:** Per-DID operation throttle (e.g., max 100 attestations/day without elevated standing), or frequency-scaled gas (doubles per-op within a time window). Complements C05 (Gas Model Ceiling).
+
+**Related:** C05 (Gas Model Ceiling), P11 (Gas Model), P29 (Attestation Completeness)
+
+---
+
+### C27. No Caching on `actingAs` Validation — N+1 Auth Calls
+
+**Filed:** April 7, 2026
+**Priority:** MEDIUM — performance blocker at scale
+**Source:** Full codebase audit — all 12 scope-aware services
+
+Every scoped request validates `actingAs` by calling the auth service. With 12 services and no caching:
+- Each user action touching multiple services generates N+1 auth calls
+- Auth service becomes a single point of contention
+- No TTL cache, no local JWT validation, no session-level memoization observed
+
+At Mooi scale (150-500 capacity events), this could cause noticeable latency during ticket purchase surges.
+
+**Resolution requires:** One of: (1) short-TTL cache on actingAs validation (60s), (2) JWT claims include scope permissions (validate locally), (3) session-level memoization. Option 2 is most aligned with sovereign architecture.
+
+**Related:** P32 (Mooi Onboarding), RFC-22 (Federated Auth)
+
+---
+
+### C28. Fire-and-Forget Calls to Critical Services
+
+**Filed:** April 7, 2026
+**Priority:** MEDIUM — silent failures in production
+**Source:** 13 instances across codebase
+
+13 instances of `fetch()` calls to critical services (attestation creation, notification dispatch, settlement recording) with no error handling. If any downstream service is unavailable:
+- Attestations silently fail to record
+- Notifications silently fail to send
+- Settlement records silently fail to persist
+
+No retry mechanism, no dead letter queue, no failure alerting.
+
+**Resolution requires:** At minimum: `catch` blocks with structured logging on all critical-path fetches. Ideally: a lightweight retry queue for failed attestation/settlement writes.
+
+**Related:** C10 (Relay Auth), P29 (Attestation Completeness)
+
+---
+
+### C29. Inconsistent Internal API Key Naming
+
+**Filed:** April 7, 2026
+**Priority:** LOW — operational confusion risk
+**Source:** Environment variable audit
+
+Internal service-to-service API keys use inconsistent naming:
+- `ATTESTATION_INTERNAL_API_KEY`
+- `AUTH_INTERNAL_API_KEY`
+- `INTERNAL_API_KEY` (generic)
+
+During key rotation, an operator must know which services use which variable name. Inconsistency increases the risk of misconfiguration (rotating one key but not another, or confusing which key gates which service).
+
+**Resolution requires:** Standardize on one naming convention (e.g., `{SERVICE}_INTERNAL_API_KEY` everywhere) or a single shared secret with service-specific scopes.
+
+**Related:** S10 (shared webhook secrets — see problems.md)
+
+---
+
 ## Resolved — For Reference
 
 The following concerns were raised and are considered addressed. Full documents in `resolved-concerns/`.

@@ -64,6 +64,13 @@ For upstream acknowledgements and implementation status, see `current-context.md
 - P31 (Fee Governance) — fee model v3 supersedes; scope fee + dual-token + gas model go beyond P31's scope
 - P32 (Mooi / Node Customization) — forest infrastructure shipped; remaining: crowd-funded events, BBS/forum view, theme UI
 
+**April 7 security audit — proposal gaps identified:**
+- **P35 (Test Coverage)** — NEEDED. 9 test files for 132K LOC. Zero tests for forest/scope infrastructure, escrow, fee calculation. Critical paths entirely untested.
+- **P36 (Security Hardening)** — NEEDED. Consolidates 15 security findings (P10–P24) into prioritized remediation plan. 4 CRITICAL items exploitable today.
+- **RFC-24 coverage** — NEEDED. Knowledge Surfaces (learn + MCP + queryable profile) has no proposal analysis.
+- **DEVELOPER.md update** — NEEDED. Not updated for forests, scopes, `actingAs` pattern. New contributors have no guide.
+- **35 open TODOs** — Including critical security items (countersign verification unimplemented).
+
 **Still open:**
 - P05 (BaggageDID) — no code, no spec adoption
 - P11 (Gas Model Ceiling) — fee model v3 specifies gas (1¢ per op, 100% to node). No code yet. Governance bounds flagged as open question.
