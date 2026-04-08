@@ -182,8 +182,11 @@ export function EmailCapture() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-1.5">
-      <span className="text-sm text-gray-500">Stay in the loop</span>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-100">This is coming.</h2>
+        <p className="text-sm text-gray-500 mt-0.5">Join our mailing list to stay informed about updates.</p>
+      </div>
       <div className="flex items-center gap-2">
         <input
           type="email"

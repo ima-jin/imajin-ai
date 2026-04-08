@@ -3,6 +3,7 @@ import { ImajinFooter } from '@imajin/ui';
 import { getClient } from '@imajin/db';
 import { SERVICES } from '@imajin/config';
 import { LandingGrid, EmailCapture } from '@/src/components/www/LandingGrid';
+import { PromoVideo } from '@/src/components/www/PromoVideo';
 
 // Revalidate stats every 15 minutes (ISR)
 export const revalidate = 900;
@@ -49,22 +50,25 @@ export default async function Home() {
   return (
     <main className="min-h-screen flex flex-col items-center px-6 py-16 bg-gray-950">
 
-      {/* LOGO + TAGLINE */}
-      <section className="flex flex-col items-center text-center mb-12">
-        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-3">
-          <span className="text-4xl font-bold text-amber-500">人</span>
-        </div>
-        <p className="text-lg text-gray-400">The sovereign browser.</p>
+      {/* PROMO VIDEO — hero */}
+      <PromoVideo />
+
+      {/* EMAIL CAPTURE — prominent, directly below video */}
+      <section className="mb-16 text-center">
+        <EmailCapture />
       </section>
 
-      {/* LAUNCHER GRID — this is the product */}
+      {/* LOGO + TAGLINE — secondary */}
+      <section className="flex flex-col items-center text-center mb-12">
+        <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-2">
+          <span className="text-3xl font-bold text-amber-500">人</span>
+        </div>
+        <p className="text-base text-gray-500">The sovereign browser.</p>
+      </section>
+
+      {/* LAUNCHER GRID */}
       <section className="w-full max-w-2xl mb-16">
         <LandingGrid />
-      </section>
-
-      {/* EMAIL CAPTURE */}
-      <section className="mb-16">
-        <EmailCapture />
       </section>
 
       {/* FOOTER */}
