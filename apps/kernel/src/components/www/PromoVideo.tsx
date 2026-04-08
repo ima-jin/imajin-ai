@@ -49,7 +49,7 @@ export function PromoVideo() {
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || collapsed) return;
 
     let timer: ReturnType<typeof setTimeout>;
 
@@ -63,7 +63,7 @@ export function PromoVideo() {
       video.removeEventListener('ended', handleEnded);
       clearTimeout(timer);
     };
-  }, []);
+  }, [collapsed]);
 
   if (!assetId || !src) return null;
 
