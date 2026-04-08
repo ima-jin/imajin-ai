@@ -4,6 +4,7 @@ import { db, invites, profiles, pods, podMembers, connections } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { emitAttestation } from '@imajin/auth';
 import { notify } from '@imajin/notify';
+import { checkPreliminaryEligibility, checkHardEligibility } from '@/src/lib/kernel/verification';
 
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
@@ -162,6 +163,16 @@ export async function POST(
   }).catch((err: unknown) => {
     console.error('Attestation (vouch) error:', err);
   });
+
+  // Check verification eligibility for both parties — fire-and-forget
+  checkPreliminaryEligibility(invite.fromDid)
+    .catch((err: unknown) => console.error('[verification] preliminary check error (inviter):', err));
+  checkPreliminaryEligibility(session.did)
+    .catch((err: unknown) => console.error('[verification] preliminary check error (accepter):', err));
+  checkHardEligibility(invite.fromDid)
+    .catch((err: unknown) => console.error('[verification] hard check error (inviter):', err));
+  checkHardEligibility(session.did)
+    .catch((err: unknown) => console.error('[verification] hard check error (accepter):', err));
 
   return NextResponse.json({
     ok: true,

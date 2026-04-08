@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
-import { db, profiles } from '@/src/db';
+import { db, profiles, identities } from '@/src/db';
 import { requireAuth, emitAttestation } from '@imajin/auth';
 import { jsonResponse, errorResponse, isValidHandle } from '@/src/lib/kernel/utils';
+import { checkPreliminaryEligibility } from '@/src/lib/kernel/verification';
 import { eq } from 'drizzle-orm';
 
 /**
@@ -47,15 +48,22 @@ export async function POST(request: NextRequest) {
       return errorResponse('Handle is already taken', 409);
     }
 
-    // Update handle
+    // Update handle on profile
     const [updated] = await db
       .update(profiles)
-      .set({ 
+      .set({
         handle,
         updatedAt: new Date(),
       })
       .where(eq(profiles.did, identity.id))
       .returning();
+
+    // Record when the handle was claimed on the identity
+    const now = new Date();
+    await db
+      .update(identities)
+      .set({ handle, handleClaimedAt: now, updatedAt: now })
+      .where(eq(identities.id, identity.id));
 
     // Fire and forget — never block the response
     emitAttestation({
@@ -66,6 +74,10 @@ export async function POST(request: NextRequest) {
       context_type: 'profile',
       payload: { handle },
     }).catch((err) => console.error('Attestation emit error:', err));
+
+    // Check preliminary eligibility for this DID — fire-and-forget
+    checkPreliminaryEligibility(identity.id)
+      .catch((err) => console.error('[verification] preliminary check error:', err));
 
     return jsonResponse({
       success: true,
