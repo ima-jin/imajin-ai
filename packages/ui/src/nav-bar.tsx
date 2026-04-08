@@ -342,7 +342,7 @@ export function NavBar({
                   href={buildUrl('pay', servicePrefix, domain, serviceUrls)}
                   className="text-sm font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-full hover:bg-amber-100 dark:hover:bg-amber-900/40 transition no-underline"
                 >
-                  {Math.round(mjnBalance)} MJN
+                  人{Math.round(mjnBalance)}
                 </a>
               )}
             <div className="relative" ref={dropdownRef}>

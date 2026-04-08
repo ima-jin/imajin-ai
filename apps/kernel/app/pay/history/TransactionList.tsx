@@ -41,7 +41,7 @@ const SERVICE_ICONS: Record<string, string> = {
 };
 
 function fmt(amount: number, currency: string) {
-  if (currency === 'MJN') return `${Math.round(amount)} MJN`;
+  if (currency === 'MJN') return `人${Math.round(amount)}`;
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
 }
 

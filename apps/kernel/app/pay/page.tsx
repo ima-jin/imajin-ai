@@ -135,7 +135,7 @@ export default async function Home() {
                   >
                     {isIncoming ? '+' : '-'}
                     {tx.currency === 'MJN'
-                      ? `${Math.round(amount)} MJN`
+                      ? `人${Math.round(amount)}`
                       : new Intl.NumberFormat('en-US', {
                           style: 'currency',
                           currency: tx.currency,

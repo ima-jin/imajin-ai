@@ -150,7 +150,7 @@ export default async function HistoryPage({
           >
             <option value="">All</option>
             <option value="Fiat">Fiat</option>
-            <option value="MJN">✨ MJN</option>
+            <option value="MJN">人 MJN</option>
           </select>
         </div>
 

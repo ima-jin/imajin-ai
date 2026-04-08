@@ -27,7 +27,7 @@ export function BalanceCard({ cashAmount, creditAmount, currency = 'USD', update
         </div>
         <div className="bg-black/40 border border-amber-900/40 rounded-lg p-4">
           <div className="text-xs text-amber-600 mb-1">MJN</div>
-          <div className="text-xl font-semibold text-amber-400">{Math.round(creditAmount)} MJN</div>
+          <div className="text-xl font-semibold text-amber-400">人{Math.round(creditAmount)}</div>
           <div className="text-xs text-zinc-600 mt-1">Earned through participation</div>
         </div>
       </div>
