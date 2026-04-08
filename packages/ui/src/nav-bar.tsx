@@ -364,20 +364,22 @@ export function NavBar({
                 <span className="text-xl">
                   {activeForestData ? scopeIcon(activeForestData.scope) : '👤'}
                 </span>
-                <span className="text-sm font-medium">
-                  {activeForestData
-                    ? (activeForestData.name || activeForestData.handle || 'Forest')
-                    : identity.handle
-                    ? `@${identity.handle}`
-                    : identity.name
-                    ? identity.name
-                    : identity.did?.slice(0, 12) + '...'}
-                </span>
-                {activeForestData && (
-                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium leading-none">
-                    acting as
+                <span className="flex flex-col items-start" style={{ gap: '2px' }}>
+                  {activeForestData && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium leading-none">
+                      acting as
+                    </span>
+                  )}
+                  <span className="text-sm font-medium leading-none">
+                    {activeForestData
+                      ? (activeForestData.name || activeForestData.handle || 'Forest')
+                      : identity.handle
+                      ? `@${identity.handle}`
+                      : identity.name
+                      ? identity.name
+                      : identity.did?.slice(0, 12) + '...'}
                   </span>
-                )}
+                </span>
               </button>
 
               {showDropdown && (
