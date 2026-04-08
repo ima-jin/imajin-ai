@@ -1,156 +1,79 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-
-const PROMO_SEEN_KEY = 'imajin:promo-seen';
+import { useRef, useState } from 'react';
 
 function getVideoSrc(assetId: string): string {
-  return `/media/api/assets/${assetId}`;
+  const base = `/media/api/assets/${assetId}`;
+  if (typeof window === 'undefined') return `${base}?quality=720p`;
+  const w = window.innerWidth;
+  if (w >= 768) return `${base}?quality=1080p`;
+  if (w >= 480) return `${base}?quality=720p`;
+  return `${base}?quality=360p`;
 }
 
-function getQualitySource(assetId: string): string {
-  if (typeof window === 'undefined') return `${getVideoSrc(assetId)}?quality=720p`;
-  const w = window.innerWidth;
-  if (w >= 768) return `${getVideoSrc(assetId)}?quality=1080p`;
-  if (w >= 480) return `${getVideoSrc(assetId)}?quality=720p`;
-  return `${getVideoSrc(assetId)}?quality=360p`;
+function getPosterSrc(assetId: string): string {
+  // OG endpoint generates a JPEG poster from the video
+  return `/media/api/assets/${assetId}/og`;
 }
 
 export function PromoVideo() {
   const assetId = process.env.NEXT_PUBLIC_PROMO_VIDEO_ID;
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [interacted, setInteracted] = useState(false);
-  const [showOverlay, setShowOverlay] = useState(true);
-  const [collapsed, setCollapsed] = useState(false);
-  const [src, setSrc] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
 
-  useEffect(() => {
-    if (!assetId) return;
-    setSrc(getQualitySource(assetId));
-  }, [assetId]);
+  if (!assetId) return null;
 
-  useEffect(() => {
-    if (!assetId || !src) return;
-    const video = videoRef.current;
-    if (!video) return;
-
-    const seen = localStorage.getItem(PROMO_SEEN_KEY) === 'true';
-
-    if (seen) {
-      // Returning visitor — start collapsed
-      setCollapsed(true);
-      return;
-    }
-
-    // First visit: autoplay muted, mark as seen immediately
-    video.muted = true;
-    video.play().catch(() => {});
-    localStorage.setItem(PROMO_SEEN_KEY, 'true');
-  }, [assetId, src]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || collapsed) return;
-
-    let timer: ReturnType<typeof setTimeout>;
-    let fallbackTimer: ReturnType<typeof setTimeout>;
-
-    function handleEnded() {
-      clearTimeout(fallbackTimer);
-      localStorage.setItem(PROMO_SEEN_KEY, 'true');
-      timer = setTimeout(() => setCollapsed(true), 5000);
-    }
-
-    // Fallback: once we know the duration, set a timer for duration + 10s
-    function handleLoadedMetadata() {
-      if (video.duration && isFinite(video.duration)) {
-        fallbackTimer = setTimeout(() => {
-          // If video hasn't ended naturally by now, collapse anyway
-          if (!video.ended && video.currentTime > video.duration - 1) {
-            handleEnded();
-          }
-        }, (video.duration + 10) * 1000);
-      }
-    }
-
-    video.addEventListener('ended', handleEnded);
-    video.addEventListener('loadedmetadata', handleLoadedMetadata);
-    // If metadata already loaded
-    if (video.duration && isFinite(video.duration)) handleLoadedMetadata();
-
-    return () => {
-      video.removeEventListener('ended', handleEnded);
-      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      clearTimeout(timer);
-      clearTimeout(fallbackTimer);
-    };
-  }, [collapsed]);
-
-  if (!assetId || !src) return null;
-
-  function handleOverlayClick() {
-    const video = videoRef.current;
-    if (!video) return;
-    video.muted = false;
-    video.currentTime = 0;
-    video.play().catch(() => {});
-    setShowOverlay(false);
-    setInteracted(true);
-  }
-
-  function handleWatchAgain() {
-    setCollapsed(false);
-    setShowOverlay(false);
-    setInteracted(true);
-    // Let the video element mount, then play
+  function handlePlay() {
+    setPlaying(true);
     requestAnimationFrame(() => {
       const video = videoRef.current;
       if (!video) return;
-      video.muted = false;
-      video.currentTime = 0;
       video.play().catch(() => {});
     });
   }
 
-  // Collapsed state — just a button
-  if (collapsed) {
+  function handleEnded() {
+    setPlaying(false);
+  }
+
+  // Poster state — show image + play button
+  if (!playing) {
     return (
-      <section className="w-full max-w-4xl mx-auto mb-10 px-0 flex justify-center">
+      <section className="w-full max-w-4xl mx-auto mb-10 px-0">
         <button
-          onClick={handleWatchAgain}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/50 transition-colors text-sm"
+          onClick={handlePlay}
+          className="relative w-full rounded-xl overflow-hidden group cursor-pointer"
+          style={{ aspectRatio: '16/9' }}
         >
-          <span className="text-lg">▶</span>
-          Watch the video
+          <img
+            src={getPosterSrc(assetId)}
+            alt="Imajin — Watch the video"
+            className="w-full h-full object-cover bg-gray-900"
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+            <span className="flex items-center justify-center w-16 h-16 rounded-full bg-black/50 border-2 border-white/30 text-white text-3xl backdrop-blur-sm transition-all group-hover:scale-110 group-hover:bg-black/60 group-hover:border-white/50">
+              ▶
+            </span>
+          </div>
         </button>
       </section>
     );
   }
 
+  // Playing state — video with controls
   return (
     <section className="w-full max-w-4xl mx-auto mb-10 px-0">
       <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
         <video
           ref={videoRef}
-          src={src}
+          src={getVideoSrc(assetId)}
           className="w-full h-full rounded-xl object-cover bg-gray-900"
           playsInline
-          controls={interacted}
+          controls
+          autoPlay
           preload="auto"
+          onEnded={handleEnded}
         />
-
-        {/* Click-for-sound overlay */}
-        {showOverlay && (
-          <button
-            onClick={handleOverlayClick}
-            aria-label="Unmute and play from start"
-            className="absolute inset-0 flex items-center justify-center rounded-xl group"
-          >
-            <span className="flex items-center justify-center w-14 h-14 rounded-full bg-black/40 border border-white/10 text-white/70 text-2xl backdrop-blur-sm transition-all group-hover:bg-black/60 group-hover:text-white group-hover:scale-110">
-              🔊
-            </span>
-          </button>
-        )}
       </div>
     </section>
   );
