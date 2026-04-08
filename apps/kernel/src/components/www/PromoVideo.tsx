@@ -42,9 +42,10 @@ export function PromoVideo() {
       return;
     }
 
-    // First visit: autoplay muted
+    // First visit: autoplay muted, mark as seen immediately
     video.muted = true;
     video.play().catch(() => {});
+    localStorage.setItem(PROMO_SEEN_KEY, 'true');
   }, [assetId, src]);
 
   useEffect(() => {
