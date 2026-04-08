@@ -91,6 +91,12 @@ export const EMISSION_SCHEDULE: Record<string, EmissionSpec> = {
   },
 
   // === Content & Creation ===
+  'event.attendance': {
+    gas: 0.001,
+    emit: [
+      { to: 'subject', amount: 0.002, reason: 'Event attended' },
+    ],
+  },
   'event.created': {
     gas: 0.01,
     emit: [
