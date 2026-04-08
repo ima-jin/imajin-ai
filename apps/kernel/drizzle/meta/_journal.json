@@ -8,6 +8,20 @@
       "when": 1712599200000,
       "tag": "0000_add_handle_claimed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1744070400000,
+      "tag": "0001_add_upload_limit_mb",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1744070400001,
+      "tag": "0002_seed_ryan_extended",
+      "breakpoints": true
     }
   ]
 }

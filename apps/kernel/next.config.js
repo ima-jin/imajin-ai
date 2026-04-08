@@ -21,7 +21,7 @@ const nextConfig = {
   reactStrictMode: true,
   experimental: {
     serverComponentsExternalPackages: ['@metalabel/dfos-protocol'],
-    serverActions: { bodySizeLimit: '50mb' },
+    serverActions: { bodySizeLimit: '2gb' },
   },
   webpack: (config, { isServer }) => {
     if (!isServer) {

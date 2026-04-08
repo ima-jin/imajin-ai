@@ -21,6 +21,7 @@ export const identities = authSchema.table('identities', {
   avatarUrl: text('avatar_url'),
   avatarAssetId: text('avatar_asset_id'),           // asset_xxx from media service
   tier: text('tier').notNull().default('soft'),
+  uploadLimitMb: integer('upload_limit_mb'),
   handleClaimedAt: timestamp('handle_claimed_at', { withTimezone: true }),
   contactEmail: text('contact_email'),                  // billing/notification email from Stripe or onboard
   keyRoles: jsonb('key_roles').$type<KeyRoles | null>(), // null = single key in all roles

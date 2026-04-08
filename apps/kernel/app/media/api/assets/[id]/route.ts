@@ -5,6 +5,16 @@ import { db, assets } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import type { FairManifest } from "@imajin/fair";
+import {
+  VIDEO_QUALITIES,
+  type VideoQuality,
+  getVariantPath,
+  variantExists,
+  isTranscoding,
+  getAvailableVariants,
+  getTranscodingStatus,
+  transcodeVideo,
+} from "@/src/lib/media/transcode";
 
 function getAccessType(
   access: FairManifest["access"]
@@ -112,7 +122,41 @@ export async function GET(
 
   const { searchParams } = new URL(request.url);
   const widthParam = searchParams.get("w");
+  const qualityParam = searchParams.get("quality") as VideoQuality | null;
   const download = searchParams.get("download") === "true";
+
+  // 5a. Video quality variant serving (?quality=720p etc.)
+  if (qualityParam && asset.mimeType.startsWith("video/") && (VIDEO_QUALITIES as readonly string[]).includes(qualityParam)) {
+    const quality = qualityParam as VideoQuality;
+
+    if (await variantExists(asset.storagePath, quality)) {
+      const variantPath = getVariantPath(asset.storagePath, quality);
+      const variantBuffer = await readFile(variantPath).catch(() => null);
+      if (variantBuffer) {
+        const variantHeaders = new Headers();
+        variantHeaders.set("Content-Type", "video/mp4");
+        variantHeaders.set("Cache-Control", "public, max-age=31536000, immutable");
+        variantHeaders.set("Content-Length", String(variantBuffer.length));
+        return new NextResponse(new Uint8Array(variantBuffer), { status: 200, headers: variantHeaders });
+      }
+    }
+
+    if (isTranscoding(asset.storagePath, quality)) {
+      return NextResponse.json(
+        { status: "transcoding", quality, retryAfter: 30 },
+        { status: 202, headers: { "Retry-After": "30" } }
+      );
+    }
+
+    // Kick off transcode fire-and-forget
+    transcodeVideo(asset.storagePath, quality).catch((err) =>
+      console.error(`[transcode] Background error for ${asset.storagePath} ${quality}:`, err)
+    );
+    return NextResponse.json(
+      { status: "transcoding", quality, retryAfter: 30 },
+      { status: 202, headers: { "Retry-After": "30" } }
+    );
+  }
 
   // 5. Thumbnail generation for images (?w=<pixels>)
   let outputBuffer: Buffer = fileBuffer;
@@ -142,6 +186,13 @@ export async function GET(
   headers.set("Content-Type", outputMime);
   headers.set("ETag", etag);
   headers.set("X-Fair-Access", accessType);
+
+  if (asset.mimeType.startsWith("video/")) {
+    const variants = await getAvailableVariants(asset.storagePath);
+    const transcoding = getTranscodingStatus(asset.storagePath);
+    headers.set("X-Variants", JSON.stringify(variants));
+    headers.set("X-Transcoding", JSON.stringify(transcoding));
+  }
 
   if (accessType === "public") {
     // Resized variants: 1 hour (sellers may update images)

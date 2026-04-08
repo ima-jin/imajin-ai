@@ -3,7 +3,7 @@ import { createHash } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import { extname } from "path";
 import { nanoid } from "nanoid";
-import { db, assets, folders, assetFolders } from "@/src/db";
+import { db, assets, folders, assetFolders, identities } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
 import { eq, and } from "drizzle-orm";
@@ -27,7 +27,17 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || "/mnt/media";
-const MAX_SIZE = 50 * 1024 * 1024; // 50 MB
+
+const TIER_LIMITS: Record<string, number> = {
+  soft: 50,
+  preliminary: 50,
+  established: 200,
+};
+
+function getUploadLimitBytes(identity: { tier?: string; uploadLimitMb?: number | null }): number {
+  const mb = identity.uploadLimitMb ?? TIER_LIMITS[identity.tier || 'soft'] ?? 50;
+  return mb * 1024 * 1024;
+}
 
 const ALLOWED_MIME_PREFIXES = ["image/", "audio/", "video/", "text/"];
 const ALLOWED_MIME_EXACT = ["application/pdf"];
@@ -88,6 +98,14 @@ export async function POST(request: NextRequest) {
   const { identity } = authResult;
   const ownerDid = identity.actingAs || identity.id;
 
+  // Fetch full identity row to get uploadLimitMb
+  const [identityRow] = await db
+    .select({ tier: identities.tier, uploadLimitMb: identities.uploadLimitMb })
+    .from(identities)
+    .where(eq(identities.id, identity.id))
+    .limit(1);
+  const uploadLimitBytes = getUploadLimitBytes(identityRow ?? { tier: identity.tier });
+
   // Parse multipart form data
   let formData: FormData;
   try {
@@ -102,9 +120,10 @@ export async function POST(request: NextRequest) {
   }
 
   // Size check
-  if (file.size > MAX_SIZE) {
+  const limitMb = Math.round(uploadLimitBytes / (1024 * 1024));
+  if (file.size > uploadLimitBytes) {
     return NextResponse.json(
-      { error: "File exceeds 50 MB limit" },
+      { error: `File exceeds ${limitMb} MB limit` },
       { status: 413 }
     );
   }
