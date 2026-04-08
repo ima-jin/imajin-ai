@@ -3,6 +3,13 @@ import type { Identity, AuthResult, AuthError } from "./types";
 
 const getAuthUrl = () => process.env.AUTH_SERVICE_URL!;
 
+/** Parse a single cookie value from a raw Cookie header string */
+function parseCookieValue(cookieHeader: string | null, name: string): string | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export interface AuthOptions {
   verifyChain?: boolean; // If true, also verify the chain is valid (not just session)
   service?: string;      // If set, validate that acting-as controller has access to this service
@@ -179,9 +186,11 @@ export async function requireAuth(
     }
   }
 
-  // Handle X-Acting-As header for group identity impersonation
+  // Handle X-Acting-As header or cookie for group identity impersonation
   if ("identity" in result && result.identity) {
-    const actingAs = request.headers.get("x-acting-as");
+    const actingAs = request.headers.get("x-acting-as")
+      || request.cookies?.get?.("x-acting-as")?.value
+      || parseCookieValue(request.headers.get("cookie"), "x-acting-as");
     if (actingAs) {
       const actingAsResult = await validateActingAs(
         result.identity.id,
