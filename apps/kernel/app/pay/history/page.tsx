@@ -114,7 +114,7 @@ export default async function HistoryPage({
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Link href="/" className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors">
+        <Link href="/pay" className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors">
           ← Dashboard
         </Link>
         <h1 className="text-3xl font-bold text-white">Transaction History</h1>
