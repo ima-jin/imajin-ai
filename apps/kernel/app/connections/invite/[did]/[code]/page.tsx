@@ -65,7 +65,7 @@ export default async function InvitePage({
 
   const displayName = invite.fromHandle ? `@${invite.fromHandle}` : invite.fromDid.slice(0, 20) + '...';
   const connectionsUrl = buildPublicUrl('connections');
-  const acceptUrl = `/api/invites/${params.code}/accept`;
+  const acceptUrl = `/connections/api/invites/${params.code}/accept`;
   const loginUrl = `${AUTH_URL}/login?next=${encodeURIComponent(`${connectionsUrl}/invite/${params.did}/${params.code}`)}`;
 
   return (

@@ -289,7 +289,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
           <div className="mb-4 p-4 bg-white/5 border border-amber-500/30 rounded-lg">
             <p className="text-sm text-gray-400 mb-3">Select from your connections:</p>
             <ConnectionPicker
-              connectionsUrl="/api/connections"
+              connectionsUrl="/connections/api/connections"
               excludeDids={memberDids}
               onSelect={(conn) => addMember(conn.did)}
               disabled={adding}

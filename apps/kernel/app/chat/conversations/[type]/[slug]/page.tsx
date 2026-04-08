@@ -197,7 +197,7 @@ function DIDConversationView({ did }: { did: string }) {
     setRemovingDid(memberDid);
     try {
       const res = await fetch(
-        `/api/d/${encodeURIComponent(did)}/members/${encodeURIComponent(memberDid)}`,
+        `/chat/api/d/${encodeURIComponent(did)}/members/${encodeURIComponent(memberDid)}`,
         { method: 'DELETE' }
       );
       if (res.ok) {
