@@ -39,9 +39,14 @@ async function triggerHardEligibilityCheck(did: string): Promise<void> {
   `;
   if (!attendanceRow) return;
 
-  await sql`
-    UPDATE auth.identities SET tier = 'established', updated_at = NOW() WHERE id = ${did}
+  // Atomic CAS — only upgrade if still 'preliminary', prevents double emission
+  const [upgraded] = await sql`
+    UPDATE auth.identities SET tier = 'established', updated_at = NOW()
+    WHERE id = ${did} AND tier = 'preliminary'
+    RETURNING id
   `;
+
+  if (!upgraded) return;
 
   emitAttestation({
     issuer_did: platformDid,
