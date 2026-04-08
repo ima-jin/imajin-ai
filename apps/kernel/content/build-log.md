@@ -1,5 +1,171 @@
 <!-- Build Log — newest first. Source: Discord dev channel + git history. -->
 
+## April 6–8, 2026 — The Kernel Merge & MJN Emissions
+
+**Nine services became one process. 40,000 lines deleted. Then we built a token economy in one evening.**
+
+### ⚙️ Kernel Merge (#615, PR #631)
+
+The biggest architectural change since launch. Nine standalone services — auth, pay, profile, registry, connections, chat, media, notify, www — consolidated into a single Next.js application: `apps/kernel/`.
+
+- **Phase 1–4:** Scaffold → move www → move auth → move remaining 7 services. ~600 files moved, all imports rewritten
+- **Phase 5:** 519 old service directories deleted. `-40,732 lines`
+- **Phase 6:** ~45 cross-service HTTP calls replaced with direct function calls. `getSessionFromCookies()`, `checkAccess()`, `lookupIdentity()` — no more `fetch("http://localhost:3001/api/session")`
+- **Phase 7:** 12 duplicate utility files consolidated into `src/lib/kernel/`. Shared `generateId`, CORS, rate-limit, graph membership auth
+- **664 files changed, +2,362 / -40,732 lines** in a single PR
+
+The kernel runs on one domain: `dev-jin.imajin.ai`. Caddy routes `/auth/api/*`, `/pay/api/*`, etc. to the same process. Userspace apps (events, coffee, learn, links, market, dykil) remain separate — federated apps that can be hosted anywhere.
+
+### 🔧 Routing Fixes (17+ in one session)
+
+Single-domain routing surfaced three classes of bugs:
+
+1. **Client fetch paths** — bare `/api/...` needed service prefix: `/chat/api/...`
+2. **Userspace basePath** — `apiFetch()` + `NEXT_PUBLIC_BASE_PATH` in `@imajin/config`
+3. **Navigation paths** — `router.push()`, `href`, `window.location` all needed explicit service prefix
+
+Also fixed: nested `<html>/<body>` in chat and media layouts (double NavBar), missing pages lost in Phase 5 cleanup, global unread count in NavBar, Caddy file_server for `/api/media/*`, auth subdomain URLs in userspace apps.
+
+### 人 MJN Emissions — The Token Economy (#433, #641, #642)
+
+Built in one evening. The economic loop: **gas burns MJN, attestations emit MJN, .fair defines the rates, chains record everything.**
+
+- **Emission schedule** (`src/lib/kernel/emissions.ts`) — attestation type → MJN credits. Fixed amounts for lifecycle events, percentage-of-settlement for commerce
+- **Attestation-driven handler** — after every attestation is stored, the emission schedule fires. Upserts `pay.balances`, logs `pay.transactions`. Fire-and-forget, non-fatal
+- **Tiered identity emissions:** soft DID → 10 MJN ($0.10), preliminary → +100 MJN ($1.00), hard → +100 MJN ($1.00). Fully verified = 210 MJN ($2.10)
+- **Valuation:** 1 MJN = 0.01 CHF (≈1¢). 100 MJN = 1 MJNx. Grounded as "one unit of compute"
+- **Currency symbol: 人** — the "jin" in MJN. Person as currency. `人210` in the NavBar
+
+Wallet display: amber MJN badge in NavBar (alongside green cash badge), BalanceCard with separate MJN/cash cards, transaction history with `人` formatting and ✨ emission icons, currency filter (All/Fiat/MJN).
+
+**Retroactive backfill** ran on dev: 19 identities, 1,490 MJN credited across 32 emissions.
+
+**Emissions model draft** at `docs/rfcs/drafts/emissions-model.md` — the .fair cascade applies: root .fair (protocol defaults) → identity .fair (scope overrides) → record .fair (frozen proof at attestation time = mint proof).
+
+### 📖 Launcher & API Docs
+
+- **Kernel services in launcher** — broke single "Kernel" tile into 9 individual services (Home 🏠, Identity 🔑, Profile 👤, Connections 🤝, Chat 💬, Wallet 💰, Media 📁, Registry 📡, Notify 🔔). New "kernel" category at top, "Userspace" label for Events/Learn/Market
+- **Centered grid** — launcher tiles center instead of left-aligning
+- **OpenAPI specs restored** — 8 per-service YAML specs updated for single-domain routing, `{node}.imajin.ai/{service}` server variables, new notify spec created from scratch
+- **Registry docs page** — filters meta services, reads kernel specs from file instead of HTTP
+
+### 📝 Essays
+
+- **Essay 37:** "How to Fix the Commons" — Hardin wrong, Ostrom right, Imajin = implementation. Bridge piece for Humane Tech
+- **Essay 38:** "The Inherited Pathology" — LLMs inherit "do it later" from training data. Context design as governance. SOUL.md as Ostrom's principles for an attention commons
+
+### 📊 By the Numbers
+
+- 72 commits on feat/kernel-merge
+- 9 services → 1 kernel process
+- ~45 HTTP calls → direct function calls
+- 40,732 lines deleted
+- 1,490 MJN emitted retroactively
+- 8 OpenAPI specs updated
+- 2 essays drafted
+
+---
+
+## April 5, 2026 — Forest Architecture Sprint (Day 64)
+
+**8 PRs in one afternoon. 3,000+ lines. Full scoped community experience from schema to UI.**
+
+### 🌲 Group Identities & Forests (#587–601)
+
+The forest is the scope. Switching `X-Acting-As` changes your entire universe — events, connections, media, chat, market, pay all refract through the scope DID.
+
+- **Group identities** (#590) — `auth.group_identities` + `auth.group_controllers`. Scope: org/community/family. Handles share namespace with personal handles
+- **Forest switcher** (#591) — dropdown in NavBar, `useForests` hook, `acting-as.ts` utility. Cookie + localStorage + header pattern
+- **Forest config** (#594) — `profile.forest_config` table: `enabled_services TEXT[]`, `landing_service`, `theme JSONB`, `platform_did TEXT`
+- **Settings UI** (#595) — forest admin page: toggle services, set landing page, configure theme
+- **OG metadata** (#596) — forest-branded social previews
+- **Contextual onboarding** (#601) — `/onboard?scope=did:imajin:mooi`. Forest-branded join page. Email or client-side keypair flow. `scope.onboard` attestation on join
+
+### 🤝 Connections Refactor (#577, #578, #579, #580)
+
+Pods are groups now. Connections are first-class.
+
+- `connections.connections` table — lexically-sorted DID pair PK, soft delete
+- `connections.nicknames` — separate table, `(did, target)` PK
+- Batch nickname resolution: `POST /api/nicknames/resolve`, `useDidNames` hook, `MemberName` component
+- Chat URLs: `/conversations/did%3Aimajin%3Agroup%3Aabc` → `/conversations/group/abc`
+
+### 🔗 Scope-Aware Services (#602)
+
+Work order filed: 11 service issues (#603–#613). Same pattern per service: `identity.actingAs || identity.id`. Two waves: Mooi-critical first (events, connections, pay, media), then the rest.
+
+- **12 PRs merged in one batch** — events, media, connections, pay, registry, notify, coffee, links, market, learn, chat + controller services
+- Each agent run averaged 4 minutes. One import path fix.
+
+### 📡 DFOS 0.7.0 (#535)
+
+Deleted 924 lines of custom ingest. Library-native. 100/100 conformance on dev + prod.
+
+### 📊 By the Numbers
+
+- 8 PRs in one afternoon (COCOMO says 6 person-weeks)
+- 3,000+ lines across 7 agent runs, avg 4 min each
+- Full Mooi onboarding flow: schema → API → UI → contextual join page
+
+---
+
+## April 3–4, 2026 — Refund Hardening, Group Chat & Settlement Display
+
+**Two days of plumbing. Refund flows, group membership, ledger display — the stuff that makes real commerce work.**
+
+### 💳 Refund System Hardened (#561)
+
+Multiple hotfixes over two days:
+
+- **pi_ → cs_ resolution** — events stores payment intent ID, pay stores checkout session ID. Added Stripe API lookup to resolve
+- **Settlement reversal** — refund route now finds settlement entries via `metadata.stripeSessionId` and reverses them (host share + platform fee). Previously only the checkout was reversed
+- **Refund notification emails** — three variants: Stripe (card), e-transfer (manual), free (cancelled)
+
+### 👥 Group Membership Management (#570, #571)
+
+Leave/remove/add members for group chats. Toast feedback, `useDidNames`, `emitAttestation` wired. Three agent passes, clean merge.
+
+### 📊 Ledger Display (#565, #566)
+
+Settlement splits show as separate entries. Batch grouping with gross/net toggle shipped. Data was always correct — presentation caught up.
+
+### 🏗 Also Shipped
+
+- **EUDI Wallet Conformance** (#562) — scoped. MJN attestations map to W3C VCs, OpenID4VP for selective disclosure
+- **ATLAS sovereign inference** (#563) — harness for Qwen3-14B, 74.6% LiveCodeBench on single GPU
+- **Events invite-only gate fix** — `hasTicket` TDZ in minified bundle. Only hit authenticated users
+- **Silent error handling audit** (#572) — found 38 empty `catch {}` blocks. Connections: 12, events: 10
+
+---
+
+## April 1–2, 2026 — Launch Party, Broadcast, & MJN Economics
+
+**First public demo event. Zero attendance. But the broadcast system worked, the economics crystallized, and the reframe landed.**
+
+### 🎉 Launch Party (April 1)
+
+First real event with full infrastructure: check-in webhook → WLED bridge → LED cube responds to physical presence. Network path: Server → Cloudflare tunnel → laptop at venue → WLED on local WiFi.
+
+Zero attendance. Distribution problem, not product problem.
+
+### 📢 Event Host Broadcast (#552)
+
+Markdown composer on admin dashboard. `notify.broadcast()` with event context — image banner, "Message from [Event]" header, reply-to set to organizer's email. First prod broadcast sent at 6:25 PM for 7 PM event.
+
+### 💰 MJN/MJNx Economics Crystallized
+
+- **MJNx** = fiat-backed stable credits (1:1 CAD). Backed by Imajin Stripe account
+- **MJN** = network equity. Minted from 1.75% fee. All four parties earn MJN on every transaction
+- **"Imajin is a browser" reframe** — not a platform. A browser where identity is the keypair and DFOS is the network layer. Brandon co-signed: "That is some heat."
+
+### 🏗 Also Shipped
+
+- **Hybrid events** (#558) — `location_type` column: physical/virtual/hybrid
+- **Incremental builds** — `scripts/build-changed.sh` detects changed apps via pnpm dependency graph
+- **Check-in webhook + WLED bridge** (#551) — physical presence at events
+
+---
+
 ## March 29–30, 2026 — DFOS Identity Bridge, Federated Auth & Fee Model v2
 
 **Every login now creates a DFOS genesis chain. Four-node relay mesh live. The economic model got its first real spec.**
