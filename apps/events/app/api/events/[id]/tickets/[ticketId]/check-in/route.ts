@@ -5,6 +5,58 @@ import { getClient } from '@imajin/db';
 
 const sql = getClient();
 
+const platformDid = process.env.RELAY_DID || process.env.AUTH_DID || '';
+
+/**
+ * Fire-and-forget hard verification check for a DID.
+ * Mirrors checkHardEligibility in apps/kernel — runs in-process via shared DB.
+ */
+async function triggerHardEligibilityCheck(did: string): Promise<void> {
+  const [identity] = await sql`
+    SELECT tier, handle_claimed_at FROM auth.identities WHERE id = ${did} LIMIT 1
+  `;
+  if (!identity || identity.tier !== 'preliminary') return;
+  if (!identity.handle_claimed_at) return;
+
+  const fourWeeksAgo = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000);
+  if (new Date(identity.handle_claimed_at) > fourWeeksAgo) return;
+
+  const [{ count: connCount }] = await sql`
+    SELECT COUNT(DISTINCT partner.id) as count
+    FROM connections.connections c
+    JOIN auth.identities partner
+      ON (c.did_a = ${did} AND partner.id = c.did_b)
+      OR (c.did_b = ${did} AND partner.id = c.did_a)
+    WHERE c.disconnected_at IS NULL
+      AND partner.type = 'human'
+  `;
+  if (Number(connCount) < 25) return;
+
+  const [attendanceRow] = await sql`
+    SELECT id FROM auth.attestations
+    WHERE subject_did = ${did} AND type = 'event.attendance'
+    LIMIT 1
+  `;
+  if (!attendanceRow) return;
+
+  // Atomic CAS — only upgrade if still 'preliminary', prevents double emission
+  const [upgraded] = await sql`
+    UPDATE auth.identities SET tier = 'established', updated_at = NOW()
+    WHERE id = ${did} AND tier = 'preliminary'
+    RETURNING id
+  `;
+
+  if (!upgraded) return;
+
+  emitAttestation({
+    issuer_did: platformDid,
+    subject_did: did,
+    type: 'identity.verified.hard',
+    context_id: did,
+    context_type: 'identity',
+  }).catch((err) => console.error('[verification] hard emit error:', err));
+}
+
 /**
  * POST /api/events/[id]/tickets/[ticketId]/check-in — set used_at timestamp (owner or cohost)
  */
@@ -67,6 +119,10 @@ export async function POST(
         context_type: 'event',
         payload: { ticketId, usedAt: updated.used_at, checkedInBy: identity.id },
       }).catch((err) => console.error('Attestation emit error:', err));
+
+      // Check hard verification eligibility — fire-and-forget
+      triggerHardEligibilityCheck(attendeeDid)
+        .catch((err) => console.error('[verification] hard check error:', err));
     }
 
     // Fire-and-forget check-in webhook — do not block check-in on failure

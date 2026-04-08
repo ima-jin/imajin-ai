@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiFetch } from '@imajin/config';
 
 type EventStatus = 'draft' | 'published' | 'paused' | 'cancelled' | 'completed';
 
@@ -66,7 +67,7 @@ export function EventStatusControls({ eventId, currentStatus }: Props) {
     setError(null);
 
     try {
-      const res = await fetch(`/api/events/${eventId}`, {
+      const res = await apiFetch(`/api/events/${eventId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),

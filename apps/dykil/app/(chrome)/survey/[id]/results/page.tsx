@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { apiFetch } from '@imajin/config';
 import { useToast } from '@imajin/ui';
 import type { SurveyJSElement } from '@/db/schema';
 
@@ -50,8 +51,8 @@ export default function ResultsPage() {
   const fetchData = async () => {
     try {
       const [surveyRes, responsesRes] = await Promise.all([
-        fetch(`/api/surveys/${surveyId}`, { credentials: 'include' }),
-        fetch(`/api/surveys/${surveyId}/responses`, { credentials: 'include' }),
+        apiFetch(`/api/surveys/${surveyId}`, { credentials: 'include' }),
+        apiFetch(`/api/surveys/${surveyId}/responses`, { credentials: 'include' }),
       ]);
 
       if (surveyRes.ok && responsesRes.ok) {

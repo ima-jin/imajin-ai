@@ -22,13 +22,16 @@ Each service owns a schema within the shared database:
 
 | Schema | Service(s) |
 |--------|-----------|
-| `auth` | auth |
-| `profile` | profile |
+| `auth` | kernel |
+| `profile` | kernel |
+| `connections` | kernel |
+| `pay` | kernel |
+| `chat` | kernel |
+| `media` | kernel |
+| `notify` | kernel |
+| `registry` | kernel |
 | `events` | events |
 | `coffee` | coffee |
-| `chat` | chat |
-| `connections` | connections |
-| `media` | media |
 | `learn` | learn |
 | `market` | market |
 
@@ -46,22 +49,14 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 ### Port Convention
 
 - `3xxx` = development, `7xxx` = production (1:1 mapping)
-- `x000-x099` — **Core platform** (www, auth, pay, events, media, etc.)
+- `x000-x099` — **Core platform** (kernel, events)
 - `x100-x199` — **Imajin apps** (coffee, dykil, links, learn — account-based, DID-linked)
 - `x400-x499` — **Client apps** (fixready, karaoke — standalone repos, own databases)
 
 | Tier | Service | Dev | Prod | Domain |
 |------|---------|-----|------|--------|
-| Core | www | 3000 | 7000 | imajin.ai |
-| Core | auth | 3001 | 7001 | auth.imajin.ai |
-| Core | registry | 3002 | 7002 | registry.imajin.ai |
-| Core | connections | 3003 | 7003 | connections.imajin.ai |
-| Core | pay | 3004 | 7004 | pay.imajin.ai |
-| Core | profile | 3005 | 7005 | profile.imajin.ai |
+| Core | kernel | 3000 | 7000 | imajin.ai (+ auth/pay/profile/connections/registry/chat/media/notify subdomains via Caddy) |
 | Core | events | 3006 | 7006 | events.imajin.ai |
-| Core | chat | 3007 | 7007 | chat.imajin.ai |
-| Core | notify | 3008 | 7008 | notify.imajin.ai |
-| Core | media | 3009 | 7009 | media.imajin.ai |
 | Imajin | coffee | 3100 | 7100 | coffee.imajin.ai |
 | Imajin | dykil | 3101 | 7101 | dykil.imajin.ai |
 | Imajin | links | 3102 | 7102 | links.imajin.ai |
@@ -72,8 +67,8 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 
 ### pm2 Naming
 
-- **Bare names** = production (e.g., `www`, `auth`, `events`)
-- **`dev-*` prefix** = development (e.g., `dev-www`, `dev-auth`, `dev-events`)
+- **Bare names** = production (e.g., `kernel`, `events`)
+- **`dev-*` prefix** = development (e.g., `dev-kernel`, `dev-events`)
 
 ## Shared Packages
 
@@ -140,7 +135,7 @@ ML/compute services run on a dedicated GPU node (`192.168.1.124`), not the ProLi
 | Whisper | 8765 | large-v3 (CUDA float16) | Speech-to-text transcription |
 | Ollama | 11434 | qwen2.5-coder:7b, nomic-embed-text | Code refactoring, embeddings |
 
-The media service relays audio to the GPU node over LAN for transcription. No public subdomain for the GPU node — internal only.
+The kernel service relays audio to the GPU node over LAN for transcription. No public subdomain for the GPU node — internal only.
 
 - **Repo:** [ima-jin/imajin-ml](https://github.com/ima-jin/imajin-ml)
 - **Server path:** `~/imajin-ml`

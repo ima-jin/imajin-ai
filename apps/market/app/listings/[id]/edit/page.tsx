@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { apiFetch } from '@imajin/config';
 import { ListingForm, ListingFormData } from '../../../components/ListingForm';
 
 interface Listing {
@@ -35,7 +36,7 @@ export default function EditListingPage() {
   useEffect(() => {
     async function fetchListing() {
       try {
-        const res = await fetch(`/api/listings/${id}`);
+        const res = await apiFetch(`/api/listings/${id}`);
         if (res.status === 404) {
           setLoadError('Listing not found.');
           return;
@@ -78,7 +79,7 @@ export default function EditListingPage() {
         body.contactInfo = null;
       }
 
-      const res = await fetch(`/api/listings/${id}`, {
+      const res = await apiFetch(`/api/listings/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -112,7 +113,7 @@ export default function EditListingPage() {
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/listings/${id}`, {
+      const res = await apiFetch(`/api/listings/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });

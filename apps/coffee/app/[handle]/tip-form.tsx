@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useToast } from '@imajin/ui';
+import { apiFetch } from '@imajin/config';
 
 interface FundDirection {
   id: string;
@@ -68,7 +69,7 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
     }
 
     try {
-      const response = await fetch('/api/tip', {
+      const response = await apiFetch('/api/tip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

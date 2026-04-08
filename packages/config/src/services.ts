@@ -6,7 +6,7 @@
 
 export type ServiceTier = "core" | "imajin";
 export type ServiceVisibility = "public" | "authenticated" | "creator" | "internal";
-export type ServiceCategory = "core" | "creator" | "developer" | "infrastructure" | "meta";
+export type ServiceCategory = "kernel" | "core" | "creator" | "developer" | "infrastructure" | "meta";
 
 export interface ServiceDefinition {
   /** Subdomain / app directory name */
@@ -36,17 +36,19 @@ export interface ServiceDefinition {
 }
 
 export const SERVICES: readonly ServiceDefinition[] = [
-  // Core platform
-  { name: "www",         label: "Home",        icon: "🏠", description: "Home — the Imajin network",                         devPort: 3000, prodPort: 7000, schema: "public",      tier: "core",   visibility: "public",        category: "core" },
-  { name: "auth",        label: "Auth",        icon: "🔐", description: "Authentication and identity",                       devPort: 3001, prodPort: 7001, schema: "auth",        tier: "core",   visibility: "internal",      category: "infrastructure" },
-  { name: "registry",    label: "Registry",    icon: "📡", description: "Node registration, heartbeat, and provisioning",    devPort: 3002, prodPort: 7002, schema: "registry",    tier: "core",   visibility: "authenticated", category: "developer" },
-  { name: "connections", label: "Connections", icon: "🤝", description: "Social connections, pods, and trust invites",       devPort: 3003, prodPort: 7003, schema: "connections", tier: "core",   visibility: "authenticated", category: "core" },
-  { name: "pay",         label: "Pay",         icon: "💳", description: "Payments, escrow, and balance management",          devPort: 3004, prodPort: 7004, schema: "pay",         tier: "core",   visibility: "authenticated", category: "core" },
-  { name: "profile",     label: "Profile",     icon: "👤", description: "User profiles and social graph",                    devPort: 3005, prodPort: 7005, schema: "profile",     tier: "core",   visibility: "authenticated", category: "core" },
+  // Kernel services — individually visible, all run on the kernel process (port 3000/7000)
+  { name: "kernel",      label: "Home",        icon: "🏠", description: "Network home — launcher, articles, stats",           devPort: 3000, prodPort: 7000, schema: null,          tier: "core",   visibility: "public",        category: "kernel" },
+  { name: "auth",        label: "Identity",    icon: "🔑", description: "Authentication, keys, and identity management",      devPort: 3000, prodPort: 7000, schema: "auth",        tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "profile",     label: "Profile",     icon: "👤", description: "Your profile, settings, and display preferences",    devPort: 3000, prodPort: 7000, schema: "profile",     tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "connections", label: "Connections", icon: "🤝", description: "Your network — people you know and trust",           devPort: 3000, prodPort: 7000, schema: "connections", tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "chat",        label: "Chat",        icon: "💬", description: "Conversations and group messaging",                  devPort: 3000, prodPort: 7000, schema: "chat",        tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "pay",         label: "Wallet",      icon: "💰", description: "Payments, settlements, and MJN balance",             devPort: 3000, prodPort: 7000, schema: "pay",         tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "media",       label: "Media",       icon: "📁", description: "Files, images, and .fair attribution",               devPort: 3000, prodPort: 7000, schema: "media",       tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "registry",    label: "Registry",    icon: "📡", description: "Service registry and DFOS relay",                    devPort: 3000, prodPort: 7000, schema: "registry",    tier: "core",   visibility: "public",        category: "kernel" },
+  { name: "notify",      label: "Notify",      icon: "🔔", description: "Notifications and preferences",                     devPort: 3000, prodPort: 7000, schema: "notify",      tier: "core",   visibility: "internal",      category: "kernel" },
+
+  // Core apps — separate processes
   { name: "events",      label: "Events",      icon: "🎫", description: "Event creation, ticketing, and management",         devPort: 3006, prodPort: 7006, schema: "events",      tier: "core",   visibility: "public",        category: "core" },
-  { name: "chat",        label: "Messages",    icon: "💬", description: "Real-time messaging and conversations",             devPort: 3007, prodPort: 7007, schema: "chat",        tier: "core",   visibility: "authenticated", category: "core" },
-  { name: "notify",      label: "Notify",      icon: "🔔", description: "Notification delivery and preferences",             devPort: 3008, prodPort: 7008, schema: "notify",      tier: "core",   visibility: "internal",      category: "infrastructure" },
-  { name: "media",       label: "Media",       icon: "🖼️", description: "Media management, upload, classification, whisper", devPort: 3009, prodPort: 7009, schema: "media",       tier: "core",   visibility: "authenticated", category: "core" },
 
   // Imajin apps
   { name: "coffee",      label: "Coffee",      icon: "☕", description: "Tipping and creator support pages",                 devPort: 3100, prodPort: 7100, schema: "coffee",      tier: "imajin", visibility: "creator",       category: "creator" },
@@ -111,6 +113,15 @@ export function getPublicUrl(
     return port ? `http://localhost:${port}` : `http://localhost:3000`;
   }
 
+  // Single-domain mode: prefix contains dots (e.g. "dev-jin.imajin.ai/")
+  // Build https://{prefix}{name} instead of https://{prefix}-{name}.{domain}
+  if (prefix && prefix.includes(".")) {
+    const base = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+    // "www" or "kernel" = root of the node, no suffix
+    if (name === "www" || name === "kernel") return `https://${base}`;
+    return `https://${base}/${name}`;
+  }
+
   const subdomain = prefix ? `${prefix}-${name}` : name;
   return `https://${subdomain}.${domain}`;
 }
@@ -129,6 +140,13 @@ export function buildPublicUrl(
   servicePrefix?: string,
   domain?: string
 ): string {
+  // Check for explicit NEXT_PUBLIC_{NAME}_URL env var first (kernel single-domain mode)
+  if (!servicePrefix && !domain && typeof process !== "undefined") {
+    const envKey = `NEXT_PUBLIC_${name.toUpperCase()}_URL`;
+    const explicit = process.env[envKey];
+    if (explicit) return explicit;
+  }
+
   const p = servicePrefix ?? (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_SERVICE_PREFIX : undefined) ?? "https://";
   const d = domain ?? (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_DOMAIN : undefined) ?? "imajin.ai";
 

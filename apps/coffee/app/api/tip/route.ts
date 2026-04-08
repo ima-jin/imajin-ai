@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
         emitAttestation({
           issuer_did: fromDid,
           subject_did: page.did,
-          type: 'tip.received',
+          type: 'tip.granted',
           context_id: tipId,
           context_type: 'coffee',
           payload: { amount, currency },
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
         emitAttestation({
           issuer_did: fromDid,
           subject_did: page.did,
-          type: 'tip.received',
+          type: 'tip.granted',
           context_id: tipId,
           context_type: 'coffee',
           payload: { amount, currency: 'SOL' },

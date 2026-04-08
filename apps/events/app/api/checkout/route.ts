@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     
     // Check if buyer is logged in (hard DID)
     const session = await optionalAuth(request);
-    const buyerDid = (session?.tier === 'preliminary' || session?.tier === 'established') ? session.id : undefined;
+    const buyerDid = (session && session.tier !== 'soft') ? session.id : undefined;
 
     // Check availability
     if (ticketType.quantity !== null) {

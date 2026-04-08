@@ -267,12 +267,15 @@ Supersedes RFC-12 exchange rate strategy. See also: FAQ ("What's the difference 
 | Property | Value |
 |----------|-------|
 | Type | Equity, governance, long-term alignment |
-| How you get it | Earned through usage — never purchased directly |
+| How you get it | Earned through participation — never purchased directly |
 | Chain | DFOS (virtual, pre-launch) → Solana (Year 3) |
-| Gas | Priced in MJN (0.1 MJN per operation, governance-adjustable) |
-| User credit | Settlement credit accumulates as MJN |
-| Starter balance | 100 MJN on account creation |
-| Convertible | MJN ↔ MJNx at current rate |
+| Pre-token peg | **1 MJN = 0.01 CHF (≈1¢)** — grounded as "one unit of compute" |
+| Conversion | **100 MJN = 1 MJNx** |
+| Gas | Priced in MJN (0.001 MJN per operation, governance-adjustable) |
+| Emissions | Earned via attestations — .fair spec defines rates (see `emissions-model.md`) |
+| Starter balance | 10 MJN (soft DID) + 100 MJN (preliminary) + 100 MJN (hard) = 210 MJN max |
+| Post-token | MJN floats at market rate. Pre-token peg is utility, not speculative. |
+| Convertible | MJN ↔ MJNx at pre-token peg (100:1) or post-token market rate |
 
 ### MJNx — Stable Unit / Commerce
 

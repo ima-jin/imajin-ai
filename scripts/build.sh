@@ -118,9 +118,22 @@ for app in "${APPS[@]}"; do
   echo "" >> "$REPORT"
 done
 
+# Map app names to pm2 process names
+# kernel → jin (the node), everything else → same name
+pm2_name() {
+  local app="$1"
+  case "$app" in
+    kernel) echo "${PM2_PREFIX}jin" ;;
+    *)      echo "${PM2_PREFIX}${app}" ;;
+  esac
+}
+
 # Only restart services that built successfully
 if [ ${#SUCCEEDED[@]} -gt 0 ]; then
-  RESTART_LIST=$(printf "${PM2_PREFIX}%s " "${SUCCEEDED[@]}")
+  RESTART_LIST=""
+  for app in "${SUCCEEDED[@]}"; do
+    RESTART_LIST+="$(pm2_name "$app") "
+  done
   echo "=== Restarting: $RESTART_LIST ===" | tee -a "$REPORT"
   pm2 restart $RESTART_LIST >> "$REPORT" 2>&1
 fi

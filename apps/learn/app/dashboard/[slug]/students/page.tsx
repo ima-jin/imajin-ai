@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { apiFetch } from '@imajin/config';
 
 interface Student {
   studentDid: string;
@@ -47,7 +48,7 @@ export default function StudentsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/courses/${slug}/students`, { credentials: 'include' });
+        const res = await apiFetch(`/api/courses/${slug}/students`, { credentials: 'include' });
         if (!res.ok) {
           setError(res.status === 403 ? 'Not authorized' : 'Failed to load');
           return;

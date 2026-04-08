@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { apiFetch } from '@imajin/config';
 
 interface Survey {
   id: string;
@@ -25,7 +26,7 @@ export default function UserSurveysPage() {
 
   const fetchSurveys = async () => {
     try {
-      const res = await fetch(`/api/surveys/handle/${handle}`);
+      const res = await apiFetch(`/api/surveys/handle/${handle}`);
 
       if (res.ok) {
         const data = await res.json();

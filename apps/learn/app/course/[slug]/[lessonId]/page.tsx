@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { simpleMarkdown } from '../../../lib/markdown';
+import { apiFetch } from '@imajin/config';
 
 interface Lesson {
   id: string;
@@ -56,7 +57,7 @@ export default function LessonViewerPage() {
       try {
         // Load lesson content — we need to find its module ID first
         // Use the progress endpoint to get the full structure
-        const progressRes = await fetch(`/api/courses/${slug}/progress`, { credentials: 'include' });
+        const progressRes = await apiFetch(`/api/courses/${slug}/progress`, { credentials: 'include' });
         if (progressRes.ok) {
           const prog = await progressRes.json();
           setProgress(prog);
@@ -71,7 +72,7 @@ export default function LessonViewerPage() {
           }
 
           if (moduleId) {
-            const lessonRes = await fetch(
+            const lessonRes = await apiFetch(
               `/api/courses/${slug}/modules/${moduleId}/lessons/${lessonId}`,
               { credentials: 'include' }
             );
@@ -92,7 +93,7 @@ export default function LessonViewerPage() {
   async function markComplete() {
     setCompleting(true);
     try {
-      const res = await fetch(`/api/courses/${slug}/lessons/${lessonId}/complete`, {
+      const res = await apiFetch(`/api/courses/${slug}/lessons/${lessonId}/complete`, {
         method: 'POST',
         credentials: 'include',
       });

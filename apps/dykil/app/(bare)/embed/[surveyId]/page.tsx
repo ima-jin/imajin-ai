@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
+import { apiFetch, apiUrl } from '@imajin/config';
 import { Model } from 'survey-core';
 import { Survey } from 'survey-react-ui';
 import 'survey-core/survey-core.min.css';
@@ -139,7 +140,7 @@ export default function SurveyEmbedPage() {
 
   const fetchSurvey = async () => {
     try {
-      const res = await fetch(`/api/surveys/${surveyId}`, {
+      const res = await apiFetch(`/api/surveys/${surveyId}`, {
         credentials: 'include',
       });
 
@@ -194,7 +195,7 @@ export default function SurveyEmbedPage() {
             // Skip check — show fresh form for this ticket
           } else {
 
-          const checkUrl = new URL(`/api/surveys/${surveyId}/responses/check`, window.location.origin);
+          const checkUrl = new URL(apiUrl(`/api/surveys/${surveyId}/responses/check`), window.location.origin);
           checkUrl.searchParams.set('include', 'answers');
           if (storedResponseId) checkUrl.searchParams.set('responseId', storedResponseId);
           if (ticketId) checkUrl.searchParams.set('skipDid', 'true');
@@ -257,7 +258,7 @@ export default function SurveyEmbedPage() {
 
     // POST in background — response is already shown to user
     try {
-      const res = await fetch(`/api/surveys/${surveyId}/respond`, {
+      const res = await apiFetch(`/api/surveys/${surveyId}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

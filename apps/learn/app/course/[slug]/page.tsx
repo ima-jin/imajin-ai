@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { OnboardGate } from '@imajin/onboard';
 import { useToast } from '@imajin/ui';
+import { apiFetch } from '@imajin/config';
 
 interface Lesson {
   id: string;
@@ -72,7 +73,7 @@ export default function CourseDetailPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/courses/${slug}`, { credentials: 'include' });
+        const res = await apiFetch(`/api/courses/${slug}`, { credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           setCourse(data);
@@ -121,7 +122,7 @@ export default function CourseDetailPage() {
     if (!course) return;
     setEnrolling(true);
     try {
-      const res = await fetch(`/api/courses/${slug}/enroll`, {
+      const res = await apiFetch(`/api/courses/${slug}/enroll`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

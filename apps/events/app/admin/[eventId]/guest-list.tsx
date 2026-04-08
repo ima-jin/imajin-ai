@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@imajin/ui';
+import { apiFetch } from '@imajin/config';
 import { TicketScanner } from './ticket-scanner';
 
 interface Profile {
@@ -138,7 +139,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch(`/api/events/${eventId}/guests`)
+    apiFetch(`/api/events/${eventId}/guests`)
       .then(r => r.json())
       .then(data => {
         setGuests(data.guests || []);
@@ -155,7 +156,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   const handleCheckIn = async (ticketId: string) => {
     setActionLoading(ticketId);
     try {
-      const res = await fetch(`/api/events/${eventId}/tickets/${ticketId}/check-in`, { method: 'POST' });
+      const res = await apiFetch(`/api/events/${eventId}/tickets/${ticketId}/check-in`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error || 'Check-in failed');
@@ -181,7 +182,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
     setConfirmETransfer(null);
     setActionLoading(ticketId);
     try {
-      const res = await fetch(`/api/tickets/${ticketId}/confirm-payment`, { method: 'POST' });
+      const res = await apiFetch(`/api/tickets/${ticketId}/confirm-payment`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error || 'Confirmation failed');
@@ -202,7 +203,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
     const minWait = new Promise(resolve => setTimeout(resolve, 500));
     try {
       const [res] = await Promise.all([
-        fetch(`/api/events/${eventId}/tickets/${ticketId}/resend-email`, { method: 'POST' }),
+        apiFetch(`/api/events/${eventId}/tickets/${ticketId}/resend-email`, { method: 'POST' }),
         minWait,
       ]);
       const data = await res.json();
@@ -229,7 +230,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
     setSurveyQuestions([]);
     setSurveyLoading(true);
     try {
-      const res = await fetch(`/api/events/${eventId}/tickets/${ticketId}/registration`);
+      const res = await apiFetch(`/api/events/${eventId}/tickets/${ticketId}/registration`);
       const data = await res.json();
       if (res.ok) {
         setSurveyQuestions(data.questions || []);
@@ -245,7 +246,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
     setConfirmRefund(null);
     setActionLoading(ticketId);
     try {
-      const res = await fetch(`/api/events/${eventId}/tickets/${ticketId}/refund`, { method: 'POST' });
+      const res = await apiFetch(`/api/events/${eventId}/tickets/${ticketId}/refund`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error || 'Refund failed');

@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { buildPublicUrl } from '@imajin/config';
+import Link from 'next/link';
 import { ImajinFooter } from '@imajin/ui';
 
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const AUTH_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX + 'auth.' + process.env.NEXT_PUBLIC_DOMAIN;
+  const AUTH_URL = buildPublicUrl('auth');
 
   useEffect(() => {
     async function checkAuth() {
@@ -39,9 +41,9 @@ export default function Home() {
           <div className="flex justify-center mb-12">
             {!checkingAuth && (
               isLoggedIn ? (
-                <a href="/edit" className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
+                <Link href="/edit" className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
                   Go to Dashboard →
-                </a>
+                </Link>
               ) : (
                 <a href={`${AUTH_URL}/login?next=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin + '/edit' : '/edit')}`} className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
                   Sign In to Get Started

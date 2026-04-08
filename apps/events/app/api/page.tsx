@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 export default function APIPage() {
   const endpoints = [
     {
@@ -91,12 +93,12 @@ export default function APIPage() {
           </ul>
         </div>
 
-        <a 
+        <Link 
           href="/"
           className="bg-orange-500 hover:bg-orange-600 text-white rounded-xl shadow-lg p-6 text-center transition"
         >
           <span className="text-xl font-semibold">Browse Events →</span>
-        </a>
+        </Link>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { ConnectionPicker } from '@imajin/ui';
+import { apiFetch, apiUrl } from '@imajin/config';
 
 interface Cohost {
   did: string;
@@ -26,7 +27,7 @@ export function CohostManager({ eventId, isOwner, ownerDid }: CohostManagerProps
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/events/${eventId}/cohosts`)
+    apiFetch(`/api/events/${eventId}/cohosts`)
       .then(r => r.json())
       .then(data => {
         setCohosts(data.cohosts || []);
@@ -41,7 +42,7 @@ export function CohostManager({ eventId, isOwner, ownerDid }: CohostManagerProps
     setSuccess(null);
 
     try {
-      const res = await fetch(`/api/events/${eventId}/cohosts`, {
+      const res = await apiFetch(`/api/events/${eventId}/cohosts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ did: connection.did }),
@@ -114,7 +115,7 @@ export function CohostManager({ eventId, isOwner, ownerDid }: CohostManagerProps
       {isOwner && (
         <div className="space-y-3">
           <ConnectionPicker
-            connectionsUrl="/api/proxy/connections"
+            connectionsUrl={apiUrl('/api/proxy/connections')}
             excludeDids={excludeDids}
             onSelect={handleSelect}
             placeholder="Search connections to add as co-host..."

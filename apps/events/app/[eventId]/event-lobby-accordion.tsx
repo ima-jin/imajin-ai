@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { ChatProvider, useChatWebSocket } from '@imajin/chat';
+import { apiFetch } from '@imajin/config';
 import { EventChat } from './components/EventChat';
 
 const CHAT_URL = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
@@ -55,7 +56,7 @@ export function EventLobbyAccordion({ eventId, eventDid }: EventLobbyAccordionPr
   useEffect(() => {
     async function checkAccess() {
       try {
-        const res = await fetch(`/api/events/${eventId}/my-ticket`);
+        const res = await apiFetch(`/api/events/${eventId}/my-ticket`);
         if (res.ok) {
           const data = await res.json();
           setHasAccess(data.hasAccess || data.hasTicket || false);

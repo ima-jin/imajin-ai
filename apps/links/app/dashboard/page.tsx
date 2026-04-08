@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@imajin/ui';
+import { buildPublicUrl } from '@imajin/config';
+import { apiFetch } from '@imajin/config';
 
 interface LinkStats {
   id: string;
@@ -43,7 +45,7 @@ export default function DashboardPage() {
   const fetchStats = async () => {
     try {
       // First get the user's page
-      const pageRes = await fetch('/api/pages/mine', {
+      const pageRes = await apiFetch('/api/pages/mine', {
         credentials: 'include',
       });
 
@@ -57,7 +59,7 @@ export default function DashboardPage() {
         setHandle(page.handle);
 
         // Then fetch stats
-        const statsRes = await fetch(`/api/pages/${page.handle}/stats`, {
+        const statsRes = await apiFetch(`/api/pages/${page.handle}/stats`, {
           credentials: 'include',
         });
 
@@ -66,8 +68,8 @@ export default function DashboardPage() {
           setStats(data);
         }
       } else if (pageRes.status === 401) {
-        const AUTH_URL = (process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://') + 'auth.' + (process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai');
-        window.location.href = `${AUTH_URL}?redirect=${encodeURIComponent(window.location.origin + '/dashboard')}`;
+        const AUTH_URL = buildPublicUrl('auth');
+        window.location.href = `${AUTH_URL}/login?next=${encodeURIComponent(window.location.href)}`;
       }
     } catch (error) {
       console.error('Failed to fetch stats:', error);

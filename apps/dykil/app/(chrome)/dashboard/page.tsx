@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiFetch, apiUrl } from '@imajin/config';
 import { useToast } from '@imajin/ui';
 
 interface Survey {
@@ -27,7 +28,7 @@ export default function DashboardPage() {
 
   const fetchSurveys = async () => {
     try {
-      const res = await fetch('/api/surveys/mine', {
+      const res = await apiFetch('/api/surveys/mine', {
         credentials: 'include',
       });
 
@@ -37,7 +38,7 @@ export default function DashboardPage() {
         const surveysWithCounts = await Promise.all(
           data.surveys.map(async (survey: Survey) => {
             try {
-              const countRes = await fetch(`/api/surveys/${survey.id}/responses`, {
+              const countRes = await apiFetch(`/api/surveys/${survey.id}/responses`, {
                 credentials: 'include',
               });
               if (countRes.ok) {
@@ -52,7 +53,7 @@ export default function DashboardPage() {
         );
         setSurveys(surveysWithCounts);
       } else if (res.status === 401) {
-        window.location.href = '/';
+        window.location.href = apiUrl('/');
       }
     } catch (error) {
       console.error('Failed to fetch surveys:', error);
@@ -67,7 +68,7 @@ export default function DashboardPage() {
     }
 
     try {
-      const res = await fetch(`/api/surveys/${id}`, {
+      const res = await apiFetch(`/api/surveys/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });

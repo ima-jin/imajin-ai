@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { SlideRenderer, type SlideLesson } from '../../../components/SlideRenderer';
+import { apiFetch } from '@imajin/config';
 
 export default function PresentPage() {
   const params = useParams();
@@ -27,7 +28,7 @@ export default function PresentPage() {
     async function load() {
       try {
         // Get course structure + enrollment/creator status
-        const courseRes = await fetch(`/api/courses/${slug}`, { credentials: 'include' });
+        const courseRes = await apiFetch(`/api/courses/${slug}`, { credentials: 'include' });
         if (!courseRes.ok) {
           setError('Course not found');
           return;
@@ -59,7 +60,7 @@ export default function PresentPage() {
         const fullSlides = await Promise.all(
           slideList.map(async (s) => {
             try {
-              const res = await fetch(
+              const res = await apiFetch(
                 `/api/courses/${slug}/modules/${s.moduleId}/lessons/${s.id}`,
                 { credentials: 'include' }
               );

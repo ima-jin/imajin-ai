@@ -1,0 +1,417 @@
+openapi: "3.1.0"
+info:
+  title: imajin notify
+  version: "2.0.0"
+  description: Centralized notifications, preferences, event broadcasts, and interest subscriptions. Runs as a kernel service at /{service}/api/... on a shared node domain. Port 3008/7008, schema notify.
+servers:
+  - url: https://{node}.imajin.ai/{service}
+    description: production node
+    variables:
+      node:
+        default: jin
+      service:
+        default: notify
+  - url: http://localhost:3000/{service}
+    description: local development
+
+tags:
+  - name: notify
+    description: imajin notify service
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "Bearer token (imajin_tok_* API token or internal service key)"
+  schemas:
+    Notification:
+      type: object
+      properties:
+        id: { type: string }
+        did: { type: string, description: "Recipient DID" }
+        type: { type: string, description: "Notification type (e.g. connection_request, message, payment)" }
+        title: { type: string }
+        body: { type: string }
+        data: { type: object, description: "Additional payload data" }
+        read: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    NotificationPreference:
+      type: object
+      properties:
+        scope: { type: string }
+        enabled: { type: boolean }
+        channels:
+          type: array
+          items:
+            type: string
+            enum: [push, email, in-app]
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/health:
+    get:
+      tags: [notify]
+      operationId: healthCheck
+      summary: Service health check
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  service: { type: string }
+                  timestamp: { type: string, format: date-time }
+
+  /api/notifications:
+    get:
+      tags: [notify]
+      operationId: listNotifications
+      summary: List notifications for the current identity
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: unread
+          in: query
+          schema: { type: boolean }
+          description: Filter to unread only
+      responses:
+        "200":
+          description: Notification list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items: { $ref: "#/components/schemas/Notification" }
+                  total: { type: integer }
+                  unread: { type: integer }
+        "401":
+          description: Unauthorized
+
+  /api/notifications/{id}/read:
+    post:
+      tags: [notify]
+      operationId: markNotificationRead
+      summary: Mark a specific notification as read
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: Notification ID
+      responses:
+        "200":
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  read: { type: boolean }
+        "404":
+          description: Notification not found
+        "401":
+          description: Unauthorized
+
+  /api/notifications/read-all:
+    post:
+      tags: [notify]
+      operationId: markAllNotificationsRead
+      summary: Mark all notifications as read for the current identity
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: All notifications marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated: { type: integer, description: "Number of notifications marked read" }
+        "401":
+          description: Unauthorized
+
+  /api/notifications/unread:
+    get:
+      tags: [notify]
+      operationId: getUnreadCount
+      summary: Get unread notification count for the current identity
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unread: { type: integer }
+        "401":
+          description: Unauthorized
+
+  /api/preferences:
+    get:
+      tags: [notify]
+      operationId: listPreferences
+      summary: Get all notification preferences for the current identity
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Notification preferences
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/NotificationPreference" }
+        "401":
+          description: Unauthorized
+    put:
+      tags: [notify]
+      operationId: updatePreferences
+      summary: Update notification preferences (bulk)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: "#/components/schemas/NotificationPreference" }
+      responses:
+        "200":
+          description: Preferences updated
+        "401":
+          description: Unauthorized
+
+  /api/preferences/{scope}:
+    get:
+      tags: [notify]
+      operationId: getPreferenceScope
+      summary: Get notification preference for a specific scope
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: scope
+          in: path
+          required: true
+          schema: { type: string }
+          description: Notification scope (e.g. chat.message, pay.received, connection.request)
+      responses:
+        "200":
+          description: Preference for scope
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationPreference" }
+        "404":
+          description: Scope preference not found
+    put:
+      tags: [notify]
+      operationId: setPreferenceScope
+      summary: Set notification preference for a specific scope
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: scope
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationPreference" }
+      responses:
+        "200":
+          description: Preference updated
+        "401":
+          description: Unauthorized
+
+  /api/send:
+    post:
+      tags: [notify]
+      operationId: sendNotification
+      summary: Send a notification to one or more recipients (internal service use)
+      description: Internal endpoint for kernel services to dispatch notifications. Requires bearer auth with service key.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to, type, title]
+              properties:
+                to:
+                  oneOf:
+                    - type: string
+                      description: Single recipient DID
+                    - type: array
+                      items: { type: string }
+                      description: Multiple recipient DIDs
+                type: { type: string, description: "Notification type/scope" }
+                title: { type: string }
+                body: { type: string }
+                data: { type: object }
+                channels:
+                  type: array
+                  items:
+                    type: string
+                    enum: [push, email, in-app]
+                  description: "Delivery channels (defaults to user preferences)"
+      responses:
+        "200":
+          description: Notification sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent: { type: integer, description: "Recipients notified" }
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+
+  /api/broadcast:
+    post:
+      tags: [notify]
+      operationId: broadcastNotification
+      summary: Broadcast a notification to all subscribers of an interest scope
+      description: Internal — sends notifications to all DIDs subscribed to a given interest scope.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope, type, title]
+              properties:
+                scope: { type: string, description: "Interest scope to broadcast to" }
+                type: { type: string }
+                title: { type: string }
+                body: { type: string }
+                data: { type: object }
+      responses:
+        "200":
+          description: Broadcast queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  queued: { type: integer }
+        "401":
+          description: Unauthorized
+
+  /api/interest:
+    post:
+      tags: [notify]
+      operationId: registerInterest
+      summary: Register the current identity's interest in a notification scope
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope]
+              properties:
+                scope: { type: string, description: "Interest scope to subscribe to" }
+                channels:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: Interest registered
+        "401":
+          description: Unauthorized
+    delete:
+      tags: [notify]
+      operationId: unregisterInterest
+      summary: Remove interest registration for a scope
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope]
+              properties:
+                scope: { type: string }
+      responses:
+        "200":
+          description: Interest removed
+
+  /api/unsubscribe:
+    get:
+      tags: [notify]
+      operationId: unsubscribeEmail
+      summary: One-click email unsubscribe (linked from notification emails)
+      description: No auth required. Uses a signed token in query params to identify the recipient and scope.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+          description: Signed unsubscribe token from email link
+        - name: scope
+          in: query
+          schema: { type: string }
+          description: Specific scope to unsubscribe from (omit to unsubscribe all email)
+      responses:
+        "200":
+          description: Unsubscribed successfully
+          content:
+            text/html:
+              schema: { type: string }
+        "400":
+          description: Invalid or expired token
+
+  /api/spec:
+    get:
+      tags: [notify]
+      operationId: getSpec
+      summary: Serve the OpenAPI spec YAML
+      responses:
+        "200":
+          description: OpenAPI YAML
+          content:
+            text/yaml:
+              schema: { type: string }

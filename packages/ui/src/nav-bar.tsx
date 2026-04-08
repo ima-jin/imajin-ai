@@ -51,6 +51,15 @@ function buildUrl(service: string, prefix: string, domain: string, overrides?: S
     return port ? `http://localhost:${port}` : `http://localhost:3000`;
   }
 
+  // Single-domain mode: prefix is a full URL like "https://dev-jin.imajin.ai/"
+  // Strip protocol and check for dots to detect
+  const stripped = prefix.replace(/^https?:\/\//, '');
+  if (stripped.includes('.')) {
+    const base = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
+    if (service === 'www' || service === 'kernel') return base;
+    return `${base}/${service}`;
+  }
+
   return `${prefix}${service}.${domain}`;
 }
 
@@ -183,16 +192,33 @@ export function NavBar({
   const registryUrl = buildUrl('registry', servicePrefix, domain, serviceUrls);
   const launcherTier = getLauncherTier(identity);
 
-  // Fetch balance from pay service
-  const [balance, setBalance] = useState<number | null>(null);
+  // Fetch balance from pay service (scope-aware, re-fetches on scope switch)
+  const [cashBalance, setCashBalance] = useState<number | null>(null);
+  const [mjnBalance, setMjnBalance] = useState<number | null>(null);
+  const [scopeVersion, setScopeVersion] = useState(0);
   useEffect(() => {
-    if (!identity?.isLoggedIn || !identity?.did) { setBalance(null); return; }
+    const handler = () => setScopeVersion(v => v + 1);
+    window.addEventListener('imajin:acting-as-changed', handler);
+    return () => window.removeEventListener('imajin:acting-as-changed', handler);
+  }, []);
+  useEffect(() => {
+    if (!identity?.isLoggedIn || !identity?.did) { setCashBalance(null); setMjnBalance(null); return; }
+    const actingAs = typeof window !== 'undefined' ? localStorage.getItem('imajin:acting-as') : null;
+    const effectiveDid = actingAs || identity.did;
     const payUrl = buildUrl('pay', servicePrefix, domain, serviceUrls);
-    fetch(`${payUrl}/api/balance/${encodeURIComponent(identity.did)}`, { credentials: 'include' })
+    fetch(`${payUrl}/api/balance/${encodeURIComponent(effectiveDid)}`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.total) setBalance(parseFloat(data.total)); })
+      .then(data => {
+        if (data) {
+          setCashBalance(data.cashAmount != null ? parseFloat(data.cashAmount) : null);
+          setMjnBalance(data.creditAmount != null ? parseFloat(data.creditAmount) : null);
+        } else {
+          setCashBalance(null);
+          setMjnBalance(null);
+        }
+      })
       .catch(() => {});
-  }, [identity?.isLoggedIn, identity?.did, servicePrefix, domain, serviceUrls]);
+  }, [identity?.isLoggedIn, identity?.did, servicePrefix, domain, serviceUrls, scopeVersion]);
 
   // Fetch unread message count from chat service
   const [unread, setUnread] = useState<number>(unreadMessages);
@@ -245,7 +271,7 @@ export function NavBar({
           className="flex items-center hover:opacity-80 transition shrink-0"
         >
           <span className="w-8 h-8 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 flex items-center justify-center">
-            <span className="text-xl font-bold text-amber-500">今</span>
+            <span className="text-xl font-bold text-amber-500">人</span>
           </span>
         </a>
 
@@ -314,10 +340,21 @@ export function NavBar({
             </button>
           ) : identity?.isLoggedIn ? (
             <div className="flex items-center gap-2">
-              {balance !== null && balance > 0 && (
-                <span className="text-sm font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full">
-                  ${balance.toFixed(2)}
-                </span>
+              {(cashBalance !== null && cashBalance > 0) && (
+                <a
+                  href={buildUrl('pay', servicePrefix, domain, serviceUrls)}
+                  className="text-sm font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full hover:bg-green-100 dark:hover:bg-green-900/40 transition no-underline"
+                >
+                  ${cashBalance.toFixed(2)}
+                </a>
+              )}
+              {(mjnBalance !== null && mjnBalance > 0) && (
+                <a
+                  href={buildUrl('pay', servicePrefix, domain, serviceUrls)}
+                  className="text-sm font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-full hover:bg-amber-100 dark:hover:bg-amber-900/40 transition no-underline"
+                >
+                  人{Math.round(mjnBalance)}
+                </a>
               )}
             <div className="relative" ref={dropdownRef}>
               <button
@@ -327,20 +364,22 @@ export function NavBar({
                 <span className="text-xl">
                   {activeForestData ? scopeIcon(activeForestData.scope) : '👤'}
                 </span>
-                <span className="text-sm font-medium">
-                  {activeForestData
-                    ? (activeForestData.name || activeForestData.handle || 'Forest')
-                    : identity.handle
-                    ? `@${identity.handle}`
-                    : identity.name
-                    ? identity.name
-                    : identity.did?.slice(0, 12) + '...'}
-                </span>
-                {activeForestData && (
-                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium leading-none">
-                    acting as
+                <span className="flex flex-col items-start" style={{ gap: '2px' }}>
+                  {activeForestData && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium leading-none">
+                      acting as
+                    </span>
+                  )}
+                  <span className="text-sm font-medium leading-none">
+                    {activeForestData
+                      ? (activeForestData.name || activeForestData.handle || 'Forest')
+                      : identity.handle
+                      ? `@${identity.handle}`
+                      : identity.name
+                      ? identity.name
+                      : identity.did?.slice(0, 12) + '...'}
                   </span>
-                )}
+                </span>
               </button>
 
               {showDropdown && (
@@ -392,6 +431,24 @@ export function NavBar({
                         className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
                       >
                         <span>🤝</span> Connections
+                      </a>
+                      <a
+                        href={buildUrl('pay', servicePrefix, domain, serviceUrls)}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                      >
+                        <span>💰</span> Wallet
+                      </a>
+                      <a
+                        href={buildUrl('media', servicePrefix, domain, serviceUrls)}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                      >
+                        <span>📁</span> Media
+                      </a>
+                      <a
+                        href={buildUrl('auth', servicePrefix, domain, serviceUrls)}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                      >
+                        <span>🔑</span> Identity
                       </a>
                       <hr className="my-1 border-gray-200 dark:border-gray-800" />
                       <div className="px-4 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">

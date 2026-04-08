@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { apiFetch } from '@imajin/config';
 import {
   MessageBubble,
   VoiceMessage,
@@ -175,7 +176,7 @@ export function EventChat({ did, eventId, compact = false }: EventChatProps) {
   useEffect(() => {
     async function fetchPolicy() {
       try {
-        const res = await fetch(`/api/events/${eventId}`);
+        const res = await apiFetch(`/api/events/${eventId}`);
         if (res.ok) {
           const data = await res.json();
           if (data.event?.nameDisplayPolicy) {

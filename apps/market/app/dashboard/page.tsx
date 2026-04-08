@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { apiFetch } from '@imajin/config';
 import PriceDisplay from '../components/PriceDisplay';
 import { resolveMediaRef } from '@imajin/media';
+import { buildPublicUrl } from '@imajin/config';
 
 interface Listing {
   id: string;
@@ -99,11 +101,11 @@ export default function DashboardPage() {
   const [allListings, setAllListings] = useState<Listing[]>([]);
   const [statsLoaded, setStatsLoaded] = useState(false);
 
-  const authUrl = `${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}auth.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`;
+  const authUrl = buildPublicUrl('auth');
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch('/api/my/listings?limit=100', { credentials: 'include' });
+      const res = await apiFetch('/api/my/listings?limit=100', { credentials: 'include' });
       if (!res.ok) return;
       const data: ListingsResponse = await res.json();
       setAllListings(data.listings);
@@ -120,7 +122,7 @@ export default function DashboardPage() {
       const params = new URLSearchParams({ page: String(currentPage), limit: String(LIMIT) });
       if (status !== 'all') params.set('status', status);
 
-      const res = await fetch(`/api/my/listings?${params.toString()}`, { credentials: 'include' });
+      const res = await apiFetch(`/api/my/listings?${params.toString()}`, { credentials: 'include' });
 
       if (res.status === 401) {
         window.location.href = `${authUrl}/login?next=${encodeURIComponent(window.location.href)}`;
@@ -159,7 +161,7 @@ export default function DashboardPage() {
       prev.map((l) => (l.id === id ? { ...l, status } : l))
     );
     try {
-      const res = await fetch(`/api/listings/${id}`, {
+      const res = await apiFetch(`/api/listings/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -189,7 +191,7 @@ export default function DashboardPage() {
       prev.map((l) => (l.id === id ? { ...l, status: 'removed' } : l))
     );
     try {
-      const res = await fetch(`/api/listings/${id}`, {
+      const res = await apiFetch(`/api/listings/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });

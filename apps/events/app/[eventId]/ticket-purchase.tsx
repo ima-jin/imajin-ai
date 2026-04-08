@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { TicketType } from '@/src/db/schema';
+import { apiFetch } from '@imajin/config';
 
 interface Props {
   eventId: string;
@@ -41,7 +42,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
     setError(null);
 
     try {
-      const response = await fetch('/api/checkout', {
+      const response = await apiFetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -70,7 +71,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
     setError(null);
 
     try {
-      const response = await fetch('/api/checkout/etransfer', {
+      const response = await apiFetch('/api/checkout/etransfer', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

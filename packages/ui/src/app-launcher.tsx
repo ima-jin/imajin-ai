@@ -9,7 +9,7 @@ export interface LauncherService {
   icon: string;
   label: string;
   visibility: 'public' | 'authenticated' | 'creator' | 'internal';
-  category: 'core' | 'creator' | 'developer' | 'infrastructure' | 'meta';
+  category: 'kernel' | 'core' | 'creator' | 'developer' | 'infrastructure' | 'meta';
   url: string;
   externalUrl?: string;
 }
@@ -28,14 +28,10 @@ export interface AppLauncherProps {
   enabledServices?: string[];
 }
 
-/** Services that belong in the profile dropdown, not the launcher flyout */
-const PROFILE_DROPDOWN_SERVICES = new Set(['connections', 'chat']);
-
 function filterByTier(services: LauncherService[], tier: string): LauncherService[] {
   const hasProfile = tier === 'hard' || tier === 'creator';
   return services.filter((s) => {
     if (s.visibility === 'internal') return false;
-    if (PROFILE_DROPDOWN_SERVICES.has(s.name)) return false;
     if (s.visibility === 'public') return true;
     if (s.visibility === 'authenticated') return hasProfile;
     if (s.visibility === 'creator') return hasProfile;
@@ -43,8 +39,9 @@ function filterByTier(services: LauncherService[], tier: string): LauncherServic
   });
 }
 
-function groupByCategory(services: LauncherService[]): { core: LauncherService[]; creator: LauncherService[]; developer: LauncherService[]; meta: LauncherService[] } {
+function groupByCategory(services: LauncherService[]): { kernel: LauncherService[]; core: LauncherService[]; creator: LauncherService[]; developer: LauncherService[]; meta: LauncherService[] } {
   return {
+    kernel: services.filter((s) => s.category === 'kernel'),
     core: services.filter((s) => s.category === 'core'),
     creator: services.filter((s) => s.category === 'creator'),
     developer: services.filter((s) => s.category === 'developer'),
@@ -65,7 +62,8 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   const panelRef = useRef<HTMLDivElement>(null);
 
   const showForests = tier === 'hard' || tier === 'creator';
-  const { forests, activeForest, setActiveForest } = useForests(showForests && authUrl ? authUrl : null);
+  // profileUrl=null: AppLauncher doesn't use forest config (enabledServices passed from parent)
+  const { forests, activeForest, setActiveForest } = useForests(showForests && authUrl ? authUrl : null, null);
 
   useEffect(() => {
     fetch(`${registryUrl}/api/specs`)
@@ -91,9 +89,9 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   if (enabledServices && enabledServices.length > 0) {
     visible = visible.filter((s) => enabledServices.includes(s.name));
   }
-  const { core, creator, developer, meta } = groupByCategory(visible);
+  const { kernel, core, creator, developer, meta } = groupByCategory(visible);
 
-  const wwwUrl = services.find((s) => s.name === 'www')?.url || '#';
+  const wwwUrl = services.find((s) => s.name === 'kernel')?.url || services.find((s) => s.name === 'www')?.url || '#';
 
   function renderTile(service: LauncherService) {
     const isCurrent = service.name === currentService;
@@ -181,6 +179,16 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
 
   const content = variant === 'grid' ? (
     <>
+      {kernel.length > 0 && (
+        <div>
+          <div className="col-span-4 px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            Kernel Services
+          </div>
+          <div className="grid grid-cols-4 gap-1 px-2">
+            {kernel.map(renderGridTile)}
+          </div>
+        </div>
+      )}
       {core.length > 0 && (
         <div className="grid grid-cols-4 gap-1 px-2">
           {core.map(renderGridTile)}
@@ -211,6 +219,14 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
     </>
   ) : (
     <>
+      {kernel.length > 0 && (
+        <div>
+          <div className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            Kernel Services
+          </div>
+          {kernel.map(renderTile)}
+        </div>
+      )}
       {core.length > 0 && (
         <div>
           {core.map(renderTile)}

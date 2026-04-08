@@ -20,7 +20,8 @@ pnpm install
 createdb imajin_dev
 
 # 3. Set up env files — copy from examples
-for app in auth profile registry connections pay events chat media coffee dykil links learn market; do
+cp apps/kernel/.env.example apps/kernel/.env.local 2>/dev/null
+for app in events coffee dykil links learn market; do
   cp apps/$app/.env.example apps/$app/.env.local 2>/dev/null
 done
 
@@ -37,25 +38,23 @@ node -e "const kp = require('crypto').generateKeyPairSync('ed25519'); console.lo
 # 7. Run all database migrations
 ./scripts/migrate.sh
 
-# 8. Start auth (minimum viable service)
-pnpm --filter @imajin/auth dev    # localhost:3001
+# 8. Start kernel (core platform service)
+pnpm --filter @imajin/kernel dev    # localhost:3000
 
-# 9. Register at http://localhost:3001/register
+# 9. Register at http://localhost:3000/register
 #    This generates a keypair in your browser and creates your identity.
 #    SAVE YOUR KEY FILE — it's your only copy.
 ```
 
 ### Minimum Services for Local Dev
 
-You don't need all 15 services. Start with what you need:
+You don't need to run all apps. Start with what you need:
 
 | Service | Port | Why |
 |---------|------|-----|
-| **auth** | 3001 | Required — identity, sessions, registration |
-| **profile** | 3005 | User profiles (registration creates one) |
-| **registry** | 3002 | App launcher, service discovery |
+| **kernel** | 3000 | Required — auth, identity, profile, registry, and all core platform services |
 
-Add more as needed. Each service's `.env.example` has all the defaults.
+Add userspace apps (events, coffee, etc.) as needed. Each app's `.env.example` has all the defaults.
 
 ### Fresh Start (Reset Everything)
 
@@ -134,12 +133,12 @@ Service-to-service (server-side) URLs use `AUTH_SERVICE_URL=http://localhost:300
 
 ```bash
 # Run a single service in dev mode
-pnpm --filter @imajin/auth dev         # localhost:3001
+pnpm --filter @imajin/kernel dev       # localhost:3000
 pnpm --filter @imajin/events dev       # localhost:3006
 pnpm --filter @imajin/learn-service dev # localhost:3103
 
 # Build a service
-pnpm --filter @imajin/www build
+pnpm --filter @imajin/kernel build
 
 # Build all
 pnpm build
@@ -190,14 +189,16 @@ Each service owns a Postgres schema within the shared database. They don't share
 
 | Schema | Service | Key tables |
 |--------|---------|-----------|
-| `auth` | auth | identities, sessions, challenges |
-| `profile` | profile | profiles |
-| `notify` | notify | notifications, preferences |
+| `auth` | kernel | identities, sessions, challenges |
+| `profile` | kernel | profiles |
+| `notify` | kernel | notifications, preferences |
+| `chat` | kernel | conversations, messages |
+| `connections` | kernel | connections |
+| `media` | kernel | assets, folders |
+| `pay` | kernel | payments, balances |
+| `registry` | kernel | nodes, heartbeats |
 | `events` | events | events, tickets |
 | `coffee` | coffee | pages, tips |
-| `chat` | chat | conversations, messages |
-| `connections` | connections | connections |
-| `media` | media | assets, folders |
 | `learn` | learn | courses, modules, lessons, enrollments, lesson_progress |
 
 ### Migration Discipline
@@ -215,7 +216,7 @@ The migration runner (`./scripts/migrate.sh`) applies SQL files from each servic
 ```bash
 # 1. Make your schema changes in src/db/schema.ts
 # 2. Generate the migration (from the app directory!)
-cd apps/<service>
+cd apps/kernel   # or apps/<userspace-app>
 npx drizzle-kit generate
 
 # 3. Verify THREE files were created/updated:

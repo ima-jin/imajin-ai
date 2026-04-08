@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useToast } from '@imajin/ui';
+import { apiFetch, apiUrl } from '@imajin/config';
 
 interface Course {
   id: string;
@@ -37,7 +38,7 @@ export default function DashboardPage() {
 
   async function loadCourses() {
     try {
-      const res = await fetch('/api/my/teaching', { credentials: 'include' });
+      const res = await apiFetch('/api/my/teaching', { credentials: 'include' });
       if (res.status === 401) {
         setError('Please sign in to access the dashboard.');
         setLoading(false);
@@ -58,7 +59,7 @@ export default function DashboardPage() {
     if (!newTitle.trim()) return;
     setCreating(true);
     try {
-      const res = await fetch('/api/courses', {
+      const res = await apiFetch('/api/courses', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -67,7 +68,7 @@ export default function DashboardPage() {
       if (res.ok) {
         const course = await res.json();
         setNewTitle('');
-        window.location.href = `/dashboard/${course.slug}`;
+        window.location.href = apiUrl(`/dashboard/${course.slug}`);
       } else {
         const err = await res.json();
         toast.error(err.error || 'Failed to create course');

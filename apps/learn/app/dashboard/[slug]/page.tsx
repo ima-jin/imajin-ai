@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useToast } from '@imajin/ui';
+import { apiFetch } from '@imajin/config';
 
 interface Lesson {
   id: string;
@@ -61,7 +62,7 @@ export default function CourseEditorPage() {
 
   const loadCourse = useCallback(async () => {
     try {
-      const res = await fetch(`/api/courses/${slug}`, { credentials: 'include' });
+      const res = await apiFetch(`/api/courses/${slug}`, { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json();
       setCourse(data);
@@ -84,7 +85,7 @@ export default function CourseEditorPage() {
   async function saveCourse() {
     setSaving(true);
     try {
-      await fetch(`/api/courses/${slug}`, {
+      await apiFetch(`/api/courses/${slug}`, {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -107,7 +108,7 @@ export default function CourseEditorPage() {
 
   async function addModule() {
     if (!newModuleTitle.trim()) return;
-    const res = await fetch(`/api/courses/${slug}/modules`, {
+    const res = await apiFetch(`/api/courses/${slug}/modules`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -121,7 +122,7 @@ export default function CourseEditorPage() {
 
   async function deleteModule(moduleId: string) {
     if (!confirm('Delete this module and all its lessons?')) return;
-    await fetch(`/api/courses/${slug}/modules/${moduleId}`, {
+    await apiFetch(`/api/courses/${slug}/modules/${moduleId}`, {
       method: 'DELETE',
       credentials: 'include',
     });
@@ -131,7 +132,7 @@ export default function CourseEditorPage() {
   async function addLesson(moduleId: string) {
     const title = prompt('Lesson title:');
     if (!title?.trim()) return;
-    const res = await fetch(`/api/courses/${slug}/modules/${moduleId}/lessons`, {
+    const res = await apiFetch(`/api/courses/${slug}/modules/${moduleId}/lessons`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -141,7 +142,7 @@ export default function CourseEditorPage() {
   }
 
   async function saveLesson(moduleId: string, lessonId: string) {
-    await fetch(`/api/courses/${slug}/modules/${moduleId}/lessons/${lessonId}`, {
+    await apiFetch(`/api/courses/${slug}/modules/${moduleId}/lessons/${lessonId}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -158,7 +159,7 @@ export default function CourseEditorPage() {
 
   async function deleteLesson(moduleId: string, lessonId: string) {
     if (!confirm('Delete this lesson?')) return;
-    await fetch(`/api/courses/${slug}/modules/${moduleId}/lessons/${lessonId}`, {
+    await apiFetch(`/api/courses/${slug}/modules/${moduleId}/lessons/${lessonId}`, {
       method: 'DELETE',
       credentials: 'include',
     });

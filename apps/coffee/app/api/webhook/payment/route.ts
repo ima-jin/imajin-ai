@@ -98,8 +98,8 @@ export async function POST(request: NextRequest) {
             },
           }).catch((err) => console.error('[webhook] Notify recipient error:', err));
 
-          // Record interest signal — tip.received → coffee scope
-          notify.interest({ did: recipientDid, attestationType: 'tip.received' })
+          // Record interest signal — tip.granted → coffee scope
+          notify.interest({ did: recipientDid, attestationType: 'tip.granted' })
             .catch((err) => console.error('[webhook] Interest signal error:', err));
         }
 
