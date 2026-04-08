@@ -128,12 +128,14 @@ export const EMISSION_SCHEDULE: Record<string, EmissionSpec> = {
 
 /**
  * Resolve a percentage emission amount against a settlement value.
- * '0.25%' of 1850 (in MJNx cents) = 4.625 MJN
  *
- * Conversion: settlement is in MJNx, emission is in MJN.
- * 1 MJNx = 100 MJN, so percentage of MJNx value × 100 = MJN amount.
+ * The payload amount is in fiat cents (e.g. 1000 = $10.00).
+ * Convert to dollars, apply percentage, then convert to MJN.
+ * 1 MJN = $0.01, so $1 = 100 MJN.
+ *
+ * Example: 0.25% of $10.00 (1000 cents) = $0.025 = 2.5 MJN
  */
-export function resolveAmount(rule: EmissionRule, settlementMjnx?: number): number {
+export function resolveAmount(rule: EmissionRule, settlementCents?: number): number {
   if (typeof rule.amount === 'number') return rule.amount;
 
   // Parse percentage string like '0.25%'
@@ -144,9 +146,10 @@ export function resolveAmount(rule: EmissionRule, settlementMjnx?: number): numb
   }
 
   const pct = parseFloat(match[1]) / 100;
-  const base = settlementMjnx ?? 0;
-  // base is in MJNx, result is in MJN (100 MJN = 1 MJNx)
-  return Math.floor(base * pct * 100 * 100) / 100; // floor to 2 decimal places
+  const baseDollars = (settlementCents ?? 0) / 100; // cents → dollars
+  const dollarAmount = baseDollars * pct;            // percentage of dollars
+  const mjn = dollarAmount * 100;                    // dollars → MJN ($0.01 per MJN)
+  return Math.floor(mjn * 100) / 100;               // floor to 2 decimal places
 }
 
 /**
