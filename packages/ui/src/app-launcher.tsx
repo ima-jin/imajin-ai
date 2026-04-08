@@ -62,7 +62,8 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   const panelRef = useRef<HTMLDivElement>(null);
 
   const showForests = tier === 'hard' || tier === 'creator';
-  const { forests, activeForest, setActiveForest } = useForests(showForests && authUrl ? authUrl : null);
+  // profileUrl=null: AppLauncher doesn't use forest config (enabledServices passed from parent)
+  const { forests, activeForest, setActiveForest } = useForests(showForests && authUrl ? authUrl : null, null);
 
   useEffect(() => {
     fetch(`${registryUrl}/api/specs`)

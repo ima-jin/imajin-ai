@@ -46,7 +46,7 @@ export function useForests(authUrl: string | null, profileUrl?: string | null): 
   }, [authUrl]);
 
   useEffect(() => {
-    const configBase = profileUrl || authUrl;
+    const configBase = profileUrl;
     if (!configBase || !activeForest) {
       setActiveConfig(null);
       return;

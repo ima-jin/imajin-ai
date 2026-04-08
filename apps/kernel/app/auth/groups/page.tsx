@@ -73,7 +73,7 @@ export default function GroupsPage() {
             {groups.map(group => (
               <a
                 key={group.groupDid}
-                href={`/groups/${encodeURIComponent(group.groupDid)}/settings`}
+                href={`/auth/groups/${encodeURIComponent(group.groupDid)}/settings`}
                 className="block bg-[#0a0a0a] border border-gray-800 hover:border-gray-700 rounded-2xl p-6 transition no-underline group"
               >
                 <div className="flex items-center justify-between">
