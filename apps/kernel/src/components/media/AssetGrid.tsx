@@ -201,7 +201,7 @@ export function AssetGrid({
   const handleBatchDownload = useCallback(() => {
     Array.from(selectedAssetIds).forEach((id) => {
       const a = document.createElement("a");
-      a.href = `/api/assets/${id}`;
+      a.href = `/media/api/assets/${id}`;
       a.download = "";
       document.body.appendChild(a);
       a.click();

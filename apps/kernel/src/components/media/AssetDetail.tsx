@@ -134,7 +134,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   const isAudio = asset.mimeType.startsWith("audio/");
   const isVideo = asset.mimeType.startsWith("video/");
 
-  const assetUrl = `/api/assets/${asset.id}`;
+  const assetUrl = `/media/api/assets/${asset.id}`;
 
   const handleDelete = async () => {
     if (!confirm(`Delete "${asset.filename}"? This cannot be undone.`)) return;
@@ -146,7 +146,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   };
 
   const handleShare = () => {
-    const url = `${window.location.origin}/api/assets/${asset.id}`;
+    const url = `${window.location.origin}/media/api/assets/${asset.id}`;
     navigator.clipboard.writeText(url).catch(() => {});
     setShareLabel("Copied!");
     setTimeout(() => setShareLabel("Copy URL"), 2000);

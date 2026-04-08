@@ -98,7 +98,7 @@ export function AssetCard({ asset, selected, checked, compact, onSelect, onCheck
         {isImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={`/api/assets/${asset.id}?w=${compact ? 100 : 200}`}
+            src={`/media/api/assets/${asset.id}?w=${compact ? 100 : 200}`}
             alt={asset.filename}
             className="w-full h-full object-cover"
             loading="lazy"
