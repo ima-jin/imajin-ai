@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ImajinFooter } from '@imajin/ui';
 import { apiFetch } from '@imajin/config';
@@ -102,12 +103,12 @@ function MarketPageContent() {
               Local commerce with trust.{total > 0 && ` ${total} listing${total !== 1 ? 's' : ''} available.`}
             </p>
           </div>
-          <a
+          <Link
             href="/dashboard"
             className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-medium whitespace-nowrap"
           >
             My Listings
-          </a>
+          </Link>
         </div>
 
         {/* Search + Filters */}
