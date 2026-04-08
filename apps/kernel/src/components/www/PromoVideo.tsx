@@ -51,13 +51,18 @@ export function PromoVideo() {
     const video = videoRef.current;
     if (!video) return;
 
+    let timer: ReturnType<typeof setTimeout>;
+
     function handleEnded() {
       localStorage.setItem(PROMO_SEEN_KEY, 'true');
-      setCollapsed(true);
+      timer = setTimeout(() => setCollapsed(true), 5000);
     }
 
     video.addEventListener('ended', handleEnded);
-    return () => video.removeEventListener('ended', handleEnded);
+    return () => {
+      video.removeEventListener('ended', handleEnded);
+      clearTimeout(timer);
+    };
   }, []);
 
   if (!assetId || !src) return null;
