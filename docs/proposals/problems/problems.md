@@ -1,11 +1,12 @@
 # Problems
 *Concrete code-level bugs and misplacements found in the upstream repo*
-*Last reviewed: April 3, 2026 (upstream HEAD: 3bc931be)*
+*Last reviewed: April 7, 2026 (upstream HEAD: 227b2785)*
 *P1–P5 resolved (March 15–23). P8 resolved March 30 — events settlement wiring live.*
 *P6, P7 added March 27 — extracted from active proposals P24 and P22. Both are missing schema fields, not regressions.*
 *P9 still open — .fair templates exist but not used in upload paths.*
-*New: `institution.verified` attestation disabled (e8a28a1e) — event DIDs lack keypairs. Tracked in P29, not a new problem (architectural, not a code bug).*
-*Refunds system shipped (#561) — settlement entries reversed on refund (3bc931be). No new problems introduced.*
+*`institution.verified` attestation disabled (e8a28a1e) — event DIDs lack keypairs. Tracked in P29, not a new problem (architectural, not a code bug).*
+*isValidDID/createDID 16-char hex truncation (C11) — still unfixed as of April 7. No changes to keypair.ts in 93-commit sprint.*
+*April 7 security audit: 15 new problems (P10–P24). 4 CRITICAL, 5 HIGH, 4 MEDIUM, 1 LOW, 1 data integrity.*
 
 These are distinct from architectural concerns in `outstanding-concerns.md`. Each item here has a specific file, a specific line, and a specific fix. When the upstream repo shows the fix has landed, the item moves to `resolved-problems.md`.
 
@@ -381,6 +382,429 @@ Wire `createManifestFromTemplate()` into all upload paths: chat, input, learn, F
 
 - All upload paths in the monorepo call `createManifestFromTemplate()`
 - Issue #330 closed
+
+---
+
+## April 7 — Security Audit Findings
+
+*Surfaced by comprehensive codebase security audit. Ordered by severity. Each has a specific file, exploit path, and fix.*
+
+### P10 — Escrow Authorization Bypass ⬚ OPEN — CRITICAL
+
+**File:** `apps/pay/app/api/escrow/[id]/release/route.ts`, `apps/pay/app/api/escrow/[id]/refund/route.ts`
+**Severity:** CRITICAL — any authenticated user can release or refund any escrow
+**Detected:** April 7, 2026
+
+#### The Problem
+
+The escrow release and refund endpoints authenticate the caller (valid session) but do not check that the caller is a party to the escrow. Any authenticated user who knows an escrow ID can:
+- Release funds to the recipient (unauthorized payout)
+- Refund funds to the payer (unauthorized refund)
+
+#### The Fix
+
+Add authorization check after session validation:
+
+```typescript
+const escrow = await getEscrow(id);
+if (escrow.payerDid !== session.sub && escrow.recipientDid !== session.sub) {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+}
+```
+
+#### How to Detect Resolution
+
+- Escrow release/refund routes check caller DID against escrow parties
+- Test: authenticated user A cannot release user B's escrow
+
+---
+
+### P11 — Ticket Hold Race Condition ⬚ OPEN — CRITICAL
+
+**File:** `apps/events/app/api/tickets/hold/route.ts`
+**Severity:** CRITICAL — overselling possible under concurrent load
+**Detected:** April 7, 2026
+
+#### The Problem
+
+Ticket hold uses SELECT (check availability) then INSERT (create hold) with no database transaction or row lock. Two concurrent requests for the last ticket can both see it as available and both succeed, overselling the event.
+
+#### The Fix
+
+Wrap in a serializable transaction or use `SELECT ... FOR UPDATE`:
+
+```typescript
+await db.transaction(async (tx) => {
+  const available = await tx.select().from(tickets)
+    .where(and(eq(tickets.eventId, eventId), eq(tickets.status, 'available')))
+    .for('update')
+    .limit(1);
+  if (!available.length) throw new Error('No tickets available');
+  await tx.update(tickets).set({ status: 'held', holderId: did }).where(eq(tickets.id, available[0].id));
+});
+```
+
+#### How to Detect Resolution
+
+- Ticket hold route uses a database transaction with row locking
+- No gap between availability check and hold creation
+
+---
+
+### P12 — Unvalidated Forest Join (scopeDid) ⬚ OPEN — CRITICAL
+
+**File:** `packages/onboard/src/routes/contextual.ts`
+**Severity:** CRITICAL — anyone can join any forest
+**Detected:** April 7, 2026
+
+#### The Problem
+
+The contextual onboarding route accepts `scopeDid` from query parameters without validation. Any user can pass any forest's DID and join it — bypassing invitation requirements, approval flows, or membership restrictions.
+
+#### The Fix
+
+Validate `scopeDid` against one of:
+1. A valid invitation token for that forest
+2. The forest's `joinPolicy` (open, invite-only, approval-required)
+3. A membership check (caller is already approved)
+
+```typescript
+const forest = await getForestConfig(scopeDid);
+if (forest.joinPolicy !== 'open') {
+  const invitation = await validateInvitation(scopeDid, inviteToken);
+  if (!invitation) return NextResponse.json({ error: 'Invalid invitation' }, { status: 403 });
+}
+```
+
+#### How to Detect Resolution
+
+- Contextual onboard route validates `scopeDid` against join policy or invitation
+- Test: user cannot join invite-only forest without valid token
+
+---
+
+### P13 — Identity Impersonation via Public Key ⬚ OPEN — CRITICAL
+
+**File:** `packages/onboard/src/routes/generate.ts`
+**Severity:** CRITICAL — attacker can register DID with someone else's public key
+**Detected:** April 7, 2026
+
+#### The Problem
+
+The onboard generate endpoint accepts a public key and creates a DID from it with **no signature proof-of-possession**. An attacker can:
+1. Observe a target's public key (they're public by definition)
+2. Call the generate endpoint with that key
+3. Register a DID that maps to the target's identity
+
+#### The Fix
+
+Require a challenge-response or signed nonce proving the caller holds the private key:
+
+```typescript
+const { publicKey, signature, nonce } = await request.json();
+const isValid = await verifySignature(nonce, signature, publicKey);
+if (!isValid) return NextResponse.json({ error: 'Proof of possession failed' }, { status: 400 });
+```
+
+#### How to Detect Resolution
+
+- Generate endpoint requires signed challenge/nonce
+- Cannot register a DID without proving private key possession
+
+---
+
+### P14 — Open Redirect + XSS in Onboard ⬚ OPEN — HIGH
+
+**File:** `packages/onboard/src/routes/verify.ts` (redirectUrl parameter)
+**Severity:** HIGH — phishing and script injection
+**Detected:** April 7, 2026
+
+#### The Problem
+
+The `redirectUrl` parameter in the onboard verify flow is not validated against an allowlist. An attacker can:
+- Redirect users to a phishing domain after onboarding
+- Inject script via the error page rendering path (XSS)
+
+#### The Fix
+
+Validate `redirectUrl` against allowed origins:
+
+```typescript
+const allowedOrigins = ['https://imajin.ai', 'https://*.imajin.ai'];
+const url = new URL(redirectUrl);
+if (!allowedOrigins.some(o => url.origin.match(o))) {
+  return NextResponse.json({ error: 'Invalid redirect' }, { status: 400 });
+}
+```
+
+Escape all user-supplied strings in error page rendering.
+
+#### How to Detect Resolution
+
+- `redirectUrl` validated against origin allowlist
+- Error page HTML-escapes all dynamic content
+
+---
+
+### P15 — Unsigned Settlement Manifests ⬚ OPEN — HIGH
+
+**File:** `apps/pay/app/api/settle/route.ts`
+**Severity:** HIGH — forged fee distributions possible
+**Detected:** April 7, 2026
+
+#### The Problem
+
+Settlement accepts `.fair` manifests without cryptographic verification. A compromised or rogue internal service could forge attribution and fee distribution claims. While P3 (resolved) added `signature` to `FairManifest`, the settlement route does not call `verifyManifest()`.
+
+#### The Fix
+
+Call `verifyManifest()` before processing settlement:
+
+```typescript
+import { verifyManifest } from '@imajin/fair';
+if (!verifyManifest(manifest)) {
+  return NextResponse.json({ error: 'Invalid manifest signature' }, { status: 400 });
+}
+```
+
+#### How to Detect Resolution
+
+- Settlement route calls `verifyManifest()` before processing
+- Unsigned or invalid manifests rejected with 400
+
+---
+
+### P16 — Fee Rate Inconsistency ⬚ OPEN — HIGH
+
+**File:** Multiple — `apps/events/`, `apps/pay/`, `apps/profile/`
+**Severity:** HIGH — no single source of truth for fees
+**Detected:** April 7, 2026
+
+#### The Problem
+
+Fee rates are hardcoded in multiple locations with conflicting values:
+- Event creation: `1.5%`
+- Settlement (`settleTicketPurchase`): `3%` (`PLATFORM_FEE_PERCENT`)
+- Profile service queries: `20%` (appears in some fee calculation contexts)
+- Fee model v3 spec: `2.0%` (four-layer)
+
+No shared constant, no configuration, no single source of truth.
+
+#### The Fix
+
+Create a shared fee configuration in `@imajin/config`:
+
+```typescript
+export const FEES = {
+  PROTOCOL: 0.01,    // 1%
+  NODE: 0.005,       // 0.5%
+  BUYER_CREDIT: 0.0025, // 0.25%
+  SCOPE_DEFAULT: 0.0025, // 0.25%
+  total: () => FEES.PROTOCOL + FEES.NODE + FEES.BUYER_CREDIT + FEES.SCOPE_DEFAULT,
+};
+```
+
+All services import from this single source.
+
+#### How to Detect Resolution
+
+- Shared fee constants in `packages/config`
+- No hardcoded fee percentages in app-level code
+- All settlement routes use the shared config
+
+---
+
+### P17 — Balance Transfer Race Condition ⬚ OPEN — MEDIUM
+
+**File:** `apps/pay/app/api/transfer/route.ts`
+**Severity:** MEDIUM — double-spend via concurrent requests
+**Detected:** April 7, 2026
+
+#### The Problem
+
+Balance transfer reads current balance, checks sufficiency, then deducts — without a transaction or optimistic locking. Two concurrent transfer requests from the same user can both read the same balance and both succeed.
+
+#### The Fix
+
+Use a database transaction with `SELECT ... FOR UPDATE` on the sender's balance row, or use an atomic decrement with a `WHERE balance >= amount` guard.
+
+#### How to Detect Resolution
+
+- Transfer route uses transaction with row lock or atomic decrement
+- Concurrent duplicate transfers do not both succeed
+
+---
+
+### P18 — Relay Open to Unauthenticated Writes ⬚ OPEN — MEDIUM
+
+**File:** `apps/registry/src/relay/create-relay.ts`
+**Severity:** MEDIUM — DoS vector, spam operations
+**Detected:** April 7, 2026 (related to C10)
+
+#### The Problem
+
+The relay POST `/operations` endpoint has no session/JWT middleware. Any client can submit operations. JWS validation catches forged operations but does not prevent DoS via high-volume valid-but-unwanted submissions.
+
+#### The Fix
+
+Add rate limiting per source IP/DID and require session authentication for write operations. Reads remain open.
+
+#### How to Detect Resolution
+
+- Relay write endpoint requires authentication
+- Rate limiting in place per IP or DID
+
+---
+
+### P19 — Shared Webhook Secrets Across Apps ⬚ OPEN — MEDIUM
+
+**File:** Environment configuration (`.env` files)
+**Severity:** MEDIUM — one compromised app exposes all webhook endpoints
+**Detected:** April 7, 2026
+
+#### The Problem
+
+Multiple apps share the same Stripe webhook secret. If one app is compromised, an attacker can forge webhook events for all apps.
+
+#### The Fix
+
+Use per-app webhook secrets: `EVENTS_WEBHOOK_SECRET`, `PAY_WEBHOOK_SECRET`, etc. Each Stripe webhook endpoint gets its own secret in the Stripe dashboard.
+
+#### How to Detect Resolution
+
+- Each app has its own `*_WEBHOOK_SECRET` environment variable
+- No shared webhook secret across apps
+
+---
+
+### P20 — Missing `actingAs` in Ticket and Queue Routes ⬚ OPEN — MEDIUM
+
+**File:** `apps/events/app/api/my-ticket/`, `apps/events/app/api/queue/`
+**Severity:** MEDIUM — scope leakage in events service
+**Detected:** April 7, 2026
+
+#### The Problem
+
+The `my-ticket` and `queue` routes do not implement the `actingAs` pattern (`const did = identity.actingAs || identity.id`). Users acting on behalf of a group DID will see their personal tickets/queue instead of the group's.
+
+#### The Fix
+
+Apply the standard pattern:
+
+```typescript
+const did = identity.actingAs || identity.id;
+```
+
+in all queries within these routes.
+
+#### How to Detect Resolution
+
+- `my-ticket` and `queue` routes use `identity.actingAs || identity.id`
+- Scope-aware queries in both endpoints
+
+---
+
+### P21 — Predictable Ticket IDs + Missing Cookie Flags ⬚ OPEN — LOW
+
+**File:** `apps/events/` (ticket ID generation), auth cookie configuration
+**Severity:** LOW — enumeration risk and transport security
+**Detected:** April 7, 2026
+
+#### The Problem
+
+- Ticket IDs use `Date.now()` — predictable and enumerable. An attacker can guess valid ticket IDs.
+- Auth cookies may be missing the `Secure` flag, allowing transmission over HTTP.
+
+#### The Fix
+
+- Use `crypto.randomUUID()` or nanoid for ticket IDs
+- Add `Secure; SameSite=Strict` to all auth cookies
+
+#### How to Detect Resolution
+
+- Ticket IDs are random (UUID or nanoid), not timestamp-based
+- All auth cookies include `Secure` and `SameSite` flags
+
+---
+
+## April 7 — Untracked Code-Level Issues
+
+*Additional code-level issues surfaced by the codebase audit that were not previously tracked.*
+
+### P22 — Dual Connections Tables — Active Data Split ⬚ OPEN
+
+**File:** `apps/connections/src/db/schema.ts`, `apps/profile/src/db/schema.ts`
+**Severity:** HIGH — data integrity risk
+**Detected:** April 7, 2026
+
+#### The Problem
+
+Two separate `connections` tables exist:
+- `connections.connections` — new first-class table from #577 refactor (O(1) DID pair lookup)
+- `profile.connections` — legacy table still actively queried
+
+Both tables are written to and read from. There is no single source of truth. A connection created in one table may not exist in the other.
+
+#### The Fix
+
+Designate `connections.connections` as authoritative. Migrate all reads/writes from `profile.connections` to the new table. Drop or deprecate the legacy table.
+
+#### How to Detect Resolution
+
+- All connection queries point to `connections.connections`
+- `profile.connections` removed or deprecated
+- Migration script moves any orphaned legacy data
+
+---
+
+### P23 — Event Private Keys Returned in API Response ⬚ OPEN
+
+**File:** `apps/auth/` event DID endpoints
+**Severity:** HIGH — key material exposure
+**Detected:** April 7, 2026
+
+#### The Problem
+
+Event DID private keys from `auth.stored_keys` are returned in API response bodies. While the column stores encrypted keys (AES-256-GCM), the decrypted key material appears in HTTP responses, exposable via:
+- Browser devtools (network tab)
+- Logging middleware
+- CDN/proxy caching
+
+#### The Fix
+
+Never return private key material in API responses. If the client needs to sign, provide a server-side signing endpoint (`POST /sign`) that accepts the payload and returns the signature.
+
+#### How to Detect Resolution
+
+- No API endpoint returns private key fields
+- Server-side signing endpoint available for operations requiring the key
+
+---
+
+### P24 — Unverified Verification Token in Claim Route ⬚ OPEN
+
+**File:** Claim route (contains `// TODO: verify token` comment)
+**Severity:** HIGH — authentication bypass
+**Detected:** April 7, 2026
+
+#### The Problem
+
+The claim route accepts a verification token but has a `// TODO: verify token` comment — the token is not validated. Any value (or empty string) is accepted, bypassing the verification step entirely.
+
+#### The Fix
+
+Implement token verification:
+
+```typescript
+const isValid = await verifyToken(token, expectedHash);
+if (!isValid) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+```
+
+#### How to Detect Resolution
+
+- `// TODO: verify token` comment removed
+- Token validation logic implemented
+- Invalid tokens return 401
 
 ---
 

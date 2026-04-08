@@ -1,6 +1,6 @@
 # Current Proposals
 *Active proposals for contribution to ima-jin/imajin-ai — March–April 2026*
-*Last reviewed: April 3, 2026 (upstream HEAD: 3bc931be)*
+*Last reviewed: April 7, 2026 (upstream HEAD: 227b2785)*
 
 For prior proposals with discussion history and outcomes, see `historical-context.md`.
 For which outstanding concerns these address, see `outstanding-concerns/outstanding-concerns.md`.
@@ -17,7 +17,7 @@ For upstream acknowledgements and implementation status, see `current-context.md
 
 **Previously resolved:** 01, 02, 06, 07, 08, 09, 13, 16, 26
 
-**Active proposals (in this folder):** 05, 10, 11, 12, 14, 18, 21, 22, 23, 24, 25, 28, 29, 31, 32
+**Active proposals (in this folder):** 05, 10, 11, 12, 14, 18, 21, 22, 23, 24, 25, 28, 29, 31, 32, 33, 34
 
 **March 27 — new proposals filed:**
 - **P28 (Launch Readiness)** — Critical path: 3 demo blockers, founding supporter tier, stale issue triage
@@ -38,23 +38,44 @@ For upstream acknowledgements and implementation status, see `current-context.md
 - **P18 (Consent Primitive)** — DID consent preferences + interest signals + RFC 8058 unsubscribe shipped in email infra (#538–#543). App-level consent advancing; protocol-level primitive still TODO.
 - **P31 (Fee Governance)** — PR #526 merged. P31 + questions-for-ryan now in upstream `docs/proposals/`. RFC-23 adds multi-chain settlement dimension.
 
+**April 7 — new proposals filed:**
+- **P33 (Group Key Sovereignty)** — Group Ed25519 keypairs are generated and stored but never used for signing. All attestations signed by platform key. Three-phase plan: (1) activate dead keys with server-delegated signing (~1 day), (2) threshold signing via Shamir secret sharing (~1-2 weeks), (3) social recovery + DFOS key rotation (post-fundraise). Phase 1 also resolves #537 (event DID signing) and unblocks P29's institution.verified.
+- **P34 (Crowd-Funded Events)** — Four-stage flow: propose → poll → fund (via existing escrow API) → confirm/refund. Wires existing pay service escrow (`capture_method: 'manual'`) to events. New `funding_commitments` table + 5 columns on events. Includes scope fee integration (fee model v3), attestation chain, and end-to-end Mooi walkthrough. P0+P1 is ~3-5 days of work.
+
+**April 7 audit — status changes (93 commits since April 3):**
+- **P32 (Mooi / Node Customization)** — **NEAR-COMPLETE.** Ryan built the entire forest infrastructure independently: group identities (#587), forest config (#592/#593), contextual onboard (#597), scope-aware services (all 12), launcher filtering. Everything P32 proposed is now live except crowd-funded events (§6) and BBS/forum view. Mooi cited by name in fee model v3.
+- **P10 (Org DID Vetting)** — **SUBSTANTIALLY RESOLVED.** Group identities with real Ed25519 keypairs, multi-controller access (owner/admin/member), service-scoped permissions via `allowedServices`. External vetting/attestation by third parties still missing.
+- **P25 (Family DID)** — **SCHEMA COMPLETE.** `scope: 'family'` in group identities. Identity primitive now built.
+- **P23 (Node Operator Recognition)** — **SUBSTANTIALLY ADVANCED.** Two revenue streams (settlement fee 0.25–2% + gas 100% to node), forest config gives operators control over service surface, relay auto-bootstrap simplifies setup.
+- **P31 (Fee Governance)** — **v3 SUPERSEDES.** Four-layer model: protocol 1% + node 0.5% + buyer credit 0.25% + scope fee 0.25% = 2.0% default. Scope fee is sovereign (no protocol ceiling). Dual-token (MJN + MJNx at 1 CHF).
+- **P29 (Attestation)** — 5 new types: `group.created`, `group.member.added`, `group.member.removed`, `group.member.left`, `scope.onboard`. Total now 24. `institution.verified` still disabled.
+- **P14 (Governance Equity)** — Service-scoped controller access is a governance primitive. Scope fee is sovereign. Gas rate governance flagged for Tonalith analysis.
+- **P11 (Gas Model)** — Fee model v3 specifies gas: 1¢ per non-economic operation, 100% to node, bilateral signing for integrity.
+
 **Partially resolved (still active, monitoring):**
-- P10 (Org DID Vetting) — design complete in RFC-08, attestation types and covenant pending
-- P14 (Governance Equity) — community-layer done (RFC-07/17), Foundation governance unspecified
+- P10 (Org DID Vetting) — schema + API complete (group identities with keypairs, controllers). External vetting/attestation gap remains
+- P14 (Governance Equity) — community-layer done; service-scoped controller access adds governance primitive; Foundation governance still unspecified
 - P18 (Consent Primitive) — RFC-22 consent-and-sign redirect + email infra consent preferences; per-transaction consent still TODO
 - P21 (Attentional Sovereignty) — framing accepted, whitepaper does not yet use the language directly
 - P22 (Identity Archaeology) — attestation schema live, `client_hint` and `category` fields still missing (P7 open)
 - P24 (Agent Fair Attribution) — RFC-19 agents-as-userspace-apps spec; agent sub-identity designed; no code yet
-- P28 (Launch Readiness) — demo infrastructure live; post-demo items (founding supporter, issue triage) remain
-- P29 (Attestation Completeness) — 18/26 seams emitting; `institution.verified` regressed; standing computation sufficient but not complete
-- P31 (Fee Governance) — merged upstream; fee model v2 + RFC-23 advance beyond P31's scope
+- P28 (Launch Readiness) — demo infrastructure live; post-demo items (founding supporter #474, issue triage) still no progress
+- P29 (Attestation Completeness) — 24 types now (was 18); `institution.verified` still disabled; event DID delegation model still blocked (#537)
+- P31 (Fee Governance) — fee model v3 supersedes; scope fee + dual-token + gas model go beyond P31's scope
+- P32 (Mooi / Node Customization) — forest infrastructure shipped; remaining: crowd-funded events, BBS/forum view, theme UI
+
+**April 7 security audit — proposal gaps identified:**
+- **P35 (Test Coverage)** — NEEDED. 9 test files for 132K LOC. Zero tests for forest/scope infrastructure, escrow, fee calculation. Critical paths entirely untested.
+- **P36 (Security Hardening)** — NEEDED. Consolidates 15 security findings (P10–P24) into prioritized remediation plan. 4 CRITICAL items exploitable today.
+- **RFC-24 coverage** — NEEDED. Knowledge Surfaces (learn + MCP + queryable profile) has no proposal analysis.
+- **DEVELOPER.md update** — NEEDED. Not updated for forests, scopes, `actingAs` pattern. New contributors have no guide.
+- **35 open TODOs** — Including critical security items (countersign verification unimplemented).
 
 **Still open:**
 - P05 (BaggageDID) — no code, no spec adoption
-- P11 (Gas Model Ceiling) — spec in whitepaper v0.4, blocked on Stream 2. RFC-21 conformance suite adds gas test cases.
+- P11 (Gas Model Ceiling) — fee model v3 specifies gas (1¢ per op, 100% to node). No code yet. Governance bounds flagged as open question.
 - P12 (Declaration Granularity) — spec in whitepaper (k-anonymity), blocked on Stream 2
-- P23 (Node Operator Recognition) — philosophically grounded, no docs/UX integration
-- P25 (Family DID) — governance model exists (RFC-17), identity primitive not built
+- P25 (Family DID) — schema complete (`scope: 'family'` in group identities). Governance model exists (RFC-17). No family-specific UX.
 
 ---
 

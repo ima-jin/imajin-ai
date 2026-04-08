@@ -78,26 +78,28 @@ The app studio model (vertical leads + platform licensing + professional service
 
 The open-core model (kernel open source, production verticals commercial) means revenue comes from studio operations, not just protocol fees. This fundamentally changes the fee governance calculus — the 1% fee doesn't need to fund the company alone.
 
-### 7. Upstream Fee Model v2 (March 30)
+### 7. Upstream Fee Model v2 → v3 (March 30 → April 5)
 
-**UPDATE:** Ryan drafted `docs/rfcs/drafts/fee-model-v2.md` (commit 162b47e3) which advances beyond P31's 1% flat model:
+**v2 (March 30):** Ryan drafted `docs/rfcs/drafts/fee-model-v2.md` (commit 162b47e3) — three-party model at 1.75% default.
 
-| Participant | Range | Default | Set by |
-|-------------|-------|---------|--------|
-| Protocol | 0.25% – 2% | 1.0% | Governance (Foundation → trust graph) |
-| Node | 0.25% – 2% | 0.5% | Node operator (market-driven) |
-| User credit | 0.25% – 2% | 0.25% | Node operator |
+**v3 (April 5):** Replaced by `docs/rfcs/drafts/fee-model.md` — four-layer model:
 
-**Default total: 1.75%** (vs P31's 1% flat). Key differences:
-- Three independent configurable rates instead of one flat rate
-- Node fee is market-driven (nodes compete on margin) — federation creates fee competition
-- User credit accumulates as MJN on DFOS chain — transacting = mining
-- Only protocol fee is governance-controlled; node rates are market competition
-- Bounds are per-component (0.25%–2% each) not per-total
+| Layer | Range | Default | Set by |
+|-------|-------|---------|--------|
+| Protocol (MJN) | 0.25% – 2% | 1.0% | Governance (trust-graph-weighted voting) |
+| Node operator | 0.25% – 2% | 0.5% | Node operator (market-driven) |
+| Buyer credit | 0.25% – 2% | 0.25% | Node operator |
+| **Scope fee** | 0% – no cap | 0.25% | Scope owner (community/org) |
 
-**Impact on P31:** P31's governance mechanism (bounds + chain-recorded adjustments + transition path) is adopted for the protocol fee component. P31's DID-scoped fee analysis (§3) is not adopted — replaced by market-driven node competition. The governance bounds P31 recommended (0.75%–3%) are narrowed to 0.25%–2% per component.
+**Default total: 2.0%.** Key additions over v2:
+- **Scope fee** — sovereign, no protocol ceiling. Communities self-fund (Mooi cited by name).
+- **Dual-token** — MJN (equity/governance, earned, not purchasable) + MJNx (stable, 1 MJNx = 1 CHF). Supersedes RFC-12.
+- **Gas fees** — 1¢ per non-economic operation, 100% to node, bilateral signing for integrity.
+- **Platform affiliation** — `relay_config.platform_did` (node default) + `forest_config.platform_did` (per-scope override).
 
-**Impact on business plan:** Protocol revenue at $1M volume is $10K (vs $4K at 1% flat). Business plan financials need updating.
+**Impact on P31:** P31's governance mechanism (bounds + chain-recorded adjustments) adopted for protocol fee. P31's DID-scoped fee analysis (§3) partially vindicated — the scope fee IS a DID-scoped fee, but sovereign rather than protocol-controlled. Gas model resolves P11 at spec level.
+
+**Impact on business plan:** Total effective rate 2.0% (was 1.75%). Protocol revenue unchanged at 1.0%. Scope fee is NOT Imajin revenue — it's community revenue, strengthening the sovereignty pitch.
 
 ### 7.1 Relationship to MJN Tokenomics
 
