@@ -20,8 +20,10 @@ export default function DocsPage() {
     fetch('/registry/api/specs')
       .then(r => r.json())
       .then(data => {
-        setServices(data.services);
-        if (data.services.length > 0) setSelected(data.services[0].name);
+        // Filter to services that have a spec endpoint (exclude meta: project, github, docs)
+        const withSpecs = (data.services || []).filter((s: Service) => s.spec);
+        setServices(withSpecs);
+        if (withSpecs.length > 0) setSelected(withSpecs[0].name);
       });
   }, []);
 
@@ -87,7 +89,7 @@ export default function DocsPage() {
 
         {svc && (
           <div className="mb-6">
-            <h2 className="text-xl font-semibold">{svc.name}.imajin.ai</h2>
+            <h2 className="text-xl font-semibold">{svc.name}</h2>
             <p className="text-gray-400 text-sm mt-1">{svc.description}</p>
             <a href={svc.spec} target="_blank" rel="noopener noreferrer"
               className="text-[#F59E0B] text-sm hover:underline mt-1 inline-block">
