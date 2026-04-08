@@ -61,9 +61,9 @@ function TileGroup({ label, services, onAuthRequired }: { label?: string; servic
   return (
     <div>
       {label && (
-        <p className="text-[10px] uppercase tracking-widest text-gray-600 mb-3">{label}</p>
+        <p className="text-[10px] uppercase tracking-widest text-gray-600 mb-3 text-center">{label}</p>
       )}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap justify-center gap-3">
         {services.map((s) => (
           <ServiceTile key={s.name} service={s} onAuthRequired={onAuthRequired} />
         ))}
@@ -119,7 +119,7 @@ export function LandingGrid() {
 
   if (loading) {
     return (
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap justify-center gap-3">
         {SKELETON_KEYS.map((id) => (
           <div key={id} className="w-20 h-20 md:w-24 md:h-24 rounded-xl border border-gray-800 bg-gray-900/40 animate-pulse" />
         ))}
@@ -140,7 +140,7 @@ export function LandingGrid() {
   return (
     <div className="space-y-8">
       <TileGroup label="Kernel Services" services={kernel} onAuthRequired={handleAuthRequired} />
-      <TileGroup services={core} onAuthRequired={handleAuthRequired} />
+      <TileGroup label="Userspace" services={core} onAuthRequired={handleAuthRequired} />
       <TileGroup label="Creator Tools" services={creator} onAuthRequired={handleAuthRequired} />
       <TileGroup label="Developers" services={developer} onAuthRequired={handleAuthRequired} />
       <TileGroup label="Project" services={meta} onAuthRequired={handleAuthRequired} />
