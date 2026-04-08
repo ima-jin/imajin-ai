@@ -16,7 +16,10 @@
  * Run from apps/kernel/ so DB connection resolves from .env.local.
  */
 
-import 'dotenv/config';
+import { config } from 'dotenv';
+import { resolve } from 'path';
+config({ path: resolve(process.cwd(), '.env.local') });
+
 import postgres from 'postgres';
 
 const DATABASE_URL = process.env.DATABASE_URL;
