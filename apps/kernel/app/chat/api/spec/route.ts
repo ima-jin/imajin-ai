@@ -7,7 +7,7 @@ let cachedSpec: string | null = null;
 
 function getSpec(): string {
   if (!cachedSpec) {
-    cachedSpec = readFileSync(join(process.cwd(), "api-spec/openapi.yaml"), "utf-8");
+    cachedSpec = readFileSync(join(process.cwd(), "api-spec/chat.yaml"), "utf-8");
   }
   return cachedSpec;
 }

@@ -1,0 +1,841 @@
+openapi: "3.1.0"
+info:
+  title: imajin profile
+  version: "1.0.0"
+  description: Profile management, follow graph, presence, guest identity, handle availability, and media serving.
+servers:
+  - url: https://profile.imajin.ai
+    description: production
+  - url: https://dev-profile.imajin.ai
+    description: dev
+  - url: http://localhost:7005
+    description: local
+
+tags:
+  - name: profile
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Profile:
+      type: object
+      properties:
+        did: { type: string }
+        handle: { type: string }
+        displayName: { type: string }
+        displayType: { type: string }
+        bio: { type: string }
+        avatar: { type: string }
+        metadata: { type: object }
+        inferenceEnabled: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/health:
+    get:
+      tags: [profile]
+      operationId: healthCheck
+      summary: Service health check
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  service: { type: string }
+                  timestamp: { type: string, format: date-time }
+
+  /api/spec:
+    get:
+      tags: [profile]
+      operationId: getSpec
+      summary: Serve OpenAPI spec (YAML)
+      responses:
+        "200":
+          description: OpenAPI YAML spec
+          content:
+            text/yaml:
+              schema: { type: string }
+
+  /api/profile:
+    post:
+      tags: [profile]
+      operationId: createProfileAuth
+      summary: Create a profile for authenticated user
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [displayName, displayType]
+              properties:
+                displayName: { type: string }
+                displayType: { type: string, enum: [human, agent, presence] }
+                avatar: { type: string }
+                avatarAssetId: { type: string }
+                bio: { type: string }
+                handle: { type: string }
+                email: { type: string, format: email }
+                phone: { type: string }
+                optInUpdates: { type: boolean }
+                metadata: { type: object }
+      responses:
+        "201":
+          description: Profile created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Profile already exists or handle taken
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/profile/search:
+    get:
+      tags: [profile]
+      operationId: searchProfiles
+      summary: Search profiles
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Search query (matches handle and displayName)"
+        - name: type
+          in: query
+          schema: { type: string, enum: [human, agent, presence] }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profiles:
+                    type: array
+                    items: { $ref: "#/components/schemas/Profile" }
+                  pagination:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      limit: { type: integer }
+                      offset: { type: integer }
+                      hasMore: { type: boolean }
+
+  /api/profile/claim-handle:
+    post:
+      tags: [profile]
+      operationId: claimHandle
+      summary: Claim a handle for the authenticated user
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handle]
+              properties:
+                handle: { type: string }
+      responses:
+        "200":
+          description: Handle claimed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  handle: { type: string }
+                  profile: { $ref: "#/components/schemas/Profile" }
+        "400":
+          description: Invalid handle format
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Handle already taken
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/profile/inference:
+    post:
+      tags: [profile]
+      operationId: toggleInference
+      summary: Toggle AI presence (inference) on or off for the authenticated user
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated profile with inferenceEnabled flag
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/profile/{id}:
+    get:
+      tags: [profile]
+      operationId: getProfile
+      summary: Get profile by DID or handle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: "DID or handle"
+      responses:
+        "200":
+          description: Profile found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    put:
+      tags: [profile]
+      operationId: updateProfile
+      summary: Update profile
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Profile" }
+      responses:
+        "200":
+          description: Profile updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [profile]
+      operationId: deleteProfile
+      summary: Delete profile
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Profile deleted
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/profile/{id}/counts:
+    get:
+      tags: [profile]
+      operationId: getProfileCounts
+      summary: Get follower, following, and connection counts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  followers: { type: integer }
+                  following: { type: integer }
+                  connections: { type: integer }
+
+  /api/profile/{id}/query:
+    post:
+      tags: [profile]
+      operationId: queryProfile
+      summary: Non-streaming AI presence query — requires trust distance ≤ 2
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: "Target profile DID or handle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string }
+                conversationId: { type: string }
+      responses:
+        "200":
+          description: Inference response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response: { type: string }
+                  usage:
+                    type: object
+                    properties:
+                      promptTokens: { type: integer }
+                      completionTokens: { type: integer }
+                      cost: { type: number }
+                      settled: { type: boolean }
+                  model: { type: string }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Inference not enabled or trust distance too large
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/profile/{id}/stream:
+    post:
+      tags: [profile]
+      operationId: streamProfile
+      summary: Streaming AI presence query (NDJSON) — requires trust distance ≤ 2
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: "Target profile DID or handle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message: { type: string }
+                messages:
+                  type: array
+                  items: { type: object }
+                  description: "useChat-style message array; mutually exclusive with message"
+      responses:
+        "200":
+          description: "NDJSON stream of events: {type: text|tool_call|tool_result|done|error, ...}"
+          content:
+            text/plain:
+              schema: { type: string }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Inference not enabled or trust distance too large
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/register:
+    post:
+      tags: [profile]
+      operationId: registerProfile
+      summary: Create profile with public key (no session required)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publicKey, displayName]
+              properties:
+                publicKey: { type: string, description: "Ed25519 public key as hex string" }
+                handle: { type: string }
+                displayName: { type: string }
+                bio: { type: string }
+                avatar: { type: string }
+      responses:
+        "201":
+          description: Profile created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  handle: { type: string }
+                  displayName: { type: string }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Profile already exists or handle taken
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/soft-register:
+    post:
+      tags: [profile]
+      operationId: softRegister
+      summary: Create a guest (soft DID) identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                phone: { type: string }
+                source: { type: string }
+                sourceId: { type: string }
+      responses:
+        "200":
+          description: Guest identity created or returned if already exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  isNew: { type: boolean }
+                  displayName: { type: string }
+        "400":
+          description: Email or phone required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/claim:
+    post:
+      tags: [profile]
+      operationId: claimIdentity
+      summary: Merge guest identity into a hard DID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newDid, verificationToken]
+              properties:
+                newDid: { type: string }
+                email: { type: string }
+                phone: { type: string }
+                verificationToken: { type: string }
+      responses:
+        "200":
+          description: Identity claimed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  claimed: { type: boolean }
+                  guestDid: { type: string }
+                  newDid: { type: string }
+                  connectionsTransferred: { type: integer }
+                  message: { type: string }
+        "400":
+          description: Missing required fields
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Verification required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Target profile not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/follow:
+    post:
+      tags: [profile]
+      operationId: followUser
+      summary: Follow a user
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string }
+      responses:
+        "200":
+          description: Followed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  followed: { type: boolean }
+        "400":
+          description: Missing DID or self-follow
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [profile]
+      operationId: unfollowUser
+      summary: Unfollow a user
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string }
+      responses:
+        "200":
+          description: Unfollowed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unfollowed: { type: boolean }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/follow/status:
+    get:
+      tags: [profile]
+      operationId: followStatus
+      summary: Check if authenticated user follows a DID
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Follow status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  following: { type: boolean }
+        "400":
+          description: Missing did param
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/handle-check:
+    get:
+      tags: [profile]
+      operationId: checkHandleAvailability
+      summary: Check if a handle is available
+      parameters:
+        - name: handle
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Availability check result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available: { type: boolean }
+                  reason: { type: string, enum: [invalid, taken] }
+                  message: { type: string }
+
+  /api/presence/update:
+    post:
+      tags: [profile]
+      operationId: updatePresence
+      summary: Update last seen timestamp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did, lastSeenAt]
+              properties:
+                did: { type: string }
+                lastSeenAt: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Presence updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+        "400":
+          description: Missing required fields
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/presence/{did}:
+    get:
+      tags: [profile]
+      operationId: getPresence
+      summary: Get presence status for a DID
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Presence data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  online: { type: boolean }
+                  lastSeen: { type: string, format: date-time, nullable: true }
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/upload:
+    post:
+      tags: [profile]
+      operationId: uploadAvatar
+      summary: Upload avatar image
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image, did]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                did: { type: string }
+      responses:
+        "200":
+          description: Avatar uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string }
+        "400":
+          description: Validation error (missing file, invalid type/size)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/media/{path}:
+    get:
+      tags: [profile]
+      operationId: serveMedia
+      summary: Serve media files from /mnt/media
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema: { type: string }
+          description: "Catch-all path to media file"
+      responses:
+        "200":
+          description: Media file
+        "404":
+          description: File not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/auth/session:
+    get:
+      tags: [profile]
+      operationId: getAuthSession
+      summary: Proxy to auth service session
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Session data
+
+  /api/auth/logout:
+    post:
+      tags: [profile]
+      operationId: authLogout
+      summary: Clear session cookie
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+
+  /api/auth/register:
+    post:
+      tags: [profile]
+      operationId: authRegister
+      summary: Proxy to auth service register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "201":
+          description: Registered

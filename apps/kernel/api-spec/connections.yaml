@@ -1,0 +1,979 @@
+openapi: "3.1.0"
+info:
+  title: imajin connections
+  version: "1.0.0"
+  description: Pod-based social graph — 2-person connection pods, invite codes, trust graph invites, pod management, and member/link operations.
+servers:
+  - url: https://connections.imajin.ai
+    description: production
+  - url: https://dev-connections.imajin.ai
+    description: dev
+  - url: http://localhost:7003
+    description: local
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Pod:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        ownerDid: { type: string }
+        type: { type: string, enum: [personal, shared, event] }
+        visibility: { type: string, enum: [public, private] }
+        avatar: { type: string, nullable: true }
+        conversationDid: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PodMember:
+      type: object
+      properties:
+        podId: { type: string }
+        did: { type: string }
+        role: { type: string, enum: [owner, member] }
+        addedBy: { type: string }
+        joinedAt: { type: string, format: date-time }
+        removedAt: { type: string, format: date-time, nullable: true }
+        handle: { type: string, nullable: true }
+        name: { type: string, nullable: true }
+    Invite:
+      type: object
+      properties:
+        id: { type: string }
+        code: { type: string }
+        fromDid: { type: string }
+        fromHandle: { type: string, nullable: true }
+        toEmail: { type: string, nullable: true }
+        toDid: { type: string, nullable: true }
+        note: { type: string, nullable: true }
+        delivery: { type: string, enum: [link, email] }
+        status: { type: string, enum: [pending, accepted, revoked, expired] }
+        maxUses: { type: integer }
+        usedCount: { type: integer }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        acceptedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+tags:
+  - name: connections
+    description: imajin connections service
+
+paths:
+  /api/health:
+    get:
+      tags: [connections]
+      operationId: connectionsHealthCheck
+      summary: Service health check
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  service: { type: string }
+                  timestamp: { type: string, format: date-time }
+
+  /api/connections:
+    get:
+      tags: [connections]
+      operationId: listConnections
+      summary: List 2-person connection pods for authenticated user — resolves handles from auth service
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Connections list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connections:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        did: { type: string }
+                        podId: { type: string }
+                        joinedAt: { type: string, format: date-time }
+                        podName: { type: string }
+                        handle: { type: string, nullable: true }
+                        name: { type: string, nullable: true }
+
+  /api/connections/{podId}:
+    delete:
+      tags: [connections]
+      operationId: disconnect
+      summary: Disconnect from a 2-person connection pod — removes user from pod; deletes pod if empty
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: podId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  disconnected: { type: boolean }
+        "404":
+          description: Not a member of this connection
+
+  /api/connections/status/{did}:
+    get:
+      tags: [connections]
+      operationId: checkGraphMembership
+      summary: Check if a DID is in the trust graph — inGraph = has at least one accepted 2-person connection
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Graph membership status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  inGraph: { type: boolean }
+                  connectionCount: { type: integer }
+
+  /api/invites:
+    get:
+      tags: [connections]
+      operationId: listConnectionInvites
+      summary: List all invites sent by authenticated user — includes quota info per role
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Invites list with quota
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invites:
+                    type: array
+                    items: { $ref: "#/components/schemas/Invite" }
+                  role: { type: string }
+                  limit: { type: integer, nullable: true }
+                  pending: { type: integer }
+                  remaining: { type: integer, nullable: true }
+    post:
+      tags: [connections]
+      operationId: createConnectionInvite
+      summary: Create a connection invite — link or email delivery; email requires hard DID + trust graph; 7-day cooldown
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                delivery:
+                  type: string
+                  enum: [link, email]
+                  default: link
+                toEmail:
+                  type: string
+                  format: email
+                  description: "Required when delivery=email"
+                note: { type: string }
+                maxUses: { type: integer, default: 1 }
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invite: { $ref: "#/components/schemas/Invite" }
+                  url: { type: string }
+                  remaining: { type: integer, nullable: true }
+        "403":
+          description: Not in trust graph or not hard DID (email delivery)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Cooldown active, pending invite exists, or invite limit reached
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  nextAvailableAt: { type: string, format: date-time }
+                  limit: { type: integer }
+                  pending: { type: integer }
+
+  /api/invites/invited-by:
+    get:
+      tags: [connections]
+      operationId: getInvitedBy
+      summary: Get who invited the current user — null for founding members
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Inviter info or null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invitedBy:
+                    nullable: true
+                    type: object
+                    properties:
+                      did: { type: string }
+                      handle: { type: string, nullable: true }
+                      name: { type: string, nullable: true }
+                      avatar: { type: string, nullable: true }
+                      date: { type: string, format: date-time, nullable: true }
+
+  /api/invites/{code}:
+    get:
+      tags: [connections]
+      operationId: getConnectionInvite
+      summary: Get invite by code (public, CORS-enabled — for preview before accepting)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invite details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  code: { type: string }
+                  fromDid: { type: string }
+                  fromHandle: { type: string, nullable: true }
+                  note: { type: string, nullable: true }
+                  used: { type: boolean }
+                  createdAt: { type: string, format: date-time }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [connections]
+      operationId: deleteConnectionInvite
+      summary: Revoke (soft-delete) an invite — only the creator can revoke; email invite clears cooldown
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "400":
+          description: Cannot revoke non-pending invite
+        "403":
+          description: Not authorized
+
+  /api/invites/{code}/accept:
+    post:
+      tags: [connections]
+      operationId: acceptConnectionInvite
+      summary: Accept an invite — creates a 2-person personal pod; emits connection.accepted and vouch attestations
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "201":
+          description: Connected — 2-person pod created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  pod:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      name: { type: string }
+        "400":
+          description: Cannot accept own invite
+        "403":
+          description: Email invite is not for this user
+        "404":
+          description: Invite not found
+        "410":
+          description: Invite expired, already used, or revoked
+
+  /api/groups:
+    get:
+      tags: [connections]
+      operationId: listGroups
+      summary: List non-personal (shared/event) pods the user is a member of — includes member counts
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Groups list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pods:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/Pod"
+                        - type: object
+                          properties:
+                            memberCount: { type: integer }
+    post:
+      tags: [connections]
+      operationId: createGroup
+      summary: Create a shared group pod — creator becomes owner; optionally add initial members
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                conversationDid: { type: string }
+                memberDids:
+                  type: array
+                  items: { type: string }
+      responses:
+        "201":
+          description: Group pod created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pod:
+                    allOf:
+                      - $ref: "#/components/schemas/Pod"
+                      - type: object
+                        properties:
+                          memberCount: { type: integer }
+        "400":
+          description: Name is required
+
+  /api/groups/{id}:
+    get:
+      tags: [connections]
+      operationId: getGroup
+      summary: Get a group pod with members (requester must be a member) — resolves member profiles
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Pod with members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pod:
+                    allOf:
+                      - $ref: "#/components/schemas/Pod"
+                      - type: object
+                        properties:
+                          memberCount: { type: integer }
+                  members:
+                    type: array
+                    items: { $ref: "#/components/schemas/PodMember" }
+        "403":
+          description: Not a member
+        "404":
+          description: Pod not found
+    patch:
+      tags: [connections]
+      operationId: updateGroup
+      summary: Update group pod — conversationDid update requires only membership (first-write wins); all other updates require ownership
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                conversationDid: { type: string }
+      responses:
+        "200":
+          description: Pod updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pod: { $ref: "#/components/schemas/Pod" }
+        "404":
+          description: Pod not found or unauthorized
+    delete:
+      tags: [connections]
+      operationId: deleteGroup
+      summary: Delete a group pod (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: boolean }
+        "404":
+          description: Pod not found or unauthorized
+
+  /api/groups/{id}/members:
+    post:
+      tags: [connections]
+      operationId: addGroupMember
+      summary: Add a member to a group pod (owner only) — emits pod.member.added attestation if chain-verified
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string }
+      responses:
+        "201":
+          description: Member added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  member: { $ref: "#/components/schemas/PodMember" }
+        "403":
+          description: Only the owner can add members
+        "409":
+          description: Already a member
+    patch:
+      tags: [connections]
+      operationId: updateGroupMemberRole
+      summary: Change a member's role (owner only) — emits pod.role.changed attestation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did, role]
+              properties:
+                did: { type: string }
+                role: { type: string }
+      responses:
+        "200":
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  member: { $ref: "#/components/schemas/PodMember" }
+        "403":
+          description: Only the owner can change roles
+        "404":
+          description: Member not found
+    delete:
+      tags: [connections]
+      operationId: removeGroupMember
+      summary: Remove a member from a group pod (owner only) — emits pod.member.removed attestation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string }
+      responses:
+        "200":
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  removed: { type: boolean }
+        "400":
+          description: Cannot remove yourself as owner
+        "403":
+          description: Only the owner can remove members
+        "404":
+          description: Member not found
+
+  /api/pods:
+    get:
+      tags: [connections]
+      operationId: listPods
+      summary: List all pods for authenticated user (all types)
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Pods list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pods:
+                    type: array
+                    items: { $ref: "#/components/schemas/Pod" }
+    post:
+      tags: [connections]
+      operationId: createPod
+      summary: Create a pod — requires trust graph membership
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                avatar: { type: string }
+                type: { type: string, enum: [personal, shared, event], default: personal }
+                visibility: { type: string, enum: [public, private], default: private }
+      responses:
+        "201":
+          description: Pod created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pod: { $ref: "#/components/schemas/Pod" }
+
+  /api/pods/{id}:
+    get:
+      tags: [connections]
+      operationId: getPod
+      summary: Get pod by ID with current members
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Pod with members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pod: { $ref: "#/components/schemas/Pod" }
+                  members:
+                    type: array
+                    items: { $ref: "#/components/schemas/PodMember" }
+        "404":
+          description: Pod not found
+    patch:
+      tags: [connections]
+      operationId: updatePod
+      summary: Update pod (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                avatar: { type: string }
+                visibility: { type: string, enum: [public, private] }
+      responses:
+        "200":
+          description: Pod updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pod: { $ref: "#/components/schemas/Pod" }
+        "404":
+          description: Pod not found or unauthorized
+    delete:
+      tags: [connections]
+      operationId: deletePod
+      summary: Delete pod (owner only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: boolean }
+        "404":
+          description: Pod not found or unauthorized
+
+  /api/pods/{id}/members:
+    post:
+      tags: [connections]
+      operationId: addPodMember
+      summary: Add a member to a pod (owner only, chain verification required) — emits pod.member.added attestation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string }
+                role: { type: string, default: member }
+      responses:
+        "201":
+          description: Member added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  member: { $ref: "#/components/schemas/PodMember" }
+        "403":
+          description: Only the owner can add members
+    patch:
+      tags: [connections]
+      operationId: updatePodMemberRole
+      summary: Change a pod member's role (owner only, chain verification required)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did, role]
+              properties:
+                did: { type: string }
+                role: { type: string }
+      responses:
+        "200":
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  member: { $ref: "#/components/schemas/PodMember" }
+        "403":
+          description: Only the owner can change roles
+        "404":
+          description: Member not found
+    delete:
+      tags: [connections]
+      operationId: removePodMember
+      summary: Remove a member from a pod (owner only, chain verification required)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string }
+      responses:
+        "200":
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  removed: { type: boolean }
+        "403":
+          description: Only the owner can remove members
+        "404":
+          description: Member not found
+
+  /api/pods/{id}/links:
+    post:
+      tags: [connections]
+      operationId: linkPod
+      summary: Link a child pod to this pod
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [childPodId]
+              properties:
+                childPodId: { type: string }
+      responses:
+        "201":
+          description: Pod linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  link: { type: object }
+    delete:
+      tags: [connections]
+      operationId: unlinkPod
+      summary: Unlink a child pod (soft delete)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [childPodId]
+              properties:
+                childPodId: { type: string }
+      responses:
+        "200":
+          description: Pod unlinked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unlinked: { type: boolean }
+        "404":
+          description: Link not found
+
+  /api/pods/{id}/resolve:
+    get:
+      tags: [connections]
+      operationId: resolvePodMembers
+      summary: Resolve full recursive member set via trust graph
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Resolved members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  podId: { type: string }
+                  members: { type: array, items: { type: string } }
+
+  /api/trust/distance:
+    get:
+      tags: [connections]
+      operationId: getTrustDistance
+      summary: Get trust distance between two DIDs (internal — requires Bearer TRUST_INTERNAL_API_KEY)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: string }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Trust distance result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  from: { type: string }
+                  to: { type: string }
+                  distance: { type: integer, description: "-1 if not connected" }
+                  connected: { type: boolean }
+        "400":
+          description: Missing from or to params
+        "401":
+          description: Unauthorized
+
+  /api/auth/session:
+    get:
+      tags: [connections]
+      operationId: getAuthSession
+      summary: Proxy to auth service session
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Session data
+        "401":
+          description: Not authenticated
+
+  /api/auth/logout:
+    post:
+      tags: [connections]
+      operationId: authLogout
+      summary: Proxy logout to auth service — forwards Set-Cookie header to clear session
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }

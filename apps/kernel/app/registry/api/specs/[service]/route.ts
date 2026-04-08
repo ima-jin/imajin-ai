@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { corsHeaders, corsOptions, buildServiceUrlMap, getService } from "@imajin/config";
+import { corsHeaders, corsOptions, getService, SERVICES } from "@imajin/config";
+import { readFileSync, existsSync } from "fs";
+import { join } from "path";
 
-const IS_PROD = process.env.NODE_ENV === "production" || process.env.IMAJIN_ENV === "prod";
-const SERVICE_URLS = buildServiceUrlMap(process.env as Record<string, string | undefined>, IS_PROD ? "prod" : "dev");
+/** Kernel services serve specs from local YAML files */
+const KERNEL_SERVICES = new Set(
+  SERVICES.filter((s) => s.category === "kernel").map((s) => s.name)
+);
 
-// Override registry's own URL to use localhost + current port
-SERVICE_URLS["registry"] = "http://localhost:" + (process.env.PORT || "3002");
+const PORT = process.env.PORT || "3000";
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -22,7 +25,25 @@ export async function GET(
     return NextResponse.json({ error: "Unknown service" }, { status: 404, headers: cors });
   }
 
-  const internalUrl = SERVICE_URLS[service];
+  // Kernel services: read spec directly from file (same process)
+  if (KERNEL_SERVICES.has(service)) {
+    const specPath = join(process.cwd(), "api-spec", `${service}.yaml`);
+    if (!existsSync(specPath)) {
+      return NextResponse.json(
+        { error: `No spec for ${service}` },
+        { status: 404, headers: cors }
+      );
+    }
+    const text = readFileSync(specPath, "utf-8");
+    return new NextResponse(text, {
+      headers: { ...cors, "Content-Type": "text/yaml", "Cache-Control": "public, max-age=60" },
+    });
+  }
+
+  // Userspace services: fetch from their own process
+  const svcDef = getService(service);
+  const port = svcDef ? (process.env.NODE_ENV === "production" ? svcDef.prodPort : svcDef.devPort) : 3000;
+  const internalUrl = `http://localhost:${port}`;
 
   try {
     const res = await fetch(`${internalUrl}/api/spec`, {
@@ -40,11 +61,7 @@ export async function GET(
     const contentType = res.headers.get("content-type") || "";
 
     return new NextResponse(text, {
-      headers: {
-        ...cors,
-        "Content-Type": contentType || "text/plain",
-        "Cache-Control": "public, max-age=60",
-      },
+      headers: { ...cors, "Content-Type": contentType || "text/plain", "Cache-Control": "public, max-age=60" },
     });
   } catch (err) {
     return NextResponse.json(
