@@ -53,16 +53,36 @@ export function PromoVideo() {
     if (!video || collapsed) return;
 
     let timer: ReturnType<typeof setTimeout>;
+    let fallbackTimer: ReturnType<typeof setTimeout>;
 
     function handleEnded() {
+      clearTimeout(fallbackTimer);
       localStorage.setItem(PROMO_SEEN_KEY, 'true');
       timer = setTimeout(() => setCollapsed(true), 5000);
     }
 
+    // Fallback: once we know the duration, set a timer for duration + 10s
+    function handleLoadedMetadata() {
+      if (video.duration && isFinite(video.duration)) {
+        fallbackTimer = setTimeout(() => {
+          // If video hasn't ended naturally by now, collapse anyway
+          if (!video.ended && video.currentTime > video.duration - 1) {
+            handleEnded();
+          }
+        }, (video.duration + 10) * 1000);
+      }
+    }
+
     video.addEventListener('ended', handleEnded);
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    // If metadata already loaded
+    if (video.duration && isFinite(video.duration)) handleLoadedMetadata();
+
     return () => {
       video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       clearTimeout(timer);
+      clearTimeout(fallbackTimer);
     };
   }, [collapsed]);
 
