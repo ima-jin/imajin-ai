@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       handle: inviterProfile?.handle || foundInvite.fromHandle || null,
       name: inviterProfile?.displayName || null,
       avatar: inviterProfile?.avatar || null,
-      date: foundInvite.acceptedAt?.toISOString() || foundInvite.createdAt?.toISOString() || null,
+      date: foundInvite.acceptedAt || foundInvite.createdAt || null,
     },
   });
 }
