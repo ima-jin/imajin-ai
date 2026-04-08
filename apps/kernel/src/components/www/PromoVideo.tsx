@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 const PROMO_SEEN_KEY = 'imajin:promo-seen';
 
 function getVideoSrc(assetId: string): string {
-  return `/media/api/assets/${assetId}/content`;
+  return `/media/api/assets/${assetId}`;
 }
 
 function getQualitySource(assetId: string): string {
