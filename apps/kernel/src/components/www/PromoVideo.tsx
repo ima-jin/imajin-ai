@@ -11,13 +11,13 @@ function getVideoSrc(assetId: string): string {
   return `${base}?quality=360p`;
 }
 
-function getPosterSrc(assetId: string): string {
-  // OG endpoint generates a JPEG poster from the video
-  return `/media/api/assets/${assetId}/og`;
+function getPosterSrc(posterId: string): string {
+  return `/media/api/assets/${posterId}`;
 }
 
 export function PromoVideo() {
   const assetId = process.env.NEXT_PUBLIC_PROMO_VIDEO_ID;
+  const posterId = process.env.NEXT_PUBLIC_PROMO_POSTER_ID;
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
 
@@ -46,7 +46,7 @@ export function PromoVideo() {
           style={{ aspectRatio: '16/9' }}
         >
           <img
-            src={getPosterSrc(assetId)}
+            src={posterId ? getPosterSrc(posterId) : `/media/api/assets/${assetId}/og`}
             alt="Imajin — Watch the video"
             className="w-full h-full object-cover bg-gray-900"
           />
