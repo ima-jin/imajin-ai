@@ -1,15 +1,18 @@
 openapi: "3.1.0"
 info:
   title: imajin chat
-  version: "1.0.0"
-  description: Conversations, messages, E2EE key bundles, event lobbies, reactions, invites, and media upload.
+  version: "2.0.0"
+  description: Conversations, messages, E2EE key bundles, event lobbies, reactions, invites, and media upload. Runs as a kernel service at /{service}/api/... on a shared node domain.
 servers:
-  - url: https://chat.imajin.ai
-    description: production
-  - url: https://dev-chat.imajin.ai
-    description: dev
-  - url: http://localhost:7006
-    description: local
+  - url: https://{node}.imajin.ai/{service}
+    description: production node
+    variables:
+      node:
+        default: jin
+      service:
+        default: chat
+  - url: http://localhost:3000/{service}
+    description: local development
 
 components:
   securitySchemes:
@@ -1293,6 +1296,137 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /api/conversations-v2:
+    get:
+      tags: [chat]
+      operationId: listConversationsV2
+      summary: List conversations (v2 — returns ConversationV2 objects with DID-based identifiers)
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Conversation list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConversationV2" }
+        "401":
+          description: Unauthorized
+    post:
+      tags: [chat]
+      operationId: createConversationV2
+      summary: Create a new conversation (v2)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "201":
+          description: Conversation created
+
+  /api/d/{did}/members/leave:
+    post:
+      tags: [chat]
+      operationId: leaveDConversation
+      summary: Leave a DID-based conversation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+          description: Conversation DID
+      responses:
+        "200":
+          description: Left conversation
+        "401":
+          description: Unauthorized
+        "404":
+          description: Conversation not found
+
+  /api/d/{did}/members/{memberDid}:
+    get:
+      tags: [chat]
+      operationId: getDConversationMember
+      summary: Get a specific member of a DID-based conversation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+        - name: memberDid
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Member details
+        "404":
+          description: Not found
+    delete:
+      tags: [chat]
+      operationId: removeDConversationMember
+      summary: Remove a member from a DID-based conversation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+        - name: memberDid
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Member removed
+
+  /api/participants/{did}/conversations:
+    get:
+      tags: [chat]
+      operationId: getParticipantConversations
+      summary: List conversations a participant (by DID) is part of
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+          description: Participant DID
+      responses:
+        "200":
+          description: Conversation list for participant
+
+  /api/participants/migrate:
+    post:
+      tags: [chat]
+      operationId: migrateParticipants
+      summary: Migrate participant records (e.g. guest-to-hard DID upgrade)
+      description: Internal — migrates participant entries when a soft DID is claimed by a hard DID.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fromDid: { type: string }
+                toDid: { type: string }
+      responses:
+        "200":
+          description: Migration complete
 
   /start:
     get:

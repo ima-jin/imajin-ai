@@ -1,15 +1,18 @@
 openapi: "3.1.0"
 info:
   title: imajin registry
-  version: "1.0.0"
-  description: Node registration, heartbeat, build attestation, and subdomain provisioning for the imajin.ai network.
+  version: "2.0.0"
+  description: Node registration, heartbeat, build attestation, audience scopes, interests, preferences, and specs for the imajin.ai network. Runs as a kernel service at /{service}/api/... on a shared node domain.
 servers:
-  - url: https://registry.imajin.ai
-    description: production
-  - url: https://dev-registry.imajin.ai
-    description: dev
-  - url: http://localhost:7002
-    description: local
+  - url: https://{node}.imajin.ai/{service}
+    description: production node
+    variables:
+      node:
+        default: jin
+      service:
+        default: registry
+  - url: http://localhost:3000/{service}
+    description: local development
 
 tags:
   - name: registry
@@ -514,3 +517,203 @@ paths:
       responses:
         "200":
           description: Relay response
+
+  /api/audience/{scope}:
+    get:
+      tags: [registry]
+      operationId: getAudience
+      summary: Get nodes/identities registered for an audience scope
+      parameters:
+        - name: scope
+          in: path
+          required: true
+          schema: { type: string }
+          description: Audience scope identifier
+      responses:
+        "200":
+          description: Audience members for the scope
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scope: { type: string }
+                  members: { type: array, items: { type: string } }
+        "404":
+          description: Scope not found
+
+  /api/interests:
+    get:
+      tags: [registry]
+      operationId: listInterests
+      summary: List all registered interest scopes
+      responses:
+        "200":
+          description: Interest scopes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    scope: { type: string }
+                    description: { type: string }
+    post:
+      tags: [registry]
+      operationId: registerInterest
+      summary: Register interest in a scope
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope]
+              properties:
+                scope: { type: string }
+                did: { type: string }
+      responses:
+        "200":
+          description: Interest registered
+
+  /api/interests/{scope}:
+    get:
+      tags: [registry]
+      operationId: getInterest
+      summary: Get details for a specific interest scope
+      parameters:
+        - name: scope
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Interest scope details
+        "404":
+          description: Not found
+    delete:
+      tags: [registry]
+      operationId: removeInterest
+      summary: Deregister interest in a scope
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: scope
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Interest removed
+
+  /api/preferences/{did}:
+    get:
+      tags: [registry]
+      operationId: getPreferences
+      summary: Get all preference settings for a DID
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Preferences object
+        "404":
+          description: Not found
+    put:
+      tags: [registry]
+      operationId: updatePreferences
+      summary: Update preference settings for a DID
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Preferences updated
+
+  /api/preferences/{did}/interests/{scope}:
+    get:
+      tags: [registry]
+      operationId: getPreferenceInterest
+      summary: Get interest preference for a specific scope and DID
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+        - name: scope
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Interest preference
+        "404":
+          description: Not found
+    put:
+      tags: [registry]
+      operationId: setPreferenceInterest
+      summary: Set interest preference for a scope
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+        - name: scope
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                settings: { type: object }
+      responses:
+        "200":
+          description: Preference updated
+    delete:
+      tags: [registry]
+      operationId: deletePreferenceInterest
+      summary: Remove interest preference for a scope
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+        - name: scope
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Preference removed

@@ -1,15 +1,18 @@
 openapi: "3.1.0"
 info:
   title: imajin pay
-  version: "1.0.0"
-  description: Payments, balances, Stripe Connect onboarding, .fair multi-party settlement, escrow, and webhooks.
+  version: "2.0.0"
+  description: Payments, balances, Stripe Connect onboarding, .fair multi-party settlement, escrow, and webhooks. Runs as a kernel service at /{service}/api/... on a shared node domain.
 servers:
-  - url: https://pay.imajin.ai
-    description: production
-  - url: https://dev-pay.imajin.ai
-    description: dev
-  - url: http://localhost:7004
-    description: local
+  - url: https://{node}.imajin.ai/{service}
+    description: production node
+    variables:
+      node:
+        default: jin
+      service:
+        default: pay
+  - url: http://localhost:3000/{service}
+    description: local development
 
 tags:
   - name: pay
@@ -907,6 +910,44 @@ paths:
       responses:
         "200":
           description: Event received
+
+  /api/refund:
+    post:
+      tags: [pay]
+      operationId: refund
+      summary: Issue a refund for a transaction
+      description: Refund a charge or payment. Requires auth (cookieAuth or bearerAuth). May require internal service key for some refund types.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transactionId]
+              properties:
+                transactionId: { type: string }
+                amount: { type: number, description: "Partial refund amount (omit for full refund)" }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Refund issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refundId: { type: string }
+                  status: { type: string }
+        "400":
+          description: Invalid refund request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
 
   /api/spec:
     get:

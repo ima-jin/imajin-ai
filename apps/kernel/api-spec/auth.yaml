@@ -1,15 +1,18 @@
 openapi: "3.1.0"
 info:
   title: imajin auth
-  version: "1.0.0"
-  description: Identity registration, DID-based challenge-response authentication, session management, magic-link flows, attestations, and DFOS chain identity.
+  version: "2.0.0"
+  description: Identity registration, DID-based challenge-response authentication, session management, magic-link flows, attestations, and DFOS chain identity. Runs as a kernel service at /{service}/api/... on a shared node domain.
 servers:
-  - url: https://auth.imajin.ai
-    description: production
-  - url: https://dev-auth.imajin.ai
-    description: dev
-  - url: http://localhost:7001
-    description: local
+  - url: https://{node}.imajin.ai/{service}
+    description: production node
+    variables:
+      node:
+        default: jin
+      service:
+        default: auth
+  - url: http://localhost:3000/{service}
+    description: local development
 
 tags:
   - name: auth
@@ -1247,6 +1250,463 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /api/account/methods:
+    get:
+      tags: [auth]
+      operationId: getAccountMethods
+      summary: List auth methods available for the current account
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Available auth methods (password, totp, email-mfa, passkey, etc.)
+        "401":
+          description: Unauthorized
+
+  /api/devices:
+    get:
+      tags: [auth]
+      operationId: listDevices
+      summary: List registered devices for the current identity
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Device list
+        "401":
+          description: Unauthorized
+    post:
+      tags: [auth]
+      operationId: registerDevice
+      summary: Register a new device
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "201":
+          description: Device registered
+
+  /api/devices/{id}:
+    get:
+      tags: [auth]
+      operationId: getDevice
+      summary: Get a specific registered device
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Device details
+        "404":
+          description: Not found
+    delete:
+      tags: [auth]
+      operationId: deleteDevice
+      summary: Remove a registered device
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Device removed
+
+  /api/devices/trust:
+    post:
+      tags: [auth]
+      operationId: trustDevice
+      summary: Mark a device as trusted (extends session lifetime)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deviceId: { type: string }
+      responses:
+        "200":
+          description: Device trusted
+
+  /api/groups:
+    get:
+      tags: [auth]
+      operationId: listGroups
+      summary: List DID groups the current identity belongs to
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Group list
+    post:
+      tags: [auth]
+      operationId: createGroup
+      summary: Create a new DID group
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "201":
+          description: Group created
+
+  /api/groups/{groupDid}:
+    get:
+      tags: [auth]
+      operationId: getGroup
+      summary: Get a DID group by its DID
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: groupDid
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Group details
+        "404":
+          description: Not found
+    delete:
+      tags: [auth]
+      operationId: deleteGroup
+      summary: Delete a DID group
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: groupDid
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Group deleted
+
+  /api/groups/{groupDid}/controllers:
+    get:
+      tags: [auth]
+      operationId: listGroupControllers
+      summary: List controllers of a DID group
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: groupDid
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Controller list
+    post:
+      tags: [auth]
+      operationId: addGroupController
+      summary: Add a controller to a DID group
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: groupDid
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                controllerDid: { type: string }
+      responses:
+        "201":
+          description: Controller added
+
+  /api/groups/{groupDid}/controllers/{controllerDid}:
+    delete:
+      tags: [auth]
+      operationId: removeGroupController
+      summary: Remove a controller from a DID group
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: groupDid
+          in: path
+          required: true
+          schema: { type: string }
+        - name: controllerDid
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Controller removed
+
+  /api/identity/{did}/contact:
+    get:
+      tags: [auth]
+      operationId: getIdentityContact
+      summary: Get contact information for an identity
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Contact details
+        "404":
+          description: Not found
+
+  /api/keys/retrieve:
+    post:
+      tags: [auth]
+      operationId: retrieveKey
+      summary: Retrieve an encrypted key from secure storage
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                keyId: { type: string }
+      responses:
+        "200":
+          description: Encrypted key payload
+        "404":
+          description: Key not found
+
+  /api/keys/store:
+    post:
+      tags: [auth]
+      operationId: storeKey
+      summary: Store an encrypted key in secure key storage
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                keyId: { type: string }
+                encryptedKey: { type: string }
+      responses:
+        "200":
+          description: Key stored
+
+  /api/keys/stored:
+    get:
+      tags: [auth]
+      operationId: listStoredKeys
+      summary: List key IDs stored for the current identity
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: List of stored key IDs
+
+  /api/login/mfa:
+    post:
+      tags: [auth]
+      operationId: loginMfa
+      summary: Complete MFA step during login flow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string }
+                method: { type: string, enum: [totp, email] }
+      responses:
+        "200":
+          description: MFA verified, session established
+        "401":
+          description: Invalid MFA token
+
+  /api/mfa/email/setup:
+    post:
+      tags: [auth]
+      operationId: mfaEmailSetup
+      summary: Initiate email MFA setup — sends verification code
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+      responses:
+        "200":
+          description: Verification email sent
+
+  /api/mfa/email/verify-setup:
+    post:
+      tags: [auth]
+      operationId: mfaEmailVerifySetup
+      summary: Complete email MFA setup by verifying the code
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string }
+      responses:
+        "200":
+          description: Email MFA enabled
+        "400":
+          description: Invalid code
+
+  /api/mfa/email/send:
+    post:
+      tags: [auth]
+      operationId: mfaEmailSend
+      summary: Send an email MFA code (during login)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                did: { type: string }
+      responses:
+        "200":
+          description: Code sent
+
+  /api/mfa/email/disable:
+    post:
+      tags: [auth]
+      operationId: mfaEmailDisable
+      summary: Disable email MFA for the current identity
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Email MFA disabled
+
+  /api/mfa/totp/setup:
+    post:
+      tags: [auth]
+      operationId: mfaTotpSetup
+      summary: Initiate TOTP setup — returns QR code / secret
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: TOTP secret and QR code URI
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret: { type: string }
+                  qrUri: { type: string }
+
+  /api/mfa/totp/verify:
+    post:
+      tags: [auth]
+      operationId: mfaTotpVerify
+      summary: Verify TOTP code and enable TOTP MFA
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string }
+      responses:
+        "200":
+          description: TOTP enabled
+        "400":
+          description: Invalid token
+
+  /api/mfa/totp/challenge:
+    post:
+      tags: [auth]
+      operationId: mfaTotpChallenge
+      summary: Validate a TOTP code during login challenge flow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                did: { type: string }
+                token: { type: string }
+      responses:
+        "200":
+          description: Challenge passed
+        "401":
+          description: Invalid token
+
+  /api/mfa/totp/disable:
+    post:
+      tags: [auth]
+      operationId: mfaTotpDisable
+      summary: Disable TOTP MFA for the current identity
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: TOTP disabled
+
+  /api/onboard/generate:
+    post:
+      tags: [auth]
+      operationId: onboardGenerate
+      summary: Generate onboarding materials (keys, DID document) before registration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Generated onboarding data
+
+  /api/stored-keys:
+    get:
+      tags: [auth]
+      operationId: getStoredKeys
+      summary: Get stored key bundles for the current identity (legacy alias)
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Stored key bundles
 
   /api/spec:
     get:

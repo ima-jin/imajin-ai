@@ -1,15 +1,18 @@
 openapi: "3.1.0"
 info:
   title: imajin media
-  version: "1.0.0"
-  description: Asset upload and delivery with .fair access control, heuristic ML classification, virtual folder system, and thumbnail generation.
+  version: "2.0.0"
+  description: Asset upload and delivery with .fair access control, heuristic ML classification, virtual folder system, thumbnail generation, and transcription. Runs as a kernel service at /{service}/api/... on a shared node domain.
 servers:
-  - url: https://media.imajin.ai
-    description: production
-  - url: https://dev-media.imajin.ai
-    description: dev
-  - url: http://localhost:7009
-    description: local
+  - url: https://{node}.imajin.ai/{service}
+    description: production node
+    variables:
+      node:
+        default: jin
+      service:
+        default: media
+  - url: http://localhost:3000/{service}
+    description: local development
 
 components:
   securitySchemes:
@@ -721,5 +724,141 @@ paths:
                   assetIds: { type: array, items: { type: string } }
         "400":
           description: did is required
+        "401":
+          description: Unauthorized
+
+  /api/assets/{id}/og:
+    get:
+      tags: [media]
+      operationId: getAssetOg
+      summary: Get Open Graph metadata for an asset
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OG metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  title: { type: string }
+                  description: { type: string }
+                  imageUrl: { type: string }
+        "404":
+          description: Asset not found
+
+  /api/assets/{id}/transcribe:
+    post:
+      tags: [media]
+      operationId: transcribeAsset
+      summary: Trigger transcription for an audio/video asset
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Transcription queued or result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  transcript: { type: string, nullable: true }
+        "404":
+          description: Asset not found
+
+  /api/folders/{id}:
+    get:
+      tags: [media]
+      operationId: getFolder
+      summary: Get a virtual folder by ID
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Folder details with assets
+        "404":
+          description: Folder not found
+    patch:
+      tags: [media]
+      operationId: updateFolder
+      summary: Update folder metadata (name, description)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+      responses:
+        "200":
+          description: Folder updated
+    delete:
+      tags: [media]
+      operationId: deleteFolder
+      summary: Delete a virtual folder
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Folder deleted
+
+  /api/transcribe:
+    post:
+      tags: [media]
+      operationId: transcribeDirect
+      summary: Transcribe audio/video from a URL or uploaded data
+      description: Direct transcription endpoint — accepts a URL or multipart audio. Returns transcript text.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url: { type: string, description: "URL of audio/video to transcribe" }
+                assetId: { type: string, description: "Existing asset ID to transcribe" }
+      responses:
+        "200":
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transcript: { type: string }
+                  language: { type: string }
+        "400":
+          description: Missing url or assetId
         "401":
           description: Unauthorized

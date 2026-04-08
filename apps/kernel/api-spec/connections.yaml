@@ -1,15 +1,18 @@
 openapi: "3.1.0"
 info:
   title: imajin connections
-  version: "1.0.0"
-  description: Pod-based social graph — 2-person connection pods, invite codes, trust graph invites, pod management, and member/link operations.
+  version: "2.0.0"
+  description: Pod-based social graph — connections, invite codes, trust graph, group pods, nickname management. Runs as a kernel service at /{service}/api/... on a shared node domain.
 servers:
-  - url: https://connections.imajin.ai
-    description: production
-  - url: https://dev-connections.imajin.ai
-    description: dev
-  - url: http://localhost:7003
-    description: local
+  - url: https://{node}.imajin.ai/{service}
+    description: production node
+    variables:
+      node:
+        default: jin
+      service:
+        default: connections
+  - url: http://localhost:3000/{service}
+    description: local development
 
 components:
   securitySchemes:
@@ -140,6 +143,68 @@ paths:
                   disconnected: { type: boolean }
         "404":
           description: Not a member of this connection
+
+  /api/connections/{did}/nickname:
+    get:
+      tags: [connections]
+      operationId: getConnectionNickname
+      summary: Get the nickname set for a connection (by DID)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+          description: DID of the connected person
+      responses:
+        "200":
+          description: Nickname
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  nickname: { type: string, nullable: true }
+        "404":
+          description: Not found
+    put:
+      tags: [connections]
+      operationId: setConnectionNickname
+      summary: Set or update the nickname for a connection
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nickname: { type: string }
+      responses:
+        "200":
+          description: Nickname updated
+    delete:
+      tags: [connections]
+      operationId: deleteConnectionNickname
+      summary: Remove the nickname for a connection
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Nickname removed
 
   /api/connections/status/{did}:
     get:
@@ -949,6 +1014,32 @@ paths:
           description: Missing from or to params
         "401":
           description: Unauthorized
+
+  /api/nicknames/resolve:
+    get:
+      tags: [connections]
+      operationId: resolveNickname
+      summary: Resolve a DID to its nickname (as set by the current user)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: query
+          required: true
+          schema: { type: string }
+          description: DID to resolve nickname for
+      responses:
+        "200":
+          description: Nickname resolution result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  nickname: { type: string, nullable: true }
+        "400":
+          description: Missing did param
 
   /api/auth/session:
     get:

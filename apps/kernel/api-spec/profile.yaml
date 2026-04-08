@@ -1,15 +1,18 @@
 openapi: "3.1.0"
 info:
   title: imajin profile
-  version: "1.0.0"
-  description: Profile management, follow graph, presence, guest identity, handle availability, and media serving.
+  version: "2.0.0"
+  description: Profile management, follow graph, presence, guest identity, handle availability, forest group config, and media serving. Runs as a kernel service at /{service}/api/... on a shared node domain.
 servers:
-  - url: https://profile.imajin.ai
-    description: production
-  - url: https://dev-profile.imajin.ai
-    description: dev
-  - url: http://localhost:7005
-    description: local
+  - url: https://{node}.imajin.ai/{service}
+    description: production node
+    variables:
+      node:
+        default: jin
+      service:
+        default: profile
+  - url: http://localhost:3000/{service}
+    description: local development
 
 tags:
   - name: profile
@@ -839,3 +842,57 @@ paths:
       responses:
         "201":
           description: Registered
+
+  /api/forest/{groupDid}/config:
+    get:
+      tags: [profile]
+      operationId: getForestConfig
+      summary: Get forest group configuration
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: groupDid
+          in: path
+          required: true
+          schema: { type: string }
+          description: Forest group DID
+      responses:
+        "200":
+          description: Forest group config
+        "404":
+          description: Not found
+    put:
+      tags: [profile]
+      operationId: updateForestConfig
+      summary: Update forest group configuration
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: groupDid
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Config updated
+
+  /api/forest/{groupDid}/config/public:
+    get:
+      tags: [profile]
+      operationId: getForestConfigPublic
+      summary: Get the public portion of a forest group configuration (no auth required)
+      parameters:
+        - name: groupDid
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Public forest group config
+        "404":
+          description: Not found
