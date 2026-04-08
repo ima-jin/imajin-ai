@@ -67,7 +67,7 @@ export function PromoVideo() {
         <video
           ref={videoRef}
           src={getVideoSrc(assetId)}
-          className="w-full h-full rounded-xl object-cover bg-gray-900"
+          className="w-full h-full rounded-xl object-contain bg-gray-900"
           playsInline
           controls
           autoPlay
