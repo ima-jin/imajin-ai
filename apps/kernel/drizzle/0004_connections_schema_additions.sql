@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS connections.nicknames (
   PRIMARY KEY (did, target)
 );
 
--- Missing columns on invites
+-- Missing columns on invites (accumulated from forest sprint + kernel merge)
+ALTER TABLE connections.invites ADD COLUMN IF NOT EXISTS consumed_at TIMESTAMPTZ;
 ALTER TABLE connections.invites ADD COLUMN IF NOT EXISTS to_phone TEXT;
 ALTER TABLE connections.invites ADD COLUMN IF NOT EXISTS to_did TEXT;
 ALTER TABLE connections.invites ADD COLUMN IF NOT EXISTS delivery TEXT NOT NULL DEFAULT 'link';
