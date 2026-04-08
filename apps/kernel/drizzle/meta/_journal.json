@@ -29,6 +29,13 @@
       "when": 1744156800000,
       "tag": "0003_create_group_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1744156800001,
+      "tag": "0004_connections_schema_additions",
+      "breakpoints": true
     }
   ]
 }
