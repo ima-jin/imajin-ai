@@ -192,22 +192,33 @@ export function NavBar({
   const registryUrl = buildUrl('registry', servicePrefix, domain, serviceUrls);
   const launcherTier = getLauncherTier(identity);
 
-  // Fetch balance from pay service
+  // Fetch balance from pay service (scope-aware, re-fetches on scope switch)
   const [cashBalance, setCashBalance] = useState<number | null>(null);
   const [mjnBalance, setMjnBalance] = useState<number | null>(null);
+  const [scopeVersion, setScopeVersion] = useState(0);
+  useEffect(() => {
+    const handler = () => setScopeVersion(v => v + 1);
+    window.addEventListener('imajin:acting-as-changed', handler);
+    return () => window.removeEventListener('imajin:acting-as-changed', handler);
+  }, []);
   useEffect(() => {
     if (!identity?.isLoggedIn || !identity?.did) { setCashBalance(null); setMjnBalance(null); return; }
+    const actingAs = typeof window !== 'undefined' ? localStorage.getItem('imajin:acting-as') : null;
+    const effectiveDid = actingAs || identity.did;
     const payUrl = buildUrl('pay', servicePrefix, domain, serviceUrls);
-    fetch(`${payUrl}/api/balance/${encodeURIComponent(identity.did)}`, { credentials: 'include' })
+    fetch(`${payUrl}/api/balance/${encodeURIComponent(effectiveDid)}`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data) {
           setCashBalance(data.cashAmount != null ? parseFloat(data.cashAmount) : null);
           setMjnBalance(data.creditAmount != null ? parseFloat(data.creditAmount) : null);
+        } else {
+          setCashBalance(null);
+          setMjnBalance(null);
         }
       })
       .catch(() => {});
-  }, [identity?.isLoggedIn, identity?.did, servicePrefix, domain, serviceUrls]);
+  }, [identity?.isLoggedIn, identity?.did, servicePrefix, domain, serviceUrls, scopeVersion]);
 
   // Fetch unread message count from chat service
   const [unread, setUnread] = useState<number>(unreadMessages);
