@@ -1,10 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile, unlink, rename } from "fs/promises";
+import { readFile, unlink, rename, stat, open } from "fs/promises";
 import path from "path";
 import { db, assets } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
+import { createReadStream } from "fs";
 import type { FairManifest } from "@imajin/fair";
+
+/**
+ * Serve a file with HTTP Range support (needed for video seeking/scrubbing).
+ * Falls back to full response if no Range header is present.
+ */
+async function serveFileWithRange(
+  request: NextRequest,
+  filePath: string,
+  contentType: string,
+  extraHeaders?: Record<string, string>
+): Promise<NextResponse> {
+  const fileStat = await stat(filePath);
+  const fileSize = fileStat.size;
+  const rangeHeader = request.headers.get("range");
+
+  const headers = new Headers();
+  headers.set("Content-Type", contentType);
+  headers.set("Accept-Ranges", "bytes");
+  if (extraHeaders) {
+    for (const [k, v] of Object.entries(extraHeaders)) headers.set(k, v);
+  }
+
+  if (rangeHeader) {
+    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+    if (match) {
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+      const chunkSize = end - start + 1;
+
+      const fd = await open(filePath, "r");
+      const buffer = Buffer.alloc(chunkSize);
+      await fd.read(buffer, 0, chunkSize, start);
+      await fd.close();
+
+      headers.set("Content-Range", `bytes ${start}-${end}/${fileSize}`);
+      headers.set("Content-Length", String(chunkSize));
+
+      return new NextResponse(new Uint8Array(buffer), { status: 206, headers });
+    }
+  }
+
+  // No range — serve full file
+  const fileBuffer = await readFile(filePath);
+  headers.set("Content-Length", String(fileSize));
+  return new NextResponse(new Uint8Array(fileBuffer), { status: 200, headers });
+}
 import {
   VIDEO_QUALITIES,
   type VideoQuality,
@@ -131,14 +178,9 @@ export async function GET(
 
     if (await variantExists(asset.storagePath, quality)) {
       const variantPath = getVariantPath(asset.storagePath, quality);
-      const variantBuffer = await readFile(variantPath).catch(() => null);
-      if (variantBuffer) {
-        const variantHeaders = new Headers();
-        variantHeaders.set("Content-Type", "video/mp4");
-        variantHeaders.set("Cache-Control", "public, max-age=31536000, immutable");
-        variantHeaders.set("Content-Length", String(variantBuffer.length));
-        return new NextResponse(new Uint8Array(variantBuffer), { status: 200, headers: variantHeaders });
-      }
+      return serveFileWithRange(request, variantPath, "video/mp4", {
+        "Cache-Control": "public, max-age=31536000, immutable",
+      });
     }
 
     if (isTranscoding(asset.storagePath, quality)) {
@@ -187,11 +229,18 @@ export async function GET(
   headers.set("ETag", etag);
   headers.set("X-Fair-Access", accessType);
 
-  if (asset.mimeType.startsWith("video/")) {
+  // Video files: use Range-aware serving for seeking/scrubbing
+  if (asset.mimeType.startsWith("video/") && !isResized) {
     const variants = await getAvailableVariants(asset.storagePath);
     const transcoding = getTranscodingStatus(asset.storagePath);
-    headers.set("X-Variants", JSON.stringify(variants));
-    headers.set("X-Transcoding", JSON.stringify(transcoding));
+    const cacheControl = accessType === "public" ? "public, max-age=86400" : "private, max-age=3600";
+    return serveFileWithRange(request, asset.storagePath, outputMime, {
+      "ETag": etag,
+      "X-Fair-Access": accessType,
+      "X-Variants": JSON.stringify(variants),
+      "X-Transcoding": JSON.stringify(transcoding),
+      "Cache-Control": cacheControl,
+    });
   }
 
   if (accessType === "public") {
