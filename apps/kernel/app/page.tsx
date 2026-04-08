@@ -50,20 +50,20 @@ export default async function Home() {
   return (
     <main className="min-h-screen flex flex-col items-center px-6 py-16 bg-gray-950">
 
-      {/* PROMO VIDEO — hero */}
-      <PromoVideo />
-
-      {/* EMAIL CAPTURE — prominent, directly below video */}
-      <section className="mb-16 text-center">
-        <EmailCapture />
-      </section>
-
-      {/* LOGO + TAGLINE — secondary */}
+      {/* LOGO + TAGLINE */}
       <section className="flex flex-col items-center text-center mb-12">
         <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-2">
           <span className="text-3xl font-bold text-amber-500">人</span>
         </div>
         <p className="text-base text-gray-500">The sovereign browser.</p>
+      </section>
+
+      {/* PROMO VIDEO */}
+      <PromoVideo />
+
+      {/* EMAIL CAPTURE — directly below video */}
+      <section className="mb-16 text-center">
+        <EmailCapture />
       </section>
 
       {/* LAUNCHER GRID */}
