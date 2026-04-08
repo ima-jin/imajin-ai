@@ -4,9 +4,7 @@ import { remark } from 'remark';
 import remarkGfm from 'remark-gfm';
 import html from 'remark-html';
 
-const buildLogPath = fs.existsSync(path.join(process.cwd(), 'content/build-log.md'))
-  ? path.join(process.cwd(), 'content/build-log.md')
-  : path.join(process.cwd(), 'apps/www/content/build-log.md');
+const buildLogPath = path.join(process.cwd(), 'content/build-log.md');
 
 export interface BuildEntry {
   date: string;
