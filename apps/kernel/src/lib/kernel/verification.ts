@@ -1,7 +1,7 @@
 import { db } from '@/src/db';
 import { identities, attestations, connections } from '@/src/db';
 import { emitAttestation } from '@imajin/auth';
-import { eq, or, and, isNull } from 'drizzle-orm';
+import { eq, or, and, isNull, count, sql } from 'drizzle-orm';
 
 const platformDid = process.env.RELAY_DID || process.env.AUTH_DID || '';
 
@@ -86,9 +86,9 @@ export async function checkHardEligibility(did: string): Promise<void> {
   const fourWeeksAgo = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000);
   if (identity.handleClaimedAt > fourWeeksAgo) return;
 
-  // Check ≥25 active person connections
-  const personConnections = await db
-    .selectDistinct({ partnerDid: identities.id })
+  // Check ≥25 active person connections (SQL count, not JS)
+  const [{ total }] = await db
+    .select({ total: count() })
     .from(connections)
     .innerJoin(
       identities,
@@ -99,7 +99,7 @@ export async function checkHardEligibility(did: string): Promise<void> {
     )
     .where(and(isNull(connections.disconnectedAt), eq(identities.type, 'human')));
 
-  if (personConnections.length < 25) return;
+  if (total < 25) return;
 
   // Check ≥1 event.attendance attestation for this DID
   const [attendanceRow] = await db
