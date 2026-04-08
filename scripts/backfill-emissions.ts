@@ -126,9 +126,9 @@ async function main() {
         // Upsert balance
         await sql`
           INSERT INTO pay.balances (did, credit_amount, cash_amount, currency)
-          VALUES (${identity.id}, ${String(emission.amount)}, '0', 'MJN')
+          VALUES (${identity.id}, ${emission.amount}::numeric, 0::numeric, 'MJN')
           ON CONFLICT (did) DO UPDATE SET
-            credit_amount = (pay.balances.credit_amount::numeric + ${emission.amount})::text,
+            credit_amount = pay.balances.credit_amount + ${emission.amount}::numeric,
             updated_at = NOW()
         `;
 
