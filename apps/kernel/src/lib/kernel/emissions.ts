@@ -82,7 +82,7 @@ export const EMISSION_SCHEDULE: Record<string, EmissionSpec> = {
       { to: 'issuer', amount: '0.25%', reason: 'Sale reward' },
     ],
   },
-  'tip.received': {
+  'tip.granted': {
     gas: 0.001,
     emit: [
       { to: 'issuer', amount: 1, reason: 'Generosity reward' },
