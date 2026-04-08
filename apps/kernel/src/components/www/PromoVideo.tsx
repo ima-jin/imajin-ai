@@ -21,6 +21,7 @@ export function PromoVideo() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [interacted, setInteracted] = useState(false);
   const [showOverlay, setShowOverlay] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
@@ -35,17 +36,31 @@ export function PromoVideo() {
 
     const seen = localStorage.getItem(PROMO_SEEN_KEY) === 'true';
 
-    if (!seen) {
-      // First visit: autoplay muted
-      video.muted = true;
-      video.play().catch(() => {});
-      localStorage.setItem(PROMO_SEEN_KEY, 'true');
+    if (seen) {
+      // Returning visitor — start collapsed
+      setCollapsed(true);
+      return;
     }
-    // Returning visitors: video is visible but not autoplaying, overlay stays
+
+    // First visit: autoplay muted
+    video.muted = true;
+    video.play().catch(() => {});
   }, [assetId, src]);
 
-  if (!assetId) return null;
-  if (!src) return null;
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    function handleEnded() {
+      localStorage.setItem(PROMO_SEEN_KEY, 'true');
+      setCollapsed(true);
+    }
+
+    video.addEventListener('ended', handleEnded);
+    return () => video.removeEventListener('ended', handleEnded);
+  }, []);
+
+  if (!assetId || !src) return null;
 
   function handleOverlayClick() {
     const video = videoRef.current;
@@ -57,6 +72,35 @@ export function PromoVideo() {
     setInteracted(true);
   }
 
+  function handleWatchAgain() {
+    setCollapsed(false);
+    setShowOverlay(false);
+    setInteracted(true);
+    // Let the video element mount, then play
+    requestAnimationFrame(() => {
+      const video = videoRef.current;
+      if (!video) return;
+      video.muted = false;
+      video.currentTime = 0;
+      video.play().catch(() => {});
+    });
+  }
+
+  // Collapsed state — just a button
+  if (collapsed) {
+    return (
+      <section className="w-full max-w-4xl mx-auto mb-10 px-0 flex justify-center">
+        <button
+          onClick={handleWatchAgain}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/50 transition-colors text-sm"
+        >
+          <span className="text-lg">▶</span>
+          Watch the video
+        </button>
+      </section>
+    );
+  }
+
   return (
     <section className="w-full max-w-4xl mx-auto mb-10 px-0">
       <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
@@ -65,9 +109,8 @@ export function PromoVideo() {
           src={src}
           className="w-full h-full rounded-xl object-cover bg-gray-900"
           playsInline
-          loop={!interacted}
           controls={interacted}
-          preload="metadata"
+          preload="auto"
         />
 
         {/* Click-for-sound overlay */}
