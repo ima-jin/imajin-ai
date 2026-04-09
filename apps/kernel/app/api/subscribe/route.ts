@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, contacts, mailingLists, subscriptions } from '@/src/db';
 import { eq } from 'drizzle-orm';
+import { sendEmail } from '@imajin/email';
+import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-tokens';
+import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
 
 // Simple email validation
 function isValidEmail(email: string): boolean {
@@ -10,6 +13,19 @@ function isValidEmail(email: string): boolean {
 // Normalize email (lowercase, trim)
 function normalizeEmail(email: string): string {
   return email.toLowerCase().trim();
+}
+
+async function sendVerificationEmail(email: string, baseUrl: string): Promise<void> {
+  const expiresAt = verifyTokenExpiry();
+  const token = generateVerifyToken(email, expiresAt);
+  const verifyUrl = `${baseUrl}/api/subscribe/verify?email=${encodeURIComponent(email)}&token=${token}&expires=${expiresAt}`;
+
+  await sendEmail({
+    to: email,
+    subject: 'Confirm your email — Imajin',
+    html: verificationEmail(verifyUrl),
+    text: verificationEmailText(verifyUrl),
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -34,13 +50,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const baseUrl = new URL(request.url).origin;
+
     // Get or create the default mailing list
     let defaultList = await db.query.mailingLists.findFirst({
       where: eq(mailingLists.slug, 'updates'),
     });
 
     if (!defaultList) {
-      // Create default list if it doesn't exist
       const [newList] = await db.insert(mailingLists).values({
         slug: 'updates',
         name: 'Imajin Updates',
@@ -50,20 +67,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if contact already exists
-    let contact = await db.query.contacts.findFirst({
+    const contact = await db.query.contacts.findFirst({
       where: eq(contacts.email, email),
     });
 
     if (contact) {
-      // Check if already subscribed
       const existingSub = await db.query.subscriptions.findFirst({
         where: eq(subscriptions.contactId, contact.id),
       });
 
       if (existingSub && existingSub.status === 'subscribed') {
+        if (contact.isVerified) {
+          return NextResponse.json({
+            success: true,
+            status: 'already_subscribed',
+            message: "You're already on the list!",
+          });
+        }
+        // Subscribed but not yet verified — re-send verification
+        await sendVerificationEmail(email, baseUrl);
         return NextResponse.json({
           success: true,
-          message: 'You\'re already on the list!',
+          status: 'pending_verification',
+          message: 'Check your inbox to confirm your email',
         });
       }
 
@@ -82,22 +108,43 @@ export async function POST(request: NextRequest) {
           mailingListId: defaultList.id,
         });
       }
-    } else {
-      // Create new contact and subscription
-      const [newContact] = await db.insert(contacts).values({
-        email,
-        source,
-      }).returning();
 
-      await db.insert(subscriptions).values({
-        contactId: newContact.id,
-        mailingListId: defaultList.id,
+      if (contact.isVerified) {
+        return NextResponse.json({
+          success: true,
+          status: 'resubscribed',
+          message: "Welcome back! You're on the list.",
+        });
+      }
+
+      // Not verified — send verification email
+      await sendVerificationEmail(email, baseUrl);
+      return NextResponse.json({
+        success: true,
+        status: 'pending_verification',
+        message: 'Check your inbox to confirm your email',
       });
     }
 
+    // Create new contact (unverified) and subscription
+    const [newContact] = await db.insert(contacts).values({
+      email,
+      source,
+      isVerified: false,
+    }).returning();
+
+    await db.insert(subscriptions).values({
+      contactId: newContact.id,
+      mailingListId: defaultList.id,
+    });
+
+    // Send verification email
+    await sendVerificationEmail(email, baseUrl);
+
     return NextResponse.json({
       success: true,
-      message: 'You\'re on the list!',
+      status: 'pending_verification',
+      message: 'Check your inbox to confirm your email',
     });
 
   } catch (error) {

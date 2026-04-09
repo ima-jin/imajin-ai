@@ -151,6 +151,7 @@ export function LandingGrid() {
 export function EmailCapture() {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [subscribeStatus, setSubscribeStatus] = useState<string>('');
   const [message, setMessage] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
@@ -166,6 +167,7 @@ export function EmailCapture() {
       const data = await res.json();
       if (res.ok) {
         setStatus('done');
+        setSubscribeStatus(data.status || '');
         setMessage(data.message || "You're on the list!");
       } else {
         setStatus('error');
@@ -178,7 +180,15 @@ export function EmailCapture() {
   }
 
   if (status === 'done') {
-    return <p className="text-sm text-gray-500">{message}</p>;
+    const isPendingVerification = subscribeStatus === 'pending_verification';
+    return (
+      <div>
+        <p className="text-sm text-gray-400">{message}</p>
+        {isPendingVerification && (
+          <p className="text-xs text-gray-600 mt-1">Click the link in the email to confirm.</p>
+        )}
+      </div>
+    );
   }
 
   return (
