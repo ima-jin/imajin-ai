@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 
-export default function SubscribePage() {
+function SubscribeContent() {
   const searchParams = useSearchParams();
   const from = searchParams.get('from') || 'direct';
   const source = `subscribe-${from}`;
@@ -118,5 +118,17 @@ export default function SubscribePage() {
         No spam. Just meaningful updates about our progress toward sovereign infrastructure.
       </p>
     </main>
+  );
+}
+
+export default function SubscribePage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen flex items-center justify-center">
+        <p className="text-gray-500">Loading…</p>
+      </main>
+    }>
+      <SubscribeContent />
+    </Suspense>
   );
 }
