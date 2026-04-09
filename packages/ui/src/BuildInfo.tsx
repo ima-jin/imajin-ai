@@ -6,13 +6,15 @@ const WWW_URL = process.env.NEXT_PUBLIC_WWW_URL || "https://imajin.ai";
 export function BuildInfo() {
   const version = process.env.NEXT_PUBLIC_VERSION || "dev";
   const hash = process.env.NEXT_PUBLIC_BUILD_HASH || "local";
+  const commitCount = process.env.NEXT_PUBLIC_COMMIT_COUNT || "";
   const isDev = version === "dev" || version.includes("dev");
+  const display = commitCount ? `${version}+${commitCount}` : version;
   return (
     <a
       href={`${WWW_URL}/build`}
       className={`text-xs hover:underline ${isDev ? "text-yellow-600" : "text-gray-500"}`}
     >
-      imajin {version} · build {hash.slice(0, 7)}
+      imajin {display} · build {hash.slice(0, 7)}
     </a>
   );
 }

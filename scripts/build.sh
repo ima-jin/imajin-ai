@@ -104,7 +104,8 @@ echo "" >> "$REPORT"
 # Set build metadata for BuildInfo component
 export NEXT_PUBLIC_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "dev")
 export NEXT_PUBLIC_BUILD_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "local")
-echo "Build: imajin $NEXT_PUBLIC_VERSION · $NEXT_PUBLIC_BUILD_HASH" | tee -a "$REPORT"
+export NEXT_PUBLIC_COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "")
+echo "Build: imajin $NEXT_PUBLIC_VERSION+$NEXT_PUBLIC_COMMIT_COUNT · $NEXT_PUBLIC_BUILD_HASH" | tee -a "$REPORT"
 echo "" >> "$REPORT"
 
 for app in "${APPS[@]}"; do
