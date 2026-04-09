@@ -4,7 +4,7 @@ import { db, conversationsV2, conversationMembers } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { dmDid, conversationPath } from '@/src/lib/chat/conversation-did';
 
-const APP_URL = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3007';
+const APP_URL = process.env.NEXT_PUBLIC_CHAT_URL || process.env.APP_URL || 'http://localhost:3000/chat';
 
 function redirect(path: string) {
   return NextResponse.redirect(`${APP_URL}${path}`);
