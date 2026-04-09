@@ -12,7 +12,7 @@ MJN is a set of HTTP services that add identity, attribution, and payments to yo
 
 You interact with MJN the same way you interact with Stripe or Auth0 — by calling APIs.
 
-**The reference implementation** is 15 services running at `*.imajin.ai`:
+**The reference implementation** is 1 kernel (9 domains) + 6 federated apps running at `jin.imajin.ai`:
 
 | Service | URL | What It Does |
 |---------|-----|-------------|
@@ -365,7 +365,7 @@ npx ajv-cli validate -s node_modules/.fair/schema/fair.schema.json -d my-project
 - ✅ Cryptographic .fair signature verification at settlement
 - ✅ DFOS protocol bridge (key rotation, CID, countersignatures)
 - ✅ Federation registry
-- ✅ 15 services, self-hosted, ~120 registered identities
+- ✅ 1 kernel (9 domains) + 6 federated apps, self-hosted, ~135 registered identities
 - ✅ Postgres backups (hourly, local + NAS)
 
 ### Coming Next
@@ -414,4 +414,4 @@ Not yet. For now, it's direct HTTP calls. The OpenAPI specs at `/api/spec` can g
 
 *The whitepaper tells you why this matters. This guide tells you how it works. Start with `curl` and go from there.*
 
-*Updated March 21, 2026. 15 services, ~120 identities, 830+ commits.*
+*Updated April 8, 2026. 1 kernel (9 domains) + 6 federated apps, ~135 identities, 1,722 commits.*

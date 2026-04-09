@@ -231,7 +231,7 @@ At a growth-stage startup ($200K/yr fully loaded staff engineers):
 
 ---
 
-## What's Built (15 Services, 12 Shared Packages)
+## What's Built (1 Kernel + 6 Federated Apps, 12 Shared Packages)
 
 Kernel merge (Day 66–67): 9 core services consolidated into a single Next.js application. Userspace apps remain independent.
 

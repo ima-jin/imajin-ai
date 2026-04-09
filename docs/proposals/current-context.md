@@ -235,7 +235,7 @@ The fastest proposal-to-implementation turnaround in the project. P26 (DFOS Adop
 - Live at `dev-registry.imajin.ai/relay/`
 - P27 Decision #6 RESOLVED: relay ships with node, not optional
 
-**PR #457** — OpenAPI specs generated for all 15 services.
+**PR #457** — OpenAPI specs generated for all 15 service domains.
 
 ### P27 thesis adopted
 Build timeline: *"Greg's strongest architectural proposal yet. Core thesis adopted. One DID, not two. did:imajin becomes an alias (like DNS), the chain is canonical identity."*

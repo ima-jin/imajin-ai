@@ -21,7 +21,7 @@ The protocol is organized as a matrix of **four identity scopes** × **five prim
 
 Every problem the protocol solves is a cell in this matrix. Every service in this repo implements cells.
 
-7 apps. 50 days. $4,445 in API costs. 8.59M tokens. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
+1 kernel (9 domains) + 6 federated apps. 67 days. $5,940 in API costs. 15.77M tokens. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
 
 ```
 ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐

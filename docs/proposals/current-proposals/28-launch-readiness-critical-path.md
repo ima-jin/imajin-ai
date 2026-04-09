@@ -41,7 +41,7 @@
 **The demo proves:**
 - A complete sovereign transaction: ticket purchase → .fair attribution → multi-party settlement
 - Identity works across tiers (soft DID email buyer, hard DID organizer)
-- The JBOS architecture is real — 15 services, one flow
+- The JBOS architecture is real — 1 kernel + 6 federated apps, one flow
 - DFOS chain backing is live — identity is self-certifying, not just a database row
 
 **The demo does NOT prove (and shouldn't try to):**

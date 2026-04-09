@@ -21,7 +21,7 @@ Without the chains, each service is a dumb CRUD app. With the chains, they form 
 
 **Identity substrate:** [DFOS](https://protocol.dfos.com) by Brandon/Metalabel. Every `did:imajin` is anchored to a DFOS proof chain. The chain is canonical; `did:imajin` is a stable alias. MJN is Layer 6 — settlement, trust graph, attribution — on a cryptographic substrate.
 
-**Reference implementation:** 15 services at `*.imajin.ai`. ~120 registered identities. First demonstration: April 1, 2026.
+**Reference implementation:** 1 kernel (9 domains) + 6 federated apps at `jin.imajin.ai`. ~135 registered identities. First demonstration: April 1, 2026.
 
 ---
 
@@ -183,7 +183,7 @@ Federated registry at `registry.imajin.ai`. Nodes announce presence, operators, 
 
 ## Services
 
-15 services. All Next.js. All Postgres. All behind Caddy. All managed by pm2.
+1 kernel (9 domains) + 6 federated apps. All Next.js. All Postgres. All behind Caddy. All managed by pm2.
 
 | Service | URL | Role |
 |---------|-----|------|
