@@ -28,7 +28,7 @@ export function MarketItems({ did, handle, servicePrefix, domain }: MarketItemsP
   const [listings, setListings] = useState<Listing[] | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const marketBase = `${servicePrefix}market.${domain}`;
+  const marketBase = process.env.NEXT_PUBLIC_MARKET_URL || `${servicePrefix}market.${domain}`;
 
   useEffect(() => {
     fetch(`${marketBase}/api/listings?seller_did=${encodeURIComponent(did)}&status=active&limit=8`)

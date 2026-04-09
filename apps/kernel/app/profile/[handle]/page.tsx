@@ -334,7 +334,7 @@ export default async function ProfilePage({ params }: PageProps) {
           />
           {profile.featureToggles?.links && (
             <a
-              href={`${servicePrefix}links.${domain}/${profile.featureToggles.links}`}
+              href={`${process.env.NEXT_PUBLIC_LINKS_URL || `${servicePrefix}links.${domain}`}/${profile.featureToggles.links}`}
               className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-white text-sm font-medium"
             >
               🔗 Links
@@ -342,7 +342,7 @@ export default async function ProfilePage({ params }: PageProps) {
           )}
           {profile.featureToggles?.coffee && (
             <a
-              href={`${servicePrefix}coffee.${domain}/${profile.featureToggles.coffee}`}
+              href={`${process.env.NEXT_PUBLIC_COFFEE_URL || `${servicePrefix}coffee.${domain}`}/${profile.featureToggles.coffee}`}
               className="px-4 py-2 bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B] rounded-lg hover:bg-[#F59E0B]/20 transition border text-sm font-medium"
             >
               ☕ Tip Me

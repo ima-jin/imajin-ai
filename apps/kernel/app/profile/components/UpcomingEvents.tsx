@@ -40,7 +40,7 @@ function formatEventDate(startDate: string, endDate: string | null): string {
 export function UpcomingEvents({ did, servicePrefix, domain, viewerDid }: UpcomingEventsProps) {
   const [events, setEvents] = useState<AttendingEvent[] | null>(null);
 
-  const eventsBase = `${servicePrefix}events.${domain}`;
+  const eventsBase = process.env.NEXT_PUBLIC_EVENTS_URL || `${servicePrefix}events.${domain}`;
 
   useEffect(() => {
     const url = new URL(`${eventsBase}/api/attending/${encodeURIComponent(did)}`);
