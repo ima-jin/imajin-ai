@@ -199,8 +199,23 @@ export async function POST(request: NextRequest) {
   const storagePath = `${dirPath}/${assetId}${ext}`;
   const fairPath = `${dirPath}/${assetId}.fair.json`;
 
-  // .fair manifest — allow context to override access (public only)
-  const accessLevel = context?.access === "public" ? "public" : "private";
+  // .fair manifest — context-aware access and transfer rules
+  const app = context?.app;
+  let accessLevel: string;
+  let includeTransfer: boolean;
+  if (app === "chat") {
+    accessLevel = "public";
+    includeTransfer = false;
+  } else if (app === "market") {
+    accessLevel = "public";
+    includeTransfer = true;
+  } else if (app === "profile" || app === "events") {
+    accessLevel = "public";
+    includeTransfer = false;
+  } else {
+    accessLevel = "private";
+    includeTransfer = true;
+  }
   const chainProof = identity.chainVerified
     ? { verified: true, verifiedAt: new Date().toISOString() }
     : undefined;
@@ -212,8 +227,8 @@ export async function POST(request: NextRequest) {
     created: new Date().toISOString(),
     source: "upload",
     access: { type: accessLevel },
-    attribution: [{ did: ownerDid, role: "creator", share: 1.0, chainProof }],
-    transfer: { allowed: false },
+    attribution: [{ did: ownerDid, role: "creator", share: 1.0, ...(chainProof ? { chainProof } : {}) }],
+    ...(includeTransfer ? { transfer: { allowed: false } } : {}),
   };
 
   try {

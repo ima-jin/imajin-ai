@@ -41,7 +41,7 @@ export async function classifyAsset(
       category: "video",
       tags: ["video"],
       suggestedFolder: "Videos",
-      confidence: 0.6,
+      confidence: 0.5, // pure mime-type fallback
     };
   }
 
@@ -53,34 +53,35 @@ export async function classifyAsset(
       subcategory: isVoiceMemo ? "voice_memo" : "music",
       tags: isVoiceMemo ? ["audio", "voice-memo"] : ["audio", "music"],
       suggestedFolder: "Audio",
-      confidence: 0.6,
+      confidence: isVoiceMemo ? 0.7 : 0.5, // filename match vs pure mime
     };
   }
 
   // ── Documents ─────────────────────────────────────────────────────────────
-  if (
+  const isFilenameDoc = nameContains(filename, ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods");
+  const isMimeDoc =
     mimeType === "application/pdf" ||
     mimeType.startsWith("text/") ||
     mimeType.includes("word") ||
     mimeType.includes("spreadsheet") ||
     mimeType.includes("presentation") ||
-    mimeType.includes("opendocument") ||
-    nameContains(filename, ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods")
-  ) {
+    mimeType.includes("opendocument");
+
+  if (isMimeDoc || isFilenameDoc) {
     const isReceipt = nameContains(filename, "receipt", "invoice", "bill");
     if (isReceipt) {
       return {
         category: "receipt",
         tags: ["document", "receipt"],
         suggestedFolder: "Documents",
-        confidence: 0.6,
+        confidence: 0.7, // filename keyword match
       };
     }
     return {
       category: "document",
       tags: ["document"],
       suggestedFolder: "Documents",
-      confidence: 0.6,
+      confidence: isFilenameDoc ? 0.7 : 0.5, // filename match vs pure mime
     };
   }
 
@@ -92,7 +93,7 @@ export async function classifyAsset(
         category: "receipt",
         tags: ["photo", "receipt"],
         suggestedFolder: "Documents",
-        confidence: 0.6,
+        confidence: 0.7, // filename keyword match
       };
     }
 
@@ -102,13 +103,24 @@ export async function classifyAsset(
         category: "screenshot",
         tags: ["photo", "screenshot"],
         suggestedFolder: "Photos",
-        confidence: 0.6,
+        confidence: 0.7, // filename keyword match
       };
     }
 
-    // EXIF-based dimension checks
+    // EXIF-based checks
     try {
       const exif = await extractExif(buffer);
+
+      // Camera make/model present → high confidence real photo
+      if (exif?.camera) {
+        return {
+          category: "photo",
+          tags: ["photo"],
+          suggestedFolder: "Photos",
+          confidence: 0.9, // EXIF camera data
+        };
+      }
+
       if (exif?.width && exif?.height) {
         const key = `${exif.width}x${exif.height}`;
         const keyAlt = `${exif.height}x${exif.width}`;
@@ -117,7 +129,7 @@ export async function classifyAsset(
             category: "screenshot",
             tags: ["photo", "screenshot"],
             suggestedFolder: "Photos",
-            confidence: 0.6,
+            confidence: 0.5, // dimension-only heuristic
           };
         }
 
@@ -128,7 +140,7 @@ export async function classifyAsset(
             category: "receipt",
             tags: ["photo", "receipt"],
             suggestedFolder: "Documents",
-            confidence: 0.6,
+            confidence: 0.5, // dimension-only heuristic
           };
         }
       }
@@ -140,7 +152,7 @@ export async function classifyAsset(
       category: "photo",
       tags: ["photo"],
       suggestedFolder: "Photos",
-      confidence: 0.6,
+      confidence: 0.5, // pure mime-type fallback
     };
   }
 

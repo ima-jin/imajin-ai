@@ -20,6 +20,7 @@ export function useFileUpload(): UseFileUploadResult {
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('context', JSON.stringify({ app: 'chat', feature: 'message', access: 'public' }));
       const res = await fetch(`${mediaUrl}/api/assets`, {
         method: 'POST',
         body: formData,
