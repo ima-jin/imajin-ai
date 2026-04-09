@@ -75,7 +75,7 @@ export default function RootLayout({
           <NavBarWithUnread currentService="Home" />
           {children}
         </Providers>
-        <BugReportWidget />
+
       </body>
     </html>
   );

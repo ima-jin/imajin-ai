@@ -4,6 +4,7 @@ import { getClient } from '@imajin/db';
 import { SERVICES } from '@imajin/config';
 import { LandingGrid, EmailCapture } from '@/src/components/www/LandingGrid';
 import { PromoVideo } from '@/src/components/www/PromoVideo';
+import { BugReportButton } from '@/src/components/www/bug-report-button';
 
 // Revalidate stats every 15 minutes (ISR)
 export const revalidate = 900;
@@ -75,6 +76,7 @@ export default async function Home() {
       <footer className="mt-auto pt-4 pb-8">
         <ImajinFooter />
       </footer>
+      <BugReportButton />
     </main>
   );
 }
