@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ImajinFooter } from '@imajin/ui';
 
 export default function APIPage() {
   const endpoints = [
@@ -126,8 +127,8 @@ export default function APIPage() {
         </div>
       </div>
 
-      <div className="mt-8 text-center text-gray-500 dark:text-gray-400">
-        <p>Part of the <a href="https://imajin.ai" className="text-orange-500 hover:underline">Imajin</a> sovereign network</p>
+      <div className="mt-8">
+        <ImajinFooter />
       </div>
     </div>
   );

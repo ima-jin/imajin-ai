@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getAllArticleSlugs, getArticleBySlug } from '@/src/lib/www/articles';
+import { ImajinFooter } from '@imajin/ui';
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -75,14 +76,9 @@ export default async function ArticlePage({ params }: Props) {
           dangerouslySetInnerHTML={{ __html: article.contentHtml }}
         />
 
-        {/* CTA */}
+        {/* Footer */}
         <div className="mt-16 pt-8 border-t border-gray-800 not-prose">
-          <Link
-            href="/register"
-            className="inline-block px-8 py-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors"
-          >
-            Get Updates
-          </Link>
+          <ImajinFooter />
         </div>
       </article>
     </main>

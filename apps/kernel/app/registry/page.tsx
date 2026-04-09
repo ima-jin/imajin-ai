@@ -1,3 +1,5 @@
+import { ImajinFooter } from '@imajin/ui';
+
 export default function Home() {
   return (
     <div className="max-w-2xl mx-auto text-center">
@@ -49,14 +51,7 @@ export default function Home() {
         </p>
       </div>
 
-      <div className="text-gray-500 text-sm">
-        <p>Part of the <a href="https://imajin.ai" className="text-[#F59E0B] hover:underline">Imajin</a> sovereign stack</p>
-        <p className="mt-2">
-          <a href="https://github.com/ima-jin/imajin-ai" className="hover:underline text-gray-400">GitHub</a>
-          {' · '}
-          <a href="https://docs.imajin.ai" className="hover:underline text-gray-400">Docs</a>
-        </p>
-      </div>
+      <ImajinFooter />
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useIdentity } from './context/IdentityContext';
+import { ImajinFooter } from '@imajin/ui';
 
 export default function Home() {
   const { isLoggedIn, handle, did } = useIdentity();
@@ -57,8 +58,8 @@ export default function Home() {
         </p>
       </div>
 
-      <div className="mt-12 text-gray-500 text-sm">
-        <p>Part of the <a href="https://imajin.ai" className="text-[#F59E0B] hover:underline">Imajin</a> sovereign stack</p>
+      <div className="mt-12">
+        <ImajinFooter />
       </div>
     </div>
   );

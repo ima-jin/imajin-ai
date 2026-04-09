@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { ImajinFooter } from '@imajin/ui';
 
 interface ServiceCheck {
   name: string;
@@ -183,11 +184,9 @@ export default function HealthPage() {
           <p>
             Imajin services status page. Auto-refreshes every 30 seconds.
           </p>
-          <p className="mt-2">
-            <Link href="/register" className="text-orange-400 hover:text-orange-300">
-              Get notified of updates →
-            </Link>
-          </p>
+        </div>
+        <div className="mt-8">
+          <ImajinFooter />
         </div>
       </div>
     </main>
