@@ -320,6 +320,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
                     action="purchase a ticket"
                     onIdentity={() => window.location.reload()}
                     requireVerification={true}
+                    authUrl={process.env.NEXT_PUBLIC_AUTH_URL}
                   >
                     <TicketPurchase
                       eventId={eventId}
