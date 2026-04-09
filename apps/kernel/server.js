@@ -22,7 +22,7 @@ app.prepare().then(() => {
   const server = createServer((req, res) => {
     const parsedUrl = parse(req.url, true);
     // Don't let Next.js handle WebSocket upgrade path
-    if (parsedUrl.pathname === '/ws') {
+    if (parsedUrl.pathname === '/ws' || parsedUrl.pathname === '/chat/ws') {
       res.writeHead(426, { 'Content-Type': 'text/plain' });
       res.end('Upgrade Required');
       return;

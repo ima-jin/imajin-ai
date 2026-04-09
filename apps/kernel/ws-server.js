@@ -36,7 +36,7 @@ async function authenticateWithCookie(req) {
 async function authenticateToken(cookieName, token) {
   const port = process.env.PORT || '3000';
   try {
-    const res = await fetch(`http://localhost:${port}/api/session`, {
+    const res = await fetch(`http://localhost:${port}/auth/api/session`, {
       headers: { Cookie: `${cookieName}=${token}` },
     });
     if (!res.ok) return null;
@@ -54,7 +54,7 @@ async function authenticateToken(cookieName, token) {
 async function authenticateWsToken(token) {
   const port = process.env.PORT || '3000';
   try {
-    const res = await fetch(`http://localhost:${port}/api/ws-token/validate`, {
+    const res = await fetch(`http://localhost:${port}/chat/api/ws-token/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token }),
@@ -74,7 +74,7 @@ async function authenticateWsToken(token) {
 async function updateLastSeen(did) {
   try {
     const port = process.env.PORT || '3000';
-    await fetch(`http://localhost:${port}/api/presence/update`, {
+    await fetch(`http://localhost:${port}/profile/api/presence/update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ did, lastSeenAt: new Date().toISOString() }),
@@ -162,7 +162,7 @@ function broadcastToConversation(conversationId, payload, excludeDid = null) {
 async function broadcastPresenceChange(did, isOnline) {
   try {
     const port = process.env.PORT || '3000';
-    const res = await fetch(`http://localhost:${port}/api/participants/${encodeURIComponent(did)}/conversations`);
+    const res = await fetch(`http://localhost:${port}/chat/api/participants/${encodeURIComponent(did)}/conversations`);
     if (!res.ok) return;
     const data = await res.json();
     const conversationIds = data.conversationIds || [];
@@ -190,7 +190,7 @@ function setupWebSocket(server) {
     const { pathname } = new URL(req.url, `http://${req.headers.host}`);
     const safePath = pathname.replace(/[\r\n\x00-\x1f\x7f]/g, '').substring(0, 100);
     console.log('[WS] Upgrade request for:', safePath);
-    if (pathname !== '/ws') {
+    if (pathname !== '/ws' && pathname !== '/chat/ws') {
       socket.destroy();
       return;
     }
