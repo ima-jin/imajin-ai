@@ -372,7 +372,7 @@ export async function POST(request: NextRequest) {
         const [connDidA, connDidB] = [inviteData.fromDid, identity.id].sort((a, b) => a.localeCompare(b));
         await db.insert(connections).values({ didA: connDidA, didB: connDidB }).onConflictDoNothing();
 
-        const now = new Date();
+        const now = new Date().toISOString();
         await db
           .update(invites)
           .set({

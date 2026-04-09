@@ -38,7 +38,7 @@ export async function POST(
   }
 
   // Check expiry for email invites
-  if (invite.expiresAt && invite.expiresAt < new Date()) {
+  if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
     await db
       .update(invites)
       .set({ status: 'expired' })
@@ -98,7 +98,7 @@ export async function POST(
     .update(invites)
     .set({
       status: 'accepted',
-      acceptedAt: now,
+      acceptedAt: now.toISOString(),
       usedCount: sql`${invites.usedCount} + 1`,
       consumedBy: session.did,
       toDid: session.did,
