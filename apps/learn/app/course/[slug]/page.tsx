@@ -252,6 +252,7 @@ export default function CourseDetailPage() {
                 action={isDeck ? `view "${course.title}"` : `enroll in "${course.title}"`}
                 redirectUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/course/${slug}?enroll=1`}
                 onIdentity={() => handleEnroll()}
+                authUrl={process.env.NEXT_PUBLIC_AUTH_URL}
               >
                 <button
                   disabled={enrolling}

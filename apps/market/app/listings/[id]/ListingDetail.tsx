@@ -553,6 +553,7 @@ export default function ListingDetail() {
               <OnboardGate
                 action={isRental ? 'rent this item' : 'purchase this item'}
                 onIdentity={() => handleBuyNow()}
+                authUrl={process.env.NEXT_PUBLIC_AUTH_URL}
               >
                 <div className="flex flex-col gap-2">
                   <button
