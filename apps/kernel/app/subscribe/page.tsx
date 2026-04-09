@@ -29,7 +29,13 @@ export default function SubscribePage() {
 
       if (res.ok) {
         setStatus('success');
-        setMessage(data.message || "You're on the list!");
+        setMessage(
+          data.status === 'pending_verification'
+            ? 'Check your inbox to confirm your email.'
+            : data.status === 'already_subscribed'
+            ? "You're already on the list!"
+            : data.message || "You're on the list!"
+        );
         setEmail('');
       } else {
         setStatus('error');
@@ -97,7 +103,7 @@ export default function SubscribePage() {
               disabled={status === 'loading'}
               className="w-full px-4 py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-500/50 text-white font-medium rounded-lg transition-colors"
             >
-              {status === 'loading' ? 'Subscribing...' : 'Notify Me'}
+              {status === 'loading' ? 'Subscribing...' : 'Subscribe'}
             </button>
           </div>
 
