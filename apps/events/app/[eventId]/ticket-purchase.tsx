@@ -22,7 +22,7 @@ interface ETransferInstructions {
   message: string;
 }
 
-type Step = 'button' | 'selector' | 'loading-card' | 'etransfer-confirm' | 'loading-etransfer' | 'etransfer-done';
+type Step = 'button' | 'selector' | 'loading-card' | 'etransfer-confirm' | 'loading-etransfer' | 'etransfer-done' | 'rsvp-form' | 'loading-rsvp' | 'rsvp-done';
 
 export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false }: Props) {
   const [step, setStep] = useState<Step>('button');
@@ -30,6 +30,8 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
   const [etransfer, setEtransfer] = useState<ETransferInstructions | null>(null);
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+
+  const isFree = ticket.price === 0;
 
   const available = ticket.quantity === null
     ? 'Unlimited'
@@ -106,6 +108,46 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
     }
   };
 
+  const handleFreeRsvp = async (withEmail?: boolean) => {
+    setStep('loading-rsvp');
+    setError(null);
+
+    try {
+      const response = await apiFetch('/api/checkout/free', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          eventId,
+          ticketTypeId: ticket.id,
+          ...(inviteToken && { invite: inviteToken }),
+          ...(withEmail && email && { email: email.trim() }),
+          ...(withEmail && name && { name: name.trim() }),
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        if (response.status === 409) {
+          // Already has a ticket — treat as success
+          setStep('rsvp-done');
+          return;
+        }
+        if (response.status === 400 && data.error?.includes('email')) {
+          // Not logged in, need email — show form
+          setStep('rsvp-form');
+          return;
+        }
+        throw new Error(data.error || 'RSVP failed');
+      }
+
+      setStep('rsvp-done');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setStep(isFree ? 'rsvp-form' : 'button');
+    }
+  };
+
   const formatPrice = (cents: number, currency: string) => {
     return new Intl.NumberFormat('en-CA', {
       style: 'currency',
@@ -123,6 +165,67 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
       timeZoneName: 'short',
     });
   };
+
+  if (step === 'rsvp-done') {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-green-500 text-xl">✅</span>
+        <span className="font-semibold text-green-600 dark:text-green-400">You&apos;re in!</span>
+      </div>
+    );
+  }
+
+  if (step === 'rsvp-form' || step === 'loading-rsvp') {
+    return (
+      <div className="w-full max-w-md rounded-xl border border-orange-500/30 bg-orange-500/5 dark:bg-orange-500/10 p-5 space-y-4">
+        <h3 className="font-semibold text-base">📬 RSVP — {eventTitle}</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          Enter your details to reserve your free spot.
+        </p>
+        <div className="space-y-2">
+          <input
+            type="text"
+            placeholder="Your name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={step === 'loading-rsvp'}
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
+          />
+          <input
+            type="email"
+            placeholder="Your email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={step === 'loading-rsvp'}
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
+          />
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleFreeRsvp(true)}
+            disabled={step === 'loading-rsvp' || !email.includes('@')}
+            className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${
+              step === 'loading-rsvp'
+                ? 'bg-orange-400 text-white cursor-wait'
+                : !email.includes('@')
+                ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                : 'bg-orange-500 text-white hover:bg-orange-600'
+            }`}
+          >
+            {step === 'loading-rsvp' ? 'Confirming...' : 'Confirm RSVP'}
+          </button>
+          <button
+            onClick={() => { setStep('button'); setError(null); }}
+            disabled={step === 'loading-rsvp'}
+            className="px-3 py-2.5 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition disabled:opacity-50"
+          >
+            Back
+          </button>
+        </div>
+        {error && <p className="text-red-500 text-xs">{error}</p>}
+      </div>
+    );
+  }
 
   if (soldOut) {
     return (
@@ -271,16 +374,32 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
   }
 
   // Default: 'button' step
+  const handleButtonClick = () => {
+    if (isFree) {
+      // Try RSVP directly if logged in, otherwise show email form
+      handleFreeRsvp(false).catch(() => setStep('rsvp-form'));
+    } else if (etransferEnabled) {
+      setStep('selector');
+    } else {
+      handleCardPayment();
+    }
+  };
+
   return (
     <>
       {error && (
         <p className="text-red-500 text-xs mb-2">{error}</p>
       )}
       <button
-        onClick={() => etransferEnabled ? setStep('selector') : handleCardPayment()}
-        className="px-6 md:px-8 py-2.5 md:py-3 rounded-lg font-semibold transition whitespace-nowrap bg-orange-500 text-white hover:bg-orange-600"
+        onClick={handleButtonClick}
+        disabled={(step as string) === 'loading-rsvp'}
+        className={`px-6 md:px-8 py-2.5 md:py-3 rounded-lg font-semibold transition whitespace-nowrap ${
+          (step as string) === 'loading-rsvp'
+            ? 'bg-orange-400 text-white cursor-wait'
+            : 'bg-orange-500 text-white hover:bg-orange-600'
+        }`}
       >
-        Get Ticket
+        {(step as string) === 'loading-rsvp' ? 'Confirming...' : isFree ? 'RSVP' : 'Get Ticket'}
       </button>
     </>
   );

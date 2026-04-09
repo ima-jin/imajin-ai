@@ -89,7 +89,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
               : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
           }`}
         >
-          🛒 Buy More Tickets
+          {tickets.every(t => t.price === 0) ? '🎫 Get More Tickets' : '🛒 Buy More Tickets'}
         </button>
       </div>
 
