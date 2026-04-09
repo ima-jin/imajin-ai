@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, profiles, invitesInConnections as invites, podsInConnections as pods, podMembersInConnections as podMembers, connections } from '@/src/db';
+import { db, identities, profiles, invitesInConnections as invites, podsInConnections as pods, podMembersInConnections as podMembers, connections, contacts, mailingLists, subscriptions } from '@/src/db';
 import { eq, or, sql } from 'drizzle-orm';
 import { didFromPublicKey, verifySignature } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
@@ -7,6 +7,9 @@ import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { generateId } from '@/src/lib/kernel/utils';
 import { emitAttestation } from '@imajin/auth';
 import { notify } from '@imajin/notify';
+import { sendEmail } from '@imajin/email';
+import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-tokens';
+import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
 
 /**
  * POST /api/register
@@ -264,6 +267,85 @@ export async function POST(request: NextRequest) {
     } catch (err) {
       console.error('Profile creation failed (non-fatal):', err);
       // Non-fatal — user can still use the platform, profile can be created later
+    }
+
+    // Subscribe to mailing list if opted in — fire and forget, non-fatal
+    if (optInUpdates && email && typeof email === 'string' && email.trim()) {
+      (async () => {
+        try {
+          const normalizedEmail = email.toLowerCase().trim();
+          const baseUrl = process.env.WWW_URL || process.env.NEXT_PUBLIC_URL || new URL(request.url).origin;
+
+          // Get or create the default mailing list
+          let defaultList = await db.query.mailingLists.findFirst({
+            where: eq(mailingLists.slug, 'updates'),
+          });
+          if (!defaultList) {
+            const [newList] = await db.insert(mailingLists).values({
+              slug: 'updates',
+              name: 'Imajin Updates',
+              description: 'Progress updates on sovereign infrastructure',
+            }).returning();
+            defaultList = newList;
+          }
+
+          // Check for existing contact
+          const existingContact = await db.query.contacts.findFirst({
+            where: eq(contacts.email, normalizedEmail),
+          });
+
+          if (existingContact) {
+            const existingSub = await db.query.subscriptions.findFirst({
+              where: eq(subscriptions.contactId, existingContact.id),
+            });
+            if (!existingSub) {
+              await db.insert(subscriptions).values({
+                contactId: existingContact.id,
+                mailingListId: defaultList.id,
+              });
+            } else if (existingSub.status !== 'subscribed') {
+              await db.update(subscriptions)
+                .set({ status: 'subscribed', subscribedAt: new Date(), unsubscribedAt: null })
+                .where(eq(subscriptions.id, existingSub.id));
+            }
+            if (!existingContact.isVerified) {
+              const expiresAt = verifyTokenExpiry();
+              const token = generateVerifyToken(normalizedEmail, expiresAt);
+              const verifyUrl = `${baseUrl}/api/subscribe/verify?email=${encodeURIComponent(normalizedEmail)}&token=${token}&expires=${expiresAt}`;
+              await sendEmail({
+                to: normalizedEmail,
+                subject: 'Confirm your email — Imajin',
+                html: verificationEmail(verifyUrl),
+                text: verificationEmailText(verifyUrl),
+              });
+            }
+          } else {
+            // Create contact and subscription, then send verification email
+            const [newContact] = await db.insert(contacts).values({
+              email: normalizedEmail,
+              source: 'register',
+              isVerified: false,
+            }).returning();
+
+            await db.insert(subscriptions).values({
+              contactId: newContact.id,
+              mailingListId: defaultList.id,
+            });
+
+            const expiresAt = verifyTokenExpiry();
+            const token = generateVerifyToken(normalizedEmail, expiresAt);
+            const verifyUrl = `${baseUrl}/api/subscribe/verify?email=${encodeURIComponent(normalizedEmail)}&token=${token}&expires=${expiresAt}`;
+            await sendEmail({
+              to: normalizedEmail,
+              subject: 'Confirm your email — Imajin',
+              html: verificationEmail(verifyUrl),
+              text: verificationEmailText(verifyUrl),
+            });
+          }
+        } catch (err) {
+          console.error('[register] Mailing list subscription failed (non-fatal):', err);
+        }
+      })().catch((err) => console.error('[register] Mailing list subscription setup error:', err));
     }
 
     // Auto-accept the invite (create the connection)
