@@ -1,6 +1,6 @@
 # Build Cost Estimate — Imajin Platform
 
-*Generated 2026-03-14 · Updated 2026-03-30 with COCOMO II + issue-based validation*
+*Generated 2026-03-14 · Updated 2026-04-08 (Day 67) with current LOC, issues, and spend*
 
 ---
 
@@ -8,36 +8,45 @@
 
 | Metric | Traditional | Actual |
 |--------|------------|--------|
-| **Cost** | **$2,421,134** | **$93,237** |
-| **Timeline** | 16.3 months | 57 days |
-| **Team** | 8.5 people | 1 person + AI |
-| **Hours** | 21,029 | 440 |
-| **Cost multiplier** | — | **26× cheaper** |
-| **Speed multiplier** | — | **8.7× faster** |
-| **Hour multiplier** | — | **48× fewer hours** |
+| **Cost** | **$2,460,150** | **$107,940** |
+| **Timeline** | 16.4 months | 67 days |
+| **Team** | 8.6 people | 1 person + AI |
+| **Hours** | 21,368 | 510 |
+| **Cost multiplier** | — | **23× cheaper** |
+| **Speed multiplier** | — | **7.4× faster** |
+| **Hour multiplier** | — | **42× fewer hours** |
 
 ### Actual Cost Breakdown
 
 | Item | Amount |
 |------|--------|
-| AI tokens consumed | 10,509,741 |
-| AI/API inference spend | $5,237.27 |
-| Human hours (440h @ $200/hr) | $88,000.00 |
-| **Total** | **$93,237.27** |
+| AI tokens consumed | 15,766,859 |
+| AI/API inference spend | $5,939.75 |
+| Human hours (510h @ $200/hr) | $102,000.00 |
+| **Total** | **$107,939.75** |
+
+### AI Spend by Month
+
+| Month | Tokens | Spend |
+|-------|-------:|------:|
+| February | 2,823,029 | $1,101.65 |
+| March | 10,684,829 | $4,194.97 |
+| April (1–8) | 2,259,001 | $643.13 |
+| **Total** | **15,766,859** | **$5,939.75** |
 
 ### Token Efficiency
 
 | Metric | Value |
 |--------|-------|
-| Tokens consumed | 10.51M |
-| Lines of code produced | 131,997 |
-| **Tokens per line of code** | **~80** |
-| Issues closed | 257 |
-| **Tokens per issue** | **~40,894** |
+| Tokens consumed | 15.77M |
+| Lines of code produced | 127,704 |
+| **Tokens per line of code** | **~123** |
+| Issues closed | 378 |
+| **Tokens per issue** | **~41,711** |
 | Services shipped | 15 |
-| **Tokens per service** | **~701K** |
+| **Tokens per service** | **~1,051K** |
 
-10.51 million tokens is the raw computational effort — every architectural decision, code review, debug session, and refactor. At traditional rates, the equivalent human thinking time would be ~21,029 hours of senior engineering work.
+15.77 million tokens is the raw computational effort — every architectural decision, code review, debug session, and refactor. At traditional rates, the equivalent human thinking time would be ~21,368 hours of senior engineering work.
 
 ---
 
@@ -49,16 +58,20 @@ The Constructive Cost Model II is the industry standard for estimating software 
 
 | Language | Files | Blank | Comment | Code |
 |----------|------:|------:|--------:|-----:|
-| TypeScript | 699 | 9,489 | 6,456 | 69,027 |
-| Markdown | 184 | 11,132 | 30 | 25,127 |
-| YAML | 22 | 2,755 | 2 | 22,563 |
-| JSON | 64 | 0 | 0 | 12,211 |
-| JavaScript | 28 | 100 | 99 | 701 |
-| Shell | 8 | 97 | 71 | 407 |
-| SQL | 15 | 38 | 56 | 226 |
-| CSS | 7 | 20 | 4 | 119 |
-| Other (SVG, XML, Text) | 10 | 427 | 2 | 1,616 |
-| **Total** | **1,037** | **24,058** | **6,720** | **131,997** |
+| TypeScript | 716 | 9,891 | 6,873 | 73,253 |
+| Markdown | 191 | 12,164 | 30 | 26,961 |
+| YAML | 21 | 2,788 | 2 | 23,233 |
+| Text | 4 | 426 | 0 | 1,454 |
+| JSON | 49 | 0 | 0 | 1,352 |
+| JavaScript | 18 | 111 | 94 | 782 |
+| Shell | 8 | 99 | 78 | 419 |
+| XML | 1 | 0 | 0 | 118 |
+| CSS | 4 | 7 | 1 | 57 |
+| SVG | 5 | 1 | 2 | 44 |
+| SQL | 3 | 10 | 10 | 31 |
+| **Total** | **1,020** | **25,497** | **7,090** | **127,704** |
+
+*Note: Total LOC decreased from 131,997 (Day 57) despite adding 4,226 lines of TypeScript. The kernel merge (PR #631, -40,732 lines) consolidated 9 apps into 1, eliminating duplicate layouts, configs, and boilerplate. The codebase is more compact but delivers more functionality.*
 
 ### COCOMO II Weighting
 
@@ -66,13 +79,13 @@ Not all lines are equal. COCOMO weights by type:
 
 | Category | Raw SLOC | Weight | Effective SLOC |
 |----------|------:|-------:|------:|
-| Source code (TS/JS/SQL/CSS/Shell) | 70,480 | 1.0× | 70,480 |
-| Config (JSON/YAML) | 34,774 | 0.3× | 10,432 |
-| Documentation (MD) | 25,127 | 0.2× | 5,025 |
+| Source code (TS/JS/SQL/CSS/Shell) | 74,542 | 1.0× | 74,542 |
+| Config (JSON/YAML) | 24,585 | 0.3× | 7,376 |
+| Documentation (MD) | 26,961 | 0.2× | 5,392 |
 | Other (Text/XML/SVG) | 1,616 | 0.1× | 162 |
-| **Total** | **131,997** | — | **86,099** |
+| **Total** | **127,704** | — | **87,472** |
 
-**Effective KSLOC: 86.1**
+**Effective KSLOC: 87.5**
 
 ### COCOMO II Parameters
 
@@ -97,7 +110,7 @@ Not all lines are equal. COCOMO weights by type:
 | Analyst Capability | Very High | 0.85 | 30 years systems architecture |
 | Programmer Capability | High | 0.88 | AI-augmented development |
 | Personnel Continuity | Very High | 0.81 | Solo builder, zero turnover |
-| Application Experience | Very High | 0.81 | 57 days deep in domain, strong pattern library |
+| Application Experience | Very High | 0.81 | 67 days deep in domain, strong pattern library |
 | Platform Experience | High | 0.91 | Years on Node/Next.js/Postgres |
 | Language Experience | High | 0.91 | Years of TypeScript |
 | Tool Usage | Very High | 0.78 | AI coding agents, modern toolchain |
@@ -107,19 +120,19 @@ Not all lines are equal. COCOMO weights by type:
 
 | Metric | Value |
 |--------|-------|
-| Effort | 138.4 person-months |
-| Hours | 21,029 |
-| Duration | 16.3 months |
-| Average team size | 8.5 people |
+| Effort | 140.6 person-months |
+| Hours | 21,368 |
+| Duration | 16.4 months |
+| Average team size | 8.6 people |
 
 ### Cost at Market Rates
 
 | Rate Tier | Annual | Fully Loaded (1.4×) | Project Cost |
 |-----------|-------:|--------------------:|-------------:|
-| Mid-level ($120K) | $120,000 | $168,000 | $1,936,907 |
-| **Blended ($150K)** | **$150,000** | **$210,000** | **$2,421,134** |
-| Senior ($160K) | $160,000 | $224,000 | $2,582,543 |
-| Staff ($200K) | $200,000 | $280,000 | $3,228,179 |
+| Mid-level ($120K) | $120,000 | $168,000 | $1,968,120 |
+| **Blended ($150K)** | **$150,000** | **$210,000** | **$2,460,150** |
+| Senior ($160K) | $160,000 | $224,000 | $2,624,190 |
+| Staff ($200K) | $200,000 | $280,000 | $3,280,190 |
 
 *Fully loaded = salary × 1.4 (benefits, equipment, tools, office, management overhead)*
 
@@ -127,50 +140,50 @@ Not all lines are equal. COCOMO weights by type:
 
 ## Angle 2: Issue-Based Estimate (Delivered Work)
 
-257 closed GitHub issues, tiered by complexity using title, labels, and scope signals.
+378 closed GitHub issues, tiered by complexity using title, labels, and scope signals.
 
 ### Tiering Model
 
 | Tier | Hours | Equivalent | Count | Total Hours |
 |------|------:|------------|------:|------------:|
-| Epic | 160h | 4 weeks | 6 | 960 |
-| Large | 80h | 2 weeks | 44 | 3,520 |
-| Medium | 40h | 1 week | 189 | 7,560 |
-| Small | 16h | 2 days | 16 | 256 |
-| Trivial | 4h | ½ day | 2 | 8 |
-| **Total** | | | **257** | **12,304** |
+| Epic | 160h | 4 weeks | 9 | 1,440 |
+| Large | 80h | 2 weeks | 65 | 5,200 |
+| Medium | 40h | 1 week | 278 | 11,120 |
+| Small | 16h | 2 days | 23 | 368 |
+| Trivial | 4h | ½ day | 3 | 12 |
+| **Total** | | | **378** | **18,140** |
 
 ### Delivered Work Cost
 
 | Metric | Value |
 |--------|-------|
-| Total hours | 12,304 |
-| Cost (fully loaded @ $150K/yr) | $1,414,960 |
-| Timeline (3-person team) | 29.3 months |
+| Total hours | 18,140 |
+| Cost (fully loaded @ $150K/yr) | $2,086,100 |
+| Timeline (3-person team) | 39.8 months |
 
 ---
 
 ## Angle 3: Issue-Based Estimate (Scoped Roadmap)
 
-130 open GitHub issues with defined scope — the work ahead.
+77 open GitHub issues with defined scope — the work ahead. Reduced from 130 after an issue cleanup: ~30 ice-boxed, remaining pruned for redundancy.
 
 ### Tiering Breakdown
 
 | Tier | Hours | Count | Total Hours |
 |------|------:|------:|------------:|
-| Epic | 160h | 24 | 3,840 |
-| Large | 80h | 29 | 2,320 |
-| Medium | 40h | 70 | 2,800 |
+| Epic | 160h | 12 | 1,920 |
+| Large | 80h | 18 | 1,440 |
+| Medium | 40h | 40 | 1,600 |
 | Small | 16h | 7 | 112 |
-| **Total** | | **130** | **9,072** |
+| **Total** | | **77** | **5,072** |
 
 ### Scoped Roadmap Cost
 
 | Metric | Value |
 |--------|-------|
-| Total hours | 9,072 |
-| Cost (fully loaded @ $150K/yr) | $1,043,280 |
-| Timeline (3-person team) | 21.6 months |
+| Total hours | 5,072 |
+| Cost (fully loaded @ $150K/yr) | $583,280 |
+| Timeline (3-person team) | 12.1 months |
 
 ---
 
@@ -180,13 +193,14 @@ Three independent estimates converge:
 
 | Method | Delivered | Scoped | Total |
 |--------|----------|--------|-------|
-| **COCOMO II** (code-based) | — | — | **$2,421,134** |
-| **Issue-based** (delivered + scoped) | $1,414,960 | $1,043,280 | **$2,458,240** |
+| **COCOMO II** (code-based) | — | — | **$2,460,150** |
+| **Issue-based** (delivered + scoped) | $2,086,100 | $583,280 | **$2,669,380** |
 
-The issue-based total ($2.46M) is close to COCOMO ($2.42M) because:
-- Heuristic tiering underestimates multi-day "medium" tickets
-- COCOMO includes overhead (PM, QA, meetings, ramp-up) that issues don't capture
-- Issues don't account for infrastructure work not tracked in tickets
+The issue-based total ($2.67M) runs slightly higher than COCOMO ($2.46M) because:
+- The kernel merge consolidated code but the issues still represent the work done to build, test, and integrate each feature
+- COCOMO measures code-in-repo; issue-based measures work-delivered including deleted/refactored code
+- Growth-stage issues (epics #602, #615, #581) represent larger coordinated efforts than early medium tickets
+- Both estimates exclude the 40,732 lines removed in the kernel merge that were written, tested, and shipped before consolidation
 
 ---
 
@@ -194,17 +208,17 @@ The issue-based total ($2.46M) is close to COCOMO ($2.42M) because:
 
 | | Traditional (COCOMO II) | AI-Augmented (Actual) |
 |--|------------------------|----------------------|
-| **Cost** | $2,421,134 | $93,237 |
-| **Timeline** | 16.3 months | 57 days |
-| **Team** | 8.5 people | 1 person + AI |
-| **Hours** | 21,029 | 440 |
+| **Cost** | $2,460,150 | $107,940 |
+| **Timeline** | 16.4 months | 67 days |
+| **Team** | 8.6 people | 1 person + AI |
+| **Hours** | 21,368 | 510 |
 | | | |
-| **Cost ratio** | — | **26× cheaper** |
-| **Speed ratio** | — | **8.7× faster** |
-| **Hour ratio** | — | **48× fewer hours** |
+| **Cost ratio** | — | **23× cheaper** |
+| **Speed ratio** | — | **7.4× faster** |
+| **Hour ratio** | — | **42× fewer hours** |
 | | | |
-| **Scoped ahead** | $1,043,280 (130 tickets) | At current pace: weeks |
-| **Total platform value** | **~$3.5M** (built + scoped) | — |
+| **Scoped ahead** | $583,280 (77 tickets) | At current pace: weeks |
+| **Total platform value** | **~$3.0M** (built + scoped) | — |
 
 ### At Growth Company Rates
 
@@ -212,45 +226,48 @@ At a growth-stage startup ($200K/yr fully loaded staff engineers):
 
 | Metric | Value |
 |--------|-------|
-| COCOMO estimate | $3,228,179 |
-| Cost multiplier vs actual | **35× cheaper** |
+| COCOMO estimate | $3,280,190 |
+| Cost multiplier vs actual | **30× cheaper** |
 
 ---
 
-## What's Built (15 Services Live)
+## What's Built (15 Services, 12 Shared Packages)
 
-| Service | URL | Status |
-|---------|-----|--------|
-| www | imajin.ai | ✅ Live |
-| auth | auth.imajin.ai | ✅ Live |
-| pay | pay.imajin.ai | ✅ Live |
-| profile | profile.imajin.ai | ✅ Live |
-| registry | registry.imajin.ai | ✅ Live |
-| events | events.imajin.ai | ✅ Live |
-| chat | chat.imajin.ai | ✅ Live |
-| connections | connections.imajin.ai | ✅ Live |
-| media | media.imajin.ai | ✅ Live |
-| notify | notify.imajin.ai | ✅ Live |
-| learn | learn.imajin.ai | ✅ Live |
-| coffee | coffee.imajin.ai | ✅ Live |
-| dykil | dykil.imajin.ai | ✅ Live |
-| links | links.imajin.ai | ✅ Live |
-| market | market.imajin.ai | ✅ Live |
+Kernel merge (Day 66–67): 9 core services consolidated into a single Next.js application. Userspace apps remain independent.
 
-Plus 11 shared packages: `@imajin/db`, `@imajin/ui`, `@imajin/fair`, `@imajin/chat`, `@imajin/config`, `@imajin/auth`, `@imajin/llm`, `@imajin/media`, `@imajin/notify`, `@imajin/dfos`, `@imajin/input`
+| Service | URL | Architecture |
+|---------|-----|-------------|
+| www | jin.imajin.ai | Kernel |
+| auth | jin.imajin.ai/auth | Kernel |
+| pay | jin.imajin.ai/pay | Kernel |
+| profile | jin.imajin.ai/profile | Kernel |
+| registry | jin.imajin.ai/registry | Kernel |
+| chat | jin.imajin.ai/chat | Kernel |
+| connections | jin.imajin.ai/connections | Kernel |
+| media | jin.imajin.ai/media | Kernel |
+| notify | jin.imajin.ai/notify | Kernel |
+| events | jin.imajin.ai/events | Userspace |
+| learn | jin.imajin.ai/learn | Userspace |
+| coffee | jin.imajin.ai/coffee | Userspace |
+| dykil | jin.imajin.ai/dykil | Userspace |
+| links | jin.imajin.ai/links | Userspace |
+| market | jin.imajin.ai/market | Userspace |
+
+Shared packages: `@imajin/db`, `@imajin/ui`, `@imajin/fair`, `@imajin/chat`, `@imajin/config`, `@imajin/auth`, `@imajin/llm`, `@imajin/media`, `@imajin/notify`, `@imajin/dfos`, `@imajin/input`, `@imajin/trust-graph`
 
 ---
 
 ## Methodology
 
-- **LOC count:** `cloc v2.06` excluding node_modules, .next, dist, build, .turbo, coverage, drizzle
+- **LOC count:** `cloc v1.98` excluding node_modules, .next, dist, build, .turbo, coverage, drizzle, .pnpm
 - **COCOMO model:** COCOMO II Post-Architecture, constants A=2.94, B=0.91, C=3.67
 - **Fully loaded rate:** Salary × 1.4 (industry standard for benefits + overhead)
 - **Issue tiering:** Heuristic classification by title keywords, labels, and scope signals
 - **Human rate:** $200/hr (senior/staff contractor rate, Toronto market)
-- **AI spend:** Cumulative API costs across all inference providers as of 2026-03-30
-- **Calendar days:** 57 (Feb 1 → Mar 30, 2026)
-- **Human hours:** 440 (total days minus 13 rest days × 10h/day)
+- **AI spend:** Cumulative API costs across all inference providers, by month
+- **Calendar days:** 67 (Feb 1 → Apr 8, 2026)
+- **Days with commits:** 57
+- **Human hours:** 510 (67 days minus rest days, ~8h/day average)
 
 ---
 
