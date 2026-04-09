@@ -68,7 +68,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     if (!pod.conversationDid) {
       const [updated] = await db
         .update(pods)
-        .set({ conversationDid: body.conversationDid, updatedAt: new Date() })
+        .set({ conversationDid: body.conversationDid, updatedAt: new Date().toISOString() })
         .where(eq(pods.id, params.id))
         .returning();
       return NextResponse.json({ pod: updated });
@@ -77,7 +77,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 
   // All other updates require ownership
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  const updates: Record<string, unknown> = { updatedAt: new Date().toISOString() };
   if (body.name !== undefined) updates.name = body.name.trim();
   if (body.description !== undefined) updates.description = body.description?.trim() || null;
   if (body.conversationDid !== undefined) updates.conversationDid = body.conversationDid;

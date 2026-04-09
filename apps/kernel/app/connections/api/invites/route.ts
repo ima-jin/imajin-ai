@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
 
     const code = randomBytes(12).toString('hex');
     const id = generateId('inv_');
-    const expiresAt = new Date(now.getTime() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+    const expiresAtDate = new Date(now.getTime() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
     const [invite] = await db.insert(invites).values({
       id,
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       delivery: 'email',
       status: 'pending',
       maxUses: 1,
-      expiresAt,
+      expiresAt: expiresAtDate.toISOString(),
     }).returning();
 
     const inviteUrl = `${buildPublicUrl('connections')}/invite/${session.did}/${code}`;
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
         inviterHandle,
         inviteUrl,
         note: note || undefined,
-        expiresAt: expiresAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+        expiresAt: expiresAtDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
       }),
     }).catch((err: unknown) => {
       console.error('Failed to send invite email:', err);

@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
   }
 
   const id = generateId('pod_');
-  const now = new Date();
+  const now = new Date().toISOString();
 
   const [pod] = await db.insert(pods).values({
     id,

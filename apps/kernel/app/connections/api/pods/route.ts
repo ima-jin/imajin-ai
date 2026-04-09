@@ -27,7 +27,7 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const id = generateId('pod_');
-  const now = new Date();
+  const now = new Date().toISOString();
   const effectiveDid = auth.identity.actingAs || auth.identity.id;
 
   const [pod] = await db.insert(pods).values({

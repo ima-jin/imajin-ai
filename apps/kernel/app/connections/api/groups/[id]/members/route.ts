@@ -33,7 +33,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     did: body.did,
     role: 'member',
     addedBy: session.did,
-    joinedAt: new Date(),
+    joinedAt: new Date().toISOString(),
   }).returning();
 
   if (session.chainVerified) {
@@ -108,7 +108,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 
   const [removed] = await db
     .update(podMembers)
-    .set({ removedAt: new Date() })
+    .set({ removedAt: new Date().toISOString() })
     .where(and(eq(podMembers.podId, params.id), eq(podMembers.did, body.did)))
     .returning();
 

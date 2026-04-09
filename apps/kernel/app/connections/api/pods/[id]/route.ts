@@ -26,7 +26,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   const body = await request.json();
   const [updated] = await db
     .update(pods)
-    .set({ ...body, updatedAt: new Date() })
+    .set({ ...body, updatedAt: new Date().toISOString() })
     .where(and(eq(pods.id, params.id), eq(pods.ownerDid, effectiveDid)))
     .returning();
 

@@ -13,7 +13,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     parentPodId: params.id,
     childPodId: body.childPodId,
     linkedBy: auth.identity.id,
-    linkedAt: new Date(),
+    linkedAt: new Date().toISOString(),
   }).returning();
 
   return NextResponse.json({ link }, { status: 201 });
@@ -27,7 +27,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
 
   const [unlinked] = await db
     .update(podLinks)
-    .set({ unlinkedAt: new Date() })
+    .set({ unlinkedAt: new Date().toISOString() })
     .where(and(eq(podLinks.parentPodId, params.id), eq(podLinks.childPodId, body.childPodId)))
     .returning();
 
