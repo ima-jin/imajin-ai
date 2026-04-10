@@ -89,7 +89,10 @@ export async function POST(
   await db.insert(connections).values({
     didA: connDidA,
     didB: connDidB,
-  }).onConflictDoNothing();
+  }).onConflictDoUpdate({
+    target: [connections.didA, connections.didB],
+    set: { disconnectedAt: null, connectedAt: new Date() },
+  });
 
   const now = new Date();
 

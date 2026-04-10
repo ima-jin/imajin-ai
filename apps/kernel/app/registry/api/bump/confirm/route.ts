@@ -112,7 +112,12 @@ export async function POST(request: NextRequest) {
         ]);
 
         const [connDidA, connDidB] = [didA, didB].sort((a, b) => a.localeCompare(b));
-        await db.insert(connections).values({ didA: connDidA, didB: connDidB }).onConflictDoNothing();
+        // Insert or reconnect (clear disconnected_at if previously disconnected)
+        await db.insert(connections).values({ didA: connDidA, didB: connDidB })
+          .onConflictDoUpdate({
+            target: [connections.didA, connections.didB],
+            set: { disconnectedAt: null, connectedAt: new Date() },
+          });
 
         await db.update(bumpMatches)
           .set({ connectionId: podId })
