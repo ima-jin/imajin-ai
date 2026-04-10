@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, modules, lessons } from '@/db/schema';
 import { requireHardDID } from '@imajin/auth';
+import { getClient } from '@imajin/db';
+import { buildFairManifest } from '@imajin/fair';
 import { generateId, slugify, jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and, sql, desc } from 'drizzle-orm';
 
@@ -36,8 +38,39 @@ export async function POST(request: NextRequest) {
     return errorResponse('A course with this slug already exists', 409);
   }
 
+  // Load node config and optional scope config for fair manifest
+  const rawSql = getClient();
+  const [relayRow] = await rawSql`
+    SELECT node_fee_bps, buyer_credit_bps, node_operator_did
+    FROM relay.relay_config
+    WHERE id = 'singleton'
+    LIMIT 1
+  `;
+  const scopeDid = identity.actingAs || null;
+  let scopeFeeBps: number | null = null;
+  if (scopeDid) {
+    const [forestRow] = await rawSql`
+      SELECT scope_fee_bps
+      FROM profile.forest_config
+      WHERE group_did = ${scopeDid}
+      LIMIT 1
+    `;
+    scopeFeeBps = forestRow?.scope_fee_bps ?? null;
+  }
+  const courseId = generateId('crs');
+  const fairManifest = buildFairManifest({
+    creatorDid: did,
+    contentDid: courseId,
+    contentType: 'course',
+    scopeDid,
+    scopeFeeBps,
+    nodeFeeBps: relayRow?.node_fee_bps ?? undefined,
+    buyerCreditBps: relayRow?.buyer_credit_bps ?? undefined,
+    nodeOperatorDid: relayRow?.node_operator_did ?? undefined,
+  });
+
   const course = {
-    id: generateId('crs'),
+    id: courseId,
     creatorDid: did,
     title: title.trim(),
     description: description?.trim() || null,
@@ -48,7 +81,7 @@ export async function POST(request: NextRequest) {
     imageUrl: imageUrl || null,
     imageAssetId: imageAssetId || null,
     tags: tags || [],
-    metadata: metadata || {},
+    metadata: { ...(metadata || {}), fair: fairManifest },
     status: 'draft' as const,
   };
 

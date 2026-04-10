@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, events, ticketTypes } from '@/src/db';
 import { requireHardDID, emitAttestation } from '@imajin/auth';
+import { getClient } from '@imajin/db';
+import { buildFairManifest } from '@imajin/fair';
 import { and, asc, desc, eq, gt } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 
@@ -85,19 +87,37 @@ export async function POST(request: NextRequest) {
     const regData = await regRes.json();
     const eventDid = regData.did;
 
+    // Load node config and optional scope config for fair manifest
+    const sql = getClient();
+    const [relayRow] = await sql`
+      SELECT node_fee_bps, buyer_credit_bps, node_operator_did
+      FROM relay.relay_config
+      WHERE id = 'singleton'
+      LIMIT 1
+    `;
+    const scopeDid = identity.actingAs || null;
+    let scopeFeeBps: number | null = null;
+    if (scopeDid) {
+      const [forestRow] = await sql`
+        SELECT scope_fee_bps
+        FROM profile.forest_config
+        WHERE group_did = ${scopeDid}
+        LIMIT 1
+      `;
+      scopeFeeBps = forestRow?.scope_fee_bps ?? null;
+    }
+
     // Auto-generate .fair attribution manifest
-    const PLATFORM_DID = process.env.PLATFORM_DID || 'did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213';
-    const PLATFORM_FEE = parseFloat(process.env.PLATFORM_FEE || '0.015'); // 1.5%
-    const fairManifest = {
-      version: '0.2.0',
-      chain: [
-        { did: eventDid, role: 'event', share: 1 - PLATFORM_FEE },
-        { did: PLATFORM_DID, role: 'platform', share: PLATFORM_FEE },
-      ],
-      distributions: [
-        { did, role: 'creator', share: 1.0 },
-      ],
-    };
+    const fairManifest = buildFairManifest({
+      creatorDid: did,
+      contentDid: eventDid,
+      contentType: 'event',
+      scopeDid,
+      scopeFeeBps,
+      nodeFeeBps: relayRow?.node_fee_bps ?? undefined,
+      buyerCreditBps: relayRow?.buyer_credit_bps ?? undefined,
+      nodeOperatorDid: relayRow?.node_operator_did ?? undefined,
+    });
 
     // Create event
     const [event] = await db.insert(events).values({

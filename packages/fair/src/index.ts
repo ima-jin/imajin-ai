@@ -18,3 +18,17 @@ export { signManifest, verifyManifest, platformSign, verifyPlatformSignature } f
 export { FairAccordion } from './components/FairAccordion';
 export { FairEditor } from './components/FairEditor';
 export type { FairEditorProps } from './components/FairEditor';
+
+export {
+  PROTOCOL_FEE_BPS,
+  PROTOCOL_DID,
+  NODE_FEE_MIN_BPS,
+  NODE_FEE_MAX_BPS,
+  NODE_FEE_DEFAULT_BPS,
+  BUYER_CREDIT_MIN_BPS,
+  BUYER_CREDIT_MAX_BPS,
+  BUYER_CREDIT_DEFAULT_BPS,
+} from './constants';
+
+export { buildFairManifest } from './buildManifest';
+export type { FairFeeManifest } from './buildManifest';

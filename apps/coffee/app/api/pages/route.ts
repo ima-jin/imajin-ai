@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { db, coffeePages } from '@/db';
 import { requireAuth } from '@imajin/auth';
+import { getClient } from '@imajin/db';
+import { buildFairManifest } from '@imajin/fair';
 import { jsonResponse, errorResponse, isValidHandle, generateId } from '@/lib/utils';
 
 /**
@@ -68,6 +70,36 @@ export async function POST(request: NextRequest) {
       return errorResponse('Handle is already taken', 409);
     }
 
+    // Load node config and optional scope config for fair manifest
+    const rawSql = getClient();
+    const [relayRow] = await rawSql`
+      SELECT node_fee_bps, buyer_credit_bps, node_operator_did
+      FROM relay.relay_config
+      WHERE id = 'singleton'
+      LIMIT 1
+    `;
+    const scopeDid = identity.actingAs || null;
+    let scopeFeeBps: number | null = null;
+    if (scopeDid) {
+      const [forestRow] = await rawSql`
+        SELECT scope_fee_bps
+        FROM profile.forest_config
+        WHERE group_did = ${scopeDid}
+        LIMIT 1
+      `;
+      scopeFeeBps = forestRow?.scope_fee_bps ?? null;
+    }
+    const fairManifest = buildFairManifest({
+      creatorDid: did,
+      contentDid: did,
+      contentType: 'coffee_page',
+      scopeDid,
+      scopeFeeBps,
+      nodeFeeBps: relayRow?.node_fee_bps ?? undefined,
+      buyerCreditBps: relayRow?.buyer_credit_bps ?? undefined,
+      nodeOperatorDid: relayRow?.node_operator_did ?? undefined,
+    });
+
     // Create page
     const [page] = await db.insert(coffeePages).values({
       id: generateId('page'),
@@ -84,6 +116,7 @@ export async function POST(request: NextRequest) {
       allowCustomAmount: allowCustomAmount !== false,
       allowMessages: allowMessages !== false,
       isPublic: true,
+      fairManifest,
     }).returning();
 
     return jsonResponse(page, 201);
