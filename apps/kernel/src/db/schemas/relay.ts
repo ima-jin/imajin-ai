@@ -79,6 +79,9 @@ export const relayConfig = relaySchema.table('relay_config', {
   id: text('id').primaryKey().default('singleton'),
   did: text('did').notNull(),
   profileArtifactJws: text('profile_artifact_jws').notNull(),
+  nodeFeeBps: integer('node_fee_bps').default(50),
+  buyerCreditBps: integer('buyer_credit_bps').default(25),
+  nodeOperatorDid: text('node_operator_did'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 

@@ -4,6 +4,8 @@ import { requireAuth, getSession, emitAttestation } from '@imajin/auth';
 import { notify } from '@imajin/notify';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
 import { resolveMediaRef } from '@imajin/media';
+import { getClient } from '@imajin/db';
+import { buildFairManifest } from '@imajin/fair';
 import { eq, ilike, and, desc, asc, sql, ne } from 'drizzle-orm';
 
 const VALID_SELLER_TIERS = ['public_offplatform', 'public_onplatform', 'trust_gated'] as const;
@@ -67,8 +69,39 @@ export async function POST(request: NextRequest) {
 
     const did = identity.actingAs || identity.id;
 
+    // Load node config and optional scope config for fair manifest
+    const rawSql = getClient();
+    const [relayRow] = await rawSql`
+      SELECT node_fee_bps, buyer_credit_bps, node_operator_did
+      FROM relay.relay_config
+      WHERE id = 'singleton'
+      LIMIT 1
+    `;
+    const scopeDid = identity.actingAs || null;
+    let scopeFeeBps: number | null = null;
+    if (scopeDid) {
+      const [forestRow] = await rawSql`
+        SELECT scope_fee_bps
+        FROM profile.forest_config
+        WHERE group_did = ${scopeDid}
+        LIMIT 1
+      `;
+      scopeFeeBps = forestRow?.scope_fee_bps ?? null;
+    }
+    const listingId = generateId('lst');
+    const fairManifest = buildFairManifest({
+      creatorDid: did,
+      contentDid: listingId,
+      contentType: 'listing',
+      scopeDid,
+      scopeFeeBps,
+      nodeFeeBps: relayRow?.node_fee_bps ?? undefined,
+      buyerCreditBps: relayRow?.buyer_credit_bps ?? undefined,
+      nodeOperatorDid: relayRow?.node_operator_did ?? undefined,
+    });
+
     const [listing] = await db.insert(listings).values({
-      id: generateId('lst'),
+      id: listingId,
       sellerDid: did,
       title,
       description: description || null,
@@ -86,6 +119,7 @@ export async function POST(request: NextRequest) {
       type: type || 'sale',
       showContactInfo: showContactInfo ?? false,
       expiresAt: expiresAt ? new Date(expiresAt) : null,
+      fairManifest,
     }).returning();
 
     // Fire and forget — never block the response

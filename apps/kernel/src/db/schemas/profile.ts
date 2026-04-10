@@ -77,6 +77,7 @@ export const forestConfig = profileSchema.table('forest_config', {
   enabledServices: text('enabled_services').array().notNull().default([]),
   landingService: text('landing_service'),
   theme: jsonb('theme').default({}),
+  scopeFeeBps: integer('scope_fee_bps').default(25),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

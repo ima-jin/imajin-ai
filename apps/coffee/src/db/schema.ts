@@ -22,6 +22,8 @@ export const coffeePages = coffeeSchema.table('pages', {
   allowCustomAmount: boolean('allow_custom_amount').default(true),
   allowMessages: boolean('allow_messages').default(true),
   isPublic: boolean('is_public').default(true),
+  // SQL: ALTER TABLE coffee.pages ADD COLUMN IF NOT EXISTS fair_manifest JSONB;
+  fairManifest: jsonb('fair_manifest'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
