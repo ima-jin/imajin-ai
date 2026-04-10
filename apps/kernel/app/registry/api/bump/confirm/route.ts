@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { requireAuth, emitAttestation } from '@imajin/auth';
-import { db, bumpSessions, bumpMatches, pods, podMembers, connections, profiles } from '@/src/db';
+import { db, bumpSessions, bumpMatches, pods, podMembers, connections, profiles, nodes } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { notifyBumpDid } from '@/src/lib/registry/bump-notify';
@@ -95,12 +95,20 @@ export async function POST(request: NextRequest) {
         const didA = sessionA.did;
         const didB = sessionB.did;
         const podId = generateId('pod');
-        const labelA = didA.slice(0, 16);
-        const labelB = didB.slice(0, 16);
+
+        // Look up profiles for labels + node for provenance
+        const [profileA] = await db.select().from(profiles).where(eq(profiles.did, didA)).limit(1);
+        const [profileB] = await db.select().from(profiles).where(eq(profiles.did, didB)).limit(1);
+        const [node] = await db.select().from(nodes).where(eq(nodes.id, match.nodeId)).limit(1);
+
+        const labelA = profileA?.handle || profileA?.displayName || didA.slice(0, 16);
+        const labelB = profileB?.handle || profileB?.displayName || didB.slice(0, 16);
+        const nodeName = node?.hostname || match.nodeId;
 
         await db.insert(pods).values({
           id: podId,
           name: `${labelA} ↔ ${labelB}`,
+          description: `Connected via bump at ${nodeName}`,
           ownerDid: didA,
           type: 'personal',
           visibility: 'private',
@@ -139,7 +147,7 @@ export async function POST(request: NextRequest) {
             type: 'connection.accepted',
             context_id: podId,
             context_type: 'connection',
-            payload: { source: 'bump', match_id: matchId },
+            payload: { source: 'bump', match_id: matchId, node_id: match.nodeId, node_name: nodeName },
           }).catch((err: unknown) => console.error('[bump/confirm] attestation (connection.accepted) error:', err));
 
           emitAttestation({
@@ -148,14 +156,11 @@ export async function POST(request: NextRequest) {
             type: 'vouch',
             context_id: podId,
             context_type: 'connection',
-            payload: { source: 'bump', match_id: matchId },
+            payload: { source: 'bump', match_id: matchId, node_id: match.nodeId, node_name: nodeName },
           }).catch((err: unknown) => console.error('[bump/confirm] attestation (vouch) error:', err));
         }
 
-        // Notify both parties of the connection
-        const [profileA] = await db.select().from(profiles).where(eq(profiles.did, didA)).limit(1);
-        const [profileB] = await db.select().from(profiles).where(eq(profiles.did, didB)).limit(1);
-
+        // Notify both parties of the connection (profiles already fetched above)
         notifyBumpDid(didA, {
           type: 'bump:connected', matchId, connectionId: podId,
           peer: { did: didB, handle: profileB?.handle ?? undefined },
