@@ -113,33 +113,44 @@ export async function POST(request: NextRequest) {
 
         const [connDidA, connDidB] = [didA, didB].sort((a, b) => a.localeCompare(b));
         // Insert or reconnect (clear disconnected_at if previously disconnected)
-        await db.insert(connections).values({ didA: connDidA, didB: connDidB })
-          .onConflictDoUpdate({
-            target: [connections.didA, connections.didB],
-            set: { disconnectedAt: null, connectedAt: new Date() },
-          });
+        // Check if this was a reconnect to prevent sybil attestation farming
+        const [existingConn] = await db.select().from(connections)
+          .where(and(eq(connections.didA, connDidA), eq(connections.didB, connDidB)))
+          .limit(1);
+        const isReconnect = !!existingConn;
+
+        if (isReconnect) {
+          await db.update(connections)
+            .set({ disconnectedAt: null })
+            .where(and(eq(connections.didA, connDidA), eq(connections.didB, connDidB)));
+        } else {
+          await db.insert(connections).values({ didA: connDidA, didB: connDidB });
+        }
 
         await db.update(bumpMatches)
           .set({ connectionId: podId })
           .where(eq(bumpMatches.id, matchId));
 
-        emitAttestation({
-          issuer_did: didA,
-          subject_did: didB,
-          type: 'connection.accepted',
-          context_id: podId,
-          context_type: 'connection',
-          payload: { source: 'bump', match_id: matchId },
-        }).catch((err: unknown) => console.error('[bump/confirm] attestation (connection.accepted) error:', err));
+        // Only emit attestations for NEW connections — prevents sybil farming via disconnect/reconnect
+        if (!isReconnect) {
+          emitAttestation({
+            issuer_did: didA,
+            subject_did: didB,
+            type: 'connection.accepted',
+            context_id: podId,
+            context_type: 'connection',
+            payload: { source: 'bump', match_id: matchId },
+          }).catch((err: unknown) => console.error('[bump/confirm] attestation (connection.accepted) error:', err));
 
-        emitAttestation({
-          issuer_did: didB,
-          subject_did: didA,
-          type: 'vouch',
-          context_id: podId,
-          context_type: 'connection',
-          payload: { source: 'bump', match_id: matchId },
-        }).catch((err: unknown) => console.error('[bump/confirm] attestation (vouch) error:', err));
+          emitAttestation({
+            issuer_did: didB,
+            subject_did: didA,
+            type: 'vouch',
+            context_id: podId,
+            context_type: 'connection',
+            payload: { source: 'bump', match_id: matchId },
+          }).catch((err: unknown) => console.error('[bump/confirm] attestation (vouch) error:', err));
+        }
 
         // Notify both parties of the connection
         const [profileA] = await db.select().from(profiles).where(eq(profiles.did, didA)).limit(1);

@@ -84,15 +84,20 @@ export async function POST(
     { podId, did: session.did, role: 'member', addedBy: session.did },
   ]);
 
-  // Insert into first-class connections table
+  // Insert or reconnect — check for sybil prevention
   const [connDidA, connDidB] = [invite.fromDid, session.did].sort((a, b) => a.localeCompare(b));
-  await db.insert(connections).values({
-    didA: connDidA,
-    didB: connDidB,
-  }).onConflictDoUpdate({
-    target: [connections.didA, connections.didB],
-    set: { disconnectedAt: null, connectedAt: new Date() },
-  });
+  const [existingConn] = await db.select().from(connections)
+    .where(and(eq(connections.didA, connDidA), eq(connections.didB, connDidB)))
+    .limit(1);
+  const isReconnect = !!existingConn;
+
+  if (isReconnect) {
+    await db.update(connections)
+      .set({ disconnectedAt: null })
+      .where(and(eq(connections.didA, connDidA), eq(connections.didB, connDidB)));
+  } else {
+    await db.insert(connections).values({ didA: connDidA, didB: connDidB });
+  }
 
   const now = new Date();
 
@@ -145,37 +150,40 @@ export async function POST(
       .catch((err: unknown) => console.error("Interest signal error:", err));
   })().catch((err: unknown) => console.error("Notify setup error:", err));
 
-  emitAttestation({
-    issuer_did: session.did,
-    subject_did: invite.fromDid,
-    type: 'connection.accepted',
-    context_id: podId,
-    context_type: 'connection',
-    payload: { invite_id: invite.id },
-  }).catch((err: unknown) => {
-    console.error('Attestation (connection.accepted) error:', err);
-  });
+  // Only emit attestations for NEW connections — prevents sybil farming via disconnect/reconnect
+  if (!isReconnect) {
+    emitAttestation({
+      issuer_did: session.did,
+      subject_did: invite.fromDid,
+      type: 'connection.accepted',
+      context_id: podId,
+      context_type: 'connection',
+      payload: { invite_id: invite.id },
+    }).catch((err: unknown) => {
+      console.error('Attestation (connection.accepted) error:', err);
+    });
 
-  emitAttestation({
-    issuer_did: invite.fromDid,
-    subject_did: session.did,
-    type: 'vouch',
-    context_id: podId,
-    context_type: 'connection',
-    payload: { invite_id: invite.id, delivery: invite.delivery },
-  }).catch((err: unknown) => {
-    console.error('Attestation (vouch) error:', err);
-  });
+    emitAttestation({
+      issuer_did: invite.fromDid,
+      subject_did: session.did,
+      type: 'vouch',
+      context_id: podId,
+      context_type: 'connection',
+      payload: { invite_id: invite.id, delivery: invite.delivery },
+    }).catch((err: unknown) => {
+      console.error('Attestation (vouch) error:', err);
+    });
 
-  // Check verification eligibility for both parties — fire-and-forget
-  checkPreliminaryEligibility(invite.fromDid)
-    .catch((err: unknown) => console.error('[verification] preliminary check error (inviter):', err));
-  checkPreliminaryEligibility(session.did)
-    .catch((err: unknown) => console.error('[verification] preliminary check error (accepter):', err));
-  checkHardEligibility(invite.fromDid)
-    .catch((err: unknown) => console.error('[verification] hard check error (inviter):', err));
-  checkHardEligibility(session.did)
-    .catch((err: unknown) => console.error('[verification] hard check error (accepter):', err));
+    // Check verification eligibility for both parties — fire-and-forget
+    checkPreliminaryEligibility(invite.fromDid)
+      .catch((err: unknown) => console.error('[verification] preliminary check error (inviter):', err));
+    checkPreliminaryEligibility(session.did)
+      .catch((err: unknown) => console.error('[verification] preliminary check error (accepter):', err));
+    checkHardEligibility(invite.fromDid)
+      .catch((err: unknown) => console.error('[verification] hard check error (inviter):', err));
+    checkHardEligibility(session.did)
+      .catch((err: unknown) => console.error('[verification] hard check error (accepter):', err));
+  }
 
   return NextResponse.json({
     ok: true,
