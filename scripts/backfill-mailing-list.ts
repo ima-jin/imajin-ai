@@ -199,27 +199,24 @@ async function main() {
     `;
 
     if (existingContact) {
+      // Mark as verified if not already (they registered with this email)
+      if (!existingContact.is_verified) {
+        if (DRY_RUN) {
+          console.log('  [DRY RUN] Would mark as verified');
+        } else {
+          await sql`UPDATE www.contacts SET is_verified = true WHERE id = ${existingContact.id}`;
+          console.log('  ✓ Marked as verified');
+        }
+      }
+
       // Check subscription
       const [existingSub] = await sql<{ id: string; status: string }[]>`
         SELECT id, status FROM www.subscriptions WHERE contact_id = ${existingContact.id} LIMIT 1
       `;
 
       if (existingSub && existingSub.status === 'subscribed') {
-        console.log(`  ✓ Already subscribed (verified=${existingContact.is_verified})`);
+        console.log(`  ✓ Already subscribed`);
         alreadySubscribed++;
-
-        // Still send verification email if not verified
-        if (!existingContact.is_verified) {
-          if (DRY_RUN) {
-            console.log('  [DRY RUN] Would send verification email');
-          } else {
-            const sent = await sendVerificationEmail(normalizedEmail);
-            if (sent) {
-              console.log('  📧 Sent verification email');
-              emailsSent++;
-            }
-          }
-        }
         continue;
       }
 
@@ -250,27 +247,15 @@ async function main() {
           resubscribed++;
         }
       }
-
-      if (!existingContact.is_verified) {
-        if (DRY_RUN) {
-          console.log('  [DRY RUN] Would send verification email');
-        } else {
-          const sent = await sendVerificationEmail(normalizedEmail);
-          if (sent) {
-            console.log('  📧 Sent verification email');
-            emailsSent++;
-          }
-        }
-      }
     } else {
-      // Create contact + subscription, send verification email
+      // Create contact + subscription, pre-verified (they registered with this email)
       if (DRY_RUN) {
-        console.log('  [DRY RUN] Would create contact, subscription, and send verification email');
+        console.log('  [DRY RUN] Would create contact + subscription (pre-verified)');
         created++;
       } else {
         const [newContact] = await sql<{ id: string }[]>`
           INSERT INTO www.contacts (email, source, is_verified)
-          VALUES (${normalizedEmail}, 'register', false)
+          VALUES (${normalizedEmail}, 'register', true)
           ON CONFLICT (email) DO NOTHING
           RETURNING id
         `;
@@ -287,10 +272,8 @@ async function main() {
           ON CONFLICT DO NOTHING
         `;
 
-        const sent = await sendVerificationEmail(normalizedEmail);
-        console.log(`  ✅ Created contact + subscription${sent ? ', 📧 sent verification email' : ''}`);
+        console.log('  ✅ Created contact + subscription (pre-verified)');
         created++;
-        if (sent) emailsSent++;
       }
     }
   }
