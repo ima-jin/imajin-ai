@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { requireAuth } from '@imajin/auth';
-import { db, bumpSessions, bumpEvents, bumpMatches } from '@/src/db';
-import { and, eq, ne, gt, gte, lte, isNull, desc } from 'drizzle-orm';
+import { db, bumpSessions, bumpEvents, bumpMatches, connections } from '@/src/db';
+import { and, eq, ne, gt, gte, lte, or, isNull, desc } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import {
   correlateBump,
@@ -137,6 +137,50 @@ export async function POST(request: NextRequest) {
       );
 
       if (score >= BUMP_CORRELATION_THRESHOLD) {
+        // Check if already connected
+        const [sortedA, sortedB] = [did, other.did].sort((a, b) => a.localeCompare(b));
+        const [existingConn] = await db
+          .select()
+          .from(connections)
+          .where(and(
+            eq(connections.didA, sortedA),
+            eq(connections.didB, sortedB),
+            isNull(connections.disconnectedAt),
+          ))
+          .limit(1);
+
+        if (existingConn) {
+          // Already connected — notify both with profile info
+          const [callerProfile] = await db.select().from(profiles).where(eq(profiles.did, did)).limit(1);
+          const [otherProfile] = await db.select().from(profiles).where(eq(profiles.did, other.did)).limit(1);
+
+          const connectedAt = existingConn.connectedAt.toISOString();
+
+          notifyBumpDid(did, {
+            type: 'bump:already_connected' as any,
+            peer: {
+              did: other.did,
+              handle: otherProfile?.handle ?? undefined,
+              name: otherProfile?.displayName ?? undefined,
+              avatar: otherProfile?.avatar ?? undefined,
+            },
+            connectedAt,
+          }).catch((err: unknown) => console.error('[bump/event] notify already_connected error:', err));
+
+          notifyBumpDid(other.did, {
+            type: 'bump:already_connected' as any,
+            peer: {
+              did,
+              handle: callerProfile?.handle ?? undefined,
+              name: callerProfile?.displayName ?? undefined,
+              avatar: callerProfile?.avatar ?? undefined,
+            },
+            connectedAt,
+          }).catch((err: unknown) => console.error('[bump/event] notify already_connected error:', err));
+
+          return NextResponse.json({ matched: true, alreadyConnected: true, connectedAt }, { headers: cors });
+        }
+
         const matchId = generateId('bmatch');
         const matchExpiry = new Date(Date.now() + 60 * 1000);
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { buildPublicUrl } from '@imajin/config';
+import ProfileCard from './ProfileCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -11,7 +12,8 @@ type BumpState =
   | 'active'
   | 'matching'
   | 'confirming'
-  | 'connected';
+  | 'connected'
+  | 'already_connected';
 
 interface BumpNode {
   id: string;
@@ -62,10 +64,6 @@ function chatUrlToWsUrl(chatUrl: string): string {
   return chatUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
 }
 
-function getInitial(peer: BumpPeer): string {
-  return (peer.name || peer.handle || '?')[0].toUpperCase();
-}
-
 const EXPIRY_OPTIONS: { label: string; value: 1 | 5 | 15 | 75 }[] = [
   { label: '1 min', value: 1 },
   { label: '5 min', value: 5 },
@@ -108,6 +106,10 @@ export default function BumpConnect({ onClose }: Props) {
   // Connected state
   const [connectedInfo, setConnectedInfo] = useState<BumpConnectedInfo | null>(null);
   const [showGreenFlash, setShowGreenFlash] = useState(false);
+
+  // Already connected state
+  const [alreadyConnectedPeer, setAlreadyConnectedPeer] = useState<{ did: string; handle?: string; name?: string; avatar?: string } | null>(null);
+  const [alreadyConnectedSince, setAlreadyConnectedSince] = useState<string | null>(null);
 
   // Accelerometer
   const accelBuffer = useRef<number[]>([]);
@@ -194,6 +196,16 @@ export default function BumpConnect({ onClose }: Props) {
     if (type === 'bump:match_expired') {
       clearConfirmTimers();
       setState(session ? 'active' : 'idle');
+    }
+
+    if (type === 'bump:already_connected') {
+      if (matchingTimer.current) clearTimeout(matchingTimer.current);
+      const peer = data.peer as { did: string; handle?: string; name?: string; avatar?: string };
+      const connectedAt = data.connectedAt as string;
+      setAlreadyConnectedPeer(peer);
+      setAlreadyConnectedSince(connectedAt);
+      setState('already_connected');
+      vibrate([100, 50, 100]);
     }
   }, [session]);
 
@@ -626,30 +638,14 @@ export default function BumpConnect({ onClose }: Props) {
       {/* ── Confirming ────────────────────────────────────────────────────────── */}
       {state === 'confirming' && match && (
         <div className="flex-1 flex flex-col items-center justify-center px-6">
-          <div className="text-center mb-8">
-            {/* Avatar */}
-            <div
-              className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold text-black mx-auto mb-4"
-              style={{ backgroundColor: '#f97316' }}
-            >
-              {getInitial(match.peer)}
-            </div>
-
-            {peerConfirmed && (
-              <p className="text-green-400 text-sm mb-2">
-                ✓ @{match.peer.handle} accepted
-              </p>
-            )}
-
-            <p className="text-orange-400 text-xl font-semibold">@{match.peer.handle}</p>
-            {match.peer.name && (
-              <p className="text-white text-lg mt-1">{match.peer.name}</p>
-            )}
-            <p className="text-gray-500 text-sm mt-1">Met at {nodeName}</p>
-
-            <p className="text-gray-600 text-xs mt-3">
-              {confirmTimeLeft}s to decide
-            </p>
+          <div className="mb-8">
+            <ProfileCard
+              handle={match.peer.handle}
+              name={match.peer.name}
+              label={peerConfirmed ? `✓ @${match.peer.handle} accepted` : undefined}
+              labelColor="text-green-400"
+              note={`Met at ${nodeName} · ${confirmTimeLeft}s to decide`}
+            />
           </div>
 
           <div className="w-full space-y-3">
@@ -677,6 +673,29 @@ export default function BumpConnect({ onClose }: Props) {
             Connected with @{connectedInfo.peer.handle}
           </p>
           <p className="text-gray-500 text-sm mt-3">Returning to bump mode...</p>
+        </div>
+      )}
+
+      {/* ── Already Connected ────────────────────────────────────────────── */}
+      {state === 'already_connected' && alreadyConnectedPeer && (
+        <div className="flex-1 flex flex-col items-center justify-center px-6">
+          <ProfileCard
+            handle={alreadyConnectedPeer.handle}
+            name={alreadyConnectedPeer.name}
+            avatar={alreadyConnectedPeer.avatar}
+            label="Already connected"
+            labelColor="text-orange-400"
+            note={alreadyConnectedSince
+              ? `Connected since ${new Date(alreadyConnectedSince).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+              : undefined
+            }
+          />
+          <button
+            onClick={() => setState(session ? 'active' : 'idle')}
+            className="mt-8 px-8 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl transition text-base font-medium min-h-[48px]"
+          >
+            Back to bumping
+          </button>
         </div>
       )}
 

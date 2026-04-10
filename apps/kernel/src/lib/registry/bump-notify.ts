@@ -10,7 +10,8 @@ export type BumpWsEvent =
   | { type: 'bump:matched'; matchId: string; peer: { did: string; handle?: string; name?: string; avatar?: string }; expiresAt: string }
   | { type: 'bump:peer_confirmed'; matchId: string }
   | { type: 'bump:connected'; matchId: string; connectionId: string; peer: { did: string; handle?: string } }
-  | { type: 'bump:match_expired'; matchId: string; reason: 'timeout' | 'declined' };
+  | { type: 'bump:match_expired'; matchId: string; reason: 'timeout' | 'declined' }
+  | { type: 'bump:already_connected'; peer: { did: string; handle?: string; name?: string; avatar?: string }; connectedAt: string };
 
 export async function notifyBumpDid(targetDid: string, event: BumpWsEvent): Promise<boolean> {
   if (!INTERNAL_KEY) {
