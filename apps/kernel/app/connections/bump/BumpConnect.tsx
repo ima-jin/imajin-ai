@@ -117,8 +117,10 @@ export default function BumpConnect({ onClose }: Props) {
   const lastEventSent = useRef<number>(0);
   const deviceMotionHandler = useRef<((e: DeviceMotionEvent) => void) | null>(null);
   const [debugMag, setDebugMag] = useState<number>(0);
+  const [debugPeak, setDebugPeak] = useState<number>(0);
   const [debugHasMotion, setDebugHasMotion] = useState<boolean | null>(null);
   const [debugRaw, setDebugRaw] = useState<string>('—');
+  const peakRef = useRef<number>(0);
 
   // WebSocket
   const wsRef = useRef<WebSocket | null>(null);
@@ -338,10 +340,14 @@ export default function BumpConnect({ onClose }: Props) {
       rotBuffer.current.push(rmag);
       if (rotBuffer.current.length > 30) rotBuffer.current.shift();
 
+      // Track peak
+      if (mag > peakRef.current) peakRef.current = mag;
+
       // Update debug display every 10 frames
       frameCount++;
       if (frameCount % 10 === 0) {
         setDebugMag(Math.round(mag * 10) / 10);
+        setDebugPeak(Math.round(peakRef.current * 10) / 10);
         setDebugRaw(
           `a:${e.acceleration?.x?.toFixed(1)},${e.acceleration?.y?.toFixed(1)},${e.acceleration?.z?.toFixed(1)} ` +
           `ag:${e.accelerationIncludingGravity?.x?.toFixed(1)},${e.accelerationIncludingGravity?.y?.toFixed(1)},${e.accelerationIncludingGravity?.z?.toFixed(1)} ` +
@@ -633,10 +639,11 @@ export default function BumpConnect({ onClose }: Props) {
 
             {/* Debug: accelerometer readings */}
             {state === 'active' && (
-              <div className="mt-6 text-gray-700 text-xs font-mono space-y-0.5">
-                <p>mag: {debugMag} m/s²</p>
+              <div className="mt-6 text-gray-300 text-xs font-mono space-y-0.5 bg-black/80 p-3 rounded-lg">
+                <p>mag: <span className={debugMag > 15 ? 'text-green-400 font-bold' : ''}>{debugMag} m/s²</span> (threshold: {debugRaw.startsWith('a:null') || debugRaw.includes('a:undefined') ? '20' : '15'})</p>
                 <p>motion: {debugHasMotion === null ? 'waiting…' : debugHasMotion ? '✓' : '✗ no events'}</p>
-                <p className="break-all">{debugRaw}</p>
+                <p>peak: <span className="text-amber-400">{debugPeak} m/s²</span></p>
+                <p className="break-all text-gray-500">{debugRaw}</p>
               </div>
             )}
           </div>
