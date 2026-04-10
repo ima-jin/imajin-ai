@@ -123,6 +123,7 @@ export default function ListingDetail() {
   const [activeImage, setActiveImage] = useState(0);
   const [buyLoading, setBuyLoading] = useState(false);
   const [buyError, setBuyError] = useState<string | null>(null);
+  const [sellerConnected, setSellerConnected] = useState<boolean | null>(null);
   const [sellerName, setSellerName] = useState<string | null>(null);
   const [sellerHandle, setSellerHandle] = useState<string | null>(null);
   const [sessionDid, setSessionDid] = useState<string | null>(null);
@@ -206,6 +207,22 @@ export default function ListingDetail() {
           }
         } catch {
           // Not authenticated — no management strip
+        }
+
+        // Check if seller has Stripe Connect enabled
+        try {
+          const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+          const connectRes = await fetch(
+            `${payUrl}/api/connect/check?did=${encodeURIComponent(data.sellerDid)}`
+          );
+          if (connectRes.ok) {
+            const connectData = await connectRes.json();
+            setSellerConnected(connectData.chargesEnabled ?? false);
+          } else {
+            setSellerConnected(false);
+          }
+        } catch {
+          setSellerConnected(true); // default true on error to avoid false blocks
         }
 
         // Fetch other listings by this seller
@@ -550,13 +567,41 @@ export default function ListingDetail() {
 
             {/* On-platform: Buy/Rent button (only when active) */}
             {isOnplatform && !isInactive && listing.sellerTier !== 'trust_gated' && (
-              <OnboardGate
-                action={isRental ? 'rent this item' : 'purchase this item'}
-                onIdentity={() => handleBuyNow()}
-                authUrl={process.env.NEXT_PUBLIC_AUTH_URL}
-              >
+              listing.price > 0 && sellerConnected === false ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400 italic px-1">
+                  Payments not yet available
+                </p>
+              ) : (
+                <OnboardGate
+                  action={isRental ? 'rent this item' : 'purchase this item'}
+                  onIdentity={() => handleBuyNow()}
+                  authUrl={process.env.NEXT_PUBLIC_AUTH_URL}
+                >
+                  <div className="flex flex-col gap-2">
+                    <button
+                      disabled={buyLoading}
+                      className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {buyLoading ? 'Processing…' : isRental ? 'Rent Now' : 'Buy Now'}
+                    </button>
+                    {buyError && (
+                      <p className="text-sm text-red-500">{buyError}</p>
+                    )}
+                  </div>
+                </OnboardGate>
+              )
+            )}
+
+            {/* Trust-gated: requires verified identity (hard DID) */}
+            {listing.sellerTier === 'trust_gated' && !isInactive && (
+              listing.price > 0 && sellerConnected === false ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400 italic px-1">
+                  Payments not yet available
+                </p>
+              ) : (
                 <div className="flex flex-col gap-2">
                   <button
+                    onClick={handleBuyNow}
                     disabled={buyLoading}
                     className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
                   >
@@ -565,27 +610,11 @@ export default function ListingDetail() {
                   {buyError && (
                     <p className="text-sm text-red-500">{buyError}</p>
                   )}
+                  <p className="text-xs text-gray-500">
+                    🔒 Requires a verified identity to purchase
+                  </p>
                 </div>
-              </OnboardGate>
-            )}
-
-            {/* Trust-gated: requires verified identity (hard DID) */}
-            {listing.sellerTier === 'trust_gated' && !isInactive && (
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={handleBuyNow}
-                  disabled={buyLoading}
-                  className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {buyLoading ? 'Processing…' : isRental ? 'Rent Now' : 'Buy Now'}
-                </button>
-                {buyError && (
-                  <p className="text-sm text-red-500">{buyError}</p>
-                )}
-                <p className="text-xs text-gray-500">
-                  🔒 Requires a verified identity to purchase
-                </p>
-              </div>
+              )
             )}
 
             {/* Metadata */}

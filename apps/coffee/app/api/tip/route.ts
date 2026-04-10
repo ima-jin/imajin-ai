@@ -89,6 +89,7 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          sellerDid: page.did,
           items: [{
             name: `Tip for ${page.title || page.handle}`,
             description: message ? `"${message}" — ${fromName || 'Anonymous'}` : `From ${fromName || 'Anonymous'}`,

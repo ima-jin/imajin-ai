@@ -10,6 +10,7 @@ interface Props {
   ticket: TicketType;
   inviteToken?: string;
   etransferEnabled?: boolean;
+  stripeDisabled?: boolean;
 }
 
 interface ETransferInstructions {
@@ -24,7 +25,7 @@ interface ETransferInstructions {
 
 type Step = 'button' | 'selector' | 'loading-card' | 'etransfer-confirm' | 'loading-etransfer' | 'etransfer-done' | 'rsvp-form' | 'loading-rsvp' | 'rsvp-done';
 
-export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false }: Props) {
+export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false, stripeDisabled = false }: Props) {
   const [step, setStep] = useState<Step>('button');
   const [error, setError] = useState<string | null>(null);
   const [etransfer, setEtransfer] = useState<ETransferInstructions | null>(null);
@@ -336,17 +337,19 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
       <div className="space-y-2">
         {error && <p className="text-red-500 text-xs">{error}</p>}
         <div className="flex flex-col gap-2 w-full">
-          <button
-            onClick={handleCardPayment}
-            disabled={step === 'loading-card'}
-            className={`w-full px-4 py-2.5 rounded-lg font-semibold transition text-center ${
-              step === 'loading-card'
-                ? 'bg-orange-400 text-white cursor-wait'
-                : 'bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50'
-            }`}
-          >
-            {step === 'loading-card' ? 'Loading...' : '💳 Pay with Card'}
-          </button>
+          {!stripeDisabled && (
+            <button
+              onClick={handleCardPayment}
+              disabled={step === 'loading-card'}
+              className={`w-full px-4 py-2.5 rounded-lg font-semibold transition text-center ${
+                step === 'loading-card'
+                  ? 'bg-orange-400 text-white cursor-wait'
+                  : 'bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50'
+              }`}
+            >
+              {step === 'loading-card' ? 'Loading...' : '💳 Pay with Card'}
+            </button>
+          )}
           {etransferEnabled && (
             <div className="flex flex-col gap-1">
               <button
@@ -378,6 +381,9 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
     if (isFree) {
       // Try RSVP directly if logged in, otherwise show email form
       handleFreeRsvp(false).catch(() => setStep('rsvp-form'));
+    } else if (stripeDisabled && etransferEnabled) {
+      // Stripe not available — go straight to EMT flow
+      setStep('etransfer-confirm');
     } else if (etransferEnabled) {
       setStep('selector');
     } else {
@@ -399,7 +405,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
             : 'bg-orange-500 text-white hover:bg-orange-600'
         }`}
       >
-        {(step as string) === 'loading-rsvp' ? 'Confirming...' : isFree ? 'RSVP' : 'Get Ticket'}
+        {(step as string) === 'loading-rsvp' ? 'Confirming...' : isFree ? 'RSVP' : (stripeDisabled && etransferEnabled) ? '🏦 Pay by e-Transfer' : 'Get Ticket'}
       </button>
     </>
   );

@@ -56,6 +56,22 @@ export default async function CoffeePage({ params }: PageProps) {
     notFound();
   }
 
+  // Check if the page owner has Stripe Connect enabled
+  let sellerConnected = true;
+  try {
+    const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
+    const checkRes = await fetch(
+      `${PAY_SERVICE_URL}/api/connect/check?did=${encodeURIComponent(page.did)}`,
+      { cache: 'no-store' }
+    );
+    if (checkRes.ok) {
+      const checkData = await checkRes.json();
+      sellerConnected = checkData.chargesEnabled ?? false;
+    }
+  } catch {
+    // Default to connected so we don't block tips on error
+  }
+
   const theme = (page.theme || {}) as Record<string, string>;
   const bgColor = theme.backgroundColor || '#fffbeb';
   const primaryColor = theme.primaryColor || '#f59e0b';
@@ -124,6 +140,7 @@ export default async function CoffeePage({ params }: PageProps) {
             paymentMethods: (page.paymentMethods as any) ?? {},
           }}
           primaryColor={primaryColor}
+          sellerConnected={sellerConnected}
         />
 
         {/* Footer */}

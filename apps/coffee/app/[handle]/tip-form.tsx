@@ -23,16 +23,17 @@ interface TipFormProps {
     };
   };
   primaryColor: string;
+  sellerConnected?: boolean;
 }
 
-export default function TipForm({ page, primaryColor }: TipFormProps) {
+export default function TipForm({ page, primaryColor, sellerConnected = true }: TipFormProps) {
   const { toast } = useToast();
   const [selectedAmount, setSelectedAmount] = useState<number | null>(page.presets?.[1] || 500);
   const [customAmount, setCustomAmount] = useState('');
   const [message, setMessage] = useState('');
   const [fromName, setFromName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'solana'>(
-    page.paymentMethods.stripe?.enabled ? 'stripe' : 'solana'
+    page.paymentMethods.stripe?.enabled && sellerConnected ? 'stripe' : 'solana'
   );
   const [isRecurring, setIsRecurring] = useState(false);
   const [fundDirection, setFundDirection] = useState<string>('');
@@ -44,6 +45,8 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
   const presets = page.presets || [100, 500, 1000];
   const hasStripe = page.paymentMethods.stripe?.enabled;
   const hasSolana = page.paymentMethods.solana?.enabled;
+  // Stripe only available when the page owner has completed Stripe Connect setup
+  const stripeAvailable = hasStripe && sellerConnected;
 
   const getAmount = () => {
     if (customAmount) {
@@ -237,7 +240,7 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
       </div>
 
       {/* Payment Method Toggle */}
-      {hasStripe && hasSolana && (
+      {stripeAvailable && hasSolana && (
         <div className="flex justify-center gap-2">
           <button
             type="button"
@@ -269,20 +272,26 @@ export default function TipForm({ page, primaryColor }: TipFormProps) {
         <p className="text-red-500 text-sm text-center">{error}</p>
       )}
 
-      {/* Submit */}
-      <button
-        type="submit"
-        disabled={isLoading || getAmount() < 100}
-        className="w-full py-4 rounded-xl text-white font-semibold text-lg transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-        style={{ backgroundColor: primaryColor }}
-      >
-        {isLoading 
-          ? 'Processing...' 
-          : isRecurring 
-            ? `☕ Support with ${formatAmount(getAmount())}/month`
-            : `☕ Send ${formatAmount(getAmount())}`
-        }
-      </button>
+      {/* Submit or unavailable message */}
+      {!stripeAvailable && !hasSolana ? (
+        <p className="text-center text-sm text-gray-500 italic py-2">
+          Payments not yet available
+        </p>
+      ) : (
+        <button
+          type="submit"
+          disabled={isLoading || getAmount() < 100}
+          className="w-full py-4 rounded-xl text-white font-semibold text-lg transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ backgroundColor: primaryColor }}
+        >
+          {isLoading
+            ? 'Processing...'
+            : isRecurring
+              ? `☕ Support with ${formatAmount(getAmount())}/month`
+              : `☕ Send ${formatAmount(getAmount())}`
+          }
+        </button>
+      )}
     </form>
   );
 }

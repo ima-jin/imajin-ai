@@ -44,9 +44,10 @@ interface Props {
   inviteToken?: string;
   etransferEnabled?: boolean;
   isAuthenticated?: boolean;
+  sellerConnected?: boolean;
 }
 
-export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [], hasTicket = false, inviteToken, etransferEnabled = false, isAuthenticated = false }: Props) {
+export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [], hasTicket = false, inviteToken, etransferEnabled = false, isAuthenticated = false, sellerConnected = true }: Props) {
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'buy-tickets'>(
     hasTicket ? 'my-tickets' : 'buy-tickets'
   );
@@ -63,7 +64,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
 
   // If user doesn't have tickets, show purchase UI only
   if (!hasTicket || userTickets.length === 0) {
-    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} />;
+    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sellerConnected={sellerConnected} />;
   }
 
   // User has tickets - show tabbed interface
@@ -97,7 +98,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
       {activeTab === 'my-tickets' ? (
         <MyTicketsTab userTickets={userTickets} eventId={eventId} />
       ) : (
-        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} />
+        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sellerConnected={sellerConnected} />
       )}
     </div>
   );
@@ -248,7 +249,7 @@ function MyTicketCard({ ticket, eventId }: { ticket: UserTicket; eventId: string
   );
 }
 
-function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnabled = false, isAuthenticated = false }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean }) {
+function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnabled = false, isAuthenticated = false, sellerConnected = true }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sellerConnected?: boolean }) {
   return (
     <div className="space-y-3 md:space-y-4">
       {tickets.map((ticket) => {
@@ -307,7 +308,22 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
                   )}
                 </div>
 
-                {isAuthenticated || !etransferEnabled ? (
+                {ticket.price > 0 && !sellerConnected ? (
+                  etransferEnabled ? (
+                    <TicketPurchase
+                      eventId={eventId}
+                      eventTitle={eventTitle}
+                      ticket={ticket}
+                      inviteToken={inviteToken}
+                      etransferEnabled={etransferEnabled}
+                      stripeDisabled={true}
+                    />
+                  ) : (
+                    <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+                      Payments not yet available
+                    </p>
+                  )
+                ) : isAuthenticated || !etransferEnabled ? (
                   <TicketPurchase
                     eventId={eventId}
                     eventTitle={eventTitle}
