@@ -106,8 +106,10 @@ export async function POST(request: NextRequest) {
     const minTime = new Date(eventTime.getTime() - BUMP_MATCH_WINDOW_MS);
     const maxTime = new Date(eventTime.getTime() + BUMP_MATCH_WINDOW_MS);
 
+    // Collect candidates: any session with an event in the time window + location range
+    let bestCandidate: { other: typeof otherSessions[0]; otherEvent: typeof bumpEvents.$inferSelect; score: number } | null = null;
+
     for (const other of otherSessions) {
-      // Find their most recent event within the time window
       const [otherEvent] = await db
         .select()
         .from(bumpEvents)
@@ -128,7 +130,9 @@ export async function POST(request: NextRequest) {
         if (dist > BUMP_LOCATION_RADIUS_M) continue;
       }
 
-      // Cross-correlate waveforms
+      // Waveform correlation for ranking — NOT a gate.
+      // Temporal + spatial coincidence is sufficient for v1.
+      // Both users must confirm, which is the human filter.
       const score = correlateBump(
         waveform,
         rotationRate,
@@ -136,97 +140,83 @@ export async function POST(request: NextRequest) {
         otherEvent.rotationRate as number[],
       );
 
-      if (score >= BUMP_CORRELATION_THRESHOLD) {
-        // Check if already connected
-        const [sortedA, sortedB] = [did, other.did].sort((a, b) => a.localeCompare(b));
-        const [existingConn] = await db
-          .select()
-          .from(connections)
-          .where(and(
-            eq(connections.didA, sortedA),
-            eq(connections.didB, sortedB),
-            isNull(connections.disconnectedAt),
-          ))
-          .limit(1);
-
-        if (existingConn) {
-          // Already connected — notify both with profile info
-          const [callerProfile] = await db.select().from(profiles).where(eq(profiles.did, did)).limit(1);
-          const [otherProfile] = await db.select().from(profiles).where(eq(profiles.did, other.did)).limit(1);
-
-          const connectedAt = existingConn.connectedAt.toISOString();
-
-          notifyBumpDid(did, {
-            type: 'bump:already_connected' as any,
-            peer: {
-              did: other.did,
-              handle: otherProfile?.handle ?? undefined,
-              name: otherProfile?.displayName ?? undefined,
-              avatar: otherProfile?.avatar ?? undefined,
-            },
-            connectedAt,
-          }).catch((err: unknown) => console.error('[bump/event] notify already_connected error:', err));
-
-          notifyBumpDid(other.did, {
-            type: 'bump:already_connected' as any,
-            peer: {
-              did,
-              handle: callerProfile?.handle ?? undefined,
-              name: callerProfile?.displayName ?? undefined,
-              avatar: callerProfile?.avatar ?? undefined,
-            },
-            connectedAt,
-          }).catch((err: unknown) => console.error('[bump/event] notify already_connected error:', err));
-
-          return NextResponse.json({ matched: true, alreadyConnected: true, connectedAt }, { headers: cors });
-        }
-
-        const matchId = generateId('bmatch');
-        const matchExpiry = new Date(Date.now() + 60 * 1000);
-
-        await db.insert(bumpMatches).values({
-          id: matchId,
-          nodeId: session.nodeId,
-          sessionA: sessionId,
-          sessionB: other.id,
-          correlationScore: score,
-          expiresAt: matchExpiry,
-        });
-
-        // Notify both parties via WebSocket — fire and forget
-        const expiresAtISO = matchExpiry.toISOString();
-
-        // Look up profiles for both DIDs
-        const [callerProfile] = await db.select().from(profiles).where(eq(profiles.did, did)).limit(1);
-        const [otherProfile] = await db.select().from(profiles).where(eq(profiles.did, other.did)).limit(1);
-
-        notifyBumpDid(other.did, {
-          type: 'bump:matched',
-          matchId,
-          peer: {
-            did,
-            handle: callerProfile?.handle ?? undefined,
-            name: callerProfile?.displayName ?? undefined,
-          },
-          expiresAt: expiresAtISO,
-        }).catch((err: unknown) => console.error('[bump/event] notify other error:', err));
-
-        notifyBumpDid(did, {
-          type: 'bump:matched',
-          matchId,
-          peer: {
-            did: other.did,
-            handle: otherProfile?.handle ?? undefined,
-            name: otherProfile?.displayName ?? undefined,
-          },
-          expiresAt: expiresAtISO,
-        }).catch((err: unknown) => console.error('[bump/event] notify caller error:', err));
-
-        return NextResponse.json({ matched: true, matchId }, { headers: cors });
+      if (!bestCandidate || score > bestCandidate.score) {
+        bestCandidate = { other, otherEvent, score };
       }
     }
 
-    return NextResponse.json({ matched: false }, { headers: cors });
+    // No candidate found
+    if (!bestCandidate) {
+      return NextResponse.json({ matched: false }, { headers: cors });
+    }
+
+    const { other, score } = bestCandidate;
+
+    // Check if already connected
+    const [sortedA, sortedB] = [did, other.did].sort((a, b) => a.localeCompare(b));
+    const [existingConn] = await db
+      .select()
+      .from(connections)
+      .where(and(
+        eq(connections.didA, sortedA),
+        eq(connections.didB, sortedB),
+        isNull(connections.disconnectedAt),
+      ))
+      .limit(1);
+
+    if (existingConn) {
+      const [callerProfile] = await db.select().from(profiles).where(eq(profiles.did, did)).limit(1);
+      const [otherProfile] = await db.select().from(profiles).where(eq(profiles.did, other.did)).limit(1);
+      const connectedAt = existingConn.connectedAt.toISOString();
+
+      notifyBumpDid(did, {
+        type: 'bump:already_connected' as any,
+        peer: { did: other.did, handle: otherProfile?.handle ?? undefined, name: otherProfile?.displayName ?? undefined, avatar: otherProfile?.avatar ?? undefined },
+        connectedAt,
+      }).catch((err: unknown) => console.error('[bump/event] notify already_connected error:', err));
+
+      notifyBumpDid(other.did, {
+        type: 'bump:already_connected' as any,
+        peer: { did, handle: callerProfile?.handle ?? undefined, name: callerProfile?.displayName ?? undefined, avatar: callerProfile?.avatar ?? undefined },
+        connectedAt,
+      }).catch((err: unknown) => console.error('[bump/event] notify already_connected error:', err));
+
+      return NextResponse.json({ matched: true, alreadyConnected: true, connectedAt }, { headers: cors });
+    }
+
+    // Create match
+    const matchId = generateId('bmatch');
+    const matchExpiry = new Date(Date.now() + 60 * 1000);
+
+    await db.insert(bumpMatches).values({
+      id: matchId,
+      nodeId: session.nodeId,
+      sessionA: sessionId,
+      sessionB: other.id,
+      correlationScore: score,
+      expiresAt: matchExpiry,
+    });
+
+    // Notify both parties via WebSocket
+    const expiresAtISO = matchExpiry.toISOString();
+    const [callerProfile] = await db.select().from(profiles).where(eq(profiles.did, did)).limit(1);
+    const [otherProfile] = await db.select().from(profiles).where(eq(profiles.did, other.did)).limit(1);
+
+    notifyBumpDid(other.did, {
+      type: 'bump:matched',
+      matchId,
+      peer: { did, handle: callerProfile?.handle ?? undefined, name: callerProfile?.displayName ?? undefined },
+      expiresAt: expiresAtISO,
+    }).catch((err: unknown) => console.error('[bump/event] notify other error:', err));
+
+    notifyBumpDid(did, {
+      type: 'bump:matched',
+      matchId,
+      peer: { did: other.did, handle: otherProfile?.handle ?? undefined, name: otherProfile?.displayName ?? undefined },
+      expiresAt: expiresAtISO,
+    }).catch((err: unknown) => console.error('[bump/event] notify caller error:', err));
+
+    return NextResponse.json({ matched: true, matchId }, { headers: cors });
   } catch (err) {
     console.error('[bump/event] error:', err);
     return NextResponse.json({ error: 'Failed to process event' }, { status: 500, headers: cors });
