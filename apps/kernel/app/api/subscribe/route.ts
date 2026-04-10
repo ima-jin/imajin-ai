@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const baseUrl = new URL(request.url).origin;
+    const baseUrl = process.env.WWW_URL || process.env.NEXT_PUBLIC_URL || new URL(request.url).origin;
 
     // Get or create the default mailing list
     let defaultList = await db.query.mailingLists.findFirst({
