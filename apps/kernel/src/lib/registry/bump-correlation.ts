@@ -51,9 +51,14 @@ export function haversineDistance(
 /**
  * Correlate two bump events.
  *
- * Newton's third law: the two phones experience equal-and-opposite force,
- * so we invert phone A's waveform before computing Pearson correlation with B.
- * High positive correlation after inversion → genuine physical collision.
+ * Two modes depending on sensor data:
+ * 1. Pure acceleration (gravity subtracted): Newton's third law applies,
+ *    waveforms are mirror images. We invert A and correlate.
+ * 2. accelerationIncludingGravity: both phones experience the same shock
+ *    in the same direction (both spike up). Direct correlation, no inversion.
+ *
+ * In practice, most phones report accelerationIncludingGravity so we try
+ * BOTH direct and inverted correlation and take the higher score.
  *
  * Combined score = 0.7 * accel_score + 0.3 * rotation_score
  */
@@ -63,8 +68,12 @@ export function correlateBump(
   waveformB: number[],
   rotationB: number[],
 ): number {
+  // Try both direct and inverted — real bumps will score high on one
+  const directScore = pearsonCorrelation(waveformA, waveformB);
   const invertedA = waveformA.map((x) => -x);
-  const accelScore = pearsonCorrelation(invertedA, waveformB);
+  const invertedScore = pearsonCorrelation(invertedA, waveformB);
+  const accelScore = Math.max(directScore, invertedScore);
+
   const rotationScore = pearsonCorrelation(rotationA, rotationB);
   return 0.7 * accelScore + 0.3 * rotationScore;
 }

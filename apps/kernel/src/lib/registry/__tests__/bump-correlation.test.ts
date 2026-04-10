@@ -166,15 +166,14 @@ describe('correlateBump', () => {
     expect(score).toBeLessThan(BUMP_CORRELATION_THRESHOLD);
   });
 
-  it('rejects a bump vs its non-inverted copy (same direction, not mirror)', () => {
+  it('matches same-direction bumps (accelerationIncludingGravity mode)', () => {
+    // Both phones report the same spike direction when using gravity-included data
     const phoneA = syntheticBump(12, 0.1, 1);
-    // NOT inverted — this would be the same phone's reading duplicated
     const rotA = syntheticBump(4, 0.05, 10);
 
     const score = correlateBump(phoneA, rotA, phoneA, rotA);
-    // Inverting A then correlating with A should give strong NEGATIVE correlation
-    // which means the combined score should be low or negative
-    expect(score).toBeLessThan(BUMP_CORRELATION_THRESHOLD);
+    // Direct correlation should be high — same bump shape
+    expect(score).toBeGreaterThan(BUMP_CORRELATION_THRESHOLD);
   });
 
   it('handles weak bumps (gentle tap)', () => {
