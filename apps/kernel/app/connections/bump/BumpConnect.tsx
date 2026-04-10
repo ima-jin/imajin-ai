@@ -118,6 +118,7 @@ export default function BumpConnect({ onClose }: Props) {
   const deviceMotionHandler = useRef<((e: DeviceMotionEvent) => void) | null>(null);
   const [debugMag, setDebugMag] = useState<number>(0);
   const [debugHasMotion, setDebugHasMotion] = useState<boolean | null>(null);
+  const [debugRaw, setDebugRaw] = useState<string>('—');
 
   // WebSocket
   const wsRef = useRef<WebSocket | null>(null);
@@ -339,7 +340,14 @@ export default function BumpConnect({ onClose }: Props) {
 
       // Update debug display every 10 frames
       frameCount++;
-      if (frameCount % 10 === 0) setDebugMag(Math.round(mag * 10) / 10);
+      if (frameCount % 10 === 0) {
+        setDebugMag(Math.round(mag * 10) / 10);
+        setDebugRaw(
+          `a:${e.acceleration?.x?.toFixed(1)},${e.acceleration?.y?.toFixed(1)},${e.acceleration?.z?.toFixed(1)} ` +
+          `ag:${e.accelerationIncludingGravity?.x?.toFixed(1)},${e.accelerationIncludingGravity?.y?.toFixed(1)},${e.accelerationIncludingGravity?.z?.toFixed(1)} ` +
+          `int:${e.interval?.toFixed(0)}ms`
+        );
+      }
 
       // Spike threshold: 15 if we have pure acceleration, 20 if gravity-included
       const threshold = hasAccel ? 15 : 20;
@@ -625,9 +633,10 @@ export default function BumpConnect({ onClose }: Props) {
 
             {/* Debug: accelerometer readings */}
             {state === 'active' && (
-              <div className="mt-6 text-gray-700 text-xs font-mono">
-                <p>accel: {debugMag} m/s²</p>
+              <div className="mt-6 text-gray-700 text-xs font-mono space-y-0.5">
+                <p>mag: {debugMag} m/s²</p>
                 <p>motion: {debugHasMotion === null ? 'waiting…' : debugHasMotion ? '✓' : '✗ no events'}</p>
+                <p className="break-all">{debugRaw}</p>
               </div>
             )}
           </div>
