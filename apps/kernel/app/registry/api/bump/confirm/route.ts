@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { requireAuth, emitAttestation } from '@imajin/auth';
-import { db, bumpSessions, bumpMatches, pods, podMembers, connections } from '@/src/db';
+import { db, bumpSessions, bumpMatches, pods, podMembers, connections, profiles } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
+import { notifyBumpDid } from '@/src/lib/registry/bump-notify';
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -68,6 +69,14 @@ export async function POST(request: NextRequest) {
       await db.update(bumpMatches)
         .set({ confirmedA: false, confirmedB: false })
         .where(eq(bumpMatches.id, matchId));
+
+      // Notify both parties
+      const otherDid = isPartyA ? sessionB.did : sessionA.did;
+      notifyBumpDid(otherDid, { type: 'bump:match_expired', matchId, reason: 'declined' })
+        .catch((err: unknown) => console.error('[bump/confirm] notify decline error:', err));
+      notifyBumpDid(callerDid, { type: 'bump:match_expired', matchId, reason: 'declined' })
+        .catch((err: unknown) => console.error('[bump/confirm] notify decline error:', err));
+
       return NextResponse.json({ status: 'declined' }, { headers: cors });
     }
 
@@ -77,6 +86,8 @@ export async function POST(request: NextRequest) {
       .set(updateData)
       .where(eq(bumpMatches.id, matchId))
       .returning();
+
+    const otherDid = isPartyA ? sessionB.did : sessionA.did;
 
     // Both confirmed — create the connection
     if (updated.confirmedA && updated.confirmedB) {
@@ -125,12 +136,30 @@ export async function POST(request: NextRequest) {
           payload: { source: 'bump', match_id: matchId },
         }).catch((err: unknown) => console.error('[bump/confirm] attestation (vouch) error:', err));
 
+        // Notify both parties of the connection
+        const [profileA] = await db.select().from(profiles).where(eq(profiles.did, didA)).limit(1);
+        const [profileB] = await db.select().from(profiles).where(eq(profiles.did, didB)).limit(1);
+
+        notifyBumpDid(didA, {
+          type: 'bump:connected', matchId, connectionId: podId,
+          peer: { did: didB, handle: profileB?.handle ?? undefined },
+        }).catch((err: unknown) => console.error('[bump/confirm] notify connected error:', err));
+
+        notifyBumpDid(didB, {
+          type: 'bump:connected', matchId, connectionId: podId,
+          peer: { did: didA, handle: profileA?.handle ?? undefined },
+        }).catch((err: unknown) => console.error('[bump/confirm] notify connected error:', err));
+
         return NextResponse.json({ status: 'connected' }, { headers: cors });
       } catch (err) {
         console.error('[bump/confirm] connection creation failed:', err);
         return NextResponse.json({ error: 'Failed to create connection' }, { status: 500, headers: cors });
       }
     }
+
+    // One side accepted — tell the other they're waiting
+    notifyBumpDid(otherDid, { type: 'bump:peer_confirmed', matchId })
+      .catch((err: unknown) => console.error('[bump/confirm] notify peer_confirmed error:', err));
 
     return NextResponse.json({ status: 'waiting' }, { headers: cors });
   } catch (err) {

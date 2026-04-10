@@ -11,6 +11,8 @@ import {
   BUMP_MATCH_WINDOW_MS,
   BUMP_LOCATION_RADIUS_M,
 } from '@/src/lib/registry/bump-correlation';
+import { notifyBumpDid } from '@/src/lib/registry/bump-notify';
+import { profiles } from '@/src/db';
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -146,6 +148,35 @@ export async function POST(request: NextRequest) {
           correlationScore: score,
           expiresAt: matchExpiry,
         });
+
+        // Notify both parties via WebSocket — fire and forget
+        const expiresAtISO = matchExpiry.toISOString();
+
+        // Look up profiles for both DIDs
+        const [callerProfile] = await db.select().from(profiles).where(eq(profiles.did, did)).limit(1);
+        const [otherProfile] = await db.select().from(profiles).where(eq(profiles.did, other.did)).limit(1);
+
+        notifyBumpDid(other.did, {
+          type: 'bump:matched',
+          matchId,
+          peer: {
+            did,
+            handle: callerProfile?.handle ?? undefined,
+            name: callerProfile?.displayName ?? undefined,
+          },
+          expiresAt: expiresAtISO,
+        }).catch((err: unknown) => console.error('[bump/event] notify other error:', err));
+
+        notifyBumpDid(did, {
+          type: 'bump:matched',
+          matchId,
+          peer: {
+            did: other.did,
+            handle: otherProfile?.handle ?? undefined,
+            name: otherProfile?.displayName ?? undefined,
+          },
+          expiresAt: expiresAtISO,
+        }).catch((err: unknown) => console.error('[bump/event] notify caller error:', err));
 
         return NextResponse.json({ matched: true, matchId }, { headers: cors });
       }
