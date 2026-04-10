@@ -255,8 +255,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
           status,
         });
 
-        // Increment balance (skip unresolved)
-        if (recipientDid !== 'unresolved') {
+        // Increment balance (skip unresolved and seller — seller's money is already in their Stripe)
+        if (recipientDid !== 'unresolved' && !isSeller) {
           if (isBuyerCredit) {
             // Buyer credit goes to creditAmount (virtual MJN)
             await db.insert(balances).values({
@@ -272,7 +272,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
               },
             });
           } else {
-            // Everyone else (protocol, node, scope, seller) gets cashAmount
+            // Fee beneficiaries (protocol, node, scope) get cashAmount — held in Imajin account
             await db.insert(balances).values({
               did: recipientDid,
               cashAmount: (amountCents / 100).toFixed(8),
