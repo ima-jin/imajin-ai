@@ -162,29 +162,30 @@ export async function POST(request: NextRequest) {
     const isServiceRegistration = type && type !== 'human';
     let inviteData: { fromDid: string; fromHandle?: string } | null = null;
 
-    if (!inviteGateDisabled && !isServiceRegistration) {
-      if (!inviteCode) {
-        return NextResponse.json(
-          { error: 'Imajin is invite-only. You need an invite code to register.' },
-          { status: 403 }
-        );
-      }
-
-      // Validate invite code directly from DB
+    if (!isServiceRegistration && inviteCode) {
+      // Always look up the invite if one was provided — even with gate disabled
+      // This ensures auto-accept creates the connection from the invite
       const [invite] = await db
         .select()
         .from(invites)
         .where(eq(invites.code, inviteCode))
         .limit(1);
 
-      if (!invite || invite.status !== 'pending' || invite.usedCount >= invite.maxUses) {
+      if (invite && invite.status === 'pending' && invite.usedCount < invite.maxUses) {
+        inviteData = { fromDid: invite.fromDid, fromHandle: invite.fromHandle ?? undefined };
+      } else if (!inviteGateDisabled) {
+        // Only reject invalid invites when the gate is enforced
         return NextResponse.json(
           { error: invite?.usedCount >= invite?.maxUses ? 'This invite has already been used' : 'Invalid or expired invite code' },
           { status: 403 }
         );
       }
-
-      inviteData = { fromDid: invite.fromDid, fromHandle: invite.fromHandle ?? undefined };
+    } else if (!inviteGateDisabled && !isServiceRegistration) {
+      // Gate is enforced and no invite code provided
+      return NextResponse.json(
+        { error: 'Imajin is invite-only. You need an invite code to register.' },
+        { status: 403 }
+      );
     }
 
     // Generate DID from public key
