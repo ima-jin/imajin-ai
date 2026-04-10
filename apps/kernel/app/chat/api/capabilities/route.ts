@@ -14,11 +14,12 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const tier = identity.tier ?? 'preliminary';
 
   let inGraph = false;
   if (tier === 'preliminary' || tier === 'established') {
-    inGraph = await isInGraph(identity.id);
+    inGraph = await isInGraph(effectiveDid);
   }
 
   const caps = getCapabilities({ tier, inGraph });
