@@ -109,7 +109,7 @@ export async function GET(
     );
 
     const headers: Record<string, string> = {
-      "X-Caller-DID": identity.id,
+      "X-Caller-DID": ownerDid,
     };
     if (WHISPER_AUTH) {
       headers["Authorization"] = `Bearer ${WHISPER_AUTH}`;

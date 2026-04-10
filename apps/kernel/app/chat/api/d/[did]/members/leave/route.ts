@@ -35,6 +35,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
+  const effectiveDid = identity.actingAs || identity.id;
   const { did } = await params;
 
   try {
@@ -47,7 +48,7 @@ export async function POST(
     const memberRows = await sql`
       SELECT role FROM chat.conversation_members
       WHERE conversation_did = ${did}
-        AND member_did = ${identity.id}
+        AND member_did = ${effectiveDid}
         AND left_at IS NULL
       LIMIT 1
     `;
@@ -63,7 +64,7 @@ export async function POST(
       const otherMembers = await sql`
         SELECT member_did FROM chat.conversation_members
         WHERE conversation_did = ${did}
-          AND member_did != ${identity.id}
+          AND member_did != ${effectiveDid}
           AND left_at IS NULL
         ORDER BY joined_at ASC
         LIMIT 1
@@ -85,15 +86,15 @@ export async function POST(
       UPDATE chat.conversation_members
       SET left_at = NOW()
       WHERE conversation_did = ${did}
-        AND member_did = ${identity.id}
+        AND member_did = ${effectiveDid}
     `;
 
-    notify.interest({ did: identity.id, attestationType: 'group.member.left' })
+    notify.interest({ did: effectiveDid, attestationType: 'group.member.left' })
       .catch((err: unknown) => console.error('Interest signal error:', err));
 
     emitAttestation({
-      issuer_did: identity.id,
-      subject_did: identity.id,
+      issuer_did: effectiveDid,
+      subject_did: effectiveDid,
       type: 'group.member.left',
       context_id: did,
       context_type: 'chat.group',
