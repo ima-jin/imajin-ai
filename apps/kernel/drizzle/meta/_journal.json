@@ -57,6 +57,13 @@
       "when": 1744329600002,
       "tag": "0007_add_fee_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1744329600003,
+      "tag": "0008_add_scope_did_to_onboard_tokens",
+      "breakpoints": true
     }
   ]
 }
