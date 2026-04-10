@@ -151,7 +151,16 @@ export async function POST(request: NextRequest) {
         }
         resolvedConnectedAccountId = account.stripeAccountId;
         const totalAmount = body.items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
-        applicationFeeAmount = Math.round(totalAmount * (account.platformFeeBps || DEFAULT_PLATFORM_FEE_BPS) / 10000);
+
+        // Calculate application fee from .fair manifest if available
+        if (body.fairManifest?.chain) {
+          const sellerEntry = body.fairManifest.chain.find((e: any) => e.role === 'seller');
+          const feeShare = sellerEntry ? 1 - sellerEntry.share : 0;
+          applicationFeeAmount = Math.round(totalAmount * feeShare);
+        } else {
+          // Fallback to connected account rate
+          applicationFeeAmount = Math.round(totalAmount * (account.platformFeeBps || DEFAULT_PLATFORM_FEE_BPS) / 10000);
+        }
       } else {
         return NextResponse.json(
           { error: "Seller hasn't completed payment setup", code: "SELLER_NOT_CONNECTED" },

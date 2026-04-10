@@ -80,6 +80,23 @@ export const connectedAccounts = paySchema.table('connected_accounts', {
   stripeIdx: index('idx_connected_accounts_stripe').on(table.stripeAccountId),
 }));
 
+/**
+ * Fee Ledger - per-entry attribution from .fair manifest subdivision
+ */
+export const feeLedger = paySchema.table('fee_ledger', {
+  id: text('id').primaryKey(),
+  transactionId: text('transaction_id').notNull(),
+  recipientDid: text('recipient_did').notNull(),
+  role: text('role').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  currency: text('currency').notNull(),
+  status: text('status').notNull().default('accrued'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  txIdx: index('idx_fee_ledger_tx').on(table.transactionId),
+  recipientIdx: index('idx_fee_ledger_recipient').on(table.recipientDid, table.status),
+}));
+
 // Types
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;

@@ -15,8 +15,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { db, transactions } from '@/src/db';
-import { eq } from 'drizzle-orm';
+import { db, transactions, feeLedger, balances, balanceRollups } from '@/src/db';
+import { eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { notify } from '@imajin/notify';
 
@@ -222,6 +222,92 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     .update(transactions)
     .set({ status: 'completed' })
     .where(eq(transactions.stripeId, session.id));
+
+  // Fee ledger: subdivide payment per .fair manifest
+  const [tx] = await db.select().from(transactions).where(eq(transactions.stripeId, session.id)).limit(1);
+
+  if (tx?.fairManifest) {
+    const manifest = tx.fairManifest as { chain?: Array<{ did: string; role: string; share: number }> };
+    const totalAmountCents = session.amount_total || 0;
+    const currency = (session.currency || 'usd').toUpperCase();
+    const buyerDid = session.metadata?.buyerDid || session.metadata?.identity_id || null;
+
+    if (manifest.chain && totalAmountCents > 0) {
+      for (const entry of manifest.chain) {
+        const amountCents = Math.round(totalAmountCents * entry.share);
+        if (amountCents <= 0) continue;
+
+        // Resolve BUYER_PLACEHOLDER to actual buyer DID
+        const recipientDid = entry.did === 'BUYER_PLACEHOLDER' ? (buyerDid || 'unresolved') : entry.did;
+
+        const isSeller = entry.role === 'seller';
+        const isBuyerCredit = entry.role === 'buyer_credit';
+        const status = isSeller ? 'paid_out' : 'accrued';
+
+        // Insert fee ledger row
+        await db.insert(feeLedger).values({
+          id: generateId('fl'),
+          transactionId: tx.id,
+          recipientDid,
+          role: entry.role,
+          amountCents,
+          currency,
+          status,
+        });
+
+        // Increment balance (skip unresolved)
+        if (recipientDid !== 'unresolved') {
+          if (isBuyerCredit) {
+            // Buyer credit goes to creditAmount (virtual MJN)
+            await db.insert(balances).values({
+              did: recipientDid,
+              cashAmount: '0',
+              creditAmount: (amountCents / 100).toFixed(8),
+              currency,
+            }).onConflictDoUpdate({
+              target: balances.did,
+              set: {
+                creditAmount: sql`${balances.creditAmount} + ${(amountCents / 100).toFixed(8)}`,
+                updatedAt: new Date(),
+              },
+            });
+          } else {
+            // Everyone else (protocol, node, scope, seller) gets cashAmount
+            await db.insert(balances).values({
+              did: recipientDid,
+              cashAmount: (amountCents / 100).toFixed(8),
+              creditAmount: '0',
+              currency,
+            }).onConflictDoUpdate({
+              target: balances.did,
+              set: {
+                cashAmount: sql`${balances.cashAmount} + ${(amountCents / 100).toFixed(8)}`,
+                updatedAt: new Date(),
+              },
+            });
+          }
+
+          // Update daily rollup
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          await db.insert(balanceRollups).values({
+            did: recipientDid,
+            date: today,
+            service: tx.service || 'unknown',
+            earned: (amountCents / 100).toFixed(8),
+            spent: '0',
+            txCount: 1,
+          }).onConflictDoUpdate({
+            target: [balanceRollups.did, balanceRollups.date, balanceRollups.service],
+            set: {
+              earned: sql`${balanceRollups.earned} + ${(amountCents / 100).toFixed(8)}`,
+              txCount: sql`${balanceRollups.txCount} + 1`,
+            },
+          });
+        }
+      }
+    }
+  }
 
   // Notify the originating service based on metadata
   // Events service handles event tickets
