@@ -233,7 +233,8 @@ export default async function EventPage({ params, searchParams }: Props) {
   }
 
   const session = await getSession();
-  const isCreator = session?.id === event.creatorDid;
+  const did = session ? (session.actingAs || session.id) : null;
+  const isCreator = did === event.creatorDid;
 
   // Check if user is a cohost
   let isCohost = false;

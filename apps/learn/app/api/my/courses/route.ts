@@ -13,11 +13,12 @@ export async function GET(request: NextRequest) {
   if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   const myEnrollments = await db.select()
     .from(enrollments)
     .innerJoin(courses, eq(enrollments.courseId, courses.id))
-    .where(eq(enrollments.studentDid, identity.id));
+    .where(eq(enrollments.studentDid, did));
 
   const result = await Promise.all(myEnrollments.map(async (row) => {
     const progress = await db.select({

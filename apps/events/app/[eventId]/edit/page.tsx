@@ -44,8 +44,10 @@ export default async function EditEventPage({ params }: Props) {
     notFound();
   }
 
+  const did = session.actingAs || session.id;
+
   // Check authorization - creator or cohost can edit
-  let isOrganizer = event.creatorDid === session.id;
+  let isOrganizer = event.creatorDid === did;
   if (!isOrganizer && event.podId) {
     try {
       const [member] = await sql`

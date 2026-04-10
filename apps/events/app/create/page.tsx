@@ -12,6 +12,8 @@ export default async function CreateEventPage() {
     redirect(`${authUrl}/login?next=${encodeURIComponent(`${eventsUrl}/create`)}`);
   }
 
+  const did = session.actingAs || session.id;
+
   return (
     <div className="min-h-screen">
       <div className="max-w-2xl mx-auto px-4 py-8">
@@ -22,7 +24,7 @@ export default async function CreateEventPage() {
           </p>
         </div>
 
-        <EventCreateForm organizerDid={session.id} />
+        <EventCreateForm organizerDid={did} />
       </div>
     </div>
   );

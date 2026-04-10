@@ -28,7 +28,8 @@ export default async function DashboardPage() {
     redirect(`${authUrl}/login?next=${encodeURIComponent(`${eventsUrl}/dashboard`)}`);
   }
 
-  const userEvents = await db.select().from(events).where(eq(events.creatorDid, session.id)).orderBy(desc(events.createdAt));
+  const did = session.actingAs || session.id;
+  const userEvents = await db.select().from(events).where(eq(events.creatorDid, did)).orderBy(desc(events.createdAt));
   const eventsWithStats = await Promise.all(userEvents.map(async (event) => {
     const types = await db.select().from(ticketTypes).where(eq(ticketTypes.eventId, event.id));
     const totalTicketsSold = types.reduce((sum, t) => sum + (t.sold || 0), 0);
@@ -44,7 +45,7 @@ export default async function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto">
       <PayoutSetupBanner
-        did={session.id}
+        did={did}
         payUrl={PAY_URL}
         message="Connect your bank account to receive ticket revenue"
       />
