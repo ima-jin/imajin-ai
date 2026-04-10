@@ -6,6 +6,9 @@ import { apiFetch } from '@imajin/config';
 import PriceDisplay from '../components/PriceDisplay';
 import { resolveMediaRef } from '@imajin/media';
 import { buildPublicUrl } from '@imajin/config';
+import { PayoutSetupBanner } from '@imajin/ui';
+
+const PAY_URL = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
 
 interface Listing {
   id: string;
@@ -90,6 +93,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
+  const [myDid, setMyDid] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
     type: 'sold' | 'remove';
     id: string;
@@ -113,6 +117,13 @@ export default function DashboardPage() {
     } catch {
       // stats are best-effort
     }
+  }, []);
+
+  useEffect(() => {
+    apiFetch('/api/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.did) setMyDid(data.did); })
+      .catch(() => {});
   }, []);
 
   const fetchListings = useCallback(async (currentPage: number, status: StatusFilter) => {
@@ -279,18 +290,13 @@ export default function DashboardPage() {
         )}
 
         {/* Stripe Connect banner */}
-        <div className="mb-6 flex items-center gap-3 px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-sm text-gray-400">
-          <svg className="w-4 h-4 shrink-0 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z" />
-          </svg>
-          <span className="flex-1">Connect Stripe to accept card payments for protected listings</span>
-          <button
-            disabled
-            className="px-3 py-1 rounded-lg bg-gray-700 text-gray-500 text-xs font-medium cursor-not-allowed"
-          >
-            Connect Stripe
-          </button>
-        </div>
+        {myDid && (
+          <PayoutSetupBanner
+            did={myDid}
+            payUrl={PAY_URL}
+            message="Connect Stripe to accept card payments for protected listings"
+          />
+        )}
 
         {/* Action error */}
         {actionError && (

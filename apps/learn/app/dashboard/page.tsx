@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useToast } from '@imajin/ui';
+import { useToast, PayoutSetupBanner } from '@imajin/ui';
 import { apiFetch, apiUrl } from '@imajin/config';
+
+const PAY_URL = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
 
 interface Course {
   id: string;
@@ -31,6 +33,7 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [myDid, setMyDid] = useState<string | null>(null);
 
   useEffect(() => {
     loadCourses();
@@ -47,6 +50,7 @@ export default function DashboardPage() {
       if (res.ok) {
         const data = await res.json();
         setCourses(data.courses);
+        if (data.courses?.[0]?.creatorDid) setMyDid(data.courses[0].creatorDid);
       }
     } catch (e) {
       setError('Failed to load courses');
@@ -93,6 +97,13 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
+        {myDid && (
+          <PayoutSetupBanner
+            did={myDid}
+            payUrl={PAY_URL}
+            message="Connect Stripe to receive course revenue"
+          />
+        )}
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold">My Courses</h1>
         </div>

@@ -69,6 +69,7 @@ export default function CourseDetailPage() {
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
   const [upcomingEvent, setUpcomingEvent] = useState<UpcomingEvent | null>(null);
+  const [sellerConnected, setSellerConnected] = useState(true);
 
   useEffect(() => {
     async function load() {
@@ -77,6 +78,24 @@ export default function CourseDetailPage() {
         if (res.ok) {
           const data = await res.json();
           setCourse(data);
+
+          // Check if course creator has Stripe Connect enabled
+          if (data.price > 0 && data.creatorDid) {
+            try {
+              const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+              const connectRes = await fetch(
+                `${payUrl}/api/connect/check?did=${encodeURIComponent(data.creatorDid)}`
+              );
+              if (connectRes.ok) {
+                const connectData = await connectRes.json();
+                setSellerConnected(connectData.chargesEnabled ?? false);
+              } else {
+                setSellerConnected(false);
+              }
+            } catch {
+              // Default to connected on error
+            }
+          }
 
           // Fetch next upcoming event for this course
           const eventsUrl = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
@@ -237,6 +256,10 @@ export default function CourseDetailPage() {
                   </>
                 )}
               </Link>
+            ) : course.price > 0 && !sellerConnected ? (
+              <p className="text-sm text-gray-500 italic px-1">
+                Payments not yet available
+              </p>
             ) : course.isAuthenticated ? (
               <button
                 onClick={handleEnroll}

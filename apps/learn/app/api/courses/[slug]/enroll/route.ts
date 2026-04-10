@@ -90,6 +90,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        sellerDid: course.creatorDid,
         items: [{
           name: course.title,
           description: `Enrollment in "${course.title}"`,

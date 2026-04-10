@@ -292,6 +292,22 @@ export default async function EventPage({ params, searchParams }: Props) {
 
   const etransferEnabled = !!(event as any).emtEmail;
 
+  // Check if seller has Stripe Connect enabled (server-side, no auth required)
+  let sellerConnected = true; // default true so free events / unknown states don't block
+  try {
+    const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
+    const checkRes = await fetch(
+      `${PAY_SERVICE_URL}/api/connect/check?did=${encodeURIComponent(event.creatorDid)}`,
+      { cache: 'no-store' }
+    );
+    if (checkRes.ok) {
+      const checkData = await checkRes.json();
+      sellerConnected = checkData.chargesEnabled ?? false;
+    }
+  } catch {
+    // If check fails, default to connected so we don't accidentally block payment
+  }
+
   const metadata = (event.metadata || {}) as EventMetadata;
   const theme = metadata.theme || {};
   const themeColor = theme.color || 'orange';
@@ -686,6 +702,7 @@ export default async function EventPage({ params, searchParams }: Props) {
                 inviteToken={inviteToken}
                 etransferEnabled={etransferEnabled}
                 isAuthenticated={!!session}
+                sellerConnected={sellerConnected}
               />
             </TicketsGate>
           ) : (

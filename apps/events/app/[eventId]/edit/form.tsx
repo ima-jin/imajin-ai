@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ImageUpload } from '@/app/components/ImageUpload';
-import { MarkdownEditor } from '@imajin/ui';
+import { MarkdownEditor, PayoutSetupBanner } from '@imajin/ui';
 import { FairEditor } from '@imajin/fair';
 import { apiFetch } from '@imajin/config';
 import type { FairManifest } from '@imajin/fair';
@@ -307,8 +307,15 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
     }
   }
 
+  const PAY_URL = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+
   return (
     <div className="space-y-6">
+      <PayoutSetupBanner
+        did={event.creatorDid}
+        payUrl={PAY_URL}
+        message="Connect Stripe to receive ticket revenue"
+      />
       {/* Tab Navigation */}
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
         <button
