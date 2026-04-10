@@ -204,7 +204,7 @@ async function main() {
         if (DRY_RUN) {
           console.log('  [DRY RUN] Would mark as verified');
         } else {
-          await sql`UPDATE www.contacts SET is_verified = true WHERE id = ${existingContact.id}`;
+          await sql`UPDATE www.contacts SET is_verified = true, verified_at = NOW() WHERE id = ${existingContact.id}`;
           console.log('  ✓ Marked as verified');
         }
       }
@@ -254,8 +254,8 @@ async function main() {
         created++;
       } else {
         const [newContact] = await sql<{ id: string }[]>`
-          INSERT INTO www.contacts (email, source, is_verified)
-          VALUES (${normalizedEmail}, 'register', true)
+          INSERT INTO www.contacts (email, source, is_verified, verified_at)
+          VALUES (${normalizedEmail}, 'register', true, NOW())
           ON CONFLICT (email) DO NOTHING
           RETURNING id
         `;
