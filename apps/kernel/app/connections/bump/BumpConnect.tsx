@@ -116,6 +116,8 @@ export default function BumpConnect({ onClose }: Props) {
   const rotBuffer = useRef<number[]>([]);
   const lastEventSent = useRef<number>(0);
   const deviceMotionHandler = useRef<((e: DeviceMotionEvent) => void) | null>(null);
+  const [debugMag, setDebugMag] = useState<number>(0);
+  const [debugHasMotion, setDebugHasMotion] = useState<boolean | null>(null);
 
   // WebSocket
   const wsRef = useRef<WebSocket | null>(null);
@@ -313,8 +315,11 @@ export default function BumpConnect({ onClose }: Props) {
   // ─── Accelerometer ───────────────────────────────────────────────────────────
 
   function startAccelerometer() {
+    let frameCount = 0;
     const handler = (e: DeviceMotionEvent) => {
-      const acc = e.acceleration ?? e.accelerationIncludingGravity;
+      if (!debugHasMotion) setDebugHasMotion(true);
+      const hasAccel = !!(e.acceleration?.x || e.acceleration?.y || e.acceleration?.z);
+      const acc = hasAccel ? e.acceleration! : e.accelerationIncludingGravity;
       const rot = e.rotationRate;
 
       const ax = acc?.x ?? 0;
@@ -332,7 +337,13 @@ export default function BumpConnect({ onClose }: Props) {
       rotBuffer.current.push(rmag);
       if (rotBuffer.current.length > 30) rotBuffer.current.shift();
 
-      if (mag > 15) {
+      // Update debug display every 10 frames
+      frameCount++;
+      if (frameCount % 10 === 0) setDebugMag(Math.round(mag * 10) / 10);
+
+      // Spike threshold: 15 if we have pure acceleration, 20 if gravity-included
+      const threshold = hasAccel ? 15 : 20;
+      if (mag > threshold) {
         const now = Date.now();
         if (now - lastEventSent.current < 1000) return;
         lastEventSent.current = now;
@@ -610,6 +621,14 @@ export default function BumpConnect({ onClose }: Props) {
               <p className="text-gray-600 text-sm mt-4">
                 {Math.floor(timeRemaining / 60)}:{String(timeRemaining % 60).padStart(2, '0')} remaining
               </p>
+            )}
+
+            {/* Debug: accelerometer readings */}
+            {state === 'active' && (
+              <div className="mt-6 text-gray-700 text-xs font-mono">
+                <p>accel: {debugMag} m/s²</p>
+                <p>motion: {debugHasMotion === null ? 'waiting…' : debugHasMotion ? '✓' : '✗ no events'}</p>
+              </div>
             )}
           </div>
 
