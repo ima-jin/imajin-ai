@@ -48,9 +48,10 @@ export default async function PayoutsPage() {
     redirect(`${authUrl}/login?next=${encodeURIComponent(`${payUrl}/payouts`)}`);
   }
 
+  const did = session.actingAs || session.id;
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.getAll().map(c => `${c.name}=${c.value}`).join('; ');
-  const status = await getConnectStatus(session.id, cookieHeader);
+  const status = await getConnectStatus(did, cookieHeader);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -75,7 +76,7 @@ export default async function PayoutsPage() {
             </div>
             <PayoutActions
               status="not_connected"
-              did={session.id}
+              did={did}
             />
           </div>
         ) : !status.onboardingComplete ? (
@@ -118,7 +119,7 @@ export default async function PayoutsPage() {
 
             <PayoutActions
               status="incomplete_onboarding"
-              did={session.id}
+              did={did}
             />
           </div>
         ) : (
@@ -135,7 +136,7 @@ export default async function PayoutsPage() {
             <div className="text-center">
               <PayoutActions
                 status="connected"
-                did={session.id}
+                did={did}
               />
               <p className="text-xs text-zinc-500 mt-3">
                 View payout schedule, bank details, and transaction history in the Stripe Dashboard

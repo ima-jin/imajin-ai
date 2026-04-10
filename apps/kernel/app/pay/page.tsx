@@ -25,12 +25,14 @@ export default async function Home() {
     redirect(`${authUrl}/login?next=${encodeURIComponent(payUrl)}`);
   }
 
+  const did = session.actingAs || session.id;
+
   const [balanceRows, recentTxs] = await Promise.all([
-    db.select().from(balances).where(eq(balances.did, session.id)).limit(1),
+    db.select().from(balances).where(eq(balances.did, did)).limit(1),
     db
       .select()
       .from(transactions)
-      .where(or(eq(transactions.fromDid, session.id), eq(transactions.toDid, session.id))!)
+      .where(or(eq(transactions.fromDid, did), eq(transactions.toDid, did))!)
       .orderBy(desc(transactions.createdAt))
       .limit(5),
   ]);
@@ -45,12 +47,12 @@ export default async function Home() {
       <div>
         <h1 className="text-3xl font-bold text-white">Payment Dashboard</h1>
         <p className="text-zinc-400 mt-1">
-          {session.handle ? `@${session.handle}` : session.name || session.id}
+          {session.actingAs ? `Scope: ${session.actingAs.slice(-8)}` : session.handle ? `@${session.handle}` : session.name || session.id}
         </p>
       </div>
 
       {/* Payout Setup Banner */}
-      <PayoutSetupBanner did={session.id} />
+      <PayoutSetupBanner did={did} />
 
       {/* Balance */}
       <BalanceCard
@@ -104,7 +106,7 @@ export default async function Home() {
         ) : (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800">
             {recentTxs.map((tx) => {
-              const isIncoming = tx.toDid === session.id;
+              const isIncoming = tx.toDid === did;
               const amount = parseFloat(tx.amount);
               const icon = SERVICE_ICONS[tx.service] || '💳';
               return (

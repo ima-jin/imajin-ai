@@ -38,13 +38,14 @@ export default async function HistoryPage({
     redirect(`${authUrl}/login?next=${encodeURIComponent(`${payUrl}/history`)}`);
   }
 
+  const did = session.actingAs || session.id;
   const { service, currency, from, to } = searchParams;
   const page = Math.max(1, parseInt(searchParams.page || '1'));
   const offset = (page - 1) * PAGE_SIZE;
 
   const userTxCondition = or(
-    eq(transactions.fromDid, session.id),
-    eq(transactions.toDid, session.id),
+    eq(transactions.fromDid, did),
+    eq(transactions.toDid, did),
   )!;
 
   const conditions = [userTxCondition];
@@ -205,7 +206,7 @@ export default async function HistoryPage({
           )}
         </div>
       ) : (
-        <TransactionList displayEntries={displayEntries} sessionId={session.id} />
+        <TransactionList displayEntries={displayEntries} sessionId={did} />
       )}
 
       {/* Pagination */}
