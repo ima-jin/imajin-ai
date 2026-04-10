@@ -286,6 +286,24 @@ function setupWebSocket(server) {
 }
 
 /**
+ * Send a JSON payload to all sockets for a given DID (user may have multiple tabs/devices open).
+ * Returns true if at least one socket received the message.
+ */
+function sendToDid(did, payload) {
+  const sockets = didSockets.get(did);
+  if (!sockets) return false;
+  const msg = JSON.stringify(payload);
+  let sent = false;
+  for (const ws of sockets) {
+    if (ws.readyState === 1) { // WebSocket.OPEN
+      ws.send(msg);
+      sent = true;
+    }
+  }
+  return sent;
+}
+
+/**
  * Broadcast an arbitrary payload to all connected sockets subscribed to this conversation or DID.
  */
 function broadcastEvent(conversationId, payload) {
@@ -315,6 +333,33 @@ function setupBroadcastRoute(server) {
   server.removeAllListeners('request');
 
   server.on('request', (req, res) => {
+    if (req.method === 'POST' && req.url === '/chat/api/internal/bump-notify') {
+      const internalKey = req.headers['x-internal-key'];
+      if (!internalKey || internalKey !== process.env.AUTH_INTERNAL_API_KEY) {
+        res.writeHead(401);
+        res.end('Unauthorized');
+        return;
+      }
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const { targetDid, event } = JSON.parse(body);
+          if (!targetDid || !event) {
+            res.writeHead(400);
+            res.end('Bad request');
+            return;
+          }
+          const delivered = sendToDid(targetDid, event);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ delivered }));
+        } catch {
+          res.writeHead(400);
+          res.end('Bad request');
+        }
+      });
+      return;
+    }
     if (req.method === 'POST' && req.url === '/__ws_broadcast') {
       let body = '';
       req.on('data', chunk => body += chunk);
@@ -342,4 +387,4 @@ function setupBroadcastRoute(server) {
   });
 }
 
-module.exports = { setupWebSocket, broadcastMessage, broadcastEvent, setupBroadcastRoute };
+module.exports = { setupWebSocket, broadcastMessage, broadcastEvent, setupBroadcastRoute, sendToDid };
