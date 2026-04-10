@@ -88,6 +88,7 @@ export default function BumpConnect({ onClose }: Props) {
 
   // Session
   const [session, setSession] = useState<BumpSession | null>(null);
+  const sessionRef = useRef<BumpSession | null>(null);
   const locationRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // Active state
@@ -382,7 +383,8 @@ export default function BumpConnect({ onClose }: Props) {
   }
 
   async function sendBumpEvent(waveform: number[], rotationRate: number[]) {
-    if (!session) return;
+    const sess = sessionRef.current;
+    if (!sess) return;
     setState('matching');
     vibrate(50);
 
@@ -392,7 +394,7 @@ export default function BumpConnect({ onClose }: Props) {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionId: session.sessionId,
+          sessionId: sess.sessionId,
           waveform,
           rotationRate,
           timestamp: Date.now(),
@@ -444,6 +446,7 @@ export default function BumpConnect({ onClose }: Props) {
       if (!res.ok) return;
       const data = await res.json();
       setSession(data);
+      sessionRef.current = data;
       setState('active');
       vibrate(100);
       startAccelerometer();
@@ -468,6 +471,7 @@ export default function BumpConnect({ onClose }: Props) {
   function handleStop() {
     if (session) deactivate(session.sessionId);
     setSession(null);
+    sessionRef.current = null;
     setState('idle');
   }
 
