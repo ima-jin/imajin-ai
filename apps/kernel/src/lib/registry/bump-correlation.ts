@@ -80,4 +80,4 @@ export function correlateBump(
 
 export const BUMP_CORRELATION_THRESHOLD = 0.7;
 export const BUMP_MATCH_WINDOW_MS = 2_000;   // ±2 s
-export const BUMP_LOCATION_RADIUS_M = 10;    // ±10 m
+export const BUMP_LOCATION_RADIUS_M = 50;    // ±50 m (GPS indoors is ~20-30m accuracy)
