@@ -1,4 +1,5 @@
-import { pgTable, text, timestamp, jsonb, index, boolean, pgSchema, unique } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, index, boolean, pgSchema, unique, real } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const registrySchema = pgSchema('registry');
 
@@ -141,6 +142,54 @@ export const didInterests = registrySchema.table('did_interests', {
   didScopeUnique: unique('uniq_did_interests_did_scope').on(table.did, table.scope),
 }));
 
+/**
+ * Bump sessions — active pairing windows per DID per node
+ */
+export const bumpSessions = registrySchema.table('bump_sessions', {
+  id: text('id').primaryKey(),
+  did: text('did').notNull(),
+  nodeId: text('node_id').notNull(),
+  location: jsonb('location'),                                   // { lat, lng }
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  deactivatedAt: timestamp('deactivated_at', { withTimezone: true }),
+}, (table) => ({
+  nodeExpiresIdx: index('idx_bump_sessions_node_expires').on(table.nodeId, table.expiresAt).where(sql`deactivated_at IS NULL`),
+}));
+
+/**
+ * Bump events — accelerometer/gyro samples from active sessions
+ */
+export const bumpEvents = registrySchema.table('bump_events', {
+  id: text('id').primaryKey(),
+  sessionId: text('session_id').references(() => bumpSessions.id).notNull(),
+  waveform: jsonb('waveform').notNull(),                         // number[]
+  rotationRate: jsonb('rotation_rate').notNull(),                // number[]
+  timestamp: timestamp('timestamp', { withTimezone: true }).notNull(),
+  location: jsonb('location'),                                   // { lat, lng }
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  sessionCreatedIdx: index('idx_bump_events_session_created').on(table.sessionId, table.createdAt),
+}));
+
+/**
+ * Bump matches — correlation results between two sessions
+ */
+export const bumpMatches = registrySchema.table('bump_matches', {
+  id: text('id').primaryKey(),
+  nodeId: text('node_id').notNull(),
+  sessionA: text('session_a').references(() => bumpSessions.id).notNull(),
+  sessionB: text('session_b').references(() => bumpSessions.id).notNull(),
+  correlationScore: real('correlation_score').notNull(),
+  confirmedA: boolean('confirmed_a'),
+  confirmedB: boolean('confirmed_b'),
+  connectionId: text('connection_id'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  expiresNoConnectionIdx: index('idx_bump_matches_expires_no_connection').on(table.expiresAt).where(sql`connection_id IS NULL`),
+}));
+
 // Types
 export type Node = typeof nodes.$inferSelect;
 export type NewNode = typeof nodes.$inferInsert;
@@ -151,3 +200,7 @@ export type Interest = typeof interests.$inferSelect;
 export type NewInterest = typeof interests.$inferInsert;
 export type DidPreference = typeof didPreferences.$inferSelect;
 export type DidInterest = typeof didInterests.$inferSelect;
+export type BumpSession = typeof bumpSessions.$inferSelect;
+export type NewBumpSession = typeof bumpSessions.$inferInsert;
+export type BumpEvent = typeof bumpEvents.$inferSelect;
+export type BumpMatch = typeof bumpMatches.$inferSelect;
