@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { sendEmail } from '@imajin/email';
 import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-tokens';
 import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
+import { withLogger } from '@imajin/logger';
 
 // Simple email validation
 function isValidEmail(email: string): boolean {
@@ -28,7 +29,7 @@ async function sendVerificationEmail(email: string, baseUrl: string): Promise<vo
   });
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request, { log }) => {
   try {
     const body = await request.json();
     const { email: rawEmail, source = 'register' } = body;
@@ -148,10 +149,10 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Subscribe error:', error);
+    log.error({ err: String(error) }, 'Subscribe error');
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
     );
   }
-}
+});

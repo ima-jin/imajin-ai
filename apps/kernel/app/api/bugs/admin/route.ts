@@ -3,9 +3,10 @@ import { db, bugReports } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { isAdmin } from '@/src/lib/www/session-auth';
+import { withLogger } from '@imajin/logger';
 
 // GET /api/bugs/admin — list all bug reports (admin only)
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request, { log }) => {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -25,4 +26,4 @@ export async function GET(request: NextRequest) {
     : await query.orderBy(desc(bugReports.createdAt));
 
   return NextResponse.json(reports);
-}
+});
