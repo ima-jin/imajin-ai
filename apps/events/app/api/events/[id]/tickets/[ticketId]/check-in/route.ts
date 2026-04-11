@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
 import { requireAuth, emitAttestation } from '@imajin/auth';
 
 const log = createLogger('events');
+const events = createEmitter('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 
@@ -118,6 +120,8 @@ export async function POST(
       WHERE id = ${ticketId}
       RETURNING id, used_at, status
     `;
+
+    events.emit({ action: 'checkin.create', did, payload: { eventId: id, ticketId, attendeeDid: ticket.owner_did ?? undefined } });
 
     // Fire-and-forget attestations — do not block check-in on failure
     if (ticket.owner_did) {

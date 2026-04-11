@@ -14,8 +14,10 @@ import {
 import { notifyBumpDid } from '@/src/lib/registry/bump-notify';
 import { profiles } from '@/src/db';
 import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
 
 const log = createLogger('kernel');
+const bumpEvents = createEmitter('registry');
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -199,6 +201,8 @@ export async function POST(request: NextRequest) {
       correlationScore: score,
       expiresAt: matchExpiry,
     });
+
+    bumpEvents.emit({ action: 'bump.match', did, payload: { matchId, otherDid: other.did, nodeId: session.nodeId } });
 
     // Notify both parties via WebSocket
     const expiresAtISO = matchExpiry.toISOString();

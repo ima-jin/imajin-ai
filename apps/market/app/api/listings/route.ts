@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
 const log = createLogger('market');
+const marketEvents = createEmitter('market');
 import { db, listings } from '@/db';
 import { requireAuth, getSession, emitAttestation } from '@imajin/auth';
 import { notify } from '@imajin/notify';
@@ -123,6 +125,8 @@ export async function POST(request: NextRequest) {
       expiresAt: expiresAt ? new Date(expiresAt) : null,
       fairManifest,
     }).returning();
+
+    marketEvents.emit({ action: 'listing.create', did, payload: { listingId: listing.id, title, price } });
 
     // Fire and forget — never block the response
     emitAttestation({

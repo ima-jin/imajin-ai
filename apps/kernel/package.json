@@ -15,6 +15,7 @@
   "dependencies": {
     "@ai-sdk/react": "^1.2",
     "@imajin/auth": "workspace:*",
+    "@imajin/events": "workspace:*",
     "@imajin/logger": "workspace:*",
     "@imajin/chat": "workspace:*",
     "@imajin/cid": "workspace:*",

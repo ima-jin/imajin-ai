@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
 const log = createLogger('market');
+const marketEvents = createEmitter('market');
 import { db, listings } from '@/db';
 import { requireAuth, getSession } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
@@ -138,6 +140,8 @@ export async function PATCH(
     if (expiresAt !== undefined) updates.expiresAt = expiresAt ? new Date(expiresAt) : null;
 
     const [updated] = await db.update(listings).set(updates).where(eq(listings.id, params.id)).returning();
+
+    marketEvents.emit({ action: 'listing.update', did, payload: { listingId: params.id } });
 
     return jsonResponse(updated);
   } catch (error) {

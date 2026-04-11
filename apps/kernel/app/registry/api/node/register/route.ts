@@ -11,6 +11,9 @@ import {
 import { provisionSubdomain, isHostnameAvailable } from '@/src/lib/registry/cloudflare';
 import { randomBytes } from 'crypto';
 import { withLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
+
+const registryEvents = createEmitter('registry');
 
 /**
  * POST /api/node/register
@@ -30,7 +33,7 @@ import { withLogger } from '@imajin/logger';
  *   hint?: string
  * }
  */
-export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
+export const POST = withLogger('kernel', async (request: NextRequest, { log, correlationId }) => {
   try {
     const body = await request.json();
     const { attestation, chainLog } = body as { attestation: NodeAttestation; chainLog?: string[] };
@@ -259,6 +262,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       expiresAt,
       attestation,
     });
+
+    registryEvents.emit({ action: 'app.register', correlationId, payload: { nodeId: attestation.nodeId, hostname: attestation.hostname, buildHash: attestation.buildHash } });
 
     return NextResponse.json({
       status: 'verified',

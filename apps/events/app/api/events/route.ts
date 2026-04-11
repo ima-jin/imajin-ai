@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
 import { db, events, ticketTypes } from '@/src/db';
+
+const emitter = createEmitter('events');
 import { requireHardDID, emitAttestation } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 import { buildFairManifest } from '@imajin/fair';
@@ -13,7 +16,7 @@ const AUTH_URL = process.env.AUTH_SERVICE_URL!;
  * POST /api/events - Create a new event
  * Requires hard DID (keypair-based identity)
  */
-export const POST = withLogger('events', async (request, { log }) => {
+export const POST = withLogger('events', async (request, { log, correlationId }) => {
   // Require hard DID authentication
   const authResult = await requireHardDID(request);
   if ('error' in authResult) {
@@ -147,6 +150,8 @@ export const POST = withLogger('events', async (request, { log }) => {
       status: 'draft',
       metadata: { fair: fairManifest },
     }).returning();
+
+    emitter.emit({ action: 'event.create', did, correlationId, payload: { eventId: event.id, eventDid: event.did, title } });
 
     // Fire and forget — never block the response
     emitAttestation({

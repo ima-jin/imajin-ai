@@ -20,8 +20,10 @@ import { eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { notify } from '@imajin/notify';
 import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
 
 const log = createLogger('kernel');
+const payEvents = createEmitter('pay');
 
 // Lazy Stripe initialization to avoid build-time errors in CI
 let _stripe: Stripe | null = null;
@@ -170,6 +172,8 @@ async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
 
   log.info({ stripeId: paymentIntent.id }, 'Transaction updated');
 
+  payEvents.emit({ action: 'payment.charge', payload: { paymentIntentId: paymentIntent.id, amount: paymentIntent.amount, currency: paymentIntent.currency, service: paymentIntent.metadata.service } });
+
   // Notify originating service
   if (paymentIntent.metadata.service === 'coffee') {
     await notifyCoffeeService('payment.succeeded', paymentIntent);
@@ -238,6 +242,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
           currency,
           status,
         });
+
+        payEvents.emit({ action: 'fee.record', payload: { transactionId: tx.id, recipientDid, role: entry.role, amountCents, currency } });
 
         // Increment balance (skip unresolved and seller — seller's money is already in their Stripe)
         if (recipientDid !== 'unresolved' && !isSeller) {

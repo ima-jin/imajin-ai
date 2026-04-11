@@ -7,7 +7,9 @@
 
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
 const log = createLogger('market');
+const marketEvents = createEmitter('market');
 import { db, listings } from '@/db';
 import { getSession, requireHardDID } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
@@ -106,6 +108,8 @@ export async function POST(
     }
 
     const checkout = await payResponse.json();
+
+    marketEvents.emit({ action: 'listing.purchase', did: buyerDid, payload: { listingId: listing.id, sellerDid: listing.sellerDid, quantity } });
 
     return jsonResponse({ url: checkout.url, sessionId: checkout.id });
 

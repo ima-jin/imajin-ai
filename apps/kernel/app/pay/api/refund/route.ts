@@ -27,12 +27,15 @@ import { eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
+
+const payEvents = createEmitter('pay');
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
+export const POST = withLogger('kernel', async (request: NextRequest, { log, correlationId }) => {
   const cors = corsHeaders(request);
 
   // Service-to-service auth via API key
@@ -220,6 +223,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         }
       }
     }
+
+    payEvents.emit({ action: 'payment.refund', correlationId, payload: { paymentId, amount: refundedDollars, reversalId, service: originalTx.service } });
 
     return NextResponse.json({
       id: refundResult.id,

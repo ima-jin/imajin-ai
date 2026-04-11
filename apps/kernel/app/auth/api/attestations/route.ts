@@ -7,6 +7,9 @@ import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/a
 import type { AttestationType } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
+
+const events = createEmitter('auth');
 
 const ATTESTATION_LIMIT_MAX = 100;
 
@@ -163,6 +166,8 @@ export async function POST(request: NextRequest) {
       issuedAt: new Date(issuedAtMs),
     })
     .returning();
+
+  events.emit({ action: 'attestation.create', did: issuer_did as string, payload: { attestationId: attestation.id, type, subjectDid: subject_did as string } });
 
   return NextResponse.json(attestation, { status: 201, headers: cors });
 }

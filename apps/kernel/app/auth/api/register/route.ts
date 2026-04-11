@@ -12,8 +12,10 @@ import { sendEmail } from '@imajin/email';
 import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-tokens';
 import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
 import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
 
 const log = createLogger('kernel');
+const events = createEmitter('kernel');
 
 /**
  * POST /api/register
@@ -247,6 +249,8 @@ export async function POST(request: NextRequest) {
 
     response.cookies.set(cookieConfig.name, token, cookieConfig.options);
 
+    events.emit({ action: 'identity.register', did: identity.id, payload: { identityType: type, tier: 'preliminary' } });
+
     // Emit identity.created attestation → triggers 10 MJN emission
     emitAttestation({
       issuer_did: identity.id,
@@ -393,6 +397,8 @@ export async function POST(request: NextRequest) {
             target: [connections.didA, connections.didB],
             set: { disconnectedAt: null, connectedAt: new Date() },
           });
+
+        events.emit({ action: 'connection.create', did: identity.id, payload: { otherDid: inviteData.fromDid, source: 'invite' } });
 
         const now = new Date().toISOString();
         await db

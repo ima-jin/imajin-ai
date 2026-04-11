@@ -5,8 +5,10 @@ import { verifySignature } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions, createMfaChallengeToken } from '@/src/lib/auth/jwt';
 import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation';
 import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
 
 const log = createLogger('kernel');
+const events = createEmitter('kernel');
 
 /**
  * POST /api/login/verify
@@ -161,6 +163,8 @@ export async function POST(request: NextRequest) {
     });
 
     response.cookies.set(cookieConfig.name, token, cookieConfig.options);
+
+    events.emit({ action: 'session.create', did: identity.id, payload: { tier: identity.tier || 'preliminary' } });
 
     emitSessionAttestation({
       did: identity.id,

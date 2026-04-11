@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
 import { eq, and, desc, lt, isNull, inArray, ilike, or } from 'drizzle-orm';
 
 const log = createLogger('kernel');
+const chatEvents = createEmitter('chat');
 import { db, conversationsV2, messagesV2, messageReactionsV2, profiles } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
@@ -282,6 +284,8 @@ export async function POST(
     const message = await db.query.messagesV2.findFirst({
       where: eq(messagesV2.id, messageId),
     });
+
+    chatEvents.emit({ action: 'message.send', did: effectiveDid, payload: { conversationDid: did, messageId } });
 
     // Broadcast via WebSocket
     if (message) {

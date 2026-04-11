@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, connections } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
+import { createEmitter } from '@imajin/events';
+
+const events = createEmitter('connections');
 
 /**
  * DELETE /api/connections/:did - Disconnect from a connection
@@ -32,6 +35,8 @@ export async function DELETE(
   if (result.length === 0) {
     return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
   }
+
+  events.emit({ action: 'connection.disconnect', did: effectiveDid, payload: { otherDid: targetDid } });
 
   return NextResponse.json({ disconnected: true });
 }
