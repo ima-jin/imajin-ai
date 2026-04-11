@@ -112,7 +112,7 @@ echo "" >> "$REPORT"
 for app in "${APPS[@]}"; do
   echo "=== Building $app ===" | tee -a "$REPORT"
   cd "apps/$app"
-  rm -rf .next
+  rm -rf .next || true
 
   if npx next build >> "$REPORT" 2>&1; then
     SUCCEEDED+=("$app")
