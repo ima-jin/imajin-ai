@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { db, tickets, ticketTypes } from '@/src/db';
+
+const log = createLogger('events');
 import { requireAuth } from '@imajin/auth';
 import { eq, and, lt } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
@@ -123,7 +126,7 @@ export async function POST(
     }, { status: 201 });
 
   } catch (error) {
-    console.error('Failed to hold ticket:', error);
+    log.error({ err: String(error) }, 'Failed to hold ticket');
     return NextResponse.json({ error: 'Failed to hold ticket' }, { status: 500 });
   }
 }
@@ -173,7 +176,7 @@ export async function DELETE(
     return NextResponse.json({ message: 'Hold released' });
 
   } catch (error) {
-    console.error('Failed to release hold:', error);
+    log.error({ err: String(error) }, 'Failed to release hold');
     return NextResponse.json({ error: 'Failed to release hold' }, { status: 500 });
   }
 }

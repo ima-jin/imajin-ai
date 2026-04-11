@@ -4,13 +4,14 @@ import { db } from '@/src/db';
 import { identities, identityChains } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
 
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   try {
@@ -64,10 +65,10 @@ export async function GET(request: NextRequest) {
     }, { headers: cors });
 
   } catch (error) {
-    console.error('Session error:', error);
+    log.error({ err: String(error) }, 'Session error');
     return NextResponse.json(
       { error: 'Failed to get session' },
       { status: 500, headers: cors }
     );
   }
-}
+});

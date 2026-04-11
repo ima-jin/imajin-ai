@@ -1,5 +1,8 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { readFile } from 'fs/promises';
+
+const log = createLogger('events');
 import { existsSync } from 'fs';
 import path from 'path';
 
@@ -42,7 +45,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('Media serving failed:', error);
+    log.error({ err: String(error) }, 'Media serving failed');
     return Response.json({ error: 'Failed to serve file' }, { status: 500 });
   }
 }

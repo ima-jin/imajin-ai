@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, credentials } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * GET /api/identity/:did/contact
@@ -58,7 +61,7 @@ export async function GET(
 
     return NextResponse.json({ did: decodedDid, email });
   } catch (error) {
-    console.error('Contact resolve error:', error);
+    log.error({ err: String(error) }, 'Contact resolve error');
     return NextResponse.json({ error: 'Failed to resolve contact' }, { status: 500 });
   }
 }

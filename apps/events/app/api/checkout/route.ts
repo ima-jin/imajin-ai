@@ -6,7 +6,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
 import { db, events, ticketTypes, eventInvites } from '@/src/db';
+
+const emitter = createEmitter('events');
 import { eq, and, sql } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
@@ -22,7 +26,7 @@ interface CheckoutRequest {
   invite?: string;
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('events', async (request, { log, correlationId }) => {
   const ip = getClientIP(request);
   const rl = rateLimit(ip, 10, 60_000);
   if (rl.limited) {
@@ -153,7 +157,7 @@ export async function POST(request: NextRequest) {
     
     if (!payResponse.ok) {
       const error = await payResponse.json();
-      console.error('Pay service error:', error);
+      log.error({ err: String(error) }, 'Pay service error');
       return NextResponse.json(
         { error: error.error || 'Payment service error' },
         { status: 500 }
@@ -161,6 +165,8 @@ export async function POST(request: NextRequest) {
     }
     
     const checkout = await payResponse.json();
+
+    emitter.emit({ action: 'ticket.purchase', did: buyerDid, correlationId, payload: { eventId: body.eventId, ticketTypeId: body.ticketTypeId, quantity, sellerDid: event.creatorDid } });
 
     // Increment invite used_count on successful checkout session creation
     if (inviteRecord) {
@@ -176,10 +182,10 @@ export async function POST(request: NextRequest) {
     });
     
   } catch (error) {
-    console.error('Checkout error:', error);
+    log.error({ err: String(error) }, 'Checkout error');
     return NextResponse.json(
       { error: 'Checkout failed' },
       { status: 500 }
     );
   }
-}
+});

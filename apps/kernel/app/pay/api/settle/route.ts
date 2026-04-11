@@ -29,6 +29,9 @@ import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { verifyManifest } from '@imajin/fair';
 import { createDbResolver, emitAttestation } from '@imajin/auth';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 async function verifyChainStatus(did: string): Promise<boolean> {
   try {
@@ -66,7 +69,7 @@ async function emitAttestations(
         context_type: 'service',
         payload: { role: recipient.role },
       }).catch((err) => {
-        console.error(`Attestation (customer) error for ${recipient.did}:`, err);
+        log.error({ err: String(err), did: recipient.did }, `Attestation (customer) error for ${recipient.did}`);
       })
     );
   }
@@ -83,11 +86,11 @@ async function emitAttestations(
         context_type: 'service',
         payload: { total_amount, recipients: fair_manifest.chain.length, source, payerChainVerified, payeeChainVerified },
       }).catch((err) => {
-        console.error('Attestation (transaction.settled) error:', err);
+        log.error({ err: String(err) }, 'Attestation (transaction.settled) error');
       })
     );
   } else {
-    console.warn('Attestation (transaction.settled) skipped: PLATFORM_DID not set');
+    log.warn({}, 'Attestation (transaction.settled) skipped: PLATFORM_DID not set');
   }
 
   await Promise.all(attestationCalls);
@@ -99,7 +102,7 @@ async function emitAttestations(
       .set({ credentialIssued: true })
       .where(inArray(transactions.id, txIds))
       .catch((err) => {
-        console.error('Failed to mark credential_issued on transactions:', err);
+        log.error({ err: String(err) }, 'Failed to mark credential_issued on transactions');
       });
   }
 }
@@ -185,7 +188,7 @@ export async function POST(request: NextRequest) {
         }
       } else {
         // Unsigned manifest — allow but warn (transitional period)
-        console.warn(`Settlement received unsigned fair_manifest from ${from_did} (service: ${service})`);
+        log.warn({ fromDid: from_did, service }, 'Settlement received unsigned fair_manifest');
       }
     }
 
@@ -301,7 +304,7 @@ export async function POST(request: NextRequest) {
 
     // Fire attestations asynchronously — don't block settlement response
     emitAttestations(from_did, fair_manifest, batchId, txIds, total_amount, source, payerChainVerified, payeeChainVerified).catch((err) => {
-      console.error('Attestation emission error:', err);
+      log.error({ err: String(err) }, 'Attestation emission error');
     });
 
     return NextResponse.json(
@@ -316,7 +319,7 @@ export async function POST(request: NextRequest) {
       { headers: cors }
     );
   } catch (error) {
-    console.error('Settlement error:', error);
+    log.error({ err: String(error) }, 'Settlement error');
     return NextResponse.json(
       { error: 'Settlement failed' },
       { status: 500, headers: cors }

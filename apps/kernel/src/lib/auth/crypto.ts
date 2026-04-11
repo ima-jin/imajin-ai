@@ -1,6 +1,9 @@
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import bs58 from 'bs58';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 // Configure ed25519 to use sha512
 ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
@@ -45,7 +48,7 @@ export async function verifySignature(
     
     return await ed.verifyAsync(signatureBytes, messageBytes, publicKeyBytes);
   } catch (error) {
-    console.error('Signature verification error:', error);
+    log.error({ err: String(error) }, 'signature verification error');
     return false;
   }
 }

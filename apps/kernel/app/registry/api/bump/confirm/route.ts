@@ -5,6 +5,11 @@ import { db, bumpSessions, bumpMatches, pods, podMembers, connections, profiles,
 import { eq } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { notifyBumpDid } from '@/src/lib/registry/bump-notify';
+import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
+
+const log = createLogger('kernel');
+const bumpEvents = createEmitter('registry');
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -73,9 +78,9 @@ export async function POST(request: NextRequest) {
       // Notify both parties
       const otherDid = isPartyA ? sessionB.did : sessionA.did;
       notifyBumpDid(otherDid, { type: 'bump:match_expired', matchId, reason: 'declined' })
-        .catch((err: unknown) => console.error('[bump/confirm] notify decline error:', err));
+        .catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] notify decline error'));
       notifyBumpDid(callerDid, { type: 'bump:match_expired', matchId, reason: 'declined' })
-        .catch((err: unknown) => console.error('[bump/confirm] notify decline error:', err));
+        .catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] notify decline error'));
 
       return NextResponse.json({ status: 'declined' }, { headers: cors });
     }
@@ -139,6 +144,11 @@ export async function POST(request: NextRequest) {
           .set({ connectionId: podId })
           .where(eq(bumpMatches.id, matchId));
 
+        bumpEvents.emit({ action: 'bump.confirm', did: callerDid, payload: { matchId, didA: sessionA.did, didB: sessionB.did } });
+        if (!isReconnect) {
+          bumpEvents.emit({ action: 'connection.create', did: didA, payload: { otherDid: didB, source: 'bump' } });
+        }
+
         // Only emit attestations for NEW connections — prevents sybil farming via disconnect/reconnect
         if (!isReconnect) {
           emitAttestation({
@@ -148,7 +158,7 @@ export async function POST(request: NextRequest) {
             context_id: podId,
             context_type: 'connection',
             payload: { source: 'bump', match_id: matchId, node_id: match.nodeId, node_name: nodeName },
-          }).catch((err: unknown) => console.error('[bump/confirm] attestation (connection.accepted) error:', err));
+          }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] attestation (connection.accepted) error'));
 
           emitAttestation({
             issuer_did: didB,
@@ -157,34 +167,34 @@ export async function POST(request: NextRequest) {
             context_id: podId,
             context_type: 'connection',
             payload: { source: 'bump', match_id: matchId, node_id: match.nodeId, node_name: nodeName },
-          }).catch((err: unknown) => console.error('[bump/confirm] attestation (vouch) error:', err));
+          }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] attestation (vouch) error'));
         }
 
         // Notify both parties of the connection (profiles already fetched above)
         notifyBumpDid(didA, {
           type: 'bump:connected', matchId, connectionId: podId,
           peer: { did: didB, handle: profileB?.handle ?? undefined },
-        }).catch((err: unknown) => console.error('[bump/confirm] notify connected error:', err));
+        }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] notify connected error'));
 
         notifyBumpDid(didB, {
           type: 'bump:connected', matchId, connectionId: podId,
           peer: { did: didA, handle: profileA?.handle ?? undefined },
-        }).catch((err: unknown) => console.error('[bump/confirm] notify connected error:', err));
+        }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] notify connected error'));
 
         return NextResponse.json({ status: 'connected' }, { headers: cors });
       } catch (err) {
-        console.error('[bump/confirm] connection creation failed:', err);
+        log.error({ err: String(err) }, '[bump/confirm] connection creation failed');
         return NextResponse.json({ error: 'Failed to create connection' }, { status: 500, headers: cors });
       }
     }
 
     // One side accepted — tell the other they're waiting
     notifyBumpDid(otherDid, { type: 'bump:peer_confirmed', matchId })
-      .catch((err: unknown) => console.error('[bump/confirm] notify peer_confirmed error:', err));
+      .catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] notify peer_confirmed error'));
 
     return NextResponse.json({ status: 'waiting' }, { headers: cors });
   } catch (err) {
-    console.error('[bump/confirm] error:', err);
+    log.error({ err: String(err) }, '[bump/confirm] error');
     return NextResponse.json({ error: 'Failed to confirm match' }, { status: 500, headers: cors });
   }
 }

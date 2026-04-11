@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('links');
 import { db, linkPages, links } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
@@ -37,7 +39,7 @@ export async function GET(request: NextRequest) {
       links: pageLinks,
     });
   } catch (error) {
-    console.error('Failed to fetch my links page:', error);
+    log.error({ err: String(error) }, 'Failed to fetch my links page');
     return errorResponse('Failed to fetch links page', 500);
   }
 }

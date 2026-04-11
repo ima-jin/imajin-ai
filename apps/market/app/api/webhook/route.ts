@@ -6,6 +6,8 @@
  */
 
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('market');
 import { db, listings } from '@/db';
 import { emitAttestation } from '@imajin/auth';
 import { notify } from '@imajin/notify';
@@ -71,16 +73,16 @@ export async function POST(request: NextRequest) {
           context_id: listingId,
           context_type: 'market',
           payload: { amount: body.metadata?.amount },
-        }).catch((err: unknown) => console.error('Attestation emit error:', err));
+        }).catch((err: unknown) => log.error({ err: String(err) }, 'Attestation emit error'));
 
         // Record interest signals — listing.purchased → market scope (buyer + seller)
         if (body.metadata?.buyerDid) {
           notify.interest({ did: body.metadata.buyerDid, attestationType: 'listing.purchased' })
-            .catch((err: unknown) => console.error('Interest signal error:', err));
+            .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
         }
         if (listing.sellerDid) {
           notify.interest({ did: listing.sellerDid, attestationType: 'listing.purchased' })
-            .catch((err: unknown) => console.error('Interest signal error:', err));
+            .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
         }
       }
     }
@@ -88,7 +90,7 @@ export async function POST(request: NextRequest) {
     return jsonResponse({ received: true });
 
   } catch (error) {
-    console.error('Webhook error:', error);
+    log.error({ err: String(error) }, 'Webhook error');
     return errorResponse('Webhook processing failed', 500);
   }
 }

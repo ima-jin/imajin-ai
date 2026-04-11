@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('links');
 import { db, linkPages, links } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
@@ -42,7 +44,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       links: pageLinks,
     });
   } catch (error) {
-    console.error('Failed to fetch links page:', error);
+    log.error({ err: String(error) }, 'Failed to fetch links page');
     return errorResponse('Failed to fetch links page', 500);
   }
 }
@@ -102,7 +104,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse(updated);
   } catch (error) {
-    console.error('Failed to update links page:', error);
+    log.error({ err: String(error) }, 'Failed to update links page');
     return errorResponse('Failed to update links page', 500);
   }
 }
@@ -142,7 +144,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse({ deleted: true });
   } catch (error) {
-    console.error('Failed to delete links page:', error);
+    log.error({ err: String(error) }, 'Failed to delete links page');
     return errorResponse('Failed to delete links page', 500);
   }
 }

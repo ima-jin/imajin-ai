@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('dykil');
 import { db, surveys } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
@@ -41,7 +43,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse(survey, 200, cors);
   } catch (error) {
-    console.error('Failed to fetch survey:', error);
+    log.error({ err: String(error) }, 'Failed to fetch survey');
     return errorResponse('Failed to fetch survey', 500, cors);
   }
 }
@@ -94,7 +96,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse(updated, 200, cors);
   } catch (error) {
-    console.error('Failed to update survey:', error);
+    log.error({ err: String(error) }, 'Failed to update survey');
     return errorResponse('Failed to update survey', 500, cors);
   }
 }
@@ -130,7 +132,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse({ deleted: true }, 200, cors);
   } catch (error) {
-    console.error('Failed to delete survey:', error);
+    log.error({ err: String(error) }, 'Failed to delete survey');
     return errorResponse('Failed to delete survey', 500, cors);
   }
 }

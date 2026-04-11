@@ -4,6 +4,9 @@ import { db, assets } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/media/classify";
+import { createLogger } from "@imajin/logger";
+
+const log = createLogger("kernel");
 
 // ---------------------------------------------------------------------------
 // POST /api/assets/[id]/classify — re-classify an existing asset
@@ -29,7 +32,7 @@ export async function POST(
       .where(eq(assets.id, id))
       .limit(1);
   } catch (err) {
-    console.error("DB lookup failed:", err);
+    log.error({ err: String(err) }, "DB lookup failed");
     return NextResponse.json({ error: "Database failure" }, { status: 500 });
   }
 
@@ -56,7 +59,7 @@ export async function POST(
   try {
     result = await classifyAsset(buffer, asset.filename, asset.mimeType);
   } catch (err) {
-    console.error("Classification failed:", err);
+    log.error({ err: String(err) }, "Classification failed");
     return NextResponse.json({ error: "Classification failure" }, { status: 500 });
   }
 
@@ -70,7 +73,7 @@ export async function POST(
       updatedAt: new Date(),
     }).where(eq(assets.id, id));
   } catch (err) {
-    console.error("DB update failed:", err);
+    log.error({ err: String(err) }, "DB update failed");
     return NextResponse.json({ error: "Database failure" }, { status: 500 });
   }
 

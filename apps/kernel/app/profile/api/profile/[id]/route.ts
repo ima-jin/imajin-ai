@@ -6,6 +6,11 @@ import { requireAuth } from '@imajin/auth';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { eq, or, and, isNull } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
+import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
+
+const log = createLogger('kernel');
+const events = createEmitter('profile');
 
 // Configure ed25519 with sha512 (required for @noble/ed25519 v3)
 ed.hashes.sha512 = sha512;
@@ -134,7 +139,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(result, { headers: cors });
   } catch (error) {
-    console.error('Failed to fetch profile:', error);
+    log.error({ err: String(error) }, 'Failed to fetch profile');
     return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500, headers: cors });
   }
 }
@@ -224,9 +229,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       .where(eq(profiles.did, existing.did))
       .returning();
 
+    events.emit({ action: 'profile.update', did: identity.id, payload: { profileDid: existing.did } });
+
     return NextResponse.json(updated, { headers: cors });
   } catch (error) {
-    console.error('Failed to update profile:', error);
+    log.error({ err: String(error) }, 'Failed to update profile');
     return NextResponse.json({ error: 'Failed to update profile' }, { status: 500, headers: cors });
   }
 }
@@ -267,7 +274,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ deleted: true }, { headers: cors });
   } catch (error) {
-    console.error('Failed to delete profile:', error);
+    log.error({ err: String(error) }, 'Failed to delete profile');
     return NextResponse.json({ error: 'Failed to delete profile' }, { status: 500, headers: cors });
   }
 }

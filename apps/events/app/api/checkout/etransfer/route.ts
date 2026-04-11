@@ -6,6 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withLogger } from '@imajin/logger';
 import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
 import { eq, and, lt } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
@@ -38,7 +39,7 @@ async function getOrCreateSoftDid(email: string, name?: string): Promise<string>
   return data.did;
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('events', async (request, { log }) => {
   // Try session auth first (logged-in user), but don't require it
   const session = await optionalAuth(request);
 
@@ -214,10 +215,10 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error('e-Transfer checkout error:', error);
+    log.error({ err: String(error) }, 'e-Transfer checkout error');
     return NextResponse.json(
       { error: 'Failed to process e-Transfer' },
       { status: 500 }
     );
   }
-}
+});

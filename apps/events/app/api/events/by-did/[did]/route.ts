@@ -4,7 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { db, events } from '@/src/db';
+
+const log = createLogger('events');
 import { eq } from 'drizzle-orm';
 
 export async function GET(
@@ -27,7 +30,7 @@ export async function GET(
 
     return NextResponse.json({ event });
   } catch (error) {
-    console.error('Failed to look up event by DID:', error);
+    log.error({ err: String(error) }, 'Failed to look up event by DID');
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

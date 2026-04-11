@@ -1,5 +1,8 @@
 import * as jose from 'jose';
 import { webcrypto } from 'crypto';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const JWT_ISSUER = 'auth.imajin.ai';
 const JWT_EXPIRY = '24h';
@@ -120,7 +123,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       keyRole: payload.keyRole as string | undefined,
     };
   } catch (error) {
-    console.error('JWT verification failed:', error);
+    log.error({ err: String(error) }, 'JWT verification failed');
     return null;
   }
 }

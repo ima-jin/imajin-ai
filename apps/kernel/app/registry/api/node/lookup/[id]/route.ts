@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, nodes } from '@/src/db';
 import { eq, or } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * GET /api/node/lookup/:id
@@ -84,7 +87,7 @@ export async function GET(
     });
 
   } catch (error) {
-    console.error('Lookup error:', error);
+    log.error({ err: String(error) }, 'Lookup error');
     return NextResponse.json(
       { error: 'Failed to look up node' },
       { status: 500 }

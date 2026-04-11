@@ -1,4 +1,8 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
+const log = createLogger('market');
+const marketEvents = createEmitter('market');
 import { db, listings } from '@/db';
 import { requireAuth, getSession, emitAttestation } from '@imajin/auth';
 import { notify } from '@imajin/notify';
@@ -122,6 +126,8 @@ export async function POST(request: NextRequest) {
       fairManifest,
     }).returning();
 
+    marketEvents.emit({ action: 'listing.create', did, payload: { listingId: listing.id, title, price } });
+
     // Fire and forget — never block the response
     emitAttestation({
       issuer_did: identity.id,
@@ -130,15 +136,15 @@ export async function POST(request: NextRequest) {
       context_id: listing.id,
       context_type: 'market',
       payload: { title, price, currency: listing.currency },
-    }).catch((err) => console.error('Attestation emit error:', err));
+    }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
 
     // Record interest signal — listing.created → market scope
     notify.interest({ did: identity.id, attestationType: 'listing.created' })
-      .catch((err) => console.error('Interest signal error:', err));
+      .catch((err) => log.error({ err: String(err) }, 'Interest signal error'));
 
     return jsonResponse(listing, 201);
   } catch (error) {
-    console.error('Failed to create listing:', error);
+    log.error({ err: String(error) }, 'Failed to create listing');
     return errorResponse('Failed to create listing', 500);
   }
 }
@@ -241,7 +247,7 @@ export async function GET(request: NextRequest) {
       hasMore: offset + rows.length < total,
     });
   } catch (error) {
-    console.error('Failed to fetch listings:', error);
+    log.error({ err: String(error) }, 'Failed to fetch listings');
     return errorResponse('Failed to fetch listings', 500);
   }
 }

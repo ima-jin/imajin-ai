@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { verifyEmailMfaCode } from '@/src/lib/auth/email-mfa-codes';
 import { corsHeaders } from '@imajin/config';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -18,7 +19,7 @@ export async function OPTIONS(request: NextRequest) {
  * Body: { code: string }
  * Returns: { success: true }
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   try {
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true }, { headers: cors });
 
   } catch (error) {
-    console.error('[mfa/email/verify-setup] POST error:', error);
+    log.error({ err: String(error) }, '[mfa/email/verify-setup] POST error');
     return NextResponse.json({ error: 'Failed to verify setup code' }, { status: 500, headers: cors });
   }
-}
+});

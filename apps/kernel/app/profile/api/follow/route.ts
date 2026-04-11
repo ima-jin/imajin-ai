@@ -3,11 +3,12 @@ import { db, follows } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { eq, and } from 'drizzle-orm';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/follow - Follow a DID
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return errorResponse(authResult.error, authResult.status);
@@ -35,15 +36,15 @@ export async function POST(request: NextRequest) {
 
     return jsonResponse({ followed: true });
   } catch (error) {
-    console.error('Failed to follow:', error);
+    log.error({ err: String(error) }, 'Failed to follow');
     return errorResponse('Failed to follow', 500);
   }
-}
+});
 
 /**
  * DELETE /api/follow - Unfollow a DID
  */
-export async function DELETE(request: NextRequest) {
+export const DELETE = withLogger('kernel', async (request: NextRequest, { log }) => {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return errorResponse(authResult.error, authResult.status);
@@ -68,7 +69,7 @@ export async function DELETE(request: NextRequest) {
 
     return jsonResponse({ unfollowed: true });
   } catch (error) {
-    console.error('Failed to unfollow:', error);
+    log.error({ err: String(error) }, 'Failed to unfollow');
     return errorResponse('Failed to unfollow', 500);
   }
-}
+});

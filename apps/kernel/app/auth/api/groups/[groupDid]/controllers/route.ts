@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, groupControllers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth, emitAttestation } from '@imajin/auth';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const VALID_ROLES = ['owner', 'admin', 'member'];
 
@@ -105,11 +108,11 @@ export async function POST(
       context_id: groupDid,
       context_type: 'group',
       payload: { role },
-    }).catch((err) => console.error('[groups] Attestation failed (non-fatal):', err));
+    }).catch((err) => log.error({ err: String(err) }, '[groups] Attestation failed (non-fatal)'));
 
     return NextResponse.json({ ok: true, groupDid, controllerDid: did, role }, { status: 201 });
   } catch (error) {
-    console.error('[groups] Add controller error:', error);
+    log.error({ err: String(error) }, '[groups] Add controller error');
     return NextResponse.json({ error: 'Failed to add controller' }, { status: 500 });
   }
 }

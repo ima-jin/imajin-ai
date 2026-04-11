@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, connections } from '@/src/db';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { eq, or, and, isNull } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -40,7 +43,7 @@ export async function GET(
 
     return NextResponse.json({ inGraph, connectionCount }, { headers: cors });
   } catch (error) {
-    console.error('Failed to check graph status:', error);
+    log.error({ err: String(error) }, 'Failed to check graph status');
     return NextResponse.json(
       { error: 'Failed to check graph status' },
       { status: 500, headers: cors }

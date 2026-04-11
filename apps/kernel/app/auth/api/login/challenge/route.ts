@@ -5,6 +5,7 @@ import { generateChallenge } from '@/src/lib/auth/crypto';
 import { randomUUID } from 'crypto';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { hasDfosChain } from '@/src/lib/auth/dfos';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/login/challenge
@@ -21,7 +22,7 @@ import { hasDfosChain } from '@/src/lib/auth/dfos';
  *   expiresAt: string (ISO)
  * }
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const ip = getClientIP(request);
   const rl = rateLimit(ip, 10, 60_000);
   if (rl.limited) {
@@ -92,10 +93,10 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Challenge error:', error);
+    log.error({ err: String(error) }, 'Challenge error');
     return NextResponse.json(
       { error: 'Failed to create challenge' },
       { status: 500 }
     );
   }
-}
+});

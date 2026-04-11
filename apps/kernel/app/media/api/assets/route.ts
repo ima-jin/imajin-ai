@@ -9,6 +9,9 @@ import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
 import { eq, and } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/media/classify";
 import { rateLimit, getClientIP } from "@/src/lib/kernel/rate-limit";
+import { createLogger } from "@imajin/logger";
+
+const log = createLogger("kernel");
 
 // Context → folder mapping
 const CONTEXT_FOLDER_MAP: Record<string, { name: string; icon: string }> = {
@@ -236,7 +239,7 @@ export async function POST(request: NextRequest) {
     await writeFile(storagePath, buffer);
     await writeFile(fairPath, JSON.stringify(fairManifest, null, 2));
   } catch (err) {
-    console.error("Storage write failed:", err);
+    log.error({ err: String(err) }, "Storage write failed");
     return NextResponse.json(
       { error: "Storage failure", detail: String(err) },
       { status: 500 }
@@ -263,7 +266,7 @@ export async function POST(request: NextRequest) {
       })
       .returning();
   } catch (err) {
-    console.error("DB insert failed:", err);
+    log.error({ err: String(err) }, "DB insert failed");
     return NextResponse.json(
       { error: "Database failure", detail: String(err) },
       { status: 500 }
@@ -298,7 +301,7 @@ export async function POST(request: NextRequest) {
         // Link asset to folder
         await db.insert(assetFolders).values({ assetId, folderId }).onConflictDoNothing();
       } catch (err) {
-        console.error("Auto-folder assignment failed (non-fatal):", err);
+        log.error({ err: String(err) }, "Auto-folder assignment failed (non-fatal)");
       }
     }
   }
@@ -330,7 +333,7 @@ export async function POST(request: NextRequest) {
       classificationConfidence: Math.round(result.confidence * 100),
       metadata: { ...(typeof existingMeta === "object" && existingMeta !== null ? existingMeta : {}), classification: result },
     }).where(eq(assets.id, assetId));
-  }).catch(console.error);
+  }).catch((err: unknown) => log.error({ err: String(err) }, "Classification failed"));
 
   return response;
 }
@@ -400,7 +403,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ assets: rows, limit, offset, count: rows.length }, { headers: cors });
   } catch (err) {
-    console.error("DB query failed:", err);
+    log.error({ err: String(err) }, "DB query failed");
     return NextResponse.json(
       { error: "Database failure", detail: String(err) },
       { status: 500, headers: cors }

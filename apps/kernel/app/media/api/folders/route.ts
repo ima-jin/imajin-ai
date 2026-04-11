@@ -3,11 +3,12 @@ import { nanoid } from "nanoid";
 import { db, folders, assetFolders } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq, sql } from "drizzle-orm";
+import { withLogger } from "@imajin/logger";
 
 // ---------------------------------------------------------------------------
 // GET /api/folders — list all folders for authenticated user with asset counts
 // ---------------------------------------------------------------------------
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request, { log }) => {
   const authResult = await requireAuth(request);
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
@@ -35,15 +36,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ folders: rows });
   } catch (err) {
-    console.error("DB query failed:", err);
+    log.error({ err: String(err) }, "DB query failed");
     return NextResponse.json({ error: "Database failure", detail: String(err) }, { status: 500 });
   }
-}
+});
 
 // ---------------------------------------------------------------------------
 // POST /api/folders — create a folder
 // ---------------------------------------------------------------------------
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request, { log }) => {
   const authResult = await requireAuth(request);
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(folder, { status: 201 });
   } catch (err) {
-    console.error("DB insert failed:", err);
+    log.error({ err: String(err) }, "DB insert failed");
     return NextResponse.json({ error: "Database failure", detail: String(err) }, { status: 500 });
   }
-}
+});

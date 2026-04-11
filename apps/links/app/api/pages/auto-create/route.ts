@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('links');
 import { db, linkPages } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId, themePresets } from '@/lib/utils';
@@ -45,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     return jsonResponse(page, 201);
   } catch (error) {
-    console.error('Failed to auto-create links page:', error);
+    log.error({ err: String(error) }, 'Failed to auto-create links page');
     return errorResponse('Failed to create links page', 500);
   }
 }

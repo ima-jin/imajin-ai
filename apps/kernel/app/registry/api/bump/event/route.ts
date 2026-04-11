@@ -13,6 +13,11 @@ import {
 } from '@/src/lib/registry/bump-correlation';
 import { notifyBumpDid } from '@/src/lib/registry/bump-notify';
 import { profiles } from '@/src/db';
+import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
+
+const log = createLogger('kernel');
+const bumpEvents = createEmitter('registry');
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -173,13 +178,13 @@ export async function POST(request: NextRequest) {
         type: 'bump:already_connected' as any,
         peer: { did: other.did, handle: otherProfile?.handle ?? undefined, name: otherProfile?.displayName ?? undefined, avatar: otherProfile?.avatar ?? undefined },
         connectedAt,
-      }).catch((err: unknown) => console.error('[bump/event] notify already_connected error:', err));
+      }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/event] notify already_connected error'));
 
       notifyBumpDid(other.did, {
         type: 'bump:already_connected' as any,
         peer: { did, handle: callerProfile?.handle ?? undefined, name: callerProfile?.displayName ?? undefined, avatar: callerProfile?.avatar ?? undefined },
         connectedAt,
-      }).catch((err: unknown) => console.error('[bump/event] notify already_connected error:', err));
+      }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/event] notify already_connected error'));
 
       return NextResponse.json({ matched: true, alreadyConnected: true, connectedAt }, { headers: cors });
     }
@@ -197,6 +202,8 @@ export async function POST(request: NextRequest) {
       expiresAt: matchExpiry,
     });
 
+    bumpEvents.emit({ action: 'bump.match', did, payload: { matchId, otherDid: other.did, nodeId: session.nodeId } });
+
     // Notify both parties via WebSocket
     const expiresAtISO = matchExpiry.toISOString();
     const [callerProfile] = await db.select().from(profiles).where(eq(profiles.did, did)).limit(1);
@@ -207,18 +214,18 @@ export async function POST(request: NextRequest) {
       matchId,
       peer: { did, handle: callerProfile?.handle ?? undefined, name: callerProfile?.displayName ?? undefined },
       expiresAt: expiresAtISO,
-    }).catch((err: unknown) => console.error('[bump/event] notify other error:', err));
+    }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/event] notify other error'));
 
     notifyBumpDid(did, {
       type: 'bump:matched',
       matchId,
       peer: { did: other.did, handle: otherProfile?.handle ?? undefined, name: otherProfile?.displayName ?? undefined },
       expiresAt: expiresAtISO,
-    }).catch((err: unknown) => console.error('[bump/event] notify caller error:', err));
+    }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/event] notify caller error'));
 
     return NextResponse.json({ matched: true, matchId }, { headers: cors });
   } catch (err) {
-    console.error('[bump/event] error:', err);
+    log.error({ err: String(err) }, '[bump/event] error');
     return NextResponse.json({ error: 'Failed to process event' }, { status: 500, headers: cors });
   }
 }

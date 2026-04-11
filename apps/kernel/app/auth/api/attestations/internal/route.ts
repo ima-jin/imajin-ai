@@ -15,6 +15,9 @@ import { eq, sql } from 'drizzle-orm';
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { EMISSION_SCHEDULE, resolveAmount, resolveTarget } from '@/src/lib/kernel/emissions';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 function genId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 14)}${Date.now().toString(36)}`;
@@ -40,7 +43,7 @@ async function processEmissions(
   for (const rule of spec.emit) {
     const targetDid = resolveTarget(rule, context);
     if (!targetDid) {
-      console.warn(`[emissions] No target DID for ${rule.to} on ${attestationType} — skipping`);
+      log.warn({ rule: rule.to, attestationType }, `[emissions] No target DID — skipping`);
       continue;
     }
 
@@ -86,9 +89,9 @@ async function processEmissions(
         },
       });
 
-      console.log(`[emissions] ${amount} MJN → ${targetDid.slice(0, 20)}... (${attestationType}: ${rule.reason})`);
+      log.info({ amount, targetDid: targetDid.slice(0, 20), attestationType, reason: rule.reason }, '[emissions] MJN credited');
     } catch (err) {
-      console.error(`[emissions] Failed to credit ${targetDid} for ${attestationType}:`, err);
+      log.error({ err: String(err), targetDid, attestationType }, '[emissions] Failed to credit');
       // Non-fatal — continue with other emissions
     }
   }
@@ -105,7 +108,7 @@ export async function POST(request: NextRequest) {
 
   const privateKey = process.env.AUTH_PRIVATE_KEY;
   if (!privateKey) {
-    console.error('AUTH_PRIVATE_KEY not set — cannot sign attestation');
+    log.error({}, 'AUTH_PRIVATE_KEY not set — cannot sign attestation');
     return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
   }
 
@@ -150,7 +153,7 @@ export async function POST(request: NextRequest) {
   try {
     signature = authCrypto.signSync(canonicalPayload, privateKey);
   } catch (err) {
-    console.error('Failed to sign attestation:', err);
+    log.error({ err: String(err) }, 'Failed to sign attestation');
     return NextResponse.json({ error: 'Signing failed' }, { status: 500 });
   }
 
@@ -179,12 +182,12 @@ export async function POST(request: NextRequest) {
       scopeDid: (payload as Record<string, unknown> | undefined)?.scope_did as string | undefined ?? null,
       nodeDid: null, // TODO: resolve from relay config
     }, payload as Record<string, unknown> | undefined).catch((err) =>
-      console.error(`[emissions] Failed for attestation ${id} (${type}):`, err)
+      log.error({ err: String(err), attestationId: id, attestationType: type }, '[emissions] Failed for attestation')
     );
 
     return NextResponse.json(attestation, { status: 201 });
   } catch (err) {
-    console.error('Failed to insert attestation:', err);
+    log.error({ err: String(err) }, 'Failed to insert attestation');
     return NextResponse.json({ error: 'Failed to store attestation' }, { status: 500 });
   }
 }

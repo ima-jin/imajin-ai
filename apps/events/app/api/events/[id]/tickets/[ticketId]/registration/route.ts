@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { eq, and } from 'drizzle-orm';
+
+const log = createLogger('events');
 import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { db, tickets, ticketRegistrations } from '@/src/db';
@@ -76,7 +79,7 @@ export async function GET(
 
     return NextResponse.json({ registration, questions });
   } catch (error) {
-    console.error('Failed to fetch registration:', error);
+    log.error({ err: String(error) }, 'Failed to fetch registration');
     return NextResponse.json({ error: 'Failed to fetch registration' }, { status: 500 });
   }
 }

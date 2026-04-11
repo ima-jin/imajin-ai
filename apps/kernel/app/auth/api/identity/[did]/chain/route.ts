@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@imajin/config';
 import { getChainByImajinDid } from '@/src/lib/auth/dfos';
 import { verifyChainLog } from '@/src/lib/auth/chain-providers';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -41,7 +44,7 @@ export async function GET(
       isDeleted: result.isDeleted ?? false,
     }, { headers: cors });
   } catch (err) {
-    console.error('[chain] Error serving chain:', err);
+    log.error({ err: String(err) }, '[chain] Error serving chain');
     return NextResponse.json(
       { error: 'Internal error' },
       { status: 500, headers: cors }

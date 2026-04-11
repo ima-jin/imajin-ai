@@ -5,6 +5,9 @@ import { requireAuth } from '@imajin/auth';
 import { generateKeypair } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { emitAttestation } from '@imajin/auth';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const VALID_SCOPES = ['org', 'community', 'family'] as const;
 type GroupScope = typeof VALID_SCOPES[number];
@@ -153,7 +156,7 @@ export async function POST(request: NextRequest) {
         displayType: scope,
       }).onConflictDoNothing();
     } catch (err) {
-      console.error('[groups] Profile creation failed (non-fatal):', err);
+      log.error({ err: String(err) }, '[groups] Profile creation failed (non-fatal)');
     }
 
     // Emit attestation (fire-and-forget)
@@ -164,11 +167,11 @@ export async function POST(request: NextRequest) {
       context_id: groupDid,
       context_type: 'group',
       payload: { scope, name: name.trim(), handle: handle || null },
-    }).catch((err) => console.error('[groups] Attestation failed (non-fatal):', err));
+    }).catch((err) => log.error({ err: String(err) }, '[groups] Attestation failed (non-fatal)'));
 
     return NextResponse.json({ did: groupDid, scope, handle: handle || null, name: name.trim() }, { status: 201 });
   } catch (error) {
-    console.error('[groups] Create error:', error);
+    log.error({ err: String(error) }, '[groups] Create error');
     return NextResponse.json({ error: 'Failed to create group' }, { status: 500 });
   }
 }
@@ -205,7 +208,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(rows);
   } catch (error) {
-    console.error('[groups] List error:', error);
+    log.error({ err: String(error) }, '[groups] List error');
     return NextResponse.json({ error: 'Failed to list groups' }, { status: 500 });
   }
 }

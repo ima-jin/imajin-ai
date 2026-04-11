@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
+import { withLogger } from '@imajin/logger';
 
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const session = await getSessionFromCookies(request.headers.get('cookie'));
 
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(session);
   } catch (error) {
-    console.error('Auth session proxy error:', error);
+    log.error({ err: String(error) }, 'Auth session proxy error');
     return NextResponse.json({ error: 'Auth service unavailable' }, { status: 502 });
   }
-}
+});

@@ -3,6 +3,7 @@ import { corsHeaders, corsOptions } from '@imajin/config';
 import { requireAuth } from '@imajin/auth';
 import { db, bumpSessions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -15,7 +16,7 @@ type ExpiryMinutes = typeof ALLOWED_EXPIRY_MINUTES[number];
  * POST /registry/api/bump/activate
  * Open a bump session for the caller on a specific node.
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   const authResult = await requireAuth(request);
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ sessionId, nodeId, expiresAt }, { headers: cors });
   } catch (err) {
-    console.error('[bump/activate] error:', err);
+    log.error({ err: String(err) }, '[bump/activate] error');
     return NextResponse.json({ error: 'Failed to create session' }, { status: 500, headers: cors });
   }
-}
+});

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, profiles, connections } from '@/src/db';
 import { eq, or } from 'drizzle-orm';
 import { createHash } from 'crypto';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/claim
@@ -16,7 +17,7 @@ import { createHash } from 'crypto';
  * 3. Guest connections merge into their account
  * 4. Guest profile is deleted
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const body = await request.json();
     const { 
@@ -120,10 +121,10 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Claim error:', error);
+    log.error({ err: String(error) }, 'Claim error');
     return NextResponse.json(
       { error: 'Failed to claim guest identity' },
       { status: 500 }
     );
   }
-}
+});

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { db, interests } from '@/src/db';
 import { eq } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -32,7 +35,7 @@ export async function GET(
 
     return NextResponse.json({ interest }, { headers: cors });
   } catch (error) {
-    console.error('[interests/scope] get error:', error);
+    log.error({ err: String(error) }, '[interests/scope] get error');
     return NextResponse.json({ error: 'Failed to get interest' }, { status: 500, headers: cors });
   }
 }

@@ -3,6 +3,9 @@ import { db, conversationReadsV2 } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * OPTIONS /api/d/:did/read - CORS preflight
@@ -40,7 +43,7 @@ export async function POST(
 
     return jsonResponse({ ok: true }, 200, cors);
   } catch (error) {
-    console.error('Failed to mark as read:', error);
+    log.error({ err: String(error) }, 'Failed to mark as read');
     return errorResponse('Failed to mark as read', 500, cors);
   }
 }

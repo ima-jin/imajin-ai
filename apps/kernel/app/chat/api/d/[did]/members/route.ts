@@ -6,6 +6,9 @@ import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { notify } from '@imajin/notify';
 import { emitAttestation } from '@imajin/auth';
 import { lookupIdentity } from '@/src/lib/kernel/lookup';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export const dynamic = 'force-dynamic';
 
@@ -81,7 +84,7 @@ export async function POST(
       `;
 
       notify.interest({ did: memberDid, attestationType: 'group.member.added' })
-        .catch((err: unknown) => console.error('Interest signal error:', err));
+        .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
 
       emitAttestation({
         issuer_did: identity.id,
@@ -89,7 +92,7 @@ export async function POST(
         type: 'group.member.added',
         context_id: did,
         context_type: 'chat.group',
-      }).catch((err: unknown) => console.error('Attestation (group.member.added) error:', err));
+      }).catch((err: unknown) => log.error({ err: String(err) }, 'Attestation (group.member.added) error'));
     } else {
       // Webhook / event-chat mode: no auth required
       // Ensure conversation exists (event chats may not exist yet)
@@ -111,7 +114,7 @@ export async function POST(
 
     return jsonResponse({ ok: true, did, memberDid, role }, 200, cors);
   } catch (error) {
-    console.error('Failed to add member:', error);
+    log.error({ err: String(error) }, 'Failed to add member');
     return errorResponse('Failed to add member', 500, cors);
   }
 }
@@ -161,7 +164,7 @@ export async function GET(
 
     return jsonResponse({ members, count: members.length }, 200, cors);
   } catch (error) {
-    console.error('Failed to get members:', error);
+    log.error({ err: String(error) }, 'Failed to get members');
     return errorResponse('Failed to get members', 500, cors);
   }
 }

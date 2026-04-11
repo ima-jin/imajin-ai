@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, emitAttestation } from '@imajin/auth';
+import { emitAttestation } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
+import { requireAdmin } from '@imajin/logger';
 
 const sql = getClient();
 
@@ -12,19 +13,6 @@ const TIER_ATTESTATION_TYPE: Record<Tier, string> = {
   preliminary: 'identity.verified.preliminary',
   established: 'identity.verified.hard',
 };
-
-async function requireAdmin() {
-  const session = await getSession();
-  if (!session?.actingAs) return null;
-
-  const [nodeRow] = await sql`
-    SELECT group_did FROM auth.group_identities
-    WHERE group_did = ${session.actingAs}
-    AND scope = 'node'
-    LIMIT 1
-  `;
-  return nodeRow ? session : null;
-}
 
 export async function POST(
   req: NextRequest,

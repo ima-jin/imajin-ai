@@ -1,4 +1,8 @@
 import { NextRequest } from 'next/server';
+import { withLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
+
+const chatEvents = createEmitter('chat');
 import { eq, desc, and, gt, ne, inArray, sql } from 'drizzle-orm';
 import { db, conversationsV2, messagesV2, conversationReadsV2 } from '@/src/db';
 import { getClient } from '@imajin/db';
@@ -14,7 +18,7 @@ const rawSql = getClient();
  * GET /api/conversations - List v2 conversations for authenticated user
  * Returns conversations the user participates in, with DM enrichment.
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request, { log }) => {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return errorResponse(authResult.error, authResult.status);
@@ -212,15 +216,15 @@ export async function GET(request: NextRequest) {
 
     return jsonResponse({ conversations: result });
   } catch (error) {
-    console.error('Failed to list conversations:', error);
+    log.error({ err: String(error) }, 'Failed to list conversations');
     return errorResponse('Failed to list conversations', 500);
   }
-}
+});
 
 /**
  * POST /api/conversations - Create a new v2 conversation
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request, { log, correlationId }) => {
   try {
     const body = await request.json();
     const { type, name, participantDids } = body;
@@ -286,6 +290,8 @@ export async function POST(request: NextRequest) {
         where: eq(conversationsV2.did, convDid),
       });
 
+      chatEvents.emit({ action: 'conversation.create', did: effectiveDid, correlationId, payload: { conversationDid: convDid, type: 'direct' } });
+
       return jsonResponse({ conversation: conv }, 201);
     }
 
@@ -328,9 +334,11 @@ export async function POST(request: NextRequest) {
       where: eq(conversationsV2.did, convDid),
     });
 
+    chatEvents.emit({ action: 'conversation.create', did: effectiveDid, correlationId, payload: { conversationDid: convDid, type: 'group', name } });
+
     return jsonResponse({ conversation: conv }, 201);
   } catch (error) {
-    console.error('Failed to create conversation:', error);
+    log.error({ err: String(error) }, 'Failed to create conversation');
     return errorResponse('Failed to create conversation', 500);
   }
-}
+});

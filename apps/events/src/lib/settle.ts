@@ -5,6 +5,10 @@
  * Settlement failure is non-fatal — the ticket has already been created.
  */
 
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('events');
+
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY!;
 const PLATFORM_DID = process.env.PLATFORM_DID || 'did:imajin:platform';
@@ -42,7 +46,7 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
   // Support both field names: "distributions" (current .fair format) and "attribution" (legacy)
   const recipients = fairManifest?.distributions || fairManifest?.attribution;
   if (!fairManifest || !recipients?.length) {
-    console.warn(`[settle] No .fair manifest for event ${eventId} — skipping settlement`);
+    log.warn({ eventId }, '[settle] No .fair manifest for event — skipping settlement');
     return;
   }
 
@@ -99,13 +103,13 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
 
     if (!response.ok) {
       const text = await response.text();
-      console.error(`[settle] pay /api/settle returned ${response.status}: ${text}`);
+      log.error({ status: response.status, text }, '[settle] pay /api/settle returned error');
       return;
     }
 
     const result = await response.json();
-    console.log(`[settle] Settlement complete for ticket ${metadata.ticketId}:`, result);
+    log.info({ ticketId: metadata.ticketId, result }, '[settle] Settlement complete for ticket');
   } catch (error) {
-    console.error('[settle] Settlement request failed (non-fatal):', error);
+    log.error({ err: String(error) }, '[settle] Settlement request failed (non-fatal)');
   }
 }

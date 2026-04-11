@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
 import { requireAuth, emitAttestation } from '@imajin/auth';
+
+const log = createLogger('events');
+const events = createEmitter('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 
@@ -14,7 +19,7 @@ async function getNodeDid(): Promise<string> {
   } catch {
     _nodeDid = process.env.RELAY_DID || '';
   }
-  if (!_nodeDid) console.warn('[check-in] No node DID found in relay.relay_config or RELAY_DID');
+  if (!_nodeDid) log.warn({}, '[check-in] No node DID found in relay.relay_config or RELAY_DID');
   return _nodeDid;
 }
 
@@ -66,7 +71,7 @@ async function triggerHardEligibilityCheck(did: string): Promise<void> {
     type: 'identity.verified.hard',
     context_id: did,
     context_type: 'identity',
-  }).catch((err) => console.error('[verification] hard emit error:', err));
+  }).catch((err) => log.error({ err: String(err) }, '[verification] hard emit error'));
 }
 
 /**
@@ -116,6 +121,8 @@ export async function POST(
       RETURNING id, used_at, status
     `;
 
+    events.emit({ action: 'checkin.create', did, payload: { eventId: id, ticketId, attendeeDid: ticket.owner_did ?? undefined } });
+
     // Fire-and-forget attestations — do not block check-in on failure
     if (ticket.owner_did) {
       const attendeeDid = ticket.owner_did as string;
@@ -130,11 +137,11 @@ export async function POST(
         context_id: id,
         context_type: 'event',
         payload: { ticketId, usedAt: updated.used_at, checkedInBy: identity.id },
-      }).catch((err) => console.error('Attestation emit error:', err));
+      }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
 
       // Check hard verification eligibility — fire-and-forget
       triggerHardEligibilityCheck(attendeeDid)
-        .catch((err) => console.error('[verification] hard check error:', err));
+        .catch((err) => log.error({ err: String(err) }, '[verification] hard check error'));
     }
 
     // Fire-and-forget check-in webhook — do not block check-in on failure
@@ -163,14 +170,14 @@ export async function POST(
             }),
           });
         } catch (err) {
-          console.error('Check-in webhook error:', err);
+          log.error({ err: String(err) }, 'Check-in webhook error');
         }
       })();
     }
 
     return NextResponse.json({ ticket: { id: updated.id, usedAt: updated.used_at } });
   } catch (error) {
-    console.error('Failed to check in ticket:', error);
+    log.error({ err: String(error) }, 'Failed to check in ticket');
     return NextResponse.json({ error: 'Failed to check in ticket' }, { status: 500 });
   }
 }

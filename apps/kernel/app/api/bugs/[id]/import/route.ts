@@ -3,6 +3,9 @@ import { db, bugReports } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { isAdmin } from '@/src/lib/www/session-auth';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const GITHUB_REPO = process.env.GITHUB_REPO || 'ima-jin/imajin-ai';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -69,7 +72,7 @@ export async function POST(
 
   if (!ghRes.ok) {
     const error = await ghRes.text();
-    console.error('GitHub API error:', error);
+    log.error({ err: error, bugId: params.id }, 'GitHub API error');
     return NextResponse.json({ error: 'Failed to create GitHub issue', details: error }, { status: 502 });
   }
 

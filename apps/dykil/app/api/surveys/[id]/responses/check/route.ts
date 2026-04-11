@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('dykil');
 import { db, surveyResponses } from '@/db';
 import { getSession } from '@imajin/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
@@ -69,7 +71,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse(result, 200, cors);
   } catch (error) {
-    console.error('Failed to check survey response:', error);
+    log.error({ err: String(error) }, 'Failed to check survey response');
     return errorResponse('Failed to check response', 500, cors);
   }
 }

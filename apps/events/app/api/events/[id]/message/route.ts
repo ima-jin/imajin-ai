@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { requireAuth } from '@imajin/auth';
+
+const log = createLogger('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 
@@ -49,7 +52,7 @@ export async function POST(
   }
 
   if (!NOTIFY_WEBHOOK_SECRET) {
-    console.error('[message] NOTIFY_WEBHOOK_SECRET not configured');
+    log.error({}, '[message] NOTIFY_WEBHOOK_SECRET not configured');
     return NextResponse.json({ error: 'Broadcast service not configured' }, { status: 500 });
   }
 
@@ -124,13 +127,13 @@ export async function POST(
 
     if (!res.ok) {
       const err = await res.text();
-      console.error(`[message] Broadcast failed: ${res.status} ${err}`);
+      log.error({ status: res.status, err }, '[message] Broadcast failed');
       return NextResponse.json({ error: 'Broadcast failed' }, { status: 502 });
     }
 
     broadcastResult = await res.json();
   } catch (err) {
-    console.error('[message] Broadcast request error:', err);
+    log.error({ err: String(err) }, '[message] Broadcast request error');
     return NextResponse.json({ error: 'Broadcast service unavailable' }, { status: 502 });
   }
 

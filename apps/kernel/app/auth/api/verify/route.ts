@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { verify, isValidMessageStructure } from '@imajin/auth';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/verify
@@ -23,7 +24,7 @@ import { verify, isValidMessageStructure } from '@imajin/auth';
  * or
  * { valid: false, error: "reason" }
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const body = await request.json();
     const { message } = body;
@@ -88,10 +89,10 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Verify error:', error);
+    log.error({ err: String(error) }, 'Verify error');
     return NextResponse.json(
       { error: 'Failed to verify message' },
       { status: 500 }
     );
   }
-}
+});

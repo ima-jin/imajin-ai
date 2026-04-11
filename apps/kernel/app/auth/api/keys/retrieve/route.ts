@@ -6,6 +6,7 @@ import { eq, and, isNotNull } from 'drizzle-orm';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { decryptSecret } from '@/src/lib/auth/encrypt';
 import { corsHeaders } from '@imajin/config';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -19,7 +20,7 @@ export async function OPTIONS(request: NextRequest) {
  * Body: { totpCode: string }
  * Returns: { encryptedKey, salt, keyDerivation }
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   try {
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
     );
 
   } catch (error) {
-    console.error('[keys/retrieve] POST error:', error);
+    log.error({ err: String(error) }, '[keys/retrieve] POST error');
     return NextResponse.json({ error: 'Failed to retrieve key' }, { status: 500, headers: cors });
   }
-}
+});

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { randomBytes } from 'crypto';
+
+const log = createLogger('events');
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, getEmailForDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
@@ -192,7 +195,7 @@ export async function POST(
     }
 
     if (!emailResult?.success) {
-      console.error('SendGrid delivery failed:', emailResult?.error);
+      log.error({ err: String(emailResult?.error) }, 'SendGrid delivery failed');
       return NextResponse.json(
         { error: 'Failed to deliver email. Check SendGrid configuration.' },
         { status: 502 }
@@ -208,7 +211,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, email: redactEmail(customerEmail), lastEmailSentAt: sentAt });
   } catch (error) {
-    console.error('Failed to resend ticket email:', error);
+    log.error({ err: String(error) }, 'Failed to resend ticket email');
     return NextResponse.json({ error: 'Failed to resend email' }, { status: 500 });
   }
 }

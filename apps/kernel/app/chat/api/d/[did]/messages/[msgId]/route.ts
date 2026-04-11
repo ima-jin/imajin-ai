@@ -4,6 +4,9 @@ import { db, messagesV2 } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * OPTIONS /api/d/:did/messages/:msgId - CORS preflight
@@ -77,7 +80,7 @@ export async function PATCH(
 
     return jsonResponse({ message: updated }, 200, cors);
   } catch (error) {
-    console.error('Failed to edit message:', error);
+    log.error({ err: String(error) }, 'Failed to edit message');
     return errorResponse('Failed to edit message', 500, cors);
   }
 }
@@ -129,7 +132,7 @@ export async function DELETE(
 
     return new Response(null, { status: 204, headers: cors });
   } catch (error) {
-    console.error('Failed to delete message:', error);
+    log.error({ err: String(error) }, 'Failed to delete message');
     return errorResponse('Failed to delete message', 500, cors);
   }
 }

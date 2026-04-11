@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
+import { createEmitter } from '@imajin/events';
 import { revalidatePath } from 'next/cache';
+
+const log = createLogger('events');
+const events = createEmitter('events');
 import { db, events, ticketTypes } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
@@ -38,7 +43,7 @@ export async function GET(
       })),
     });
   } catch (error) {
-    console.error('Failed to get event:', error);
+    log.error({ err: String(error) }, 'Failed to get event');
     return NextResponse.json({ error: 'Failed to get event' }, { status: 500 });
   }
 }
@@ -111,9 +116,11 @@ export async function PATCH(
     revalidatePath(`/${id}`);
     revalidatePath('/');
 
+    events.emit({ action: 'event.update', did, payload: { eventId: id, status: newStatus } });
+
     return NextResponse.json({ event: updated });
   } catch (error) {
-    console.error('Failed to update event status:', error);
+    log.error({ err: String(error) }, 'Failed to update event status');
     return NextResponse.json({ error: 'Failed to update event status' }, { status: 500 });
   }
 }
@@ -217,9 +224,11 @@ export async function PUT(
     // Bust the cache for this event page
     revalidatePath(`/${id}`);
 
+    events.emit({ action: 'event.update', did, payload: { eventId: id } });
+
     return NextResponse.json({ event: updated });
   } catch (error) {
-    console.error('Failed to update event:', error);
+    log.error({ err: String(error) }, 'Failed to update event');
     return NextResponse.json({ error: 'Failed to update event' }, { status: 500 });
   }
 }

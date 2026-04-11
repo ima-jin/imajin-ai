@@ -3,6 +3,9 @@ import { requireAuth } from '@imajin/auth';
 import { emitAttestation } from '@imajin/auth';
 import { db, pods, podMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const auth = await requireAuth(request, { verifyChain: true });
@@ -33,7 +36,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       context_type: 'pod',
       payload: { role: member.role },
     }).catch((err: unknown) => {
-      console.error('Attestation (pod.member.added) error:', err);
+      log.error({ err: String(err) }, 'Attestation (pod.member.added) error');
     });
   }
 
@@ -70,7 +73,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       context_type: 'pod',
       payload: { role: body.role },
     }).catch((err: unknown) => {
-      console.error('Attestation (pod.role.changed) error:', err);
+      log.error({ err: String(err) }, 'Attestation (pod.role.changed) error');
     });
   }
 
@@ -106,7 +109,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       context_type: 'pod',
       payload: {},
     }).catch((err: unknown) => {
-      console.error('Attestation (pod.member.removed) error:', err);
+      log.error({ err: String(err) }, 'Attestation (pod.member.removed) error');
     });
   }
 

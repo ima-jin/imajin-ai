@@ -1,3 +1,6 @@
+import { createLogger } from '@imajin/logger';
+const log = createLogger('auth');
+
 import { SESSION_COOKIE_NAME } from "@imajin/config";
 import type { Identity, AuthResult, AuthError } from "./types";
 
@@ -57,7 +60,7 @@ async function validateSessionCookie(
 
     return { identity };
   } catch (error) {
-    console.error("[AUTH] Session validation failed:", error);
+    log.error({ err: String(error) }, "[AUTH] Session validation failed");
     return { error: "Auth service unavailable", status: 503 };
   }
 }
@@ -86,7 +89,7 @@ async function validateBearerToken(
 
     return { identity: data.identity };
   } catch (error) {
-    console.error("[AUTH] Token validation failed:", error);
+    log.error({ err: String(error) }, "[AUTH] Token validation failed");
     return { error: "Auth service unavailable", status: 503 };
   }
 }
@@ -109,7 +112,7 @@ async function validateActingAs(
   const authUrl = getAuthUrl();
   const internalApiKey = process.env.ATTESTATION_INTERNAL_API_KEY;
   if (!internalApiKey) {
-    console.warn("[AUTH] ATTESTATION_INTERNAL_API_KEY not set — cannot validate act-as");
+    log.warn({}, "[AUTH] ATTESTATION_INTERNAL_API_KEY not set — cannot validate act-as");
     return { valid: false };
   }
   try {
@@ -137,7 +140,7 @@ async function validateActingAs(
 
     return { valid: true, allowedServices };
   } catch (err) {
-    console.error("[AUTH] Act-as validation failed:", err);
+    log.error({ err: String(err) }, "[AUTH] Act-as validation failed");
     return { valid: false };
   }
 }
@@ -181,7 +184,7 @@ export async function requireAuth(
         result.identity.chainVerified = chainData.chain?.valid ?? false;
       }
     } catch (err) {
-      console.error("[AUTH] Chain verification failed:", err);
+      log.error({ err: String(err) }, "[AUTH] Chain verification failed");
       result.identity.chainVerified = false;
     }
   }

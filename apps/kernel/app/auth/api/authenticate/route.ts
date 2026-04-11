@@ -3,6 +3,9 @@ import { db, identities, challenges, tokens } from '@/src/db';
 import { eq, and, isNull, gt } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { verify as verifySignature, hexToBytes, stringToBytes, TOKEN_TTL } from '@imajin/auth';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * POST /api/authenticate
@@ -115,7 +118,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Authenticate error:', error);
+    log.error({ err: String(error) }, 'Authenticate error');
     return NextResponse.json(
       { error: 'Failed to authenticate' },
       { status: 500 }
@@ -148,7 +151,7 @@ async function verifyRawSignature(
     
     return ed.verify(signature, messageBytes, publicKey);
   } catch (error) {
-    console.error('Signature verification error:', error);
+    log.error({ err: String(error) }, 'Signature verification error');
     return false;
   }
 }

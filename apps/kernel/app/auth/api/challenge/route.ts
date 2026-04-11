@@ -3,12 +3,13 @@ import { db, identities, challenges } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { CHALLENGE_TTL } from '@imajin/auth';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/challenge
  * Get a challenge to sign for authentication
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const body = await request.json();
     const { id } = body;
@@ -54,10 +55,10 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Challenge error:', error);
+    log.error({ err: String(error) }, 'Challenge error');
     return NextResponse.json(
       { error: 'Failed to create challenge' },
       { status: 500 }
     );
   }
-}
+});

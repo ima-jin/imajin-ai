@@ -20,12 +20,13 @@ import { corsHeaders } from '@/src/lib/kernel/cors';
 import { db, connectedAccounts } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getStripe } from '@/src/lib/pay/stripe';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   const authResult = await requireAuth(request);
@@ -117,10 +118,10 @@ export async function POST(request: NextRequest) {
       { headers: cors }
     );
   } catch (error) {
-    console.error('Connect onboard error:', error);
+    log.error({ err: String(error) }, 'Connect onboard error');
     return NextResponse.json(
       { error: 'Onboarding failed' },
       { status: 500, headers: cors }
     );
   }
-}
+});

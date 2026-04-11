@@ -1,3 +1,6 @@
+import { createLogger } from '@imajin/logger';
+const log = createLogger('email');
+
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 const SENDGRID_FROM = process.env.SENDGRID_FROM || 'Jin <jin@imajin.ai>';
 
@@ -17,7 +20,7 @@ export interface SendEmailOptions {
 
 export async function sendEmail(options: SendEmailOptions): Promise<{ success: boolean; error?: any; messageId?: string }> {
   if (!SENDGRID_API_KEY) {
-    console.warn('SENDGRID_API_KEY not set — skipping email to', options.to);
+    log.warn({ to: options.to }, 'SENDGRID_API_KEY not set — skipping email');
     return { success: false, error: 'No API key configured' };
   }
 
@@ -57,15 +60,15 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
     });
 
     if (res.status === 202) {
-      console.log('Email sent via SendGrid to', options.to);
+      log.info({ to: options.to }, 'Email sent via SendGrid');
       return { success: true, messageId: res.headers.get('x-message-id') ?? undefined };
     } else {
       const body = await res.text();
-      console.error('SendGrid error:', res.status, body);
+      log.error({ status: res.status, body }, 'SendGrid error');
       return { success: false, error: `SendGrid ${res.status}: ${body}` };
     }
   } catch (error) {
-    console.error('Email send failed:', error);
+    log.error({ err: String(error) }, 'Email send failed');
     return { success: false, error };
   }
 }

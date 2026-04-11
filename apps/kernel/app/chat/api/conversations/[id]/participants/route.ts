@@ -4,6 +4,9 @@ import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
 import { lookupIdentity } from '@/src/lib/kernel/lookup';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const sql = getClient();
 
@@ -53,7 +56,7 @@ export async function GET(
 
     return jsonResponse({ participants });
   } catch (error) {
-    console.error('Failed to list participants:', error);
+    log.error({ err: String(error) }, 'Failed to list participants');
     return errorResponse('Failed to list participants', 500);
   }
 }
@@ -98,7 +101,7 @@ export async function POST(
 
     return jsonResponse({ ok: true, did: conversationDid, memberDid, role }, 201);
   } catch (error) {
-    console.error('Failed to add participant:', error);
+    log.error({ err: String(error) }, 'Failed to add participant');
     return errorResponse('Failed to add participant', 500);
   }
 }

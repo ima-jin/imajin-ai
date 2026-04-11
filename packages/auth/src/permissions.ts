@@ -9,6 +9,9 @@
  * - established+graph: established DID + at least one accepted connection in trust graph
  */
 
+import { createLogger } from '@imajin/logger';
+const log = createLogger('auth');
+
 export type Action =
   | 'buy_ticket' | 'view_tickets' | 'event_lobby_chat'
   | 'edit_profile' | 'create_event'
@@ -99,7 +102,7 @@ export async function canDo(
       const data = await response.json();
       return data.inGraph === true;
     } catch (error) {
-      console.error('Failed to check graph membership:', error);
+      log.error({ err: String(error) }, 'Failed to check graph membership');
       return false;
     }
   }

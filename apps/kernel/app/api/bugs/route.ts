@@ -4,9 +4,10 @@ import { db, bugReports } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { isAdmin } from '@/src/lib/www/session-auth';
+import { withLogger } from '@imajin/logger';
 
 // POST /api/bugs — submit a new bug report
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request, { log }) => {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -51,10 +52,10 @@ export async function POST(request: NextRequest) {
   }).returning();
 
   return NextResponse.json(report, { status: 201 });
-}
+});
 
 // GET /api/bugs — list bugs for the authenticated user, or all bugs with ?scope=all
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request, { log }) => {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -85,4 +86,4 @@ export async function GET(request: NextRequest) {
     .orderBy(desc(bugReports.createdAt));
 
   return NextResponse.json(reports);
-}
+});

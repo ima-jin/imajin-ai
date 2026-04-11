@@ -1,3 +1,6 @@
+import { createLogger } from '@imajin/logger';
+const log = createLogger('notify');
+
 export async function send(params: {
   to: string;
   scope: string;
@@ -9,7 +12,7 @@ export async function send(params: {
   const notifyUrl = process.env.NOTIFY_SERVICE_URL;
   const secret = process.env.NOTIFY_WEBHOOK_SECRET;
   if (!notifyUrl || !secret) {
-    console.warn("Notification skipped: NOTIFY_SERVICE_URL or NOTIFY_WEBHOOK_SECRET not set");
+    log.warn({}, "Notification skipped: NOTIFY_SERVICE_URL or NOTIFY_WEBHOOK_SECRET not set");
     return;
   }
   try {
@@ -23,10 +26,10 @@ export async function send(params: {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      console.error(`Notification (${params.scope}) failed: ${res.status} ${text}`);
+      log.error({ scope: params.scope, status: res.status, text }, `Notification (${params.scope}) failed: ${res.status} ${text}`);
     }
   } catch (err) {
-    console.error(`Notification (${params.scope}) error:`, err);
+    log.error({ err: String(err) }, `Notification (${params.scope}) error`);
   }
 }
 
@@ -41,7 +44,7 @@ export async function broadcast(params: {
   const notifyUrl = process.env.NOTIFY_SERVICE_URL;
   const secret = process.env.NOTIFY_WEBHOOK_SECRET;
   if (!notifyUrl || !secret) {
-    console.warn("Broadcast skipped: NOTIFY_SERVICE_URL or NOTIFY_WEBHOOK_SECRET not set");
+    log.warn({}, "Broadcast skipped: NOTIFY_SERVICE_URL or NOTIFY_WEBHOOK_SECRET not set");
     return;
   }
   try {
@@ -55,10 +58,10 @@ export async function broadcast(params: {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      console.error(`Broadcast (${params.scope}) failed: ${res.status} ${text}`);
+      log.error({ scope: params.scope, status: res.status, text }, `Broadcast (${params.scope}) failed: ${res.status} ${text}`);
     }
   } catch (err) {
-    console.error(`Broadcast (${params.scope}) error:`, err);
+    log.error({ err: String(err) }, `Broadcast (${params.scope}) error`);
   }
 }
 
@@ -82,10 +85,10 @@ export async function interest(params: {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      console.error(`Interest signal (${params.attestationType}) failed: ${res.status} ${text}`);
+      log.error({ attestationType: params.attestationType, status: res.status, text }, `Interest signal (${params.attestationType}) failed: ${res.status} ${text}`);
     }
   } catch (err) {
-    console.error(`Interest signal (${params.attestationType}) error:`, err);
+    log.error({ err: String(err) }, `Interest signal (${params.attestationType}) error`);
   }
 }
 

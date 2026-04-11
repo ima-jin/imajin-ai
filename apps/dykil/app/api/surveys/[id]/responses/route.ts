@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('dykil');
 import { db, surveys, surveyResponses } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
@@ -51,7 +53,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse({ responses, total: responses.length }, 200, cors);
   } catch (error) {
-    console.error('Failed to fetch responses:', error);
+    log.error({ err: String(error) }, 'Failed to fetch responses');
     return errorResponse('Failed to fetch responses', 500, cors);
   }
 }

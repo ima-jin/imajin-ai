@@ -3,6 +3,9 @@ import { db, follows, profiles } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { eq, count } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -48,7 +51,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       connections: connectionsResult?.count ?? 0,
     });
   } catch (error) {
-    console.error('Failed to fetch profile counts:', error);
+    log.error({ err: String(error) }, 'Failed to fetch profile counts');
     return errorResponse('Failed to fetch profile counts', 500);
   }
 }

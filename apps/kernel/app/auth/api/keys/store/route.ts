@@ -7,6 +7,7 @@ import { eq, and, isNotNull } from 'drizzle-orm';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { decryptSecret } from '@/src/lib/auth/encrypt';
 import { corsHeaders } from '@imajin/config';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -27,7 +28,7 @@ export async function OPTIONS(request: NextRequest) {
  * }
  * Returns: { id: string, stored: true }
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   try {
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ id, stored: true }, { headers: cors });
 
   } catch (error) {
-    console.error('[keys/store] POST error:', error);
+    log.error({ err: String(error) }, '[keys/store] POST error');
     return NextResponse.json({ error: 'Failed to store key' }, { status: 500, headers: cors });
   }
-}
+});

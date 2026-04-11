@@ -7,6 +7,9 @@
  * This is the default provider for the Imajin identity system.
  */
 
+import { createLogger } from '@imajin/logger';
+const log = createLogger('auth');
+
 import type { Keypair, Identity, SignedMessage, IdentityType } from '../types';
 import * as crypto from '../crypto';
 import { sign, signSync, createChallenge } from '../sign';
@@ -151,10 +154,7 @@ export function storeKeypair(keypair: Keypair, name: string = 'default'): void {
     throw new Error('storeKeypair only works in browser');
   }
   
-  console.warn(
-    '⚠️ Storing private key in localStorage is NOT secure. ' +
-    'Use only for development/demo.'
-  );
+  log.warn({}, 'Storing private key in localStorage is NOT secure. Use only for development/demo.');
   
   localStorage.setItem(STORAGE_PREFIX + name, JSON.stringify(keypair));
 }
@@ -175,11 +175,11 @@ export function loadKeypair(name: string = 'default'): Keypair | null {
     
     // Validate the keypair
     if (!crypto.isValidPrivateKey(keypair.privateKey)) {
-      console.error('Invalid private key in storage');
+      log.error({}, 'Invalid private key in storage');
       return null;
     }
     if (!crypto.isValidPublicKey(keypair.publicKey)) {
-      console.error('Invalid public key in storage');
+      log.error({}, 'Invalid public key in storage');
       return null;
     }
     

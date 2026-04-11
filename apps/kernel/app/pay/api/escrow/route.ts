@@ -35,6 +35,7 @@ import { getPaymentService } from '@/src/lib/pay/pay';
 import { requireAuth } from '@imajin/auth';
 import type { EscrowRequest, Currency } from '@/src/lib/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
+import { withLogger } from '@imajin/logger';
 
 interface EscrowBody {
   amount: number;
@@ -53,7 +54,7 @@ export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
   try {
     const body: EscrowBody = await request.json();
@@ -121,19 +122,19 @@ export async function POST(request: NextRequest) {
       expiresAt: result.expiresAt?.toISOString(),
     }, { headers: cors });
   } catch (error) {
-    console.error('Escrow error:', error);
+    log.error({ err: String(error) }, 'Escrow error');
     return NextResponse.json(
       { error: 'Escrow operation failed' },
       { status: 500, headers: cors }
     );
   }
-}
+});
 
 /**
  * POST /api/escrow/release
  * Release funds from escrow to recipient
  */
-export async function PUT(request: NextRequest) {
+export const PUT = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const body = await request.json();
     const { escrowId, provider, action } = body;
@@ -174,10 +175,10 @@ export async function PUT(request: NextRequest) {
       createdAt: result.createdAt.toISOString(),
     });
   } catch (error) {
-    console.error('Escrow release error:', error);
+    log.error({ err: String(error) }, 'Escrow release error');
     return NextResponse.json(
       { error: 'Escrow operation failed' },
       { status: 500 }
     );
   }
-}
+});

@@ -1,6 +1,9 @@
 import { spawn } from 'child_process';
 import { access } from 'fs/promises';
 import { constants } from 'fs';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export const VIDEO_QUALITIES = ['1080p', '720p', '360p'] as const;
 export type VideoQuality = typeof VIDEO_QUALITIES[number];
@@ -81,7 +84,7 @@ export function transcodeVideo(originalPath: string, quality: VideoQuality): Pro
         outPath,
       ];
 
-      console.log(`[transcode] Starting ${quality} for ${originalPath}`);
+      log.info({ quality, originalPath }, 'starting transcode');
       const proc = spawn('ffmpeg', args);
 
       proc.stderr.on('data', (_data) => {
@@ -92,10 +95,10 @@ export function transcodeVideo(originalPath: string, quality: VideoQuality): Pro
         activeTranscodes.delete(key);
         runNext();
         if (code === 0) {
-          console.log(`[transcode] Completed ${quality}: ${outPath}`);
+          log.info({ quality, outPath }, 'transcode completed');
           resolve(outPath);
         } else {
-          console.error(`[transcode] Failed ${quality} (exit ${code})`);
+          log.error({ quality, code }, 'transcode failed');
           reject(new Error(`ffmpeg exited with code ${code}`));
         }
       });

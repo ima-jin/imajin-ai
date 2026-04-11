@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('coffee');
 import { db, coffeePages } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { getClient } from '@imajin/db';
@@ -121,7 +123,7 @@ export async function POST(request: NextRequest) {
 
     return jsonResponse(page, 201);
   } catch (error) {
-    console.error('Failed to create coffee page:', error);
+    log.error({ err: String(error) }, 'Failed to create coffee page');
     return errorResponse('Failed to create coffee page', 500);
   }
 }

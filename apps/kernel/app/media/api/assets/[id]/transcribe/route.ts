@@ -7,6 +7,9 @@ import { requireAuth } from "@imajin/auth";
 export const dynamic = "force-dynamic";
 import { eq } from "drizzle-orm";
 import { corsHeaders } from "@imajin/config";
+import { createLogger } from "@imajin/logger";
+
+const log = createLogger("kernel");
 
 const WHISPER_URL = process.env.WHISPER_URL || "http://192.168.1.234:8765";
 const WHISPER_AUTH = process.env.WHISPER_AUTH_TOKEN || "";
@@ -123,7 +126,7 @@ export async function GET(
 
     if (!whisperRes.ok) {
       const err = await whisperRes.text();
-      console.error("Whisper error:", whisperRes.status, err);
+      log.error({ status: whisperRes.status, err }, "Whisper error");
       return NextResponse.json(
         { error: "Transcription failed", detail: err },
         { status: 502, headers: cors }
@@ -157,7 +160,7 @@ export async function GET(
 
     return NextResponse.json({ transcript, cached: false }, { headers: cors });
   } catch (err) {
-    console.error("Whisper request failed:", err);
+    log.error({ err: String(err) }, "Whisper request failed");
     return NextResponse.json(
       { error: "Failed to reach Whisper service" },
       { status: 502, headers: cors }

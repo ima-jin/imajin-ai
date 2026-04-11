@@ -4,6 +4,7 @@ import { storedKeys } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { corsHeaders } from '@imajin/config';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -15,7 +16,7 @@ export async function OPTIONS(request: NextRequest) {
  * Requires authentication only (no MFA — this is a destructive action
  * that the user should be able to perform if they lose their MFA device).
  */
-export async function DELETE(request: NextRequest) {
+export const DELETE = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   try {
@@ -41,7 +42,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ deleted: true }, { headers: cors });
 
   } catch (error) {
-    console.error('[keys/stored] DELETE error:', error);
+    log.error({ err: String(error) }, '[keys/stored] DELETE error');
     return NextResponse.json({ error: 'Failed to delete stored key' }, { status: 500, headers: cors });
   }
-}
+});

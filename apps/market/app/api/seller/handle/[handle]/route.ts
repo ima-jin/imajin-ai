@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('market');
 import { db, listings } from '@/db';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and, desc } from 'drizzle-orm';
@@ -58,7 +60,7 @@ export async function GET(
       enabled: true,
     });
   } catch (error) {
-    console.error('Failed to fetch seller by handle:', error);
+    log.error({ err: String(error) }, 'Failed to fetch seller by handle');
     return errorResponse('Failed to fetch seller listings', 500);
   }
 }

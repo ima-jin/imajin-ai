@@ -249,6 +249,52 @@ export const moderationLog = registrySchema.table('moderation_log', {
 
 export type ModerationLog = typeof moderationLog.$inferSelect;
 
+/**
+ * HTTP request log — written by withLogger middleware when ENABLE_REQUEST_LOG=true
+ */
+export const requestLog = registrySchema.table('request_log', {
+  id: text('id').primaryKey(),
+  service: text('service').notNull(),
+  method: text('method').notNull(),
+  path: text('path').notNull(),
+  status: integer('status').notNull(),
+  durationMs: integer('duration_ms'),
+  did: text('did'),
+  ip: text('ip'),
+  correlationId: text('correlation_id'),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  serviceCreatedIdx: index('idx_request_log_service_created').on(table.service, table.createdAt),
+  correlationIdx: index('idx_request_log_correlation').on(table.correlationId),
+}));
+
+export type RequestLog = typeof requestLog.$inferSelect;
+export type NewRequestLog = typeof requestLog.$inferInsert;
+
+/**
+ * System events — fire-and-forget audit log written by @imajin/events
+ */
+export const systemEvents = registrySchema.table('system_events', {
+  id: text('id').primaryKey(),
+  service: text('service').notNull(),
+  action: text('action').notNull(),
+  did: text('did'),
+  correlationId: text('correlation_id'),
+  parentEventId: text('parent_event_id'),
+  payload: jsonb('payload'),
+  status: text('status').default('success'),
+  durationMs: integer('duration_ms'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  serviceActionIdx: index('idx_system_events_service_action').on(table.service, table.action),
+  correlationIdx: index('idx_system_events_correlation').on(table.correlationId),
+  didIdx: index('idx_system_events_did').on(table.did),
+  createdIdx: index('idx_system_events_created').on(table.createdAt),
+}));
+
+export type SystemEvent = typeof systemEvents.$inferSelect;
+
 // Types
 export type Node = typeof nodes.$inferSelect;
 export type NewNode = typeof nodes.$inferInsert;

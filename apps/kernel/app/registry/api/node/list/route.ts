@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, nodes } from '@/src/db';
 import { eq, desc, and, or, sql } from 'drizzle-orm';
+import { withLogger } from '@imajin/logger';
 
 /**
  * GET /api/node/list
@@ -20,7 +21,7 @@ import { eq, desc, and, or, sql } from 'drizzle-orm';
  *   offset: number
  * }
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const { searchParams } = new URL(request.url);
     
@@ -88,13 +89,13 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('List error:', error);
+    log.error({ err: String(error) }, 'List error');
     return NextResponse.json(
       { error: 'Failed to list nodes' },
       { status: 500 }
     );
   }
-}
+});
 
 /**
  * GET /api/node/list/stats
