@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { AppLauncher } from './app-launcher';
 import { NotificationBell } from './notification-bell';
 import { getPort } from '@imajin/config';
-import { useForests } from './use-forests';
+import { useIdentities } from './use-identities';
 
 export interface NavIdentity {
   isLoggedIn: boolean;
@@ -67,7 +67,10 @@ function scopeIcon(scope: string): string {
   if (scope === 'community') return '🏛️';
   if (scope === 'org') return '🏢';
   if (scope === 'family') return '👨‍👩‍👦';
-  return '🌲';
+  if (scope === 'node') return '🖥️';
+  if (scope === 'agent') return '🤖';
+  if (scope === 'device') return '📱';
+  return '👤';
 }
 
 function buildUserLinks(prefix: string, domain: string, overrides?: ServiceUrls) {
@@ -236,14 +239,14 @@ export function NavBar({
     return () => clearInterval(interval);
   }, [identity?.isLoggedIn, identity?.tier, servicePrefix, domain, serviceUrls]);
 
-  // Forests (group identities)
+  // Identities (group identities)
   const authUrl = buildUrl('auth', servicePrefix, domain, serviceUrls);
   const profileUrl = buildUrl('profile', servicePrefix, domain, serviceUrls);
-  const { forests, activeForest, activeConfig, setActiveForest } = useForests(
+  const { identities, activeIdentity, activeConfig, setActiveIdentity } = useIdentities(
     identity?.isLoggedIn && identity?.tier !== 'soft' ? authUrl : null,
     identity?.isLoggedIn && identity?.tier !== 'soft' ? profileUrl : null
   );
-  const activeForestData = forests.find((f) => f.groupDid === activeForest) ?? null;
+  const activeIdentityData = identities.find((f) => f.groupDid === activeIdentity) ?? null;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -362,17 +365,17 @@ export function NavBar({
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               >
                 <span className="text-xl">
-                  {activeForestData ? scopeIcon(activeForestData.scope) : '👤'}
+                  {activeIdentityData ? scopeIcon(activeIdentityData.scope) : '👤'}
                 </span>
                 <span className="flex flex-col items-start" style={{ gap: '2px' }}>
-                  {activeForestData && (
+                  {activeIdentityData && (
                     <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium leading-none">
                       acting as
                     </span>
                   )}
                   <span className="text-sm font-medium leading-none">
-                    {activeForestData
-                      ? (activeForestData.name || activeForestData.handle || 'Forest')
+                    {activeIdentityData
+                      ? (activeIdentityData.name || activeIdentityData.handle || 'Identity')
                       : identity.handle
                       ? `@${identity.handle}`
                       : identity.name
@@ -448,51 +451,66 @@ export function NavBar({
                         href={buildUrl('auth', servicePrefix, domain, serviceUrls)}
                         className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
                       >
-                        <span>🔑</span> Identity
+                        <span>🔑</span> Identities
                       </a>
                       <hr className="my-1 border-gray-200 dark:border-gray-800" />
                       <div className="px-4 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                        🌲 Your Forests
+                        Switch To
                       </div>
-                      {forests.map((forest) => {
-                        const isActive = forest.groupDid === activeForest;
+                      {activeIdentity && identity && (
+                        <div className="flex items-center group/identity">
+                          <button
+                            onClick={() => {
+                              setActiveIdentity(null);
+                              setShowDropdown(false);
+                            }}
+                            className="flex-1 text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
+                          >
+                            <span>👤</span>
+                            <span>
+                              {identity.handle ? `@${identity.handle}` : identity.name || 'Personal'}
+                            </span>
+                          </button>
+                        </div>
+                      )}
+                      {identities.slice(0, 5).map((ident) => {
+                        const isActive = ident.groupDid === activeIdentity;
                         return (
-                          <div key={forest.groupDid} className="flex items-center group/forest">
+                          <div key={ident.groupDid} className="flex items-center group/identity">
                             <button
                               onClick={() => {
-                                setActiveForest(isActive ? null : forest.groupDid);
+                                setActiveIdentity(isActive ? null : ident.groupDid);
                                 setShowDropdown(false);
                               }}
                               className="flex-1 text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
                             >
-                              <span>{scopeIcon(forest.scope)}</span>
+                              <span>{scopeIcon(ident.scope)}</span>
                               <span className={isActive ? 'font-medium' : ''}>
-                                {forest.name || forest.handle || forest.groupDid.slice(0, 12)}
-                              </span>
-                              <span className="text-[10px] text-gray-400 dark:text-gray-500 capitalize">
-                                ({forest.scope})
+                                {ident.name || ident.handle || ident.groupDid.slice(0, 12)}
                               </span>
                               {isActive && (
                                 <span className="ml-auto text-amber-600 dark:text-amber-400 font-bold text-xs">✓</span>
                               )}
                             </button>
                             <a
-                              href={`${authUrl}/groups/${encodeURIComponent(forest.groupDid)}/settings`}
+                              href={`${authUrl}/groups/${encodeURIComponent(ident.groupDid)}/settings`}
                               onClick={e => e.stopPropagation()}
-                              className="pr-3 py-2 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition opacity-0 group-hover/forest:opacity-100 no-underline text-sm"
-                              title="Forest settings"
+                              className="pr-3 py-2 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition opacity-0 group-hover/identity:opacity-100 no-underline text-sm"
+                              title="Settings"
                             >
                               ⚙️
                             </a>
                           </div>
                         );
                       })}
-                      <a
-                        href={`${authUrl}/groups`}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit text-gray-500 dark:text-gray-400"
-                      >
-                        <span>🌱</span> Grow a forest
-                      </a>
+                      {identities.length > 5 && (
+                        <a
+                          href={buildUrl('auth', servicePrefix, domain, serviceUrls)}
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit text-gray-500 dark:text-gray-400"
+                        >
+                          View all →
+                        </a>
+                      )}
                       <hr className="my-1 border-gray-200 dark:border-gray-800" />
                       <button
                         onClick={toggleTheme}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useForests } from './use-forests';
+import { useIdentities } from './use-identities';
 
 export interface LauncherService {
   name: string;
@@ -22,9 +22,9 @@ export interface AppLauncherProps {
   inline?: boolean;
   /** Layout variant: 'list' (default) or 'grid' (4-column icon grid) */
   variant?: 'list' | 'grid';
-  /** Auth service URL — enables forest switcher when provided */
+  /** Auth service URL — enables identity switcher when provided */
   authUrl?: string;
-  /** If set, only show services in this list (from active forest config) */
+  /** If set, only show services in this list (from active identity config) */
   enabledServices?: string[];
 }
 
@@ -53,7 +53,10 @@ function scopeIcon(scope: string): string {
   if (scope === 'community') return '🏛️';
   if (scope === 'org') return '🏢';
   if (scope === 'family') return '👨‍👩‍👦';
-  return '🌲';
+  if (scope === 'node') return '🖥️';
+  if (scope === 'agent') return '🤖';
+  if (scope === 'device') return '📱';
+  return '👤';
 }
 
 export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', inline = false, variant = 'list', authUrl, enabledServices }: AppLauncherProps) {
@@ -61,9 +64,9 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   const [showPanel, setShowPanel] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const showForests = tier === 'hard' || tier === 'creator';
-  // profileUrl=null: AppLauncher doesn't use forest config (enabledServices passed from parent)
-  const { forests, activeForest, setActiveForest } = useForests(showForests && authUrl ? authUrl : null, null);
+  const showIdentities = tier === 'hard' || tier === 'creator';
+  // profileUrl=null: AppLauncher doesn't use identity config (enabledServices passed from parent)
+  const { identities, activeIdentity, setActiveIdentity } = useIdentities(showIdentities && authUrl ? authUrl : null, null);
 
   useEffect(() => {
     fetch(`${registryUrl}/api/specs`)
@@ -131,38 +134,29 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
     );
   }
 
-  const forestsSection = showForests && (forests.length > 0 || authUrl) ? (
+  const identitiesSection = showIdentities && (identities.length > 0 || authUrl) ? (
     <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-1">
       <div className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-        🌲 Your Forests
+        Switch To
       </div>
-      {forests.map((forest) => {
-        const isActive = forest.groupDid === activeForest;
+      {identities.map((ident) => {
+        const isActive = ident.groupDid === activeIdentity;
         return (
           <button
-            key={forest.groupDid}
-            onClick={() => { setActiveForest(isActive ? null : forest.groupDid); setShowPanel(false); }}
+            key={ident.groupDid}
+            onClick={() => { setActiveIdentity(isActive ? null : ident.groupDid); setShowPanel(false); }}
             className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
               isActive
                 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 font-medium'
                 : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
             }`}
           >
-            <span className="text-lg flex-shrink-0">{scopeIcon(forest.scope)}</span>
-            <span>{forest.name || forest.handle || forest.groupDid.slice(0, 12)}</span>
+            <span className="text-lg flex-shrink-0">{scopeIcon(ident.scope)}</span>
+            <span>{ident.name || ident.handle || ident.groupDid.slice(0, 12)}</span>
             {isActive && <span className="ml-auto text-amber-600 dark:text-amber-400 font-bold text-xs">✓</span>}
           </button>
         );
       })}
-      {authUrl && (
-        <a
-          href={`${authUrl}/groups`}
-          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
-        >
-          <span className="text-lg flex-shrink-0">🌱</span>
-          <span>Grow a forest</span>
-        </a>
-      )}
     </div>
   ) : null;
 
@@ -214,7 +208,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
           </div>
         </div>
       )}
-      {forestsSection}
+      {identitiesSection}
       {footer}
     </>
   ) : (
@@ -256,7 +250,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
           {meta.map(renderTile)}
         </div>
       )}
-      {forestsSection}
+      {identitiesSection}
       {footer}
     </>
   );

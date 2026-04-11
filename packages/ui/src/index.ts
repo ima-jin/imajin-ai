@@ -29,5 +29,5 @@ export { ActionSheet } from './action-sheet';
 export { themeInitScript } from './theme-init';
 
 export { getActingAs, setActingAs, getActingAsHeaders } from './acting-as';
-export { useForests } from './use-forests';
-export type { Forest } from './use-forests';
+export { useIdentities } from './use-identities';
+export type { GroupIdentity } from './use-identities';
