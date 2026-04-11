@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { label: 'Storage', href: '/admin/storage', icon: '💾' },
   { label: 'Config', href: '/admin/config', icon: '🔧' },
   { label: 'Moderation', href: '/admin/moderation', icon: '🛡️' },
+  { label: 'Telemetry', href: '/admin/telemetry', icon: '📈' },
 ];
 
 export default async function AdminLayout({
