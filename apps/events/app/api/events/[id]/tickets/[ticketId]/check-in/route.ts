@@ -4,7 +4,7 @@ import { createEmitter } from '@imajin/events';
 import { requireAuth, emitAttestation } from '@imajin/auth';
 
 const log = createLogger('events');
-const events = createEmitter('events');
+const eventBus = createEmitter('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 
@@ -121,7 +121,7 @@ export async function POST(
       RETURNING id, used_at, status
     `;
 
-    events.emit({ action: 'checkin.create', did, payload: { eventId: id, ticketId, attendeeDid: ticket.owner_did ?? undefined } });
+    eventBus.emit({ action: 'checkin.create', did, payload: { eventId: id, ticketId, attendeeDid: ticket.owner_did ?? undefined } });
 
     // Fire-and-forget attestations — do not block check-in on failure
     if (ticket.owner_did) {
