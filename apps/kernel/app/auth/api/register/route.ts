@@ -253,6 +253,19 @@ export async function POST(request: NextRequest) {
       payload: { tier: 'preliminary', type: identity.type },
     }).catch((err) => console.error('[register] Attestation (identity.created) error (non-fatal):', err));
 
+    // Emit identity.verified.preliminary → triggers 100 MJN emission
+    // Key-based registrations are preliminary by definition (proved key ownership).
+    // checkPreliminaryEligibility only fires for 'soft' tier, so we emit directly here.
+    const platformDid = process.env.RELAY_DID || process.env.AUTH_DID || '';
+    emitAttestation({
+      issuer_did: platformDid,
+      subject_did: identity.id,
+      type: 'identity.verified.preliminary',
+      context_id: identity.id,
+      context_type: 'identity',
+      payload: { tier: 'preliminary', type: identity.type },
+    }).catch((err) => console.error('[register] Attestation (identity.verified.preliminary) error (non-fatal):', err));
+
     // Create profile row so the user is visible/discoverable
     try {
       const displayType = ['human', 'agent', 'presence'].includes(type) ? type : 'human';
