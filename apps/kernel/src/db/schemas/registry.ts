@@ -249,6 +249,29 @@ export const moderationLog = registrySchema.table('moderation_log', {
 
 export type ModerationLog = typeof moderationLog.$inferSelect;
 
+/**
+ * System events — fire-and-forget audit log written by @imajin/events
+ */
+export const systemEvents = registrySchema.table('system_events', {
+  id: text('id').primaryKey(),
+  service: text('service').notNull(),
+  action: text('action').notNull(),
+  did: text('did'),
+  correlationId: text('correlation_id'),
+  parentEventId: text('parent_event_id'),
+  payload: jsonb('payload'),
+  status: text('status').default('success'),
+  durationMs: integer('duration_ms'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  serviceActionIdx: index('idx_system_events_service_action').on(table.service, table.action),
+  correlationIdx: index('idx_system_events_correlation').on(table.correlationId),
+  didIdx: index('idx_system_events_did').on(table.did),
+  createdIdx: index('idx_system_events_created').on(table.createdAt),
+}));
+
+export type SystemEvent = typeof systemEvents.$inferSelect;
+
 // Types
 export type Node = typeof nodes.$inferSelect;
 export type NewNode = typeof nodes.$inferInsert;
