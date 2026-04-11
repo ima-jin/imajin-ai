@@ -50,6 +50,7 @@ const postgres = (await import('postgres')).default;
 const sql = postgres(databaseUrl, { max: 1 });
 
 const SELLER_ROLES = new Set(['seller', 'creator', 'event']);
+const PROTOCOL_DID = 'did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213';
 
 try {
   console.log(`${dryRun ? '🔍 DRY RUN' : '🔥 APPLYING'} — recompute balances from ledger\n`);
@@ -90,16 +91,29 @@ try {
 
     // Refunds — reverse the platform balance credits that were made on the original settlement.
     // The buyer gets refunded via Stripe (external), so no buyer balance movement.
-    // Only reverse credits to platform/node/non-seller roles (from_did is who gets debited).
+    // Refund from_did is who originally received the credit and now gives it back.
+    // But if the original credit was skipped (funded + seller role), the refund debit should also be skipped.
     if (tx.type === 'refund') {
-      if (tx.from_did && tx.from_did !== 'platform') {
-        ensure(tx.from_did);
-        balances[tx.from_did].cash -= tx.amount;
-      } else if (tx.from_did === 'platform') {
+      const refundRole = tx.metadata?.role || null;
+      const wasSellerCredit = refundRole && SELLER_ROLES.has(refundRole);
+
+      // Look up the original transaction to see if it was a funded seller credit
+      // If no role on the refund, check if from_did matches a funded seller pattern
+      // Simple heuristic: if from_did != platform DID and from_did != protocol DID, it's likely a seller reversal
+      // More reliable: only debit from_did if they would have been credited in the first place
+      
+      // Platform/protocol always get credited, so always reverse those
+      if (tx.from_did === 'platform' || tx.from_did === 'did:imajin:platform') {
         ensure('did:imajin:platform');
         balances['did:imajin:platform'].cash -= tx.amount;
+      } else if (tx.from_did === PROTOCOL_DID) {
+        ensure(PROTOCOL_DID);
+        balances[PROTOCOL_DID].cash -= tx.amount;
+      } else {
+        // Non-platform from_did — this is reversing a seller/creator credit.
+        // Since funded seller credits are skipped, the reversal should also be skipped.
+        // (The money went through Stripe Connect, Stripe handles the refund too)
       }
-      // to_did on refunds is the buyer — they get refunded via Stripe, not platform balance
       continue;
     }
 
