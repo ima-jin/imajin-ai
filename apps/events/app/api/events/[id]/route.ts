@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { revalidatePath } from 'next/cache';
+
+const log = createLogger('events');
 import { db, events, ticketTypes } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
@@ -38,7 +41,7 @@ export async function GET(
       })),
     });
   } catch (error) {
-    console.error('Failed to get event:', error);
+    log.error({ err: String(error) }, 'Failed to get event');
     return NextResponse.json({ error: 'Failed to get event' }, { status: 500 });
   }
 }
@@ -113,7 +116,7 @@ export async function PATCH(
 
     return NextResponse.json({ event: updated });
   } catch (error) {
-    console.error('Failed to update event status:', error);
+    log.error({ err: String(error) }, 'Failed to update event status');
     return NextResponse.json({ error: 'Failed to update event status' }, { status: 500 });
   }
 }
@@ -219,7 +222,7 @@ export async function PUT(
 
     return NextResponse.json({ event: updated });
   } catch (error) {
-    console.error('Failed to update event:', error);
+    log.error({ err: String(error) }, 'Failed to update event');
     return NextResponse.json({ error: 'Failed to update event' }, { status: 500 });
   }
 }

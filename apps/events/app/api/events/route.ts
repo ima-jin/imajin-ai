@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withLogger } from '@imajin/logger';
 import { db, events, ticketTypes } from '@/src/db';
 import { requireHardDID, emitAttestation } from '@imajin/auth';
 import { getClient } from '@imajin/db';
@@ -12,7 +13,7 @@ const AUTH_URL = process.env.AUTH_SERVICE_URL!;
  * POST /api/events - Create a new event
  * Requires hard DID (keypair-based identity)
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('events', async (request, { log }) => {
   // Require hard DID authentication
   const authResult = await requireHardDID(request);
   if ('error' in authResult) {
@@ -155,7 +156,7 @@ export async function POST(request: NextRequest) {
       context_id: event.id,
       context_type: 'event',
       payload: { eventDid: event.did, title },
-    }).catch((err) => console.error('Attestation emit error:', err));
+    }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
 
     // Create ticket types if provided
     const createdTicketTypes = [];
@@ -193,9 +194,9 @@ export async function POST(request: NextRequest) {
           SET name = ${title}, created_by = ${identity.id}
           WHERE did = ${eventDid}
         `;
-        console.log(`Created event chat ${eventDid} with creator ${identity.id} as admin`);
+        log.info({ eventDid, creatorId: identity.id }, 'Created event chat with creator as admin');
       } catch (chatError) {
-        console.warn('Event chat creation failed (non-fatal):', chatError);
+        log.warn({ err: String(chatError) }, 'Event chat creation failed (non-fatal)');
       }
     }
 
@@ -212,16 +213,16 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
 
   } catch (error) {
-    console.error('Failed to create event:', error);
+    log.error({ err: String(error) }, 'Failed to create event');
     return NextResponse.json({ error: 'Failed to create event' }, { status: 500 });
   }
-}
+});
 
 /**
  * GET /api/events - List events
  * Supports: ?courseSlug=intro-to-ai&upcoming=true&status=published&limit=20
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('events', async (request, { log }) => {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status') || 'published';
   const limit = parseInt(searchParams.get('limit') || '20');
@@ -242,10 +243,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ events: eventList });
   } catch (error) {
-    console.error('Failed to list events:', error);
+    log.error({ err: String(error) }, 'Failed to list events');
     return NextResponse.json({ error: 'Failed to list events' }, { status: 500 });
   }
-}
+});
 
 // Helper to generate keypair for event
 async function generateEventKeypair() {

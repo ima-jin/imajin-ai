@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { db, tickets, ticketTypes, events } from '@/src/db';
+
+const log = createLogger('events');
 import { requireAuth } from '@imajin/auth';
 import { eq, and } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
@@ -88,7 +91,7 @@ export async function GET(
       ticketId: userTickets[0]?.ticket.id || null,
     });
   } catch (error) {
-    console.error('Failed to check event access:', error);
+    log.error({ err: String(error) }, 'Failed to check event access');
     return NextResponse.json({ hasTicket: false, hasAccess: false, tickets: [] });
   }
 }

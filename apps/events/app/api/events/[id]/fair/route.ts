@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { revalidatePath } from 'next/cache';
+
+const log = createLogger('events');
 import { db, events } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
@@ -59,7 +62,7 @@ export async function PATCH(
 
     return NextResponse.json({ event: updated, manifest });
   } catch (error) {
-    console.error('Failed to update .fair manifest:', error);
+    log.error({ err: String(error) }, 'Failed to update .fair manifest');
     return NextResponse.json({ error: 'Failed to update manifest' }, { status: 500 });
   }
 }

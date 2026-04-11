@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { revalidatePath } from 'next/cache';
+
+const log = createLogger('events');
 import { db, events, ticketTypes } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
@@ -29,7 +32,7 @@ export async function GET(
       })),
     });
   } catch (error) {
-    console.error('Failed to list tiers:', error);
+    log.error({ err: String(error) }, 'Failed to list tiers');
     return NextResponse.json({ error: 'Failed to list tiers' }, { status: 500 });
   }
 }
@@ -87,7 +90,7 @@ export async function POST(
     return NextResponse.json({ tier }, { status: 201 });
 
   } catch (error) {
-    console.error('Failed to create tier:', error);
+    log.error({ err: String(error) }, 'Failed to create tier');
     return NextResponse.json({ error: 'Failed to create tier' }, { status: 500 });
   }
 }
@@ -214,7 +217,7 @@ export async function PUT(
     });
 
   } catch (error) {
-    console.error('Failed to update tier:', error);
+    log.error({ err: String(error) }, 'Failed to update tier');
     return NextResponse.json({ error: 'Failed to update tier' }, { status: 500 });
   }
 }

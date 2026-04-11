@@ -1,5 +1,8 @@
 import { SESSION_COOKIE_NAME } from "@imajin/config";
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('events');
 
 const AUTH_SERVICE_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 
@@ -31,7 +34,7 @@ export async function GET(
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (error) {
-    console.error('Access proxy error:', error);
+    log.error({ err: String(error) }, 'Access proxy error');
     return NextResponse.json({ error: 'Access check failed' }, { status: 500 });
   }
 }
