@@ -191,6 +191,9 @@ importers:
       '@imajin/email':
         specifier: workspace:*
         version: link:../../packages/email
+      '@imajin/events':
+        specifier: workspace:*
+        version: link:../../packages/events
       '@imajin/fair':
         specifier: workspace:*
         version: link:../../packages/fair
@@ -294,6 +297,9 @@ importers:
       '@imajin/email':
         specifier: workspace:*
         version: link:../../packages/email
+      '@imajin/events':
+        specifier: workspace:*
+        version: link:../../packages/events
       '@imajin/fair':
         specifier: workspace:*
         version: link:../../packages/fair
@@ -609,6 +615,9 @@ importers:
       '@imajin/email':
         specifier: workspace:*
         version: link:../../packages/email
+      '@imajin/events':
+        specifier: workspace:*
+        version: link:../../packages/events
       '@imajin/fair':
         specifier: workspace:*
         version: link:../../packages/fair
