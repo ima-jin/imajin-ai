@@ -116,6 +116,13 @@ Highest-value, lowest-complexity. Both are mostly read-only views over existing 
 - Manual tier upgrade (with attestation emission via node DID)
 - API: `POST /api/admin/users/[did]/suspend`, `POST /api/admin/users/[did]/upgrade-tier`
 
+### 665d: Enforce suspension in requireAuth
+- `packages/auth/src/require-auth.ts`: after resolving the session DID, check `suspended_at` on the identity
+- If `suspended_at IS NOT NULL`, return 403 with `{ error: 'Identity suspended' }`
+- This is a cross-cutting change — every authenticated route rejects suspended DIDs automatically
+- Needs an efficient lookup (single query, cached briefly) to avoid per-request DB hits
+- Consider: fetch suspension status during JWT validation and embed in token claims, or add a lightweight in-memory cache with 60s TTL
+
 ### 666a: Service health page (`/admin/services`)
 - Grid of all services with status cards
 - Parallel fetch to each `/api/health` endpoint with 2s timeout
