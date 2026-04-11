@@ -26,6 +26,7 @@ export const identities = authSchema.table('identities', {
   contactEmail: text('contact_email'),                  // billing/notification email from Stripe or onboard
   keyRoles: jsonb('key_roles').$type<KeyRoles | null>(), // null = single key in all roles
   metadata: jsonb('metadata').default({}),
+  suspendedAt: timestamp('suspended_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
