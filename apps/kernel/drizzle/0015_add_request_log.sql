@@ -12,6 +12,6 @@ CREATE TABLE IF NOT EXISTS registry.request_log (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_request_log_service_created ON registry.request_log(service, created_at DESC);
-CREATE INDEX idx_request_log_correlation ON registry.request_log(correlation_id);
-CREATE INDEX idx_request_log_status ON registry.request_log(status) WHERE status >= 400;
+CREATE INDEX IF NOT EXISTS idx_request_log_service_created ON registry.request_log(service, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_request_log_correlation ON registry.request_log(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_request_log_status ON registry.request_log(status) WHERE status >= 400;
