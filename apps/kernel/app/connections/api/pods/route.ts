@@ -5,6 +5,9 @@ import { emitAttestation } from '@imajin/auth';
 import { generateId } from '@/src/lib/kernel/id';
 import { db, pods, podMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function GET(request: Request) {
   const auth = await requireAuth(request);
@@ -58,7 +61,7 @@ export async function POST(request: Request) {
     context_id: pod.id,
     context_type: 'pod',
     payload: { name: pod.name, type: pod.type },
-  }).catch((err: unknown) => console.error('Attestation emit error:', err));
+  }).catch((err: unknown) => log.error({ err: String(err) }, 'Attestation emit error'));
 
   return NextResponse.json({ pod }, { status: 201 });
 }

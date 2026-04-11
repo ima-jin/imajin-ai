@@ -16,12 +16,13 @@ import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { db, connectedAccounts } from '@/src/db';
 import { getStripe } from '@/src/lib/pay/stripe';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   const ip = getClientIP(request);
@@ -87,10 +88,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ url: loginLink.url }, { headers: cors });
   } catch (error) {
-    console.error('Connect dashboard error:', error);
+    log.error({ err: String(error) }, 'Connect dashboard error');
     return NextResponse.json(
       { error: 'Dashboard link generation failed' },
       { status: 500, headers: cors }
     );
   }
-}
+});

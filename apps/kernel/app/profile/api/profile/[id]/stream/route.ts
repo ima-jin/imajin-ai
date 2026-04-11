@@ -12,6 +12,9 @@ import { eq } from 'drizzle-orm';
 import { streamText } from 'ai';
 import { resolveModel, calculateCost, createPresenceTools } from '@imajin/llm';
 import { nanoid } from 'nanoid';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const CONNECTIONS_URL = process.env.CONNECTIONS_URL!;
 const TRUST_INTERNAL_API_KEY = process.env.TRUST_INTERNAL_API_KEY!;
@@ -148,16 +151,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     tools,
     maxSteps: 5,
     onStepFinish: ({ stepType, toolCalls, toolResults, text }) => {
-      console.log(`[stream] step=${stepType} tools=${toolCalls?.length ?? 0} resultLen=${JSON.stringify(toolResults ?? []).length} textLen=${text?.length ?? 0}`);
+      log.info({ stepType, toolCallCount: toolCalls?.length ?? 0, resultLen: JSON.stringify(toolResults ?? []).length, textLen: text?.length ?? 0 }, '[stream] step');
       if (toolCalls?.length) {
-        console.log(`[stream] toolCalls:`, JSON.stringify(toolCalls).slice(0, 300));
+        log.info({ toolCalls: JSON.stringify(toolCalls).slice(0, 300) }, '[stream] toolCalls');
       }
       if (toolResults?.length) {
-        console.log(`[stream] toolResults:`, JSON.stringify(toolResults).slice(0, 500));
+        log.info({ toolResults: JSON.stringify(toolResults).slice(0, 500) }, '[stream] toolResults');
       }
     },
     onFinish: async ({ usage, steps }) => {
-      console.log(`[stream] finished steps=${steps?.length ?? 0}`);
+      log.info({ stepCount: steps?.length ?? 0 }, '[stream] finished');
 
       const promptTokens = usage?.promptTokens ?? 0;
       const completionTokens = usage?.completionTokens ?? 0;
@@ -239,7 +242,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         }
         controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'));
       } catch (err) {
-        console.error('[stream] error:', err);
+        log.error({ err: String(err) }, '[stream] error');
         controller.enqueue(encoder.encode(
           JSON.stringify({ type: 'error', message: String(err) }) + '\n'
         ));

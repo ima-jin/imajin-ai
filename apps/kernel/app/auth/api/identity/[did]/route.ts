@@ -3,6 +3,9 @@ import { db, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { getChainByImajinDid } from '@/src/lib/auth/dfos';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -53,7 +56,7 @@ export async function GET(
       { headers: cors }
     );
   } catch (error) {
-    console.error('Identity resolve error:', error);
+    log.error({ err: String(error) }, 'Identity resolve error');
     return NextResponse.json(
       { error: 'Failed to resolve identity' },
       { status: 500, headers: cors }

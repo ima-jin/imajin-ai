@@ -6,8 +6,11 @@ import { generateId } from '@/src/lib/kernel/id';
 import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
 import { emitAttestation } from '@imajin/auth';
 import { buildPublicUrl } from '@imajin/config';
+import { createLogger } from '@imajin/logger';
 
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
+
+const log = createLogger('kernel');
 
 const INVITE_COOLDOWN_DAYS = 7;
 const INVITE_EXPIRY_DAYS = 7;
@@ -137,7 +140,7 @@ export async function POST(request: NextRequest) {
         expiresAt: expiresAtDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
       }),
     }).catch((err: unknown) => {
-      console.error('Failed to send invite email:', err);
+      log.error({ err: String(err) }, 'Failed to send invite email');
     });
 
     emitAttestation({
@@ -148,7 +151,7 @@ export async function POST(request: NextRequest) {
       context_type: 'connection',
       payload: { delivery: invite.delivery },
     }).catch((err: unknown) => {
-      console.error('Attestation (connection.invited) error:', err);
+      log.error({ err: String(err) }, 'Attestation (connection.invited) error');
     });
 
     return NextResponse.json({ invite, url: inviteUrl }, { status: 201 });
@@ -200,7 +203,7 @@ export async function POST(request: NextRequest) {
     context_type: 'connection',
     payload: { delivery: invite.delivery },
   }).catch((err: unknown) => {
-    console.error('Attestation (connection.invited) error:', err);
+    log.error({ err: String(err) }, 'Attestation (connection.invited) error');
   });
 
   return NextResponse.json({

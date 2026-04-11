@@ -10,6 +10,7 @@ import {
   type NodeHeartbeat,
 } from '@imajin/auth';
 import { randomBytes } from 'crypto';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/node/heartbeat
@@ -32,7 +33,7 @@ import { randomBytes } from 'crypto';
  *   actions?: HeartbeatAction[]
  * }
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const heartbeat = await request.json() as NodeHeartbeat;
 
@@ -146,10 +147,10 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Heartbeat error:', error);
+    log.error({ err: String(error) }, 'Heartbeat error');
     return NextResponse.json(
       { ack: false, error: 'Failed to process heartbeat' },
       { status: 500 }
     );
   }
-}
+});

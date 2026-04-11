@@ -3,6 +3,9 @@ import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt'
 import { getClient } from '@imajin/db';
 import { corsHeaders } from '@imajin/config';
 import { createHash } from 'crypto';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const sql = getClient();
 
@@ -262,7 +265,7 @@ export async function GET(
     );
 
   } catch (error) {
-    console.error('Access check error:', error);
+    log.error({ err: String(error) }, 'Access check error');
     return NextResponse.json(
       { error: 'Failed to check access' },
       { status: 500, headers: cors }

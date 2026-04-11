@@ -4,6 +4,7 @@ import { eq, and } from 'drizzle-orm';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { generateEmailMfaCode, storeEmailMfaCode } from '@/src/lib/auth/email-mfa-codes';
 import { corsHeaders } from '@imajin/config';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -16,7 +17,7 @@ export async function OPTIONS(request: NextRequest) {
  *
  * Returns: { sent: true }
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   try {
@@ -60,13 +61,13 @@ export async function POST(request: NextRequest) {
         text: `Your verification code is: ${code}\n\nThis code expires in 5 minutes.`,
       });
     } catch (err) {
-      console.error('[mfa/email/setup] Email send failed (non-fatal):', err);
+      log.error({ err: String(err) }, '[mfa/email/setup] Email send failed (non-fatal)');
     }
 
     return NextResponse.json({ sent: true }, { headers: cors });
 
   } catch (error) {
-    console.error('[mfa/email/setup] POST error:', error);
+    log.error({ err: String(error) }, '[mfa/email/setup] POST error');
     return NextResponse.json({ error: 'Failed to send setup code' }, { status: 500, headers: cors });
   }
-}
+});

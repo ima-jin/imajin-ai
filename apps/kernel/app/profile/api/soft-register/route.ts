@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, profiles, connections } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { createHash } from 'crypto';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/soft-register
@@ -12,7 +13,7 @@ import { createHash } from 'crypto';
  * Same email = same guest DID (deterministic)
  * Can be claimed later by verifying ownership.
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const body = await request.json();
     const { email, phone, source, sourceId } = body;
@@ -94,10 +95,10 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Soft register error:', error);
+    log.error({ err: String(error) }, 'Soft register error');
     return NextResponse.json(
       { error: 'Failed to create guest identity' },
       { status: 500 }
     );
   }
-}
+});

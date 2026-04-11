@@ -6,6 +6,7 @@ import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt'
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
+import { withLogger } from '@imajin/logger';
 
 const ATTESTATION_LIMIT_MAX = 100;
 
@@ -171,7 +172,7 @@ export async function POST(request: NextRequest) {
  * Returns non-revoked attestations for a subject, newest first.
  * subject_did is required.
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
   const { searchParams } = new URL(request.url);
 
@@ -204,7 +205,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(rows, { headers: cors });
   } catch (error) {
-    console.error('Attestations GET error:', error);
+    log.error({ err: String(error) }, 'Attestations GET error');
     return NextResponse.json({ error: 'Failed to query attestations' }, { status: 500, headers: cors });
   }
-}
+});

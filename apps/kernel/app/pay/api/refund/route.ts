@@ -26,12 +26,13 @@ import { db, transactions, balances } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   // Service-to-service auth via API key
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
           originalTx = results[0];
         }
       } catch (e) {
-        console.error('[refund] Failed to resolve payment intent to session:', e);
+        log.error({ err: String(e) }, '[refund] Failed to resolve payment intent to session');
       }
     }
 
@@ -228,10 +229,10 @@ export async function POST(request: NextRequest) {
       transactionId: reversalId,
     }, { headers: cors });
   } catch (error) {
-    console.error('Refund error:', error);
+    log.error({ err: String(error) }, 'Refund error');
     return NextResponse.json(
       { error: 'Refund failed' },
       { status: 500, headers: cors }
     );
   }
-}
+});

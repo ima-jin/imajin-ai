@@ -14,6 +14,7 @@ import { sendEmail } from '@imajin/email';
 import { nanoid } from 'nanoid';
 import { corsHeaders } from '@imajin/config';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { withLogger } from '@imajin/logger';
 
 const AUTH_URL = process.env.AUTH_URL || process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
 
@@ -21,7 +22,7 @@ export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   const ip = getClientIP(request);
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result.success) {
-      console.error('Failed to send onboard email:', result.error);
+      log.error({ err: String(result.error) }, 'Failed to send onboard email');
       return NextResponse.json(
         { error: 'Failed to send verification email' },
         { status: 502, headers: cors }
@@ -82,13 +83,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ sent: true }, { headers: cors });
 
   } catch (error) {
-    console.error('Onboard start error:', error);
+    log.error({ err: String(error) }, 'Onboard start error');
     return NextResponse.json(
       { error: 'Failed to initiate onboarding' },
       { status: 500, headers: cors }
     );
   }
-}
+});
 
 function onboardEmail({ verifyUrl, context, name }: { verifyUrl: string; context?: string; name?: string }): string {
   const greeting = name ? `Hi ${name},` : 'Hi,';

@@ -14,6 +14,9 @@ import { eq } from 'drizzle-orm';
 import { generateText } from 'ai';
 import { resolveModel, calculateCost, createPresenceTools } from '@imajin/llm';
 import { nanoid } from 'nanoid';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const CONNECTIONS_URL = process.env.CONNECTIONS_URL!;
 const TRUST_INTERNAL_API_KEY = process.env.TRUST_INTERNAL_API_KEY!;
@@ -137,7 +140,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       tools,
     });
   } catch (err) {
-    console.error('generateText failed:', err);
+    log.error({ err: String(err) }, 'generateText failed');
     return NextResponse.json({ error: 'Inference failed' }, { status: 500 });
   }
 
@@ -183,10 +186,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         });
         settled = settleRes.ok;
         if (!settled) {
-          console.error('[Query] Settlement failed:', await settleRes.text().catch(() => ''));
+          log.error({ err: await settleRes.text().catch(() => '') }, '[Query] Settlement failed');
         }
       } catch (err) {
-        console.error('[Query] Settlement error (non-fatal):', err);
+        log.error({ err: String(err) }, '[Query] Settlement error (non-fatal)');
       }
     }
   }
@@ -204,7 +207,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       settled,
     });
   } catch (err) {
-    console.error('Failed to log query:', err);
+    log.error({ err: String(err) }, 'Failed to log query');
   }
 
   // 13. Return response

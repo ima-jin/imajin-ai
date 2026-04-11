@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { db, profiles } from '@/src/db';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { ilike, eq, or, sql, type SQL } from 'drizzle-orm';
+import { withLogger } from '@imajin/logger';
 
 /**
  * GET /api/profile/search - Search profiles
@@ -12,9 +13,9 @@ import { ilike, eq, or, sql, type SQL } from 'drizzle-orm';
  * - limit: max results (default 20, max 100)
  * - offset: pagination offset
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const searchParams = request.nextUrl.searchParams;
-  
+
   const q = searchParams.get('q');
   const type = searchParams.get('type');
   const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Failed to search profiles:', error);
+    log.error({ err: String(error) }, 'Failed to search profiles');
     return errorResponse('Failed to search profiles', 500);
   }
-}
+});

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyChainLog } from '@/src/lib/auth/chain-providers';
 import { getIdentityByDfosDid } from '@/src/lib/auth/dfos';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/identity/verify-chain
@@ -23,7 +24,7 @@ import { getIdentityByDfosDid } from '@/src/lib/auth/dfos';
  *   error?: string
  * }
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const body = await request.json();
     const { chainLog } = body as { chainLog: string[] };
@@ -60,10 +61,10 @@ export async function POST(request: NextRequest) {
       keyCount,
     });
   } catch (error) {
-    console.error('[verify-chain] Error:', error);
+    log.error({ err: String(error) }, '[verify-chain] Error');
     return NextResponse.json(
       { valid: false, error: 'Internal error' },
       { status: 500 }
     );
   }
-}
+});

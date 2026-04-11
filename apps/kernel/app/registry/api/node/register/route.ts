@@ -10,6 +10,7 @@ import {
 } from '@imajin/auth';
 import { provisionSubdomain, isHostnameAvailable } from '@/src/lib/registry/cloudflare';
 import { randomBytes } from 'crypto';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/node/register
@@ -29,7 +30,7 @@ import { randomBytes } from 'crypto';
  *   hint?: string
  * }
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const body = await request.json();
     const { attestation, chainLog } = body as { attestation: NodeAttestation; chainLog?: string[] };
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
         }
         // If no row found, proceed without chain verification (degraded mode)
       } catch (err) {
-        console.warn('[register] Chain verification DB query failed (non-fatal):', err);
+        log.warn({ err: String(err) }, '[register] Chain verification DB query failed (non-fatal)');
         // Proceed without chain verification (degraded mode)
       }
     }
@@ -233,7 +234,7 @@ export async function POST(request: NextRequest) {
       const result = await provisionSubdomain(attestation.hostname, attestation.nodeId);
       recordId = result.recordId;
     } catch (error) {
-      console.error('Failed to provision subdomain:', error);
+      log.error({ err: String(error) }, 'Failed to provision subdomain');
       return NextResponse.json(
         { status: 'rejected', error: 'Failed to provision subdomain' },
         { status: 500 }
@@ -267,10 +268,10 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
 
   } catch (error) {
-    console.error('Registration error:', error);
+    log.error({ err: String(error) }, 'Registration error');
     return NextResponse.json(
       { status: 'rejected', error: 'Failed to process registration' },
       { status: 500 }
     );
   }
-}
+});

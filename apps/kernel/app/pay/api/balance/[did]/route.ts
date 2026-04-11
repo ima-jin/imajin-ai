@@ -10,6 +10,9 @@ import { db, balances } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { requireAuth } from '@imajin/auth';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -64,7 +67,7 @@ export async function GET(
       { headers: cors }
     );
   } catch (error) {
-    console.error('Balance fetch error:', error);
+    log.error({ err: String(error) }, 'Balance fetch error');
     return NextResponse.json(
       { error: 'Failed to fetch balance' },
       { status: 500, headers: cors }

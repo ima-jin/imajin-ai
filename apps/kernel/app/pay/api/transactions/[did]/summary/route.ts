@@ -11,6 +11,9 @@ import { db, transactions } from '@/src/db';
 import { eq, and, sql, or } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -114,7 +117,7 @@ export async function GET(
       { headers: cors }
     );
   } catch (error) {
-    console.error('Summary fetch error:', error);
+    log.error({ err: String(error) }, 'Summary fetch error');
     return NextResponse.json(
       { error: 'Failed to fetch summary' },
       { status: 500, headers: cors }

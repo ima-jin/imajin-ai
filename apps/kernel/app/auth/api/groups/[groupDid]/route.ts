@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, groupIdentities, groupControllers, profiles } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 const VALID_SCOPES = ['org', 'community', 'family'];
 
 /**
@@ -72,7 +75,7 @@ export async function GET(
 
     return NextResponse.json({ ...group, controllers });
   } catch (error) {
-    console.error('[groups] Get error:', error);
+    log.error({ err: String(error) }, '[groups] Get error');
     return NextResponse.json({ error: 'Failed to get group' }, { status: 500 });
   }
 }
@@ -135,7 +138,7 @@ export async function PATCH(
           .set({ displayName: name.trim().slice(0, 100), bio: description || null, updatedAt: new Date() })
           .where(eq(profiles.did, groupDid));
       } catch (err) {
-        console.error('[groups] Profile update failed (non-fatal):', err);
+        log.error({ err: String(err) }, '[groups] Profile update failed (non-fatal)');
       }
     }
 
@@ -148,7 +151,7 @@ export async function PATCH(
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error('[groups] Update error:', error);
+    log.error({ err: String(error) }, '[groups] Update error');
     return NextResponse.json({ error: 'Failed to update group' }, { status: 500 });
   }
 }

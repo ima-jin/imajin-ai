@@ -8,6 +8,7 @@ import { eq, and } from 'drizzle-orm';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { encryptSecret } from '@/src/lib/auth/encrypt';
 import { corsHeaders } from '@imajin/config';
+import { withLogger } from '@imajin/logger';
 
 const ISSUER = 'Imajin';
 
@@ -23,7 +24,7 @@ export async function OPTIONS(request: NextRequest) {
  * Body: { name?: string }
  * Returns: { secret, otpauthUrl, qrCode }
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   try {
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ secret, otpauthUrl, qrCode }, { headers: cors });
 
   } catch (error) {
-    console.error('[mfa/totp/setup] POST error:', error);
+    log.error({ err: String(error) }, '[mfa/totp/setup] POST error');
     return NextResponse.json({ error: 'Failed to set up TOTP' }, { status: 500, headers: cors });
   }
-}
+});

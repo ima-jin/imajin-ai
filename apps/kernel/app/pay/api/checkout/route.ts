@@ -32,6 +32,7 @@ import { eq } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { withLogger } from '@imajin/logger';
 
 interface CheckoutBody {
   items: Array<{
@@ -56,7 +57,7 @@ export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   const ip = getClientIP(request);
@@ -212,10 +213,10 @@ export async function POST(request: NextRequest) {
       transactionId: txId,
     }, { headers: cors });
   } catch (error) {
-    console.error('Checkout error:', error);
+    log.error({ err: String(error) }, 'Checkout error');
     return NextResponse.json(
       { error: 'Checkout failed' },
       { status: 500, headers: cors }
     );
   }
-}
+});

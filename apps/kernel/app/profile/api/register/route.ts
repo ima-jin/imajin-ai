@@ -1,6 +1,9 @@
 import { NextRequest } from 'next/server';
 import { db, profiles } from '@/src/db';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 // Reserved handles that cannot be claimed
 const RESERVED_HANDLES = [
@@ -133,7 +136,7 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${mediaKey}` },
         body: JSON.stringify({ did, handle: handle || undefined }),
-      }).catch(err => console.error('[Presence] Seed failed (non-fatal):', err));
+      }).catch(err => log.error({ err: String(err) }, '[Presence] Seed failed (non-fatal)'));
     }
 
     return jsonResponse({
@@ -142,7 +145,7 @@ export async function POST(request: NextRequest) {
       displayName: profile.displayName,
     }, 201);
   } catch (error) {
-    console.error('Registration failed:', error);
+    log.error({ err: String(error) }, 'Registration failed');
     return errorResponse('Registration failed', 500);
   }
 }

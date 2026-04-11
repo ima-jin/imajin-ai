@@ -3,6 +3,7 @@ import { corsHeaders, corsOptions } from '@imajin/config';
 import { requireAuth } from '@imajin/auth';
 import { db, bumpSessions } from '@/src/db';
 import { and, eq } from 'drizzle-orm';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -12,7 +13,7 @@ export async function OPTIONS(request: NextRequest) {
  * POST /registry/api/bump/deactivate
  * Close a bump session.
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   const authResult = await requireAuth(request);
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true }, { headers: cors });
   } catch (err) {
-    console.error('[bump/deactivate] error:', err);
+    log.error({ err: String(err) }, '[bump/deactivate] error');
     return NextResponse.json({ error: 'Failed to deactivate session' }, { status: 500, headers: cors });
   }
-}
+});

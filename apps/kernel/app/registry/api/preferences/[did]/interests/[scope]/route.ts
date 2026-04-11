@@ -4,6 +4,9 @@ import { requireAuth } from '@imajin/auth';
 import { nanoid } from 'nanoid';
 import { db, didInterests, didPreferences } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -78,7 +81,7 @@ export async function PUT(
 
     return NextResponse.json({ interest: result }, { headers: cors });
   } catch (error) {
-    console.error('[preferences/did/interests/scope] put error:', error);
+    log.error({ err: String(error) }, '[preferences/did/interests/scope] put error');
     return NextResponse.json({ error: 'Failed to update interest preference' }, { status: 500, headers: cors });
   }
 }
@@ -157,7 +160,7 @@ export async function POST(
 
     return NextResponse.json({ interest: result, created: true }, { status: 201, headers: cors });
   } catch (error) {
-    console.error('[preferences/did/interests/scope] post error:', error);
+    log.error({ err: String(error) }, '[preferences/did/interests/scope] post error');
     return NextResponse.json({ error: 'Failed to create interest preference' }, { status: 500, headers: cors });
   }
 }

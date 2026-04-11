@@ -12,6 +12,9 @@ import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation'
 import { emitAttestation } from '@imajin/auth';
 import { eq, and, gt, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function GET(request: NextRequest) {
   try {
@@ -185,7 +188,7 @@ export async function GET(request: NextRequest) {
         context_id: did,
         context_type: 'identity',
         payload: { tier: 'soft', source: 'onboard' },
-      }).catch((err) => console.error('[onboard/verify] Attestation (identity.created) error (non-fatal):', err));
+      }).catch((err) => log.error({ err: String(err) }, '[onboard/verify] Attestation (identity.created) error (non-fatal)'));
     }
 
     // Create session token — use actual tier (supports hard DID re-auth via magic link)
@@ -228,11 +231,11 @@ export async function GET(request: NextRequest) {
             .where(and(eq(groupControllers.groupDid, scopeDid), eq(groupControllers.controllerDid, did)));
         }
       } catch (err) {
-        console.error('[onboard/verify] Forest member add failed (non-fatal):', err);
+        log.error({ err: String(err) }, '[onboard/verify] Forest member add failed (non-fatal)');
       }
       // Emit scope.onboard attestation
       emitAttestation({ issuer_did: scopeDid, subject_did: did, type: 'scope.onboard', context_id: scopeDid, context_type: 'forest' })
-        .catch(err => console.error('[onboard/verify] Scope attestation failed (non-fatal):', err));
+        .catch(err => log.error({ err: String(err) }, '[onboard/verify] Scope attestation failed (non-fatal)'));
       // Set active forest cookie
       response.cookies.set('x-acting-as', scopeDid, { path: '/', maxAge: 31536000, sameSite: 'lax' });
     }
@@ -242,12 +245,12 @@ export async function GET(request: NextRequest) {
       method: "email_onboard",
       tier: identityTier,
       userAgent: request.headers.get("user-agent"),
-    }).catch(err => console.error("Session attestation error:", err));
+    }).catch(err => log.error({ err: String(err) }, 'Session attestation error'));
 
     return response;
 
   } catch (error) {
-    console.error('Onboard verify error:', error);
+    log.error({ err: String(error) }, 'Onboard verify error');
     return errorPage('Verification Error', 'Something went wrong verifying your email. Please try again.');
   }
 }

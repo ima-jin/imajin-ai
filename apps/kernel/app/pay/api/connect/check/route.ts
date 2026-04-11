@@ -12,12 +12,13 @@ import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { db, connectedAccounts } from '@/src/db';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   const ip = getClientIP(request);
@@ -61,10 +62,10 @@ export async function GET(request: NextRequest) {
       { headers: cors }
     );
   } catch (error) {
-    console.error('Connect check error:', error);
+    log.error({ err: String(error) }, 'Connect check error');
     return NextResponse.json(
       { error: 'Check failed' },
       { status: 500, headers: cors }
     );
   }
-}
+});

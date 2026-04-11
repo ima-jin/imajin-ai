@@ -4,6 +4,7 @@ import { devices } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { corsHeaders } from '@imajin/config';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -13,7 +14,7 @@ export async function OPTIONS(request: NextRequest) {
  * GET /api/devices
  * List known devices for the authenticated user.
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   try {
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ devices: rows }, { headers: cors });
 
   } catch (error) {
-    console.error('[devices] GET error:', error);
+    log.error({ err: String(error) }, '[devices] GET error');
     return NextResponse.json({ error: 'Failed to list devices' }, { status: 500, headers: cors });
   }
-}
+});
