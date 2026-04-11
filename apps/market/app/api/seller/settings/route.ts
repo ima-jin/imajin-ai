@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('market');
 import { db, sellerSettings } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
@@ -32,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     return jsonResponse({ showMarketItems: settings.showMarketItems });
   } catch (error) {
-    console.error('Failed to fetch seller settings:', error);
+    log.error({ err: String(error) }, 'Failed to fetch seller settings');
     return errorResponse('Failed to fetch settings', 500);
   }
 }
@@ -69,7 +71,7 @@ export async function PATCH(request: NextRequest) {
 
     return jsonResponse({ showMarketItems: settings.showMarketItems });
   } catch (error) {
-    console.error('Failed to update seller settings:', error);
+    log.error({ err: String(error) }, 'Failed to update seller settings');
     return errorResponse('Failed to update settings', 500);
   }
 }

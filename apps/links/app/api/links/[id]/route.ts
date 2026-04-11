@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('links');
 import { db, linkPages, links } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, isValidUrl } from '@/lib/utils';
@@ -74,7 +76,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse(updated);
   } catch (error) {
-    console.error('Failed to update link:', error);
+    log.error({ err: String(error) }, 'Failed to update link');
     return errorResponse('Failed to update link', 500);
   }
 }
@@ -120,7 +122,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse({ deleted: true });
   } catch (error) {
-    console.error('Failed to delete link:', error);
+    log.error({ err: String(error) }, 'Failed to delete link');
     return errorResponse('Failed to delete link', 500);
   }
 }

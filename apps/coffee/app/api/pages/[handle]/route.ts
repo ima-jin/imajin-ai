@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('coffee');
 import { db, coffeePages } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
@@ -29,7 +31,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse(page);
   } catch (error) {
-    console.error('Failed to fetch coffee page:', error);
+    log.error({ err: String(error) }, 'Failed to fetch coffee page');
     return errorResponse('Failed to fetch coffee page', 500);
   }
 }
@@ -105,7 +107,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse(updated);
   } catch (error) {
-    console.error('Failed to update coffee page:', error);
+    log.error({ err: String(error) }, 'Failed to update coffee page');
     return errorResponse('Failed to update coffee page', 500);
   }
 }
@@ -145,7 +147,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse({ deleted: true });
   } catch (error) {
-    console.error('Failed to delete coffee page:', error);
+    log.error({ err: String(error) }, 'Failed to delete coffee page');
     return errorResponse('Failed to delete coffee page', 500);
   }
 }

@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('dykil');
 import { db, surveys, surveyResponses } from '@/db';
 import { getSession } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } from '@/lib/utils';
@@ -104,7 +106,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse({ message: 'Response submitted successfully', response }, 201, cors);
   } catch (error) {
-    console.error('Failed to submit response:', error);
+    log.error({ err: String(error) }, 'Failed to submit response');
     return errorResponse('Failed to submit response', 500, cors);
   }
 }

@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('coffee');
 import { db, coffeePages, tips } from '@/db';
 import { requireAuth, emitAttestation } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
@@ -117,7 +119,7 @@ export async function POST(request: NextRequest) {
 
       if (!payRes.ok) {
         const err = await payRes.text();
-        console.error('Pay service checkout failed:', err);
+        log.error({ err }, 'Pay service checkout failed');
         return errorResponse('Failed to create payment', 500);
       }
 
@@ -146,7 +148,7 @@ export async function POST(request: NextRequest) {
           context_id: tipId,
           context_type: 'coffee',
           payload: { amount, currency },
-        }).catch((err) => console.error('Attestation emit error:', err));
+        }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
       }
 
       // Return checkout URL for redirect
@@ -183,7 +185,7 @@ export async function POST(request: NextRequest) {
           context_id: tipId,
           context_type: 'coffee',
           payload: { amount, currency: 'SOL' },
-        }).catch((err) => console.error('Attestation emit error:', err));
+        }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
       }
 
       return jsonResponse({
@@ -196,7 +198,7 @@ export async function POST(request: NextRequest) {
 
     return errorResponse('Invalid payment method');
   } catch (error) {
-    console.error('Failed to create tip:', error);
+    log.error({ err: String(error) }, 'Failed to create tip');
     return errorResponse('Failed to process tip', 500);
   }
 }

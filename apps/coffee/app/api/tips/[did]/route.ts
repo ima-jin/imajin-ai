@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('coffee');
 import { db, coffeePages, tips } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
@@ -80,7 +82,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       },
     });
   } catch (error) {
-    console.error('Failed to fetch tips:', error);
+    log.error({ err: String(error) }, 'Failed to fetch tips');
     return errorResponse('Failed to fetch tips', 500);
   }
 }

@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('market');
 import { db, listings, sellerSettings } from '@/db';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and, desc } from 'drizzle-orm';
@@ -45,7 +47,7 @@ export async function GET(
 
     return jsonResponse({ listings: rows, enabled: true });
   } catch (error) {
-    console.error('Failed to fetch profile listings:', error);
+    log.error({ err: String(error) }, 'Failed to fetch profile listings');
     return errorResponse('Failed to fetch profile listings', 500);
   }
 }

@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('coffee');
 import { db, tips, coffeePages } from '@/db';
 import { eq } from 'drizzle-orm';
 import { settleTip } from '@/lib/settle';
@@ -40,7 +42,7 @@ export async function POST(request: NextRequest) {
           .update(tips)
           .set({ status: 'completed', ...(paymentId && { paymentId }) })
           .where(eq(tips.id, tipId));
-        console.log(`Tip ${tipId} completed`);
+        log.info({ tipId }, 'Tip completed');
 
         // Resolve page info for emails and settlement
         let recipientDid = to_did;
@@ -77,7 +79,7 @@ export async function POST(request: NextRequest) {
             stripeSessionId,
           });
         } else {
-          console.warn(`[webhook] Cannot settle tip ${tipId} — missing recipientDid or amount`);
+          log.warn({ tipId }, '[webhook] Cannot settle tip — missing recipientDid or amount');
         }
 
         // Format amount for display
@@ -96,11 +98,11 @@ export async function POST(request: NextRequest) {
               amount: displayAmount,
               tipperName: displayFrom,
             },
-          }).catch((err) => console.error('[webhook] Notify recipient error:', err));
+          }).catch((err) => log.error({ err: String(err) }, '[webhook] Notify recipient error'));
 
           // Record interest signal — tip.granted → coffee scope
           notify.interest({ did: recipientDid, attestationType: 'tip.granted' })
-            .catch((err) => console.error('[webhook] Interest signal error:', err));
+            .catch((err) => log.error({ err: String(err) }, '[webhook] Interest signal error'));
         }
 
         // Notify sender
@@ -113,11 +115,11 @@ export async function POST(request: NextRequest) {
               amount: displayAmount,
               pageName: pageTitle || 'a creator',
             },
-          }).catch((err) => console.error('[webhook] Notify sender error:', err));
+          }).catch((err) => log.error({ err: String(err) }, '[webhook] Notify sender error'));
 
           // Record interest signal — tip.sent → coffee scope
           notify.interest({ did: fromDid, attestationType: 'tip.sent' })
-            .catch((err) => console.error('[webhook] Interest signal error:', err));
+            .catch((err) => log.error({ err: String(err) }, '[webhook] Interest signal error'));
         }
 
         break;
@@ -128,17 +130,17 @@ export async function POST(request: NextRequest) {
           .update(tips)
           .set({ status: 'failed' })
           .where(eq(tips.id, tipId));
-        console.log(`Tip ${tipId} failed`);
+        log.info({ tipId }, 'Tip failed');
         break;
       }
 
       default:
-        console.log(`Unhandled coffee webhook type: ${type}`);
+        log.info({ type }, 'Unhandled coffee webhook type');
     }
 
     return Response.json({ received: true });
   } catch (error) {
-    console.error('Coffee webhook handler error:', error);
+    log.error({ err: String(error) }, 'Coffee webhook handler error');
     return Response.json({ error: 'Webhook handler failed' }, { status: 500 });
   }
 }

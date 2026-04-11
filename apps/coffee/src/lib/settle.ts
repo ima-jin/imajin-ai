@@ -1,3 +1,6 @@
+import { createLogger } from '@imajin/logger';
+const log = createLogger('coffee');
+
 /**
  * settleTip
  *
@@ -57,13 +60,13 @@ export async function settleTip(params: SettleTipParams): Promise<void> {
 
     if (!response.ok) {
       const text = await response.text();
-      console.error(`[settle] pay /api/settle returned ${response.status}: ${text}`);
+      log.error({ status: response.status, text }, '[settle] pay /api/settle returned error');
       return;
     }
 
     const result = await response.json();
-    console.log(`[settle] Tip settlement complete for ${tipId}:`, result);
+    log.info({ tipId, result }, '[settle] Tip settlement complete');
   } catch (error) {
-    console.error('[settle] Tip settlement request failed (non-fatal):', error);
+    log.error({ err: String(error) }, '[settle] Tip settlement request failed (non-fatal)');
   }
 }
