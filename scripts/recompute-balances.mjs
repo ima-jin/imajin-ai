@@ -88,12 +88,18 @@ try {
       continue;
     }
 
-    // Refunds — reverse the credit to to_did (platform gets the money back from seller)
+    // Refunds — reverse the platform balance credits that were made on the original settlement.
+    // The buyer gets refunded via Stripe (external), so no buyer balance movement.
+    // Only reverse credits to platform/node/non-seller roles (from_did is who gets debited).
     if (tx.type === 'refund') {
-      if (tx.to_did) {
-        ensure(tx.to_did);
-        balances[tx.to_did].cash -= tx.amount;
+      if (tx.from_did && tx.from_did !== 'platform') {
+        ensure(tx.from_did);
+        balances[tx.from_did].cash -= tx.amount;
+      } else if (tx.from_did === 'platform') {
+        ensure('did:imajin:platform');
+        balances['did:imajin:platform'].cash -= tx.amount;
       }
+      // to_did on refunds is the buyer — they get refunded via Stripe, not platform balance
       continue;
     }
 
