@@ -5,6 +5,7 @@ import { didFromPublicKey, verifySignature } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { generateId } from '@/src/lib/kernel/utils';
+import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { emitAttestation } from '@imajin/auth';
 import { notify } from '@imajin/notify';
 import { sendEmail } from '@imajin/email';
@@ -256,7 +257,7 @@ export async function POST(request: NextRequest) {
     // Emit identity.verified.preliminary → triggers 100 MJN emission
     // Key-based registrations are preliminary by definition (proved key ownership).
     // checkPreliminaryEligibility only fires for 'soft' tier, so we emit directly here.
-    const platformDid = process.env.RELAY_DID || process.env.AUTH_DID || '';
+    const platformDid = await getNodeDid();
     emitAttestation({
       issuer_did: platformDid,
       subject_did: identity.id,

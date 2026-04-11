@@ -2,8 +2,7 @@ import { db } from '@/src/db';
 import { identities, attestations, connections } from '@/src/db';
 import { emitAttestation } from '@imajin/auth';
 import { eq, or, and, isNull, count, sql } from 'drizzle-orm';
-
-const platformDid = process.env.RELAY_DID || process.env.AUTH_DID || '';
+import { getNodeDid } from '@/src/lib/kernel/node-identity';
 
 /**
  * Checks whether a DID is eligible for preliminary verification.
@@ -54,8 +53,9 @@ export async function checkPreliminaryEligibility(did: string): Promise<void> {
 
   if (!upgraded) return; // Already upgraded by concurrent event
 
+  const nodeDid = await getNodeDid();
   emitAttestation({
-    issuer_did: platformDid,
+    issuer_did: nodeDid,
     subject_did: did,
     type: 'identity.verified.preliminary',
     context_id: did,
@@ -121,8 +121,9 @@ export async function checkHardEligibility(did: string): Promise<void> {
 
   if (!upgraded) return; // Already upgraded by concurrent event
 
+  const nodeDid = await getNodeDid();
   emitAttestation({
-    issuer_did: platformDid,
+    issuer_did: nodeDid,
     subject_did: did,
     type: 'identity.verified.hard',
     context_id: did,
