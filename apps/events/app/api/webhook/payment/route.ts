@@ -403,7 +403,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
 
   // Send confirmation email with onboard verification link
   const eventDate = new Date(event.startsAt);
-  const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
+  const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || 'https://auth.imajin.ai';
   const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
 
   let onboardToken: string | null = null;
