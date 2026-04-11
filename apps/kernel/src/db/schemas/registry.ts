@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, index, boolean, pgSchema, unique, real } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, index, boolean, pgSchema, unique, real, integer } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const registrySchema = pgSchema('registry');
@@ -189,6 +189,19 @@ export const bumpMatches = registrySchema.table('bump_matches', {
 }, (table) => ({
   expiresNoConnectionIdx: index('idx_bump_matches_expires_no_connection').on(table.expiresAt).where(sql`connection_id IS NULL`),
 }));
+
+/**
+ * Newsletter sends — records of outbound newsletter/broadcast emails
+ */
+export const newsletterSends = registrySchema.table('newsletter_sends', {
+  id: text('id').primaryKey(),
+  senderDid: text('sender_did').notNull(),
+  subject: text('subject').notNull(),
+  audienceType: text('audience_type').notNull(), // 'newsletter' | 'connections'
+  audienceId: text('audience_id'), // mailing list id or null for connections
+  recipientCount: integer('recipient_count').notNull().default(0),
+  sentAt: timestamp('sent_at', { withTimezone: true }).defaultNow(),
+});
 
 // Types
 export type Node = typeof nodes.$inferSelect;

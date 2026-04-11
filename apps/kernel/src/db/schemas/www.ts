@@ -27,6 +27,7 @@ export const mailingLists = wwwSchema.table('mailing_lists', {
   name: text('name').notNull(),
   description: text('description'),
   isActive: boolean('is_active').notNull().default(true),
+  ownerDid: text('owner_did'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   slugIdx: index('idx_www_mailing_lists_slug').on(table.slug),
