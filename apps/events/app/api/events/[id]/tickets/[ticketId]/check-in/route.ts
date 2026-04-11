@@ -5,7 +5,18 @@ import { getClient } from '@imajin/db';
 
 const sql = getClient();
 
-const platformDid = process.env.RELAY_DID || process.env.AUTH_DID || '';
+let _nodeDid: string | undefined;
+async function getNodeDid(): Promise<string> {
+  if (_nodeDid !== undefined) return _nodeDid;
+  try {
+    const [row] = await sql`SELECT imajin_did FROM relay.relay_config WHERE id = 'singleton' LIMIT 1`;
+    _nodeDid = (row?.imajin_did as string | null) || process.env.RELAY_DID || '';
+  } catch {
+    _nodeDid = process.env.RELAY_DID || '';
+  }
+  if (!_nodeDid) console.warn('[check-in] No node DID found in relay.relay_config or RELAY_DID');
+  return _nodeDid;
+}
 
 /**
  * Fire-and-forget hard verification check for a DID.
@@ -48,8 +59,9 @@ async function triggerHardEligibilityCheck(did: string): Promise<void> {
 
   if (!upgraded) return;
 
+  const nodeDid = await getNodeDid();
   emitAttestation({
-    issuer_did: platformDid,
+    issuer_did: nodeDid,
     subject_did: did,
     type: 'identity.verified.hard',
     context_id: did,

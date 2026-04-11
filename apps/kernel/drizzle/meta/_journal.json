@@ -64,6 +64,13 @@
       "when": 1744329600003,
       "tag": "0008_add_scope_did_to_onboard_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1744329600004,
+      "tag": "0009_add_node_imajin_did",
+      "breakpoints": true
     }
   ]
 }

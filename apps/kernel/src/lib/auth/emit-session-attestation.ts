@@ -2,6 +2,7 @@ import { db, attestations } from "@/src/db";
 import { canonicalize, crypto as authCrypto } from "@imajin/auth";
 import type { AttestationType } from "@imajin/auth";
 import { computeCid } from "@imajin/cid";
+import { getNodeDid } from "@/src/lib/kernel/node-identity";
 
 function genId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 14)}${Date.now().toString(36)}`;
@@ -19,9 +20,9 @@ export async function emitSessionAttestation(params: {
     return;
   }
 
-  const platformDid = process.env.PLATFORM_DID;
+  const platformDid = await getNodeDid();
   if (!platformDid) {
-    console.warn("Session attestation skipped: PLATFORM_DID not set");
+    console.warn("Session attestation skipped: node DID not set");
     return;
   }
 

@@ -82,6 +82,7 @@ export const relayConfig = relaySchema.table('relay_config', {
   nodeFeeBps: integer('node_fee_bps').default(50),
   buyerCreditBps: integer('buyer_credit_bps').default(25),
   nodeOperatorDid: text('node_operator_did'),
+  imajinDid: text('imajin_did'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
