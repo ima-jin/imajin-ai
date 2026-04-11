@@ -3,6 +3,11 @@
  *
  * Calls POST /api/settle on the pay service after a ticket purchase completes.
  * Settlement failure is non-fatal — the ticket has already been created.
+ *
+ * Uses the event's .fair manifest chain for the 4-way fee split:
+ *   protocol (1%) + node (0.5%) + buyer_credit (0.25%) + seller (remainder)
+ *
+ * If the event has no .fair manifest or no chain, settlement is skipped.
  */
 
 import { createLogger } from '@imajin/logger';
@@ -11,18 +16,17 @@ const log = createLogger('events');
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY!;
-const PLATFORM_DID = process.env.PLATFORM_DID || 'did:imajin:platform';
-const PLATFORM_FEE_PERCENT = parseFloat(process.env.PLATFORM_FEE_PERCENT || '3');
 
-interface FairAttribution {
+interface FairEntry {
   did: string;
   role: string;
   share: number; // 0–1 fraction
 }
 
 interface FairManifest {
-  attribution?: FairAttribution[];
-  distributions?: FairAttribution[];
+  version?: string;
+  chain?: FairEntry[];
+  distributions?: FairEntry[];
   [key: string]: unknown;
 }
 
@@ -43,38 +47,34 @@ interface SettleTicketPurchaseParams {
 export async function settleTicketPurchase(params: SettleTicketPurchaseParams): Promise<void> {
   const { eventId, buyerDid, amount, fairManifest, metadata } = params;
 
-  // Support both field names: "distributions" (current .fair format) and "attribution" (legacy)
-  const recipients = fairManifest?.distributions || fairManifest?.attribution;
-  if (!fairManifest || !recipients?.length) {
-    log.warn({ eventId }, '[settle] No .fair manifest for event — skipping settlement');
+  // v0.3.0+ manifests have a chain with the full fee cascade
+  const chain = fairManifest?.chain;
+  if (!fairManifest || !chain?.length) {
+    log.warn({ eventId }, '[settle] No .fair manifest chain for event — skipping settlement');
     return;
   }
 
   const totalDollars = amount / 100;
-  const platformAmount = parseFloat((totalDollars * (PLATFORM_FEE_PERCENT / 100)).toFixed(2));
-  const remainingDollars = parseFloat((totalDollars - platformAmount).toFixed(2));
 
-  // Build chain: attribution shares apply to the remaining (non-platform) portion
-  // Use rounding with remainder correction to avoid penny drift
-  const attributionChain = recipients.map((entry) => ({
-    did: entry.did,
-    amount: parseFloat((remainingDollars * entry.share).toFixed(2)),
-    role: entry.role,
-  }));
+  // Replace placeholder DIDs in the chain
+  const resolvedChain = chain.map((entry) => {
+    let did = entry.did;
+    if (did === 'BUYER_PLACEHOLDER') did = buyerDid;
+    // NODE_PLACEHOLDER stays as-is — the pay service resolves it or the node operator DID is set
+    return {
+      did,
+      amount: parseFloat((totalDollars * entry.share).toFixed(2)),
+      role: entry.role,
+    };
+  });
 
   // Fix rounding drift: adjust largest recipient so chain sums to totalDollars exactly
-  const attributionSum = attributionChain.reduce((sum, e) => sum + e.amount, 0);
-  const drift = parseFloat((remainingDollars - attributionSum).toFixed(2));
-  if (drift !== 0 && attributionChain.length > 0) {
-    // Give the remainder to the largest recipient
-    const largest = attributionChain.reduce((max, e) => e.amount > max.amount ? e : max, attributionChain[0]);
+  const chainSum = resolvedChain.reduce((sum, e) => sum + e.amount, 0);
+  const drift = parseFloat((totalDollars - chainSum).toFixed(2));
+  if (drift !== 0 && resolvedChain.length > 0) {
+    const largest = resolvedChain.reduce((max, e) => e.amount > max.amount ? e : max, resolvedChain[0]);
     largest.amount = parseFloat((largest.amount + drift).toFixed(2));
   }
-
-  const chain = [
-    ...attributionChain,
-    { did: PLATFORM_DID, amount: platformAmount, role: 'platform' },
-  ];
 
   const body = {
     from_did: buyerDid,
@@ -83,7 +83,7 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
     type: 'ticket_purchase',
     funded: true,
     funded_provider: 'stripe',
-    fair_manifest: { chain },
+    fair_manifest: { chain: resolvedChain },
     metadata: {
       ticketId: metadata.ticketId,
       stripeSessionId: metadata.stripeSessionId,

@@ -257,11 +257,17 @@ export async function POST(request: NextRequest) {
       }
 
       // Credit each recipient (earnings go to cash — real value created)
+      // For externally-funded payments (Stripe), the seller already received money
+      // via Stripe Connect. Only credit platform/node/buyer_credit balances — NOT the seller.
+      const SELLER_ROLES = new Set(['seller', 'creator', 'event']);
+
       for (const recipient of fair_manifest.chain) {
         const txId = generateId('tx');
         txIds.push(txId);
 
-        // Insert transaction
+        const skipBalanceCredit = funded && SELLER_ROLES.has(recipient.role);
+
+        // Insert transaction (always — for audit trail)
         await tx.insert(transactions).values({
           id: txId,
           service,
@@ -279,26 +285,30 @@ export async function POST(request: NextRequest) {
             role: recipient.role,
             ...(funded && { funded: true, funded_provider: funded_provider || 'unknown' }),
             signature_verified: funded ? false : signatureVerified,
+            ...(skipBalanceCredit && { balance_skipped: true, reason: 'externally_funded_seller' }),
           },
         });
 
-        // Credit recipient cash balance
-        await tx
-          .insert(balances)
-          .values({
-            did: recipient.did,
-            cashAmount: recipient.amount.toString(),
-            creditAmount: '0',
-            currency: 'USD',
-            updatedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: balances.did,
-            set: {
-              cashAmount: sql`${balances.cashAmount} + ${recipient.amount}`,
+        // Credit recipient cash balance — skip for sellers on funded payments
+        // (money already went to their Stripe Connected account)
+        if (!skipBalanceCredit) {
+          await tx
+            .insert(balances)
+            .values({
+              did: recipient.did,
+              cashAmount: recipient.amount.toString(),
+              creditAmount: '0',
+              currency: 'USD',
               updatedAt: new Date(),
-            },
-          });
+            })
+            .onConflictDoUpdate({
+              target: balances.did,
+              set: {
+                cashAmount: sql`${balances.cashAmount} + ${recipient.amount}`,
+                updatedAt: new Date(),
+              },
+            });
+        }
       }
     });
 
