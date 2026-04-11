@@ -123,6 +123,13 @@ try {
       continue;
     }
 
+    // Tips paid via Stripe — seller gets money through Stripe Connect, not platform balance.
+    // These show as source=fiat with no from_did (no internal balance debit).
+    if (tx.type === 'tip' && !tx.from_did) {
+      // Stripe-funded tip — skip platform balance credit
+      continue;
+    }
+
     // Credit to_did
     if (tx.to_did && tx.to_did !== 'platform') {
       ensure(tx.to_did);
