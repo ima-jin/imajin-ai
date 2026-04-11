@@ -1,5 +1,5 @@
 import { getClient } from '@imajin/db';
-import { requireAdmin } from '@imajin/logger';
+import { requireAdmin } from '@imajin/auth';
 import { redirect } from 'next/navigation';
 import TraceView from './trace-view';
 
