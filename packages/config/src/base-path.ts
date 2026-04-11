@@ -51,6 +51,18 @@ export function apiUrl(path: string): string {
  *   apiFetch('/api/listings', { ... })  → fetch('/market/api/listings', { ... })
  *
  * Absolute URLs (http://, https://) are passed through unchanged.
+ *
+ * TODO(WO2/correlation): For server-side service-to-service calls, callers should
+ * forward the X-Correlation-Id header so the full request chain shares one ID.
+ * apiFetch is browser-side too, so we can't read headers here automatically —
+ * instead, pass it explicitly via init.headers when calling from a withLogger handler:
+ *
+ *   apiFetch('/api/something', {
+ *     headers: { 'x-correlation-id': correlationId },
+ *   });
+ *
+ * When WO3 instruments services, each withLogger handler receives correlationId in
+ * ctx and should forward it on any outbound apiFetch/fetch calls.
  */
 export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   // Don't prefix absolute URLs
