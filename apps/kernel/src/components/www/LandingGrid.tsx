@@ -83,7 +83,7 @@ export function LandingGrid() {
   const [services, setServices] = useState<ServiceEntry[]>([]);
   const [authed, setAuthed] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [forestEnabledServices, setForestEnabledServices] = useState<string[] | null>(null);
+  const [scopeEnabledServices, setScopeEnabledServices] = useState<string[] | null>(null);
 
   useEffect(() => {
     const registryUrl = buildPublicUrl('registry');
@@ -103,15 +103,15 @@ export function LandingGrid() {
       );
     }
 
-    Promise.all(requests).then(([specData, session, forestConfig]) => {
+    Promise.all(requests).then(([specData, session, scopeConfig]) => {
       if ((specData as { services?: ServiceEntry[] } | null)?.services) {
         setServices((specData as { services: ServiceEntry[] }).services.filter((s) => s.visibility !== 'internal'));
       }
       const tier = (session as { tier?: string } | null)?.tier;
       setAuthed(tier === 'hard' || tier === 'creator');
-      if (forestConfig) {
-        const cfg = forestConfig as { enabledServices?: string[] };
-        setForestEnabledServices(cfg.enabledServices ?? null);
+      if (scopeConfig) {
+        const cfg = scopeConfig as { enabledServices?: string[] };
+        setScopeEnabledServices(cfg.enabledServices ?? null);
       }
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -131,8 +131,8 @@ export function LandingGrid() {
     ? services
     : services.filter((s) => s.visibility === 'public' || s.visibility === 'authenticated' || s.visibility === 'creator');
 
-  if (forestEnabledServices && forestEnabledServices.length > 0) {
-    visibleServices = visibleServices.filter((s) => forestEnabledServices.includes(s.name));
+  if (scopeEnabledServices && scopeEnabledServices.length > 0) {
+    visibleServices = visibleServices.filter((s) => scopeEnabledServices.includes(s.name));
   }
 
   const { kernel, core, creator, developer, meta } = groupServices(visibleServices);

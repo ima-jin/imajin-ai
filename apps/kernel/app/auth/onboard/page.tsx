@@ -10,7 +10,7 @@ function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-interface ForestProfile {
+interface ScopeProfile {
   name?: string;
   handle?: string;
   avatarUrl?: string;
@@ -25,8 +25,8 @@ function OnboardContent() {
   const redirect = params.get('redirect') || params.get('redirectUrl') || '';
 
   const [flow, setFlow] = useState<Flow>('choose');
-  const [forest, setForest] = useState<ForestProfile | null>(null);
-  const [forestLoading, setForestLoading] = useState(!!scope);
+  const [scopeProfile, setScopeProfile] = useState<ScopeProfile | null>(null);
+  const [scopeLoading, setScopeLoading] = useState(!!scope);
 
   // Email flow
   const [email, setEmail] = useState('');
@@ -45,13 +45,13 @@ function OnboardContent() {
     fetch(`${profileUrl}/api/profile/${encodeURIComponent(scope)}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data) setForest(data);
+        if (data) setScopeProfile(data);
       })
       .catch(() => {})
-      .finally(() => setForestLoading(false));
+      .finally(() => setScopeLoading(false));
   }, [scope]);
 
-  const forestName = forest?.name || forest?.handle || (scope ? scope.slice(0, 20) : null);
+  const scopeName = scopeProfile?.name || scopeProfile?.handle || (scope ? scope.slice(0, 20) : null);
 
   // ── Email flow ──────────────────────────────────────────────────────────
 
@@ -72,7 +72,7 @@ function OnboardContent() {
           name: name.trim() || undefined,
           scopeDid: scope || undefined,
           redirectUrl: redirect || undefined,
-          context: forestName ? `Join ${forestName}` : undefined,
+          context: scopeName ? `Join ${scopeName}` : undefined,
         }),
       });
       if (res.ok) {
@@ -155,24 +155,24 @@ function OnboardContent() {
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-6">
 
-        {/* Forest header */}
+        {/* Scope header */}
         <div className="text-center space-y-3">
-          {forestLoading ? (
+          {scopeLoading ? (
             <div className="w-16 h-16 rounded-full bg-gray-800 mx-auto animate-pulse" />
-          ) : forest?.avatarUrl ? (
-            <img src={forest.avatarUrl} alt="" className="w-16 h-16 rounded-full mx-auto object-cover border border-gray-700" />
+          ) : scopeProfile?.avatarUrl ? (
+            <img src={scopeProfile.avatarUrl} alt="" className="w-16 h-16 rounded-full mx-auto object-cover border border-gray-700" />
           ) : (
             <div className="w-16 h-16 rounded-full bg-gray-800 mx-auto flex items-center justify-center text-2xl">
-              {forest?.scope === 'org' ? '🏢' : forest?.scope === 'family' ? '👨‍👩‍👦' : '🌲'}
+              {scopeProfile?.scope === 'org' ? '🏢' : scopeProfile?.scope === 'family' ? '👨‍👩‍👦' : '🏛️'}
             </div>
           )}
           <div>
             <h1 className="text-xl font-bold text-white">
-              {forestName ? `Join ${forestName}` : 'Get started'}
+              {scopeName ? `Join ${scopeName}` : 'Get started'}
             </h1>
-            {forest?.scope && (
+            {scopeProfile?.scope && (
               <span className="inline-block mt-1 px-2 py-0.5 text-xs rounded-full border border-gray-700 text-gray-400 capitalize">
-                {forest.scope}
+                {scopeProfile.scope}
               </span>
             )}
           </div>

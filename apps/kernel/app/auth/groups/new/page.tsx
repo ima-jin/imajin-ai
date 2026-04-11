@@ -47,7 +47,7 @@ export default function NewGroupPage() {
       window.location.href = `/auth/groups/${encodeURIComponent(data.did)}/settings`;
     } catch {
       setStatus('error');
-      setError('Failed to create forest');
+      setError('Failed to create identity');
     }
   }
 
@@ -57,9 +57,9 @@ export default function NewGroupPage() {
 
         <div>
           <a href="/auth/groups" className="text-sm text-gray-500 hover:text-gray-300 transition">
-            ← Back to forests
+            ← Back to identities
           </a>
-          <h1 className="text-2xl font-bold text-white mt-2 mb-1">🌱 Grow a Forest</h1>
+          <h1 className="text-2xl font-bold text-white mt-2 mb-1">Create Identity</h1>
           <p className="text-sm text-gray-400">Create a new group identity.</p>
         </div>
 
@@ -133,7 +133,7 @@ export default function NewGroupPage() {
               id="description"
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="What's this forest about?"
+              placeholder="Describe this identity"
               rows={3}
               className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/60 resize-none"
             />
@@ -148,7 +148,7 @@ export default function NewGroupPage() {
             disabled={status === 'loading' || !name.trim()}
             className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold rounded-lg transition-colors"
           >
-            {status === 'loading' ? 'Creating…' : '🌱 Create Forest'}
+            {status === 'loading' ? 'Creating…' : 'Create Identity'}
           </button>
         </form>
 

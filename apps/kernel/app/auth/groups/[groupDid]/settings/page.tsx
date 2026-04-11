@@ -17,7 +17,7 @@ interface GroupDetails {
   }>;
 }
 
-interface ForestConfig {
+interface IdentityConfig {
   enabledServices: string[];
   landingService: string | null;
   theme: Record<string, unknown>;
@@ -31,10 +31,13 @@ function scopeIcon(scope: string): string {
   if (scope === 'community') return '🏛️';
   if (scope === 'org') return '🏢';
   if (scope === 'family') return '👨‍👩‍👦';
-  return '🌲';
+  if (scope === 'node') return '🖥️';
+  if (scope === 'agent') return '🤖';
+  if (scope === 'device') return '📱';
+  return '👤';
 }
 
-export default function ForestSettingsPage({ params }: { params: { groupDid: string } }) {
+export default function IdentitySettingsPage({ params }: { params: { groupDid: string } }) {
   const groupDid = decodeURIComponent(params.groupDid);
   const [loading, setLoading] = useState(true);
   const [group, setGroup] = useState<GroupDetails | null>(null);
@@ -68,12 +71,12 @@ export default function ForestSettingsPage({ params }: { params: { groupDid: str
         setGroup(await groupRes.json());
       }
       if (configRes.ok) {
-        const cfg: ForestConfig = await configRes.json();
+        const cfg: IdentityConfig = await configRes.json();
         setEnabledServices(cfg.enabledServices ?? []);
         setLandingService(cfg.landingService ?? null);
       }
     } catch (err) {
-      console.error('Failed to load forest settings:', err);
+      console.error('Failed to load identity settings:', err);
     } finally {
       setLoading(false);
     }
@@ -104,7 +107,7 @@ export default function ForestSettingsPage({ params }: { params: { groupDid: str
         body: JSON.stringify({ enabledServices, landingService }),
       });
       if (res.ok) {
-        showStatus('success', 'Forest settings saved.');
+        showStatus('success', 'Settings saved.');
       } else {
         const body = await res.json().catch(() => ({}));
         showStatus('error', body.error || 'Failed to save settings.');
@@ -119,7 +122,7 @@ export default function ForestSettingsPage({ params }: { params: { groupDid: str
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-        <div className="text-gray-400">Loading forest settings…</div>
+        <div className="text-gray-400">Loading settings…</div>
       </div>
     );
   }
@@ -135,7 +138,7 @@ export default function ForestSettingsPage({ params }: { params: { groupDid: str
           href={`${authUrl}/groups`}
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-300 transition no-underline"
         >
-          ← Back to forests
+          ← Back to identities
         </a>
 
         {/* Header */}
@@ -165,7 +168,7 @@ export default function ForestSettingsPage({ params }: { params: { groupDid: str
         {/* Services section */}
         <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Services</h2>
-          <p className="text-sm text-gray-400 mb-6">Toggle which apps are available for this forest.</p>
+          <p className="text-sm text-gray-400 mb-6">Toggle which apps are available for this identity.</p>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {VISIBLE_SERVICES.map(svc => {
@@ -194,7 +197,7 @@ export default function ForestSettingsPage({ params }: { params: { groupDid: str
         {/* Landing page section */}
         <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Landing Page</h2>
-          <p className="text-sm text-gray-400 mb-6">Choose which app loads first for this forest.</p>
+          <p className="text-sm text-gray-400 mb-6">Choose which app loads first for this identity.</p>
 
           <select
             value={landingService ?? ''}
@@ -216,7 +219,7 @@ export default function ForestSettingsPage({ params }: { params: { groupDid: str
         {/* Onboarding section */}
         <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Onboarding</h2>
-          <p className="text-sm text-gray-400 mb-6">Share this link to invite people to your forest.</p>
+          <p className="text-sm text-gray-400 mb-6">Share this link to invite people to this identity.</p>
 
           <div className="flex items-center gap-2">
             <code className="flex-1 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-300 font-mono overflow-x-auto whitespace-nowrap">
@@ -239,7 +242,7 @@ export default function ForestSettingsPage({ params }: { params: { groupDid: str
         {/* Controllers section */}
         <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Controllers</h2>
-          <p className="text-sm text-gray-400 mb-6">People who can manage this forest.</p>
+          <p className="text-sm text-gray-400 mb-6">People who can manage this identity.</p>
 
           {!group?.controllers?.length ? (
             <p className="text-sm text-gray-500">No controllers found.</p>

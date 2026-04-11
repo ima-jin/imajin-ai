@@ -15,7 +15,10 @@ function scopeIcon(scope: string): string {
   if (scope === 'community') return '🏛️';
   if (scope === 'org') return '🏢';
   if (scope === 'family') return '👨‍👩‍👦';
-  return '🌲';
+  if (scope === 'node') return '🖥️';
+  if (scope === 'agent') return '🤖';
+  if (scope === 'device') return '📱';
+  return '👤';
 }
 
 export default function GroupsPage() {
@@ -33,7 +36,7 @@ export default function GroupsPage() {
           window.location.href = '/auth/login?next=/auth/groups';
         }
       } catch (err) {
-        console.error('Failed to load forests:', err);
+        console.error('Failed to load identities:', err);
       } finally {
         setLoading(false);
       }
@@ -44,7 +47,7 @@ export default function GroupsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-        <div className="text-gray-400">Loading forests…</div>
+        <div className="text-gray-400">Loading identities…</div>
       </div>
     );
   }
@@ -54,18 +57,18 @@ export default function GroupsPage() {
       <div className="max-w-2xl mx-auto space-y-6">
 
         <div>
-          <h1 className="text-2xl font-bold text-white mb-1">🌲 Your Forests</h1>
+          <h1 className="text-2xl font-bold text-white mb-1">Your Identities</h1>
           <p className="text-sm text-gray-400">Manage your group identities.</p>
         </div>
 
         {groups.length === 0 ? (
           <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
-            <p className="text-gray-500 mb-4">You don&apos;t have any forests yet.</p>
+            <p className="text-gray-500 mb-4">You don&apos;t have any group identities yet.</p>
             <a
               href="/auth/groups/new"
               className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold rounded-lg transition no-underline"
             >
-              🌱 Grow a forest
+              + Create Identity
             </a>
           </div>
         ) : (
@@ -103,7 +106,7 @@ export default function GroupsPage() {
               href="/auth/groups/new"
               className="block border border-dashed border-gray-800 hover:border-gray-600 rounded-2xl p-6 transition no-underline text-center text-gray-500 hover:text-gray-300"
             >
-              🌱 Grow a forest
+              + Create Identity
             </a>
           </div>
         )}
