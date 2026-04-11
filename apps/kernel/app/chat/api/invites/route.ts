@@ -4,6 +4,7 @@ import { db, invites } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
+import { withLogger } from '@imajin/logger';
 
 // TODO(#435-followup): The invites table still references chat.conversations.id (v1 FK).
 // The conversationId field here now accepts a conversation DID as a plain text column
@@ -13,7 +14,7 @@ import { checkAccess } from '@/src/lib/kernel/access';
 /**
  * POST /api/invites - Create an invite link for a v2 conversation
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request, { log }) => {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return errorResponse(authResult.error, authResult.status);
@@ -61,15 +62,15 @@ export async function POST(request: NextRequest) {
       link: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://chat.imajin.ai'}/join/${inviteId}`,
     }, 201);
   } catch (error) {
-    console.error('Failed to create invite:', error);
+    log.error({ err: String(error) }, 'Failed to create invite');
     return errorResponse('Failed to create invite', 500);
   }
-}
+});
 
 /**
  * GET /api/invites?conversationId=xxx - List invites for a conversation
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request, { log }) => {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return errorResponse(authResult.error, authResult.status);
@@ -99,7 +100,7 @@ export async function GET(request: NextRequest) {
 
     return jsonResponse({ invites: inviteList });
   } catch (error) {
-    console.error('Failed to list invites:', error);
+    log.error({ err: String(error) }, 'Failed to list invites');
     return errorResponse('Failed to list invites', 500);
   }
-}
+});

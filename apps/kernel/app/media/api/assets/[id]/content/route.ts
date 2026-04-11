@@ -5,6 +5,9 @@ import { db, assets } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import type { FairManifest } from "@imajin/fair";
+import { createLogger } from "@imajin/logger";
+
+const log = createLogger("kernel");
 
 function getAccessType(access: FairManifest["access"]): string {
   if (!access) return "private";
@@ -25,7 +28,7 @@ export async function GET(
   try {
     [asset] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
   } catch (err) {
-    console.error("DB lookup failed:", err);
+    log.error({ err: String(err) }, "DB lookup failed");
     return NextResponse.json({ error: "Database failure" }, { status: 500 });
   }
 
@@ -111,7 +114,7 @@ export async function PUT(
   try {
     [asset] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
   } catch (err) {
-    console.error("DB lookup failed:", err);
+    log.error({ err: String(err) }, "DB lookup failed");
     return NextResponse.json({ error: "Database failure" }, { status: 500 });
   }
 
@@ -126,7 +129,7 @@ export async function PUT(
   try {
     await writeFile(asset.storagePath, content, "utf-8");
   } catch (err) {
-    console.error("File write failed:", err);
+    log.error({ err: String(err) }, "File write failed");
     return NextResponse.json({ error: "File write failed" }, { status: 500 });
   }
 

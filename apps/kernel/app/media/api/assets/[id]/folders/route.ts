@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, assets, folders, assetFolders } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq, and, inArray } from "drizzle-orm";
+import { createLogger } from "@imajin/logger";
+
+const log = createLogger("kernel");
 
 // ---------------------------------------------------------------------------
 // PUT /api/assets/[id]/folders — set folder assignments (replaces all)
@@ -71,7 +74,7 @@ export async function PUT(
 
     return NextResponse.json({ assetId: id, folderIds });
   } catch (err) {
-    console.error("DB transaction failed:", err);
+    log.error({ err: String(err) }, "DB transaction failed");
     return NextResponse.json({ error: "Database failure", detail: String(err) }, { status: 500 });
   }
 }

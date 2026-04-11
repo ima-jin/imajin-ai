@@ -4,6 +4,7 @@ import { getClient } from '@imajin/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
+import { withLogger } from '@imajin/logger';
 
 const rawSql = getClient();
 
@@ -15,7 +16,7 @@ export async function OPTIONS(req: NextRequest) {
  * GET /api/conversations/unread
  * Returns total unread count and per-conversation unread counts (v2)
  */
-export async function GET(req: NextRequest) {
+export const GET = withLogger('kernel', async (req, { log }) => {
   const cors = corsHeaders(req);
   const authResult = await requireAuth(req);
   if ('error' in authResult) {
@@ -81,10 +82,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ total, conversations: conversationsWithUnread }, { headers: cors });
   } catch (error) {
-    console.error('Error fetching unread counts:', error);
+    log.error({ err: String(error) }, 'Error fetching unread counts');
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500, headers: cors }
     );
   }
-}
+});

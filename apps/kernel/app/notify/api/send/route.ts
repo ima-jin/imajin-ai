@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { nanoid } from 'nanoid';
+import { withLogger } from '@imajin/logger';
 import { db } from '@/src/db';
 import { notifications, preferences } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
@@ -11,7 +12,7 @@ export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request, { log }) => {
   const cors = corsHeaders(request);
 
   // Verify webhook secret
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
         });
         channelsSent.push('email');
       } catch (err) {
-        console.error('Email send failed for notification', id, err);
+        log.error({ err: String(err), id }, 'Email send failed for notification');
       }
     }
   }
@@ -103,4 +104,4 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ id, sent: true }, { headers: cors });
-}
+});

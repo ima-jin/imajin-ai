@@ -5,6 +5,9 @@ import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { notify } from '@imajin/notify';
 import { emitAttestation } from '@imajin/auth';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export const dynamic = 'force-dynamic';
 
@@ -91,7 +94,7 @@ export async function DELETE(
     `;
 
     notify.interest({ did: memberDid, attestationType: 'group.member.removed' })
-      .catch((err: unknown) => console.error('Interest signal error:', err));
+      .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
 
     emitAttestation({
       issuer_did: identity.id,
@@ -99,11 +102,11 @@ export async function DELETE(
       type: 'group.member.removed',
       context_id: did,
       context_type: 'chat.group',
-    }).catch((err: unknown) => console.error('Attestation (group.member.removed) error:', err));
+    }).catch((err: unknown) => log.error({ err: String(err) }, 'Attestation (group.member.removed) error'));
 
     return jsonResponse({ ok: true }, 200, cors);
   } catch (error) {
-    console.error('Failed to remove member:', error);
+    log.error({ err: String(error) }, 'Failed to remove member');
     return errorResponse('Failed to remove member', 500, cors);
   }
 }

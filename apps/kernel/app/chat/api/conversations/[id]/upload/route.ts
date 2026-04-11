@@ -6,6 +6,9 @@ import sharp from 'sharp';
 import { requireAuth } from '@imajin/auth';
 import { errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const UPLOAD_DIR = '/mnt/media/chat';
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
@@ -126,7 +129,7 @@ export async function POST(
 
     return Response.json({ mediaType, mediaPath, mediaMeta }, { status: 200 });
   } catch (error) {
-    console.error('Upload failed:', error);
+    log.error({ err: String(error) }, 'Upload failed');
     return errorResponse('Upload failed', 500);
   }
 }

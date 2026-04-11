@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, profiles } from '@/src/db';
 import { or, eq } from 'drizzle-orm';
+import { withLogger } from '@imajin/logger';
 
 /**
  * GET /api/profile?handle=xxx - Look up profile directly from DB
  * Used by new chat flow to search users
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request, { log }) => {
   const handle = request.nextUrl.searchParams.get('handle');
 
   if (!handle) {
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(profile);
   } catch (error) {
-    console.error('Profile lookup failed:', error);
+    log.error({ err: String(error) }, 'Profile lookup failed');
     return NextResponse.json({ error: 'Profile lookup failed' }, { status: 500 });
   }
-}
+});

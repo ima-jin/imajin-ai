@@ -6,6 +6,9 @@ import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import { createReadStream } from "fs";
 import type { FairManifest } from "@imajin/fair";
+import { createLogger } from "@imajin/logger";
+
+const log = createLogger("kernel");
 
 /**
  * Serve a file with HTTP Range support (needed for video seeking/scrubbing).
@@ -95,7 +98,7 @@ export async function GET(
       .where(eq(assets.id, id))
       .limit(1);
   } catch (err) {
-    console.error("DB lookup failed:", err);
+    log.error({ err: String(err) }, "DB lookup failed");
     return NextResponse.json({ error: "Database failure" }, { status: 500 });
   }
 
@@ -192,7 +195,7 @@ export async function GET(
 
     // Kick off transcode fire-and-forget
     transcodeVideo(asset.storagePath, quality).catch((err) =>
-      console.error(`[transcode] Background error for ${asset.storagePath} ${quality}:`, err)
+      log.error({ err: String(err), storagePath: asset.storagePath, quality }, "Background transcode error")
     );
     return NextResponse.json(
       { status: "transcoding", quality, retryAfter: 30 },
@@ -286,7 +289,7 @@ export async function DELETE(
       .where(eq(assets.id, id))
       .limit(1);
   } catch (err) {
-    console.error("DB lookup failed:", err);
+    log.error({ err: String(err) }, "DB lookup failed");
     return NextResponse.json({ error: "Database failure" }, { status: 500 });
   }
 
@@ -341,7 +344,7 @@ export async function PATCH(
   try {
     [asset] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
   } catch (err) {
-    console.error("DB lookup failed:", err);
+    log.error({ err: String(err) }, "DB lookup failed");
     return NextResponse.json({ error: "Database failure" }, { status: 500 });
   }
 
@@ -359,7 +362,7 @@ export async function PATCH(
   try {
     await rename(asset.storagePath, newStoragePath);
   } catch (err) {
-    console.error("File rename failed:", err);
+    log.error({ err: String(err) }, "File rename failed");
     return NextResponse.json({ error: "File rename failed" }, { status: 500 });
   }
 

@@ -2,6 +2,9 @@ import { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, publicKeys, preKeys } from '@/src/db';
 import { jsonResponse, errorResponse, isValidDid } from '@/src/lib/kernel/utils';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * GET /api/keys/:did - Get public keys for E2EE
@@ -49,7 +52,7 @@ export async function GET(
       oneTimePreKey: oneTimeKey?.key || null,
     });
   } catch (error) {
-    console.error('Failed to get keys:', error);
+    log.error({ err: String(error) }, 'Failed to get keys');
     return errorResponse('Failed to get keys', 500);
   }
 }

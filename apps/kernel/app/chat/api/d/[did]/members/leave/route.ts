@@ -5,6 +5,9 @@ import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { notify } from '@imajin/notify';
 import { emitAttestation } from '@imajin/auth';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export const dynamic = 'force-dynamic';
 
@@ -90,7 +93,7 @@ export async function POST(
     `;
 
     notify.interest({ did: effectiveDid, attestationType: 'group.member.left' })
-      .catch((err: unknown) => console.error('Interest signal error:', err));
+      .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
 
     emitAttestation({
       issuer_did: effectiveDid,
@@ -98,11 +101,11 @@ export async function POST(
       type: 'group.member.left',
       context_id: did,
       context_type: 'chat.group',
-    }).catch((err: unknown) => console.error('Attestation (group.member.left) error:', err));
+    }).catch((err: unknown) => log.error({ err: String(err) }, 'Attestation (group.member.left) error'));
 
     return jsonResponse({ ok: true }, 200, cors);
   } catch (error) {
-    console.error('Failed to leave conversation:', error);
+    log.error({ err: String(error) }, 'Failed to leave conversation');
     return errorResponse('Failed to leave conversation', 500, cors);
   }
 }

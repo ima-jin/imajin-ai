@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, conversationReadsV2 } from '@/src/db';
 import { sql } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * POST /api/conversations/:id/read
@@ -35,7 +38,7 @@ export async function POST(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error marking conversation as read:', error);
+    log.error({ err: String(error) }, 'Error marking conversation as read');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

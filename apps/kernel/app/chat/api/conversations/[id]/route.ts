@@ -4,6 +4,9 @@ import { db, conversationsV2 } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * GET /api/conversations/:id - Get v2 conversation details
@@ -39,7 +42,7 @@ export async function GET(
 
     return jsonResponse({ conversation });
   } catch (error) {
-    console.error('Failed to get conversation:', error);
+    log.error({ err: String(error) }, 'Failed to get conversation');
     return errorResponse('Failed to get conversation', 500);
   }
 }
@@ -93,7 +96,7 @@ export async function PATCH(
 
     return jsonResponse({ ok: true });
   } catch (error) {
-    console.error('Failed to update conversation:', error);
+    log.error({ err: String(error) }, 'Failed to update conversation');
     return errorResponse('Failed to update conversation', 500);
   }
 }
@@ -133,7 +136,7 @@ export async function DELETE(
 
     return jsonResponse({ deleted: true });
   } catch (error) {
-    console.error('Failed to delete conversation:', error);
+    log.error({ err: String(error) }, 'Failed to delete conversation');
     return errorResponse('Failed to delete conversation', 500);
   }
 }

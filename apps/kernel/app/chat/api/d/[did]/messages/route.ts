@@ -1,5 +1,8 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { eq, and, desc, lt, isNull, inArray, ilike, or } from 'drizzle-orm';
+
+const log = createLogger('kernel');
 import { db, conversationsV2, messagesV2, messageReactionsV2, profiles } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
@@ -150,7 +153,7 @@ export async function GET(
       hasMore: result.length === limit,
     }, 200, cors);
   } catch (error) {
-    console.error('Failed to get messages:', error);
+    log.error({ err: String(error) }, 'Failed to get messages');
     return errorResponse('Failed to get messages', 500, cors);
   }
 }
@@ -309,13 +312,13 @@ export async function POST(
                 senderName: identity.handle || identity.id.slice(0, 16),
                 messagePreview: messageText.slice(0, 100),
               },
-            }).catch((err: unknown) => console.error('Mention notify error:', err));
+            }).catch((err: unknown) => log.error({ err: String(err) }, 'Mention notify error'));
 
             // Record interest signal — chat.mention → chat scope
             notify.interest({ did: mentionedDid, attestationType: 'chat.mention' })
-              .catch((err: unknown) => console.error('Interest signal error:', err));
+              .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
           } catch (err) {
-            console.error('Handle resolution error:', err);
+            log.error({ err: String(err) }, 'Handle resolution error');
           }
         }
       })().catch(() => {});
@@ -345,7 +348,7 @@ export async function POST(
 
     return jsonResponse({ message }, 201, cors);
   } catch (error) {
-    console.error('Failed to send message:', error);
+    log.error({ err: String(error) }, 'Failed to send message');
     return errorResponse('Failed to send message', 500, cors);
   }
 }

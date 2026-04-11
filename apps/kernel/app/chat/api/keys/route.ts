@@ -4,11 +4,12 @@ import { ed25519 } from '@noble/curves/ed25519';
 import { db, publicKeys, preKeys } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/keys - Upload/update public key bundle
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request, { log }) => {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return errorResponse(authResult.error, authResult.status);
@@ -78,15 +79,15 @@ export async function POST(request: NextRequest) {
       preKeysAdded: oneTimePreKeys?.length || 0,
     });
   } catch (error) {
-    console.error('Failed to upload keys:', error);
+    log.error({ err: String(error) }, 'Failed to upload keys');
     return errorResponse('Failed to upload keys', 500);
   }
-}
+});
 
 /**
  * GET /api/keys - Get your own keys (for verification)
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request, { log }) => {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return errorResponse(authResult.error, authResult.status);
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
       unusedPreKeyCount: unusedCount,
     });
   } catch (error) {
-    console.error('Failed to get keys:', error);
+    log.error({ err: String(error) }, 'Failed to get keys');
     return errorResponse('Failed to get keys', 500);
   }
-}
+});

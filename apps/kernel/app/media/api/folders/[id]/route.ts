@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, folders } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq, and } from "drizzle-orm";
+import { createLogger } from "@imajin/logger";
+
+const log = createLogger("kernel");
 
 // ---------------------------------------------------------------------------
 // PATCH /api/folders/[id] — rename, move, or change icon
@@ -66,7 +69,7 @@ export async function PATCH(
 
     return NextResponse.json(updated);
   } catch (err) {
-    console.error("DB update failed:", err);
+    log.error({ err: String(err) }, "DB update failed");
     return NextResponse.json({ error: "Database failure", detail: String(err) }, { status: 500 });
   }
 }
@@ -102,7 +105,7 @@ export async function DELETE(
     await db.delete(folders).where(and(eq(folders.id, id), eq(folders.ownerDid, ownerDid)));
     return new Response(null, { status: 204 });
   } catch (err) {
-    console.error("DB delete failed:", err);
+    log.error({ err: String(err) }, "DB delete failed");
     return NextResponse.json({ error: "Database failure", detail: String(err) }, { status: 500 });
   }
 }

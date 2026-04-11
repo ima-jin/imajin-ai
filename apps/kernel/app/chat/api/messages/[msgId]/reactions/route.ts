@@ -4,6 +4,9 @@ import { db, messagesV2, messageReactionsV2 } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * GET /api/messages/:msgId/reactions - Get reactions for a v2 message
@@ -48,7 +51,7 @@ export async function GET(
 
     return jsonResponse({ reactions });
   } catch (error) {
-    console.error('Failed to get reactions:', error);
+    log.error({ err: String(error) }, 'Failed to get reactions');
     return errorResponse('Failed to get reactions', 500);
   }
 }
@@ -121,7 +124,7 @@ export async function POST(
 
     return jsonResponse({ reactions });
   } catch (error) {
-    console.error('Failed to add reaction:', error);
+    log.error({ err: String(error) }, 'Failed to add reaction');
     return errorResponse('Failed to add reaction', 500);
   }
 }
@@ -199,7 +202,7 @@ export async function DELETE(
 
     return jsonResponse({ reactions });
   } catch (error) {
-    console.error('Failed to remove reaction:', error);
+    log.error({ err: String(error) }, 'Failed to remove reaction');
     return errorResponse('Failed to remove reaction', 500);
   }
 }

@@ -5,6 +5,9 @@ import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { checkAccess } from '@/src/lib/kernel/access';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * OPTIONS /api/d/:did/messages/:msgId/reactions - CORS preflight
@@ -69,7 +72,7 @@ export async function POST(
 
     return jsonResponse({ ok: true }, 201, cors);
   } catch (error) {
-    console.error('Failed to add reaction:', error);
+    log.error({ err: String(error) }, 'Failed to add reaction');
     return errorResponse('Failed to add reaction', 500, cors);
   }
 }
@@ -121,7 +124,7 @@ export async function DELETE(
 
     return new Response(null, { status: 204, headers: cors });
   } catch (error) {
-    console.error('Failed to remove reaction:', error);
+    log.error({ err: String(error) }, 'Failed to remove reaction');
     return errorResponse('Failed to remove reaction', 500, cors);
   }
 }
