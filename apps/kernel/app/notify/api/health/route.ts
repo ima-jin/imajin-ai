@@ -7,5 +7,11 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
-  return NextResponse.json({ ok: true, service: 'notify' }, { headers: cors });
+  return NextResponse.json({
+    ok: true,
+    status: 'ok',
+    service: 'notify',
+    version: process.env.NEXT_PUBLIC_VERSION || '0.0.0',
+    build: process.env.NEXT_PUBLIC_BUILD_HASH || 'dev',
+  }, { headers: cors });
 }

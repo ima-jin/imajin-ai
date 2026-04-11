@@ -1,0 +1,1 @@
+ALTER TABLE auth.identities ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ;
