@@ -56,11 +56,18 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
 
   const totalDollars = amount / 100;
 
+  // Resolve node DID from environment
+  // Set NODE_DID or RELAY_IMAJIN_DID in .env.local (value from relay.relay_config.imajin_did)
+  const NODE_DID = process.env.NODE_DID || process.env.RELAY_IMAJIN_DID || null;
+  if (!NODE_DID) {
+    log.warn({ eventId }, '[settle] NODE_DID not set — node fee recipient unresolved');
+  }
+
   // Replace placeholder DIDs in the chain
   const resolvedChain = chain.map((entry) => {
     let did = entry.did;
     if (did === 'BUYER_PLACEHOLDER') did = buyerDid;
-    // NODE_PLACEHOLDER stays as-is — the pay service resolves it or the node operator DID is set
+    if (did === 'NODE_PLACEHOLDER') did = NODE_DID || 'did:imajin:node-unresolved';
     return {
       did,
       amount: parseFloat((totalDollars * entry.share).toFixed(2)),
