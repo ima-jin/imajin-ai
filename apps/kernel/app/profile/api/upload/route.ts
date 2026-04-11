@@ -3,6 +3,7 @@ import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import { errorResponse } from '@/src/lib/kernel/utils';
+import { withLogger } from '@imajin/logger';
 
 const UPLOAD_DIR = '/mnt/media/avatars';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -13,7 +14,7 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
  * Accepts: multipart/form-data with 'image' field and 'did' field
  * Returns: { url: string }
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const formData = await request.formData();
     const file = formData.get('image') as File | null;
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     return Response.json({ url }, { status: 200 });
   } catch (error) {
-    console.error('Upload failed:', error);
+    log.error({ err: String(error) }, 'Upload failed');
     return errorResponse('Upload failed', 500);
   }
-}
+});

@@ -12,7 +12,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { db, tickets, events } from '@/src/db';
+
+const log = createLogger('events');
 import { getClient } from '@imajin/db';
 import { eq, and, inArray, gt } from 'drizzle-orm';
 
@@ -104,7 +107,7 @@ export async function GET(
         imageUrl: r.image_url ?? null,
       }));
     } catch (err) {
-      console.warn('Failed to fetch cohost events (non-fatal):', err);
+      log.warn({ err: String(err) }, 'Failed to fetch cohost events (non-fatal)');
     }
 
     // Deduplicate by eventId
@@ -166,7 +169,7 @@ export async function GET(
       }))
     );
   } catch (error) {
-    console.error('Failed to fetch attending events:', error);
+    log.error({ err: String(error) }, 'Failed to fetch attending events');
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('links');
 import { db, linkPages, links } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, isValidUrl, generateId } from '@/lib/utils';
@@ -81,7 +83,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse({ links: inserted }, 201);
   } catch (error) {
-    console.error('Failed to add links:', error);
+    log.error({ err: String(error) }, 'Failed to add links');
     return errorResponse('Failed to add links', 500);
   }
 }

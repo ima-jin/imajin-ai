@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { requireAuth } from '@imajin/auth';
+
+const log = createLogger('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 
@@ -94,7 +97,7 @@ export async function GET(
 
     return NextResponse.json({ guests, isOwner });
   } catch (error) {
-    console.error('Failed to fetch guests:', error);
+    log.error({ err: String(error) }, 'Failed to fetch guests');
     return NextResponse.json({ error: 'Failed to fetch guests' }, { status: 500 });
   }
 }

@@ -13,6 +13,9 @@ import { identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const EVENTS_SERVICE_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:3006';
 const EVENTS_URL = process.env.EVENTS_URL || 'https://events.imajin.ai';
@@ -72,7 +75,7 @@ export async function GET(request: NextRequest) {
 
     if (!eventsResponse.ok) {
       const errorText = await eventsResponse.text();
-      console.error('Token verification failed:', eventsResponse.status, errorText);
+      log.error({ status: eventsResponse.status, body: errorText }, 'Token verification failed');
 
       return new NextResponse(
         `
@@ -142,7 +145,7 @@ export async function GET(request: NextRequest) {
     if (!identity) {
       // Create new identity for the ticket owner
       // This should have been created during soft registration, but create if missing
-      console.log(`Creating identity for ${ownerDid} (not found in auth DB)`);
+      log.info({ ownerDid }, 'Creating identity (not found in auth DB)');
 
       [identity] = await db
         .insert(identities)
@@ -182,12 +185,12 @@ export async function GET(request: NextRequest) {
       method: "magic_link",
       tier: identityTier,
       userAgent: request.headers.get("user-agent"),
-    }).catch(err => console.error("Session attestation error:", err));
+    }).catch(err => log.error({ err: String(err) }, 'Session attestation error'));
 
     return response;
 
   } catch (error) {
-    console.error('Magic link authentication error:', error);
+    log.error({ err: String(error) }, 'Magic link authentication error');
 
     return new NextResponse(
       `

@@ -14,11 +14,12 @@ import Stripe from 'stripe';
 import { eq } from 'drizzle-orm';
 import { db, connectedAccounts } from '@/src/db';
 import { getStripe } from '@/src/lib/pay/stripe';
+import { withLogger } from '@imajin/logger';
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error('STRIPE_CONNECT_WEBHOOK_SECRET not configured');
+    log.error({}, 'STRIPE_CONNECT_WEBHOOK_SECRET not configured');
     return NextResponse.json(
       { error: 'Webhook not configured' },
       { status: 500 }
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
     const stripe = getStripe();
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
-    console.error('Connect webhook signature verification failed:', err);
+    log.error({ err: String(err) }, 'Connect webhook signature verification failed');
     return NextResponse.json(
       { error: 'Invalid signature' },
       { status: 400 }
@@ -82,36 +83,26 @@ export async function POST(request: NextRequest) {
 
       case 'payout.paid': {
         const payout = event.data.object as Stripe.Payout;
-        console.log('Connect payout.paid:', {
-          account: (event as Stripe.Event & { account?: string }).account,
-          payoutId: payout.id,
-          amount: payout.amount,
-          currency: payout.currency,
-        });
+        log.info({ account: (event as Stripe.Event & { account?: string }).account, payoutId: payout.id, amount: payout.amount, currency: payout.currency }, 'Connect payout.paid');
         break;
       }
 
       case 'payout.failed': {
         const payout = event.data.object as Stripe.Payout;
-        console.log('Connect payout.failed:', {
-          account: (event as Stripe.Event & { account?: string }).account,
-          payoutId: payout.id,
-          amount: payout.amount,
-          currency: payout.currency,
-        });
+        log.info({ account: (event as Stripe.Event & { account?: string }).account, payoutId: payout.id, amount: payout.amount, currency: payout.currency }, 'Connect payout.failed');
         break;
       }
 
       default:
-        console.log('Unhandled connect event type:', event.type);
+        log.info({ eventType: event.type }, 'Unhandled connect event type');
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error('Connect webhook handler error:', error);
+    log.error({ err: String(error) }, 'Connect webhook handler error');
     return NextResponse.json(
       { error: 'Webhook handler failed' },
       { status: 500 }
     );
   }
-}
+});

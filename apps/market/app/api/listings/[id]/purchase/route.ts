@@ -6,6 +6,8 @@
  */
 
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('market');
 import { db, listings } from '@/db';
 import { getSession, requireHardDID } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
@@ -99,7 +101,7 @@ export async function POST(
 
     if (!payResponse.ok) {
       const err = await payResponse.json();
-      console.error('Pay service error:', err);
+      log.error({ err }, 'Pay service error');
       return errorResponse(err.error || 'Payment service error', 500);
     }
 
@@ -108,7 +110,7 @@ export async function POST(
     return jsonResponse({ url: checkout.url, sessionId: checkout.id });
 
   } catch (error) {
-    console.error('Purchase error:', error);
+    log.error({ err: String(error) }, 'Purchase error');
     return errorResponse('Purchase failed', 500);
   }
 }

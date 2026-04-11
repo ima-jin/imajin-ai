@@ -6,6 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withLogger, createLogger } from '@imajin/logger';
+
+const log = createLogger('events');
 import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
@@ -59,11 +62,11 @@ async function attachEmailToProfile(did: string, email: string): Promise<void> {
       sql`UPDATE profile.profiles SET contact_email = ${normalizedEmail} WHERE did = ${did} AND (contact_email IS NULL OR contact_email = '')`
     );
   } catch (error) {
-    console.error('attachEmailToProfile error:', error);
+    log.error({ err: String(error) }, 'attachEmailToProfile error');
   }
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('events', async (request, { log }) => {
   const ip = getClientIP(request);
   const rl = rateLimit(ip, 10, 60_000);
   if (rl.limited) {
@@ -253,7 +256,7 @@ export async function POST(request: NextRequest) {
       context_id: event.id,
       context_type: 'event',
       payload: { ticketId: ticket.id, amount: 0, currency: ticketType.currency },
-    }).catch((err) => console.error('Attestation emit error:', err));
+    }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
 
     // Notify (fire and forget)
     notify.send({
@@ -266,11 +269,11 @@ export async function POST(request: NextRequest) {
         amount: 0,
         currency: ticketType.currency,
       },
-    }).catch((err) => console.error('Notify error:', err));
+    }).catch((err) => log.error({ err: String(err) }, 'Notify error'));
 
     // Interest signal
     notify.interest({ did: ownerDid, attestationType: 'ticket.purchased' })
-      .catch((err) => console.error('Interest signal error:', err));
+      .catch((err) => log.error({ err: String(err) }, 'Interest signal error'));
 
     // Add to event chat (fire and forget)
     const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
@@ -279,7 +282,7 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ memberDid: ownerDid, role: 'member' }),
-      }).catch((err) => console.warn('Event chat member sync failed (non-fatal):', err));
+      }).catch((err) => log.warn({ err: String(err) }, 'Event chat member sync failed (non-fatal)'));
     }
 
     // Send confirmation email if we have an email
@@ -313,7 +316,7 @@ export async function POST(request: NextRequest) {
           `;
           magicLink = `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`;
         } catch (err) {
-          console.error('Onboard token creation failed (non-fatal):', err);
+          log.error({ err: String(err) }, 'Onboard token creation failed (non-fatal)');
         }
 
         const qrCodeDataUri = await generateQRCode(ticketId);
@@ -340,7 +343,7 @@ export async function POST(request: NextRequest) {
           }),
         });
       } catch (emailError) {
-        console.error('Confirmation email failed (non-fatal):', emailError);
+        log.error({ err: String(emailError) }, 'Confirmation email failed (non-fatal)');
       }
     }
 
@@ -351,10 +354,10 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Free checkout error:', error);
+    log.error({ err: String(error) }, 'Free checkout error');
     return NextResponse.json(
       { error: 'RSVP failed' },
       { status: 500 }
     );
   }
-}
+});

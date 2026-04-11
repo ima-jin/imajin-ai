@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, approvedBuilds } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/builds/verify
@@ -21,7 +22,7 @@ import { eq, desc } from 'drizzle-orm';
  *   error?: string
  * }
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const body = await request.json();
     const { buildHash, version } = body;
@@ -68,19 +69,19 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Build verify error:', error);
+    log.error({ err: String(error) }, 'Build verify error');
     return NextResponse.json(
       { valid: false, source: 'unknown', error: 'Failed to verify build' },
       { status: 500 }
     );
   }
-}
+});
 
 /**
  * GET /api/builds/verify
  * List all approved builds
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const { searchParams } = new URL(request.url);
     const version = searchParams.get('version');
@@ -115,10 +116,10 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('List builds error:', error);
+    log.error({ err: String(error) }, 'List builds error');
     return NextResponse.json(
       { error: 'Failed to list builds' },
       { status: 500 }
     );
   }
-}
+});

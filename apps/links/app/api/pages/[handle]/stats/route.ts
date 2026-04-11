@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('links');
 import { db, linkPages, links, linkClicks } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
@@ -106,7 +108,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       topReferrers,
     });
   } catch (error) {
-    console.error('Failed to fetch stats:', error);
+    log.error({ err: String(error) }, 'Failed to fetch stats');
     return errorResponse('Failed to fetch stats', 500);
   }
 }

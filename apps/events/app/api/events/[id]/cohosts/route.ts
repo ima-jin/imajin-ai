@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { db, events } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
+
+const log = createLogger('events');
 import { eq } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 
@@ -65,7 +68,7 @@ export async function GET(
 
     return NextResponse.json({ cohosts });
   } catch (error) {
-    console.error('Failed to list cohosts:', error);
+    log.error({ err: String(error) }, 'Failed to list cohosts');
     return NextResponse.json({ error: 'Failed to list cohosts' }, { status: 500 });
   }
 }
@@ -169,9 +172,9 @@ export async function POST(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ memberDid: coHostDid, role: 'admin' }),
         });
-        console.log(`Added cohost ${coHostDid} to event chat ${event.did}`);
+        log.info({ coHostDid, eventDid: event.did }, 'Added cohost to event chat');
       } catch (chatError) {
-        console.warn('Cohost chat sync failed (non-fatal):', chatError);
+        log.warn({ err: String(chatError) }, 'Cohost chat sync failed (non-fatal)');
       }
     }
 
@@ -186,7 +189,7 @@ export async function POST(
 
     return NextResponse.json({ cohost }, { status: 201 });
   } catch (error) {
-    console.error('Failed to add cohost:', error);
+    log.error({ err: String(error) }, 'Failed to add cohost');
     return NextResponse.json({ error: 'Failed to add cohost' }, { status: 500 });
   }
 }

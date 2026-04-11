@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/src/db';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { withLogger } from '@imajin/logger';
 
 // Reserved handles that cannot be claimed
 const RESERVED_HANDLES = [
@@ -38,7 +39,7 @@ function isValidHandle(handle: string): boolean {
  * GET /api/handle-check?handle=xxx
  * Check if a handle is available for registration
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const searchParams = request.nextUrl.searchParams;
   const handle = searchParams.get('handle');
 
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
       message: 'Handle is available',
     });
   } catch (error) {
-    console.error('Handle check failed:', error);
+    log.error({ err: String(error) }, 'Handle check failed');
     return errorResponse('Failed to check handle availability', 500);
   }
-}
+});

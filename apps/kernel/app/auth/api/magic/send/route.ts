@@ -18,6 +18,7 @@ import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { corsHeaders } from '@imajin/config';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { withLogger } from '@imajin/logger';
 
 const AUTH_URL = process.env.AUTH_URL || process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
 
@@ -25,7 +26,7 @@ export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   const ip = getClientIP(request);
@@ -93,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     if (!did) {
       // No account found — return success anyway to prevent enumeration
-      console.log(`Magic link requested for unknown email: ${normalizedEmail}`);
+      log.info({ email: normalizedEmail }, 'Magic link requested for unknown email');
       return NextResponse.json({ sent: true }, { headers: cors });
     }
 
@@ -136,13 +137,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ sent: true }, { headers: cors });
 
   } catch (error) {
-    console.error('Magic link send error:', error);
+    log.error({ err: String(error) }, 'Magic link send error');
     return NextResponse.json(
       { error: 'Failed to send login link' },
       { status: 500, headers: cors }
     );
   }
-}
+});
 
 function magicLinkEmail({ verifyUrl }: { verifyUrl: string }): string {
   return `

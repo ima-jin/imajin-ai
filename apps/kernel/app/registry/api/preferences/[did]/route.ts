@@ -3,6 +3,9 @@ import { corsHeaders, corsOptions } from '@imajin/config';
 import { requireAuth } from '@imajin/auth';
 import { db, didPreferences, didInterests, interests } from '@/src/db';
 import { eq, asc } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -58,7 +61,7 @@ export async function GET(
       interests: interestRows,
     }, { headers: cors });
   } catch (error) {
-    console.error('[preferences/did] get error:', error);
+    log.error({ err: String(error) }, '[preferences/did] get error');
     return NextResponse.json({ error: 'Failed to get preferences' }, { status: 500, headers: cors });
   }
 }
@@ -125,7 +128,7 @@ export async function PUT(
 
     return NextResponse.json({ preferences: result }, { headers: cors });
   } catch (error) {
-    console.error('[preferences/did] put error:', error);
+    log.error({ err: String(error) }, '[preferences/did] put error');
     return NextResponse.json({ error: 'Failed to update preferences' }, { status: 500, headers: cors });
   }
 }

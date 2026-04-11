@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, profiles } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -53,7 +56,7 @@ export async function GET(
       lastSeen: lastSeen ? lastSeen.toISOString() : null,
     }, { headers: cors });
   } catch (err) {
-    console.error('[Presence] Get error:', err);
+    log.error({ err: String(err) }, '[Presence] Get error');
     return NextResponse.json(
       { error: 'Failed to get presence' },
       { status: 500, headers: cors }

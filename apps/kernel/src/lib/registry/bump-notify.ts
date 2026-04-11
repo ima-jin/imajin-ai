@@ -2,7 +2,9 @@
  * Push bump events to a DID via the internal WebSocket notify route.
  * Fire-and-forget — errors are logged but don't block the caller.
  */
+import { createLogger } from '@imajin/logger';
 
+const log = createLogger('kernel');
 const WS_PORT = process.env.WS_PORT || process.env.PORT || '3000';
 const INTERNAL_KEY = process.env.AUTH_INTERNAL_API_KEY;
 
@@ -15,7 +17,7 @@ export type BumpWsEvent =
 
 export async function notifyBumpDid(targetDid: string, event: BumpWsEvent): Promise<boolean> {
   if (!INTERNAL_KEY) {
-    console.warn('[bump-notify] AUTH_INTERNAL_API_KEY not set, skipping WS notification');
+    log.warn({}, 'AUTH_INTERNAL_API_KEY not set, skipping WS notification');
     return false;
   }
 
@@ -30,14 +32,14 @@ export async function notifyBumpDid(targetDid: string, event: BumpWsEvent): Prom
     });
 
     if (!res.ok) {
-      console.error(`[bump-notify] failed for ${targetDid}:`, res.status);
+      log.error({ targetDid, status: res.status }, 'bump-notify failed');
       return false;
     }
 
     const data = await res.json();
     return data.delivered ?? false;
   } catch (err) {
-    console.error(`[bump-notify] error for ${targetDid}:`, err);
+    log.error({ targetDid, err: String(err) }, 'bump-notify error');
     return false;
   }
 }

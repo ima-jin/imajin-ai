@@ -3,6 +3,9 @@ import { db, profiles } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { eq } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * POST /api/profile/inference - Toggle inference (AI presence) for the authenticated user
@@ -42,7 +45,7 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${mediaKey}` },
         body: JSON.stringify({ did: identity.id, handle: existing?.handle || undefined }),
-      }).catch(err => console.error('[Presence] Seed failed (non-fatal):', err));
+      }).catch(err => log.error({ err: String(err) }, '[Presence] Seed failed (non-fatal)'));
     }
   }
 

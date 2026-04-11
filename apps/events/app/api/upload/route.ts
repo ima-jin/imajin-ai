@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { withLogger } from '@imajin/logger';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
@@ -7,7 +8,7 @@ const UPLOAD_DIR = '/mnt/media/events';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('events', async (request, { log }) => {
   try {
     const formData = await request.formData();
     const file = formData.get('image') as File | null;
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
     const url = `/api/media/events/${filename}?v=${timestamp}`;
     return Response.json({ url }, { status: 200 });
   } catch (error) {
-    console.error('Upload failed:', error);
+    log.error({ err: String(error) }, 'Upload failed');
     return Response.json({ error: 'Upload failed' }, { status: 500 });
   }
-}
+});

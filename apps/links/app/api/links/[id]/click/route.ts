@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('links');
 import { db, links, linkClicks } from '@/db';
 import { jsonResponse, errorResponse, extractDomain, generateId } from '@/lib/utils';
 import { eq, sql } from 'drizzle-orm';
@@ -52,7 +54,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse({ recorded: true });
   } catch (error) {
-    console.error('Failed to record click:', error);
+    log.error({ err: String(error) }, 'Failed to record click');
     // Don't fail the user experience if click tracking fails
     return jsonResponse({ recorded: false });
   }

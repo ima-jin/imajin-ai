@@ -4,6 +4,9 @@ import { db, assets } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import type { FairManifest } from "@imajin/fair";
+import { createLogger } from "@imajin/logger";
+
+const log = createLogger("kernel");
 
 function getAccessType(
   access: FairManifest["access"]
@@ -37,7 +40,7 @@ export async function GET(
       .where(eq(assets.id, id))
       .limit(1);
   } catch (err) {
-    console.error("DB lookup failed:", err);
+    log.error({ err: String(err) }, "DB lookup failed");
     return NextResponse.json({ error: "Database failure" }, { status: 500 });
   }
 
@@ -133,7 +136,7 @@ export async function PUT(
       .where(eq(assets.id, id))
       .limit(1);
   } catch (err) {
-    console.error("DB lookup failed:", err);
+    log.error({ err: String(err) }, "DB lookup failed");
     return NextResponse.json({ error: "Database failure" }, { status: 500 });
   }
 

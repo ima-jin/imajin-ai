@@ -19,6 +19,9 @@ import { db, transactions, feeLedger, balances, balanceRollups } from '@/src/db'
 import { eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { notify } from '@imajin/notify';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 // Lazy Stripe initialization to avoid build-time errors in CI
 let _stripe: Stripe | null = null;
@@ -37,7 +40,7 @@ function getStripe(): Stripe {
 export async function POST(request: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error('STRIPE_WEBHOOK_SECRET not configured');
+    log.error({}, 'STRIPE_WEBHOOK_SECRET not configured');
     return NextResponse.json(
       { error: 'Webhook not configured' },
       { status: 500 }
@@ -60,7 +63,7 @@ export async function POST(request: NextRequest) {
     const stripe = getStripe();
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
-    console.error('Webhook signature verification failed:', err);
+    log.error({ err: String(err) }, 'Webhook signature verification failed');
     return NextResponse.json(
       { error: 'Invalid signature' },
       { status: 400 }
@@ -72,7 +75,7 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case 'payment_intent.succeeded': {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        console.log('Payment succeeded:', paymentIntent.id);
+        log.info({ paymentIntentId: paymentIntent.id }, 'Payment succeeded');
         // TODO: Update order status, send confirmation, etc.
         await handlePaymentSucceeded(paymentIntent);
         break;
@@ -80,7 +83,7 @@ export async function POST(request: NextRequest) {
       
       case 'payment_intent.payment_failed': {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        console.log('Payment failed:', paymentIntent.id);
+        log.info({ paymentIntentId: paymentIntent.id }, 'Payment failed');
         // TODO: Notify customer, update order status
         await handlePaymentFailed(paymentIntent);
         break;
@@ -88,7 +91,7 @@ export async function POST(request: NextRequest) {
       
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-        console.log('Checkout completed:', session.id);
+        log.info({ sessionId: session.id }, 'Checkout completed');
         // TODO: Fulfill order, send receipt
         await handleCheckoutCompleted(session);
         break;
@@ -96,7 +99,7 @@ export async function POST(request: NextRequest) {
       
       case 'customer.subscription.created': {
         const subscription = event.data.object as Stripe.Subscription;
-        console.log('Subscription created:', subscription.id);
+        log.info({ subscriptionId: subscription.id }, 'Subscription created');
         // TODO: Provision access
         await handleSubscriptionCreated(subscription);
         break;
@@ -104,32 +107,32 @@ export async function POST(request: NextRequest) {
       
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription;
-        console.log('Subscription updated:', subscription.id);
+        log.info({ subscriptionId: subscription.id }, 'Subscription updated');
         await handleSubscriptionUpdated(subscription);
         break;
       }
 
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
-        console.log('Subscription canceled:', subscription.id);
+        log.info({ subscriptionId: subscription.id }, 'Subscription canceled');
         await handleSubscriptionDeleted(subscription);
         break;
       }
 
       case 'invoice.paid': {
         const invoice = event.data.object as Stripe.Invoice;
-        console.log('Invoice paid:', invoice.id);
+        log.info({ invoiceId: invoice.id }, 'Invoice paid');
         await handleInvoicePaid(invoice);
         break;
       }
 
       default:
-        console.log('Unhandled event type:', event.type);
+        log.info({ eventType: event.type }, 'Unhandled event type');
     }
     
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error('Webhook handler error:', error);
+    log.error({ err: String(error) }, 'Webhook handler error');
     return NextResponse.json(
       { error: 'Webhook handler failed' },
       { status: 500 }
@@ -145,29 +148,19 @@ async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
   // Idempotency: skip if already completed
   const existing = await db.select().from(transactions).where(eq(transactions.stripeId, paymentIntent.id)).limit(1);
   if (existing[0]?.status === 'completed') {
-    console.log('Payment already completed, skipping:', paymentIntent.id);
+    log.info({ paymentIntentId: paymentIntent.id }, 'Payment already completed, skipping');
     return;
   }
 
   // Check if this is an escrow release
   if (paymentIntent.metadata.escrow === 'true') {
-    console.log('Escrow released:', {
-      id: paymentIntent.id,
-      from: paymentIntent.metadata.from_did,
-      to: paymentIntent.metadata.to_did,
-      amount: paymentIntent.amount,
-    });
+    log.info({ id: paymentIntent.id, from: paymentIntent.metadata.from_did, to: paymentIntent.metadata.to_did, amount: paymentIntent.amount }, 'Escrow released');
     // TODO: Notify parties, update escrow record
     return;
   }
 
   // Regular payment
-  console.log('Payment completed:', {
-    id: paymentIntent.id,
-    amount: paymentIntent.amount,
-    currency: paymentIntent.currency,
-    metadata: paymentIntent.metadata,
-  });
+  log.info({ id: paymentIntent.id, amount: paymentIntent.amount, currency: paymentIntent.currency, metadata: paymentIntent.metadata }, 'Regular payment completed');
 
   // Update transaction status to completed
   const updated = await db
@@ -175,7 +168,7 @@ async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     .set({ status: 'completed' })
     .where(eq(transactions.stripeId, paymentIntent.id));
 
-  console.log('Transaction updated:', { stripeId: paymentIntent.id, updated });
+  log.info({ stripeId: paymentIntent.id }, 'Transaction updated');
 
   // Notify originating service
   if (paymentIntent.metadata.service === 'coffee') {
@@ -184,11 +177,7 @@ async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
 }
 
 async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
-  console.log('Payment failed:', {
-    id: paymentIntent.id,
-    amount: paymentIntent.amount,
-    lastError: paymentIntent.last_payment_error?.message,
-  });
+  log.info({ id: paymentIntent.id, amount: paymentIntent.amount, lastError: paymentIntent.last_payment_error?.message }, 'Payment failed');
 
   // Update transaction status to failed
   await db
@@ -206,16 +195,11 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   // Idempotency: skip if already completed
   const existing = await db.select().from(transactions).where(eq(transactions.stripeId, session.id)).limit(1);
   if (existing[0]?.status === 'completed') {
-    console.log('Checkout already completed, skipping:', session.id);
+    log.info({ sessionId: session.id }, 'Checkout already completed, skipping');
     return;
   }
 
-  console.log('Checkout completed:', {
-    id: session.id,
-    customerEmail: session.customer_email,
-    amountTotal: session.amount_total,
-    metadata: session.metadata,
-  });
+  log.info({ id: session.id, customerEmail: session.customer_email, amountTotal: session.amount_total, metadata: session.metadata }, 'Checkout completed');
 
   // Update transaction status to completed
   await db
@@ -334,7 +318,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
         currency,
         ...(buyerName && { buyerName }),
       },
-    }).catch((err) => console.error("Notify market:sale error:", err));
+    }).catch((err) => log.error({ err: String(err) }, 'Notify market:sale error'));
 
     if (buyerDid) {
       notify.send({
@@ -346,7 +330,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
           amount,
           currency,
         },
-      }).catch((err) => console.error("Notify market:purchase error:", err));
+      }).catch((err) => log.error({ err: String(err) }, 'Notify market:purchase error'));
     }
   }
 }
@@ -384,12 +368,12 @@ async function notifyEventsService(
     
     if (!response.ok) {
       const error = await response.text();
-      console.error('Events service webhook failed:', error);
+      log.error({ error }, 'Events service webhook failed');
     } else {
-      console.log('Events service notified successfully');
+      log.info({}, 'Events service notified successfully');
     }
   } catch (error) {
-    console.error('Failed to notify events service:', error);
+    log.error({ err: String(error) }, 'Failed to notify events service');
     // Don't throw - we don't want to fail the Stripe webhook
     // The payment is still valid, we just need to handle the fulfillment separately
   }
@@ -431,22 +415,18 @@ async function notifyCoffeeService(
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('Coffee service webhook failed:', error);
+      log.error({ error }, 'Coffee service webhook failed');
     } else {
-      console.log('Coffee service notified successfully');
+      log.info({}, 'Coffee service notified successfully');
     }
   } catch (error) {
-    console.error('Failed to notify coffee service:', error);
+    log.error({ err: String(error) }, 'Failed to notify coffee service');
     // Don't throw - we don't want to fail the Stripe webhook
   }
 }
 
 async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
-  console.log('Subscription created:', {
-    id: subscription.id,
-    customerId: subscription.customer,
-    status: subscription.status,
-  });
+  log.info({ id: subscription.id, customerId: subscription.customer, status: subscription.status }, 'Subscription created');
 
   // Create a new transaction for the subscription
   const amount = subscription.items.data[0]?.price.unit_amount || 0;
@@ -467,11 +447,7 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
 }
 
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
-  console.log('Subscription updated:', {
-    id: subscription.id,
-    customerId: subscription.customer,
-    status: subscription.status,
-  });
+  log.info({ id: subscription.id, customerId: subscription.customer, status: subscription.status }, 'Subscription updated');
 
   // Log the status change as a transaction metadata update
   // (no new transaction row — status changes are informational)
@@ -481,10 +457,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
 }
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
-  console.log('Subscription canceled:', {
-    id: subscription.id,
-    customerId: subscription.customer,
-  });
+  log.info({ id: subscription.id, customerId: subscription.customer }, 'Subscription canceled');
 
   // Notify originating service about cancellation
   if (subscription.metadata?.service === 'coffee') {
@@ -493,12 +466,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
 }
 
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
-  console.log('Invoice paid:', {
-    id: invoice.id,
-    amount: invoice.amount_paid,
-    currency: invoice.currency,
-    subscriptionId: invoice.subscription,
-  });
+  log.info({ id: invoice.id, amount: invoice.amount_paid, currency: invoice.currency, subscriptionId: invoice.subscription }, 'Invoice paid');
 
   // Only process subscription renewals (invoices linked to a subscription)
   if (!invoice.subscription) {
@@ -528,7 +496,7 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
     },
   });
 
-  console.log('Subscription renewal transaction created:', txId);
+  log.info({ txId }, 'Subscription renewal transaction created');
 
   // Notify originating service
   if (subscriptionMetadata.service === 'coffee') {
@@ -549,7 +517,7 @@ async function notifyCoffeeServiceSubscription(
   const webhookSecret = process.env.COFFEE_WEBHOOK_SECRET!;
 
   if (!coffeeServiceUrl || !webhookSecret) {
-    console.warn('Coffee service URL or webhook secret not configured');
+    log.warn({}, 'Coffee service URL or webhook secret not configured');
     return;
   }
 
@@ -574,11 +542,11 @@ async function notifyCoffeeServiceSubscription(
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('Coffee service subscription webhook failed:', error);
+      log.error({ error }, 'Coffee service subscription webhook failed');
     } else {
-      console.log('Coffee service notified of subscription event:', type);
+      log.info({ type }, 'Coffee service notified of subscription event');
     }
   } catch (error) {
-    console.error('Failed to notify coffee service of subscription event:', error);
+    log.error({ err: String(error) }, 'Failed to notify coffee service of subscription event');
   }
 }

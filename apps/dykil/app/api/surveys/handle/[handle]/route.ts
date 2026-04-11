@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('dykil');
 import { db, surveys } from '@/db';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
@@ -32,7 +34,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // The proper implementation requires a user/profile lookup
     return jsonResponse({ surveys: [], handle });
   } catch (error) {
-    console.error('Failed to fetch surveys by handle:', error);
+    log.error({ err: String(error) }, 'Failed to fetch surveys by handle');
     return errorResponse('Failed to fetch surveys', 500);
   }
 }

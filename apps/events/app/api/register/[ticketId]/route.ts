@@ -8,7 +8,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { db, tickets, events, ticketTypes, ticketRegistrations } from '@/src/db';
+
+const log = createLogger('events');
 import { eq, and } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { sendEmail, ticketConfirmationEmail, generateQRCode } from '@/src/lib/email';
@@ -136,11 +139,11 @@ export async function POST(
           email: registration.email,
           eventTitle: event.title,
         },
-      }).catch((err) => console.error("Notify error:", err));
+      }).catch((err) => log.error({ err: String(err) }, 'Notify error'));
 
       // Record interest signal — event.rsvp → events scope
       notify.interest({ did: ticket.ownerDid, attestationType: 'event.rsvp' })
-        .catch((err) => console.error("Interest signal error:", err));
+        .catch((err) => log.error({ err: String(err) }, 'Interest signal error'));
     }
 
     // Send ticket confirmation email to the registered attendee (skip if no email, e.g. Dykil form)
@@ -193,13 +196,13 @@ export async function POST(
       });
     } catch (emailError) {
       // Non-fatal: log but don't fail the registration
-      console.error('Failed to send ticket confirmation email after registration:', emailError);
+      log.error({ err: String(emailError) }, 'Failed to send ticket confirmation email after registration');
     }
 
     return NextResponse.json({ success: true, registration });
 
   } catch (error) {
-    console.error('Registration error:', error);
+    log.error({ err: String(error) }, 'Registration error');
     return NextResponse.json(
       { error: 'Failed to create registration' },
       { status: 500 }
@@ -227,7 +230,7 @@ export async function GET(
     return NextResponse.json({ registration });
 
   } catch (error) {
-    console.error('Registration lookup error:', error);
+    log.error({ err: String(error) }, 'Registration lookup error');
     return NextResponse.json(
       { error: 'Failed to look up registration' },
       { status: 500 }

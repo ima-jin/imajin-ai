@@ -4,6 +4,7 @@ import { requireAuth } from '@imajin/auth';
 import { db, nodes } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { haversineDistance } from '@/src/lib/registry/bump-correlation';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -13,7 +14,7 @@ export async function OPTIONS(request: NextRequest) {
  * GET /registry/api/bump/nodes?lat=...&lng=...
  * List active registered nodes, optionally sorted by proximity.
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   const authResult = await requireAuth(request);
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ nodes: result }, { headers: cors });
   } catch (err) {
-    console.error('[bump/nodes] error:', err);
+    log.error({ err: String(err) }, '[bump/nodes] error');
     return NextResponse.json({ error: 'Failed to fetch nodes' }, { status: 500, headers: cors });
   }
-}
+});

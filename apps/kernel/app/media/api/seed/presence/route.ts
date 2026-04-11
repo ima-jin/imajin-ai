@@ -13,6 +13,9 @@ import { createHash } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import { db, assets, folders, assetFolders } from "@/src/db";
 import { eq, and } from "drizzle-orm";
+import { createLogger } from "@imajin/logger";
+
+const log = createLogger("kernel");
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || "/mnt/media";
 
@@ -145,7 +148,7 @@ export async function POST(request: NextRequest) {
       sortOrder: -1, // Sort before user folders
     });
   } catch (err) {
-    console.error("[Presence] Folder creation failed:", err);
+    log.error({ err: String(err) }, "Folder creation failed");
     return NextResponse.json(
       { error: "Failed to create folder" },
       { status: 500 }
@@ -209,7 +212,7 @@ export async function POST(request: NextRequest) {
       assetIds.push(assetId);
     }
   } catch (err) {
-    console.error("[Presence] File seeding failed:", err);
+    log.error({ err: String(err) }, "File seeding failed");
     return NextResponse.json(
       { error: "Failed to seed files", detail: String(err) },
       { status: 500 }

@@ -3,11 +3,12 @@ import { db, follows } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { eq, and } from 'drizzle-orm';
+import { withLogger } from '@imajin/logger';
 
 /**
  * GET /api/follow/status?did=xxx - Check if current user follows a DID
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return errorResponse(authResult.error, authResult.status);
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     return jsonResponse({ following: !!existing });
   } catch (error) {
-    console.error('Failed to check follow status:', error);
+    log.error({ err: String(error) }, 'Failed to check follow status');
     return errorResponse('Failed to check follow status', 500);
   }
-}
+});

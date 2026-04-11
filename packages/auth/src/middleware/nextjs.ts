@@ -5,6 +5,9 @@
  * based on identity tiers and trust graph membership.
  */
 
+import { createLogger } from '@imajin/logger';
+const log = createLogger('auth');
+
 import { NextRequest, NextResponse } from 'next/server';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 
@@ -32,7 +35,7 @@ export interface AuthError {
  */
 async function validateSession(request: NextRequest): Promise<AuthSession | null> {
   if (!AUTH_SERVICE_URL) {
-    console.error('AUTH_SERVICE_URL is not configured');
+    log.error({}, 'AUTH_SERVICE_URL is not configured');
     return null;
   }
 
@@ -62,7 +65,7 @@ async function validateSession(request: NextRequest): Promise<AuthSession | null
       tier: data.tier || 'hard', // default to hard for backward compatibility
     };
   } catch (error) {
-    console.error('Session validation failed:', error);
+    log.error({ err: String(error) }, 'Session validation failed');
     return null;
   }
 }
@@ -82,7 +85,7 @@ async function isInGraph(did: string): Promise<boolean> {
     const data = await response.json();
     return data.inGraph === true;
   } catch (error) {
-    console.error('Failed to check graph membership:', error);
+    log.error({ err: String(error) }, 'Failed to check graph membership');
     return false;
   }
 }

@@ -7,6 +7,9 @@ import { identities, credentials } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { corsHeaders } from '@imajin/config';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -136,12 +139,12 @@ export async function POST(request: NextRequest) {
       method: "email_soft",
       tier: "soft",
       userAgent: request.headers.get("user-agent"),
-    }).catch(err => console.error("Session attestation error:", err));
+    }).catch(err => log.error({ err: String(err) }, 'Session attestation error'));
 
     return response;
 
   } catch (error) {
-    console.error('Soft session error:', error);
+    log.error({ err: String(error) }, 'Soft session error');
     return NextResponse.json(
       { error: 'Failed to create soft session' },
       { status: 500, headers: cors }

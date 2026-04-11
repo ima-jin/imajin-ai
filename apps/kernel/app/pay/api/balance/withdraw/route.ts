@@ -20,6 +20,7 @@ import { eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { requireAuth } from '@imajin/auth';
+import { withLogger } from '@imajin/logger';
 
 const MIN_WITHDRAWAL_CENTS = 100; // $1.00 minimum
 
@@ -40,7 +41,7 @@ export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   const authResult = await requireAuth(request);
@@ -151,10 +152,10 @@ export async function POST(request: NextRequest) {
       { headers: cors }
     );
   } catch (error) {
-    console.error('Withdrawal error:', error);
+    log.error({ err: String(error) }, 'Withdrawal error');
     return NextResponse.json(
       { error: 'Withdrawal failed' },
       { status: 500, headers: cors }
     );
   }
-}
+});

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { checkAccess } from '@/src/lib/kernel/access';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * GET /api/access/[did] - Direct access check (replaces proxy to auth service).
@@ -24,7 +27,7 @@ export async function GET(
     const result = await checkAccess(session.did, did);
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Access check error:', error);
+    log.error({ err: String(error) }, 'Access check error');
     return NextResponse.json({ error: 'Access check failed' }, { status: 500 });
   }
 }

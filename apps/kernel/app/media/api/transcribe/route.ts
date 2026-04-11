@@ -6,6 +6,7 @@ import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomBytes } from 'crypto';
+import { withLogger } from '@imajin/logger';
 
 const GPU_NODE_URL = process.env.GPU_NODE_URL || 'http://192.168.1.124:8765';
 const GPU_AUTH_TOKEN = process.env.GPU_AUTH_TOKEN || '';
@@ -25,7 +26,7 @@ export async function OPTIONS(request: NextRequest) {
  * Moved from apps/input — the media service is now the public-facing endpoint
  * for both file storage and transcription.
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request, { log }) => {
   const cors = corsHeaders(request);
 
   const ip = getClientIP(request);
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
 
     if (!gpuRes.ok) {
       const errorText = await gpuRes.text();
-      console.error('GPU node transcription failed:', gpuRes.status, errorText);
+      log.error({ status: gpuRes.status, errorText }, 'GPU node transcription failed');
       return NextResponse.json(
         { error: 'Transcription failed' },
         { status: 502, headers: cors }
@@ -93,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result, { headers: cors });
   } catch (error) {
-    console.error('GPU node unreachable:', error);
+    log.error({ err: String(error) }, 'GPU node unreachable');
     return NextResponse.json(
       { error: 'Transcription service unavailable' },
       { status: 503, headers: cors }
@@ -101,4 +102,4 @@ export async function POST(request: NextRequest) {
   } finally {
     await unlink(tmpPath).catch(() => {});
   }
-}
+});

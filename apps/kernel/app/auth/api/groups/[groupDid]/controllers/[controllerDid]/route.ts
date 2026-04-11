@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, groupControllers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth, emitAttestation } from '@imajin/auth';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * DELETE /api/groups/[groupDid]/controllers/[controllerDid]
@@ -78,11 +81,11 @@ export async function DELETE(
       context_id: groupDid,
       context_type: 'group',
       payload: {},
-    }).catch((err) => console.error('[groups] Attestation failed (non-fatal):', err));
+    }).catch((err) => log.error({ err: String(err) }, '[groups] Attestation failed (non-fatal)'));
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error('[groups] Remove controller error:', error);
+    log.error({ err: String(error) }, '[groups] Remove controller error');
     return NextResponse.json({ error: 'Failed to remove controller' }, { status: 500 });
   }
 }
@@ -133,7 +136,7 @@ export async function GET(
       allowedServices: membership.allowedServices ?? null, // null = full access
     });
   } catch (error) {
-    console.error('[groups] Controller check error:', error);
+    log.error({ err: String(error) }, '[groups] Controller check error');
     return NextResponse.json({ error: 'Failed to check controller' }, { status: 500 });
   }
 }

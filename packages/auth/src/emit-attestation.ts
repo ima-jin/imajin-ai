@@ -1,3 +1,6 @@
+import { createLogger } from '@imajin/logger';
+const log = createLogger('auth');
+
 export async function emitAttestation(params: {
   issuer_did: string;
   subject_did: string;
@@ -9,7 +12,7 @@ export async function emitAttestation(params: {
   const authServiceUrl = process.env.AUTH_SERVICE_URL;
   const internalApiKey = process.env.AUTH_INTERNAL_API_KEY;
   if (!authServiceUrl || !internalApiKey) {
-    console.warn('Attestation skipped: AUTH_SERVICE_URL or AUTH_INTERNAL_API_KEY not set');
+    log.warn({}, 'Attestation skipped: AUTH_SERVICE_URL or AUTH_INTERNAL_API_KEY not set');
     return;
   }
   try {
@@ -23,9 +26,9 @@ export async function emitAttestation(params: {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      console.error(`Attestation (${params.type}) failed: ${res.status} ${text}`);
+      log.error({ type: params.type, status: res.status, text }, `Attestation (${params.type}) failed`);
     }
   } catch (err) {
-    console.error(`Attestation (${params.type}) error:`, err);
+    log.error({ err: String(err) }, `Attestation (${params.type}) error`);
   }
 }

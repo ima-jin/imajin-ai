@@ -6,7 +6,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withLogger, createLogger } from '@imajin/logger';
 import { db, events, ticketTypes, tickets } from '@/src/db';
+
+const log = createLogger('events');
 import { eq, and, sql } from 'drizzle-orm';
 import { sendEmail, ticketConfirmationEmail, purchaseReceiptEmail, generateQRCode } from '@/src/lib/email';
 import { settleTicketPurchase } from '@/src/lib/settle';
@@ -47,7 +50,7 @@ async function getOrCreateGuestDid(email: string, eventId: string, eventDid: str
   }
 
   const data = await response.json();
-  console.log(`Guest DID for ${email}: ${data.did} (isNew: ${data.isNew})`);
+  log.info({ email, did: data.did, isNew: data.isNew }, 'Guest DID resolved');
   return data.did;
 }
 
@@ -67,7 +70,7 @@ async function createSoftDidSession(email: string, name?: string): Promise<{ did
     });
 
     if (!response.ok) {
-      console.error('Soft session creation failed:', response.status, await response.text());
+      log.error({ status: response.status }, 'Soft session creation failed');
       return null;
     }
 
@@ -83,10 +86,10 @@ async function createSoftDidSession(email: string, name?: string): Promise<{ did
       }
     }
 
-    console.log(`Soft DID session created for ${email}: ${data.did}${sessionToken ? ' (with session token)' : ''}`);
+    log.info({ email, did: data.did, hasSessionToken: !!sessionToken }, 'Soft DID session created');
     return { did: data.did, sessionToken };
   } catch (error) {
-    console.error('Soft session creation error:', error);
+    log.error({ err: String(error) }, 'Soft session creation error');
     return null;
   }
 }
@@ -103,12 +106,12 @@ async function attachEmailToProfile(did: string, email: string): Promise<void> {
     );
     const rowCount = (result as any)?.rowCount ?? (result as any)?.count ?? 0;
     if (rowCount > 0) {
-      console.log(`Attached email ${normalizedEmail} to hard DID ${did}`);
+      log.info({ did, email: normalizedEmail }, 'Attached email to hard DID');
     } else {
-      console.log(`Hard DID ${did} already has an email — skipped`);
+      log.info({ did }, 'Hard DID already has an email — skipped');
     }
   } catch (error) {
-    console.error('attachEmailToProfile error:', error);
+    log.error({ err: String(error) }, 'attachEmailToProfile error');
   }
 }
 
@@ -147,7 +150,7 @@ async function migrateSoftDidToHard(email: string, hardDid: string, eventId: str
         )
       );
 
-    console.log(`Migrated ${softTickets.length} ticket(s) from [${softDids.join(', ')}] to ${hardDid}`);
+    log.info({ count: softTickets.length, softDids, hardDid }, 'Migrated tickets from soft DIDs to hard DID');
 
     // Migrate chat participation for each soft DID
     const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
@@ -159,14 +162,14 @@ async function migrateSoftDidToHard(email: string, hardDid: string, eventId: str
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ fromDid: softDid, toDid: hardDid }),
           });
-          console.log(`Migrated chat participation from ${softDid} to ${hardDid}`);
+          log.info({ softDid, hardDid }, 'Migrated chat participation');
         } catch (chatError) {
-          console.warn(`Chat migration failed for ${softDid} (non-fatal):`, chatError);
+          log.warn({ softDid, err: String(chatError) }, 'Chat migration failed (non-fatal)');
         }
       }
     }
   } catch (error) {
-    console.error('migrateSoftDidToHard error:', error);
+    log.error({ err: String(error) }, 'migrateSoftDidToHard error');
   }
 }
 
@@ -187,34 +190,34 @@ interface PaymentWebhookPayload {
   };
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('events', async (request, { log }) => {
   try {
     // Verify webhook secret
     const authHeader = request.headers.get('authorization');
     if (authHeader !== `Bearer ${WEBHOOK_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    
+
     const payload: PaymentWebhookPayload = await request.json();
-    
-    console.log('Payment webhook received:', payload.type, payload.sessionId);
-    
+
+    log.info({ type: payload.type, sessionId: payload.sessionId }, 'Payment webhook received');
+
     if (payload.type === 'checkout.completed') {
       await handleCheckoutCompleted(payload);
     } else if (payload.type === 'payment.failed') {
       await handlePaymentFailed(payload);
     }
-    
+
     return NextResponse.json({ received: true });
-    
+
   } catch (error) {
-    console.error('Payment webhook error:', error);
+    log.error({ err: String(error) }, 'Payment webhook error');
     return NextResponse.json(
       { error: 'Webhook processing failed' },
       { status: 500 }
     );
   }
-}
+});
 
 async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const { metadata, customerName, amountTotal, currency, sessionId, paymentId } = payload;
@@ -229,7 +232,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     .limit(1);
 
   if (existingTickets.length > 0) {
-    console.log('Duplicate webhook — tickets already exist for session:', sessionId);
+    log.info({ sessionId }, 'Duplicate webhook — tickets already exist for session');
     return;
   }
 
@@ -264,7 +267,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   if (metadata.buyerDid) {
     // Buyer was logged in with a hard DID
     ownerDid = metadata.buyerDid;
-    console.log(`Buyer authenticated with hard DID: ${ownerDid}`);
+    log.info({ ownerDid }, 'Buyer authenticated with hard DID');
 
     // Attach email to their profile if not already set
     await attachEmailToProfile(ownerDid, customerEmail);
@@ -295,7 +298,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       signature = bytesToHex(sigBytes);
     } else {
       // Fallback for events created before privateKey was stored
-      console.warn(`Event ${event.id} has no privateKey — using base64 fallback signature`);
+      log.warn({ eventId: event.id }, 'Event has no privateKey — using base64 fallback signature');
       signature = Buffer.from(signatureData).toString('base64');
     }
 
@@ -330,7 +333,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       context_id: event.id,
       context_type: 'event',
       payload: { ticketId: ticket.id, amount: amountTotal / quantity, currency },
-    }).catch((err) => console.error('Attestation emit error:', err));
+    }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
   }
 
   // Update sold count
@@ -339,7 +342,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     .set({ sold: sql`${ticketTypes.sold} + ${quantity}` })
     .where(eq(ticketTypes.id, ticketType.id));
 
-  console.log(`Created ${createdTickets.length} ticket(s) for ${customerEmail}`);
+  log.info({ count: createdTickets.length, customerEmail }, 'Tickets created for customer');
 
   // Notify buyer — fire and forget
   notify.send({
@@ -352,11 +355,11 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       amount: amountTotal,
       currency: currency.toUpperCase(),
     },
-  }).catch((err) => console.error("Notify error:", err));
+  }).catch((err) => log.error({ err: String(err) }, 'Notify error'));
 
   // Record interest signal — ticket.purchased → events scope
   notify.interest({ did: ownerDid, attestationType: 'ticket.purchased' })
-    .catch((err) => console.error("Interest signal error:", err));
+    .catch((err) => log.error({ err: String(err) }, 'Interest signal error'));
 
   // Add buyer to event chat conversation_members (non-fatal)
   // The event DID is the conversation DID
@@ -369,12 +372,12 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         body: JSON.stringify({ memberDid: ownerDid, role: 'member' }),
       });
       if (memberRes.ok) {
-        console.log(`Added ${ownerDid} to event chat ${event.did}`);
+        log.info({ ownerDid, eventDid: event.did }, 'Added buyer to event chat');
       } else {
-        console.warn(`Failed to add to event chat (${memberRes.status}) — non-fatal`);
+        log.warn({ status: memberRes.status }, 'Failed to add to event chat — non-fatal');
       }
     } catch (chatError) {
-      console.warn('Event chat member sync failed (non-fatal):', chatError);
+      log.warn({ err: String(chatError) }, 'Event chat member sync failed (non-fatal)');
     }
   }
 
@@ -395,7 +398,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       },
     });
   } catch (settleError) {
-    console.error('[settle] Unexpected settlement error (non-fatal):', settleError);
+    log.error({ err: String(settleError) }, '[settle] Unexpected settlement error (non-fatal)');
   }
 
   // Send confirmation email with onboard verification link
@@ -423,7 +426,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       )
     `;
   } catch (onboardError) {
-    console.error(`[webhook] Onboard token creation failed for ${customerEmail} (non-fatal):`, onboardError);
+    log.error({ customerEmail, err: String(onboardError) }, '[webhook] Onboard token creation failed (non-fatal)');
     onboardToken = null;
   }
 
@@ -478,7 +481,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       }),
     });
   } catch (emailError) {
-    console.error(`[webhook] Purchase receipt email failed for ${customerEmail}:`, emailError);
+    log.error({ customerEmail, err: String(emailError) }, '[webhook] Purchase receipt email failed');
   }
 
   // Only send the ticket confirmation (with QR) immediately for non-registration tickets
@@ -506,7 +509,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         }),
       });
     } catch (emailError) {
-      console.error(`[webhook] Ticket confirmation email failed for ${customerEmail}:`, emailError);
+      log.error({ customerEmail, err: String(emailError) }, '[webhook] Ticket confirmation email failed');
     }
   }
 }
@@ -522,17 +525,17 @@ async function handlePaymentFailed(payload: PaymentWebhookPayload) {
     .limit(1);
   
   if (!event) {
-    console.error('Event not found for failed payment:', metadata.eventId);
+    log.error({ eventId: metadata.eventId }, 'Event not found for failed payment');
     return;
   }
-  
+
   const [ticketType] = await db
     .select()
     .from(ticketTypes)
     .where(eq(ticketTypes.id, metadata.ticketTypeId))
     .limit(1);
-  
-  console.log(`Payment failed for ${customerEmail}, event: ${event.title}`);
+
+  log.info({ customerEmail, eventTitle: event.title }, 'Payment failed');
   
   // Optionally send a "payment failed" email
   // For now, just log it - Stripe also sends their own failure emails

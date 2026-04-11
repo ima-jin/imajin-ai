@@ -4,6 +4,9 @@ import { devices } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { corsHeaders } from '@imajin/config';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -42,7 +45,7 @@ export async function DELETE(
     return NextResponse.json({ deleted: true }, { headers: cors });
 
   } catch (error) {
-    console.error('[devices/[id]] DELETE error:', error);
+    log.error({ err: String(error) }, '[devices/[id]] DELETE error');
     return NextResponse.json({ error: 'Failed to delete device' }, { status: 500, headers: cors });
   }
 }

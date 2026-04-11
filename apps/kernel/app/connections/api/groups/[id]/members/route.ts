@@ -3,6 +3,9 @@ import { db, pods, podMembers } from '@/src/db';
 import { emitAttestation } from '@imajin/auth';
 import { eq, and, isNull } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const session = await getSessionFromCookies(request.headers.get('cookie'));
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       context_type: 'pod',
       payload: { role: member.role },
     }).catch((err: unknown) => {
-      console.error('Attestation (pod.member.added) error:', err);
+      log.error({ err: String(err) }, 'Attestation (pod.member.added) error');
     });
   }
 
@@ -84,7 +87,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       context_type: 'pod',
       payload: { role: body.role },
     }).catch((err: unknown) => {
-      console.error('Attestation (pod.role.changed) error:', err);
+      log.error({ err: String(err) }, 'Attestation (pod.role.changed) error');
     });
   }
 
@@ -123,7 +126,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       context_type: 'pod',
       payload: {},
     }).catch((err: unknown) => {
-      console.error('Attestation (pod.member.removed) error:', err);
+      log.error({ err: String(err) }, 'Attestation (pod.member.removed) error');
     });
   }
 

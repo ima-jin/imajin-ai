@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('learn');
 import { db } from '@/db';
 import { courses, enrollments, lessons, modules, lessonProgress } from '@/db/schema';
 import { requireAuth } from '@imajin/auth';
@@ -115,14 +117,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     if (!checkoutResponse.ok) {
       const error = await checkoutResponse.text();
-      console.error('Pay service error:', error);
+      log.error({ err: error }, 'Pay service error');
       return errorResponse('Payment initiation failed', 502);
     }
 
     const checkout = await checkoutResponse.json();
     return jsonResponse({ enrolled: false, checkoutUrl: checkout.url });
   } catch (error) {
-    console.error('Pay service unreachable:', error);
+    log.error({ err: String(error) }, 'Pay service unreachable');
     return errorResponse('Payment service unavailable', 503);
   }
 }

@@ -5,6 +5,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('coffee');
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3009';
@@ -58,14 +60,14 @@ export async function POST(request: NextRequest) {
 
     if (!payRes.ok) {
       const err = await payRes.text();
-      console.error('Pay service checkout failed:', err);
+      log.error({ err }, 'Pay service checkout failed');
       return NextResponse.json({ error: 'Failed to create checkout' }, { status: 500 });
     }
 
     const payData = await payRes.json();
     return NextResponse.json({ url: payData.url });
   } catch (error) {
-    console.error('Checkout error:', error);
+    log.error({ err: String(error) }, 'Checkout error');
     return NextResponse.json(
       { error: 'Failed to create checkout' },
       { status: 500 }

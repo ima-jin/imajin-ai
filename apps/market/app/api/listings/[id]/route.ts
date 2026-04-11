@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('market');
 import { db, listings } from '@/db';
 import { requireAuth, getSession } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
@@ -42,7 +44,7 @@ export async function GET(
       // sellerDid is included via spread — client resolves seller profile from this
     });
   } catch (error) {
-    console.error('Failed to fetch listing:', error);
+    log.error({ err: String(error) }, 'Failed to fetch listing');
     return errorResponse('Failed to fetch listing', 500);
   }
 }
@@ -139,7 +141,7 @@ export async function PATCH(
 
     return jsonResponse(updated);
   } catch (error) {
-    console.error('Failed to update listing:', error);
+    log.error({ err: String(error) }, 'Failed to update listing');
     return errorResponse('Failed to update listing', 500);
   }
 }
@@ -176,7 +178,7 @@ export async function DELETE(
 
     return jsonResponse({ success: true });
   } catch (error) {
-    console.error('Failed to delete listing:', error);
+    log.error({ err: String(error) }, 'Failed to delete listing');
     return errorResponse('Failed to delete listing', 500);
   }
 }

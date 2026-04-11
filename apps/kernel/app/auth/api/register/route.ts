@@ -11,6 +11,9 @@ import { notify } from '@imajin/notify';
 import { sendEmail } from '@imajin/email';
 import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-tokens';
 import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * POST /api/register
@@ -124,7 +127,7 @@ export async function POST(request: NextRequest) {
               existingDfosLinked = await storeDfosChain(existing[0].id, verified);
             }
           } catch (err) {
-            console.error(`[register] DFOS bridge failed for ${existing[0].id}:`, err);
+            log.error({ err: String(err), did: existing[0].id }, '[register] DFOS bridge failed');
           }
         }
 
@@ -214,10 +217,10 @@ export async function POST(request: NextRequest) {
         if (verified) {
           dfosChainLinked = await storeDfosChain(identity.id, verified);
         } else {
-          console.warn(`[register] DFOS chain verification failed for ${identity.id} — skipping`);
+          log.warn({ did: identity.id }, '[register] DFOS chain verification failed — skipping');
         }
       } catch (err) {
-        console.error(`[register] DFOS chain storage failed for ${identity.id}:`, err);
+        log.error({ err: String(err), did: identity.id }, '[register] DFOS chain storage failed');
         // Non-fatal — registration still succeeds
       }
     }
@@ -252,7 +255,7 @@ export async function POST(request: NextRequest) {
       context_id: identity.id,
       context_type: 'identity',
       payload: { tier: 'preliminary', type: identity.type },
-    }).catch((err) => console.error('[register] Attestation (identity.created) error (non-fatal):', err));
+    }).catch((err) => log.error({ err: String(err) }, '[register] Attestation (identity.created) error (non-fatal)'));
 
     // Emit identity.verified.preliminary → triggers 100 MJN emission
     // Key-based registrations are preliminary by definition (proved key ownership).
@@ -265,7 +268,7 @@ export async function POST(request: NextRequest) {
       context_id: identity.id,
       context_type: 'identity',
       payload: { tier: 'preliminary', type: identity.type },
-    }).catch((err) => console.error('[register] Attestation (identity.verified.preliminary) error (non-fatal):', err));
+    }).catch((err) => log.error({ err: String(err) }, '[register] Attestation (identity.verified.preliminary) error (non-fatal)'));
 
     // Create profile row so the user is visible/discoverable
     try {
@@ -280,7 +283,7 @@ export async function POST(request: NextRequest) {
         metadata: { optInUpdates: optInUpdates || false },
       }).onConflictDoNothing();
     } catch (err) {
-      console.error('Profile creation failed (non-fatal):', err);
+      log.error({ err: String(err) }, 'Profile creation failed (non-fatal)');
       // Non-fatal — user can still use the platform, profile can be created later
     }
 
@@ -358,9 +361,9 @@ export async function POST(request: NextRequest) {
             });
           }
         } catch (err) {
-          console.error('[register] Mailing list subscription failed (non-fatal):', err);
+          log.error({ err: String(err) }, '[register] Mailing list subscription failed (non-fatal)');
         }
-      })().catch((err) => console.error('[register] Mailing list subscription setup error:', err));
+      })().catch((err) => log.error({ err: String(err) }, '[register] Mailing list subscription setup error'));
     }
 
     // Auto-accept the invite (create the connection)
@@ -410,7 +413,7 @@ export async function POST(request: NextRequest) {
           context_id: podId,
           context_type: 'connection',
           payload: { invite_code: inviteCode },
-        }).catch((err) => console.error('[register] Attestation (connection.accepted) error (non-fatal):', err));
+        }).catch((err) => log.error({ err: String(err) }, '[register] Attestation (connection.accepted) error (non-fatal)'));
 
         emitAttestation({
           issuer_did: inviteData.fromDid,
@@ -419,7 +422,7 @@ export async function POST(request: NextRequest) {
           context_id: podId,
           context_type: 'connection',
           payload: { invite_code: inviteCode },
-        }).catch((err) => console.error('[register] Attestation (vouch) error (non-fatal):', err));
+        }).catch((err) => log.error({ err: String(err) }, '[register] Attestation (vouch) error (non-fatal)'));
 
         // Notify inviter — fire and forget
         (async () => {
@@ -436,8 +439,8 @@ export async function POST(request: NextRequest) {
               ...(inviterProfile?.contactEmail && { email: inviterProfile.contactEmail }),
               name: identity.handle || identity.id.slice(0, 16),
             },
-          }).catch((err: unknown) => console.error('[register] Notify error (non-fatal):', err));
-        })().catch((err: unknown) => console.error('[register] Notify setup error (non-fatal):', err));
+          }).catch((err: unknown) => log.error({ err: String(err) }, '[register] Notify error (non-fatal)'));
+        })().catch((err: unknown) => log.error({ err: String(err) }, '[register] Notify setup error (non-fatal)'));
 
         const acceptedResponse = NextResponse.json({
           did: identity.id,
@@ -450,7 +453,7 @@ export async function POST(request: NextRequest) {
         acceptedResponse.cookies.set(cookieConfig.name, token, cookieConfig.options);
         return acceptedResponse;
       } catch (err) {
-        console.error('[register] Auto-accept failed (non-fatal):', err);
+        log.error({ err: String(err) }, '[register] Auto-accept failed (non-fatal)');
         // Registration succeeded but auto-accept failed — they can accept manually
         return response;
       }
@@ -459,7 +462,7 @@ export async function POST(request: NextRequest) {
     return response;
 
   } catch (error) {
-    console.error('Register error:', error);
+    log.error({ err: String(error) }, 'Register error');
     return NextResponse.json(
       { error: 'Failed to register identity' },
       { status: 500 }

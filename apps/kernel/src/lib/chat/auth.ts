@@ -3,6 +3,9 @@ export type { Identity, AuthResult, AuthError } from "@imajin/auth";
 
 import { db, connections } from '@/src/db';
 import { or, and, eq, isNull } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * Check if a DID is in the trust graph (has at least one connection)
@@ -22,7 +25,7 @@ export async function isInGraph(did: string): Promise<boolean> {
 
     return rows.length > 0;
   } catch (error) {
-    console.error("Failed to check graph membership:", error);
+    log.error({ err: String(error) }, 'failed to check graph membership');
     return false;
   }
 }

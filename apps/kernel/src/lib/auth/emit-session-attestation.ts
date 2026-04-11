@@ -3,6 +3,9 @@ import { canonicalize, crypto as authCrypto } from "@imajin/auth";
 import type { AttestationType } from "@imajin/auth";
 import { computeCid } from "@imajin/cid";
 import { getNodeDid } from "@/src/lib/kernel/node-identity";
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 function genId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 14)}${Date.now().toString(36)}`;
@@ -16,13 +19,13 @@ export async function emitSessionAttestation(params: {
 }): Promise<void> {
   const privateKey = process.env.AUTH_PRIVATE_KEY;
   if (!privateKey) {
-    console.warn("Session attestation skipped: AUTH_PRIVATE_KEY not set");
+    log.warn({}, 'session attestation skipped: AUTH_PRIVATE_KEY not set');
     return;
   }
 
   const platformDid = await getNodeDid();
   if (!platformDid) {
-    console.warn("Session attestation skipped: node DID not set");
+    log.warn({}, 'session attestation skipped: node DID not set');
     return;
   }
 
@@ -71,7 +74,7 @@ export async function emitSessionAttestation(params: {
       issuedAt: new Date(issuedAtMs),
     });
   } catch (err) {
-    console.error("Session attestation error:", err);
+    log.error({ err: String(err) }, 'session attestation error');
   }
 }
 

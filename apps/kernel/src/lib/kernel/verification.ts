@@ -3,6 +3,9 @@ import { identities, attestations, connections } from '@/src/db';
 import { emitAttestation } from '@imajin/auth';
 import { eq, or, and, isNull, count, sql } from 'drizzle-orm';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * Checks whether a DID is eligible for preliminary verification.
@@ -60,7 +63,7 @@ export async function checkPreliminaryEligibility(did: string): Promise<void> {
     type: 'identity.verified.preliminary',
     context_id: did,
     context_type: 'identity',
-  }).catch((err) => console.error('[verification] preliminary emit error:', err));
+  }).catch((err) => log.error({ did, err: String(err) }, 'preliminary emit error'));
 }
 
 /**
@@ -128,5 +131,5 @@ export async function checkHardEligibility(did: string): Promise<void> {
     type: 'identity.verified.hard',
     context_id: did,
     context_type: 'identity',
-  }).catch((err) => console.error('[verification] hard emit error:', err));
+  }).catch((err) => log.error({ did, err: String(err) }, 'hard emit error'));
 }

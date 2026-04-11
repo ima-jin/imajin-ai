@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withLogger } from '@imajin/logger';
 import { db, events, ticketTypes } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { eq, desc, sql } from 'drizzle-orm';
@@ -6,7 +7,7 @@ import { eq, desc, sql } from 'drizzle-orm';
 /**
  * GET /api/events/mine - Get all events created by authenticated user
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('events', async (request, { log }) => {
   // Require authentication
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ events: eventsWithStats });
   } catch (error) {
-    console.error('Failed to fetch user events:', error);
+    log.error({ err: String(error) }, 'Failed to fetch user events');
     return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 });
   }
-}
+});

@@ -7,6 +7,9 @@ import { decryptSecret } from '@/src/lib/auth/encrypt';
 import { verifyEmailMfaCode } from '@/src/lib/auth/email-mfa-codes';
 import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation';
 import { corsHeaders } from '@imajin/config';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -129,19 +132,19 @@ export async function POST(request: NextRequest) {
       method: 'keypair',
       tier: identity.tier || 'preliminary',
       userAgent: request.headers.get('user-agent'),
-    }).catch(err => console.error('Session attestation error:', err));
+    }).catch(err => log.error({ err: String(err) }, 'Session attestation error'));
 
     import('@/src/lib/auth/log-device').then(({ logDevice }) => {
       const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim()
         ?? request.headers.get('x-real-ip');
       const userAgent = request.headers.get('user-agent');
       return logDevice({ did: identity.id, ip: ip ?? null, userAgent });
-    }).catch(err => console.error('[mfa] Device log failed:', err));
+    }).catch(err => log.error({ err: String(err) }, '[mfa] Device log failed'));
 
     return response;
 
   } catch (error) {
-    console.error('[login/mfa] POST error:', error);
+    log.error({ err: String(error) }, '[login/mfa] POST error');
     return NextResponse.json({ error: 'Failed to complete MFA' }, { status: 500, headers: cors });
   }
 }

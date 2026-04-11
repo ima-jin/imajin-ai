@@ -1,23 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-tokens';
 import { sendEmail } from '@imajin/email';
 import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
+import { requireAdmin } from '@imajin/logger';
 
 const sql = getClient();
-
-async function requireAdmin() {
-  const session = await getSession();
-  if (!session?.actingAs) return null;
-  const [nodeRow] = await sql`
-    SELECT group_did FROM auth.group_identities
-    WHERE group_did = ${session.actingAs}
-    AND scope = 'node'
-    LIMIT 1
-  `;
-  return nodeRow ? session : null;
-}
 
 export async function POST(
   _req: NextRequest,

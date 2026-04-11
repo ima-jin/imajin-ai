@@ -13,12 +13,13 @@ import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { requireAuth } from '@imajin/auth';
 import { db, connectedAccounts } from '@/src/db';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   const ip = getClientIP(request);
@@ -81,10 +82,10 @@ export async function GET(request: NextRequest) {
       defaultCurrency: account.defaultCurrency,
     }, { headers: cors });
   } catch (error) {
-    console.error('Connect status error:', error);
+    log.error({ err: String(error) }, 'Connect status error');
     return NextResponse.json(
       { error: 'Status check failed' },
       { status: 500, headers: cors }
     );
   }
-}
+});

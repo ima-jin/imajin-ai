@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, nodes } from '@/src/db';
 import { eq, or } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * GET /api/node/resolve/:did
@@ -64,7 +67,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('[resolve] Error:', error);
+    log.error({ err: String(error) }, '[resolve] Error');
     return NextResponse.json(
       { error: 'Internal error' },
       { status: 500 }

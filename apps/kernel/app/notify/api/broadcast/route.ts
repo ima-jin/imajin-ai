@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { nanoid } from 'nanoid';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 import { createHmac } from 'crypto';
 import { db, notifications, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
@@ -41,7 +44,7 @@ async function fetchAudienceFromRegistry(
   webhookSecret: string,
 ): Promise<string[]> {
   if (!REGISTRY_URL) {
-    console.warn('[broadcast] REGISTRY_URL not set — cannot fetch audience from registry');
+    log.warn({}, 'REGISTRY_URL not set — cannot fetch audience from registry');
     return [];
   }
   try {
@@ -50,13 +53,13 @@ async function fetchAudienceFromRegistry(
       cache: 'no-store',
     });
     if (!res.ok) {
-      console.error(`[broadcast] Registry audience fetch failed: ${res.status}`);
+      log.error({ status: res.status }, 'Registry audience fetch failed');
       return [];
     }
     const data = await res.json();
     return Array.isArray(data.dids) ? data.dids : [];
   } catch (err) {
-    console.error('[broadcast] Registry audience fetch error:', err);
+    log.error({ err: String(err) }, 'Registry audience fetch error');
     return [];
   }
 }
@@ -255,10 +258,10 @@ export async function POST(request: NextRequest) {
               data: { broadcast: true, channels },
               channelsSent,
               read: false,
-            }).catch((err) => console.error('[broadcast] DB insert error:', err));
+            }).catch((err) => log.error({ err: String(err) }, 'DB insert error'));
           }
         } catch (err) {
-          console.error(`[broadcast] Error processing DID ${did}:`, err);
+          log.error({ err: String(err), did }, 'Error processing DID');
           errors++;
         }
       }),
@@ -270,7 +273,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  console.log(`[broadcast] scope=${scope} sent=${sent} skipped=${skipped} errors=${errors}`);
+  log.info({ scope, sent, skipped, errors }, 'broadcast complete');
 
   return NextResponse.json({ sent, skipped, errors }, { headers: cors });
 }

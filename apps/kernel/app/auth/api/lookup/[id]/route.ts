@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -64,7 +67,7 @@ export async function GET(
     }, { headers: cors });
 
   } catch (error) {
-    console.error('Lookup error:', error);
+    log.error({ err: String(error) }, 'Lookup error');
     return NextResponse.json(
       { error: 'Failed to lookup identity' },
       { status: 500, headers: cors }

@@ -18,6 +18,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { crypto as authCrypto } from '@imajin/auth';
 import { getChainByImajinDid } from '@/src/lib/auth/dfos';
 import { verifyChain } from '@imajin/dfos';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function POST(
   request: NextRequest,
@@ -65,7 +68,7 @@ export async function POST(
     const signature = authCrypto.signSync(body.payload, privateKey);
     return NextResponse.json({ signature }, { status: 200 });
   } catch (err) {
-    console.error('[sign] Signing failed:', err);
+    log.error({ err: String(err) }, '[sign] Signing failed');
     return NextResponse.json({ error: 'Signing failed' }, { status: 500 });
   }
 }

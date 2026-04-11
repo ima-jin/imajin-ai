@@ -20,12 +20,13 @@ import { eq, sql } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   try {
@@ -169,10 +170,10 @@ export async function POST(request: NextRequest) {
       { headers: cors }
     );
   } catch (error) {
-    console.error('Gift error:', error);
+    log.error({ err: String(error) }, 'Gift error');
     return NextResponse.json(
       { error: 'Gift operation failed' },
       { status: 500, headers: cors }
     );
   }
-}
+});

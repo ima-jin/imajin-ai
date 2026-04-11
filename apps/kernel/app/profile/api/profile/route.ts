@@ -2,11 +2,12 @@ import { NextRequest } from 'next/server';
 import { db, profiles } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, isValidHandle } from '@/src/lib/kernel/utils';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/profile - Create a new profile
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   // Require authentication
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
     const profile = Array.isArray(result) ? result[0] : result;
     return jsonResponse(profile, 201);
   } catch (error) {
-    console.error('Failed to create profile:', error);
+    log.error({ err: String(error) }, 'Failed to create profile');
     return errorResponse('Failed to create profile', 500);
   }
-}
+});

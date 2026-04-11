@@ -4,6 +4,9 @@ import { db, messagesV2 } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export const dynamic = 'force-dynamic';
 
@@ -71,7 +74,7 @@ export async function PUT(
 
     return jsonResponse({ message: updatedMessage });
   } catch (error) {
-    console.error('Failed to edit message:', error);
+    log.error({ err: String(error) }, 'Failed to edit message');
     return errorResponse('Failed to edit message', 500);
   }
 }
@@ -137,7 +140,7 @@ export async function DELETE(
 
     return jsonResponse({ message: deletedMessage });
   } catch (error) {
-    console.error('Failed to delete message:', error);
+    log.error({ err: String(error) }, 'Failed to delete message');
     return errorResponse('Failed to delete message', 500);
   }
 }

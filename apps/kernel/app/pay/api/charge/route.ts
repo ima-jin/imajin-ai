@@ -33,6 +33,7 @@ import { getPaymentService } from '@/src/lib/pay/pay';
 import { requireAuth } from '@imajin/auth';
 import type { ChargeRequest, Currency, Recipient } from '@/src/lib/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
+import { withLogger } from '@imajin/logger';
 
 interface ChargeBody {
   amount: number;
@@ -47,7 +48,7 @@ export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
   try {
     const body: ChargeBody = await request.json();
@@ -108,10 +109,10 @@ export async function POST(request: NextRequest) {
       metadata: result.metadata,
     }, { headers: cors });
   } catch (error) {
-    console.error('Charge error:', error);
+    log.error({ err: String(error) }, 'Charge error');
     return NextResponse.json(
       { error: 'Charge failed' },
       { status: 500, headers: cors }
     );
   }
-}
+});

@@ -5,6 +5,9 @@ import { PostgresRelayStore } from '@/src/lib/registry/relay/postgres-store';
 import { createCustomRelay } from '@/src/lib/registry/relay/create-relay';
 import { db } from '@/src/db';
 import { relayConfig } from '@/src/db/schemas/relay';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const RELAY_DID = process.env.RELAY_DID;
 const RELAY_PROFILE_JWS = process.env.RELAY_PROFILE_JWS;
@@ -29,7 +32,7 @@ async function initRelay(): Promise<Hono> {
       });
       return app;
     }
-    console.warn(`[relay] RELAY_DID ${RELAY_DID} configured but chain missing — falling through to DB`);
+    log.warn({ relayDid: RELAY_DID }, '[relay] RELAY_DID configured but chain missing — falling through to DB');
   }
 
   // 2. Check DB for persisted identity
@@ -38,14 +41,14 @@ async function initRelay(): Promise<Hono> {
   if (config) {
     const chain = await store.getIdentityChain(config.did);
     if (chain) {
-      console.log(`[relay] Using persisted identity: ${config.did}`);
+      log.info({ did: config.did }, '[relay] Using persisted identity');
       const { app } = await createCustomRelay({
         store,
         identity: { did: config.did, profileArtifactJws: config.profileArtifactJws },
       });
       return app;
     }
-    console.warn(`[relay] Persisted identity ${config.did} has no chain — re-bootstrapping`);
+    log.warn({ did: config.did }, '[relay] Persisted identity has no chain — re-bootstrapping');
   }
 
   // 3. Bootstrap fresh — library creates identity + ingests chain
@@ -73,7 +76,7 @@ async function initRelay(): Promise<Hono> {
       },
     });
 
-  console.log(`[relay] Bootstrapped and persisted new relay identity: ${did}`);
+  log.info({ did }, '[relay] Bootstrapped and persisted new relay identity');
   return app;
 }
 

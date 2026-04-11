@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { db, events, ticketTypes, ticketRegistrations } from '@/src/db';
+
+const log = createLogger('events');
 import { requireAuth, getEmailForDid } from '@imajin/auth';
 import { eq, sql } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
@@ -79,7 +82,7 @@ export async function POST(
 
       if (!payResponse.ok) {
         const text = await payResponse.text();
-        console.error(`[refund] pay /api/refund returned ${payResponse.status}: ${text}`);
+        log.error({ status: payResponse.status, text }, '[refund] pay /api/refund returned error');
         return NextResponse.json(
           { error: 'Payment refund failed — ticket status not changed' },
           { status: 502 }
@@ -98,7 +101,7 @@ export async function POST(
         .set({ sold: sql`GREATEST(${ticketTypes.sold} - 1, 0)` })
         .where(eq(ticketTypes.id, ticket.ticket_type_id))
         .catch((err) => {
-          console.error('[refund] Failed to decrement ticket_types.sold (non-fatal):', err);
+          log.error({ err: String(err) }, '[refund] Failed to decrement ticket_types.sold (non-fatal)');
         });
     }
 
@@ -168,7 +171,7 @@ export async function POST(
         });
       }
     } catch (emailErr) {
-      console.error('[refund] Failed to send refund email (non-fatal):', emailErr);
+      log.error({ err: String(emailErr) }, '[refund] Failed to send refund email (non-fatal)');
     }
 
     return NextResponse.json({
@@ -176,7 +179,7 @@ export async function POST(
       ...(manualRefundRequired && { manualRefundRequired: true }),
     });
   } catch (error) {
-    console.error('Failed to refund ticket:', error);
+    log.error({ err: String(error) }, 'Failed to refund ticket');
     return NextResponse.json({ error: 'Failed to refund ticket' }, { status: 500 });
   }
 }

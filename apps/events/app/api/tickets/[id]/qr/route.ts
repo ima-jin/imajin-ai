@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { generateQRCode } from '@/src/lib/email';
+
+const log = createLogger('events');
 
 export async function GET(
   _request: NextRequest,
@@ -12,7 +15,7 @@ export async function GET(
     }
     return NextResponse.json({ qrCodeDataUri });
   } catch (error) {
-    console.error('QR generation error:', error);
+    log.error({ err: String(error) }, 'QR generation error');
     return NextResponse.json({ error: 'Failed to generate QR code' }, { status: 500 });
   }
 }

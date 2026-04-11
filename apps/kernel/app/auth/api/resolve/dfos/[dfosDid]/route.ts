@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@imajin/config';
 import { getIdentityByDfosDid } from '@/src/lib/auth/dfos';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -29,7 +32,7 @@ export async function GET(
 
     return NextResponse.json(identity, { headers: cors });
   } catch (err) {
-    console.error('[resolve] Error resolving DFOS DID:', err);
+    log.error({ err: String(err) }, '[resolve] Error resolving DFOS DID');
     return NextResponse.json(
       { error: 'Internal error' },
       { status: 500, headers: cors }

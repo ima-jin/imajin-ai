@@ -1,21 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 import { sendEmail, renderBroadcastEmail } from '@imajin/email';
+import { requireAdmin, withLogger } from '@imajin/logger';
 
 const sql = getClient();
-
-async function requireAdmin() {
-  const session = await getSession();
-  if (!session?.actingAs) return null;
-  const [nodeRow] = await sql`
-    SELECT group_did FROM auth.group_identities
-    WHERE group_did = ${session.actingAs}
-    AND scope = 'node'
-    LIMIT 1
-  `;
-  return nodeRow ? session : null;
-}
 
 async function sendBatch(emails: string[], subject: string, html: string, text: string) {
   const BATCH_SIZE = 10;
@@ -30,7 +18,7 @@ async function sendBatch(emails: string[], subject: string, html: string, text: 
   }
 }
 
-export async function POST(req: NextRequest) {
+export const POST = withLogger('kernel', async (req, { log }) => {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -115,8 +103,8 @@ export async function POST(req: NextRequest) {
 
   // Fire and forget
   sendBatch(emails, subject, html, text).catch((err) => {
-    console.error('Newsletter batch send error:', err);
+    log.error({ err: String(err) }, 'Newsletter batch send error');
   });
 
   return NextResponse.json({ sent: true, recipientCount: emails.length, sendId });
-}
+});

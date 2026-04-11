@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const REGISTRY_URL = process.env.REGISTRY_URL;
 const UNSUBSCRIBE_HMAC_SECRET = process.env.UNSUBSCRIBE_HMAC_SECRET;
@@ -25,7 +28,7 @@ function verifyToken(did: string, scope: string, token: string): boolean {
  */
 async function updateRegistryPreference(did: string, scope: string): Promise<void> {
   if (!REGISTRY_URL) {
-    console.warn('[unsubscribe] REGISTRY_URL not set — cannot update registry preference');
+    log.warn({}, 'REGISTRY_URL not set — cannot update registry preference');
     return;
   }
   try {
@@ -43,10 +46,10 @@ async function updateRegistryPreference(did: string, scope: string): Promise<voi
     );
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      console.error(`[unsubscribe] Registry update failed: ${res.status} ${text}`);
+      log.error({ status: res.status, text }, 'Registry update failed');
     }
   } catch (err) {
-    console.error('[unsubscribe] Registry update error:', err);
+    log.error({ err: String(err) }, 'Registry update error');
   }
 }
 

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@imajin/config';
 import { db, identities, identityChains } from '@/src/db';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 import { eq } from 'drizzle-orm';
 import { verifyChainLog } from '@/src/lib/auth/chain-providers';
 import { requireAuth } from '@/src/lib/auth/middleware';
@@ -58,7 +61,7 @@ export async function GET(
       lastRotated: chain.updatedAt,
     }, { headers: cors });
   } catch (err) {
-    console.error('[keys] Error:', err);
+    log.error({ err: String(err) }, '[keys] Error');
     return NextResponse.json(
       { error: 'Internal error' },
       { status: 500, headers: cors }
@@ -186,7 +189,7 @@ export async function POST(
       controllerKeys: result.keys.controller.length,
     }, { headers: cors });
   } catch (err) {
-    console.error('[keys] Error updating keys:', err);
+    log.error({ err: String(err) }, '[keys] Error updating keys');
     return NextResponse.json(
       { error: 'Internal error' },
       { status: 500, headers: cors }

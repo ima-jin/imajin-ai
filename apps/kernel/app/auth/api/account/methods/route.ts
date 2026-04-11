@@ -3,6 +3,7 @@ import { db, identities, storedKeys, mfaMethods } from '@/src/db';
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -23,7 +24,7 @@ export async function OPTIONS(request: NextRequest) {
  *   mfaMethods: string[]
  * }
  */
-export async function GET(request: NextRequest) {
+export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   const ip = getClientIP(request);
@@ -104,7 +105,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response, { headers: cors });
 
   } catch (error) {
-    console.error('[account/methods] GET error:', error);
+    log.error({ err: String(error) }, '[account/methods] GET error');
     return NextResponse.json({ error: 'Failed to retrieve account methods' }, { status: 500, headers: cors });
   }
-}
+});

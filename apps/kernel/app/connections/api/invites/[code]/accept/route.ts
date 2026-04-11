@@ -5,8 +5,11 @@ import { generateId } from '@/src/lib/kernel/id';
 import { emitAttestation } from '@imajin/auth';
 import { notify } from '@imajin/notify';
 import { checkPreliminaryEligibility, checkHardEligibility } from '@/src/lib/kernel/verification';
+import { createLogger } from '@imajin/logger';
 
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
+
+const log = createLogger('kernel');
 
 const INVITE_COOLDOWN_DAYS = 7;
 
@@ -141,14 +144,14 @@ export async function POST(
         ...(inviterProfile?.contactEmail && { email: inviterProfile.contactEmail }),
         name: session.handle || session.did.slice(0, 16),
       },
-    }).catch((err: unknown) => console.error("Notify error:", err));
+    }).catch((err: unknown) => log.error({ err: String(err) }, 'Notify error'));
 
     // Record interest signals — connection.accepted → connections scope (both parties)
     notify.interest({ did: invite.fromDid, attestationType: 'connection.accepted' })
-      .catch((err: unknown) => console.error("Interest signal error:", err));
+      .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
     notify.interest({ did: session.did, attestationType: 'connection.accepted' })
-      .catch((err: unknown) => console.error("Interest signal error:", err));
-  })().catch((err: unknown) => console.error("Notify setup error:", err));
+      .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
+  })().catch((err: unknown) => log.error({ err: String(err) }, 'Notify setup error'));
 
   // Only emit attestations for NEW connections — prevents sybil farming via disconnect/reconnect
   if (!isReconnect) {
@@ -160,7 +163,7 @@ export async function POST(
       context_type: 'connection',
       payload: { invite_id: invite.id },
     }).catch((err: unknown) => {
-      console.error('Attestation (connection.accepted) error:', err);
+      log.error({ err: String(err) }, 'Attestation (connection.accepted) error');
     });
 
     emitAttestation({
@@ -171,18 +174,18 @@ export async function POST(
       context_type: 'connection',
       payload: { invite_id: invite.id, delivery: invite.delivery },
     }).catch((err: unknown) => {
-      console.error('Attestation (vouch) error:', err);
+      log.error({ err: String(err) }, 'Attestation (vouch) error');
     });
 
     // Check verification eligibility for both parties — fire-and-forget
     checkPreliminaryEligibility(invite.fromDid)
-      .catch((err: unknown) => console.error('[verification] preliminary check error (inviter):', err));
+      .catch((err: unknown) => log.error({ err: String(err) }, '[verification] preliminary check error (inviter)'));
     checkPreliminaryEligibility(session.did)
-      .catch((err: unknown) => console.error('[verification] preliminary check error (accepter):', err));
+      .catch((err: unknown) => log.error({ err: String(err) }, '[verification] preliminary check error (accepter)'));
     checkHardEligibility(invite.fromDid)
-      .catch((err: unknown) => console.error('[verification] hard check error (inviter):', err));
+      .catch((err: unknown) => log.error({ err: String(err) }, '[verification] hard check error (inviter)'));
     checkHardEligibility(session.did)
-      .catch((err: unknown) => console.error('[verification] hard check error (accepter):', err));
+      .catch((err: unknown) => log.error({ err: String(err) }, '[verification] hard check error (accepter)'));
   }
 
   return NextResponse.json({

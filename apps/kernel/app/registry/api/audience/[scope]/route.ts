@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, didPreferences, didInterests } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * GET /api/audience/[scope]
@@ -67,7 +70,7 @@ export async function GET(
 
     return NextResponse.json({ dids, scope, total: dids.length });
   } catch (error) {
-    console.error('[audience/scope] get error:', error);
+    log.error({ err: String(error) }, '[audience/scope] get error');
     return NextResponse.json({ error: 'Failed to query audience' }, { status: 500 });
   }
 }

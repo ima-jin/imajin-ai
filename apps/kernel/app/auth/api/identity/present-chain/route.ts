@@ -7,6 +7,7 @@ import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt'
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { randomUUID } from 'crypto';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/identity/present-chain
@@ -18,7 +19,7 @@ import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
  *
  * Trust tier: 'preliminary' — chain proves keypair ownership, not standing on this network.
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const ip = getClientIP(request);
   const rl = rateLimit(ip, 10, 60_000);
   if (rl.limited) {
@@ -157,10 +158,10 @@ export async function POST(request: NextRequest) {
     return response;
 
   } catch (error) {
-    console.error('[present-chain] Error:', error);
+    log.error({ err: String(error) }, '[present-chain] Error');
     return NextResponse.json(
       { error: 'Internal error' },
       { status: 500 }
     );
   }
-}
+});

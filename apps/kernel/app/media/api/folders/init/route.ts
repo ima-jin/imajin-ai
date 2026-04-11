@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import { db, folders } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
+import { withLogger } from "@imajin/logger";
 
 const DEFAULT_FOLDERS = [
   { name: "Photos", icon: "📷" },
@@ -15,7 +16,7 @@ const DEFAULT_FOLDERS = [
 // ---------------------------------------------------------------------------
 // POST /api/folders/init — create default system folders (idempotent)
 // ---------------------------------------------------------------------------
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request, { log }) => {
   const authResult = await requireAuth(request);
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
     const created = await db.insert(folders).values(values).returning();
     return NextResponse.json({ message: "Initialized", created }, { status: 201 });
   } catch (err) {
-    console.error("DB insert failed:", err);
+    log.error({ err: String(err) }, "DB insert failed");
     return NextResponse.json({ error: "Database failure", detail: String(err) }, { status: 500 });
   }
-}
+});

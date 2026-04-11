@@ -4,6 +4,9 @@ import { requireAuth, emitAttestation } from '@imajin/auth';
 import { jsonResponse, errorResponse, isValidHandle } from '@/src/lib/kernel/utils';
 import { checkPreliminaryEligibility } from '@/src/lib/kernel/verification';
 import { eq } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 /**
  * POST /api/profile/claim-handle - Claim a handle for your profile
@@ -73,11 +76,11 @@ export async function POST(request: NextRequest) {
       context_id: handle,
       context_type: 'profile',
       payload: { handle },
-    }).catch((err) => console.error('Attestation emit error:', err));
+    }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
 
     // Check preliminary eligibility for this DID — fire-and-forget
     checkPreliminaryEligibility(identity.id)
-      .catch((err) => console.error('[verification] preliminary check error:', err));
+      .catch((err) => log.error({ err: String(err) }, '[verification] preliminary check error'));
 
     return jsonResponse({
       success: true,
@@ -85,7 +88,7 @@ export async function POST(request: NextRequest) {
       profile: updated,
     });
   } catch (error) {
-    console.error('Failed to claim handle:', error);
+    log.error({ err: String(error) }, 'Failed to claim handle');
     return errorResponse('Failed to claim handle', 500);
   }
 }

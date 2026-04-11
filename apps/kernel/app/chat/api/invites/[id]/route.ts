@@ -4,6 +4,9 @@ import { db, invites } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 // TODO(#435-followup): invites.conversationId FK to chat.conversations.id needs to be
 // dropped and the column treated as plain text pointing to a conversation DID.
@@ -47,7 +50,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('Failed to get invite:', error);
+    log.error({ err: String(error) }, 'Failed to get invite');
     return errorResponse('Failed to get invite', 500);
   }
 }
@@ -105,7 +108,7 @@ export async function POST(
       joined: true,
     });
   } catch (error) {
-    console.error('Failed to accept invite:', error);
+    log.error({ err: String(error) }, 'Failed to accept invite');
     return errorResponse('Failed to accept invite', 500);
   }
 }
@@ -150,7 +153,7 @@ export async function DELETE(
 
     return jsonResponse({ revoked: true });
   } catch (error) {
-    console.error('Failed to revoke invite:', error);
+    log.error({ err: String(error) }, 'Failed to revoke invite');
     return errorResponse('Failed to revoke invite', 500);
   }
 }

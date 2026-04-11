@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, tokens } from '@/src/db';
 import { eq, and, isNull, gt } from 'drizzle-orm';
+import { withLogger } from '@imajin/logger';
 
 /**
  * POST /api/validate
  * Validate a token and return identity (for apps)
  */
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const body = await request.json();
     const { token } = body;
@@ -69,10 +70,10 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Validate error:', error);
+    log.error({ err: String(error) }, 'Validate error');
     return NextResponse.json(
       { error: 'Failed to validate token' },
       { status: 500 }
     );
   }
-}
+});

@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('coffee');
 import { db } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
@@ -27,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     return jsonResponse(page);
   } catch (error) {
-    console.error('Failed to fetch user coffee page:', error);
+    log.error({ err: String(error) }, 'Failed to fetch user coffee page');
     return errorResponse('Failed to fetch coffee page', 500);
   }
 }

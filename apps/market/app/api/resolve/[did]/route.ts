@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('market');
 import { jsonResponse, errorResponse } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +36,7 @@ export async function GET(
       displayName: profile.displayName,
     });
   } catch (error) {
-    console.error('Failed to resolve DID:', error);
+    log.error({ err: String(error) }, 'Failed to resolve DID');
     return errorResponse('Failed to resolve identity', 500);
   }
 }

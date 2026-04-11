@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const REGISTRY_URL = process.env.REGISTRY_URL;
 
@@ -14,7 +17,7 @@ async function resolveScopeForAttestation(
   webhookSecret: string,
 ): Promise<string | null> {
   if (!REGISTRY_URL) {
-    console.warn('[interest] REGISTRY_URL not set — cannot resolve scope for', attestationType);
+    log.warn({ attestationType }, 'REGISTRY_URL not set — cannot resolve scope');
     return null;
   }
   try {
@@ -24,7 +27,7 @@ async function resolveScopeForAttestation(
       cache: 'no-store',
     });
     if (!res.ok) {
-      console.error(`[interest] Registry interests fetch failed: ${res.status}`);
+      log.error({ status: res.status }, 'Registry interests fetch failed');
       return null;
     }
     const data = await res.json();
@@ -32,7 +35,7 @@ async function resolveScopeForAttestation(
     const match = interests.find((i) => i.triggers?.includes(attestationType));
     return match?.scope ?? null;
   } catch (err) {
-    console.error('[interest] Scope resolution error:', err);
+    log.error({ err: String(err) }, 'Scope resolution error');
     return null;
   }
 }
@@ -73,7 +76,7 @@ async function createDidInterest(
   webhookSecret: string,
 ): Promise<void> {
   if (!REGISTRY_URL) {
-    console.warn('[interest] REGISTRY_URL not set — cannot create did_interest');
+    log.warn({}, 'REGISTRY_URL not set — cannot create did_interest');
     return;
   }
   try {
@@ -90,10 +93,10 @@ async function createDidInterest(
     );
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      console.error(`[interest] Registry create did_interest failed: ${res.status} ${text}`);
+      log.error({ status: res.status, text }, 'Registry create did_interest failed');
     }
   } catch (err) {
-    console.error('[interest] Create did_interest error:', err);
+    log.error({ err: String(err) }, 'Create did_interest error');
   }
 }
 

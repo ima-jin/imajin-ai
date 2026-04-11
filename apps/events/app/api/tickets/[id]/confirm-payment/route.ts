@@ -7,8 +7,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { db, tickets, ticketTypes, events } from '@/src/db';
 import { requireAuth, emitAttestation } from '@imajin/auth';
+
+const log = createLogger('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq, sql } from 'drizzle-orm';
 
@@ -80,11 +83,11 @@ export async function POST(
       context_id: ticket.eventId,
       context_type: 'event',
       payload: { ticketId: confirmed.id },
-    }).catch((err) => console.error('Attestation emit error:', err));
+    }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
 
     return NextResponse.json({ ticket: confirmed });
   } catch (error) {
-    console.error('confirm-payment error:', error);
+    log.error({ err: String(error) }, 'confirm-payment error');
     return NextResponse.json({ error: 'Failed to confirm payment' }, { status: 500 });
   }
 }

@@ -17,6 +17,9 @@ import { corsHeaders } from '@imajin/config';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -117,10 +120,10 @@ export async function POST(request: NextRequest) {
             .where(and(eq(groupControllers.groupDid, scopeDid), eq(groupControllers.controllerDid, did)));
         }
       } catch (err) {
-        console.error('[onboard/generate] Forest member add failed (non-fatal):', err);
+        log.error({ err: String(err) }, '[onboard/generate] Forest member add failed (non-fatal)');
       }
       emitAttestation({ issuer_did: scopeDid, subject_did: did, type: 'scope.onboard', context_id: scopeDid, context_type: 'forest' })
-        .catch(err => console.error('[onboard/generate] Scope attestation failed (non-fatal):', err));
+        .catch(err => log.error({ err: String(err) }, '[onboard/generate] Scope attestation failed (non-fatal)'));
       response.cookies.set('x-acting-as', scopeDid, { path: '/', maxAge: 31536000, sameSite: 'lax' });
     }
 
@@ -133,14 +136,14 @@ export async function POST(request: NextRequest) {
           displayType: 'human',
         }).onConflictDoNothing();
       } catch (err) {
-        console.error('[onboard/generate] Profile creation failed (non-fatal):', err);
+        log.error({ err: String(err) }, '[onboard/generate] Profile creation failed (non-fatal)');
       }
     }
 
     return response;
 
   } catch (error) {
-    console.error('[onboard/generate] Error:', error);
+    log.error({ err: String(error) }, '[onboard/generate] Error');
     return NextResponse.json({ error: 'Failed to onboard identity' }, { status: 500, headers: cors });
   }
 }

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { db, ticketQueue, ticketTypes } from '@/src/db';
+
+const log = createLogger('events');
 import { requireAuth } from '@imajin/auth';
 import { eq, and, max } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
@@ -63,7 +66,7 @@ export async function GET(
     });
 
   } catch (error) {
-    console.error('Failed to check queue:', error);
+    log.error({ err: String(error) }, 'Failed to check queue');
     return NextResponse.json({ error: 'Failed to check queue' }, { status: 500 });
   }
 }
@@ -149,7 +152,7 @@ export async function POST(
     }, { status: 201 });
 
   } catch (error) {
-    console.error('Failed to join queue:', error);
+    log.error({ err: String(error) }, 'Failed to join queue');
     return NextResponse.json({ error: 'Failed to join queue' }, { status: 500 });
   }
 }
@@ -191,7 +194,7 @@ export async function DELETE(
     return NextResponse.json({ message: 'Left the queue' });
 
   } catch (error) {
-    console.error('Failed to leave queue:', error);
+    log.error({ err: String(error) }, 'Failed to leave queue');
     return NextResponse.json({ error: 'Failed to leave queue' }, { status: 500 });
   }
 }
