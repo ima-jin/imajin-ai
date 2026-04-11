@@ -250,6 +250,29 @@ export const moderationLog = registrySchema.table('moderation_log', {
 export type ModerationLog = typeof moderationLog.$inferSelect;
 
 /**
+ * HTTP request log — written by withLogger middleware when ENABLE_REQUEST_LOG=true
+ */
+export const requestLog = registrySchema.table('request_log', {
+  id: text('id').primaryKey(),
+  service: text('service').notNull(),
+  method: text('method').notNull(),
+  path: text('path').notNull(),
+  status: integer('status').notNull(),
+  durationMs: integer('duration_ms'),
+  did: text('did'),
+  ip: text('ip'),
+  correlationId: text('correlation_id'),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  serviceCreatedIdx: index('idx_request_log_service_created').on(table.service, table.createdAt),
+  correlationIdx: index('idx_request_log_correlation').on(table.correlationId),
+}));
+
+export type RequestLog = typeof requestLog.$inferSelect;
+export type NewRequestLog = typeof requestLog.$inferInsert;
+
+/**
  * System events — fire-and-forget audit log written by @imajin/events
  */
 export const systemEvents = registrySchema.table('system_events', {
