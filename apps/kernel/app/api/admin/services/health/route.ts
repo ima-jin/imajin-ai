@@ -1,21 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 import { buildPublicUrl } from '@imajin/config';
+import { requireAdmin, withLogger } from '@imajin/logger';
 
 const sql = getClient();
-
-async function requireAdmin() {
-  const session = await getSession();
-  if (!session?.actingAs) return null;
-  const [nodeRow] = await sql`
-    SELECT group_did FROM auth.group_identities
-    WHERE group_did = ${session.actingAs}
-    AND scope = 'node'
-    LIMIT 1
-  `;
-  return nodeRow ? session : null;
-}
 
 interface ServiceHealth {
   name: string;
@@ -141,7 +129,7 @@ async function checkUserspaceService(
   }
 }
 
-export async function GET() {
+export const GET = withLogger('kernel', async (_req, { log }) => {
   const session = await requireAdmin();
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -163,5 +151,7 @@ export async function GET() {
 
   cache = { data: result, expiresAt: Date.now() + 30_000 };
 
+  log.info({ serviceCount: services.length }, 'admin services health check complete');
+
   return NextResponse.json(result);
-}
+});
