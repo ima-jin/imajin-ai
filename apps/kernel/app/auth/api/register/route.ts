@@ -296,7 +296,7 @@ export async function POST(request: NextRequest) {
       (async () => {
         try {
           const normalizedEmail = email.toLowerCase().trim();
-          const baseUrl = process.env.WWW_URL || process.env.NEXT_PUBLIC_URL || new URL(request.url).origin;
+          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_WWW_URL || process.env.WWW_URL || new URL(request.url).origin;
 
           // Get or create the default mailing list
           let defaultList = await db.query.mailingLists.findFirst({
