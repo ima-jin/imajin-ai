@@ -203,6 +203,52 @@ export const newsletterSends = registrySchema.table('newsletter_sends', {
   sentAt: timestamp('sent_at', { withTimezone: true }).defaultNow(),
 });
 
+/**
+ * Node configuration key-value store
+ */
+export const nodeConfig = registrySchema.table('node_config', {
+  key: text('key').primaryKey(),
+  value: jsonb('value').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+export type NodeConfig = typeof nodeConfig.$inferSelect;
+
+/**
+ * Content/identity flags submitted by users
+ */
+export const flags = registrySchema.table('flags', {
+  id: text('id').primaryKey(),
+  reporterDid: text('reporter_did').notNull(),
+  targetDid: text('target_did').notNull(),
+  targetType: text('target_type').notNull(), // 'identity' | 'asset' | 'listing' | 'event' | 'message'
+  targetId: text('target_id').notNull(),
+  reason: text('reason').notNull(),
+  status: text('status').notNull().default('pending'), // 'pending' | 'dismissed' | 'actioned'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  resolvedBy: text('resolved_by'),
+  resolution: text('resolution'),
+});
+
+export type Flag = typeof flags.$inferSelect;
+
+/**
+ * Audit log of moderation actions
+ */
+export const moderationLog = registrySchema.table('moderation_log', {
+  id: text('id').primaryKey(),
+  operatorDid: text('operator_did').notNull(),
+  action: text('action').notNull(), // 'suspend' | 'unsuspend' | 'warn' | 'remove_content' | 'dismiss_flag' | 'ban'
+  targetDid: text('target_did').notNull(),
+  targetType: text('target_type'),
+  targetId: text('target_id'),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+export type ModerationLog = typeof moderationLog.$inferSelect;
+
 // Types
 export type Node = typeof nodes.$inferSelect;
 export type NewNode = typeof nodes.$inferInsert;

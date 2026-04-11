@@ -92,6 +92,20 @@
       "when": 1744502400001,
       "tag": "0012_add_newsletter_sends",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1744588800000,
+      "tag": "0013_add_node_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1744588800001,
+      "tag": "0014_add_moderation_tables",
+      "breakpoints": true
     }
   ]
 }
