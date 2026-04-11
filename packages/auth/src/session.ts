@@ -1,3 +1,6 @@
+import { createLogger } from '@imajin/logger';
+const log = createLogger('auth');
+
 import { SESSION_COOKIE_NAME } from "@imajin/config";
 import type { Identity } from "./types";
 
@@ -19,7 +22,7 @@ async function validateActingAsCookie(
   const authUrl = getAuthUrl();
   const internalApiKey = process.env.ATTESTATION_INTERNAL_API_KEY;
   if (!internalApiKey) {
-    console.warn("[AUTH] ATTESTATION_INTERNAL_API_KEY not set — cannot validate act-as in getSession");
+    log.warn({}, "[AUTH] ATTESTATION_INTERNAL_API_KEY not set — cannot validate act-as in getSession");
     return { valid: false };
   }
   try {
@@ -45,7 +48,7 @@ async function validateActingAsCookie(
 
     return { valid: true, allowedServices };
   } catch (err) {
-    console.error("[AUTH] Act-as cookie validation failed:", err);
+    log.error({ err: String(err) }, "[AUTH] Act-as cookie validation failed");
     return { valid: false };
   }
 }
@@ -98,7 +101,7 @@ export async function getSession(options?: SessionOptions): Promise<Identity | n
 
     return identity;
   } catch (error) {
-    console.error("[AUTH] Session fetch failed:", error);
+    log.error({ err: String(error) }, "[AUTH] Session fetch failed");
     return null;
   }
 }

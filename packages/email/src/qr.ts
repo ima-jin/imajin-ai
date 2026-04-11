@@ -1,4 +1,6 @@
 import QRCode from 'qrcode';
+import { createLogger } from '@imajin/logger';
+const log = createLogger('email');
 
 /**
  * Generate a QR code as a base64 data URI.
@@ -15,7 +17,7 @@ export async function generateQRCode(data: string): Promise<string> {
       },
     });
   } catch (error) {
-    console.error('QR code generation failed:', error);
+    log.error({ err: String(error) }, 'QR code generation failed');
     return '';
   }
 }

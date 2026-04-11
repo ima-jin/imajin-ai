@@ -7,5 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {},
-  "dependencies": {}
+  "dependencies": {
+    "@imajin/logger": "workspace:*"
+  }
 }
