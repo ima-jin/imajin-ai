@@ -1,9 +1,11 @@
 /**
  * Cloudflare DNS provisioning for node subdomains
- * 
+ *
  * Provisions {hostname}.imajin.ai pointing to the node's origin
  */
+import { createLogger } from '@imajin/logger';
 
+const log = createLogger('kernel');
 const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
 
 interface CloudflareConfig {
@@ -71,7 +73,7 @@ export async function isHostnameAvailable(hostname: string): Promise<boolean> {
     );
     return records.length === 0;
   } catch (error) {
-    console.error('Error checking hostname availability:', error);
+    log.error({ hostname, err: String(error) }, 'error checking hostname availability');
     return false;
   }
 }

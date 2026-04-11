@@ -1,5 +1,7 @@
 import { getClient } from '@imajin/db';
+import { createLogger } from '@imajin/logger';
 
+const log = createLogger('kernel');
 const sql = getClient();
 
 let cachedNodeDid: string | undefined;
@@ -21,7 +23,7 @@ export async function getNodeDid(): Promise<string> {
       return cachedNodeDid;
     }
   } catch (err) {
-    console.warn('[node-identity] Could not read relay.relay_config:', err);
+    log.warn({ err: String(err) }, 'could not read relay.relay_config');
   }
 
   const fallback = process.env.RELAY_DID;
@@ -30,7 +32,7 @@ export async function getNodeDid(): Promise<string> {
     return cachedNodeDid;
   }
 
-  console.warn('[node-identity] No node DID found in relay.relay_config or RELAY_DID env');
+  log.warn({}, 'no node DID found in relay.relay_config or RELAY_DID env');
   cachedNodeDid = '';
   return '';
 }

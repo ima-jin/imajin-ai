@@ -1,6 +1,9 @@
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { db, identities, identityChains } from '@/src/db';
 import { eq } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export interface KernelSession {
   did: string;
@@ -63,7 +66,7 @@ export async function getSessionFromCookies(cookieHeader: string | null): Promis
       chainVerified,
     };
   } catch (error) {
-    console.error('getSessionFromCookies error:', error);
+    log.error({ err: String(error) }, 'getSessionFromCookies error');
     return null;
   }
 }

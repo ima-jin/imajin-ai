@@ -1,5 +1,8 @@
 import { db, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export interface IdentityLookup {
   did: string;
@@ -47,7 +50,7 @@ export async function lookupIdentity(did: string): Promise<IdentityLookup | null
       createdAt: identity.createdAt,
     };
   } catch (error) {
-    console.error('lookupIdentity error:', error);
+    log.error({ did, err: String(error) }, 'lookupIdentity error');
     return null;
   }
 }

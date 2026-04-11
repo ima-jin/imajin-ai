@@ -4,6 +4,9 @@ import { hexToMultibase } from '@imajin/auth';
 import { db, identityChains, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { verifyChainLog } from './chain-providers';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 interface AuthOptions {
   /** If true, verify identity against DFOS chain (not just DB) */
@@ -42,7 +45,7 @@ export async function requireAuth(
   if (options?.verifyChain) {
     const chainValid = await verifyIdentityChain(session.did);
     if (!chainValid) {
-      console.error('[auth] Chain verification failed for', session.did);
+      log.error({ did: session.did }, 'chain verification failed');
       return null;
     }
   }
@@ -69,12 +72,12 @@ async function verifyIdentityChain(did: string): Promise<boolean> {
     const result = await verifyChainLog(chain.log as string[]);
 
     if (!result.valid) {
-      console.error('[auth] Identity chain is invalid:', did, result.error);
+      log.error({ did, error: result.error }, 'identity chain is invalid');
       return false;
     }
 
     if (result.isDeleted) {
-      console.error('[auth] Identity chain is deleted:', did);
+      log.error({ did }, 'identity chain is deleted');
       return false;
     }
 
@@ -91,13 +94,13 @@ async function verifyIdentityChain(did: string): Promise<boolean> {
     const chainMultibase = result.publicKeyMultibase;
 
     if (dbMultibase !== chainMultibase) {
-      console.error('[auth] Key mismatch — DB vs chain for', did);
+      log.error({ did }, 'key mismatch — DB vs chain');
       return false;
     }
 
     return true;
   } catch (err) {
-    console.error('[auth] Chain verification error:', err);
+    log.error({ err: String(err) }, 'chain verification error');
     return false;
   }
 }

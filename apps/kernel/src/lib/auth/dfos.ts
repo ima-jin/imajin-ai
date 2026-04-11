@@ -3,6 +3,9 @@ import { db, identities, identityChains, credentials } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { verifyChainLog } from './chain-providers';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 const REGISTRY_URL = process.env.REGISTRY_URL;
 
@@ -13,7 +16,7 @@ const REGISTRY_URL = process.env.REGISTRY_URL;
  */
 export async function ingestToRelay(log: string[]): Promise<boolean> {
   if (!REGISTRY_URL) {
-    console.warn('[dfos] REGISTRY_URL not set — skipping relay ingest');
+    log.warn({}, 'REGISTRY_URL not set — skipping relay ingest');
     return false;
   }
   try {
@@ -24,12 +27,12 @@ export async function ingestToRelay(log: string[]): Promise<boolean> {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      console.error(`[dfos] Relay ingest failed (${res.status}):`, text);
+      log.error({ status: res.status, text }, 'relay ingest failed');
       return false;
     }
     return true;
   } catch (err) {
-    console.error('[dfos] Relay ingest error:', err);
+    log.error({ err: String(err) }, 'relay ingest error');
     return false;
   }
 }
@@ -71,20 +74,20 @@ export async function verifyClientChain(
     const result = await verifyChainLog(chain.log);
 
     if (!result.valid) {
-      console.error('[dfos] Chain verification failed:', result.error);
+      log.error({ error: result.error }, 'chain verification failed');
       return null;
     }
 
     // 2. Verify the DID matches what the client claims
     if (result.did !== chain.did) {
-      console.error('[dfos] DID mismatch:', result.did, '!==', chain.did);
+      log.error({ chainDid: result.did, claimedDid: chain.did }, 'DID mismatch');
       return null;
     }
 
     // 3. Verify the chain's public key matches the identity's public key
     const expectedMultibase = hexToMultibase(expectedPublicKeyHex);
     if (result.publicKeyMultibase !== expectedMultibase) {
-      console.error('[dfos] Key mismatch: chain key does not match identity public key');
+      log.error({}, 'key mismatch: chain key does not match identity public key');
       return null;
     }
 
@@ -94,7 +97,7 @@ export async function verifyClientChain(
       headCid: chain.operationCID,
     };
   } catch (err) {
-    console.error('[dfos] Chain verification failed:', err);
+    log.error({ err: String(err) }, 'chain verification failed');
     return null;
   }
 }
@@ -139,7 +142,7 @@ export async function storeDfosChain(
 
   // Also ingest into the relay so it enters the gossip network
   ingestToRelay(chain.log).catch(err =>
-    console.error(`[dfos] Relay ingest failed for ${imajinDid}:`, err)
+    log.error({ imajinDid, err: String(err) }, 'relay ingest failed after storing chain')
   );
 
   return true;

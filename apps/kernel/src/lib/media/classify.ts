@@ -1,4 +1,7 @@
 import { extractExif } from "./exif";
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
 
 export interface ClassifyResult {
   category: string;       // photo, document, audio, video, screenshot, receipt, other
@@ -62,7 +65,7 @@ async function classifyWithClip(buffer: Buffer, callerDid?: string): Promise<Cli
     return { label: data.label, confidence: data.confidence, tags: data.tags };
   } catch (err) {
     // CLIP unavailable — fall through to heuristics silently
-    console.warn('[classify] CLIP unavailable:', (err as Error).message);
+    log.warn({ err: (err as Error).message }, 'CLIP unavailable');
     return null;
   }
 }

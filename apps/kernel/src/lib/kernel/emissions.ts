@@ -1,3 +1,7 @@
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('kernel');
+
 /**
  * MJN Emission Schedule
  *
@@ -141,7 +145,7 @@ export function resolveAmount(rule: EmissionRule, settlementCents?: number): num
   // Parse percentage string like '0.25%'
   const match = rule.amount.match(/^([\d.]+)%$/);
   if (!match) {
-    console.warn(`[emissions] Invalid amount format: ${rule.amount}`);
+    log.warn({ amount: rule.amount }, 'invalid amount format');
     return 0;
   }
 
