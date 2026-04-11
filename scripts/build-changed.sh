@@ -9,6 +9,7 @@
 # First run (no .last-build-sha): builds all apps.
 
 set -euo pipefail
+export NODE_ENV=production
 cd "$(git rev-parse --show-toplevel)"
 
 DRY_RUN=false
