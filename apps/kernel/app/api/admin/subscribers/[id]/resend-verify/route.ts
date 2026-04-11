@@ -3,7 +3,7 @@ import { getClient } from '@imajin/db';
 import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-tokens';
 import { sendEmail } from '@imajin/email';
 import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
-import { requireAdmin } from '@imajin/logger';
+import { requireAdmin } from '@imajin/auth';
 
 const sql = getClient();
 

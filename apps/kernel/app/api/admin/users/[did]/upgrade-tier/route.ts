@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { emitAttestation } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
-import { requireAdmin } from '@imajin/logger';
+import { requireAdmin } from '@imajin/auth';
 
 const sql = getClient();
 

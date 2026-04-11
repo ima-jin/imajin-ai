@@ -1,6 +1,7 @@
 export type { Identity, AuthResult, AuthError, IdentityType, Keypair, SignedMessage, VerificationResult } from "./types";
 export { requireAuth } from "./require-auth";
 export type { AuthOptions } from "./require-auth";
+export { requireAdmin } from "./require-admin";
 export { optionalAuth } from "./optional-auth";
 export { getSession } from "./session";
 export type { SessionOptions } from "./session";

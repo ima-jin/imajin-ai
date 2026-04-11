@@ -1,4 +1,4 @@
-import { getSession } from '@imajin/auth';
+import { getSession } from './session';
 import { getClient } from '@imajin/db';
 
 const sql = getClient();
@@ -11,7 +11,7 @@ const sql = getClient();
  * Returns the session if the caller is an admin, null otherwise.
  *
  * Usage:
- *   import { requireAdmin } from '@imajin/logger';
+ *   import { requireAdmin } from '@imajin/auth';
  *
  *   export async function GET() {
  *     const session = await requireAdmin();

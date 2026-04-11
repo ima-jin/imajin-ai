@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClient } from '@imajin/db';
 import { randomUUID } from 'crypto';
-import { requireAdmin, withLogger } from '@imajin/logger';
+import { withLogger } from '@imajin/logger';
+import { requireAdmin } from '@imajin/auth';
 
 const sql = getClient();
 

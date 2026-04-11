@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClient } from '@imajin/db';
 import { sendEmail, renderBroadcastEmail } from '@imajin/email';
-import { requireAdmin, withLogger } from '@imajin/logger';
+import { withLogger } from '@imajin/logger';
+import { requireAdmin } from '@imajin/auth';
 
 const sql = getClient();
 

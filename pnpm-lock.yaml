@@ -841,12 +841,6 @@ importers:
 
   packages/logger:
     dependencies:
-      '@imajin/auth':
-        specifier: workspace:*
-        version: link:../auth
-      '@imajin/db':
-        specifier: workspace:*
-        version: link:../db
       nanoid:
         specifier: ^5
         version: 5.1.6
