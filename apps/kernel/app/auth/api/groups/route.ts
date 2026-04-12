@@ -3,7 +3,7 @@ import { db, identities, storedKeys, identityMembers, profiles } from '@/src/db'
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { generateKeypair } from '@imajin/auth';
-import { didFromPublicKey } from '@/src/lib/auth/crypto';
+import { didFromPublicKey, encryptPrivateKey } from '@/src/lib/auth/crypto';
 import { emitAttestation } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
@@ -14,40 +14,6 @@ type GroupScope = typeof VALID_SCOPES[number];
 
 function genId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 14)}${Date.now().toString(36)}`;
-}
-
-async function encryptPrivateKey(privateKeyHex: string): Promise<{ encryptedKey: string; salt: string }> {
-  const secret = process.env.GROUP_KEY_ENCRYPTION_SECRET;
-  if (!secret) throw new Error('GROUP_KEY_ENCRYPTION_SECRET not set');
-
-  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
-  const salt = Buffer.from(saltBytes).toString('base64');
-
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'PBKDF2' },
-    false,
-    ['deriveKey']
-  );
-  const derivedKey = await crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: saltBytes, iterations: 100_000, hash: 'SHA-256' },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt']
-  );
-
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const plaintext = new TextEncoder().encode(privateKeyHex);
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, derivedKey, plaintext);
-
-  // Prepend IV to ciphertext
-  const combined = new Uint8Array(iv.length + ciphertext.byteLength);
-  combined.set(iv);
-  combined.set(new Uint8Array(ciphertext), iv.length);
-
-  return { encryptedKey: Buffer.from(combined).toString('base64'), salt };
 }
 
 /**

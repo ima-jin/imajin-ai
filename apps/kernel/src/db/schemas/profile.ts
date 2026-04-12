@@ -31,8 +31,11 @@ export const profiles = profileSchema.table('profiles', {
   featureToggles: jsonb('feature_toggles').$type<FeatureToggles>().notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  claimedBy: text('claimed_by'),                              // owner DID, null = unclaimed stub
+  claimStatus: text('claim_status'),                          // 'unclaimed' | 'pending' | 'claimed'
 }, (table) => ({
   handleIdx: index('idx_profiles_handle').on(table.handle),
+  claimStatusIdx: index('idx_profiles_claim_status').on(table.claimStatus),
 }));
 
 /**

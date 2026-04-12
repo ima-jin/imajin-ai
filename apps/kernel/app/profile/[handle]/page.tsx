@@ -3,9 +3,9 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
-import { db, profiles, follows, connections } from '@/src/db';
+import { db, profiles, follows, connections, identityMembers } from '@/src/db';
 import { getClient } from '@imajin/db';
-import { eq, count } from 'drizzle-orm';
+import { eq, count, and, isNull } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { Avatar } from '../components/Avatar';
 import { FollowButton } from '../components/FollowButton';
@@ -39,6 +39,7 @@ interface Profile {
   featureToggles?: FeatureToggles;
   createdAt: string;
   metadata?: Record<string, string>;
+  claimStatus?: string | null;
 }
 
 interface ProfileCounts {
@@ -248,6 +249,43 @@ export default async function ProfilePage({ params }: PageProps) {
   const [chainRow] = await authSql`SELECT did FROM auth.identity_chains WHERE did = ${profile.did} LIMIT 1`.catch(() => []);
   const chainVerified = !!chainRow;
 
+  // Stub metadata for unclaimed business profiles
+  let maintainerCount = 0;
+  let isMaintainer = false;
+  if (identityScope === 'business' && profile.claimStatus === 'unclaimed') {
+    try {
+      const [{ value: mc }] = await db
+        .select({ value: count() })
+        .from(identityMembers)
+        .where(
+          and(
+            eq(identityMembers.identityDid, profile.did),
+            eq(identityMembers.role, 'maintainer'),
+            isNull(identityMembers.removedAt)
+          )
+        );
+      maintainerCount = mc;
+
+      if (viewerDid && !isSelf) {
+        const [maintainerRow] = await db
+          .select({ identityDid: identityMembers.identityDid })
+          .from(identityMembers)
+          .where(
+            and(
+              eq(identityMembers.identityDid, profile.did),
+              eq(identityMembers.memberDid, viewerDid),
+              eq(identityMembers.role, 'maintainer'),
+              isNull(identityMembers.removedAt)
+            )
+          )
+          .limit(1);
+        isMaintainer = !!maintainerRow;
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+
   // Fetch counts, follow status, and links in parallel
   const [counts, isFollowing, links] = await Promise.all([
     getProfileCounts(profile.did),
@@ -273,7 +311,7 @@ export default async function ProfilePage({ params }: PageProps) {
         )}
 
         {/* Type badge & Identity Tier */}
-        <div className="flex gap-2 justify-center mb-4">
+        <div className="flex gap-2 justify-center mb-4 flex-wrap">
           <span className="inline-block px-3 py-1 bg-gray-900 border border-gray-800 rounded-full text-sm text-gray-300">
             {typeLabel}
           </span>
@@ -287,7 +325,35 @@ export default async function ProfilePage({ params }: PageProps) {
               ⛓ Chain Verified
             </span>
           )}
+          {identityScope === 'business' && profile.claimStatus === 'unclaimed' && (
+            <span className="inline-block px-3 py-1 bg-sky-900/30 border border-sky-700/50 rounded-full text-sm text-sky-400">
+              🤝 Community-maintained
+            </span>
+          )}
         </div>
+
+        {/* Unclaimed stub — maintainer info + join CTA */}
+        {identityScope === 'business' && profile.claimStatus === 'unclaimed' && (
+          <div className="mb-4 bg-sky-950/30 border border-sky-800/40 rounded-xl px-4 py-3 text-sm text-sky-300">
+            <p className="mb-1">
+              This place is community-maintained.{' '}
+              <span className="text-sky-400 font-medium">{maintainerCount} maintainer{maintainerCount !== 1 ? 's' : ''}</span> keeping it up to date.
+            </p>
+            {viewerDid && !isMaintainer && (
+              <form action={`/profile/api/stubs/${encodeURIComponent(profile.did)}/join`} method="POST">
+                <button
+                  type="submit"
+                  className="mt-2 px-4 py-1.5 bg-sky-700 hover:bg-sky-600 text-white rounded-lg text-xs font-medium transition-colors"
+                >
+                  Help maintain this place
+                </button>
+              </form>
+            )}
+            {viewerDid && isMaintainer && (
+              <p className="mt-1 text-xs text-sky-500">You are a maintainer of this place.</p>
+            )}
+          </div>
+        )}
 
         {/* Counts & Follow Button */}
         <div className="mb-6 flex flex-col items-center gap-3">

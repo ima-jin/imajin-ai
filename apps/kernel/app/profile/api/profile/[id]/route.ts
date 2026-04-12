@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
-import { db, profiles, connections } from '@/src/db';
+import { db, profiles, connections, identityMembers } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
-import { eq, or, and, isNull } from 'drizzle-orm';
+import { eq, or, and, isNull, count } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { createLogger } from '@imajin/logger';
 import { createEmitter } from '@imajin/events';
@@ -127,13 +127,46 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Gate contact info: only visible to self or connections
     const result: Record<string, any> = { ...profile };
+    let viewerDid: string | null = null;
     if (profile.contactEmail || profile.phone) {
-      const viewerDid = await getViewerDid(request);
+      viewerDid = await getViewerDid(request);
       const isSelf = viewerDid === profile.did;
       const connected = viewerDid && !isSelf ? await checkConnected(viewerDid, profile.did) : false;
       if (!isSelf && !connected) {
         delete result.contactEmail;
         delete result.phone;
+      }
+    }
+
+    // Stub metadata for business profiles
+    if (profile.claimStatus) {
+      const [{ value: maintainerCount }] = await db
+        .select({ value: count() })
+        .from(identityMembers)
+        .where(
+          and(
+            eq(identityMembers.identityDid, profile.did),
+            eq(identityMembers.role, 'maintainer'),
+            isNull(identityMembers.removedAt)
+          )
+        );
+      result.maintainerCount = maintainerCount;
+
+      if (!viewerDid) viewerDid = await getViewerDid(request);
+      if (viewerDid) {
+        const [isMaintainerRow] = await db
+          .select({ identityDid: identityMembers.identityDid })
+          .from(identityMembers)
+          .where(
+            and(
+              eq(identityMembers.identityDid, profile.did),
+              eq(identityMembers.memberDid, viewerDid),
+              eq(identityMembers.role, 'maintainer'),
+              isNull(identityMembers.removedAt)
+            )
+          )
+          .limit(1);
+        result.isMaintainer = !!isMaintainerRow;
       }
     }
 

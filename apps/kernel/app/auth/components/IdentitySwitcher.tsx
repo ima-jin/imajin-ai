@@ -3,13 +3,10 @@
 import { useIdentities } from '@imajin/ui';
 
 function scopeIcon(scope: string): string {
-  if (scope === 'community') return '🏛️';
-  if (scope === 'org') return '🏢';
+  if (scope === 'community') return '🌐';
+  if (scope === 'business') return '🏢';
   if (scope === 'family') return '👨‍👩‍👦';
-  if (scope === 'node') return '🖥️';
-  if (scope === 'agent') return '🤖';
-  if (scope === 'device') return '📱';
-  return '👥';
+  return '👤';
 }
 
 interface Props {
@@ -125,10 +122,10 @@ export default function IdentitySwitcher({
           <span className="text-base leading-none">+</span> Create Community Identity
         </a>
         <a
-          href="/auth/groups/new?scope=org"
+          href="/auth/groups/new?scope=business"
           className="flex items-center gap-2 px-3 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors rounded-lg no-underline"
         >
-          <span className="text-base leading-none">+</span> Create Organization
+          <span className="text-base leading-none">+</span> Create Business Identity
         </a>
       </div>
     </div>
