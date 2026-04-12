@@ -35,7 +35,6 @@ export default async function PlacesMaintained({ sessionDid }: Props) {
         )
       );
   } catch {
-    // Non-fatal — render nothing on DB error
     return null;
   }
 
