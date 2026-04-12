@@ -17,11 +17,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden: no acting-as scope' }, { status: 403 });
   }
 
-  // Verify actingAs is a node-scope group DID
+  // Verify actingAs is a node identity
   const [nodeRow] = await sql`
-    SELECT group_did FROM auth.group_identities
-    WHERE group_did = ${identity.actingAs}
-    AND scope = 'node'
+    SELECT id FROM auth.identities
+    WHERE id = ${identity.actingAs}
+    AND scope = 'actor' AND subtype = 'node'
     LIMIT 1
   `;
 

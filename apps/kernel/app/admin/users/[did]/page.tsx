@@ -24,7 +24,7 @@ export default async function AdminUserDetailPage({
 
   // Profile
   const [profile] = await sql`
-    SELECT display_name, display_type, bio, avatar, avatar_asset_id
+    SELECT display_name, bio, avatar, avatar_asset_id
     FROM profile.profiles
     WHERE did = ${decodedDid}
     LIMIT 1
@@ -134,7 +134,6 @@ export default async function AdminUserDetailPage({
           {profile ? (
             <div className="space-y-2 text-sm">
               <Row label="Display Name" value={profile.display_name as string | null} />
-              <Row label="Display Type" value={profile.display_type as string | null} />
               <Row label="Bio" value={profile.bio as string | null} />
               <Row label="Avatar" value={profile.avatar as string | null} mono />
             </div>

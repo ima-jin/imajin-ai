@@ -19,7 +19,6 @@ export const profiles = profileSchema.table('profiles', {
   did: text('did').primaryKey(),                              // did:imajin:xxx
   handle: text('handle').unique(),                            // unique handle (e.g., "jin", "ryan")
   displayName: text('display_name').notNull(),
-  displayType: text('display_type').notNull(),                // 'human' | 'agent' | 'device' | 'org' | 'event' | 'service'
   avatar: text('avatar'),                                     // URL or emoji
   avatarAssetId: text('avatar_asset_id'),                     // asset_xxx from media service
   bio: text('bio'),
@@ -34,7 +33,6 @@ export const profiles = profileSchema.table('profiles', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   handleIdx: index('idx_profiles_handle').on(table.handle),
-  displayTypeIdx: index('idx_profiles_display_type').on(table.displayType),
 }));
 
 /**

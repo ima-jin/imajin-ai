@@ -192,7 +192,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = JSON.parse(bodyText);
-    const { displayName, displayType, avatar, avatarAssetId, bio, email, phone, visibility, feature_toggles } = body;
+    const { displayName, avatar, avatarAssetId, bio, email, phone, visibility, feature_toggles } = body;
 
     // Build update object
     const updates: Record<string, any> = {
@@ -200,12 +200,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     };
 
     if (displayName !== undefined) updates.displayName = displayName;
-    if (displayType !== undefined) {
-      if (!['human', 'agent', 'presence'].includes(displayType)) {
-        return NextResponse.json({ error: 'displayType must be human, agent, or presence' }, { status: 400, headers: cors });
-      }
-      updates.displayType = displayType;
-    }
     if (avatar !== undefined) updates.avatar = avatar;
     if (avatarAssetId !== undefined) updates.avatarAssetId = avatarAssetId;
     if (bio !== undefined) updates.bio = bio;

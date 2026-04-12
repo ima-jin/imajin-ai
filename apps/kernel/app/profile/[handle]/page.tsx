@@ -31,7 +31,6 @@ interface Profile {
   did: string;
   handle?: string;
   displayName: string;
-  displayType: 'human' | 'presence' | 'agent' | 'device' | 'org' | 'event' | 'service';
   bio?: string;
   avatar?: string;
   email?: string;
@@ -125,6 +124,33 @@ async function getLinks(linksHandle: string): Promise<LinkItem[]> {
   } catch { return []; }
 }
 
+function getScopeEmoji(scope: string, subtype: string | null): string {
+  if (scope === 'actor') {
+    const map: Record<string, string> = { human: '👤', agent: '🤖', device: '📱', presence: '🟠' };
+    return map[subtype ?? 'human'] ?? '👤';
+  }
+  const map: Record<string, string> = { business: '🏢', family: '👨‍👩‍👧‍👦', community: '🌐' };
+  return map[scope] ?? '👤';
+}
+
+function getScopeLabel(scope: string, subtype: string | null): string {
+  if (scope === 'actor') {
+    const map: Record<string, string> = {
+      human: '👤 Human',
+      agent: '🤖 Agent',
+      device: '📱 Device',
+      presence: '🟠 Presence',
+    };
+    return map[subtype ?? 'human'] ?? '👤 Human';
+  }
+  const map: Record<string, string> = {
+    business: '🏢 Business',
+    family: '👨‍👩‍👧‍👦 Family',
+    community: '🌐 Community',
+  };
+  return map[scope] ?? scope;
+}
+
 // Generate dynamic metadata for OG/Twitter cards
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { handle } = await params;
@@ -136,20 +162,19 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
 
-  const typeEmoji: Record<string, string> = {
-    human: '👤',
-    presence: '🟠',
-    agent: '🤖',
-    device: '📱',
-    org: '🏢',
-    event: '📅',
-    service: '⚙️',
-  };
+  // Fetch identity scope+subtype for metadata
+  const authSqlMeta = getClient();
+  const [idRowMeta] = await authSqlMeta`
+    SELECT scope, subtype FROM auth.identities WHERE id = ${profile.did} LIMIT 1
+  `.catch(() => []);
+  const metaScope: string = idRowMeta?.scope ?? 'actor';
+  const metaSubtype: string | null = idRowMeta?.subtype ?? null;
+  const emoji = getScopeEmoji(metaScope, metaSubtype);
 
   const displayHandle = profile.handle ? `@${profile.handle}` : handle;
   const description = profile.bio
     ? profile.bio.slice(0, 200) + (profile.bio.length > 200 ? '...' : '')
-    : `${typeEmoji[profile.displayType]} ${profile.displayType} on the Imajin network`;
+    : `${emoji} ${metaSubtype ?? metaScope} on the Imajin network`;
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://profile.imajin.ai';
   const url = `${baseUrl}/${handle}`;
@@ -158,7 +183,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: `${profile.displayName} (${displayHandle})`,
     description,
     openGraph: {
-      title: `${profile.displayName} ${typeEmoji[profile.displayType]}`,
+      title: `${profile.displayName} ${emoji}`,
       description,
       url,
       siteName: 'Imajin Profiles',
@@ -167,7 +192,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     },
     twitter: {
       card: profile.avatar?.startsWith('http') ? 'summary_large_image' : 'summary',
-      title: `${profile.displayName} ${typeEmoji[profile.displayType]}`,
+      title: `${profile.displayName} ${emoji}`,
       description,
       images: profile.avatar?.startsWith('http') ? [profile.avatar] : undefined,
     },
@@ -214,19 +239,11 @@ export default async function ProfilePage({ params }: PageProps) {
     );
   }
 
-  const typeLabels: Record<string, string> = {
-    human: '👤 Human',
-    presence: '🟠 Presence',
-    agent: '🤖 Agent',
-    device: '📱 Device',
-    org: '🏢 Organization',
-    event: '📅 Event',
-    service: '⚙️ Service',
-  };
-  const typeLabel = typeLabels[profile.displayType];
-
   const authSql = getClient();
-  const [identityRow] = await authSql`SELECT tier FROM auth.identities WHERE id = ${profile.did} LIMIT 1`.catch(() => []);
+  const [identityRow] = await authSql`SELECT tier, scope, subtype FROM auth.identities WHERE id = ${profile.did} LIMIT 1`.catch(() => []);
+  const identityScope: string = identityRow?.scope ?? 'actor';
+  const identitySubtype: string | null = identityRow?.subtype ?? null;
+  const typeLabel = getScopeLabel(identityScope, identitySubtype);
   const isSoftDID = identityRow?.tier === 'soft';
   const [chainRow] = await authSql`SELECT did FROM auth.identity_chains WHERE did = ${profile.did} LIMIT 1`.catch(() => []);
   const chainVerified = !!chainRow;

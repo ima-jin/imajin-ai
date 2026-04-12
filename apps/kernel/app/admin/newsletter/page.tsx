@@ -9,9 +9,9 @@ async function requireAdmin() {
   const session = await getSession();
   if (!session?.actingAs) redirect('/admin');
   const [nodeRow] = await sql`
-    SELECT group_did FROM auth.group_identities
-    WHERE group_did = ${session.actingAs}
-    AND scope = 'node'
+    SELECT id FROM auth.identities
+    WHERE id = ${session.actingAs}
+    AND scope = 'actor' AND subtype = 'node'
     LIMIT 1
   `;
   if (!nodeRow) redirect('/admin');

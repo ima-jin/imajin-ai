@@ -15,20 +15,23 @@ async function getNetworkStats() {
 
     const [humans] = await sql`
       SELECT COUNT(*)::int as count
-      FROM profile.profiles
-      WHERE display_type = 'human'
+      FROM profile.profiles p
+      JOIN auth.identities i ON i.id = p.did
+      WHERE i.scope = 'actor' AND i.subtype = 'human'
     `;
 
     const [businesses] = await sql`
       SELECT COUNT(*)::int as count
-      FROM profile.profiles
-      WHERE display_type = 'org'
+      FROM profile.profiles p
+      JOIN auth.identities i ON i.id = p.did
+      WHERE i.scope IN ('business', 'community', 'family')
     `;
 
     const [presences] = await sql`
       SELECT COUNT(*)::int as count
-      FROM profile.profiles
-      WHERE display_type IN ('presence', 'agent', 'device', 'service')
+      FROM profile.profiles p
+      JOIN auth.identities i ON i.id = p.did
+      WHERE i.scope = 'actor' AND i.subtype IN ('presence', 'agent', 'device')
     `;
 
     return {

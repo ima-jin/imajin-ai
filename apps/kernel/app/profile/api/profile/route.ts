@@ -18,15 +18,11 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
   try {
     const body = await request.json();
-    const { displayName, displayType, avatar, avatarAssetId, bio, handle, metadata, email, phone, optInUpdates } = body;
+    const { displayName, avatar, avatarAssetId, bio, handle, metadata, email, phone, optInUpdates } = body;
 
     // Validate required fields
     if (!displayName) {
       return errorResponse('displayName is required');
-    }
-
-    if (!displayType || !['human', 'agent', 'presence'].includes(displayType)) {
-      return errorResponse('displayType must be human, agent, or presence');
     }
 
     // Validate handle format if provided
@@ -58,7 +54,6 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     const result = await db.insert(profiles).values({
       did: identity.id,
       displayName,
-      displayType,
       avatar: avatar || null,
       avatarAssetId: avatarAssetId || null,
       bio: bio || null,

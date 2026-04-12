@@ -24,9 +24,9 @@ export async function requireAdmin() {
   if (!session?.actingAs) return null;
 
   const [nodeRow] = await sql`
-    SELECT group_did FROM auth.group_identities
-    WHERE group_did = ${session.actingAs}
-    AND scope = 'node'
+    SELECT id FROM auth.identities
+    WHERE id = ${session.actingAs}
+    AND scope = 'actor' AND subtype = 'node'
     LIMIT 1
   `;
 

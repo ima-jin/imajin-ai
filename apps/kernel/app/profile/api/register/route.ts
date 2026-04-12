@@ -115,11 +115,10 @@ export async function POST(request: NextRequest) {
       return errorResponse('Profile already exists for this public key', 409);
     }
 
-    // Create profile with 'human' as default display type
+    // Create profile
     const result = await db.insert(profiles).values({
       did,
       displayName,
-      displayType: 'human',
       avatar: avatar || null,
       bio: bio || null,
       handle: handle || null,

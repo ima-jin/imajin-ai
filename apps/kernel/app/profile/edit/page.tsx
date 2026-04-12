@@ -20,7 +20,6 @@ interface Profile {
   did: string;
   handle?: string;
   displayName: string;
-  displayType: string;
   bio?: string;
   avatar?: string;
   contactEmail?: string;

@@ -191,16 +191,6 @@ export const devices = authSchema.table('devices', {
 }));
 
 /**
- * Group Identities — multi-controller DIDs for orgs, communities, families
- */
-export const groupIdentities = authSchema.table('group_identities', {
-  groupDid: text('group_did').primaryKey(),               // references identities.id
-  scope: text('scope').notNull(),                         // 'org' | 'community' | 'family'
-  createdBy: text('created_by').notNull(),                // DID of creator
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
-
-/**
  * Group Controllers — members that control a group DID
  */
 export const groupControllers = authSchema.table('group_controllers', {
@@ -234,7 +224,5 @@ export type MfaMethod = typeof mfaMethods.$inferSelect;
 export type NewMfaMethod = typeof mfaMethods.$inferInsert;
 export type Device = typeof devices.$inferSelect;
 export type NewDevice = typeof devices.$inferInsert;
-export type GroupIdentity = typeof groupIdentities.$inferSelect;
-export type NewGroupIdentity = typeof groupIdentities.$inferInsert;
 export type GroupController = typeof groupControllers.$inferSelect;
 export type NewGroupController = typeof groupControllers.$inferInsert;
