@@ -191,19 +191,19 @@ export const devices = authSchema.table('devices', {
 }));
 
 /**
- * Group Controllers — members that control a group DID
+ * Identity Members — members of a group/collective identity
  */
-export const groupControllers = authSchema.table('group_controllers', {
-  groupDid: text('group_did').notNull(),
-  controllerDid: text('controller_did').notNull(),
-  role: text('role').notNull().default('member'),         // 'owner' | 'admin' | 'member'
+export const identityMembers = authSchema.table('identity_members', {
+  identityDid: text('identity_did').notNull(),
+  memberDid: text('member_did').notNull(),
+  role: text('role').notNull().default('member'),         // 'owner' | 'admin' | 'maintainer' | 'member' | ...
   allowedServices: text('allowed_services').array(),      // null = full access, ['events','pay'] = restricted
   addedBy: text('added_by'),
   addedAt: timestamp('added_at', { withTimezone: true }).defaultNow(),
   removedAt: timestamp('removed_at', { withTimezone: true }),
 }, (table) => ({
-  pk: index('idx_group_controllers_pk').on(table.groupDid, table.controllerDid),
-  controllerIdx: index('idx_group_controllers_controller').on(table.controllerDid),
+  pk: index('idx_identity_members_pk').on(table.identityDid, table.memberDid),
+  memberIdx: index('idx_identity_members_member').on(table.memberDid),
 }));
 
 // Types
@@ -224,5 +224,5 @@ export type MfaMethod = typeof mfaMethods.$inferSelect;
 export type NewMfaMethod = typeof mfaMethods.$inferInsert;
 export type Device = typeof devices.$inferSelect;
 export type NewDevice = typeof devices.$inferInsert;
-export type GroupController = typeof groupControllers.$inferSelect;
-export type NewGroupController = typeof groupControllers.$inferInsert;
+export type IdentityMember = typeof identityMembers.$inferSelect;
+export type NewIdentityMember = typeof identityMembers.$inferInsert;

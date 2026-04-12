@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, forestConfig, groupControllers } from '@/src/db';
+import { db, forestConfig, identityMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { SERVICES } from '@imajin/config';
@@ -16,13 +16,13 @@ async function verifyController(
 ): Promise<{ valid: boolean; role?: string }> {
   try {
     const [membership] = await db
-      .select({ role: groupControllers.role })
-      .from(groupControllers)
+      .select({ role: identityMembers.role })
+      .from(identityMembers)
       .where(
         and(
-          eq(groupControllers.groupDid, groupDid),
-          eq(groupControllers.controllerDid, callerDid),
-          isNull(groupControllers.removedAt)
+          eq(identityMembers.identityDid, groupDid),
+          eq(identityMembers.memberDid, callerDid),
+          isNull(identityMembers.removedAt)
         )
       )
       .limit(1);

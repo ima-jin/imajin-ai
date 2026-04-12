@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, groupControllers } from '@/src/db';
+import { db, identityMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth, emitAttestation } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
@@ -23,13 +23,13 @@ export async function DELETE(
   const { groupDid, controllerDid } = await params;
 
   const [callerMembership] = await db
-    .select({ role: groupControllers.role })
-    .from(groupControllers)
+    .select({ role: identityMembers.role })
+    .from(identityMembers)
     .where(
       and(
-        eq(groupControllers.groupDid, groupDid),
-        eq(groupControllers.controllerDid, caller.id),
-        isNull(groupControllers.removedAt)
+        eq(identityMembers.identityDid, groupDid),
+        eq(identityMembers.memberDid, caller.id),
+        isNull(identityMembers.removedAt)
       )
     )
     .limit(1);
@@ -44,13 +44,13 @@ export async function DELETE(
 
   // Check target's role
   const [targetMembership] = await db
-    .select({ role: groupControllers.role })
-    .from(groupControllers)
+    .select({ role: identityMembers.role })
+    .from(identityMembers)
     .where(
       and(
-        eq(groupControllers.groupDid, groupDid),
-        eq(groupControllers.controllerDid, controllerDid),
-        isNull(groupControllers.removedAt)
+        eq(identityMembers.identityDid, groupDid),
+        eq(identityMembers.memberDid, controllerDid),
+        isNull(identityMembers.removedAt)
       )
     )
     .limit(1);
@@ -65,12 +65,12 @@ export async function DELETE(
 
   try {
     await db
-      .update(groupControllers)
+      .update(identityMembers)
       .set({ removedAt: new Date() })
       .where(
         and(
-          eq(groupControllers.groupDid, groupDid),
-          eq(groupControllers.controllerDid, controllerDid)
+          eq(identityMembers.identityDid, groupDid),
+          eq(identityMembers.memberDid, controllerDid)
         )
       );
 
@@ -112,16 +112,16 @@ export async function GET(
   try {
     const [membership] = await db
       .select({
-        role: groupControllers.role,
-        removedAt: groupControllers.removedAt,
-        allowedServices: groupControllers.allowedServices,
+        role: identityMembers.role,
+        removedAt: identityMembers.removedAt,
+        allowedServices: identityMembers.allowedServices,
       })
-      .from(groupControllers)
+      .from(identityMembers)
       .where(
         and(
-          eq(groupControllers.groupDid, groupDid),
-          eq(groupControllers.controllerDid, controllerDid),
-          isNull(groupControllers.removedAt)
+          eq(identityMembers.identityDid, groupDid),
+          eq(identityMembers.memberDid, controllerDid),
+          isNull(identityMembers.removedAt)
         )
       )
       .limit(1);

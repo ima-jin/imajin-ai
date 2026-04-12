@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, groupControllers, profiles } from '@/src/db';
+import { db, identities, identityMembers, profiles } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
@@ -25,13 +25,13 @@ export async function GET(
   try {
     // Check caller is active controller
     const [membership] = await db
-      .select({ role: groupControllers.role })
-      .from(groupControllers)
+      .select({ role: identityMembers.role })
+      .from(identityMembers)
       .where(
         and(
-          eq(groupControllers.groupDid, groupDid),
-          eq(groupControllers.controllerDid, caller.id),
-          isNull(groupControllers.removedAt)
+          eq(identityMembers.identityDid, groupDid),
+          eq(identityMembers.memberDid, caller.id),
+          isNull(identityMembers.removedAt)
         )
       )
       .limit(1);
@@ -41,9 +41,9 @@ export async function GET(
     }
 
     const [ownerRow] = await db
-      .select({ controllerDid: groupControllers.controllerDid, addedAt: groupControllers.addedAt })
-      .from(groupControllers)
-      .where(and(eq(groupControllers.groupDid, groupDid), eq(groupControllers.role, 'owner'), isNull(groupControllers.removedAt)))
+      .select({ controllerDid: identityMembers.memberDid, addedAt: identityMembers.addedAt })
+      .from(identityMembers)
+      .where(and(eq(identityMembers.identityDid, groupDid), eq(identityMembers.role, 'owner'), isNull(identityMembers.removedAt)))
       .limit(1);
 
     const [group] = await db
@@ -64,16 +64,16 @@ export async function GET(
 
     const controllers = await db
       .select({
-        controllerDid: groupControllers.controllerDid,
-        role: groupControllers.role,
-        addedBy: groupControllers.addedBy,
-        addedAt: groupControllers.addedAt,
+        controllerDid: identityMembers.memberDid,
+        role: identityMembers.role,
+        addedBy: identityMembers.addedBy,
+        addedAt: identityMembers.addedAt,
       })
-      .from(groupControllers)
+      .from(identityMembers)
       .where(
         and(
-          eq(groupControllers.groupDid, groupDid),
-          isNull(groupControllers.removedAt)
+          eq(identityMembers.identityDid, groupDid),
+          isNull(identityMembers.removedAt)
         )
       );
 
@@ -100,13 +100,13 @@ export async function PATCH(
   const { groupDid } = await params;
 
   const [membership] = await db
-    .select({ role: groupControllers.role })
-    .from(groupControllers)
+    .select({ role: identityMembers.role })
+    .from(identityMembers)
     .where(
       and(
-        eq(groupControllers.groupDid, groupDid),
-        eq(groupControllers.controllerDid, caller.id),
-        isNull(groupControllers.removedAt)
+        eq(identityMembers.identityDid, groupDid),
+        eq(identityMembers.memberDid, caller.id),
+        isNull(identityMembers.removedAt)
       )
     )
     .limit(1);

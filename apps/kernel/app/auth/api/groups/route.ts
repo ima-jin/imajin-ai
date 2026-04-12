@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, storedKeys, groupControllers, profiles } from '@/src/db';
+import { db, identities, storedKeys, identityMembers, profiles } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { generateKeypair } from '@imajin/auth';
@@ -134,9 +134,9 @@ export async function POST(request: NextRequest) {
     });
 
     // Add creator as owner
-    await db.insert(groupControllers).values({
-      groupDid,
-      controllerDid: caller.id,
+    await db.insert(identityMembers).values({
+      identityDid: groupDid,
+      memberDid: caller.id,
       role: 'owner',
       addedBy: caller.id,
     });
@@ -184,18 +184,18 @@ export async function GET(request: NextRequest) {
   try {
     const rows = await db
       .select({
-        groupDid: groupControllers.groupDid,
-        role: groupControllers.role,
+        groupDid: identityMembers.identityDid,
+        role: identityMembers.role,
         scope: identities.scope,
         name: identities.name,
         handle: identities.handle,
       })
-      .from(groupControllers)
-      .innerJoin(identities, eq(groupControllers.groupDid, identities.id))
+      .from(identityMembers)
+      .innerJoin(identities, eq(identityMembers.identityDid, identities.id))
       .where(
         and(
-          eq(groupControllers.controllerDid, caller.id),
-          isNull(groupControllers.removedAt)
+          eq(identityMembers.memberDid, caller.id),
+          isNull(identityMembers.removedAt)
         )
       );
 
