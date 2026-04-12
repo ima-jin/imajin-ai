@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { requireAuth, emitAttestation } from '@imajin/auth';
 import { db, bumpSessions, bumpMatches, pods, podMembers, connections, profiles, nodes } from '@/src/db';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { notifyBumpDid } from '@/src/lib/registry/bump-notify';
 import { createLogger } from '@imajin/logger';
 import { createEmitter } from '@imajin/events';
 
 const log = createLogger('kernel');
-const bumpEvents = createEmitter('registry');
+const eventBus = createEmitter('registry');
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -144,9 +144,9 @@ export async function POST(request: NextRequest) {
           .set({ connectionId: podId })
           .where(eq(bumpMatches.id, matchId));
 
-        bumpEvents.emit({ action: 'bump.confirm', did: callerDid, payload: { matchId, didA: sessionA.did, didB: sessionB.did } });
+        eventBus.emit({ action: 'bump.confirm', did: callerDid, payload: { matchId, didA: sessionA.did, didB: sessionB.did } });
         if (!isReconnect) {
-          bumpEvents.emit({ action: 'connection.create', did: didA, payload: { otherDid: didB, source: 'bump' } });
+          eventBus.emit({ action: 'connection.create', did: didA, payload: { otherDid: didB, source: 'bump' } });
         }
 
         // Only emit attestations for NEW connections — prevents sybil farming via disconnect/reconnect
