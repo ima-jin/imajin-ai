@@ -404,9 +404,27 @@ Apps published to DFOS chain. Nodes discover apps from peers. Install from any n
 
 ---
 
-## Relationship to Existing Work
+## Relationship to RFC-19
 
-- **RFC-19 (Kernel/Userspace):** This RFC extends the userspace model with a sandboxed tier. Trusted userspace remains for first-party apps.
+RFC-19 defines **what** the kernel and userspace are — the internal architecture of Imajin's own software. This RFC extends that model with a third trust tier for external code.
+
+| | RFC-19 | RFC-25 |
+|---|--------|--------|
+| **Question** | How does Imajin organize itself? | How do third parties deploy apps? |
+| **Trust model** | Kernel + trusted userspace (2 tiers) | Adds sandboxed tier (3 tiers) |
+| **DB access** | Direct (shared schemas) | Isolated per-app schema via gateway |
+| **Registration** | Cryptographic handshake | Manifest + permissions + bundle hash |
+| **Gas/metering** | Mentioned conceptually | Fully specified (costs, budgets, funding models) |
+| **Developer economics** | Not addressed | Developer fee in .fair chain |
+| **Runtime** | pm2 processes | Docker → V8 isolates → WASM |
+| **Audience** | Imajin Inc. apps | Anyone |
+
+RFC-19's shell architecture (iframe + postMessage), registry, and kernel API surface are the foundation this RFC builds on. Nothing in RFC-19 changes — RFC-25 adds the layer that opens the platform.
+
+The path from trusted userspace to sandboxed app is also a spectrum. A first-party app like events could eventually run in the sandbox model with elevated permissions, but that's not required. Trusted userspace remains the right choice for apps that need direct DB access and tight kernel integration.
+
+## Relationship to Other Work
+
 - **#465 (Agent Sandbox):** Agents are a special case of sandboxed apps — same gateway, same gas metering, same scope isolation. The agent sandbox becomes a flavor of the app runtime.
 - **#685 (Market .fair):** Market listings need `.fair` manifests. Third-party commerce apps follow the same pattern.
 - **DFOS:** App manifests and registration chains are DFOS data. Federation means apps are discoverable across the network.
