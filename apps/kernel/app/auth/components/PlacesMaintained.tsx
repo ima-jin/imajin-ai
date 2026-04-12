@@ -6,9 +6,6 @@ interface Props {
   sessionDid: string;
 }
 
-/**
- * Server component — lists stubs the current user maintains.
- */
 export default async function PlacesMaintained({ sessionDid }: Props) {
   let rows: Array<{
     did: string;
