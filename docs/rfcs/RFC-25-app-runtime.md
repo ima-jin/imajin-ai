@@ -423,6 +423,72 @@ RFC-19's shell architecture (iframe + postMessage), registry, and kernel API sur
 
 The path from trusted userspace to sandboxed app is also a spectrum. A first-party app like events could eventually run in the sandbox model with elevated permissions, but that's not required. Trusted userspace remains the right choice for apps that need direct DB access and tight kernel integration.
 
+## Two Deployment Models
+
+RFC-19 and RFC-25 describe two ways an app can exist in the Imajin ecosystem. They're complementary, not competing.
+
+### Federated (RFC-19)
+
+The app runs on the **developer's** infrastructure. The node's shell renders it in an iframe via registry handshake. Identity flows through, but the app is fundamentally a remote website wrapped in the Imajin context.
+
+```
+Developer's Server                    Node (jin.imajin.ai)
+┌──────────────┐                     ┌────────────────────┐
+│  booking.app │ ←── iframe src ───  │  Shell (browser)   │
+│              │                     │  Toolbar / Launcher│
+│  Own DB      │                     │                    │
+│  Own hosting │ ── auth handshake → │  Kernel (auth)     │
+│  Own costs   │                     │                    │
+└──────────────┘                     └────────────────────┘
+```
+
+- Developer pays for their own hosting
+- Data lives on developer's servers
+- Isolation is the browser (iframe sandbox) — low trust required
+- Latency is cross-network
+- Node operator earns nothing (unless a .fair settlement flows through)
+
+### Hosted (RFC-25)
+
+The app runs on the **node operator's** infrastructure. Sandboxed container, metered gateway, isolated schema. The node operator is the host — they earn fees, they control resources, they can revoke access.
+
+```
+Node (jin.imajin.ai)
+┌──────────────────────────────────────┐
+│  Shell (browser)                     │
+│  Toolbar / Launcher                  │
+│  ┌────────────────────────────────┐  │
+│  │  App iframe → /app/booking     │  │
+│  └──────────┬─────────────────────┘  │
+│             │                        │
+│  Sandbox Gateway ← gas metering      │
+│             │                        │
+│  ┌──────────┴───────┐  ┌─────────┐  │
+│  │  App Container   │  │ Kernel  │  │
+│  │  (sandboxed)     │──│ APIs    │  │
+│  │  Own schema      │  │         │  │
+│  │  Resource limits │  │         │  │
+│  └──────────────────┘  └─────────┘  │
+└──────────────────────────────────────┘
+```
+
+- Node operator pays for hosting (earns node fee)
+- Data lives on node operator's servers (data sovereignty for the community)
+- Isolation is container + gateway — high trust infrastructure required
+- Latency is local
+- Node operator earns 0.5% on every transaction
+
+### Both at Once
+
+A developer can offer their app in both models:
+
+1. **Federated** — run it yourself at `booking.example.com`, register with any node. Full control, no dependency.
+2. **Hosted** — publish to the registry, node operators install it. Wider distribution, developer earns a fee, node earns a fee.
+
+Same app manifest. Same .fair chain. Same identity. Different deployment target. The user doesn't know or care where the app runs — it appears in the launcher either way.
+
+This mirrors how software has always worked: you can self-host WordPress or use WordPress.com. The difference is that Imajin's identity and settlement layers make the transition seamless — your DID, your connections, your attestations, your balance all work the same regardless of where the app is deployed.
+
 ## Relationship to Other Work
 
 - **#465 (Agent Sandbox):** Agents are a special case of sandboxed apps — same gateway, same gas metering, same scope isolation. The agent sandbox becomes a flavor of the app runtime.
