@@ -74,7 +74,7 @@ export default async function PlacesMaintained({ sessionDid }: Props) {
 
       <div className="mt-2">
         <Link
-          href="/profile/api/stubs/new"
+          href="/auth/stubs/new"
           className="flex items-center gap-2 px-3 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors rounded-lg no-underline"
         >
           <span className="text-base leading-none">+</span> Add a Place
