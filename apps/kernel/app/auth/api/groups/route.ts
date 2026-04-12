@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, storedKeys, groupIdentities, groupControllers, profiles } from '@/src/db';
+import { db, identities, storedKeys, groupControllers, profiles } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { generateKeypair } from '@imajin/auth';
@@ -9,7 +9,7 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-const VALID_SCOPES = ['org', 'community', 'family'] as const;
+const VALID_SCOPES = ['business', 'community', 'family'] as const;
 type GroupScope = typeof VALID_SCOPES[number];
 
 function genId(prefix: string): string {
@@ -104,6 +104,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const validatedScope = scope as GroupScope;
+
     // Generate Ed25519 keypair server-side
     const { privateKey, publicKey } = generateKeypair();
     const groupDid = didFromPublicKey(publicKey);
@@ -115,7 +117,7 @@ export async function POST(request: NextRequest) {
     // Store identity
     await db.insert(identities).values({
       id: groupDid,
-      type: scope,  // 'org' | 'community' | 'family'
+      scope: validatedScope,
       publicKey,
       handle: handle || null,
       name: name.trim().slice(0, 100),
@@ -129,13 +131,6 @@ export async function POST(request: NextRequest) {
       encryptedKey,
       salt,
       keyDerivation: 'pbkdf2',
-    });
-
-    // Store group identity record
-    await db.insert(groupIdentities).values({
-      groupDid,
-      scope: scope as GroupScope,
-      createdBy: caller.id,
     });
 
     // Add creator as owner
@@ -153,7 +148,6 @@ export async function POST(request: NextRequest) {
         displayName: name.trim().slice(0, 100),
         handle: handle || null,
         bio: description || null,
-        displayType: scope,
       }).onConflictDoNothing();
     } catch (err) {
       log.error({ err: String(err) }, '[groups] Profile creation failed (non-fatal)');
@@ -192,12 +186,11 @@ export async function GET(request: NextRequest) {
       .select({
         groupDid: groupControllers.groupDid,
         role: groupControllers.role,
-        scope: groupIdentities.scope,
+        scope: identities.scope,
         name: identities.name,
         handle: identities.handle,
       })
       .from(groupControllers)
-      .innerJoin(groupIdentities, eq(groupControllers.groupDid, groupIdentities.groupDid))
       .innerJoin(identities, eq(groupControllers.groupDid, identities.id))
       .where(
         and(

@@ -44,7 +44,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       });
     }
 
-    const { from, type } = message;
+    const { from } = message;
 
     // Get identity from database
     const [identity] = await db
@@ -57,14 +57,6 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       return NextResponse.json({
         valid: false,
         error: 'Identity not found',
-      });
-    }
-
-    // Verify type matches
-    if (identity.type !== type) {
-      return NextResponse.json({
-        valid: false,
-        error: 'Type mismatch',
       });
     }
 
@@ -82,7 +74,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       valid: true,
       identity: {
         id: identity.id,
-        type: identity.type,
+        scope: identity.scope,
+        subtype: identity.subtype,
         name: identity.name,
         metadata: identity.metadata,
       },

@@ -6,7 +6,8 @@ const log = createLogger('kernel');
 
 export interface IdentityLookup {
   did: string;
-  type: string;
+  scope: string;
+  subtype: string | null;
   handle: string | null;
   name: string | null;
   avatarUrl: string | null;
@@ -25,7 +26,8 @@ export async function lookupIdentity(did: string): Promise<IdentityLookup | null
     const [identity] = await db
       .select({
         id: identities.id,
-        type: identities.type,
+        scope: identities.scope,
+        subtype: identities.subtype,
         handle: identities.handle,
         name: identities.name,
         avatarUrl: identities.avatarUrl,
@@ -41,7 +43,8 @@ export async function lookupIdentity(did: string): Promise<IdentityLookup | null
 
     return {
       did: identity.id,
-      type: identity.type,
+      scope: identity.scope,
+      subtype: identity.subtype,
       handle: identity.handle,
       name: identity.name,
       avatarUrl: identity.avatarUrl,

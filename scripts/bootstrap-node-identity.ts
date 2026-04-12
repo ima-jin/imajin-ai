@@ -121,11 +121,12 @@ async function main() {
 
   console.log('Generated node DID:', nodeDid);
 
-  // 2. Insert into auth.identities (type='node', tier='established')
+  // 2. Insert into auth.identities (scope='actor', subtype='node', tier='established')
   await sql`
-    INSERT INTO auth.identities (id, type, public_key, name, tier, created_at, updated_at)
+    INSERT INTO auth.identities (id, scope, subtype, public_key, name, tier, created_at, updated_at)
     VALUES (
       ${nodeDid},
+      'actor',
       'node',
       ${publicKeyHex},
       ${nodeName},

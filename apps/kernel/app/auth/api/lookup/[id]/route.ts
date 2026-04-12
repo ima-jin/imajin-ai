@@ -35,7 +35,8 @@ export async function GET(
     const [identity] = await db
       .select({
         id: identities.id,
-        type: identities.type,
+        scope: identities.scope,
+        subtype: identities.subtype,
         handle: identities.handle,
         name: identities.name,
         avatarUrl: identities.avatarUrl,
@@ -59,7 +60,8 @@ export async function GET(
       did: identity.id,
       handle: identity.handle,
       name: identity.name,
-      type: identity.type,
+      scope: identity.scope,
+      subtype: identity.subtype,
       tier: identity.tier,
       avatarUrl: identity.avatarUrl,
       metadata: identity.metadata,

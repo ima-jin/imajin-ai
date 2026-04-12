@@ -39,7 +39,7 @@ export async function checkPreliminaryEligibility(did: string): Promise<void> {
     .where(
       and(
         isNull(connections.disconnectedAt),
-        eq(identities.type, 'human'),
+        eq(identities.scope, 'actor'),
         or(eq(identities.tier, 'preliminary'), eq(identities.tier, 'established'))
       )
     )
@@ -100,7 +100,7 @@ export async function checkHardEligibility(did: string): Promise<void> {
         and(eq(connections.didB, did), eq(identities.id, connections.didA))
       )
     )
-    .where(and(isNull(connections.disconnectedAt), eq(identities.type, 'human')));
+    .where(and(isNull(connections.disconnectedAt), eq(identities.scope, 'actor')));
 
   if (total < 25) return;
 

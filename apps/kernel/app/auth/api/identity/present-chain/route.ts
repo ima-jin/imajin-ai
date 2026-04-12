@@ -57,7 +57,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     if (existing) {
       const token = await createSessionToken({
         sub: existing.imajinDid,
-        type: existing.type,
+        scope: existing.scope || 'actor',
+        subtype: existing.subtype || undefined,
         tier: existing.tier as 'soft' | 'preliminary' | 'established',
       });
 
@@ -76,7 +77,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     // 3. Check if the public key is already registered locally (same key, no chain yet)
     const [existingByKey] = await db
-      .select({ id: identities.id, type: identities.type, tier: identities.tier })
+      .select({ id: identities.id, scope: identities.scope, subtype: identities.subtype, tier: identities.tier })
       .from(identities)
       .where(eq(identities.publicKey, publicKeyHex))
       .limit(1);
@@ -91,7 +92,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
       const token = await createSessionToken({
         sub: existingByKey.id,
-        type: existingByKey.type,
+        scope: existingByKey.scope || 'actor',
+        subtype: existingByKey.subtype || undefined,
         tier: existingByKey.tier as 'soft' | 'preliminary' | 'established',
       });
 
@@ -115,7 +117,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       .insert(identities)
       .values({
         id: imajinDid,
-        type: 'human',
+        scope: 'actor',
+        subtype: 'human',
         publicKey: publicKeyHex,
         tier: 'preliminary', // chain proves keypair, not standing on this network
       })
@@ -141,7 +144,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     // 5. Create session
     const token = await createSessionToken({
       sub: identity.id,
-      type: identity.type,
+      scope: identity.scope,
+      subtype: identity.subtype || undefined,
       tier: 'preliminary',
     });
 

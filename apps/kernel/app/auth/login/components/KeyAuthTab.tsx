@@ -83,7 +83,7 @@ async function loginWithKeypair(privateKeyHex: string): Promise<LoginResult> {
   }
 
   // Fallback: register (for new identities or if challenge fails)
-  const payload = JSON.stringify({ publicKey: publicKeyHex, type: 'human' });
+  const payload = JSON.stringify({ publicKey: publicKeyHex, scope: 'actor', subtype: 'human' });
   const msgBytes = new TextEncoder().encode(payload);
   const signatureBytes = await ed.signAsync(msgBytes, privateKeyBytes);
   const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -99,7 +99,7 @@ async function loginWithKeypair(privateKeyHex: string): Promise<LoginResult> {
   const authResponse = await fetch('/auth/api/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ publicKey: publicKeyHex, type: 'human', signature, dfosChain }),
+    body: JSON.stringify({ publicKey: publicKeyHex, scope: 'actor', subtype: 'human', signature, dfosChain }),
   });
 
   if (!authResponse.ok) {

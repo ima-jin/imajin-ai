@@ -57,7 +57,8 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     return NextResponse.json({
       did: session.sub,
       handle: identity[0].handle || session.handle,
-      type: identity[0].type || session.type,
+      scope: identity[0].scope || session.scope,
+      subtype: identity[0].subtype || session.subtype || undefined,
       name: identity[0].name || session.name,
       role: metadata.role || 'member',
       tier,

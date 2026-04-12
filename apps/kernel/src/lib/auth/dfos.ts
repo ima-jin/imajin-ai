@@ -190,7 +190,8 @@ export async function getIdentityByDfosDid(dfosDid: string) {
   const [identity] = await db
     .select({
       id: identities.id,
-      type: identities.type,
+      scope: identities.scope,
+      subtype: identities.subtype,
       tier: identities.tier,
     })
     .from(identities)
@@ -202,7 +203,8 @@ export async function getIdentityByDfosDid(dfosDid: string) {
   return {
     imajinDid: identity.id,
     dfosDid: chain.dfosDid,
-    type: identity.type,
+    scope: identity.scope,
+    subtype: identity.subtype,
     tier: identity.tier,
   };
 }

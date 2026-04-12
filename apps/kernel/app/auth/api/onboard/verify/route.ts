@@ -93,7 +93,8 @@ export async function GET(request: NextRequest) {
               const identityTier = (identity.tier || 'soft') as 'soft' | 'preliminary' | 'established';
               const sessionToken = await createSessionToken({
                 sub: existingCred.did,
-                type: 'human',
+                scope: 'actor',
+                subtype: 'human',
                 tier: identityTier,
                 handle: identity.handle || undefined,
                 name: identity.name || undefined,
@@ -163,7 +164,8 @@ export async function GET(request: NextRequest) {
         .insert(identities)
         .values({
           id: did,
-          type: 'human',
+          scope: 'actor',
+          subtype: 'human',
           publicKey: placeholderKey,
           handle: null,
           name: record.name || null,
@@ -195,7 +197,8 @@ export async function GET(request: NextRequest) {
     const identityTier = (identity.tier || 'soft') as 'soft' | 'preliminary' | 'established';
     const sessionToken = await createSessionToken({
       sub: did,
-      type: 'human',
+      scope: 'actor',
+      subtype: 'human',
       tier: identityTier,
       handle: identity.handle || undefined,
       name: identity.name || undefined,

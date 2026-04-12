@@ -77,7 +77,8 @@ function RegisterPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [optInUpdates, setOptInUpdates] = useState(false);
-  const [type, setType] = useState<'human' | 'agent'>('human');
+  const [scope] = useState<string>('actor');
+  const [subtype] = useState<string>('human');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
@@ -132,7 +133,8 @@ function RegisterPage() {
         publicKey: keypair.publicKey,
         handle: handle.toLowerCase(),
         name,
-        type,
+        scope,
+        subtype,
       };
       
       const signature = await sign(JSON.stringify(payload), keypair.privateKey);
@@ -404,14 +406,13 @@ function RegisterPage() {
           )}
 
           <div>
-            <label className="block text-sm font-medium mb-1">Type</label>
+            <label className="block text-sm font-medium mb-1">Account Type</label>
             <select
-              value={type}
-              onChange={(e) => setType(e.target.value as 'human' | 'agent')}
+              value={subtype}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              disabled
             >
               <option value="human">👤 Human</option>
-              <option value="agent">🤖 Agent</option>
             </select>
           </div>
           

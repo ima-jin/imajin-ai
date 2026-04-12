@@ -93,7 +93,8 @@ export async function POST(request: NextRequest) {
         .insert(identities)
         .values({
           id: did,
-          type: 'human',
+          scope: 'actor',
+          subtype: 'human',
           publicKey: placeholderKey,
           handle: null,
           name: name?.trim() || null,
@@ -118,7 +119,8 @@ export async function POST(request: NextRequest) {
     const token = await createSessionToken({
       sub: identity[0].id,
       handle: identity[0].handle || undefined,
-      type: identity[0].type,
+      scope: identity[0].scope,
+      subtype: identity[0].subtype || undefined,
       name: identity[0].name || undefined,
       tier: 'soft',
     });
@@ -127,7 +129,8 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({
       did: identity[0].id,
       handle: identity[0].handle,
-      type: identity[0].type,
+      scope: identity[0].scope,
+      subtype: identity[0].subtype,
       name: identity[0].name,
       tier: 'soft',
     }, { headers: cors });

@@ -147,7 +147,8 @@ export async function POST(request: NextRequest) {
     const token = await createSessionToken({
       sub: identity.id,
       handle: identity.handle || undefined,
-      type: identity.type,
+      scope: identity.scope,
+      subtype: identity.subtype || undefined,
       name: identity.name || undefined,
       tier: (identity.tier as 'soft' | 'preliminary' | 'established') || 'preliminary',
     });
@@ -157,7 +158,8 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({
       did: identity.id,
       handle: identity.handle,
-      type: identity.type,
+      scope: identity.scope,
+      subtype: identity.subtype,
       name: identity.name,
       dfosChainLinked,
     });

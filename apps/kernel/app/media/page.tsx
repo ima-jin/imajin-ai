@@ -16,7 +16,8 @@ export default async function Page() {
 
   const identity: Identity = {
     id: session.did,
-    type: session.type as Identity["type"],
+    scope: session.scope,
+    subtype: session.subtype,
     name: session.name,
     handle: session.handle,
     tier: session.tier as Identity["tier"],

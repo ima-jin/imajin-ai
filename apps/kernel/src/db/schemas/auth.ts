@@ -14,7 +14,8 @@ export const authSchema = pgSchema('auth');
  */
 export const identities = authSchema.table('identities', {
   id: text('id').primaryKey(),                    // did:imajin:xxx
-  type: text('type').notNull(),                   // 'human' | 'agent'
+  scope: text('scope').notNull(),                 // 'actor' | 'family' | 'community' | 'business'
+  subtype: text('subtype'),                       // scope-dependent: 'human' | 'agent' | 'device' | etc.
   publicKey: text('public_key').notNull().unique(),
   handle: text('handle').unique(),                // @username (unique, optional)
   name: text('name'),                             // Display name

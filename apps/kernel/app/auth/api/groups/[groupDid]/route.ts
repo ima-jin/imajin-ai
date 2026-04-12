@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, groupIdentities, groupControllers, profiles } from '@/src/db';
+import { db, identities, groupControllers, profiles } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
-const VALID_SCOPES = ['org', 'community', 'family'];
+const VALID_SCOPES = ['business', 'community', 'family'];
 
 /**
  * GET /api/groups/[groupDid]
@@ -40,18 +40,22 @@ export async function GET(
       return NextResponse.json({ error: 'Not a controller of this group' }, { status: 403 });
     }
 
+    const [ownerRow] = await db
+      .select({ controllerDid: groupControllers.controllerDid, addedAt: groupControllers.addedAt })
+      .from(groupControllers)
+      .where(and(eq(groupControllers.groupDid, groupDid), eq(groupControllers.role, 'owner'), isNull(groupControllers.removedAt)))
+      .limit(1);
+
     const [group] = await db
       .select({
-        groupDid: groupIdentities.groupDid,
-        scope: groupIdentities.scope,
-        createdBy: groupIdentities.createdBy,
-        createdAt: groupIdentities.createdAt,
+        groupDid: identities.id,
+        scope: identities.scope,
+        createdAt: identities.createdAt,
         name: identities.name,
         handle: identities.handle,
       })
-      .from(groupIdentities)
-      .innerJoin(identities, eq(groupIdentities.groupDid, identities.id))
-      .where(eq(groupIdentities.groupDid, groupDid))
+      .from(identities)
+      .where(eq(identities.id, groupDid))
       .limit(1);
 
     if (!group) {
@@ -73,7 +77,7 @@ export async function GET(
         )
       );
 
-    return NextResponse.json({ ...group, controllers });
+    return NextResponse.json({ ...group, createdBy: ownerRow?.controllerDid ?? null, controllers });
   } catch (error) {
     log.error({ err: String(error) }, '[groups] Get error');
     return NextResponse.json({ error: 'Failed to get group' }, { status: 500 });
@@ -144,9 +148,9 @@ export async function PATCH(
 
     if (scope) {
       await db
-        .update(groupIdentities)
-        .set({ scope })
-        .where(eq(groupIdentities.groupDid, groupDid));
+        .update(identities)
+        .set({ scope, updatedAt: new Date() })
+        .where(eq(identities.id, groupDid));
     }
 
     return NextResponse.json({ ok: true });

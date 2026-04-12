@@ -26,7 +26,8 @@ const events = createEmitter('kernel');
  *   publicKey: string (hex),
  *   handle?: string,
  *   name?: string,
- *   type: 'human' | 'agent' | 'presence' | 'org' | 'device' | 'service',
+ *   scope?: 'actor' | 'family' | 'community' | 'business' (default: 'actor'),
+ *   subtype?: string (default: 'human' for actor scope),
  *   signature: string (hex) - signs the payload,
  *   inviteCode?: string - required for new registrations
  * }
@@ -43,7 +44,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { publicKey, handle, name, type, signature, inviteCode, email, phone, optInUpdates } = body;
+    const { publicKey, handle, name, scope: rawScope, subtype: rawSubtype, signature, inviteCode, email, phone, optInUpdates } = body;
+    const scope = rawScope || 'actor';
+    const subtype = rawSubtype || (scope === 'actor' ? 'human' : null);
 
     // Validate required fields
     if (!publicKey || typeof publicKey !== 'string') {
@@ -53,11 +56,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Valid identity types
-    const validTypes = ['human', 'agent', 'presence', 'org', 'device', 'service', 'event'];
-    if (!type || !validTypes.includes(type)) {
+    // Valid identity scopes
+    const VALID_SCOPES = ['actor', 'family', 'community', 'business'];
+    if (!VALID_SCOPES.includes(scope)) {
       return NextResponse.json(
-        { error: `type required: ${validTypes.join(', ')}` },
+        { error: `scope must be one of: ${VALID_SCOPES.join(', ')}` },
         { status: 400 }
       );
     }
@@ -85,19 +88,22 @@ export async function POST(request: NextRequest) {
       publicKey,
       handle,
       name,
-      type,
+      scope,
+      subtype,
       timestamp: Math.floor(Date.now() / 1000),
     });
 
     // For registration, we accept any recent timestamp (within 5 minutes)
     // In production, you'd want stricter timestamp validation
-    
+
     const isValid = await verifySignature(payloadToSign, signature, publicKey);
     if (!isValid) {
-      // Also try without timestamp for simpler clients
-      const simplePayload = JSON.stringify({ publicKey, handle, name, type });
+      // Also try without timestamp for simpler clients (and legacy type-based payloads)
+      const simplePayload = JSON.stringify({ publicKey, handle, name, scope, subtype });
       const isValidSimple = await verifySignature(simplePayload, signature, publicKey);
-      if (!isValidSimple) {
+      const legacyPayload = JSON.stringify({ publicKey, handle, name, type: rawSubtype || 'human' });
+      const isValidLegacy = !isValidSimple && await verifySignature(legacyPayload, signature, publicKey);
+      if (!isValidSimple && !isValidLegacy) {
         return NextResponse.json(
           { error: 'Invalid signature' },
           { status: 401 }
@@ -136,7 +142,8 @@ export async function POST(request: NextRequest) {
         const token = await createSessionToken({
           sub: existing[0].id,
           handle: existing[0].handle || undefined,
-          type: existing[0].type,
+          scope: existing[0].scope,
+          subtype: existing[0].subtype || undefined,
           name: existing[0].name || undefined,
           tier: (existing[0].tier as 'soft' | 'preliminary' | 'established') || 'preliminary',
         });
@@ -145,7 +152,8 @@ export async function POST(request: NextRequest) {
         const response = NextResponse.json({
           did: existing[0].id,
           handle: existing[0].handle,
-          type: existing[0].type,
+          scope: existing[0].scope,
+          subtype: existing[0].subtype,
           created: false,
           message: 'Identity already exists',
           dfosChainLinked: existingDfosLinked,
@@ -165,7 +173,7 @@ export async function POST(request: NextRequest) {
     // Require invite code for new registrations (skip in dev with DISABLE_INVITE_GATE=true)
     // Service-to-service registrations (events, agents, etc.) bypass the invite gate
     const inviteGateDisabled = process.env.NEXT_PUBLIC_DISABLE_INVITE_GATE === 'true';
-    const isServiceRegistration = type && type !== 'human';
+    const isServiceRegistration = scope !== 'actor' || (subtype && subtype !== 'human');
     let inviteData: { fromDid: string; fromHandle?: string } | null = null;
 
     if (!isServiceRegistration && inviteCode) {
@@ -202,7 +210,8 @@ export async function POST(request: NextRequest) {
       .insert(identities)
       .values({
         id: did,
-        type,
+        scope,
+        subtype: subtype || null,
         publicKey,
         handle: handle || null,
         name: name?.trim().slice(0, 100) || null,
@@ -231,7 +240,8 @@ export async function POST(request: NextRequest) {
     const token = await createSessionToken({
       sub: identity.id,
       handle: identity.handle || undefined,
-      type: identity.type,
+      scope: identity.scope,
+      subtype: identity.subtype || undefined,
       name: identity.name || undefined,
       tier: 'preliminary', // registrations with public keys are preliminary DIDs
     });
@@ -241,7 +251,8 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({
       did: identity.id,
       handle: identity.handle,
-      type: identity.type,
+      scope: identity.scope,
+      subtype: identity.subtype,
       created: true,
       inviteAccepted: false,
       dfosChainLinked,
@@ -249,7 +260,7 @@ export async function POST(request: NextRequest) {
 
     response.cookies.set(cookieConfig.name, token, cookieConfig.options);
 
-    events.emit({ action: 'identity.register', did: identity.id, payload: { identityType: type, tier: 'preliminary' } });
+    events.emit({ action: 'identity.register', did: identity.id, payload: { scope: identity.scope, subtype: identity.subtype, tier: 'preliminary' } });
 
     // Emit identity.created attestation → triggers 10 MJN emission
     emitAttestation({
@@ -258,7 +269,7 @@ export async function POST(request: NextRequest) {
       type: 'identity.created',
       context_id: identity.id,
       context_type: 'identity',
-      payload: { tier: 'preliminary', type: identity.type },
+      payload: { tier: 'preliminary', scope: identity.scope, subtype: identity.subtype },
     }).catch((err) => log.error({ err: String(err) }, '[register] Attestation (identity.created) error (non-fatal)'));
 
     // Emit identity.verified.preliminary → triggers 100 MJN emission
@@ -271,16 +282,14 @@ export async function POST(request: NextRequest) {
       type: 'identity.verified.preliminary',
       context_id: identity.id,
       context_type: 'identity',
-      payload: { tier: 'preliminary', type: identity.type },
+      payload: { tier: 'preliminary', scope: identity.scope, subtype: identity.subtype },
     }).catch((err) => log.error({ err: String(err) }, '[register] Attestation (identity.verified.preliminary) error (non-fatal)'));
 
     // Create profile row so the user is visible/discoverable
     try {
-      const displayType = ['human', 'agent', 'presence'].includes(type) ? type : 'human';
       await db.insert(profiles).values({
         did: identity.id,
         displayName: name?.trim().slice(0, 100) || handle || 'Anonymous',
-        displayType,
         handle: handle || null,
         contactEmail: email?.trim() || null,
         phone: phone?.trim() || null,
@@ -451,7 +460,8 @@ export async function POST(request: NextRequest) {
         const acceptedResponse = NextResponse.json({
           did: identity.id,
           handle: identity.handle,
-          type: identity.type,
+          scope: identity.scope,
+          subtype: identity.subtype,
           created: true,
           inviteAccepted: true,
           dfosChainLinked,

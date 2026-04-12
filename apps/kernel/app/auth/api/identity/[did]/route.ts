@@ -29,7 +29,8 @@ export async function GET(
       .select({
         id: identities.id,
         publicKey: identities.publicKey,
-        type: identities.type,
+        scope: identities.scope,
+        subtype: identities.subtype,
         tier: identities.tier,
       })
       .from(identities)
@@ -49,7 +50,8 @@ export async function GET(
       {
         did: identity.id,
         publicKey: identity.publicKey,
-        type: identity.type,
+        scope: identity.scope,
+        subtype: identity.subtype,
         tier: identity.tier,
         ...(chain ? { dfosDid: chain.dfosDid } : {}),
       },

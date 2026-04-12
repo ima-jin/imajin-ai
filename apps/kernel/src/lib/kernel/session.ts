@@ -8,7 +8,8 @@ const log = createLogger('kernel');
 export interface KernelSession {
   did: string;
   handle?: string;
-  type: string;
+  scope: string;
+  subtype?: string;
   name?: string;
   role: string;
   tier: string;
@@ -59,7 +60,8 @@ export async function getSessionFromCookies(cookieHeader: string | null): Promis
     return {
       did: session.sub,
       handle: identity[0].handle || session.handle || undefined,
-      type: identity[0].type || session.type,
+      scope: identity[0].scope || session.scope,
+      subtype: identity[0].subtype || session.subtype || undefined,
       name: identity[0].name || session.name || undefined,
       role: (metadata.role as string) || 'member',
       tier,

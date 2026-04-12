@@ -70,7 +70,7 @@ export default async function IdentityDetail({ did }: Props) {
           <span className="text-white font-medium">{attCount}</span>{' '}
           {attCount === 1 ? 'attestation' : 'attestations'}
         </span>
-        <span className="text-zinc-600 capitalize">{identity.type}</span>
+        <span className="text-zinc-600 capitalize">{identity.scope}{identity.subtype ? `/${identity.subtype}` : ''}</span>
       </div>
 
       {identity.createdAt && (

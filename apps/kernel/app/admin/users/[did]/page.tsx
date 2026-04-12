@@ -15,7 +15,7 @@ export default async function AdminUserDetailPage({
 
   // Identity
   const [identity] = await sql`
-    SELECT id, handle, name, type, tier, public_key, suspended_at, created_at
+    SELECT id, handle, name, scope, subtype, tier, public_key, suspended_at, created_at
     FROM auth.identities
     WHERE id = ${decodedDid}
     LIMIT 1
@@ -89,7 +89,7 @@ export default async function AdminUserDetailPage({
               )}
               <TierBadge tier={identity.tier as string} />
               <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
-                {identity.type as string}
+                {identity.scope as string}{identity.subtype ? `/${identity.subtype as string}` : ''}
               </span>
             </div>
             <p className="font-mono text-xs text-gray-500 dark:text-gray-400 break-all mb-1">

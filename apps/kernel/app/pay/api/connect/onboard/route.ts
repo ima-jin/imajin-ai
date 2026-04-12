@@ -38,10 +38,10 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   }
   const { identity } = authResult;
 
-  // Must be a human (hard DID), not an agent
-  if (identity.type !== 'human') {
+  // Must be an actor (human), not a group identity
+  if (identity.scope !== 'actor') {
     return NextResponse.json(
-      { error: 'Forbidden - only human accounts can onboard to Stripe Connect' },
+      { error: 'Forbidden - only actor accounts can onboard to Stripe Connect' },
       { status: 403, headers: cors }
     );
   }
