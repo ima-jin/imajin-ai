@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { db, bugReports } from '@/src/db';
+import { db, bugReports, profiles } from '@/src/db';
 import type { BugReport } from '@/src/db';
 import { eq, desc, and, notInArray, inArray } from 'drizzle-orm';
 import { BugReporterOpenButton } from '@/src/components/www/BugReporterOpenButton';
@@ -38,7 +38,13 @@ function formatDate(date: Date | string | null) {
   return new Date(date).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function ReportCard({ r }: { r: BugReport }) {
+interface ReporterInfo {
+  handle?: string | null;
+  displayName?: string | null;
+  avatar?: string | null;
+}
+
+function ReportCard({ r, reporter }: { r: BugReport; reporter?: ReporterInfo }) {
   return (
     <li className="rounded-xl border border-gray-800 bg-[#111] p-5">
       <div className="flex items-start gap-4">
@@ -55,6 +61,17 @@ function ReportCard({ r }: { r: BugReport }) {
         <div className="flex-1 min-w-0">
           <p className="text-sm text-gray-200 line-clamp-3 mb-2">{r.description}</p>
           <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+            {reporter && (
+              <span className="inline-flex items-center gap-1.5">
+                {reporter.avatar && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={reporter.avatar} alt="" className="w-4 h-4 rounded-full object-cover" />
+                )}
+                <span className="text-gray-400">
+                  {reporter.handle ? `@${reporter.handle}` : reporter.displayName ?? 'Anonymous'}
+                </span>
+              </span>
+            )}
             <span className="inline-flex items-center px-2 py-0.5 rounded font-medium bg-gray-700 text-gray-300">
               {TYPE_EMOJI[r.type] ?? '🐛'}
             </span>
@@ -116,10 +133,19 @@ export default async function BugsPage({ searchParams }: PageProps) {
     db.select().from(bugReports).where(statusFilter ?? undefined).orderBy(desc(bugReports.createdAt)),
   ]);
 
-  // Others' reports = all reports minus mine (strip reporter details for privacy)
-  const otherReports = allReports
-    .filter(r => r.reporterDid !== session.did)
-    .map(r => ({ ...r, reporterDid: 'anonymous', reporterName: null }));
+  // Fetch reporter profiles for all unique DIDs
+  const reporterDids = [...new Set(allReports.map(r => r.reporterDid))];
+  const reporterProfiles = reporterDids.length > 0
+    ? await db.select({
+        did: profiles.did,
+        handle: profiles.handle,
+        displayName: profiles.displayName,
+        avatar: profiles.avatar,
+      }).from(profiles).where(inArray(profiles.did, reporterDids))
+    : [];
+  const reporterMap = new Map(reporterProfiles.map(p => [p.did, p]));
+
+  const otherReports = allReports.filter(r => r.reporterDid !== session.did);
 
   return (
     <main className="min-h-screen px-6 py-12 max-w-3xl mx-auto">
@@ -167,7 +193,7 @@ export default async function BugsPage({ searchParams }: PageProps) {
           </div>
         ) : (
           <ul className="space-y-4">
-            {myReports.map((r) => <ReportCard key={r.id} r={r} />)}
+            {myReports.map((r) => <ReportCard key={r.id} r={r} reporter={reporterMap.get(r.reporterDid)} />)}
           </ul>
         )}
       </section>
@@ -181,7 +207,7 @@ export default async function BugsPage({ searchParams }: PageProps) {
           </div>
         ) : (
           <ul className="space-y-4">
-            {otherReports.map((r) => <ReportCard key={r.id} r={r} />)}
+            {otherReports.map((r) => <ReportCard key={r.id} r={r} reporter={reporterMap.get(r.reporterDid)} />)}
           </ul>
         )}
       </section>
