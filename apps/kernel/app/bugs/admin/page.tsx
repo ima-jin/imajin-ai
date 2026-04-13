@@ -5,13 +5,14 @@ import Link from 'next/link';
 import { useToast } from '@imajin/ui';
 import type { BugReport } from '@/src/db';
 
-const STATUSES = ['all', 'new', 'reviewed', 'imported', 'ignored', 'duplicate'] as const;
+const STATUSES = ['all', 'new', 'reviewed', 'imported', 'resolved', 'ignored', 'duplicate'] as const;
 type StatusFilter = typeof STATUSES[number];
 
 const STATUS_STYLES: Record<string, string> = {
   new: 'bg-gray-700 text-gray-300',
   reviewed: 'bg-blue-900 text-blue-300',
   imported: 'bg-green-900 text-green-300',
+  resolved: 'bg-emerald-900 text-emerald-300',
   ignored: 'bg-red-900 text-red-300',
   duplicate: 'bg-yellow-900 text-yellow-300',
 };
