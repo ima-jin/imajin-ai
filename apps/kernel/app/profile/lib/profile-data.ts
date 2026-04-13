@@ -167,36 +167,15 @@ export async function getViewerMembership(identityDid: string, viewerDid: string
   }
 }
 
+/**
+ * @deprecated Use getMembersByRole() + getViewerMembership() instead.
+ * Kept temporarily for any external callers. Will be removed.
+ */
 export async function getMaintainerInfo(identityDid: string, viewerDid: string | null): Promise<{ count: number; isMaintainer: boolean }> {
-  try {
-    const [{ value: mc }] = await db
-      .select({ value: count() })
-      .from(identityMembers)
-      .where(
-        and(
-          eq(identityMembers.identityDid, identityDid),
-          eq(identityMembers.role, 'maintainer'),
-          isNull(identityMembers.removedAt)
-        )
-      );
-    let isMaintainer = false;
-    if (viewerDid) {
-      const [maintainerRow] = await db
-        .select({ identityDid: identityMembers.identityDid })
-        .from(identityMembers)
-        .where(
-          and(
-            eq(identityMembers.identityDid, identityDid),
-            eq(identityMembers.memberDid, viewerDid),
-            eq(identityMembers.role, 'maintainer'),
-            isNull(identityMembers.removedAt)
-          )
-        )
-        .limit(1);
-      isMaintainer = !!maintainerRow;
-    }
-    return { count: mc, isMaintainer };
-  } catch {
-    return { count: 0, isMaintainer: false };
-  }
+  const members = await getMembersByRole(identityDid);
+  const maintainers = members.filter((m) => m.role === 'maintainer');
+  const isMaintainer = viewerDid
+    ? members.some((m) => m.did === viewerDid && ['maintainer', 'owner', 'admin'].includes(m.role))
+    : false;
+  return { count: maintainers.length, isMaintainer };
 }

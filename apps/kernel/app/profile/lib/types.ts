@@ -55,5 +55,4 @@ export interface ProfileViewProps {
   viewer: ViewerContext;
   counts: ProfileCounts;
   links: LinkItem[];
-  maintainerInfo?: { count: number; isMaintainer: boolean };
 }

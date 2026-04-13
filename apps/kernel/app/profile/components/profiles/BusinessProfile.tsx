@@ -1,4 +1,4 @@
-import { getMaintainerInfo } from '../../lib/profile-data';
+import { getMembersByRole, getViewerMembership } from '../../lib/profile-data';
 import { formatMemberSince } from '../../lib/profile-utils';
 import { ScopeHeader } from '../ScopeHeader';
 import { ServiceLinks } from '../ServiceLinks';
@@ -8,8 +8,11 @@ import { StubActions } from '../StubActions';
 import type { ProfileViewProps } from '../../lib/types';
 
 export async function BusinessProfile({ profile, identity, viewer, counts, links }: ProfileViewProps) {
-  const maintainerInfo = await getMaintainerInfo(profile.did, viewer.viewerDid);
   const isUnclaimed = !profile.claimStatus || profile.claimStatus === 'unclaimed';
+  const viewerRole = viewer.viewerDid && !viewer.isSelf
+    ? await getViewerMembership(profile.did, viewer.viewerDid)
+    : viewer.isSelf ? 'owner' : null;
+  const isMaintainer = viewerRole === 'maintainer' || viewerRole === 'owner' || viewerRole === 'admin';
 
   // For unclaimed stubs: show maintainers. For claimed: show owners/admins.
   const memberRoleFilter = isUnclaimed ? 'maintainer' : 'owner';
@@ -46,12 +49,12 @@ export async function BusinessProfile({ profile, identity, viewer, counts, links
         )}
 
         {/* Stub / maintainer actions */}
-        {(isUnclaimed || maintainerInfo.isMaintainer) && (
+        {(isUnclaimed || isMaintainer) && (
           <StubActions
             identityDid={profile.did}
             profileHandle={profile.handle}
             claimStatus={profile.claimStatus}
-            isMaintainer={maintainerInfo.isMaintainer}
+            isMaintainer={isMaintainer}
             viewerDid={viewer.viewerDid}
           />
         )}

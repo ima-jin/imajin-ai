@@ -5,8 +5,7 @@ import { useState, useEffect } from 'react';
 interface MarketItemsProps {
   did: string;
   handle?: string;
-  servicePrefix: string;
-  domain: string;
+  marketBaseUrl?: string;
 }
 
 interface Listing {
@@ -24,11 +23,11 @@ function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(value);
 }
 
-export function MarketItems({ did, handle, servicePrefix, domain }: MarketItemsProps) {
+export function MarketItems({ did, handle, marketBaseUrl }: MarketItemsProps) {
   const [listings, setListings] = useState<Listing[] | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const marketBase = process.env.NEXT_PUBLIC_MARKET_URL || `${servicePrefix}market.${domain}`;
+  const marketBase = marketBaseUrl || process.env.NEXT_PUBLIC_MARKET_URL || '/market';
 
   useEffect(() => {
     fetch(`${marketBase}/api/listings?seller_did=${encodeURIComponent(did)}&status=active&limit=8`)

@@ -1,3 +1,4 @@
+import { buildPublicUrl } from '@imajin/config';
 import { ScopeHeader } from '../ScopeHeader';
 import { ProfileStats } from '../ProfileStats';
 import { ContactCard } from '../ContactCard';
@@ -9,8 +10,6 @@ import type { ProfileViewProps } from '../../lib/types';
 
 export function ActorProfile({ profile, identity, viewer, counts, links }: ProfileViewProps) {
   const isSoftDID = identity.tier === 'soft';
-  const servicePrefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-  const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 
   return (
     <div className="max-w-lg mx-auto">
@@ -63,12 +62,12 @@ export function ActorProfile({ profile, identity, viewer, counts, links }: Profi
 
         {/* Upcoming events */}
         {profile.featureToggles?.show_events && (
-          <UpcomingEvents did={profile.did} servicePrefix={servicePrefix} domain={domain} viewerDid={viewer.viewerDid} />
+          <UpcomingEvents did={profile.did} eventsBaseUrl={buildPublicUrl('events')} viewerDid={viewer.viewerDid} />
         )}
 
         {/* Market items */}
         {profile.featureToggles?.show_market_items && (
-          <MarketItems did={profile.did} handle={profile.handle} servicePrefix={servicePrefix} domain={domain} />
+          <MarketItems did={profile.did} handle={profile.handle} marketBaseUrl={buildPublicUrl('market')} />
         )}
 
         {/* Member since */}
