@@ -63,6 +63,24 @@ async function encryptPrivateKey(privateKeyJson: string, password: string): Prom
   return { encryptedKey, salt };
 }
 
+async function decryptStoredKey(encryptedKeyB64: string, saltB64: string, password: string): Promise<string> {
+  const enc = new TextEncoder();
+  const salt = Uint8Array.from(atob(saltB64), c => c.charCodeAt(0));
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  const derivedKey = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt']
+  );
+  const combined = Uint8Array.from(atob(encryptedKeyB64), c => c.charCodeAt(0));
+  const iv = combined.slice(0, 12);
+  const ciphertext = combined.slice(12);
+  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, derivedKey, ciphertext);
+  return new TextDecoder().decode(decrypted);
+}
+
 export default function SecuritySettingsPage() {
   const [loading, setLoading] = useState(true);
   const [methods, setMethods] = useState<AccountMethods | null>(null);
@@ -75,6 +93,9 @@ export default function SecuritySettingsPage() {
   const [showEmailSetup, setShowEmailSetup] = useState(false);
   const [emailCode, setEmailCode] = useState('');
   const [showPasswordSetup, setShowPasswordSetup] = useState(false);
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -310,6 +331,114 @@ export default function SecuritySettingsPage() {
     }
   }
 
+  // Change password: verify current password, then re-encrypt with new one
+  async function handlePasswordChange(e: React.FormEvent) {
+    e.preventDefault();
+    if (password !== confirmPassword) {
+      showStatus('error', 'Passwords do not match.');
+      return;
+    }
+    if (password.length < 8) {
+      showStatus('error', 'Password must be at least 8 characters.');
+      return;
+    }
+    setActionLoading('password-change');
+    try {
+      // Fetch the current stored key to verify the old password
+      const methodsRes = await fetch(`/auth/api/account/methods?did=${encodeURIComponent(methods?.did || '')}&includeKey=true`, {
+        credentials: 'include',
+      });
+      if (!methodsRes.ok) {
+        showStatus('error', 'Failed to fetch stored key.');
+        return;
+      }
+      const methodsData = await methodsRes.json();
+      if (!methodsData.encryptedKey || !methodsData.salt) {
+        showStatus('error', 'No stored key found.');
+        return;
+      }
+
+      // Verify current password by attempting decryption
+      try {
+        await decryptStoredKey(methodsData.encryptedKey, methodsData.salt, currentPassword);
+      } catch {
+        showStatus('error', 'Current password is incorrect.');
+        return;
+      }
+
+      // Re-encrypt with new password using the key from localStorage
+      const keypairJson = localStorage.getItem('imajin_keypair');
+      if (!keypairJson) {
+        showStatus('error', 'No key found in this browser.');
+        return;
+      }
+      const { encryptedKey, salt } = await encryptPrivateKey(keypairJson, password);
+      const res = await fetch('/auth/api/stored-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ encryptedKey, salt, keyDerivation: 'pbkdf2' }),
+        credentials: 'include',
+      });
+      if (res.ok) {
+        setShowPasswordChange(false);
+        setCurrentPassword('');
+        setPassword('');
+        setConfirmPassword('');
+        showStatus('success', 'Password changed successfully.');
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to update password.');
+      }
+    } catch {
+      showStatus('error', 'Failed to change password. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  // Reset password: re-encrypt from localStorage key without requiring current password
+  async function handlePasswordReset(e: React.FormEvent) {
+    e.preventDefault();
+    if (password !== confirmPassword) {
+      showStatus('error', 'Passwords do not match.');
+      return;
+    }
+    if (password.length < 8) {
+      showStatus('error', 'Password must be at least 8 characters.');
+      return;
+    }
+    setActionLoading('password-reset');
+    try {
+      const keypairJson = localStorage.getItem('imajin_keypair');
+      if (!keypairJson) {
+        showStatus('error', 'No key found in this browser. This device cannot reset the password.');
+        return;
+      }
+      const { encryptedKey, salt } = await encryptPrivateKey(keypairJson, password);
+      const res = await fetch('/auth/api/stored-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ encryptedKey, salt, keyDerivation: 'pbkdf2' }),
+        credentials: 'include',
+      });
+      if (res.ok) {
+        setShowPasswordReset(false);
+        setPassword('');
+        setConfirmPassword('');
+        showStatus('success', 'Password has been reset. Use your new password to log in on other devices.');
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to reset password.');
+      }
+    } catch {
+      showStatus('error', 'Failed to reset password. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
   async function handleRemoveDevice(deviceId: string) {
     setActionLoading(`device-${deviceId}`);
     try {
@@ -409,7 +538,15 @@ export default function SecuritySettingsPage() {
               </div>
               <div className="ml-4 flex flex-col items-end gap-2">
                 {methods?.hasStoredKey ? (
-                  <span className="px-2 py-1 text-xs bg-green-900/30 border border-green-800 rounded text-green-400 whitespace-nowrap">Active</span>
+                  <>
+                    <span className="px-2 py-1 text-xs bg-green-900/30 border border-green-800 rounded text-green-400 whitespace-nowrap">Active</span>
+                    <button
+                      onClick={() => { setShowPasswordChange(true); setShowPasswordReset(false); setCurrentPassword(''); setPassword(''); setConfirmPassword(''); }}
+                      className="text-sm px-3 py-1 bg-[#F59E0B] text-black rounded hover:bg-[#D97706] transition"
+                    >
+                      Change password
+                    </button>
+                  </>
                 ) : (
                   <>
                     <span className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-400 whitespace-nowrap">Not set up</span>
@@ -424,7 +561,109 @@ export default function SecuritySettingsPage() {
               </div>
             </div>
 
-            {/* Password setup flow */}
+            {/* Change password flow (requires current password) */}
+            {showPasswordChange && methods?.hasStoredKey && (
+              <div className="mt-4 p-4 bg-gray-900 border border-gray-700 rounded-lg">
+                <h3 className="text-white font-medium mb-2">Change password</h3>
+                <p className="text-sm text-gray-400 mb-4">
+                  Enter your current password to verify, then choose a new one.
+                </p>
+                <form onSubmit={handlePasswordChange} className="space-y-3">
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={e => setCurrentPassword(e.target.value)}
+                    placeholder="Current password"
+                    autoFocus
+                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                  />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="New password"
+                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                  />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm new password"
+                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={!currentPassword || !password || !confirmPassword || actionLoading === 'password-change'}
+                      className="flex-1 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium disabled:opacity-50"
+                    >
+                      {actionLoading === 'password-change' ? 'Changing…' : 'Change password'}
+                    </button>
+                  </div>
+                </form>
+                <div className="mt-3 flex items-center justify-between">
+                  <button
+                    onClick={() => { setShowPasswordChange(false); setCurrentPassword(''); setPassword(''); setConfirmPassword(''); }}
+                    className="text-sm text-gray-500 hover:text-gray-300 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => { setShowPasswordChange(false); setShowPasswordReset(true); setCurrentPassword(''); setPassword(''); setConfirmPassword(''); }}
+                    className="text-sm text-amber-500 hover:text-amber-400 transition"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Reset password flow (no current password — uses device-local key) */}
+            {showPasswordReset && methods?.hasStoredKey && (
+              <div className="mt-4 p-4 bg-amber-900/10 border border-amber-700/50 rounded-lg">
+                <h3 className="text-white font-medium mb-2">Reset password from this device</h3>
+                <p className="text-sm text-gray-400 mb-2">
+                  Your key is present in this browser, so you can set a new password without the old one.
+                </p>
+                <p className="text-xs text-amber-400 mb-4">
+                  ⚠️ This works because your device already has your private key. It&apos;s no different from re-running initial setup.
+                </p>
+                <form onSubmit={handlePasswordReset} className="space-y-3">
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="New password"
+                    autoFocus
+                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                  />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm new password"
+                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={!password || !confirmPassword || actionLoading === 'password-reset'}
+                      className="flex-1 py-2 bg-amber-600 text-black rounded-lg hover:bg-amber-500 transition font-medium disabled:opacity-50"
+                    >
+                      {actionLoading === 'password-reset' ? 'Resetting…' : 'Reset password'}
+                    </button>
+                  </div>
+                </form>
+                <button
+                  onClick={() => { setShowPasswordReset(false); setPassword(''); setConfirmPassword(''); }}
+                  className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {/* Password setup flow (first time) */}
             {showPasswordSetup && !methods?.hasStoredKey && (
               <div className="mt-4 p-4 bg-gray-900 border border-gray-700 rounded-lg">
                 <h3 className="text-white font-medium mb-2">Set up password login</h3>
