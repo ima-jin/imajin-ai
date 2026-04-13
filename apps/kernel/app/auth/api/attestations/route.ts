@@ -7,7 +7,7 @@ import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/a
 import type { AttestationType } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/events';
+import { createEmitter } from '@imajin/emit';
 
 const events = createEmitter('auth');
 

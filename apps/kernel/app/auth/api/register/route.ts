@@ -12,7 +12,7 @@ import { sendEmail } from '@imajin/email';
 import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-tokens';
 import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/events';
+import { createEmitter } from '@imajin/emit';
 
 const log = createLogger('kernel');
 const events = createEmitter('kernel');

@@ -5,7 +5,7 @@ import { verifySignature } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions, createMfaChallengeToken } from '@/src/lib/auth/jwt';
 import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/events';
+import { createEmitter } from '@imajin/emit';
 
 const log = createLogger('kernel');
 const events = createEmitter('kernel');

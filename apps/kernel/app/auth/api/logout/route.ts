@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
 import { corsHeaders } from '@imajin/config';
-import { createEmitter } from '@imajin/events';
+import { createEmitter } from '@imajin/emit';
 
 const events = createEmitter('kernel');
 

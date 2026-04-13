@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, connections } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
-import { createEmitter } from '@imajin/events';
+import { createEmitter } from '@imajin/emit';
 
 const events = createEmitter('connections');
 

@@ -14,7 +14,7 @@ import {
 import { notifyBumpDid } from '@/src/lib/registry/bump-notify';
 import { profiles } from '@/src/db';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/events';
+import { createEmitter } from '@imajin/emit';
 
 const log = createLogger('kernel');
 const eventBus = createEmitter('registry');

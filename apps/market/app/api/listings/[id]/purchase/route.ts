@@ -7,7 +7,7 @@
 
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/events';
+import { createEmitter } from '@imajin/emit';
 const log = createLogger('market');
 const marketEvents = createEmitter('market');
 import { db, listings } from '@/db';

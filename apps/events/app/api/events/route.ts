@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/events';
+import { createEmitter } from '@imajin/emit';
 import { db, events, ticketTypes } from '@/src/db';
 
 const emitter = createEmitter('events');

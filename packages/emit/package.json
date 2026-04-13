@@ -1,5 +1,5 @@
 {
-  "name": "@imajin/events",
+  "name": "@imajin/emit",
   "version": "0.1.0",
   "private": true,
   "main": "./src/index.ts",

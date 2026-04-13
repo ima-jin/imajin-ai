@@ -273,7 +273,7 @@ export type RequestLog = typeof requestLog.$inferSelect;
 export type NewRequestLog = typeof requestLog.$inferInsert;
 
 /**
- * System events — fire-and-forget audit log written by @imajin/events
+ * System events — fire-and-forget audit log written by @imajin/emit
  */
 export const systemEvents = registrySchema.table('system_events', {
   id: text('id').primaryKey(),
