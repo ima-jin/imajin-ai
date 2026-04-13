@@ -29,7 +29,7 @@ const VISIBLE_SERVICES = SERVICES.filter(
 
 function scopeIcon(scope: string): string {
   if (scope === 'community') return '🏛️';
-  if (scope === 'org') return '🏢';
+  if (scope === 'business') return '🏢';
   if (scope === 'family') return '👨‍👩‍👦';
   if (scope === 'node') return '🖥️';
   if (scope === 'agent') return '🤖';

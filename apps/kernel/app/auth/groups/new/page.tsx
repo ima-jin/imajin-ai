@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 const SCOPES = [
   { value: 'community', label: 'Community', icon: '🏛️', desc: 'A public or semi-public group' },
-  { value: 'org', label: 'Organization', icon: '🏢', desc: 'A business or project' },
+  { value: 'business', label: 'Organization', icon: '🏢', desc: 'A business or project' },
   { value: 'family', label: 'Family', icon: '👨‍👩‍👦', desc: 'A private family group' },
 ] as const;
 

@@ -163,7 +163,7 @@ function OnboardContent() {
             <img src={scopeProfile.avatarUrl} alt="" className="w-16 h-16 rounded-full mx-auto object-cover border border-gray-700" />
           ) : (
             <div className="w-16 h-16 rounded-full bg-gray-800 mx-auto flex items-center justify-center text-2xl">
-              {scopeProfile?.scope === 'org' ? '🏢' : scopeProfile?.scope === 'family' ? '👨‍👩‍👦' : '🏛️'}
+              {scopeProfile?.scope === 'business' ? '🏢' : scopeProfile?.scope === 'family' ? '👨‍👩‍👦' : '🏛️'}
             </div>
           )}
           <div>
