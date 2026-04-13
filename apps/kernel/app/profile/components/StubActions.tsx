@@ -1,6 +1,7 @@
 'use client';
 
 import { StubAvatarUpload } from './StubAvatarUpload';
+import { StubBannerUpload } from './StubBannerUpload';
 
 interface StubActionsProps {
   identityDid: string;
@@ -9,6 +10,7 @@ interface StubActionsProps {
   isMaintainer: boolean;
   viewerDid: string | null;
   currentAvatar?: string;
+  currentBanner?: string;
 }
 
 export function StubActions({
@@ -18,6 +20,7 @@ export function StubActions({
   isMaintainer,
   viewerDid,
   currentAvatar,
+  currentBanner,
 }: StubActionsProps) {
   const isUnclaimed = !claimStatus || claimStatus === 'unclaimed';
 
@@ -31,6 +34,7 @@ export function StubActions({
             ✓ You are a maintainer of this place.
           </p>
           <StubAvatarUpload identityDid={identityDid} currentAvatar={currentAvatar} />
+          <StubBannerUpload identityDid={identityDid} currentBanner={currentBanner} />
         </div>
       ) : (
         isUnclaimed && viewerDid && (

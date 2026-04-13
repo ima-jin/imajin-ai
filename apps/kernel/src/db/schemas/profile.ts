@@ -21,6 +21,8 @@ export const profiles = profileSchema.table('profiles', {
   displayName: text('display_name').notNull(),
   avatar: text('avatar'),                                     // URL or emoji
   avatarAssetId: text('avatar_asset_id'),                     // asset_xxx from media service
+  banner: text('banner'),                                     // banner image URL
+  bannerAssetId: text('banner_asset_id'),                     // asset_xxx from media service
   bio: text('bio'),
   contactEmail: text('contact_email'),                          // where to send receipts/tickets/notifications
   phone: text('phone'),                                       // contact phone
@@ -83,6 +85,21 @@ export const forestConfig = profileSchema.table('forest_config', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
+/**
+ * Profile Images — gallery images for stub business profiles
+ */
+export const profileImages = profileSchema.table('profile_images', {
+  id: text('id').primaryKey(),                                // img_xxx
+  did: text('did').notNull(),                                 // references profiles.did
+  url: text('url').notNull(),
+  caption: text('caption'),
+  sortOrder: integer('sort_order').default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  createdBy: text('created_by').notNull(),                    // uploader DID
+}, (table) => ({
+  didIdx: index('idx_profile_images_did').on(table.did),
+}));
+
 // Types
 export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
@@ -92,3 +109,5 @@ export type QueryLog = typeof queryLogs.$inferSelect;
 export type NewQueryLog = typeof queryLogs.$inferInsert;
 export type ForestConfig = typeof forestConfig.$inferSelect;
 export type NewForestConfig = typeof forestConfig.$inferInsert;
+export type ProfileImage = typeof profileImages.$inferSelect;
+export type NewProfileImage = typeof profileImages.$inferInsert;

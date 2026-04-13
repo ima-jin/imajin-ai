@@ -5,6 +5,7 @@ import { ServiceLinks } from '../ServiceLinks';
 import { BusinessDetails } from '../BusinessDetails';
 import { MemberList } from '../MemberList';
 import { StubActions } from '../StubActions';
+import { StubGallery } from '../StubGallery';
 import type { ProfileViewProps } from '../../lib/types';
 
 export async function BusinessProfile({ profile, identity, viewer, counts, links }: ProfileViewProps) {
@@ -20,7 +21,16 @@ export async function BusinessProfile({ profile, identity, viewer, counts, links
 
   return (
     <div className="max-w-lg mx-auto">
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
+      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl overflow-hidden text-center">
+        {/* Banner */}
+        {profile.banner && (
+          <div
+            className="w-full h-48 bg-cover bg-center"
+            style={{ backgroundImage: `url(${profile.banner})` }}
+          />
+        )}
+
+        <div className="p-8">
         <ScopeHeader profile={profile} identity={identity} />
 
         {/* Bio / about */}
@@ -57,8 +67,12 @@ export async function BusinessProfile({ profile, identity, viewer, counts, links
             isMaintainer={isMaintainer}
             viewerDid={viewer.viewerDid}
             currentAvatar={profile.avatar}
+            currentBanner={profile.banner ?? undefined}
           />
         )}
+
+        {/* Gallery */}
+        <StubGallery identityDid={profile.did} isMaintainer={isMaintainer} />
 
         <ServiceLinks profile={profile} viewerDid={viewer.viewerDid} />
 
@@ -86,6 +100,7 @@ export async function BusinessProfile({ profile, identity, viewer, counts, links
         <p className="text-xs text-gray-500 mt-4">
           Member since {formatMemberSince(profile.createdAt)}
         </p>
+        </div>
       </div>
 
       {/* DID */}
