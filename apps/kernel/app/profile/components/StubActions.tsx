@@ -1,11 +1,14 @@
 'use client';
 
+import { StubAvatarUpload } from './StubAvatarUpload';
+
 interface StubActionsProps {
   identityDid: string;
   profileHandle?: string;
   claimStatus?: string | null;
   isMaintainer: boolean;
   viewerDid: string | null;
+  currentAvatar?: string;
 }
 
 export function StubActions({
@@ -14,6 +17,7 @@ export function StubActions({
   claimStatus,
   isMaintainer,
   viewerDid,
+  currentAvatar,
 }: StubActionsProps) {
   const isUnclaimed = !claimStatus || claimStatus === 'unclaimed';
 
@@ -22,9 +26,12 @@ export function StubActions({
   return (
     <div className="mb-6 bg-sky-950/30 border border-sky-800/40 rounded-xl px-4 py-3 text-sm text-sky-300">
       {isMaintainer ? (
-        <p className="text-xs text-sky-500 text-center">
-          ✓ You are a maintainer of this place.
-        </p>
+        <div>
+          <p className="text-xs text-sky-500 text-center">
+            ✓ You are a maintainer of this place.
+          </p>
+          <StubAvatarUpload identityDid={identityDid} currentAvatar={currentAvatar} />
+        </div>
       ) : (
         isUnclaimed && viewerDid && (
           <div className="space-y-2">
