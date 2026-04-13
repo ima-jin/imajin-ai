@@ -426,11 +426,13 @@ export default async function EventPage({ params, searchParams }: Props) {
         {/* Hero Section - Mobile-first with full-bleed image */}
         <div className="relative -mx-4 md:mx-0 md:rounded-2xl overflow-hidden mb-6 md:mb-8">
           {event.imageUrl ? (
-            <img
-              src={event.imageUrl}
-              alt={event.title}
-              className="w-full h-[300px] md:h-[400px] object-cover"
-            />
+            <div className="w-full bg-black/40">
+              <img
+                src={event.imageUrl}
+                alt={event.title}
+                className="w-full max-h-[400px] md:max-h-[500px] object-contain"
+              />
+            </div>
           ) : (
             <div className={`w-full h-[300px] md:h-[400px] bg-gradient-to-br ${gradient[0]} ${gradient[1]} flex items-center justify-center`}>
               <span className="text-7xl md:text-9xl">{themeEmoji}</span>

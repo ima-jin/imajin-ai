@@ -6,6 +6,18 @@ import { desc, eq, or, and, ne, isNull, inArray } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 import { getLocationType } from '@/src/lib/location';
 
+/** Strip markdown syntax to get clean plaintext for excerpts */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // [text](url) → text
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')     // ![alt](url) → remove
+    .replace(/[*_~`#>]+/g, '')                   // remove emphasis/heading markers
+    .replace(/\n{2,}/g, ' · ')                   // paragraph breaks → separator
+    .replace(/\n/g, ' ')                          // line breaks → space
+    .replace(/\s+/g, ' ')                         // collapse whitespace
+    .trim();
+}
+
 const sql = getClient();
 
 async function getViewerDid(): Promise<string | null> {
@@ -172,9 +184,11 @@ export default async function HomePage() {
                       </span>
                     )}
                   </div>
-                  <p className="text-gray-400 mb-3 line-clamp-2">
-                    {event.description}
-                  </p>
+                  {event.description && (
+                    <p className="text-gray-400 mb-3 line-clamp-2">
+                      {stripMarkdown(event.description)}
+                    </p>
+                  )}
                   <div className="flex gap-4 text-sm text-gray-500">
                     <span>
                       📅 {new Date(event.startsAt).toLocaleDateString('en-US', {
