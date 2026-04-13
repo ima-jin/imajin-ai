@@ -39,12 +39,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { name, subtype, handle, location, category } = body as {
+  const { name, subtype, handle, location, category, lat, lon } = body as {
     name?: string;
     subtype?: string;
     handle?: string;
     location?: string;
     category?: string;
+    lat?: number;
+    lon?: number;
   };
 
   if (!name || typeof name !== 'string' || !name.trim()) {
@@ -119,9 +121,13 @@ export async function POST(request: NextRequest) {
     });
 
     // Create profile
-    const metadata: Record<string, string> = {};
+    const metadata: Record<string, string | number> = {};
     if (location) metadata.location = String(location).slice(0, 200);
     if (category) metadata.category = String(category).slice(0, 100);
+    if (typeof lat === 'number' && typeof lon === 'number' && isFinite(lat) && isFinite(lon)) {
+      metadata.lat = Math.round(lat * 1e6) / 1e6;  // ~11cm precision
+      metadata.lon = Math.round(lon * 1e6) / 1e6;
+    }
 
     await db.insert(profiles).values({
       did: stubDid,
