@@ -18,6 +18,14 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
+interface FairSettlement {
+  version?: string;
+  settledAt: string;
+  totalAmount: number;
+  currency: string;
+  chain: { did: string; amount: number; role: string }[];
+}
+
 interface UserTicket {
   id: string;
   status: string;
@@ -27,6 +35,7 @@ interface UserTicket {
   pricePaid: number | null;
   currency: string | null;
   qrCodeDataUri?: string;
+  fairSettlement?: FairSettlement | null;
   ticketType: {
     name: string;
     description: string | null;
@@ -244,6 +253,74 @@ function MyTicketCard({ ticket, eventId }: { ticket: UserTicket; eventId: string
           ticketId={ticket.id}
           onComplete={handleRegistrationComplete}
         />
+      )}
+
+      {/* .fair settlement receipt */}
+      {ticket.fairSettlement && (
+        <TicketFairReceipt settlement={ticket.fairSettlement} />
+      )}
+    </div>
+  );
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  buyer_credit: 'Your credit',
+  node: 'Node',
+  platform: 'Protocol (MJN)',
+  seller: 'Organizer',
+  creator: 'Creator',
+};
+
+function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
+  const [open, setOpen] = useState(false);
+  const currencyFmt = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: settlement.currency || 'CAD',
+  });
+
+  return (
+    <div className="mt-4 border-t border-gray-200 dark:border-gray-800 pt-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition"
+      >
+        <span>⚖️</span>
+        <span>.fair settlement receipt</span>
+        <span className={`transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-2">
+          {settlement.chain.map((entry, i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-900/60 rounded-lg text-sm"
+            >
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${
+                  entry.role === 'seller' ? 'bg-orange-500' :
+                  entry.role === 'buyer_credit' ? 'bg-green-500' :
+                  entry.role === 'platform' ? 'bg-blue-500' :
+                  'bg-gray-500'
+                }`} />
+                <span className="font-medium">{ROLE_LABELS[entry.role] ?? entry.role}</span>
+                <span className="text-xs text-gray-400 truncate max-w-[120px]" title={entry.did}>
+                  {entry.did.length > 24 ? entry.did.slice(0, 10) + '…' + entry.did.slice(-6) : entry.did}
+                </span>
+              </div>
+              <span className="font-bold">{currencyFmt.format(entry.amount)}</span>
+            </div>
+          ))}
+          <div className="flex justify-between px-3 pt-2 border-t border-gray-200 dark:border-gray-800 text-sm">
+            <span className="text-gray-500">Total</span>
+            <span className="font-bold">{currencyFmt.format(settlement.totalAmount)}</span>
+          </div>
+          <p className="text-[10px] text-gray-400 px-3">
+            Settled {new Date(settlement.settledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            {' · '}
+            <a href="https://github.com/ima-jin/.fair" target="_blank" rel="noopener noreferrer" className="hover:text-orange-500 transition">.fair</a>
+            {' '}v{settlement.version || '1.0'}
+          </p>
+        </div>
       )}
     </div>
   );

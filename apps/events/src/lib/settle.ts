@@ -11,6 +11,8 @@
  */
 
 import { createLogger } from '@imajin/logger';
+import { db, tickets } from '@/src/db';
+import { eq, sql } from 'drizzle-orm';
 
 const log = createLogger('events');
 
@@ -116,6 +118,25 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
 
     const result = await response.json();
     log.info({ ticketId: metadata.ticketId, result }, '[settle] Settlement complete for ticket');
+
+    // Snapshot the resolved .fair manifest onto the ticket — immutable receipt
+    try {
+      const fairSettlement = {
+        version: fairManifest.version || fairManifest.fair || '1.0',
+        settledAt: new Date().toISOString(),
+        totalAmount: totalDollars,
+        currency: params.currency,
+        chain: resolvedChain,
+      };
+      await db.update(tickets)
+        .set({
+          metadata: sql`COALESCE(${tickets.metadata}, '{}'::jsonb) || ${JSON.stringify({ fair_settlement: fairSettlement })}::jsonb`,
+        })
+        .where(eq(tickets.id, metadata.ticketId));
+      log.info({ ticketId: metadata.ticketId }, '[settle] .fair settlement snapshot saved to ticket');
+    } catch (snapshotError) {
+      log.warn({ err: String(snapshotError) }, '[settle] Failed to snapshot .fair to ticket (non-fatal)');
+    }
   } catch (error) {
     log.error({ err: String(error) }, '[settle] Settlement request failed (non-fatal)');
   }

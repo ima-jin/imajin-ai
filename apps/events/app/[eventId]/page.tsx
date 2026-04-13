@@ -160,6 +160,7 @@ async function getUserTickets(eventId: string, userDid: string) {
       ? (await generateQRCode(ticket.id) || undefined)
       : undefined;
 
+    const ticketMeta = (ticket.metadata || {}) as Record<string, any>;
     return {
       id: ticket.id,
       status: ticket.status,
@@ -169,6 +170,7 @@ async function getUserTickets(eventId: string, userDid: string) {
       pricePaid: ticket.pricePaid,
       currency: ticket.currency,
       qrCodeDataUri,
+      fairSettlement: ticketMeta.fair_settlement || null,
       ticketType: ticketType ? {
         name: ticketType.name,
         description: ticketType.description,
