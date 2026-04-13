@@ -11,6 +11,7 @@ interface Props {
   inviteToken?: string;
   etransferEnabled?: boolean;
   stripeDisabled?: boolean;
+  maxPerOrder?: number;
 }
 
 interface ETransferInstructions {
@@ -25,20 +26,30 @@ interface ETransferInstructions {
 
 type Step = 'button' | 'selector' | 'loading-card' | 'etransfer-confirm' | 'loading-etransfer' | 'etransfer-done' | 'rsvp-form' | 'loading-rsvp' | 'rsvp-done';
 
-export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false, stripeDisabled = false }: Props) {
+export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false, stripeDisabled = false, maxPerOrder }: Props) {
   const [step, setStep] = useState<Step>('button');
   const [error, setError] = useState<string | null>(null);
   const [etransfer, setEtransfer] = useState<ETransferInstructions | null>(null);
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [quantity, setQuantity] = useState(1);
 
   const isFree = ticket.price === 0;
 
-  const available = ticket.quantity === null
+  const availableCount = ticket.quantity === null
+    ? null
+    : ticket.quantity - (ticket.sold ?? 0);
+
+  const available = availableCount === null
     ? 'Unlimited'
-    : `${ticket.quantity - (ticket.sold ?? 0)} left`;
+    : `${availableCount} left`;
 
   const soldOut = ticket.quantity !== null && (ticket.sold ?? 0) >= ticket.quantity;
+
+  // Effective max: per-type override > prop > default 10, capped at 20
+  const resolvedMax = maxPerOrder ?? (ticket as any).maxPerOrder ?? 10;
+  const effectiveMax = Math.min(resolvedMax, availableCount ?? 20, 20);
+  const showQuantity = !isFree && effectiveMax > 1;
 
   const handleCardPayment = async () => {
     setStep('loading-card');
@@ -51,7 +62,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
         body: JSON.stringify({
           eventId,
           ticketTypeId: ticket.id,
-          quantity: 1,
+          quantity,
           ...(inviteToken && { invite: inviteToken }),
         }),
       });
@@ -336,6 +347,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
     return (
       <div className="space-y-2">
         {error && <p className="text-red-500 text-xs">{error}</p>}
+        {showQuantity && <QuantityStepper quantity={quantity} setQuantity={setQuantity} max={effectiveMax} price={ticket.price} currency={ticket.currency} />}
         <div className="flex flex-col gap-2 w-full">
           {!stripeDisabled && (
             <button
@@ -396,6 +408,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
       {error && (
         <p className="text-red-500 text-xs mb-2">{error}</p>
       )}
+      {showQuantity && <QuantityStepper quantity={quantity} setQuantity={setQuantity} max={effectiveMax} price={ticket.price} currency={ticket.currency} />}
       <button
         onClick={handleButtonClick}
         disabled={(step as string) === 'loading-rsvp'}
@@ -405,8 +418,58 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
             : 'bg-orange-500 text-white hover:bg-orange-600'
         }`}
       >
-        {(step as string) === 'loading-rsvp' ? 'Confirming...' : isFree ? 'RSVP' : (stripeDisabled && etransferEnabled) ? '🏦 Pay by e-Transfer' : 'Get Ticket'}
+        {(step as string) === 'loading-rsvp'
+          ? 'Confirming...'
+          : isFree
+          ? 'RSVP'
+          : (stripeDisabled && etransferEnabled)
+          ? '🏦 Pay by e-Transfer'
+          : quantity > 1
+          ? `Get ${quantity} Tickets`
+          : 'Get Ticket'}
       </button>
     </>
+  );
+}
+
+function QuantityStepper({ quantity, setQuantity, max, price, currency }: {
+  quantity: number;
+  setQuantity: (q: number) => void;
+  max: number;
+  price: number;
+  currency: string;
+}) {
+  const total = new Intl.NumberFormat('en-CA', {
+    style: 'currency',
+    currency,
+  }).format((price * quantity) / 100);
+
+  return (
+    <div className="flex items-center gap-3 mb-2">
+      <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
+        <button
+          onClick={() => setQuantity(Math.max(1, quantity - 1))}
+          disabled={quantity <= 1}
+          className="px-3 py-1.5 text-lg font-bold hover:bg-gray-100 dark:hover:bg-gray-800 transition disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          −
+        </button>
+        <span className="px-3 py-1.5 min-w-[2.5rem] text-center font-semibold text-sm border-x border-gray-300 dark:border-gray-600">
+          {quantity}
+        </span>
+        <button
+          onClick={() => setQuantity(Math.min(max, quantity + 1))}
+          disabled={quantity >= max}
+          className="px-3 py-1.5 text-lg font-bold hover:bg-gray-100 dark:hover:bg-gray-800 transition disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          +
+        </button>
+      </div>
+      {quantity > 1 && (
+        <span className="text-sm text-gray-500 dark:text-gray-400">
+          {total} total
+        </span>
+      )}
+    </div>
   );
 }
