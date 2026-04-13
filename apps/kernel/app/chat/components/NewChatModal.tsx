@@ -47,6 +47,9 @@ function displayName(conn: Connection): string {
   return conn.did.slice(0, 24) + '...';
 }
 
+// Module-level cache — survives modal open/close cycles within the same page session
+let _connectionsCache: { did: string; connections: Connection[] } | null = null;
+
 export function NewChatModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const { identity } = useIdentity();
@@ -63,6 +66,15 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
   const [groupName, setGroupName] = useState('');
 
   useEffect(() => {
+    if (!identity?.did) return;
+
+    // Return cached connections if we already fetched for this identity
+    if (_connectionsCache && _connectionsCache.did === identity.did) {
+      setConnections(_connectionsCache.connections);
+      setLoading(false);
+      return;
+    }
+
     async function loadConnections() {
       try {
         const connRes = await fetch(`${CONNECTIONS_URL}/api/connections`, {
@@ -99,7 +111,9 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
             seen.set(conn.did, conn);
           }
         }
-        setConnections(Array.from(seen.values()));
+        const result = Array.from(seen.values());
+        _connectionsCache = { did: identity!.did, connections: result };
+        setConnections(result);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load connections');
       } finally {
@@ -108,7 +122,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
     }
 
     loadConnections();
-  }, [identity]);
+  }, [identity?.did]);
 
   async function startDm(connection: Connection) {
     if (!identity) return;
