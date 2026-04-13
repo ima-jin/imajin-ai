@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
-import { db, profiles, follows, connections, identityMembers } from '@/src/db';
+import { db, profiles, follows, connections, identityMembers, forestConfig } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { eq, count, and, isNull } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
@@ -124,6 +124,46 @@ export async function getMembersByRole(identityDid: string): Promise<MemberEntry
     }));
   } catch {
     return [];
+  }
+}
+
+export interface ForestConfigData {
+  enabledServices: string[];
+  landingService: string | null;
+}
+
+export async function getForestConfig(groupDid: string): Promise<ForestConfigData | null> {
+  try {
+    const [config] = await db
+      .select({
+        enabledServices: forestConfig.enabledServices,
+        landingService: forestConfig.landingService,
+      })
+      .from(forestConfig)
+      .where(eq(forestConfig.groupDid, groupDid))
+      .limit(1);
+    return config ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getViewerMembership(identityDid: string, viewerDid: string): Promise<string | null> {
+  try {
+    const [row] = await db
+      .select({ role: identityMembers.role })
+      .from(identityMembers)
+      .where(
+        and(
+          eq(identityMembers.identityDid, identityDid),
+          eq(identityMembers.memberDid, viewerDid),
+          isNull(identityMembers.removedAt)
+        )
+      )
+      .limit(1);
+    return row?.role ?? null;
+  } catch {
+    return null;
   }
 }
 

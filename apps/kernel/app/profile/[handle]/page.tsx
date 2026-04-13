@@ -13,6 +13,8 @@ import { getScopeEmoji } from '../lib/profile-utils';
 import { GatedProfile } from '../components/GatedProfile';
 import { ActorProfile } from '../components/profiles/ActorProfile';
 import { BusinessProfile } from '../components/profiles/BusinessProfile';
+import { CommunityProfile } from '../components/profiles/CommunityProfile';
+import { FamilyProfile } from '../components/profiles/FamilyProfile';
 
 interface PageProps {
   params: Promise<{ handle: string }>;
@@ -91,9 +93,11 @@ export default async function ProfilePage({ params }: PageProps) {
   switch (identity.scope) {
     case 'business':
       return <BusinessProfile {...props} />;
-    case 'actor':
     case 'community':
+      return <CommunityProfile {...props} />;
     case 'family':
+      return <FamilyProfile {...props} />;
+    case 'actor':
     default:
       return <ActorProfile {...props} />;
   }
