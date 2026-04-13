@@ -156,6 +156,17 @@ export function buildPublicUrl(
     return port ? `http://localhost:${port}` : `http://localhost:3000`;
   }
 
+  // Kernel services live at /{name} on the same domain, not as subdomains.
+  // Only fall through to subdomain construction for federated apps (events, coffee, etc.)
+  // unless explicit prefix/domain args were passed (caller knows what they want).
+  if (!servicePrefix && !domain) {
+    const svc = SERVICES.find((s) => s.name === name);
+    if (svc?.category === "kernel") {
+      // "kernel" itself is the root, others are /{name}
+      return name === "kernel" ? "" : `/${name}`;
+    }
+  }
+
   // Extract env prefix: "https://dev-" → "dev", "https://" → undefined
   const match = p.replace(/^https?:\/\//, "").replace(/-$/, "") || undefined;
   return getPublicUrl(name, { prefix: match, domain: d });

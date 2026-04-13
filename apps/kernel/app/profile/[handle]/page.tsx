@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { SESSION_COOKIE_NAME } from '@imajin/config';
+import { SESSION_COOKIE_NAME, buildPublicUrl } from '@imajin/config';
 import { db, profiles, follows, connections, identityMembers } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { eq, count, and, isNull } from 'drizzle-orm';
@@ -228,7 +228,7 @@ export default async function ProfilePage({ params }: PageProps) {
             </p>
             {!viewerDid && (
               <a
-                href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}auth.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/login`}
+                href={`${buildPublicUrl('auth')}/login`}
                 className="inline-block mt-4 px-6 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium text-sm"
               >
                 Login to see more

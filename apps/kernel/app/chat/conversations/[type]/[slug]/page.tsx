@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useIdentity, LoginPrompt } from '@/src/contexts/IdentityContext';
 import { Chat, ChatProvider, useDidNames } from '@imajin/chat';
 import { useToast } from '@imajin/ui';
+import { buildPublicUrl } from '@imajin/config';
 
 // Inline DID parser (avoids importing Node.js crypto in client bundle)
 function parseConvDid(did: string): { type: string; slug?: string } {
@@ -284,7 +285,7 @@ function DIDConversationView({ did }: { did: string }) {
   // Use same-origin proxy for access checks (cross-origin cookie forwarding is unreliable)
   const authUrl = '/chat';  // kernel: access route is at /chat/api/access/[did]
   const mediaUrl = MEDIA_URL;
-  const connectionsUrl = '/connections';
+  const connectionsUrl = buildPublicUrl('connections');
 
   const displayName =
     convName ||

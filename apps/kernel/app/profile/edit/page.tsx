@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import * as ed from '@noble/ed25519';
+import { buildPublicUrl } from '@imajin/config';
 import { useIdentity } from '../context/IdentityContext';
 import { ImageUpload } from '../components/ImageUpload';
 
@@ -66,8 +67,7 @@ export default function EditProfilePage() {
     if (identityLoading) return;
 
     if (!isLoggedIn || !did) {
-      const authUrl = `${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}auth.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`;
-      window.location.href = `${authUrl}/login?next=${encodeURIComponent(window.location.href)}`;
+      window.location.href = `${buildPublicUrl('auth')}/login?next=${encodeURIComponent(window.location.href)}`;
       return;
     }
 
