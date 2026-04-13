@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, groupControllers } from '@/src/db';
+import { db, identityMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth, emitAttestation } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
@@ -25,13 +25,13 @@ export async function POST(
   const { groupDid } = await params;
 
   const [callerMembership] = await db
-    .select({ role: groupControllers.role })
-    .from(groupControllers)
+    .select({ role: identityMembers.role })
+    .from(identityMembers)
     .where(
       and(
-        eq(groupControllers.groupDid, groupDid),
-        eq(groupControllers.controllerDid, caller.id),
-        isNull(groupControllers.removedAt)
+        eq(identityMembers.identityDid, groupDid),
+        eq(identityMembers.memberDid, caller.id),
+        isNull(identityMembers.removedAt)
       )
     )
     .limit(1);
@@ -66,12 +66,12 @@ export async function POST(
   try {
     // Check if controller was previously removed (soft delete)
     const [existing] = await db
-      .select({ removedAt: groupControllers.removedAt, role: groupControllers.role })
-      .from(groupControllers)
+      .select({ removedAt: identityMembers.removedAt, role: identityMembers.role })
+      .from(identityMembers)
       .where(
         and(
-          eq(groupControllers.groupDid, groupDid),
-          eq(groupControllers.controllerDid, did)
+          eq(identityMembers.identityDid, groupDid),
+          eq(identityMembers.memberDid, did)
         )
       )
       .limit(1);
@@ -83,18 +83,18 @@ export async function POST(
     if (existing && existing.removedAt) {
       // Reactivate
       await db
-        .update(groupControllers)
+        .update(identityMembers)
         .set({ removedAt: null, role, allowedServices, addedBy: caller.id, addedAt: new Date() })
         .where(
           and(
-            eq(groupControllers.groupDid, groupDid),
-            eq(groupControllers.controllerDid, did)
+            eq(identityMembers.identityDid, groupDid),
+            eq(identityMembers.memberDid, did)
           )
         );
     } else {
-      await db.insert(groupControllers).values({
-        groupDid,
-        controllerDid: did,
+      await db.insert(identityMembers).values({
+        identityDid: groupDid,
+        memberDid: did,
         role,
         allowedServices,
         addedBy: caller.id,
@@ -110,7 +110,7 @@ export async function POST(
       payload: { role },
     }).catch((err) => log.error({ err: String(err) }, '[groups] Attestation failed (non-fatal)'));
 
-    return NextResponse.json({ ok: true, groupDid, controllerDid: did, role }, { status: 201 });
+    return NextResponse.json({ ok: true, identityDid: groupDid, memberDid: did, role }, { status: 201 });
   } catch (error) {
     log.error({ err: String(error) }, '[groups] Add controller error');
     return NextResponse.json({ error: 'Failed to add controller' }, { status: 500 });

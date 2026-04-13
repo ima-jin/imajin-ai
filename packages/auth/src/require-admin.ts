@@ -7,8 +7,11 @@ const sql = getClient();
  * Shared requireAdmin helper — extracted from the copy-pasted pattern
  * in apps/kernel/app/api/admin/**\/route.ts.
  *
- * Verifies the active session's actingAs DID is a node-scope group identity.
+ * Verifies the active session's actingAs DID matches the node DID (NODE_DID env var).
  * Returns the session if the caller is an admin, null otherwise.
+ *
+ * Future: scoped admin views where any non-actor identity gets filtered access
+ * based on its scope (community sees its own newsletter/telemetry, etc.).
  *
  * Usage:
  *   import { requireAdmin } from '@imajin/auth';
@@ -23,12 +26,8 @@ export async function requireAdmin() {
   const session = await getSession();
   if (!session?.actingAs) return null;
 
-  const [nodeRow] = await sql`
-    SELECT group_did FROM auth.group_identities
-    WHERE group_did = ${session.actingAs}
-    AND scope = 'node'
-    LIMIT 1
-  `;
+  const nodeDid = process.env.NODE_DID;
+  if (!nodeDid) return null;
 
-  return nodeRow ? session : null;
+  return session.actingAs === nodeDid ? session : null;
 }

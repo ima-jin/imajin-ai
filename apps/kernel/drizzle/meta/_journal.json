@@ -120,6 +120,34 @@
       "when": 1744675200001,
       "tag": "0016_add_system_events",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1744761600000,
+      "tag": "0017_identity_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1744761600001,
+      "tag": "0018_drop_display_type_and_group_identities",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1744761600002,
+      "tag": "0019_rename_group_controllers_to_identity_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1744761600003,
+      "tag": "0020_stub_business_identities",
+      "breakpoints": true
     }
   ]
 }

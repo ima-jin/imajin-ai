@@ -30,7 +30,8 @@ export async function GET(
       .select({
         id: identities.id,
         publicKey: identities.publicKey,
-        type: identities.type,
+        scope: identities.scope,
+        subtype: identities.subtype,
         tier: identities.tier,
       })
       .from(identities)

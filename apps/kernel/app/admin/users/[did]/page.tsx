@@ -15,7 +15,7 @@ export default async function AdminUserDetailPage({
 
   // Identity
   const [identity] = await sql`
-    SELECT id, handle, name, type, tier, public_key, suspended_at, created_at
+    SELECT id, handle, name, scope, subtype, tier, public_key, suspended_at, created_at
     FROM auth.identities
     WHERE id = ${decodedDid}
     LIMIT 1
@@ -24,7 +24,7 @@ export default async function AdminUserDetailPage({
 
   // Profile
   const [profile] = await sql`
-    SELECT display_name, display_type, bio, avatar, avatar_asset_id
+    SELECT display_name, bio, avatar, avatar_asset_id
     FROM profile.profiles
     WHERE did = ${decodedDid}
     LIMIT 1
@@ -89,7 +89,7 @@ export default async function AdminUserDetailPage({
               )}
               <TierBadge tier={identity.tier as string} />
               <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
-                {identity.type as string}
+                {identity.scope as string}{identity.subtype ? `/${identity.subtype as string}` : ''}
               </span>
             </div>
             <p className="font-mono text-xs text-gray-500 dark:text-gray-400 break-all mb-1">
@@ -134,7 +134,6 @@ export default async function AdminUserDetailPage({
           {profile ? (
             <div className="space-y-2 text-sm">
               <Row label="Display Name" value={profile.display_name as string | null} />
-              <Row label="Display Type" value={profile.display_type as string | null} />
               <Row label="Bio" value={profile.bio as string | null} />
               <Row label="Avatar" value={profile.avatar as string | null} mono />
             </div>

@@ -32,7 +32,7 @@ export const GET = withLogger('kernel', async (request, { log }) => {
 
     if (!profile) {
       return NextResponse.json({
-        identity: { id: did, type: session.type }
+        identity: { id: did, scope: session.scope, subtype: session.subtype }
       });
     }
 
@@ -41,7 +41,8 @@ export const GET = withLogger('kernel', async (request, { log }) => {
         id: did,
         handle: profile.handle || session.handle,
         name: profile.displayName || session.name,
-        type: profile.displayType || session.type,
+        scope: session.scope,
+        subtype: session.subtype || undefined,
       }
     });
   } catch (error) {

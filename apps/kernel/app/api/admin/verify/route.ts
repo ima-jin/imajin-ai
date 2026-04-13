@@ -17,19 +17,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden: no acting-as scope' }, { status: 403 });
   }
 
-  // Verify actingAs is a node-scope group DID
-  const [nodeRow] = await sql`
-    SELECT group_did FROM auth.group_identities
-    WHERE group_did = ${identity.actingAs}
-    AND scope = 'node'
-    LIMIT 1
-  `;
-
-  if (!nodeRow) {
-    return NextResponse.json({ error: 'Forbidden: not a node scope' }, { status: 403 });
+  // Verify actingAs is the node DID
+  const nodeDid = process.env.NODE_DID;
+  if (!nodeDid || identity.actingAs !== nodeDid) {
+    return NextResponse.json({ error: 'Forbidden: not the node operator' }, { status: 403 });
   }
-
-  const nodeDid = identity.actingAs;
 
   const [profileRow] = await sql`
     SELECT display_name FROM profile.profiles

@@ -82,7 +82,8 @@ export async function getSession(options?: SessionOptions): Promise<Identity | n
 
     const identity: Identity = {
       id: callerDid,
-      type: data.type || "human",
+      scope: data.scope || "actor",
+      subtype: data.subtype || undefined,
       name: data.name,
       handle: data.handle,
       tier: data.tier || "soft",

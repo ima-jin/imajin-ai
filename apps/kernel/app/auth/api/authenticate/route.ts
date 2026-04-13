@@ -112,7 +112,8 @@ export async function POST(request: NextRequest) {
       expiresAt: expiresAt.toISOString(),
       identity: {
         id: identity.id,
-        type: identity.type,
+        scope: identity.scope,
+        subtype: identity.subtype,
         name: identity.name,
       },
     });

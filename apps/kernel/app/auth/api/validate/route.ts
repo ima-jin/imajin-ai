@@ -63,7 +63,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       valid: true,
       identity: {
         id: identity.id,
-        type: identity.type,
+        scope: identity.scope,
+        subtype: identity.subtype,
         name: identity.name,
         metadata: identity.metadata,
       },

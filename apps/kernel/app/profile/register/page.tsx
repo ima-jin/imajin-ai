@@ -190,7 +190,8 @@ function RegisterPage() {
         publicKey: keypair.publicKey,
         handle: handle || undefined,
         name: displayName,
-        type: 'human',
+        scope: 'actor',
+        subtype: 'human',
       });
       const msgBytes = new TextEncoder().encode(payload);
       const privateKeyBytes = new Uint8Array(keypair.privateKey.match(/.{2}/g)!.map(byte => parseInt(byte, 16)));
@@ -205,7 +206,8 @@ function RegisterPage() {
           publicKey: keypair.publicKey,
           handle: handle || undefined,
           name: displayName,
-          type: 'human',
+          scope: 'actor',
+          subtype: 'human',
           signature,
           inviteCode: inviteCode || undefined,
         }),

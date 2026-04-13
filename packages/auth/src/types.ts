@@ -1,6 +1,7 @@
 export interface Identity {
   id: string;
-  type: "human" | "agent" | "presence";
+  scope: string;                // 'actor' | 'family' | 'community' | 'business'
+  subtype?: string;             // scope-dependent: 'human' | 'agent' | 'device' | etc.
   name?: string;
   handle?: string;
   tier?: "soft" | "preliminary" | "established";
@@ -18,7 +19,8 @@ export interface AuthError {
   status: number;
 }
 
-export type IdentityType = "human" | "agent";
+export type IdentityScope = "actor" | "family" | "community" | "business";
+export type IdentityType = "human" | "agent"; // used in SignedMessage only — not identity table
 
 export interface Keypair {
   privateKey: string; // 64-char hex (32 bytes)

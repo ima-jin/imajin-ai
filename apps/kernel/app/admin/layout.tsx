@@ -31,15 +31,9 @@ export default async function AdminLayout({
     redirect('/');
   }
 
-  // Verify actingAs is a node-scope group DID
-  const [nodeRow] = await sql`
-    SELECT group_did FROM auth.group_identities
-    WHERE group_did = ${session.actingAs}
-    AND scope = 'node'
-    LIMIT 1
-  `;
-
-  if (!nodeRow) {
+  // Verify actingAs is the node DID
+  const nodeDid_ = process.env.NODE_DID;
+  if (!nodeDid_ || session.actingAs !== nodeDid_) {
     redirect('/');
   }
 

@@ -2,10 +2,10 @@ import { notFound } from 'next/navigation';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { SESSION_COOKIE_NAME } from '@imajin/config';
-import { db, profiles, follows, connections } from '@/src/db';
+import { SESSION_COOKIE_NAME, buildPublicUrl } from '@imajin/config';
+import { db, profiles, follows, connections, identityMembers } from '@/src/db';
 import { getClient } from '@imajin/db';
-import { eq, count } from 'drizzle-orm';
+import { eq, count, and, isNull } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { Avatar } from '../components/Avatar';
 import { FollowButton } from '../components/FollowButton';
@@ -31,7 +31,6 @@ interface Profile {
   did: string;
   handle?: string;
   displayName: string;
-  displayType: 'human' | 'presence' | 'agent' | 'device' | 'org' | 'event' | 'service';
   bio?: string;
   avatar?: string;
   email?: string;
@@ -40,6 +39,7 @@ interface Profile {
   featureToggles?: FeatureToggles;
   createdAt: string;
   metadata?: Record<string, string>;
+  claimStatus?: string | null;
 }
 
 interface ProfileCounts {
@@ -125,6 +125,33 @@ async function getLinks(linksHandle: string): Promise<LinkItem[]> {
   } catch { return []; }
 }
 
+function getScopeEmoji(scope: string, subtype: string | null): string {
+  if (scope === 'actor') {
+    const map: Record<string, string> = { human: '👤', agent: '🤖', device: '📱', presence: '🟠' };
+    return map[subtype ?? 'human'] ?? '👤';
+  }
+  const map: Record<string, string> = { business: '🏢', family: '👨‍👩‍👧‍👦', community: '🌐' };
+  return map[scope] ?? '👤';
+}
+
+function getScopeLabel(scope: string, subtype: string | null): string {
+  if (scope === 'actor') {
+    const map: Record<string, string> = {
+      human: '👤 Human',
+      agent: '🤖 Agent',
+      device: '📱 Device',
+      presence: '🟠 Presence',
+    };
+    return map[subtype ?? 'human'] ?? '👤 Human';
+  }
+  const map: Record<string, string> = {
+    business: '🏢 Business',
+    family: '👨‍👩‍👧‍👦 Family',
+    community: '🌐 Community',
+  };
+  return map[scope] ?? scope;
+}
+
 // Generate dynamic metadata for OG/Twitter cards
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { handle } = await params;
@@ -136,20 +163,19 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
 
-  const typeEmoji: Record<string, string> = {
-    human: '👤',
-    presence: '🟠',
-    agent: '🤖',
-    device: '📱',
-    org: '🏢',
-    event: '📅',
-    service: '⚙️',
-  };
+  // Fetch identity scope+subtype for metadata
+  const authSqlMeta = getClient();
+  const [idRowMeta] = await authSqlMeta`
+    SELECT scope, subtype FROM auth.identities WHERE id = ${profile.did} LIMIT 1
+  `.catch(() => []);
+  const metaScope: string = idRowMeta?.scope ?? 'actor';
+  const metaSubtype: string | null = idRowMeta?.subtype ?? null;
+  const emoji = getScopeEmoji(metaScope, metaSubtype);
 
   const displayHandle = profile.handle ? `@${profile.handle}` : handle;
   const description = profile.bio
     ? profile.bio.slice(0, 200) + (profile.bio.length > 200 ? '...' : '')
-    : `${typeEmoji[profile.displayType]} ${profile.displayType} on the Imajin network`;
+    : `${emoji} ${metaSubtype ?? metaScope} on the Imajin network`;
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://profile.imajin.ai';
   const url = `${baseUrl}/${handle}`;
@@ -158,7 +184,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: `${profile.displayName} (${displayHandle})`,
     description,
     openGraph: {
-      title: `${profile.displayName} ${typeEmoji[profile.displayType]}`,
+      title: `${profile.displayName} ${emoji}`,
       description,
       url,
       siteName: 'Imajin Profiles',
@@ -167,7 +193,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     },
     twitter: {
       card: profile.avatar?.startsWith('http') ? 'summary_large_image' : 'summary',
-      title: `${profile.displayName} ${typeEmoji[profile.displayType]}`,
+      title: `${profile.displayName} ${emoji}`,
       description,
       images: profile.avatar?.startsWith('http') ? [profile.avatar] : undefined,
     },
@@ -202,7 +228,7 @@ export default async function ProfilePage({ params }: PageProps) {
             </p>
             {!viewerDid && (
               <a
-                href={`${process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://'}auth.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}/login`}
+                href={`${buildPublicUrl('auth')}/login`}
                 className="inline-block mt-4 px-6 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium text-sm"
               >
                 Login to see more
@@ -214,22 +240,51 @@ export default async function ProfilePage({ params }: PageProps) {
     );
   }
 
-  const typeLabels: Record<string, string> = {
-    human: '👤 Human',
-    presence: '🟠 Presence',
-    agent: '🤖 Agent',
-    device: '📱 Device',
-    org: '🏢 Organization',
-    event: '📅 Event',
-    service: '⚙️ Service',
-  };
-  const typeLabel = typeLabels[profile.displayType];
-
   const authSql = getClient();
-  const [identityRow] = await authSql`SELECT tier FROM auth.identities WHERE id = ${profile.did} LIMIT 1`.catch(() => []);
+  const [identityRow] = await authSql`SELECT tier, scope, subtype FROM auth.identities WHERE id = ${profile.did} LIMIT 1`.catch(() => []);
+  const identityScope: string = identityRow?.scope ?? 'actor';
+  const identitySubtype: string | null = identityRow?.subtype ?? null;
+  const typeLabel = getScopeLabel(identityScope, identitySubtype);
   const isSoftDID = identityRow?.tier === 'soft';
   const [chainRow] = await authSql`SELECT did FROM auth.identity_chains WHERE did = ${profile.did} LIMIT 1`.catch(() => []);
   const chainVerified = !!chainRow;
+
+  // Stub metadata for unclaimed business profiles
+  let maintainerCount = 0;
+  let isMaintainer = false;
+  if (identityScope === 'business' && profile.claimStatus === 'unclaimed') {
+    try {
+      const [{ value: mc }] = await db
+        .select({ value: count() })
+        .from(identityMembers)
+        .where(
+          and(
+            eq(identityMembers.identityDid, profile.did),
+            eq(identityMembers.role, 'maintainer'),
+            isNull(identityMembers.removedAt)
+          )
+        );
+      maintainerCount = mc;
+
+      if (viewerDid && !isSelf) {
+        const [maintainerRow] = await db
+          .select({ identityDid: identityMembers.identityDid })
+          .from(identityMembers)
+          .where(
+            and(
+              eq(identityMembers.identityDid, profile.did),
+              eq(identityMembers.memberDid, viewerDid),
+              eq(identityMembers.role, 'maintainer'),
+              isNull(identityMembers.removedAt)
+            )
+          )
+          .limit(1);
+        isMaintainer = !!maintainerRow;
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
 
   // Fetch counts, follow status, and links in parallel
   const [counts, isFollowing, links] = await Promise.all([
@@ -256,7 +311,7 @@ export default async function ProfilePage({ params }: PageProps) {
         )}
 
         {/* Type badge & Identity Tier */}
-        <div className="flex gap-2 justify-center mb-4">
+        <div className="flex gap-2 justify-center mb-4 flex-wrap">
           <span className="inline-block px-3 py-1 bg-gray-900 border border-gray-800 rounded-full text-sm text-gray-300">
             {typeLabel}
           </span>
@@ -270,7 +325,35 @@ export default async function ProfilePage({ params }: PageProps) {
               ⛓ Chain Verified
             </span>
           )}
+          {identityScope === 'business' && profile.claimStatus === 'unclaimed' && (
+            <span className="inline-block px-3 py-1 bg-sky-900/30 border border-sky-700/50 rounded-full text-sm text-sky-400">
+              🤝 Community-maintained
+            </span>
+          )}
         </div>
+
+        {/* Unclaimed stub — maintainer info + join CTA */}
+        {identityScope === 'business' && profile.claimStatus === 'unclaimed' && (
+          <div className="mb-4 bg-sky-950/30 border border-sky-800/40 rounded-xl px-4 py-3 text-sm text-sky-300">
+            <p className="mb-1">
+              This place is community-maintained.{' '}
+              <span className="text-sky-400 font-medium">{maintainerCount} maintainer{maintainerCount !== 1 ? 's' : ''}</span> keeping it up to date.
+            </p>
+            {viewerDid && !isMaintainer && (
+              <form action={`/profile/api/stubs/${encodeURIComponent(profile.did)}/join`} method="POST">
+                <button
+                  type="submit"
+                  className="mt-2 px-4 py-1.5 bg-sky-700 hover:bg-sky-600 text-white rounded-lg text-xs font-medium transition-colors"
+                >
+                  Help maintain this place
+                </button>
+              </form>
+            )}
+            {viewerDid && isMaintainer && (
+              <p className="mt-1 text-xs text-sky-500">You are a maintainer of this place.</p>
+            )}
+          </div>
+        )}
 
         {/* Counts & Follow Button */}
         <div className="mb-6 flex flex-col items-center gap-3">

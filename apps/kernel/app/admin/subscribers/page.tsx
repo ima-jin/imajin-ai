@@ -19,13 +19,8 @@ interface SearchParams {
 async function requireAdmin() {
   const session = await getSession();
   if (!session?.actingAs) redirect('/admin');
-  const [nodeRow] = await sql`
-    SELECT group_did FROM auth.group_identities
-    WHERE group_did = ${session.actingAs}
-    AND scope = 'node'
-    LIMIT 1
-  `;
-  if (!nodeRow) redirect('/admin');
+  const nodeDid = process.env.NODE_DID;
+  if (!nodeDid || session.actingAs !== nodeDid) redirect('/admin');
   return session;
 }
 

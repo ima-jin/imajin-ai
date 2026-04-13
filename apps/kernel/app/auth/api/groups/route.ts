@@ -1,53 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, storedKeys, groupIdentities, groupControllers, profiles } from '@/src/db';
+import { db, identities, storedKeys, identityMembers, profiles } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { generateKeypair } from '@imajin/auth';
-import { didFromPublicKey } from '@/src/lib/auth/crypto';
+import { didFromPublicKey, encryptPrivateKey } from '@/src/lib/auth/crypto';
 import { emitAttestation } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-const VALID_SCOPES = ['org', 'community', 'family'] as const;
+const VALID_SCOPES = ['business', 'community', 'family'] as const;
 type GroupScope = typeof VALID_SCOPES[number];
 
 function genId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 14)}${Date.now().toString(36)}`;
-}
-
-async function encryptPrivateKey(privateKeyHex: string): Promise<{ encryptedKey: string; salt: string }> {
-  const secret = process.env.GROUP_KEY_ENCRYPTION_SECRET;
-  if (!secret) throw new Error('GROUP_KEY_ENCRYPTION_SECRET not set');
-
-  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
-  const salt = Buffer.from(saltBytes).toString('base64');
-
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'PBKDF2' },
-    false,
-    ['deriveKey']
-  );
-  const derivedKey = await crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: saltBytes, iterations: 100_000, hash: 'SHA-256' },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt']
-  );
-
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const plaintext = new TextEncoder().encode(privateKeyHex);
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, derivedKey, plaintext);
-
-  // Prepend IV to ciphertext
-  const combined = new Uint8Array(iv.length + ciphertext.byteLength);
-  combined.set(iv);
-  combined.set(new Uint8Array(ciphertext), iv.length);
-
-  return { encryptedKey: Buffer.from(combined).toString('base64'), salt };
 }
 
 /**
@@ -104,6 +70,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const validatedScope = scope as GroupScope;
+
     // Generate Ed25519 keypair server-side
     const { privateKey, publicKey } = generateKeypair();
     const groupDid = didFromPublicKey(publicKey);
@@ -115,7 +83,7 @@ export async function POST(request: NextRequest) {
     // Store identity
     await db.insert(identities).values({
       id: groupDid,
-      type: scope,  // 'org' | 'community' | 'family'
+      scope: validatedScope,
       publicKey,
       handle: handle || null,
       name: name.trim().slice(0, 100),
@@ -131,17 +99,10 @@ export async function POST(request: NextRequest) {
       keyDerivation: 'pbkdf2',
     });
 
-    // Store group identity record
-    await db.insert(groupIdentities).values({
-      groupDid,
-      scope: scope as GroupScope,
-      createdBy: caller.id,
-    });
-
     // Add creator as owner
-    await db.insert(groupControllers).values({
-      groupDid,
-      controllerDid: caller.id,
+    await db.insert(identityMembers).values({
+      identityDid: groupDid,
+      memberDid: caller.id,
       role: 'owner',
       addedBy: caller.id,
     });
@@ -153,7 +114,6 @@ export async function POST(request: NextRequest) {
         displayName: name.trim().slice(0, 100),
         handle: handle || null,
         bio: description || null,
-        displayType: scope,
       }).onConflictDoNothing();
     } catch (err) {
       log.error({ err: String(err) }, '[groups] Profile creation failed (non-fatal)');
@@ -190,19 +150,18 @@ export async function GET(request: NextRequest) {
   try {
     const rows = await db
       .select({
-        groupDid: groupControllers.groupDid,
-        role: groupControllers.role,
-        scope: groupIdentities.scope,
+        groupDid: identityMembers.identityDid,
+        role: identityMembers.role,
+        scope: identities.scope,
         name: identities.name,
         handle: identities.handle,
       })
-      .from(groupControllers)
-      .innerJoin(groupIdentities, eq(groupControllers.groupDid, groupIdentities.groupDid))
-      .innerJoin(identities, eq(groupControllers.groupDid, identities.id))
+      .from(identityMembers)
+      .innerJoin(identities, eq(identityMembers.identityDid, identities.id))
       .where(
         and(
-          eq(groupControllers.controllerDid, caller.id),
-          isNull(groupControllers.removedAt)
+          eq(identityMembers.memberDid, caller.id),
+          isNull(identityMembers.removedAt)
         )
       );
 

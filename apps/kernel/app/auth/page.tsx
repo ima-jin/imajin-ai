@@ -6,6 +6,7 @@ import Link from 'next/link';
 import IdentitySwitcher from './components/IdentitySwitcher';
 import IdentityDetail from './components/IdentityDetail';
 import AttestationList from './components/AttestationList';
+import PlacesMaintained from './components/PlacesMaintained';
 
 interface SearchParams {
   type?: string;
@@ -76,6 +77,7 @@ export default async function AuthPage({ searchParams }: { searchParams: SearchP
             personalName={personalName}
             personalHandle={personalHandle}
           />
+          <PlacesMaintained sessionDid={sessionDid} />
         </div>
       </div>
 

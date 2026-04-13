@@ -150,7 +150,8 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         publicKey: publicKeyHex,
         handle: profile.handle || undefined,
         name: profile.displayName,
-        type: 'human',
+        scope: 'actor',
+        subtype: 'human',
       });
       const msgBytes = new TextEncoder().encode(payload);
       const signatureBytes = await ed.signAsync(msgBytes, privateKeyBytes);
@@ -163,7 +164,8 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
           publicKey: publicKeyHex,
           handle: profile.handle || undefined,
           name: profile.displayName,
-          type: 'human',
+          scope: 'actor',
+          subtype: 'human',
           signature,
         }),
       });

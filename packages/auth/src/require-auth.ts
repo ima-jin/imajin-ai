@@ -48,7 +48,8 @@ async function validateSessionCookie(
     const data = await response.json();
     const identity: Identity = {
       id: data.did || data.identity?.did || data.identity?.id,
-      type: data.type || data.identity?.type || "human",
+      scope: data.scope || data.identity?.scope || "actor",
+      subtype: data.subtype || data.identity?.subtype || undefined,
       name: data.name || data.identity?.name,
       handle: data.handle || data.identity?.handle,
       tier: data.tier || data.identity?.tier || "soft",

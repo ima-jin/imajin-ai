@@ -6,7 +6,8 @@ import { buildPublicUrl } from '@imajin/config';
 export interface Identity {
   did: string;
   handle?: string;
-  type: string;
+  scope: string;
+  subtype?: string;
   name?: string;
 }
 
@@ -37,12 +38,13 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         const res = await fetch('/auth/api/session');
         if (res.ok) {
           const data = await res.json();
-          // Session API returns { identity: { id, handle, name, type } }
+          // Session API returns { identity: { id, handle, name, scope, subtype } }
           const raw = data.identity || data;
           setIdentity({
             did: raw.did || raw.id,
             handle: raw.handle,
-            type: raw.type || 'human',
+            scope: raw.scope || 'actor',
+            subtype: raw.subtype || undefined,
             name: raw.name,
           });
         } else {

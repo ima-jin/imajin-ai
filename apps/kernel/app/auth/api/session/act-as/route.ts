@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 import { requireAuth } from '@imajin/auth';
-import { db, groupControllers } from '@/src/db';
-import { eq, and, isNull } from 'drizzle-orm';
+import { db, identityMembers } from '@/src/db';
+import { eq, and, isNull, inArray } from 'drizzle-orm';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
+
+const ACT_AS_ROLES = ['owner', 'admin'];
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
@@ -35,19 +37,20 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   }
 
   try {
-    const controllers = await db
-      .select({ controllerDid: groupControllers.controllerDid })
-      .from(groupControllers)
+    const members = await db
+      .select({ memberDid: identityMembers.memberDid })
+      .from(identityMembers)
       .where(
         and(
-          eq(groupControllers.groupDid, did),
-          eq(groupControllers.controllerDid, caller.id),
-          isNull(groupControllers.removedAt)
+          eq(identityMembers.identityDid, did),
+          eq(identityMembers.memberDid, caller.id),
+          inArray(identityMembers.role, ACT_AS_ROLES),
+          isNull(identityMembers.removedAt)
         )
       )
       .limit(1);
 
-    if (controllers.length === 0) {
+    if (members.length === 0) {
       return NextResponse.json(
         { error: 'Not authorized to act as this identity' },
         { status: 403, headers: cors }

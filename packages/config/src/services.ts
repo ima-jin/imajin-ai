@@ -156,7 +156,14 @@ export function buildPublicUrl(
     return port ? `http://localhost:${port}` : `http://localhost:3000`;
   }
 
-  // Extract env prefix: "https://dev-" → "dev", "https://" → undefined
+  // All services live at /{name} on the same domain (single-node architecture).
+  // Subdomain construction is legacy — only used if explicit prefix/domain args
+  // are passed (e.g. generating external links for a different node).
+  if (!servicePrefix && !domain) {
+    return name === "kernel" ? "" : `/${name}`;
+  }
+
+  // Explicit prefix/domain passed — caller wants a full URL (e.g. cross-node links)
   const match = p.replace(/^https?:\/\//, "").replace(/-$/, "") || undefined;
   return getPublicUrl(name, { prefix: match, domain: d });
 }

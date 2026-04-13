@@ -151,7 +151,8 @@ export async function GET(request: NextRequest) {
         .insert(identities)
         .values({
           id: ownerDid,
-          type: 'human',
+          scope: 'actor',
+          subtype: 'human',
           publicKey: `soft_${ownerDid}`, // Placeholder for soft identities
           metadata: { tier: 'soft', source: 'magic_link' },
         })
@@ -163,7 +164,8 @@ export async function GET(request: NextRequest) {
     // Create session token
     const sessionToken = await createSessionToken({
       sub: ownerDid,
-      type: 'human',
+      scope: 'actor',
+      subtype: 'human',
       tier: identityTier,
       handle: identity.handle || undefined,
       name: identity.name || undefined,

@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, credentials, groupControllers, profiles } from '@/src/db';
+import { db, identities, credentials, identityMembers, profiles } from '@/src/db';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { emitAttestation } from '@imajin/auth';
@@ -67,7 +67,8 @@ export async function POST(request: NextRequest) {
         .insert(identities)
         .values({
           id: did,
-          type: 'human',
+          scope: 'actor',
+          subtype: 'human',
           publicKey,
           name: name?.trim().slice(0, 100) || null,
           tier: 'soft',
@@ -90,7 +91,8 @@ export async function POST(request: NextRequest) {
     const tier = (identity.tier || 'soft') as 'soft' | 'preliminary' | 'established';
     const sessionToken = await createSessionToken({
       sub: did,
-      type: 'human',
+      scope: 'actor',
+      subtype: 'human',
       tier,
       handle: identity.handle || undefined,
       name: identity.name || undefined,
@@ -108,16 +110,16 @@ export async function POST(request: NextRequest) {
     if (scopeDid && typeof scopeDid === 'string') {
       try {
         const [existingMember] = await db
-          .select({ removedAt: groupControllers.removedAt })
-          .from(groupControllers)
-          .where(and(eq(groupControllers.groupDid, scopeDid), eq(groupControllers.controllerDid, did)))
+          .select({ removedAt: identityMembers.removedAt })
+          .from(identityMembers)
+          .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, did)))
           .limit(1);
         if (!existingMember) {
-          await db.insert(groupControllers).values({ groupDid: scopeDid, controllerDid: did, role: 'member', addedBy: scopeDid });
+          await db.insert(identityMembers).values({ identityDid: scopeDid, memberDid: did, role: 'member', addedBy: scopeDid });
         } else if (existingMember.removedAt) {
-          await db.update(groupControllers)
+          await db.update(identityMembers)
             .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedAt: new Date() })
-            .where(and(eq(groupControllers.groupDid, scopeDid), eq(groupControllers.controllerDid, did)));
+            .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, did)));
         }
       } catch (err) {
         log.error({ err: String(err) }, '[onboard/generate] Forest member add failed (non-fatal)');
@@ -133,7 +135,6 @@ export async function POST(request: NextRequest) {
         await db.insert(profiles).values({
           did,
           displayName: name?.trim().slice(0, 100) || 'Anonymous',
-          displayType: 'human',
         }).onConflictDoNothing();
       } catch (err) {
         log.error({ err: String(err) }, '[onboard/generate] Profile creation failed (non-fatal)');

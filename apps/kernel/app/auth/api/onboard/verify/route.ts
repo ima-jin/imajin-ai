@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { onboardTokens, identities, credentials, groupControllers } from '@/src/db';
+import { onboardTokens, identities, credentials, identityMembers } from '@/src/db';
 import { createSessionToken, getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
 import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation';
 import { emitAttestation } from '@imajin/auth';
@@ -93,7 +93,8 @@ export async function GET(request: NextRequest) {
               const identityTier = (identity.tier || 'soft') as 'soft' | 'preliminary' | 'established';
               const sessionToken = await createSessionToken({
                 sub: existingCred.did,
-                type: 'human',
+                scope: 'actor',
+                subtype: 'human',
                 tier: identityTier,
                 handle: identity.handle || undefined,
                 name: identity.name || undefined,
@@ -163,7 +164,8 @@ export async function GET(request: NextRequest) {
         .insert(identities)
         .values({
           id: did,
-          type: 'human',
+          scope: 'actor',
+          subtype: 'human',
           publicKey: placeholderKey,
           handle: null,
           name: record.name || null,
@@ -195,7 +197,8 @@ export async function GET(request: NextRequest) {
     const identityTier = (identity.tier || 'soft') as 'soft' | 'preliminary' | 'established';
     const sessionToken = await createSessionToken({
       sub: did,
-      type: 'human',
+      scope: 'actor',
+      subtype: 'human',
       tier: identityTier,
       handle: identity.handle || undefined,
       name: identity.name || undefined,
@@ -219,16 +222,16 @@ export async function GET(request: NextRequest) {
       // Add as forest member directly (same-app operation)
       try {
         const [existing] = await db
-          .select({ removedAt: groupControllers.removedAt })
-          .from(groupControllers)
-          .where(and(eq(groupControllers.groupDid, scopeDid), eq(groupControllers.controllerDid, did)))
+          .select({ removedAt: identityMembers.removedAt })
+          .from(identityMembers)
+          .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, did)))
           .limit(1);
         if (!existing) {
-          await db.insert(groupControllers).values({ groupDid: scopeDid, controllerDid: did, role: 'member', addedBy: scopeDid });
+          await db.insert(identityMembers).values({ identityDid: scopeDid, memberDid: did, role: 'member', addedBy: scopeDid });
         } else if (existing.removedAt) {
-          await db.update(groupControllers)
+          await db.update(identityMembers)
             .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedAt: new Date() })
-            .where(and(eq(groupControllers.groupDid, scopeDid), eq(groupControllers.controllerDid, did)));
+            .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, did)));
         }
       } catch (err) {
         log.error({ err: String(err) }, '[onboard/verify] Forest member add failed (non-fatal)');

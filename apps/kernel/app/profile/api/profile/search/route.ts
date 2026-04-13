@@ -1,15 +1,14 @@
 import { NextRequest } from 'next/server';
 import { db, profiles } from '@/src/db';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
-import { ilike, eq, or, sql, type SQL } from 'drizzle-orm';
+import { ilike, or, sql, type SQL } from 'drizzle-orm';
 import { withLogger } from '@imajin/logger';
 
 /**
  * GET /api/profile/search - Search profiles
- * 
+ *
  * Query params:
- * - q: search query (searches displayName and bio)
- * - type: filter by displayType (human, agent, presence)
+ * - q: search query (searches displayName and handle)
  * - limit: max results (default 20, max 100)
  * - offset: pagination offset
  */
@@ -17,7 +16,6 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
   const searchParams = request.nextUrl.searchParams;
 
   const q = searchParams.get('q');
-  const type = searchParams.get('type');
   const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
   const offset = parseInt(searchParams.get('offset') || '0');
 
@@ -26,19 +24,12 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     const conditions: SQL[] = [];
 
     if (q) {
-      // Simple search on displayName and bio
+      // Simple search on displayName and handle
       const searchCondition = or(
         ilike(profiles.handle, `%${q}%`),
         ilike(profiles.displayName, `%${q}%`),
       );
       if (searchCondition) conditions.push(searchCondition);
-    }
-
-    if (type) {
-      if (!['human', 'agent', 'presence'].includes(type)) {
-        return errorResponse('Invalid type filter');
-      }
-      conditions.push(eq(profiles.displayType, type));
     }
 
     // Execute query

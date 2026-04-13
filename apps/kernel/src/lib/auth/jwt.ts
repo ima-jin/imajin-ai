@@ -69,7 +69,8 @@ function getKeyPair(): Promise<KeyPair> {
 export interface SessionPayload {
   sub: string;      // DID
   handle?: string;  // @username
-  type: string;     // identity type
+  scope: string;    // 'actor' | 'family' | 'community' | 'business'
+  subtype?: string; // scope-dependent: 'human' | 'agent' | 'device' | etc.
   name?: string;
   tier?: 'soft' | 'preliminary' | 'established'; // identity tier
   keyId?: string;   // which key created this session
@@ -84,7 +85,8 @@ export async function createSessionToken(payload: SessionPayload): Promise<strin
 
   const jwt = await new jose.SignJWT({
     handle: payload.handle,
-    type: payload.type,
+    scope: payload.scope,
+    subtype: payload.subtype,
     name: payload.name,
     tier: payload.tier || 'soft',
     ...(payload.keyId ? { keyId: payload.keyId } : {}),
@@ -116,7 +118,8 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
     return {
       sub: payload.sub as string,
       handle: payload.handle as string | undefined,
-      type: payload.type as string,
+      scope: (payload.scope as string) || 'actor',
+      subtype: payload.subtype as string | undefined,
       name: payload.name as string | undefined,
       tier,
       keyId: payload.keyId as string | undefined,

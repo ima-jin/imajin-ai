@@ -67,7 +67,6 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     await db.insert(profiles).values({
       did,
       displayName,
-      displayType: 'human',
       metadata: {
         isGuest: true,
         email: email || undefined,
