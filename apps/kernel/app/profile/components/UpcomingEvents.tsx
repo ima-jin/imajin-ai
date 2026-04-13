@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 
 interface UpcomingEventsProps {
   did: string;
-  servicePrefix: string;
-  domain: string;
+  eventsBaseUrl?: string;
   viewerDid?: string | null;
 }
 
@@ -37,10 +36,10 @@ function formatEventDate(startDate: string, endDate: string | null): string {
   return `${startStr} – ${end.toLocaleDateString('en-US', opts)}`;
 }
 
-export function UpcomingEvents({ did, servicePrefix, domain, viewerDid }: UpcomingEventsProps) {
+export function UpcomingEvents({ did, eventsBaseUrl, viewerDid }: UpcomingEventsProps) {
   const [events, setEvents] = useState<AttendingEvent[] | null>(null);
 
-  const eventsBase = process.env.NEXT_PUBLIC_EVENTS_URL || `${servicePrefix}events.${domain}`;
+  const eventsBase = eventsBaseUrl || process.env.NEXT_PUBLIC_EVENTS_URL || '/events';
 
   useEffect(() => {
     const url = new URL(`${eventsBase}/api/attending/${encodeURIComponent(did)}`);
