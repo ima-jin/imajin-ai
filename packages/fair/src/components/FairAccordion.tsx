@@ -38,31 +38,55 @@ function useDidNames(
   return names;
 }
 
-function formatDid(did: string, names: Record<string, string>): string {
+function formatDid(did: string, names: Record<string, string>, viewerDid?: string, viewerHandle?: string): string {
+  if (viewerDid && did === viewerDid) return viewerHandle ? `@${viewerHandle}` : 'You';
   if (names[did]) return `@${names[did]}`;
+  if (did === 'NODE_PLACEHOLDER') return 'This node';
+  if (did === 'BUYER_PLACEHOLDER') return 'You (buyer)';
   if (did.length > 24) return did.slice(0, 12) + '…' + did.slice(-8);
   return did;
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  buyer_credit: 'Buyer credit',
+  node: 'Node',
+  platform: 'Protocol',
+  seller: 'Seller',
+  creator: 'Creator',
+};
+
 interface FairAccordionProps {
   manifest: FairManifest | null;
   resolveProfile?: (did: string) => Promise<{ name: string; avatar?: string }>;
+  /** Actual node DID to replace NODE_PLACEHOLDER in display */
+  nodeDid?: string;
+  /** Viewer's DID to replace BUYER_PLACEHOLDER in display */
+  viewerDid?: string;
+  /** Viewer's handle for display */
+  viewerHandle?: string;
 }
 
 function getAttribution(manifest: FairManifest): FairEntry[] {
   return manifest.attribution?.length ? manifest.attribution : (manifest.chain ?? []);
 }
 
-export function FairAccordion({ manifest, resolveProfile }: FairAccordionProps) {
+export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, viewerHandle }: FairAccordionProps) {
   const [open, setOpen] = useState(false);
 
   if (!manifest) return null;
 
   const rawAttribution = getAttribution(manifest);
-  const attribution = normalizeShares(rawAttribution);
+  // Resolve placeholders for display
+  const resolvedAttribution = rawAttribution.map(e => ({
+    ...e,
+    did: e.did === 'NODE_PLACEHOLDER' ? (nodeDid || e.did)
+       : e.did === 'BUYER_PLACEHOLDER' ? (viewerDid || e.did)
+       : e.did,
+  }));
+  const attribution = normalizeShares(resolvedAttribution);
   if (!attribution.length) return null;
 
-  const allDids = attribution.map(e => e.did).filter(Boolean);
+  const allDids = attribution.map(e => e.did).filter(d => d && d !== 'NODE_PLACEHOLDER' && d !== 'BUYER_PLACEHOLDER');
   const didNames = useDidNames(allDids, resolveProfile);
 
   return (
@@ -101,10 +125,10 @@ export function FairAccordion({ manifest, resolveProfile }: FairAccordionProps) 
                     <div className={`w-2.5 h-2.5 rounded-full ${
                       entry.role === 'platform' ? 'bg-blue-500' : 'bg-orange-500'
                     }`} />
-                    <span className="text-sm font-medium capitalize">{entry.role}</span>
+                    <span className="text-sm font-medium">{ROLE_LABELS[entry.role] ?? entry.role.replace(/_/g, ' ')}</span>
                     {entry.did && (
-                      <span className="text-xs text-gray-500 truncate max-w-[140px]" title={entry.did}>
-                        {formatDid(entry.did, didNames)}
+                      <span className="text-xs text-gray-500 truncate max-w-[160px]" title={entry.did}>
+                        {formatDid(entry.did, didNames, viewerDid, viewerHandle)}
                       </span>
                     )}
                     {entry.chainProof?.verified && (
@@ -113,7 +137,7 @@ export function FairAccordion({ manifest, resolveProfile }: FairAccordionProps) 
                       </span>
                     )}
                   </div>
-                  <span className="text-sm font-bold">{(entry.share * 100).toFixed(1)}%</span>
+                  <span className="text-sm font-bold">{(entry.share * 100).toFixed(2)}%</span>
                 </div>
               ))}
             </div>
@@ -132,9 +156,9 @@ export function FairAccordion({ manifest, resolveProfile }: FairAccordionProps) 
                   >
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                      <span className="text-sm font-medium capitalize">{entry.role}</span>
+                      <span className="text-sm font-medium">{ROLE_LABELS[entry.role] ?? entry.role.replace(/_/g, ' ')}</span>
                     </div>
-                    <span className="text-sm font-bold">{(entry.share * 100).toFixed(1)}%</span>
+                    <span className="text-sm font-bold">{(entry.share * 100).toFixed(2)}%</span>
                   </div>
                 ))}
               </div>

@@ -672,7 +672,12 @@ export default async function EventPage({ params, searchParams }: Props) {
 
         {/* .fair Attribution */}
         <div className="mb-6">
-          <FairAccordion manifest={(event.metadata as any)?.fair || null} />
+          <FairAccordion
+            manifest={(event.metadata as any)?.fair || null}
+            nodeDid={process.env.NODE_DID}
+            viewerDid={session?.id}
+            viewerHandle={session?.handle}
+          />
         </div>
 
         {/* Tickets Section */}
