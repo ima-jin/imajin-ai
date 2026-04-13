@@ -1,181 +1,37 @@
 import { notFound } from 'next/navigation';
-import { cookies } from 'next/headers';
-import Link from 'next/link';
 import type { Metadata } from 'next';
-import { SESSION_COOKIE_NAME, buildPublicUrl } from '@imajin/config';
-import { db, profiles, follows, connections, identityMembers } from '@/src/db';
-import { getClient } from '@imajin/db';
-import { eq, count, and, isNull } from 'drizzle-orm';
-import { getSessionFromCookies } from '@/src/lib/kernel/session';
-import { Avatar } from '../components/Avatar';
-import { FollowButton } from '../components/FollowButton';
-import { AskButton } from '../components/AskButton';
-import { MarketItems } from '../components/MarketItems';
-import { UpcomingEvents } from '../components/UpcomingEvents';
+import {
+  getViewerDid,
+  getProfile,
+  getProfileCounts,
+  getFollowStatus,
+  isConnected,
+  getLinks,
+  getIdentityInfo,
+  getMaintainerInfo,
+} from '../lib/profile-data';
+import { getScopeEmoji } from '../lib/profile-utils';
+import { GatedProfile } from '../components/GatedProfile';
+import { ActorProfile } from '../components/profiles/ActorProfile';
 
 interface PageProps {
   params: Promise<{ handle: string }>;
 }
 
-interface FeatureToggles {
-  inference_enabled?: boolean;
-  show_market_items?: boolean;
-  show_events?: boolean;
-  links?: string | null;
-  coffee?: string | null;
-  dykil?: string | null;
-  learn?: string | null;
-}
-
-interface Profile {
-  did: string;
-  handle?: string;
-  displayName: string;
-  bio?: string;
-  avatar?: string;
-  email?: string;
-  phone?: string;
-  contactEmail?: string;
-  featureToggles?: FeatureToggles;
-  createdAt: string;
-  metadata?: Record<string, string>;
-  claimStatus?: string | null;
-}
-
-interface ProfileCounts {
-  followers: number;
-  following: number;
-  connections: number;
-}
-
-interface LinkItem {
-  title: string;
-  url: string;
-  description?: string;
-}
-
-async function getViewerDid(): Promise<string | null> {
-  try {
-    const cookieStore = await cookies();
-    const session = cookieStore.get(SESSION_COOKIE_NAME);
-    if (!session?.value) return null;
-    const kernelSession = await getSessionFromCookies(`${SESSION_COOKIE_NAME}=${session.value}`);
-    return kernelSession?.did ?? null;
-  } catch { return null; }
-}
-
-async function isConnected(viewerDid: string, targetDid: string): Promise<boolean> {
-  try {
-    const [connDidA, connDidB] = [viewerDid, targetDid].sort((a, b) => a.localeCompare(b));
-    const row = await db.query.connections.findFirst({
-      where: (c, { eq, and, isNull }) => and(
-        eq(c.didA, connDidA),
-        eq(c.didB, connDidB),
-        isNull(c.disconnectedAt)
-      ),
-    });
-    return !!row;
-  } catch { return false; }
-}
-
-async function getProfile(handle: string): Promise<Profile | null> {
-  const row = await db.query.profiles.findFirst({
-    where: (profiles, { eq, or }) => or(eq(profiles.did, handle), eq(profiles.handle, handle)),
-  });
-  return row as unknown as Profile | null;
-}
-
-async function getProfileCounts(profileDid: string): Promise<ProfileCounts> {
-  try {
-    const [followersResult] = await db.select({ count: count() }).from(follows).where(eq(follows.followedDid, profileDid));
-    const [followingResult] = await db.select({ count: count() }).from(follows).where(eq(follows.followerDid, profileDid));
-    const sql = getClient();
-    const [connectionsResult] = await sql`
-      SELECT count(*)::int as count
-      FROM connections.connections
-      WHERE (did_a = ${profileDid} OR did_b = ${profileDid})
-        AND disconnected_at IS NULL
-    `;
-    return {
-      followers: Number(followersResult.count),
-      following: Number(followingResult.count),
-      connections: connectionsResult?.count ?? 0,
-    };
-  } catch { return { followers: 0, following: 0, connections: 0 }; }
-}
-
-async function getFollowStatus(viewerDid: string, targetDid: string): Promise<boolean> {
-  const existingFollow = await db.query.follows.findFirst({
-    where: (follows, { eq, and }) => and(eq(follows.followerDid, viewerDid), eq(follows.followedDid, targetDid)),
-  });
-  return !!existingFollow;
-}
-
-async function getLinks(linksHandle: string): Promise<LinkItem[]> {
-  const linksServiceUrl = process.env.LINKS_SERVICE_URL;
-  if (!linksServiceUrl) return [];
-  try {
-    const res = await fetch(
-      `${linksServiceUrl}/api/pages/${encodeURIComponent(linksHandle)}/links`,
-      { cache: 'no-store' }
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data : (data.links || []);
-  } catch { return []; }
-}
-
-function getScopeEmoji(scope: string, subtype: string | null): string {
-  if (scope === 'actor') {
-    const map: Record<string, string> = { human: '👤', agent: '🤖', device: '📱', presence: '🟠' };
-    return map[subtype ?? 'human'] ?? '👤';
-  }
-  const map: Record<string, string> = { business: '🏢', family: '👨‍👩‍👧‍👦', community: '🌐' };
-  return map[scope] ?? '👤';
-}
-
-function getScopeLabel(scope: string, subtype: string | null): string {
-  if (scope === 'actor') {
-    const map: Record<string, string> = {
-      human: '👤 Human',
-      agent: '🤖 Agent',
-      device: '📱 Device',
-      presence: '🟠 Presence',
-    };
-    return map[subtype ?? 'human'] ?? '👤 Human';
-  }
-  const map: Record<string, string> = {
-    business: '🏢 Business',
-    family: '👨‍👩‍👧‍👦 Family',
-    community: '🌐 Community',
-  };
-  return map[scope] ?? scope;
-}
-
-// Generate dynamic metadata for OG/Twitter cards
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { handle } = await params;
   const profile = await getProfile(handle);
 
   if (!profile) {
-    return {
-      title: 'Profile Not Found',
-    };
+    return { title: 'Profile Not Found' };
   }
 
-  // Fetch identity scope+subtype for metadata
-  const authSqlMeta = getClient();
-  const [idRowMeta] = await authSqlMeta`
-    SELECT scope, subtype FROM auth.identities WHERE id = ${profile.did} LIMIT 1
-  `.catch(() => []);
-  const metaScope: string = idRowMeta?.scope ?? 'actor';
-  const metaSubtype: string | null = idRowMeta?.subtype ?? null;
-  const emoji = getScopeEmoji(metaScope, metaSubtype);
-
+  const identity = await getIdentityInfo(profile.did);
+  const emoji = getScopeEmoji(identity.scope, identity.subtype);
   const displayHandle = profile.handle ? `@${profile.handle}` : handle;
   const description = profile.bio
     ? profile.bio.slice(0, 200) + (profile.bio.length > 200 ? '...' : '')
-    : `${emoji} ${metaSubtype ?? metaScope} on the Imajin network`;
+    : `${emoji} ${identity.subtype ?? identity.scope} on the Imajin network`;
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://profile.imajin.ai';
   const url = `${baseUrl}/${handle}`;
@@ -208,274 +64,41 @@ export default async function ProfilePage({ params }: PageProps) {
     notFound();
   }
 
-  // Trust gating: only show full profile to self or connections
   const viewerDid = await getViewerDid();
   const isSelf = viewerDid === profile.did;
   const connected = viewerDid && !isSelf ? await isConnected(viewerDid, profile.did) : false;
 
   if (!isSelf && !connected) {
-    return (
-      <div className="max-w-lg mx-auto text-center py-16">
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-          <div className="mb-4 flex justify-center">
-            <Avatar avatar={profile.avatar} displayName={profile.displayName} size="lg" />
-          </div>
-          <h1 className="text-2xl font-bold mb-1 text-white">{profile.displayName}</h1>
-          {profile.handle && <p className="text-gray-400 mb-4">@{profile.handle}</p>}
-          <div className="py-6 border-t border-gray-800 mt-4">
-            <p className="text-gray-500 text-sm">
-              🔒 This profile is only visible to connections.
-            </p>
-            {!viewerDid && (
-              <a
-                href={`${buildPublicUrl('auth')}/login`}
-                className="inline-block mt-4 px-6 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium text-sm"
-              >
-                Login to see more
-              </a>
-            )}
-          </div>
-        </div>
-      </div>
-    );
+    return <GatedProfile profile={profile} viewerDid={viewerDid} />;
   }
 
-  const authSql = getClient();
-  const [identityRow] = await authSql`SELECT tier, scope, subtype FROM auth.identities WHERE id = ${profile.did} LIMIT 1`.catch(() => []);
-  const identityScope: string = identityRow?.scope ?? 'actor';
-  const identitySubtype: string | null = identityRow?.subtype ?? null;
-  const typeLabel = getScopeLabel(identityScope, identitySubtype);
-  const isSoftDID = identityRow?.tier === 'soft';
-  const [chainRow] = await authSql`SELECT did FROM auth.identity_chains WHERE did = ${profile.did} LIMIT 1`.catch(() => []);
-  const chainVerified = !!chainRow;
-
-  // Stub metadata for unclaimed business profiles
-  let maintainerCount = 0;
-  let isMaintainer = false;
-  if (identityScope === 'business' && profile.claimStatus === 'unclaimed') {
-    try {
-      const [{ value: mc }] = await db
-        .select({ value: count() })
-        .from(identityMembers)
-        .where(
-          and(
-            eq(identityMembers.identityDid, profile.did),
-            eq(identityMembers.role, 'maintainer'),
-            isNull(identityMembers.removedAt)
-          )
-        );
-      maintainerCount = mc;
-
-      if (viewerDid && !isSelf) {
-        const [maintainerRow] = await db
-          .select({ identityDid: identityMembers.identityDid })
-          .from(identityMembers)
-          .where(
-            and(
-              eq(identityMembers.identityDid, profile.did),
-              eq(identityMembers.memberDid, viewerDid),
-              eq(identityMembers.role, 'maintainer'),
-              isNull(identityMembers.removedAt)
-            )
-          )
-          .limit(1);
-        isMaintainer = !!maintainerRow;
-      }
-    } catch {
-      // Non-fatal
-    }
-  }
-
-  // Fetch counts, follow status, and links in parallel
-  const [counts, isFollowing, links] = await Promise.all([
+  const [identity, counts, isFollowing, links] = await Promise.all([
+    getIdentityInfo(profile.did),
     getProfileCounts(profile.did),
     viewerDid && !isSelf ? getFollowStatus(viewerDid, profile.did) : Promise.resolve(false),
     profile.featureToggles?.links ? getLinks(profile.featureToggles.links) : Promise.resolve([]),
   ]);
 
-  const servicePrefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-  const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+  let maintainerInfo: { count: number; isMaintainer: boolean } | undefined;
+  if (identity.scope === 'business' && profile.claimStatus === 'unclaimed') {
+    maintainerInfo = await getMaintainerInfo(profile.did, isSelf ? null : viewerDid);
+  }
 
-  return (
-    <div className="max-w-lg mx-auto">
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
-        {/* Avatar */}
-        <div className="mb-4 flex justify-center">
-          <Avatar avatar={profile.avatar} displayName={profile.displayName} size="lg" />
-        </div>
+  const viewer = {
+    viewerDid,
+    isSelf,
+    isConnected: !!connected,
+    isFollowing: isFollowing as boolean,
+  };
 
-        {/* Name & Handle */}
-        <h1 className="text-2xl font-bold mb-1 text-white">{profile.displayName}</h1>
-        {profile.handle && (
-          <p className="text-gray-400 mb-2">@{profile.handle}</p>
-        )}
+  const props = { profile, identity, viewer, counts, links, maintainerInfo };
 
-        {/* Type badge & Identity Tier */}
-        <div className="flex gap-2 justify-center mb-4 flex-wrap">
-          <span className="inline-block px-3 py-1 bg-gray-900 border border-gray-800 rounded-full text-sm text-gray-300">
-            {typeLabel}
-          </span>
-          {isSoftDID && (
-            <span className="inline-block px-3 py-1 bg-amber-900/30 border border-amber-700/50 rounded-full text-sm text-amber-400">
-              ⚡ Quick Profile
-            </span>
-          )}
-          {chainVerified && (
-            <span className="inline-block px-3 py-1 bg-emerald-900/30 border border-emerald-700/50 rounded-full text-sm text-emerald-400">
-              ⛓ Chain Verified
-            </span>
-          )}
-          {identityScope === 'business' && profile.claimStatus === 'unclaimed' && (
-            <span className="inline-block px-3 py-1 bg-sky-900/30 border border-sky-700/50 rounded-full text-sm text-sky-400">
-              🤝 Community-maintained
-            </span>
-          )}
-        </div>
-
-        {/* Unclaimed stub — maintainer info + join CTA */}
-        {identityScope === 'business' && profile.claimStatus === 'unclaimed' && (
-          <div className="mb-4 bg-sky-950/30 border border-sky-800/40 rounded-xl px-4 py-3 text-sm text-sky-300">
-            <p className="mb-1">
-              This place is community-maintained.{' '}
-              <span className="text-sky-400 font-medium">{maintainerCount} maintainer{maintainerCount !== 1 ? 's' : ''}</span> keeping it up to date.
-            </p>
-            {viewerDid && !isMaintainer && (
-              <form action={`/profile/api/stubs/${encodeURIComponent(profile.did)}/join`} method="POST">
-                <button
-                  type="submit"
-                  className="mt-2 px-4 py-1.5 bg-sky-700 hover:bg-sky-600 text-white rounded-lg text-xs font-medium transition-colors"
-                >
-                  Help maintain this place
-                </button>
-              </form>
-            )}
-            {viewerDid && isMaintainer && (
-              <p className="mt-1 text-xs text-sky-500">You are a maintainer of this place.</p>
-            )}
-          </div>
-        )}
-
-        {/* Counts & Follow Button */}
-        <div className="mb-6 flex flex-col items-center gap-3">
-          <p className="text-sm text-gray-400">
-            <span className="text-white font-medium">{counts.followers}</span> followers
-            {' · '}
-            <span className="text-white font-medium">{counts.following}</span> following
-            {' · '}
-            <span className="text-white font-medium">{counts.connections}</span> connections
-          </p>
-          {viewerDid && !isSelf && (
-            <FollowButton targetDid={profile.did} initialFollowing={isFollowing} />
-          )}
-        </div>
-
-        {/* Bio */}
-        {profile.bio && (
-          <p className="text-gray-300 mb-6">
-            {profile.bio}
-          </p>
-        )}
-
-        {/* Info note for invited members viewing their own profile */}
-        {isSoftDID && isSelf && (
-          <p className="mb-6 text-xs text-gray-500 border border-gray-800 rounded-lg px-4 py-3">
-            Invited members can claim a handle and download backup keys
-          </p>
-        )}
-
-        {/* Contact Info (only visible to self/connections — API strips for others) */}
-        {(profile.contactEmail || profile.phone) && (
-          <div className="mb-6 bg-gray-900/50 border border-gray-800 rounded-lg p-4 text-left">
-            <p className="text-xs text-gray-500 mb-2 text-center">📇 Contact</p>
-            {profile.contactEmail && (
-              <p className="text-sm text-gray-300 mb-1">
-                <span className="text-gray-500">✉️</span>{' '}
-                <a href={`mailto:${profile.contactEmail}`} className="text-[#F59E0B] hover:underline">
-                  {profile.contactEmail}
-                </a>
-              </p>
-            )}
-            {profile.phone && (
-              <p className="text-sm text-gray-300">
-                <span className="text-gray-500">📱</span>{' '}
-                <a href={`tel:${profile.phone}`} className="text-[#F59E0B] hover:underline">
-                  {profile.phone}
-                </a>
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Action buttons — single row */}
-        <div className="flex justify-center gap-3 mb-6 flex-wrap">
-          <AskButton
-            targetDid={profile.did}
-            targetName={profile.displayName}
-            targetHandle={profile.handle}
-            inferenceEnabled={!!profile.featureToggles?.inference_enabled}
-            canAsk={!!viewerDid}
-          />
-          {profile.featureToggles?.links && (
-            <a
-              href={`${process.env.NEXT_PUBLIC_LINKS_URL || `${servicePrefix}links.${domain}`}/${profile.featureToggles.links}`}
-              className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-white text-sm font-medium"
-            >
-              🔗 Links
-            </a>
-          )}
-          {profile.featureToggles?.coffee && (
-            <a
-              href={`${process.env.NEXT_PUBLIC_COFFEE_URL || `${servicePrefix}coffee.${domain}`}/${profile.featureToggles.coffee}`}
-              className="px-4 py-2 bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B] rounded-lg hover:bg-[#F59E0B]/20 transition border text-sm font-medium"
-            >
-              ☕ Tip Me
-            </a>
-          )}
-        </div>
-
-        {/* Expanded links list (when links service has items) */}
-        {links.length > 0 && (
-          <div className="mb-6 space-y-2">
-            {links.map((link, i) => (
-              <a
-                key={i}
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-left"
-              >
-                <p className="text-white text-sm font-medium">{link.title}</p>
-                {link.description && (
-                  <p className="text-gray-500 text-xs mt-0.5">{link.description}</p>
-                )}
-              </a>
-            ))}
-          </div>
-        )}
-
-        {/* Upcoming events */}
-        {profile.featureToggles?.show_events && (
-          <UpcomingEvents did={profile.did} servicePrefix={servicePrefix} domain={domain} viewerDid={viewerDid} />
-        )}
-
-        {/* Market items */}
-        {profile.featureToggles?.show_market_items && (
-          <MarketItems did={profile.did} handle={profile.handle} servicePrefix={servicePrefix} domain={domain} />
-        )}
-
-        {/* Member since */}
-        <p className="text-xs text-gray-500 mt-4">
-          Member since {new Date(profile.createdAt).toLocaleDateString('en-US', {
-            month: 'long',
-            year: 'numeric'
-          })}
-        </p>
-      </div>
-
-      {/* DID */}
-      <p className="text-center text-xs text-gray-500 mt-4 font-mono break-all">
-        {profile.did}
-      </p>
-    </div>
-  );
+  switch (identity.scope) {
+    case 'actor':
+    case 'business':
+    case 'community':
+    case 'family':
+    default:
+      return <ActorProfile {...props} />;
+  }
 }
