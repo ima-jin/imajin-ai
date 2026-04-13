@@ -95,7 +95,7 @@ async function handler(request: Request) {
   const relay = await getRelay();
 
   const url = new URL(request.url);
-  const relayPath = url.pathname.replace(/^\/relay/, '') || '/';
+  const relayPath = url.pathname.replace(/^\/registry\/relay/, '') || '/';
   const relayUrl = new URL(relayPath, url.origin);
   relayUrl.search = url.search;
 
