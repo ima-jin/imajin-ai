@@ -8,13 +8,8 @@ const sql = getClient();
 async function requireAdmin() {
   const session = await getSession();
   if (!session?.actingAs) redirect('/admin');
-  const [nodeRow] = await sql`
-    SELECT id FROM auth.identities
-    WHERE id = ${session.actingAs}
-    AND scope = 'actor' AND subtype = 'node'
-    LIMIT 1
-  `;
-  if (!nodeRow) redirect('/admin');
+  const nodeDid = process.env.NODE_DID;
+  if (!nodeDid || session.actingAs !== nodeDid) redirect('/admin');
   return session;
 }
 

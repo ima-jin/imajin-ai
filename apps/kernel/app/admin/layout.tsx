@@ -31,15 +31,9 @@ export default async function AdminLayout({
     redirect('/');
   }
 
-  // Verify actingAs is a node identity
-  const [nodeRow] = await sql`
-    SELECT id FROM auth.identities
-    WHERE id = ${session.actingAs}
-    AND scope = 'actor' AND subtype = 'node'
-    LIMIT 1
-  `;
-
-  if (!nodeRow) {
+  // Verify actingAs is the node DID
+  const nodeDid_ = process.env.NODE_DID;
+  if (!nodeDid_ || session.actingAs !== nodeDid_) {
     redirect('/');
   }
 
