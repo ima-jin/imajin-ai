@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
+import { useClipboardUpload } from '@/src/hooks/useClipboardUpload';
 import { Avatar } from './Avatar';
 
 interface ImageUploadProps {
@@ -118,6 +119,13 @@ export function ImageUpload({
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [did, onUploadComplete]
+  );
+
+  // Clipboard paste support — Ctrl+V / Cmd+V to upload avatar
+  useClipboardUpload(
+    handleFile,
+    { app: 'profile', feature: 'avatar', access: 'public' },
+    { enabled: !isUploading }
   );
 
   const onDrop = useCallback(

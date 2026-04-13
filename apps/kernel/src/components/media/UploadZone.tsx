@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
+import { useClipboardUpload, appendUploadContext } from "@/src/hooks/useClipboardUpload";
+import type { UploadContext } from "@/src/hooks/useClipboardUpload";
 
 export interface UploadZoneHandle {
   openPicker: () => void;
@@ -10,10 +12,12 @@ interface UploadZoneProps {
   onUploaded: () => void;
   /** If true, renders only the trigger button (for use in headers). */
   buttonOnly?: boolean;
+  /** Upload context for .fair access control. Defaults to private. */
+  uploadContext?: UploadContext;
 }
 
 export const UploadZone = forwardRef<UploadZoneHandle, UploadZoneProps>(
-  function UploadZone({ onUploaded, buttonOnly = false }, ref) {
+  function UploadZone({ onUploaded, buttonOnly = false, uploadContext }, ref) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -23,6 +27,8 @@ export const UploadZone = forwardRef<UploadZoneHandle, UploadZoneProps>(
     useImperativeHandle(ref, () => ({
       openPicker: () => fileInputRef.current?.click(),
     }));
+
+    const ctx: UploadContext = uploadContext ?? { app: 'media', access: 'private' };
 
     const uploadFile = useCallback(
       async (file: File) => {
@@ -34,6 +40,7 @@ export const UploadZone = forwardRef<UploadZoneHandle, UploadZoneProps>(
         const formData = new FormData();
         formData.append("file", file);
         formData.append("filename", file.name);
+        appendUploadContext(formData, ctx);
 
         try {
           const res = await fetch("/media/api/assets", {
@@ -68,6 +75,9 @@ export const UploadZone = forwardRef<UploadZoneHandle, UploadZoneProps>(
       },
       [onUploaded]
     );
+
+    // Clipboard paste support — Ctrl+V / Cmd+V to upload images
+    useClipboardUpload(uploadFile, ctx, { enabled: !uploading });
 
     const handleFileChange = useCallback(
       (e: React.ChangeEvent<HTMLInputElement>) => {

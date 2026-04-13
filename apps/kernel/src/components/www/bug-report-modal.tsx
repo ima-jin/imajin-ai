@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useClipboardUpload } from '@/src/hooks/useClipboardUpload';
 
 const MEDIA_SERVICE_URL = process.env.NEXT_PUBLIC_MEDIA_SERVICE_URL || '/media';
 
@@ -36,24 +37,10 @@ export function BugReportModal({ onClose }: Props) {
   }, []);
 
   // Ctrl+V paste support for images
-  useEffect(() => {
-    const handlePaste = (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (const item of Array.from(items)) {
-        if (item.type.startsWith('image/')) {
-          const file = item.getAsFile();
-          if (file) {
-            e.preventDefault();
-            handleFile(file);
-          }
-          break;
-        }
-      }
-    };
-    document.addEventListener('paste', handlePaste);
-    return () => document.removeEventListener('paste', handlePaste);
-  }, [handleFile]);
+  useClipboardUpload(
+    handleFile,
+    { app: 'www', feature: 'bugs', access: 'public' }
+  );
 
   const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();

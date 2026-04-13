@@ -203,16 +203,21 @@ export async function POST(request: NextRequest) {
   const fairPath = `${dirPath}/${assetId}.fair.json`;
 
   // .fair manifest — context-aware access and transfer rules
+  // Prefer explicit access from context, fall back to app-based inference
   const app = context?.app;
+  const explicitAccess = context?.access;
   let accessLevel: string;
   let includeTransfer: boolean;
-  if (app === "chat") {
-    accessLevel = "public";
+  if (explicitAccess) {
+    accessLevel = explicitAccess;
+    includeTransfer = explicitAccess === "private";
+  } else if (app === "chat") {
+    accessLevel = "conversation";
     includeTransfer = false;
   } else if (app === "market") {
     accessLevel = "public";
     includeTransfer = true;
-  } else if (app === "profile" || app === "events") {
+  } else if (app === "profile" || app === "events" || app === "www") {
     accessLevel = "public";
     includeTransfer = false;
   } else {

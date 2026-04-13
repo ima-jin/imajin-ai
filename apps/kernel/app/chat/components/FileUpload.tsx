@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef, ChangeEvent } from 'react';
+import { useState, useRef, useCallback, ChangeEvent } from 'react';
+import { useClipboardUpload } from '@/src/hooks/useClipboardUpload';
 
 interface FileUploadProps {
   conversationId: string;
@@ -20,14 +21,7 @@ export function FileUpload({
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      uploadFile(file);
-    }
-  };
-
-  const uploadFile = async (file: File) => {
+  const uploadFile = useCallback(async (file: File) => {
     setUploading(true);
 
     try {
@@ -56,7 +50,19 @@ export function FileUpload({
     } finally {
       setUploading(false);
     }
+  }, [conversationId, onUploadComplete, onUploadError]);
+
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadFile(file);
   };
+
+  // Clipboard paste support — Ctrl+V / Cmd+V to upload images in chat
+  useClipboardUpload(
+    uploadFile,
+    { app: 'chat', feature: 'message', entityId: conversationId, access: 'conversation' },
+    { enabled: !uploading }
+  );
 
   return (
     <>
