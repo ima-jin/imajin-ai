@@ -284,7 +284,7 @@ function DIDConversationView({ did }: { did: string }) {
   // Use same-origin proxy for access checks (cross-origin cookie forwarding is unreliable)
   const authUrl = '/chat';  // kernel: access route is at /chat/api/access/[did]
   const mediaUrl = MEDIA_URL;
-  const connectionsUrl = `${SERVICE_PREFIX}connections.${DOMAIN}`;
+  const connectionsUrl = '/connections';
 
   const displayName =
     convName ||

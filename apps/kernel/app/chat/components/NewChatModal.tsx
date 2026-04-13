@@ -29,7 +29,7 @@ import { conversationPath } from '@/src/lib/chat/conversation-did';
 
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-const CONNECTIONS_URL = buildPublicUrl('connections', SERVICE_PREFIX, DOMAIN);
+const CONNECTIONS_URL = '/connections';
 const AUTH_URL = buildPublicUrl('auth', SERVICE_PREFIX, DOMAIN);
 
 interface Connection {
