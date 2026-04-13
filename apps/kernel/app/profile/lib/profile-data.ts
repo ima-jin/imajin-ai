@@ -6,6 +6,14 @@ import { eq, count, and, isNull } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import type { ProfileData, ProfileCounts, LinkItem, IdentityInfo } from './types';
 
+export interface MemberEntry {
+  role: string;
+  did: string;
+  displayName: string;
+  handle?: string;
+  avatar?: string;
+}
+
 export async function getViewerDid(): Promise<string | null> {
   try {
     const cookieStore = await cookies();
@@ -87,6 +95,36 @@ export async function getIdentityInfo(did: string): Promise<IdentityInfo> {
     tier: identityRow?.tier ?? '',
     chainVerified: !!chainRow,
   };
+}
+
+export async function getMembersByRole(identityDid: string): Promise<MemberEntry[]> {
+  try {
+    const rows = await db
+      .select({
+        role: identityMembers.role,
+        memberDid: identityMembers.memberDid,
+        displayName: profiles.displayName,
+        handle: profiles.handle,
+        avatar: profiles.avatar,
+      })
+      .from(identityMembers)
+      .leftJoin(profiles, eq(profiles.did, identityMembers.memberDid))
+      .where(
+        and(
+          eq(identityMembers.identityDid, identityDid),
+          isNull(identityMembers.removedAt)
+        )
+      );
+    return rows.map((r) => ({
+      role: r.role,
+      did: r.memberDid,
+      displayName: r.displayName ?? r.memberDid,
+      handle: r.handle ?? undefined,
+      avatar: r.avatar ?? undefined,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export async function getMaintainerInfo(identityDid: string, viewerDid: string | null): Promise<{ count: number; isMaintainer: boolean }> {

@@ -7,7 +7,7 @@ import { MarketItems } from '../MarketItems';
 import { formatMemberSince } from '../../lib/profile-utils';
 import type { ProfileViewProps } from '../../lib/types';
 
-export function ActorProfile({ profile, identity, viewer, counts, links, maintainerInfo }: ProfileViewProps) {
+export function ActorProfile({ profile, identity, viewer, counts, links }: ProfileViewProps) {
   const isSoftDID = identity.tier === 'soft';
   const servicePrefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
   const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -16,29 +16,6 @@ export function ActorProfile({ profile, identity, viewer, counts, links, maintai
     <div className="max-w-lg mx-auto">
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
         <ScopeHeader profile={profile} identity={identity} />
-
-        {/* Unclaimed stub — maintainer info + join CTA */}
-        {identity.scope === 'business' && profile.claimStatus === 'unclaimed' && maintainerInfo && (
-          <div className="mb-4 bg-sky-950/30 border border-sky-800/40 rounded-xl px-4 py-3 text-sm text-sky-300">
-            <p className="mb-1">
-              This place is community-maintained.{' '}
-              <span className="text-sky-400 font-medium">{maintainerInfo.count} maintainer{maintainerInfo.count !== 1 ? 's' : ''}</span> keeping it up to date.
-            </p>
-            {viewer.viewerDid && !maintainerInfo.isMaintainer && (
-              <form action={`/profile/api/stubs/${encodeURIComponent(profile.did)}/join`} method="POST">
-                <button
-                  type="submit"
-                  className="mt-2 px-4 py-1.5 bg-sky-700 hover:bg-sky-600 text-white rounded-lg text-xs font-medium transition-colors"
-                >
-                  Help maintain this place
-                </button>
-              </form>
-            )}
-            {viewer.viewerDid && maintainerInfo.isMaintainer && (
-              <p className="mt-1 text-xs text-sky-500">You are a maintainer of this place.</p>
-            )}
-          </div>
-        )}
 
         <ProfileStats
           counts={counts}

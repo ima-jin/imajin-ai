@@ -8,11 +8,11 @@ import {
   isConnected,
   getLinks,
   getIdentityInfo,
-  getMaintainerInfo,
 } from '../lib/profile-data';
 import { getScopeEmoji } from '../lib/profile-utils';
 import { GatedProfile } from '../components/GatedProfile';
 import { ActorProfile } from '../components/profiles/ActorProfile';
+import { BusinessProfile } from '../components/profiles/BusinessProfile';
 
 interface PageProps {
   params: Promise<{ handle: string }>;
@@ -79,11 +79,6 @@ export default async function ProfilePage({ params }: PageProps) {
     profile.featureToggles?.links ? getLinks(profile.featureToggles.links) : Promise.resolve([]),
   ]);
 
-  let maintainerInfo: { count: number; isMaintainer: boolean } | undefined;
-  if (identity.scope === 'business' && profile.claimStatus === 'unclaimed') {
-    maintainerInfo = await getMaintainerInfo(profile.did, isSelf ? null : viewerDid);
-  }
-
   const viewer = {
     viewerDid,
     isSelf,
@@ -91,11 +86,12 @@ export default async function ProfilePage({ params }: PageProps) {
     isFollowing: isFollowing as boolean,
   };
 
-  const props = { profile, identity, viewer, counts, links, maintainerInfo };
+  const props = { profile, identity, viewer, counts, links };
 
   switch (identity.scope) {
-    case 'actor':
     case 'business':
+      return <BusinessProfile {...props} />;
+    case 'actor':
     case 'community':
     case 'family':
     default:
