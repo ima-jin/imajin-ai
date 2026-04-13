@@ -112,6 +112,19 @@ export const POST = withLogger('events', async (request, { log, correlationId })
     const session = await optionalAuth(request);
     const buyerDid = (session && session.tier !== 'soft') ? session.id : undefined;
 
+    // Enforce max per order: per-type override > event metadata > default 10, hard cap 20
+    const eventMeta = (event.metadata || {}) as Record<string, any>;
+    const maxPerOrder = Math.min(
+      ticketType.maxPerOrder ?? eventMeta.maxTicketsPerOrder ?? 10,
+      20
+    );
+    if (quantity > maxPerOrder) {
+      return NextResponse.json(
+        { error: `Maximum ${maxPerOrder} tickets per order` },
+        { status: 400 }
+      );
+    }
+
     // Check availability
     if (ticketType.quantity !== null) {
       const available = ticketType.quantity - (ticketType.sold ?? 0);
