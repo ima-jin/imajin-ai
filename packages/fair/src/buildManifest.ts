@@ -9,6 +9,7 @@ import {
   BUYER_CREDIT_MAX_BPS,
   BUYER_CREDIT_DEFAULT_BPS,
   STRIPE_RATE_BPS,
+  STRIPE_MIN_RATE_BPS,
   STRIPE_FIXED_CENTS,
 } from './constants';
 
@@ -96,7 +97,7 @@ export function buildFairManifest(params: {
       : [{ did: creatorDid, role: 'creator', share: 1.0 }];
 
   const fees: FairFee[] = [
-    { role: 'processor', name: 'Stripe', rateBps: STRIPE_RATE_BPS, fixedCents: STRIPE_FIXED_CENTS },
+    { role: 'processor', name: 'Stripe', rateBps: STRIPE_RATE_BPS, minRateBps: STRIPE_MIN_RATE_BPS, fixedCents: STRIPE_FIXED_CENTS },
   ];
 
   return {

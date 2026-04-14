@@ -18,7 +18,8 @@ export interface FairEntry {
 export interface FairFee {
   role: string;        // 'processor', 'gas', etc.
   name: string;        // 'Stripe', 'Solana', etc.
-  rateBps: number;     // basis points (290 = 2.9%)
+  rateBps: number;     // basis points — upper estimate used for application_fee (370 = 3.7%)
+  minRateBps?: number; // basis points — minimum rate for display (290 = 2.9%)
   fixedCents: number;  // per-transaction fixed cost in cents (30 = $0.30)
 }
 

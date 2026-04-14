@@ -160,7 +160,10 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
                       <span className="text-xs text-gray-500">{fee.role}</span>
                     </div>
                     <span className="text-sm font-bold text-gray-500">
-                      {(fee.rateBps / 100).toFixed(1)}%{fee.fixedCents > 0 ? ` + ${(fee.fixedCents / 100).toFixed(2)}` : ''}
+                      {fee.minRateBps && fee.minRateBps !== fee.rateBps
+                        ? `${(fee.minRateBps / 100).toFixed(1)}–${(fee.rateBps / 100).toFixed(1)}%`
+                        : `${(fee.rateBps / 100).toFixed(1)}%`
+                      }{fee.fixedCents > 0 ? ` + ${(fee.fixedCents / 100).toFixed(2)}` : ''}
                     </span>
                   </div>
                 ))}
