@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useClipboardUpload, appendUploadContext } from '@/src/hooks/useClipboardUpload';
 
 interface GalleryImage {
   id: string;
@@ -15,11 +16,14 @@ interface StubGalleryProps {
 }
 
 const MAX_GALLERY_IMAGES = 6;
+const GALLERY_CONTEXT = { app: 'profile', feature: 'gallery', access: 'public' } as const;
 
 /**
  * StubGallery - Photo gallery for stub business profiles.
  * Maintainers can upload (max 6) and delete images.
  * Non-maintainers see a read-only grid.
+ *
+ * Upload flow: file → /media/api/assets (DID-scoped storage) → POST url to /stubs/:did/images
  */
 export function StubGallery({ identityDid, isMaintainer }: StubGalleryProps) {
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -48,66 +52,42 @@ export function StubGallery({ identityDid, isMaintainer }: StubGalleryProps) {
     fetchImages();
   }, [fetchImages]);
 
-  const resizeImage = useCallback((file: File): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let { width, height } = img;
-        const maxSize = 1200;
-        if (width > maxSize || height > maxSize) {
-          if (width > height) {
-            height = Math.round((height * maxSize) / width);
-            width = maxSize;
-          } else {
-            width = Math.round((width * maxSize) / height);
-            height = maxSize;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d')!;
-        ctx.drawImage(img, 0, 0, width, height);
-        canvas.toBlob(
-          (blob) => (blob ? resolve(blob) : reject(new Error('Canvas toBlob failed'))),
-          'image/jpeg',
-          0.8
-        );
-      };
-      img.onerror = () => reject(new Error('Failed to load image'));
-      img.src = URL.createObjectURL(file);
-    });
-  }, []);
-
   const handleFile = useCallback(
     async (file: File) => {
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-      if (!allowedTypes.includes(file.type)) {
-        setError('Invalid file type. Only JPG, PNG, GIF, and WebP are allowed.');
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        setError('File too large. Maximum size is 5MB.');
-        return;
-      }
+      if (!isMaintainer) return;
+      if (images.length >= MAX_GALLERY_IMAGES) return;
 
       setError('');
       setIsUploading(true);
 
       try {
-        const resized = await resizeImage(file);
-
+        // Step 1: upload to media service
         const formData = new FormData();
-        formData.append('image', resized, `gallery-${Date.now()}.jpg`);
+        formData.append('file', file, file.name || `gallery-${Date.now()}.jpg`);
+        appendUploadContext(formData, GALLERY_CONTEXT);
 
-        const response = await fetch(`/profile/api/stubs/${encodedDid}/images`, {
+        const uploadRes = await fetch('/media/api/assets', {
           method: 'POST',
           body: formData,
         });
 
-        if (!response.ok) {
-          const data = await response.json();
+        if (!uploadRes.ok) {
+          const data = await uploadRes.json();
           throw new Error(data.error || 'Upload failed');
+        }
+
+        const { url } = await uploadRes.json();
+
+        // Step 2: register URL in gallery
+        const imageRes = await fetch(`/profile/api/stubs/${encodedDid}/images`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+
+        if (!imageRes.ok) {
+          const data = await imageRes.json();
+          throw new Error(data.error || 'Failed to save image');
         }
 
         await fetchImages();
@@ -118,8 +98,11 @@ export function StubGallery({ identityDid, isMaintainer }: StubGalleryProps) {
         setIsUploading(false);
       }
     },
-    [encodedDid, resizeImage, fetchImages]
+    [isMaintainer, images.length, encodedDid, fetchImages]
   );
+
+  // Clipboard paste (Ctrl+V / Cmd+V)
+  useClipboardUpload(handleFile, GALLERY_CONTEXT, { enabled: isMaintainer && !isUploading });
 
   const handleDelete = useCallback(
     async (imageId: string) => {
@@ -144,7 +127,6 @@ export function StubGallery({ identityDid, isMaintainer }: StubGalleryProps) {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (files && files.length > 0) handleFile(files[0]);
-      // Reset input so the same file can be re-selected
       e.target.value = '';
     },
     [handleFile]

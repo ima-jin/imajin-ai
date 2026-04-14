@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { unlink } from 'fs/promises';
-import path from 'path';
 import { db, identityMembers, profileImages } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
-const UPLOAD_DIR = '/mnt/media/gallery';
 const ALLOWED_ROLES = ['maintainer', 'admin', 'owner'];
 
 interface RouteParams {
@@ -16,7 +13,8 @@ interface RouteParams {
 
 /**
  * DELETE /profile/api/stubs/:did/images/:id
- * Remove a gallery image. Caller must be a maintainer, admin, or owner.
+ * Remove a gallery image record. Caller must be a maintainer, admin, or owner.
+ * File cleanup is handled by the media service — this only removes the DB row.
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { did, id } = await params;
@@ -44,7 +42,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Find the image
+  // Find and delete the image record
   const [image] = await db
     .select()
     .from(profileImages)
@@ -55,15 +53,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  // Delete the file
-  try {
-    const filename = image.url.split('/').pop()?.split('?')[0];
-    if (filename) {
-      await unlink(path.join(UPLOAD_DIR, filename)).catch(() => {});
-    }
-  } catch {}
-
-  // Delete the row
   await db.delete(profileImages).where(eq(profileImages.id, id));
 
   log.info({ did, id }, '[stubs/images] Gallery image deleted');

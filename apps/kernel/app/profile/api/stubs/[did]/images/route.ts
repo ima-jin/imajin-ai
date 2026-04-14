@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import path from 'path';
 import { db, identityMembers, profileImages } from '@/src/db';
 import { eq, and, isNull, count } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
-const UPLOAD_DIR = '/mnt/media/gallery';
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const ALLOWED_ROLES = ['maintainer', 'admin', 'owner'];
 const MAX_GALLERY_IMAGES = 6;
 
@@ -36,9 +30,11 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 
 /**
  * POST /profile/api/stubs/:did/images
- * Upload a new gallery image (max 6 per stub).
+ * Add a gallery image URL (already uploaded to /media/api/assets).
  * Caller must be a maintainer, admin, or owner of the identity.
- * Accepts: multipart/form-data with 'image' field and optional 'caption'
+ *
+ * Client flow: upload to /media/api/assets → get URL → call this endpoint
+ * Accepts: { url: string; caption?: string }
  * Returns: { image: ProfileImage }
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
@@ -80,65 +76,32 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     );
   }
 
-  let formData: FormData;
+  let body: { url: string; caption?: string };
   try {
-    formData = await request.formData();
+    body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid form data' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const file = formData.get('image') as File | null;
-  if (!file) {
-    return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+  const { url, caption } = body;
+  if (!url || typeof url !== 'string') {
+    return NextResponse.json({ error: 'url is required' }, { status: 400 });
   }
 
-  if (!ALLOWED_TYPES.includes(file.type)) {
-    return NextResponse.json(
-      { error: 'Invalid file type. Only JPG, PNG, GIF, and WebP are allowed.' },
-      { status: 400 }
-    );
-  }
+  const id = `img_${Math.random().toString(36).slice(2, 18)}`;
 
-  if (file.size > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: 'File too large. Maximum size is 5MB.' }, { status: 400 });
-  }
+  const [image] = await db
+    .insert(profileImages)
+    .values({
+      id,
+      did,
+      url,
+      caption: caption ?? null,
+      sortOrder: total,
+      createdBy: caller.id,
+    })
+    .returning();
 
-  const caption = (formData.get('caption') as string | null) || null;
-
-  try {
-    if (!existsSync(UPLOAD_DIR)) {
-      await mkdir(UPLOAD_DIR, { recursive: true });
-    }
-
-    const ext = file.name.split('.').pop() || 'jpg';
-    const timestamp = Date.now();
-    const didShort = did.replace('did:imajin:', '').slice(0, 16);
-    const filename = `${didShort}-${timestamp}.${ext}`;
-    const filepath = path.join(UPLOAD_DIR, filename);
-
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    await writeFile(filepath, buffer);
-
-    const url = `/api/media/gallery/${filename}?v=${timestamp}`;
-    const id = `img_${Math.random().toString(36).slice(2, 18)}`;
-
-    const [image] = await db
-      .insert(profileImages)
-      .values({
-        id,
-        did,
-        url,
-        caption,
-        sortOrder: total,
-        createdBy: caller.id,
-      })
-      .returning();
-
-    log.info({ did, id }, '[stubs/images] Gallery image added');
-    return NextResponse.json({ image });
-  } catch (error) {
-    log.error({ err: String(error) }, '[stubs/images] Upload failed');
-    return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
-  }
+  log.info({ did, id }, '[stubs/images] Gallery image added');
+  return NextResponse.json({ image });
 }
