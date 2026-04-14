@@ -23,9 +23,24 @@ interface IdentityConfig {
   theme: Record<string, unknown>;
 }
 
-const VISIBLE_SERVICES = SERVICES.filter(
-  (s) => s.visibility !== 'internal' && s.category !== 'meta' && s.category !== 'infrastructure'
+const KERNEL_SERVICES = SERVICES.filter((s) => s.category === 'kernel' && s.visibility !== 'internal');
+
+const SELECTABLE_SERVICES = SERVICES.filter(
+  (s) =>
+    s.visibility !== 'internal' &&
+    s.category !== 'meta' &&
+    s.category !== 'infrastructure' &&
+    s.category !== 'kernel'
 );
+
+const ROLE_STYLES: Record<string, string> = {
+  owner: 'border-amber-600 text-amber-400 bg-amber-900/20',
+  admin: 'border-blue-700 text-blue-400 bg-blue-900/20',
+  maintainer: 'border-sky-700 text-sky-400 bg-sky-900/20',
+  member: 'border-gray-700 text-gray-400 bg-gray-900/20',
+};
+
+const ADD_ROLES = ['admin', 'maintainer', 'member'];
 
 function scopeIcon(scope: string): string {
   if (scope === 'community') return '🏛️';
@@ -45,6 +60,12 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
   const [landingService, setLandingService] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Add member form state
+  const [addDid, setAddDid] = useState('');
+  const [addRole, setAddRole] = useState('member');
+  const [addingMember, setAddingMember] = useState(false);
+  const [removingDid, setRemovingDid] = useState<string | null>(null);
 
   const authUrl = typeof window !== 'undefined'
     ? window.location.origin
@@ -119,6 +140,54 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
     }
   }
 
+  async function handleAddMember(e: React.FormEvent) {
+    e.preventDefault();
+    if (!addDid.trim()) return;
+    setAddingMember(true);
+    try {
+      const res = await fetch(`${authUrl}/api/groups/${encodeURIComponent(groupDid)}/controllers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ did: addDid.trim(), role: addRole }),
+      });
+      if (res.ok) {
+        setAddDid('');
+        setAddRole('member');
+        showStatus('success', 'Member added.');
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to add member.');
+      }
+    } catch {
+      showStatus('error', 'Network error. Please try again.');
+    } finally {
+      setAddingMember(false);
+    }
+  }
+
+  async function handleRemoveMember(controllerDid: string) {
+    setRemovingDid(controllerDid);
+    try {
+      const res = await fetch(
+        `${authUrl}/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(controllerDid)}`,
+        { method: 'DELETE', credentials: 'include' }
+      );
+      if (res.ok) {
+        showStatus('success', 'Member removed.');
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to remove member.');
+      }
+    } catch {
+      showStatus('error', 'Network error. Please try again.');
+    } finally {
+      setRemovingDid(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
@@ -127,7 +196,8 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
     );
   }
 
-  const enabledServiceOptions = VISIBLE_SERVICES.filter(s => enabledServices.includes(s.name));
+  const enabledServiceOptions = SELECTABLE_SERVICES.filter(s => enabledServices.includes(s.name));
+  const ownerDid = group?.controllers.find(c => c.role === 'owner')?.controllerDid;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] p-4 md:p-8">
@@ -165,13 +235,31 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
           </div>
         )}
 
-        {/* Services section */}
+        {/* Included (kernel) services — non-interactive */}
         <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Services</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Included with every identity</h2>
+          <p className="text-sm text-gray-400 mb-6">These core services are always available and cannot be disabled.</p>
+
+          <div className="flex flex-wrap gap-2">
+            {KERNEL_SERVICES.map(svc => (
+              <span
+                key={svc.name}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-800 bg-gray-900/50 text-gray-500 text-sm"
+              >
+                <span>{svc.icon}</span>
+                <span>{svc.label}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Selectable services */}
+        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Available Apps</h2>
           <p className="text-sm text-gray-400 mb-6">Toggle which apps are available for this identity.</p>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {VISIBLE_SERVICES.map(svc => {
+            {SELECTABLE_SERVICES.map(svc => {
               const isEnabled = enabledServices.includes(svc.name);
               return (
                 <button
@@ -212,7 +300,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
             ))}
           </select>
           {enabledServiceOptions.length === 0 && (
-            <p className="text-xs text-gray-600 mt-2">Enable at least one service to set a landing page.</p>
+            <p className="text-xs text-gray-600 mt-2">Enable at least one app to set a landing page.</p>
           )}
         </div>
 
@@ -239,43 +327,88 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
           </div>
         </div>
 
-        {/* Controllers section */}
+        {/* Members section */}
         <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Controllers</h2>
+          <div className="flex items-center gap-3 mb-1">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500">Members</h2>
+            {group?.controllers?.length ? (
+              <span className="px-1.5 py-0.5 text-xs rounded bg-gray-800 text-gray-400 font-mono">
+                {group.controllers.length}
+              </span>
+            ) : null}
+          </div>
           <p className="text-sm text-gray-400 mb-6">People who can manage this identity.</p>
 
           {!group?.controllers?.length ? (
-            <p className="text-sm text-gray-500">No controllers found.</p>
+            <p className="text-sm text-gray-500 mb-6">No members found.</p>
           ) : (
-            <div className="space-y-2">
-              {group.controllers.map(ctrl => (
-                <div key={ctrl.controllerDid} className="flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-800">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">👤</span>
-                    <div>
-                      <p className="text-sm text-white font-medium font-mono">
-                        {ctrl.controllerDid.length > 24
-                          ? ctrl.controllerDid.slice(0, 20) + '…'
-                          : ctrl.controllerDid}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Added {new Date(ctrl.addedAt).toLocaleDateString()}
-                      </p>
+            <div className="space-y-2 mb-6">
+              {group.controllers.map(ctrl => {
+                const isOwner = ctrl.role === 'owner';
+                const roleStyle = ROLE_STYLES[ctrl.role] ?? ROLE_STYLES.member;
+                const isRemoving = removingDid === ctrl.controllerDid;
+                return (
+                  <div key={ctrl.controllerDid} className="flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-800">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-xl flex-shrink-0">👤</span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-white font-medium font-mono truncate">
+                          {ctrl.controllerDid.length > 32
+                            ? ctrl.controllerDid.slice(0, 28) + '…'
+                            : ctrl.controllerDid}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Added {new Date(ctrl.addedAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                      <span className={`px-2 py-0.5 text-xs rounded border capitalize ${roleStyle}`}>
+                        {ctrl.role}
+                      </span>
+                      {!isOwner && (
+                        <button
+                          onClick={() => handleRemoveMember(ctrl.controllerDid)}
+                          disabled={isRemoving}
+                          className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-red-400 hover:bg-red-900/20 transition disabled:opacity-40"
+                          title="Remove member"
+                        >
+                          {isRemoving ? '…' : '×'}
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <span className={`px-2 py-0.5 text-xs rounded border capitalize ${
-                    ctrl.role === 'owner'
-                      ? 'border-amber-600 text-amber-400 bg-amber-900/20'
-                      : ctrl.role === 'admin'
-                      ? 'border-blue-700 text-blue-400 bg-blue-900/20'
-                      : 'border-gray-700 text-gray-400'
-                  }`}>
-                    {ctrl.role}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
+
+          {/* Add member form */}
+          <form onSubmit={handleAddMember} className="flex gap-2">
+            <input
+              type="text"
+              value={addDid}
+              onChange={e => setAddDid(e.target.value)}
+              placeholder="DID or handle"
+              className="flex-1 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
+            />
+            <select
+              value={addRole}
+              onChange={e => setAddRole(e.target.value)}
+              className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
+            >
+              {ADD_ROLES.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              disabled={addingMember || !addDid.trim()}
+              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition disabled:opacity-40 whitespace-nowrap"
+            >
+              {addingMember ? 'Adding…' : 'Add'}
+            </button>
+          </form>
         </div>
 
         {/* Save button */}
