@@ -52,9 +52,9 @@ export async function POST(request: NextRequest) {
 
   if (delivery === 'email') {
     // Email invites require hard DID + trust graph membership
-    if (session.tier !== 'hard') {
+    if (session.tier === 'soft') {
       return NextResponse.json({
-        error: 'Only users with verified identities (hard DID) can send email invites'
+        error: 'Only users with verified identities can send email invites'
       }, { status: 403 });
     }
 

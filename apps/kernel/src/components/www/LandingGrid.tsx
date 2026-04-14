@@ -108,7 +108,7 @@ export function LandingGrid() {
         setServices((specData as { services: ServiceEntry[] }).services.filter((s) => s.visibility !== 'internal'));
       }
       const tier = (session as { tier?: string } | null)?.tier;
-      setAuthed(tier === 'hard' || tier === 'creator');
+      setAuthed(tier === 'preliminary' || tier === 'established' || tier === 'creator');
       if (scopeConfig) {
         const cfg = scopeConfig as { enabledServices?: string[] };
         setScopeEnabledServices(cfg.enabledServices ?? null);
