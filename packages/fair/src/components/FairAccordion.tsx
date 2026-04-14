@@ -166,7 +166,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
                 ))}
               </div>
               <p className="text-[10px] text-gray-500 mt-1.5 pl-1">
-                Deducted per transaction before revenue split
+                Estimated per transaction — actual fee depends on card type. Reconciled after payment.
               </p>
             </div>
           )}

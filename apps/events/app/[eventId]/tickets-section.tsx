@@ -24,6 +24,7 @@ interface FairSettlementFee {
   rateBps: number;
   fixedCents: number;
   amount: number;
+  estimated?: boolean;
 }
 
 interface FairSettlement {
@@ -331,7 +332,9 @@ function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
                   {(fee.rateBps / 100).toFixed(1)}%{fee.fixedCents > 0 ? ` + ${currencyFmt.format(fee.fixedCents / 100)}` : ''}
                 </span>
               </div>
-              <span className="font-bold text-gray-500">{currencyFmt.format(fee.amount)}</span>
+              <span className="font-bold text-gray-500">
+                {fee.estimated ? '~' : ''}{currencyFmt.format(fee.amount)}
+              </span>
             </div>
           ))}
           <div className="flex justify-between px-3 pt-2 border-t border-gray-200 dark:border-gray-800 text-sm">

@@ -225,11 +225,32 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     const buyerDid = session.metadata?.buyerDid || session.metadata?.identity_id || null;
 
     if (manifest.chain && totalAmountCents > 0) {
-      // Record processing fees (Stripe) in the fee ledger
+      // Record processing fees — use actual Stripe fee from balance_transaction when available
+      let actualStripeFeeCents: number | null = null;
+      try {
+        const stripe = getStripe();
+        const paymentIntentId = session.payment_intent as string;
+        if (paymentIntentId) {
+          const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
+            expand: ['latest_charge.balance_transaction'],
+          });
+          const charge = pi.latest_charge as Stripe.Charge | null;
+          const bt = charge?.balance_transaction as Stripe.BalanceTransaction | null;
+          if (bt?.fee) {
+            actualStripeFeeCents = bt.fee;
+            log.info({ transactionId: tx.id, stripeFee: bt.fee, feeDetails: bt.fee_details }, '[webhook] Actual Stripe fee from balance_transaction');
+          }
+        }
+      } catch (err) {
+        log.warn({ err: String(err) }, '[webhook] Failed to fetch balance_transaction — using estimate');
+      }
+
+      // Fall back to estimate if balance_transaction lookup failed
       const feeEntry = manifest.fees?.find(f => f.role === 'processor');
-      const processingFeeCents = feeEntry
+      const estimatedFeeCents = feeEntry
         ? Math.round(totalAmountCents * feeEntry.rateBps / 10000) + (feeEntry.fixedCents || 0)
         : Math.round(totalAmountCents * STRIPE_RATE_BPS / 10000) + STRIPE_FIXED_CENTS;
+      const processingFeeCents = actualStripeFeeCents ?? estimatedFeeCents;
 
       await db.insert(feeLedger).values({
         id: generateId('fl'),
@@ -241,7 +262,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
         status: 'paid_out',
       });
 
-      payEvents.emit({ action: 'fee.record', payload: { transactionId: tx.id, recipientDid: 'stripe:processor', role: 'processor', amountCents: processingFeeCents, currency } });
+      payEvents.emit({ action: 'fee.record', payload: { transactionId: tx.id, recipientDid: 'stripe:processor', role: 'processor', amountCents: processingFeeCents, currency, estimated: actualStripeFeeCents === null } });
 
       for (const entry of manifest.chain) {
         const amountCents = Math.round(totalAmountCents * entry.share);

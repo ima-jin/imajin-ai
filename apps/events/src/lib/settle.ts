@@ -129,13 +129,15 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
 
     // Snapshot the resolved .fair manifest onto the ticket — immutable receipt
     try {
-      // Resolve processing fees with actual amounts for this transaction
+      // Resolve processing fees with estimated amounts for this transaction
+      // Actual fee varies by card type — reconciled in pay webhook via balance_transaction
       const resolvedFees = (fairManifest.fees || []).map((fee) => ({
         role: fee.role,
         name: fee.name,
         rateBps: fee.rateBps,
         fixedCents: fee.fixedCents,
         amount: parseFloat(((amount * fee.rateBps / 10000 + fee.fixedCents) / 100).toFixed(2)),
+        estimated: true,
       }));
 
       const fairSettlement = {
