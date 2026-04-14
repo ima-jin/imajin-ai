@@ -31,21 +31,20 @@ interface FairSettlement {
   version?: string;
   settledAt: string;
   totalAmount: number;
+  netAmount?: number;   // post-fee organizer total (WO2/3)
   currency: string;
   fees?: FairSettlementFee[];
   chain: { did: string; amount: number; role: string }[];
 }
 
-interface UserTicket {
+interface OrderTicket {
   id: string;
   status: string;
   usedAt: string | null;
-  registrationStatus?: string;
-  purchasedAt: string | null;
+  registrationStatus: string;
   pricePaid: number | null;
   currency: string | null;
   qrCodeDataUri?: string;
-  fairSettlement?: FairSettlement | null;
   ticketType: {
     name: string;
     description: string | null;
@@ -54,11 +53,23 @@ interface UserTicket {
   } | null;
 }
 
+interface UserOrder {
+  id: string;
+  isLegacy: boolean;
+  quantity: number;
+  totalAmount: number | null;
+  currency: string | null;
+  purchasedAt: string | null;
+  ticketTypeName: string;
+  fairSettlement: FairSettlement | null;
+  tickets: OrderTicket[];
+}
+
 interface Props {
   eventId: string;
   eventTitle: string;
   tickets: TicketType[];
-  userTickets?: UserTicket[];
+  userOrders?: UserOrder[];
   hasTicket?: boolean;
   inviteToken?: string;
   etransferEnabled?: boolean;
@@ -66,7 +77,7 @@ interface Props {
   sellerConnected?: boolean;
 }
 
-export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [], hasTicket = false, inviteToken, etransferEnabled = false, isAuthenticated = false, sellerConnected = true }: Props) {
+export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], hasTicket = false, inviteToken, etransferEnabled = false, isAuthenticated = false, sellerConnected = true }: Props) {
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'buy-tickets'>(
     hasTicket ? 'my-tickets' : 'buy-tickets'
   );
@@ -82,7 +93,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
   }
 
   // If user doesn't have tickets, show purchase UI only
-  if (!hasTicket || userTickets.length === 0) {
+  if (!hasTicket || userOrders.length === 0) {
     return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sellerConnected={sellerConnected} />;
   }
 
@@ -115,7 +126,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
 
       {/* Tab Content */}
       {activeTab === 'my-tickets' ? (
-        <MyTicketsTab userTickets={userTickets} eventId={eventId} />
+        <MyTicketsTab userOrders={userOrders} eventId={eventId} />
       ) : (
         <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sellerConnected={sellerConnected} />
       )}
@@ -123,39 +134,67 @@ export function TicketsSection({ eventId, eventTitle, tickets, userTickets = [],
   );
 }
 
-function MyTicketsTab({ userTickets, eventId }: { userTickets: UserTicket[]; eventId: string }) {
+function MyTicketsTab({ userOrders, eventId }: { userOrders: UserOrder[]; eventId: string }) {
   return (
-    <div className="space-y-4">
-      {userTickets.map((ticket) => (
-        <MyTicketCard key={ticket.id} ticket={ticket} eventId={eventId} />
+    <div className="space-y-6">
+      {userOrders.map((order) => (
+        <OrderCard key={order.id} order={order} eventId={eventId} />
       ))}
     </div>
   );
 }
 
-function MyTicketCard({ ticket, eventId }: { ticket: UserTicket; eventId: string }) {
-  const [regStatus, setRegStatus] = useState(ticket.registrationStatus || 'not_required');
-  const [qrCode, setQrCode] = useState(ticket.qrCodeDataUri);
-
-  const purchaseDate = ticket.purchasedAt
-    ? new Date(ticket.purchasedAt).toLocaleDateString('en-US', {
+function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
+  const purchaseDate = order.purchasedAt
+    ? new Date(order.purchasedAt).toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
       })
     : 'N/A';
 
-  const formattedPrice = ticket.pricePaid !== null && ticket.currency
-    ? ticket.pricePaid === 0
+  const formattedTotal = order.totalAmount !== null && order.currency
+    ? order.totalAmount === 0
       ? 'Free'
       : new Intl.NumberFormat('en-US', {
           style: 'currency',
-          currency: ticket.currency,
-        }).format(ticket.pricePaid / 100)
+          currency: order.currency,
+        }).format(order.totalAmount / 100)
     : 'N/A';
 
-  const perks = ticket.ticketType?.perks;
-  const perksArray = Array.isArray(perks) ? perks : [];
+  const headerLabel = order.quantity > 1
+    ? `${order.quantity}× ${order.ticketTypeName}`
+    : order.ticketTypeName;
+
+  return (
+    <div className="border-2 border-orange-500 dark:border-orange-500 rounded-xl p-6 bg-orange-50/50 dark:bg-orange-900/10">
+      {/* Order header */}
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div>
+          <h3 className="text-xl font-bold">{headerLabel}</h3>
+          <div className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">📅 {purchaseDate}</div>
+        </div>
+        <div className="text-2xl font-bold text-orange-500 shrink-0">{formattedTotal}</div>
+      </div>
+
+      {/* QR grid */}
+      <div className={`grid gap-4 mb-5 ${order.tickets.length === 1 ? 'grid-cols-1 max-w-[200px]' : 'grid-cols-2 sm:grid-cols-3'}`}>
+        {order.tickets.map((ticket) => (
+          <TicketQRCell key={ticket.id} ticket={ticket} eventId={eventId} />
+        ))}
+      </div>
+
+      {/* ONE .fair receipt per order */}
+      {order.fairSettlement && (
+        <TicketFairReceipt settlement={order.fairSettlement} />
+      )}
+    </div>
+  );
+}
+
+function TicketQRCell({ ticket, eventId }: { ticket: OrderTicket; eventId: string }) {
+  const [regStatus, setRegStatus] = useState(ticket.registrationStatus);
+  const [qrCode, setQrCode] = useState(ticket.qrCodeDataUri);
   const isPending = regStatus === 'pending';
 
   async function handleRegistrationComplete() {
@@ -167,7 +206,6 @@ function MyTicketCard({ ticket, eventId }: { ticket: UserTicket; eventId: string
       });
       if (res.ok) {
         setRegStatus('complete');
-        // Fetch QR code for the newly registered ticket
         try {
           const qrRes = await apiFetch(`/api/tickets/${ticket.id}/qr`);
           if (qrRes.ok) {
@@ -184,75 +222,38 @@ function MyTicketCard({ ticket, eventId }: { ticket: UserTicket; eventId: string
   }
 
   return (
-    <div className="border-2 border-orange-500 dark:border-orange-500 rounded-xl p-6 bg-orange-50/50 dark:bg-orange-900/10">
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-6 items-start">
-        {/* Left: ticket info */}
-        <div>
-          <h3 className="text-2xl font-bold mb-1">
-            {ticket.ticketType?.name || 'Ticket'}
-          </h3>
-          {ticket.ticketType?.description && (
-            <p className="text-gray-600 dark:text-gray-400 mb-2">
-              {ticket.ticketType.description}
-            </p>
-          )}
-          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <span>📅 {purchaseDate}</span>
-          </div>
-          {perksArray.length > 0 && (
-            <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-400">
-              {perksArray.map((perk, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span className="text-orange-500 mt-0.5">✓</span>
-                  <span>{String(perk)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+    <div className="flex flex-col items-center gap-2">
+      {isPending ? (
+        <div className="text-center">
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400">
+            ⏳ Registration Required
+          </span>
         </div>
-
-        {/* Center: QR code or registration badge */}
-        <div className="flex flex-col items-center">
-          {isPending ? (
-            <div className="text-center max-w-[160px]">
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400">
-                ⏳ Registration Required
-              </span>
+      ) : (
+        <>
+          <div className="bg-gray-900 dark:bg-[#0a0a0a] border border-gray-700 dark:border-gray-800 rounded-lg p-2 text-center">
+            {qrCode && (
+              <img
+                src={qrCode}
+                alt="Ticket QR Code"
+                width={120}
+                height={120}
+                className="mx-auto mb-1"
+              />
+            )}
+            <div className="font-mono text-[9px] text-gray-400 truncate max-w-[120px]">
+              {ticket.id}
             </div>
-          ) : (
-            <>
-              <div className="bg-gray-900 dark:bg-[#0a0a0a] border border-gray-700 dark:border-gray-800 rounded-lg p-3 text-center">
-                {qrCode && (
-                  <img
-                    src={qrCode}
-                    alt="Ticket QR Code"
-                    width={140}
-                    height={140}
-                    className="mx-auto mb-2"
-                  />
-                )}
-                <div className="font-mono text-[10px] text-gray-400">
-                  {ticket.id}
-                </div>
-              </div>
-              <div className="mt-2 text-sm font-medium capitalize text-gray-600 dark:text-gray-400">
-                🎟️ {ticket.status === 'used'
-                  ? `Checked In${ticket.usedAt ? ` · ${timeAgo(ticket.usedAt)}` : ''}`
-                  : ticket.status}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Right: price */}
-        <div className="text-right">
-          <div className="text-3xl font-bold text-orange-500">
-            {formattedPrice}
           </div>
-        </div>
-      </div>
+          <div className="text-xs font-medium capitalize text-gray-600 dark:text-gray-400 text-center">
+            🎟️ {ticket.status === 'used'
+              ? `Checked In${ticket.usedAt ? ` · ${timeAgo(ticket.usedAt)}` : ''}`
+              : ticket.status}
+          </div>
+        </>
+      )}
 
-      {/* Inline registration survey */}
+      {/* Inline registration survey — per ticket */}
       {ticket.ticketType?.registrationFormId && (
         <SurveyAccordion
           eventId={eventId}
@@ -263,11 +264,6 @@ function MyTicketCard({ ticket, eventId }: { ticket: UserTicket; eventId: string
           ticketId={ticket.id}
           onComplete={handleRegistrationComplete}
         />
-      )}
-
-      {/* .fair settlement receipt */}
-      {ticket.fairSettlement && (
-        <TicketFairReceipt settlement={ticket.fairSettlement} />
       )}
     </div>
   );
@@ -288,6 +284,11 @@ function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
     currency: settlement.currency || 'CAD',
   });
 
+  // netAmount: explicit field (WO2/3) or derived from seller chain entry
+  const netAmount = settlement.netAmount
+    ?? settlement.chain.find(e => e.role === 'seller')?.amount
+    ?? null;
+
   return (
     <div className="mt-4 border-t border-gray-200 dark:border-gray-800 pt-4">
       <button
@@ -296,6 +297,11 @@ function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
       >
         <span>⚖️</span>
         <span>.fair settlement receipt</span>
+        {netAmount !== null && (
+          <span className="text-xs text-orange-500 font-medium">
+            Organizer receives {currencyFmt.format(netAmount)}
+          </span>
+        )}
         <span className={`transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
       </button>
       {open && (
@@ -338,9 +344,15 @@ function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
             </div>
           ))}
           <div className="flex justify-between px-3 pt-2 border-t border-gray-200 dark:border-gray-800 text-sm">
-            <span className="text-gray-500">Total</span>
+            <span className="text-gray-500">Total paid</span>
             <span className="font-bold">{currencyFmt.format(settlement.totalAmount)}</span>
           </div>
+          {netAmount !== null && (
+            <div className="flex justify-between px-3 py-1 text-sm">
+              <span className="text-gray-500">Organizer receives</span>
+              <span className="font-bold text-orange-500">{currencyFmt.format(netAmount)}</span>
+            </div>
+          )}
           <p className="text-[10px] text-gray-400 px-3">
             Settled {new Date(settlement.settledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             {' · '}
