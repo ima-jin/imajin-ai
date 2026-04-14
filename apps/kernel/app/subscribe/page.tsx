@@ -49,23 +49,6 @@ function SubscribeContent() {
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-6">
-      {/* Back link */}
-      <Link
-        href="/"
-        className="absolute top-8 left-8 text-gray-500 hover:text-gray-300 transition-colors"
-      >
-        ← Back
-      </Link>
-
-      {/* Logo */}
-      <Image
-        src="/images/logo-kanji.svg"
-        alt="今人"
-        width={64}
-        height={64}
-        className="mb-8"
-      />
-
       {/* Title */}
       <h1 className="text-3xl md:text-4xl font-light tracking-tight mb-2">
         Stay in the loop

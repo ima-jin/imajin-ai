@@ -184,7 +184,7 @@ export default async function ProjectPage() {
             <span>Protocol Spec — mjn-protocol</span>
             <span className="text-gray-700">→</span>
           </a>
-          <a href={`${buildPublicUrl('coffee')}/b0b`} className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
+          <a href={`${buildPublicUrl('coffee')}/veteze`} className="flex justify-between items-center text-gray-400 hover:text-amber-400 transition-colors py-1 border-b border-gray-900">
             <span>Buy us a coffee</span>
             <span className="text-gray-700">→</span>
           </a>
