@@ -105,18 +105,23 @@ export async function POST(
         });
     }
 
-    // Flip ticket status to refunded
+    // E-transfer: set refund_pending (organizer must send manually then mark sent)
+    // All other cases: flip directly to refunded
+    const newStatus = manualRefundRequired ? 'refund_pending' : 'refunded';
     const [updated] = await sqlClient`
       UPDATE events.tickets
-      SET status = 'refunded'
+      SET status = ${newStatus}
       WHERE id = ${ticketId}
       RETURNING id, status
     `;
 
+    // Resolve attendee email for notification + response
+    let customerEmail: string | null = null;
+    const priceDollars = (pricePaid / 100).toFixed(2);
+    const currency = ticket.currency || 'CAD';
+
     // Send refund notification email (fire-and-forget, non-fatal)
     try {
-      // Resolve attendee email: registration > profile > auth credential
-      let customerEmail: string | null = null;
       const [registration] = await db
         .select()
         .from(ticketRegistrations)
@@ -137,18 +142,15 @@ export async function POST(
       }
 
       if (customerEmail) {
-        const priceDollars = (pricePaid / 100).toFixed(2);
-        const currency = ticket.currency || 'CAD';
-
         let refundMessage: string;
         if (isStripe && pricePaid > 0) {
           refundMessage = `Your ticket for **${event.title}** has been refunded.\n\n` +
             `**Amount:** $${priceDollars} ${currency}\n\n` +
             `The refund has been processed and should appear on your card within 5–10 business days.`;
         } else if (manualRefundRequired) {
-          refundMessage = `Your ticket for **${event.title}** has been refunded.\n\n` +
+          refundMessage = `Your refund for **${event.title}** is pending.\n\n` +
             `**Amount:** $${priceDollars} ${currency}\n\n` +
-            `Your refund will be returned via e-transfer. Please allow a few business days for processing.`;
+            `The organizer will send your refund via e-transfer. Please allow a few business days for processing.`;
         } else {
           refundMessage = `Your ticket for **${event.title}** has been cancelled and refunded.`;
         }
@@ -165,7 +167,7 @@ export async function POST(
 
         await sendEmail({
           to: customerEmail,
-          subject: `Refund: ${event.title}`,
+          subject: manualRefundRequired ? `Refund pending: ${event.title}` : `Refund: ${event.title}`,
           html,
           text,
         });
@@ -176,7 +178,12 @@ export async function POST(
 
     return NextResponse.json({
       ticket: { id: updated.id, status: updated.status },
-      ...(manualRefundRequired && { manualRefundRequired: true }),
+      ...(manualRefundRequired && {
+        manualRefundRequired: true,
+        ...(customerEmail && { refundEmail: customerEmail }),
+        refundAmount: priceDollars,
+        refundCurrency: currency,
+      }),
     });
   } catch (error) {
     log.error({ err: String(error) }, 'Failed to refund ticket');

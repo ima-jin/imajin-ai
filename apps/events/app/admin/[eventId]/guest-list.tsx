@@ -136,6 +136,8 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   const [resendState, setResendState] = useState<Record<string, 'sending' | 'sent'>>({});
   const [resendToast, setResendToast] = useState<{ email: string } | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [manualRefundInfo, setManualRefundInfo] = useState<{ ticketId: string; email?: string; amount: string; currency: string } | null>(null);
+  const [markSentLoading, setMarkSentLoading] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -252,13 +254,42 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
         toast.error(data.error || 'Refund failed');
         return;
       }
+      const newStatus = data.manualRefundRequired ? 'refund_pending' : 'refunded';
       setGuests(prev => prev.map(g =>
-        g.id === ticketId ? { ...g, status: 'refunded' } : g
+        g.id === ticketId ? { ...g, status: newStatus } : g
       ));
+      if (data.manualRefundRequired) {
+        setManualRefundInfo({
+          ticketId,
+          email: data.refundEmail,
+          amount: data.refundAmount,
+          currency: data.refundCurrency,
+        });
+      }
     } catch {
       toast.error('Refund failed');
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleMarkRefundSent = async (ticketId: string) => {
+    setMarkSentLoading(true);
+    try {
+      const res = await apiFetch(`/api/events/${eventId}/tickets/${ticketId}/mark-refund-sent`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to mark refund as sent');
+        return;
+      }
+      setGuests(prev => prev.map(g =>
+        g.id === ticketId ? { ...g, status: 'refunded' } : g
+      ));
+      setManualRefundInfo(null);
+    } catch {
+      toast.error('Failed to mark refund as sent');
+    } finally {
+      setMarkSentLoading(false);
     }
   };
 
@@ -463,7 +494,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                       attendeeName={guest.attendeeName}
                       onViewSurvey={guest.registrationStatus === 'complete' ? () => handleViewSurvey(guest.id) : undefined}
                     />
-                    {guest.status !== 'refunded' && guest.status !== 'cancelled' && !guest.usedAt && (
+                    {guest.status !== 'refunded' && guest.status !== 'refund_pending' && guest.status !== 'cancelled' && !guest.usedAt && (
                       <div className="mt-1">
                         <ResendEmailButton
                           loading={actionLoading === guest.id}
@@ -481,6 +512,8 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                       loading={actionLoading === guest.id}
                       onCheckIn={() => handleCheckIn(guest.id)}
                       onRefundRequest={() => setConfirmRefund(guest.id)}
+                      onMarkSent={() => handleMarkRefundSent(guest.id)}
+                      markSentLoading={markSentLoading}
                     />
                   </td>
                 </tr>
@@ -574,6 +607,39 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
         </div>
       )}
 
+      {/* Manual refund required dialog */}
+      {manualRefundInfo && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm w-full border-2 border-amber-400 dark:border-amber-500">
+            <h3 className="text-lg font-semibold mb-2 text-amber-700 dark:text-amber-400">🏦 Manual Refund Required</h3>
+            <p className="text-sm text-gray-700 dark:text-gray-300 mb-6">
+              Send{' '}
+              <span className="font-semibold">${manualRefundInfo.amount} {manualRefundInfo.currency}</span>
+              {' '}via e-transfer to{' '}
+              {manualRefundInfo.email
+                ? <span className="font-semibold">{manualRefundInfo.email}</span>
+                : 'the buyer'}
+              .
+            </p>
+            <div className="flex items-center justify-between gap-3">
+              <button
+                onClick={() => setManualRefundInfo(null)}
+                className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition"
+              >
+                I&apos;ll do it later
+              </button>
+              <button
+                onClick={() => handleMarkRefundSent(manualRefundInfo.ticketId)}
+                disabled={markSentLoading}
+                className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition disabled:opacity-50"
+              >
+                {markSentLoading ? '…' : 'Mark Refund Sent'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Refund confirmation dialog */}
       {confirmRefund && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -648,6 +714,12 @@ function StatusBadge({ status, paymentMethod }: { status: string; paymentMethod?
           valid
         </span>
       );
+    case 'refund_pending':
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+          ⏳ refund pending
+        </span>
+      );
     case 'refunded':
       return (
         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300">
@@ -675,6 +747,8 @@ interface ActionsCellProps {
   loading: boolean;
   onCheckIn: () => void;
   onRefundRequest: () => void;
+  onMarkSent: () => void;
+  markSentLoading: boolean;
 }
 
 function timeAgo(dateStr: string): string {
@@ -728,10 +802,11 @@ function ResendEmailButton({ loading, resendState, lastEmailSentAt, onResendEmai
   );
 }
 
-function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest }: ActionsCellProps) {
+function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onMarkSent, markSentLoading }: ActionsCellProps) {
   const isValid = guest.status === 'valid';
   const isCheckedIn = !!guest.usedAt;
   const isRefunded = guest.status === 'refunded';
+  const isRefundPending = guest.status === 'refund_pending';
   const isFree = !guest.pricePaid || guest.pricePaid === 0;
 
   if (isRefunded) {
@@ -739,6 +814,18 @@ function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest }: Ac
       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300">
         Refunded
       </span>
+    );
+  }
+
+  if (isRefundPending && isOwner) {
+    return (
+      <button
+        onClick={onMarkSent}
+        disabled={markSentLoading}
+        className="px-3 py-1.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 rounded-lg transition disabled:opacity-50"
+      >
+        {markSentLoading ? '…' : 'Mark Sent'}
+      </button>
     );
   }
 
