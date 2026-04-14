@@ -132,8 +132,8 @@ export default function EditStubPage() {
             setCategory(found.metadata?.category ?? '');
             setLocation(found.metadata?.location ?? '');
             if (found.metadata?.lat != null && found.metadata?.lon != null) {
-              setResolvedLat(found.metadata.lat);
-              setResolvedLon(found.metadata.lon);
+              setResolvedLat(Number(found.metadata.lat));
+              setResolvedLon(Number(found.metadata.lon));
               setGeocodeSource('address');
             }
           } else {
