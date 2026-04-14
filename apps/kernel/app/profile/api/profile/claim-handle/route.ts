@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isValidHandle(handle)) {
-      return errorResponse('Handle must be 3-30 characters, lowercase alphanumeric and underscores only');
+      return errorResponse('Handle must be 3-30 characters: lowercase letters, numbers, dots, hyphens, underscores');
     }
 
     // Check if profile exists

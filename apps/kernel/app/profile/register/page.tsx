@@ -456,7 +456,7 @@ function RegisterPage() {
               <input
                 type="text"
                 value={handle}
-                onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9\-]/g, ''))}
+                onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
                 placeholder="yourhandle"
                 pattern="[a-z0-9\-]{3,30}"
                 className="flex-1 px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"

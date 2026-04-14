@@ -115,7 +115,7 @@ export default function NewGroupPage() {
                 id="handle"
                 type="text"
                 value={handle}
-                onChange={e => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                onChange={e => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
                 placeholder="handle"
                 maxLength={30}
                 className="flex-1 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/60"

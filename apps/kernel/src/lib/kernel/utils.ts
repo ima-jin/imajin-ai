@@ -33,7 +33,12 @@ export function isValidDid(did: string): boolean {
  * Validate handle format (lowercase, alphanumeric, underscores, 3-30 chars)
  */
 export function isValidHandle(handle: string): boolean {
-  return /^[a-z0-9_]{3,30}$/.test(handle);
+  // Lowercase alphanumeric + dots, hyphens, underscores. 3-30 chars.
+  // No leading/trailing dots or hyphens. No consecutive dots or hyphens.
+  if (!/^[a-z0-9._-]{3,30}$/.test(handle)) return false;
+  if (/^[.\-]|[.\-]$/.test(handle)) return false;
+  if (/[.\-]{2}/.test(handle)) return false;
+  return true;
 }
 
 /**

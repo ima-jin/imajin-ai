@@ -345,7 +345,7 @@ export default function NewStubPage() {
               <input
                 type="text"
                 value={handle}
-                onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
                 placeholder="rosetta_cafe"
                 maxLength={30}
                 pattern="[a-z0-9_]{3,30}"

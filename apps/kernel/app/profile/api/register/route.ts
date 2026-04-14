@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, profiles } from '@/src/db';
-import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { jsonResponse, errorResponse, isValidHandle } from '@/src/lib/kernel/utils';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -42,28 +42,8 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
-function isValidHandle(handle: string): boolean {
-  // Lowercase, alphanumeric + hyphens, 3-30 chars
-  if (!/^[a-z0-9\-]{3,30}$/.test(handle)) {
-    return false;
-  }
-
-  // No leading/trailing hyphens
-  if (handle.startsWith('-') || handle.endsWith('-')) {
-    return false;
-  }
-
-  // No consecutive hyphens
-  if (handle.includes('--')) {
-    return false;
-  }
-
-  // Not reserved
-  if (RESERVED_HANDLES.includes(handle)) {
-    return false;
-  }
-
-  return true;
+function isReservedHandle(handle: string): boolean {
+  return RESERVED_HANDLES.includes(handle);
 }
 
 /**
@@ -93,7 +73,10 @@ export async function POST(request: NextRequest) {
     // Validate handle if provided
     if (handle) {
       if (!isValidHandle(handle)) {
-        return errorResponse('Handle must be 3-30 characters, lowercase alphanumeric + hyphens, no reserved words');
+        return errorResponse('Handle must be 3-30 characters: lowercase letters, numbers, dots, hyphens, underscores');
+      }
+      if (isReservedHandle(handle)) {
+        return errorResponse('That handle is reserved');
       }
 
       // Check handle uniqueness

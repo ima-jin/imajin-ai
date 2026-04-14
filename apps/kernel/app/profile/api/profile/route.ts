@@ -27,7 +27,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     // Validate handle format if provided
     if (handle && !isValidHandle(handle)) {
-      return errorResponse('Handle must be 3-30 characters, lowercase alphanumeric and underscores only');
+      return errorResponse('Handle must be 3-30 characters: lowercase letters, numbers, dots, hyphens, underscores');
     }
 
     // Check if profile already exists for this DID

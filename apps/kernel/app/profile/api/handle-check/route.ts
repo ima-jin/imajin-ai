@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/src/db';
-import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { jsonResponse, errorResponse, isValidHandle } from '@/src/lib/kernel/utils';
 import { withLogger } from '@imajin/logger';
 
 // Reserved handles that cannot be claimed
@@ -10,30 +10,6 @@ const RESERVED_HANDLES = [
   'logout', 'mail', 'news', 'pay', 'profile', 'register', 'search', 'settings',
   'signup', 'status', 'support', 'team', 'www'
 ];
-
-function isValidHandle(handle: string): boolean {
-  // Lowercase, alphanumeric + hyphens, 3-30 chars
-  if (!/^[a-z0-9\-]{3,30}$/.test(handle)) {
-    return false;
-  }
-
-  // No leading/trailing hyphens
-  if (handle.startsWith('-') || handle.endsWith('-')) {
-    return false;
-  }
-
-  // No consecutive hyphens
-  if (handle.includes('--')) {
-    return false;
-  }
-
-  // Not reserved
-  if (RESERVED_HANDLES.includes(handle)) {
-    return false;
-  }
-
-  return true;
-}
 
 /**
  * GET /api/handle-check?handle=xxx
@@ -52,7 +28,15 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     return jsonResponse({
       available: false,
       reason: 'invalid',
-      message: 'Handle must be 3-30 characters, lowercase alphanumeric + hyphens, no reserved words',
+      message: 'Handle must be 3-30 characters: lowercase letters, numbers, dots, hyphens, underscores',
+    });
+  }
+
+  if (RESERVED_HANDLES.includes(handle)) {
+    return jsonResponse({
+      available: false,
+      reason: 'reserved',
+      message: 'This handle is reserved',
     });
   }
 

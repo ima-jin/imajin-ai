@@ -343,7 +343,7 @@ function RegisterPage() {
               <input
                 type="text"
                 value={handle}
-                onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
                 placeholder="yourname"
                 pattern="[a-z0-9_]{3,30}"
                 required
