@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useIdentity } from './context/IdentityContext';
 import InvitationsTab from './invitations-tab';
 import BumpConnect from './bump/BumpConnect';
+import useSWR from 'swr';
 
 import { buildPublicUrl } from '@imajin/config';
 
@@ -125,8 +126,6 @@ export default function ConnectionsPage() {
   const [activeTab, setActiveTab] = useState<'connections' | 'groups' | 'invitations'>('connections');
   const [invitePending, setInvitePending] = useState(0);
   const [inviteRemaining, setInviteRemaining] = useState<number | null>(null);
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [pods, setPods] = useState<Pod[]>([]);
   const [groupFilter, setGroupFilter] = useState<GroupFilter>('all');
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -142,36 +141,25 @@ export default function ConnectionsPage() {
     else if (tab === 'invitations') setActiveTab('invitations');
   }, []);
 
-  useEffect(() => {
-    if (isLoggedIn) {
-      fetchConnections();
-      fetchPods();
-    }
-  }, [isLoggedIn]);
+  const { data: connectionsData, mutate: mutateConnections } = useSWR(
+    isLoggedIn ? '/connections/api/connections' : null
+  );
+  const connections: Connection[] = connectionsData?.connections ?? [];
 
-  async function fetchConnections() {
-    try {
-      const res = await fetch('/connections/api/connections');
-      if (res.ok) {
-        const data = await res.json();
-        setConnections(data.connections || []);
-      }
-    } catch {}
-  }
-
-  async function fetchPods() {
-    try {
-      const res = await fetch('/connections/api/groups');
-      if (res.ok) {
-        const data = await res.json();
-        setPods(data.pods || []);
-      }
-    } catch {}
-  }
+  const { data: podsData, mutate: mutatePods } = useSWR(
+    isLoggedIn ? '/connections/api/groups' : null
+  );
+  const pods: Pod[] = podsData?.pods ?? [];
 
   function updateNickname(targetDid: string, nickname: string | null) {
-    setConnections((prev) =>
-      prev.map((c) => (c.did === targetDid ? { ...c, nickname } : c))
+    mutateConnections(
+      (current: any) => ({
+        ...current,
+        connections: (current?.connections ?? []).map((c: Connection) =>
+          c.did === targetDid ? { ...c, nickname } : c
+        ),
+      }),
+      false
     );
   }
 
@@ -179,7 +167,7 @@ export default function ConnectionsPage() {
     try {
       const res = await fetch(`/connections/api/connections/${encodeURIComponent(connDid)}`, { method: 'DELETE' });
       if (res.ok) {
-        fetchConnections();
+        mutateConnections();
       }
     } catch {}
   }
@@ -198,7 +186,7 @@ export default function ConnectionsPage() {
         setNewGroupName('');
         setNewGroupDesc('');
         setShowCreateGroup(false);
-        fetchPods();
+        mutatePods();
         window.location.href = `/connections/pods/${data.pod.id}`;
       }
     } catch {} finally {
