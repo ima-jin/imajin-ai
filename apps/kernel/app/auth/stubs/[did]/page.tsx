@@ -46,6 +46,8 @@ interface StubData {
   bio: string | null;
   metadata: StubMeta | null;
   claimStatus: string | null;
+  avatar: string | null;
+  banner: string | null;
 }
 
 async function forwardGeocode(query: string): Promise<GeoResult[]> {
@@ -107,7 +109,15 @@ export default function EditStubPage() {
   const [reversingDevice, setReversingDevice] = useState(false);
   const watchIdRef = useRef<number | null>(null);
 
-  // Image upload
+  // Avatar/banner state
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [bannerUploading, setBannerUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [bannerError, setBannerError] = useState<string | null>(null);
+
+  // Gallery image upload
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -131,6 +141,8 @@ export default function EditStubPage() {
             setBio(found.bio ?? '');
             setCategory(found.metadata?.category ?? '');
             setLocation(found.metadata?.location ?? '');
+            setAvatar(found.avatar ?? null);
+            setBanner(found.banner ?? null);
             if (found.metadata?.lat != null && found.metadata?.lon != null) {
               setResolvedLat(Number(found.metadata.lat));
               setResolvedLon(Number(found.metadata.lon));
@@ -236,6 +248,51 @@ export default function EditStubPage() {
       setGeocodeSource('device');
     } finally {
       setReversingDevice(false);
+    }
+  }
+
+  async function handleAvatarBannerUpload(
+    file: File,
+    field: 'avatar' | 'banner'
+  ) {
+    const setUpl = field === 'avatar' ? setAvatarUploading : setBannerUploading;
+    const setErr = field === 'avatar' ? setAvatarError : setBannerError;
+    const setVal = field === 'avatar' ? setAvatar : setBanner;
+
+    setErr(null);
+    setUpl(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('context', JSON.stringify({ app: 'profile', feature: field, access: 'public' }));
+      const mediaRes = await fetch('/media/api/assets', {
+        method: 'POST',
+        body: form,
+        credentials: 'include',
+      });
+      if (!mediaRes.ok) {
+        const err = await mediaRes.json().catch(() => ({}));
+        setErr(err.error || 'Upload failed');
+        return;
+      }
+      const { url } = await mediaRes.json();
+
+      const patchRes = await fetch(`/profile/api/stubs/${encodeURIComponent(did)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ [field]: url }),
+      });
+      if (!patchRes.ok) {
+        const err = await patchRes.json().catch(() => ({}));
+        setErr(err.error || 'Failed to save');
+        return;
+      }
+      setVal(url);
+    } catch {
+      setErr('Something went wrong. Please try again.');
+    } finally {
+      setUpl(false);
     }
   }
 
@@ -378,6 +435,75 @@ export default function EditStubPage() {
         <p className="text-zinc-400 text-sm mb-6">
           Update details for this community-maintained stub.
         </p>
+
+        {/* Avatar upload */}
+        <div className="mb-5">
+          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+            Avatar
+          </label>
+          <div className="flex items-center gap-4">
+            {avatar ? (
+              <img
+                src={avatar}
+                alt="Avatar"
+                className="w-16 h-16 rounded-full object-cover border border-gray-700 shrink-0"
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-zinc-800 border border-gray-700 flex items-center justify-center shrink-0">
+                <span className="text-zinc-600 text-xs">None</span>
+              </div>
+            )}
+            <div className="flex-1">
+              <label className="cursor-pointer inline-block px-3 py-1.5 bg-zinc-900 border border-gray-700 rounded-lg text-xs text-zinc-400 hover:text-white hover:border-gray-500 transition-colors">
+                {avatarUploading ? 'Uploading…' : avatar ? 'Change avatar' : 'Upload avatar'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  className="hidden"
+                  disabled={avatarUploading}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) { handleAvatarBannerUpload(file, 'avatar'); e.target.value = ''; }
+                  }}
+                />
+              </label>
+              {avatarError && (
+                <p className="mt-1 text-xs text-red-400">{avatarError}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Banner upload */}
+        <div className="mb-6">
+          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+            Banner
+          </label>
+          {banner && (
+            <div
+              className="w-full h-24 rounded-lg bg-cover bg-center mb-2 border border-gray-700"
+              style={{ backgroundImage: `url(${banner})` }}
+            />
+          )}
+          <label className="cursor-pointer inline-block px-3 py-1.5 bg-zinc-900 border border-gray-700 rounded-lg text-xs text-zinc-400 hover:text-white hover:border-gray-500 transition-colors">
+            {bannerUploading ? 'Uploading…' : banner ? 'Change banner' : 'Upload banner'}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              className="hidden"
+              disabled={bannerUploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) { handleAvatarBannerUpload(file, 'banner'); e.target.value = ''; }
+              }}
+            />
+          </label>
+          {bannerError && (
+            <p className="mt-1 text-xs text-red-400">{bannerError}</p>
+          )}
+        </div>
+
+        <div className="border-t border-gray-800 mb-6" />
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Name */}

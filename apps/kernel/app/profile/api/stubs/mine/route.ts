@@ -27,6 +27,8 @@ export async function GET(request: NextRequest) {
         bio: profiles.bio,
         metadata: profiles.metadata,
         claimStatus: profiles.claimStatus,
+        avatar: profiles.avatar,
+        banner: profiles.banner,
       })
       .from(identityMembers)
       .innerJoin(profiles, eq(profiles.did, identityMembers.identityDid))

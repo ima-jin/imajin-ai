@@ -66,8 +66,6 @@ export async function BusinessProfile({ profile, identity, viewer, counts, links
             claimStatus={profile.claimStatus}
             isMaintainer={isMaintainer}
             viewerDid={viewer.viewerDid}
-            currentAvatar={profile.avatar}
-            currentBanner={profile.banner ?? undefined}
           />
         )}
 
