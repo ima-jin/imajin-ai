@@ -27,6 +27,7 @@ import { getPaymentService } from '@/src/lib/pay/pay';
 import { requireAuth } from '@imajin/auth';
 import type { CheckoutRequest, FiatCurrency } from '@/src/lib/pay';
 import { DEFAULT_PLATFORM_FEE_BPS } from '@/src/lib/pay';
+import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
 import { db, transactions, connectedAccounts } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
@@ -153,15 +154,30 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         resolvedConnectedAccountId = account.stripeAccountId;
         const totalAmount = body.items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
 
-        // Calculate application fee from .fair manifest if available
+        // Calculate application fee: platform shares + processing fees
+        // Stripe processing fees are deducted from the application fee,
+        // so we must collect enough to cover them plus our platform margin.
+
+        // 1. Platform share (from .fair manifest or fallback rate)
+        let platformShareCents: number;
         if (body.fairManifest?.chain) {
           const sellerEntry = body.fairManifest.chain.find((e: any) => e.role === 'seller');
           const feeShare = sellerEntry ? 1 - sellerEntry.share : 0;
-          applicationFeeAmount = Math.round(totalAmount * feeShare);
+          platformShareCents = Math.round(totalAmount * feeShare);
         } else {
-          // Fallback to connected account rate
-          applicationFeeAmount = Math.round(totalAmount * (account.platformFeeBps || DEFAULT_PLATFORM_FEE_BPS) / 10000);
+          platformShareCents = Math.round(totalAmount * (account.platformFeeBps || DEFAULT_PLATFORM_FEE_BPS) / 10000);
         }
+
+        // 2. Processing fees (from .fair manifest fees array or Stripe defaults)
+        let processingFeeCents: number;
+        const feeEntry = body.fairManifest?.fees?.find((f: any) => f.role === 'processor');
+        if (feeEntry) {
+          processingFeeCents = Math.round(totalAmount * feeEntry.rateBps / 10000) + (feeEntry.fixedCents || 0);
+        } else {
+          processingFeeCents = Math.round(totalAmount * STRIPE_RATE_BPS / 10000) + STRIPE_FIXED_CENTS;
+        }
+
+        applicationFeeAmount = platformShareCents + processingFeeCents;
       } else {
         return NextResponse.json(
           { error: "Seller hasn't completed payment setup", code: "SELLER_NOT_CONNECTED" },

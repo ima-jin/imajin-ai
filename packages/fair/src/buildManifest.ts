@@ -1,4 +1,4 @@
-import type { FairEntry } from './types';
+import type { FairEntry, FairFee } from './types';
 import {
   PROTOCOL_FEE_BPS,
   PROTOCOL_DID,
@@ -8,10 +8,13 @@ import {
   BUYER_CREDIT_MIN_BPS,
   BUYER_CREDIT_MAX_BPS,
   BUYER_CREDIT_DEFAULT_BPS,
+  STRIPE_RATE_BPS,
+  STRIPE_FIXED_CENTS,
 } from './constants';
 
 export interface FairFeeManifest {
   version: string;
+  fees: FairFee[];
   chain: FairEntry[];
   distributions: FairEntry[];
 }
@@ -92,8 +95,13 @@ export function buildFairManifest(params: {
       ? collaborators.map((c) => ({ did: c.did, role: c.role, share: c.share }))
       : [{ did: creatorDid, role: 'creator', share: 1.0 }];
 
+  const fees: FairFee[] = [
+    { role: 'processor', name: 'Stripe', rateBps: STRIPE_RATE_BPS, fixedCents: STRIPE_FIXED_CENTS },
+  ];
+
   return {
-    version: '0.3.0',
+    version: '0.4.0',
+    fees,
     chain,
     distributions,
   };

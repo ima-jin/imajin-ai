@@ -15,6 +15,13 @@ export interface FairEntry {
   };
 }
 
+export interface FairFee {
+  role: string;        // 'processor', 'gas', etc.
+  name: string;        // 'Stripe', 'Solana', etc.
+  rateBps: number;     // basis points (290 = 2.9%)
+  fixedCents: number;  // per-transaction fixed cost in cents (30 = $0.30)
+}
+
 export interface FairTransfer {
   allowed: boolean;
   refundable?: boolean;
@@ -47,6 +54,7 @@ export interface FairManifest {
   source?: string; // "upload", "create", etc.
   access: FairAccess | "public" | "private";
   transfer?: FairTransfer;
+  fees?: FairFee[];
   attribution: FairEntry[];
   distributions?: FairEntry[];
   integrity?: FairIntegrity;

@@ -21,6 +21,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { notify } from '@imajin/notify';
 import { createLogger } from '@imajin/logger';
 import { createEmitter } from '@imajin/emit';
+import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
 
 const log = createLogger('kernel');
 const payEvents = createEmitter('pay');
@@ -215,12 +216,33 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const [tx] = await db.select().from(transactions).where(eq(transactions.stripeId, session.id)).limit(1);
 
   if (tx?.fairManifest) {
-    const manifest = tx.fairManifest as { chain?: Array<{ did: string; role: string; share: number }> };
+    const manifest = tx.fairManifest as {
+      fees?: Array<{ role: string; name: string; rateBps: number; fixedCents: number }>;
+      chain?: Array<{ did: string; role: string; share: number }>;
+    };
     const totalAmountCents = session.amount_total || 0;
     const currency = (session.currency || 'usd').toUpperCase();
     const buyerDid = session.metadata?.buyerDid || session.metadata?.identity_id || null;
 
     if (manifest.chain && totalAmountCents > 0) {
+      // Record processing fees (Stripe) in the fee ledger
+      const feeEntry = manifest.fees?.find(f => f.role === 'processor');
+      const processingFeeCents = feeEntry
+        ? Math.round(totalAmountCents * feeEntry.rateBps / 10000) + (feeEntry.fixedCents || 0)
+        : Math.round(totalAmountCents * STRIPE_RATE_BPS / 10000) + STRIPE_FIXED_CENTS;
+
+      await db.insert(feeLedger).values({
+        id: generateId('fl'),
+        transactionId: tx.id,
+        recipientDid: 'stripe:processor',
+        role: 'processor',
+        amountCents: processingFeeCents,
+        currency,
+        status: 'paid_out',
+      });
+
+      payEvents.emit({ action: 'fee.record', payload: { transactionId: tx.id, recipientDid: 'stripe:processor', role: 'processor', amountCents: processingFeeCents, currency } });
+
       for (const entry of manifest.chain) {
         const amountCents = Math.round(totalAmountCents * entry.share);
         if (amountCents <= 0) continue;

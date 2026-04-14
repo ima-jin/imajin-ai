@@ -1,5 +1,6 @@
 export type {
   FairEntry,
+  FairFee,
   FairTransfer,
   FairAccess,
   FairIntegrity,
@@ -28,6 +29,8 @@ export {
   BUYER_CREDIT_MIN_BPS,
   BUYER_CREDIT_MAX_BPS,
   BUYER_CREDIT_DEFAULT_BPS,
+  STRIPE_RATE_BPS,
+  STRIPE_FIXED_CENTS,
 } from './constants';
 
 export { buildFairManifest } from './buildManifest';
