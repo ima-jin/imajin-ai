@@ -26,3 +26,14 @@ export {
 } from "./session";
 
 export { apiFetch, apiUrl } from "./base-path";
+
+export {
+  HANDLE_PATTERN,
+  HANDLE_INPUT_PATTERN,
+  HANDLE_ALLOWED_CHARS,
+  HANDLE_ERROR,
+  RESERVED_HANDLES,
+  isValidHandle,
+  isReservedHandle,
+  normalizeHandleInput,
+} from "./handles";

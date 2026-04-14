@@ -1,17 +1,10 @@
 import { NextRequest } from 'next/server';
 import { db, profiles } from '@/src/db';
-import { jsonResponse, errorResponse, isValidHandle } from '@/src/lib/kernel/utils';
+import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { isValidHandle, isReservedHandle, HANDLE_ERROR } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
-
-// Reserved handles that cannot be claimed
-const RESERVED_HANDLES = [
-  'admin', 'api', 'app', 'auth', 'blog', 'coffee', 'connect', 'dashboard',
-  'docs', 'events', 'help', 'home', 'imajin', 'inbox', 'links', 'login',
-  'logout', 'mail', 'news', 'pay', 'profile', 'register', 'search', 'settings',
-  'signup', 'status', 'support', 'team', 'www'
-];
 
 // Base58 encoding for DIDs
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -42,10 +35,6 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
-function isReservedHandle(handle: string): boolean {
-  return RESERVED_HANDLES.includes(handle);
-}
-
 /**
  * POST /api/register - Create a new profile (no auth required)
  * Accepts: { publicKey (hex), handle?, displayName, bio?, avatar? }
@@ -73,7 +62,7 @@ export async function POST(request: NextRequest) {
     // Validate handle if provided
     if (handle) {
       if (!isValidHandle(handle)) {
-        return errorResponse('Handle must be 3-30 characters: lowercase letters, numbers, dots, hyphens, underscores');
+        return errorResponse(HANDLE_ERROR);
       }
       if (isReservedHandle(handle)) {
         return errorResponse('That handle is reserved');

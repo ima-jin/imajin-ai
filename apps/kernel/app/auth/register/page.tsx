@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { normalizeHandleInput } from '@imajin/config';
 import Link from 'next/link';
 
 import { buildPublicUrl } from '@imajin/config';
@@ -343,7 +344,7 @@ function RegisterPage() {
               <input
                 type="text"
                 value={handle}
-                onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
+                onChange={(e) => setHandle(normalizeHandleInput(e.target.value))}
                 placeholder="yourname"
                 pattern="[a-z0-9_]{3,30}"
                 required

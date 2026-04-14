@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { db, profiles, identities } from '@/src/db';
 import { requireAuth, emitAttestation } from '@imajin/auth';
-import { jsonResponse, errorResponse, isValidHandle } from '@/src/lib/kernel/utils';
+import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { isValidHandle, HANDLE_ERROR } from '@imajin/config';
 import { checkPreliminaryEligibility } from '@/src/lib/kernel/verification';
 import { eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isValidHandle(handle)) {
-      return errorResponse('Handle must be 3-30 characters: lowercase letters, numbers, dots, hyphens, underscores');
+      return errorResponse(HANDLE_ERROR);
     }
 
     // Check if profile exists

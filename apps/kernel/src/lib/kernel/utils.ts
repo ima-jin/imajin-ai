@@ -32,14 +32,8 @@ export function isValidDid(did: string): boolean {
 /**
  * Validate handle format (lowercase, alphanumeric, underscores, 3-30 chars)
  */
-export function isValidHandle(handle: string): boolean {
-  // Lowercase alphanumeric + dots, hyphens, underscores. 3-30 chars.
-  // No leading/trailing dots or hyphens. No consecutive dots or hyphens.
-  if (!/^[a-z0-9._-]{3,30}$/.test(handle)) return false;
-  if (/^[.\-]|[.\-]$/.test(handle)) return false;
-  if (/[.\-]{2}/.test(handle)) return false;
-  return true;
-}
+// Re-export from @imajin/config for backward compat
+export { isValidHandle } from '@imajin/config';
 
 /**
  * Check if user has required role

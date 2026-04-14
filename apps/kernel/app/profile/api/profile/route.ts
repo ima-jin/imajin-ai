@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { db, profiles } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
-import { jsonResponse, errorResponse, isValidHandle } from '@/src/lib/kernel/utils';
+import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { isValidHandle, HANDLE_ERROR } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
 /**
@@ -27,7 +28,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     // Validate handle format if provided
     if (handle && !isValidHandle(handle)) {
-      return errorResponse('Handle must be 3-30 characters: lowercase letters, numbers, dots, hyphens, underscores');
+      return errorResponse(HANDLE_ERROR);
     }
 
     // Check if profile already exists for this DID

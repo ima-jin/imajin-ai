@@ -1,15 +1,8 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/src/db';
-import { jsonResponse, errorResponse, isValidHandle } from '@/src/lib/kernel/utils';
+import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { isValidHandle, isReservedHandle, HANDLE_ERROR } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
-
-// Reserved handles that cannot be claimed
-const RESERVED_HANDLES = [
-  'admin', 'api', 'app', 'auth', 'blog', 'coffee', 'connect', 'dashboard',
-  'docs', 'edit', 'events', 'help', 'home', 'imajin', 'inbox', 'links', 'login',
-  'logout', 'mail', 'news', 'pay', 'profile', 'register', 'search', 'settings',
-  'signup', 'status', 'support', 'team', 'www'
-];
 
 /**
  * GET /api/handle-check?handle=xxx
@@ -23,16 +16,15 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     return errorResponse('handle parameter is required');
   }
 
-  // Validate format first
   if (!isValidHandle(handle)) {
     return jsonResponse({
       available: false,
       reason: 'invalid',
-      message: 'Handle must be 3-30 characters: lowercase letters, numbers, dots, hyphens, underscores',
+      message: HANDLE_ERROR,
     });
   }
 
-  if (RESERVED_HANDLES.includes(handle)) {
+  if (isReservedHandle(handle)) {
     return jsonResponse({
       available: false,
       reason: 'reserved',
@@ -41,7 +33,6 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
   }
 
   try {
-    // Check if handle is taken
     const existing = await db.query.profiles.findFirst({
       where: (profiles, { eq }) => eq(profiles.handle, handle),
     });
