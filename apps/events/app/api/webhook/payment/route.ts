@@ -283,6 +283,26 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     ownerDid = softSession.did;
   }
 
+  // Create order record BEFORE tickets — so we can link them via orderId
+  const orderId = `ord_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`;
+  await db.insert(orders).values({
+    id: orderId,
+    eventId: event.id,
+    buyerDid: ownerDid,
+    ticketTypeId: ticketType.id,
+    quantity,
+    amountTotal,
+    currency: currency.toUpperCase(),
+    paymentMethod: paymentId ? 'stripe' : 'etransfer',
+    stripeSessionId: sessionId,
+    paymentId: paymentId || null,
+    purchasedAt: new Date(),
+    metadata: {
+      purchaseEmail: customerEmail,
+      customerName: customerName || null,
+    },
+  });
+
   // Create ticket(s)
   const createdTickets = [];
 
@@ -306,13 +326,13 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       id: ticketId,
       eventId: event.id,
       ticketTypeId: ticketType.id,
+      orderId,
       ownerDid,
       originalOwnerDid: ownerDid,
       pricePaid: amountTotal / quantity,
       currency: currency.toUpperCase(),
       paymentId: paymentId || sessionId,
       paymentMethod: paymentId ? 'stripe' : 'etransfer',
-      stripeSessionId: sessionId,
       status: 'valid',
       purchasedAt: new Date(),
       signature,
@@ -343,22 +363,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     .set({ sold: sql`${ticketTypes.sold} + ${quantity}` })
     .where(eq(ticketTypes.id, ticketType.id));
 
-  // Create order record — one per Stripe session (idempotency anchor)
-  const orderId = `ord_${Date.now().toString(36)}`;
-  await db.insert(orders).values({
-    id: orderId,
-    stripeSessionId: sessionId,
-    eventId: event.id,
-    ticketTypeId: ticketType.id,
-    buyerDid: ownerDid,
-    quantity,
-    amountTotal,
-    currency: currency.toUpperCase(),
-    status: 'completed',
-    paymentMethod: paymentId ? 'stripe' : 'etransfer',
-  });
-
-  log.info({ count: createdTickets.length, orderId, customerEmail }, 'Tickets created for customer');
+  log.info({ count: createdTickets.length, orderId, customerEmail }, 'Order + tickets created');
 
   // Notify buyer — fire and forget
   notify.send({
@@ -401,6 +406,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const eventMetadata = (event.metadata || {}) as Record<string, any>;
   try {
     await settleTicketPurchase({
+      orderId,
       eventId: event.id,
       eventDid: event.did,
       buyerDid: ownerDid,

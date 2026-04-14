@@ -7,17 +7,22 @@
  * Uses the event's .fair manifest chain for the 4-way fee split:
  *   protocol (1%) + node (0.5%) + buyer_credit (0.25%) + seller (remainder)
  *
+ * Processing fees are deducted from the seller's share — they receive
+ * (total - applicationFee) from Stripe, so the chain must reflect that.
+ *
  * If the event has no .fair manifest or no chain, settlement is skipped.
  */
 
 import { createLogger } from '@imajin/logger';
-import { db, tickets } from '@/src/db';
-import { inArray, sql } from 'drizzle-orm';
+import { db, orders } from '@/src/db';
+import { eq } from 'drizzle-orm';
 
 const log = createLogger('events');
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY!;
+
+const SELLER_ROLES = new Set(['seller', 'creator', 'event']);
 
 interface FairEntry {
   did: string;
@@ -41,6 +46,7 @@ interface FairManifest {
 }
 
 interface SettleTicketPurchaseParams {
+  orderId: string;
   eventId: string;
   eventDid: string;
   buyerDid: string;
@@ -48,14 +54,14 @@ interface SettleTicketPurchaseParams {
   currency: string;
   fairManifest: FairManifest | null;
   metadata: {
-    ticketIds: string[];  // all ticket IDs in the order (1-N)
+    ticketIds: string[];
     ticketTypeId: string;
     stripeSessionId: string;
   };
 }
 
 export async function settleTicketPurchase(params: SettleTicketPurchaseParams): Promise<void> {
-  const { eventId, buyerDid, amount, fairManifest, metadata } = params;
+  const { orderId, eventId, buyerDid, amount, fairManifest, metadata } = params;
 
   // v0.3.0+ manifests have a chain with the full fee cascade
   const chain = fairManifest?.chain;
@@ -67,42 +73,58 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
   const totalDollars = amount / 100;
 
   // Resolve node DID from environment
-  // Set NODE_DID or RELAY_IMAJIN_DID in .env.local (value from relay.relay_config.imajin_did)
   const NODE_DID = process.env.NODE_DID || process.env.RELAY_IMAJIN_DID || null;
   if (!NODE_DID) {
     log.warn({ eventId }, '[settle] NODE_DID not set — node fee recipient unresolved');
   }
 
-  // Replace placeholder DIDs in the chain
+  // Calculate estimated processing fee to deduct from seller's share
+  const fees = fairManifest?.fees || [];
+  const processorFee = fees.find(f => f.role === 'processor');
+  const estimatedFeeDollars = processorFee
+    ? parseFloat(((amount * processorFee.rateBps / 10000 + processorFee.fixedCents) / 100).toFixed(2))
+    : parseFloat(((amount * 370 / 10000 + 30) / 100).toFixed(2));  // fallback: 3.7% + 30¢
+
+  // Replace placeholder DIDs and deduct processing fee from seller
   const resolvedChain = chain.map((entry) => {
     let did = entry.did;
     if (did === 'BUYER_PLACEHOLDER') did = buyerDid;
     if (did === 'NODE_PLACEHOLDER') did = NODE_DID || 'did:imajin:node-unresolved';
-    return {
-      did,
-      amount: parseFloat((totalDollars * entry.share).toFixed(2)),
-      role: entry.role,
-    };
+
+    let entryAmount = parseFloat((totalDollars * entry.share).toFixed(2));
+
+    // Seller's actual payout = (total × sellerShare) - processingFee
+    // Because Stripe deducts applicationFee (which includes processing) from connected account transfer
+    if (SELLER_ROLES.has(entry.role)) {
+      entryAmount = parseFloat((entryAmount - estimatedFeeDollars).toFixed(2));
+    }
+
+    return { did, amount: entryAmount, role: entry.role };
   });
 
-  // Fix rounding drift: adjust largest recipient so chain sums to totalDollars exactly
+  // Chain now sums to totalDollars - estimatedFeeDollars
+  const expectedTotal = parseFloat((totalDollars - estimatedFeeDollars).toFixed(2));
+
+  // Fix rounding drift: adjust seller so chain sums to expectedTotal exactly
   const chainSum = resolvedChain.reduce((sum, e) => sum + e.amount, 0);
-  const drift = parseFloat((totalDollars - chainSum).toFixed(2));
+  const drift = parseFloat((expectedTotal - chainSum).toFixed(2));
   if (drift !== 0 && resolvedChain.length > 0) {
-    const largest = resolvedChain.reduce((max, e) => e.amount > max.amount ? e : max, resolvedChain[0]);
-    largest.amount = parseFloat((largest.amount + drift).toFixed(2));
+    const seller = resolvedChain.find(e => SELLER_ROLES.has(e.role));
+    const target = seller || resolvedChain.reduce((max, e) => e.amount > max.amount ? e : max, resolvedChain[0]);
+    target.amount = parseFloat((target.amount + drift).toFixed(2));
   }
 
   const body = {
     from_did: buyerDid,
-    total_amount: totalDollars,
+    total_amount: expectedTotal,
     service: 'events',
     type: 'ticket_purchase',
     funded: true,
     funded_provider: 'stripe',
     fair_manifest: { chain: resolvedChain },
     metadata: {
-      ticketId: metadata.ticketId,
+      orderId,
+      ticketIds: metadata.ticketIds,
       stripeSessionId: metadata.stripeSessionId,
       eventId,
     },
@@ -125,12 +147,10 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
     }
 
     const result = await response.json();
-    log.info({ ticketId: metadata.ticketId, result }, '[settle] Settlement complete for ticket');
+    log.info({ orderId, result }, '[settle] Settlement complete for order');
 
-    // Snapshot the resolved .fair manifest onto ALL tickets in the order — immutable receipt
+    // Snapshot the resolved .fair receipt onto the ORDER (not individual tickets)
     try {
-      // Resolve processing fees with estimated amounts for this transaction
-      // Actual fee varies by card type — reconciled in pay webhook via balance_transaction
       const resolvedFees = (fairManifest.fees || []).map((fee) => ({
         role: fee.role,
         name: fee.name,
@@ -141,21 +161,22 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
       }));
 
       const fairSettlement = {
-        version: fairManifest.version || fairManifest.fair || '1.0',
+        version: fairManifest.version || (fairManifest as any).fair || '1.0',
         settledAt: new Date().toISOString(),
         totalAmount: totalDollars,
+        netAmount: expectedTotal,
         currency: params.currency,
         fees: resolvedFees,
         chain: resolvedChain,
       };
-      await db.update(tickets)
-        .set({
-          metadata: sql`COALESCE(${tickets.metadata}, '{}'::jsonb) || ${JSON.stringify({ fair_settlement: fairSettlement })}::jsonb`,
-        })
-        .where(inArray(tickets.id, metadata.ticketIds));
-      log.info({ ticketIds: metadata.ticketIds }, '[settle] .fair settlement snapshot saved to all tickets');
+
+      await db.update(orders)
+        .set({ fairSettlement })
+        .where(eq(orders.id, orderId));
+
+      log.info({ orderId }, '[settle] .fair settlement snapshot saved to order');
     } catch (snapshotError) {
-      log.warn({ err: String(snapshotError) }, '[settle] Failed to snapshot .fair to tickets (non-fatal)');
+      log.warn({ err: String(snapshotError) }, '[settle] Failed to snapshot .fair to order (non-fatal)');
     }
   } catch (error) {
     log.error({ err: String(error) }, '[settle] Settlement request failed (non-fatal)');

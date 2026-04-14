@@ -1,28 +1,28 @@
-CREATE TABLE "events"."orders" (
-	"id" text PRIMARY KEY NOT NULL,
-	"stripe_session_id" text NOT NULL,
-	"event_id" text NOT NULL,
-	"ticket_type_id" text NOT NULL,
-	"buyer_did" text NOT NULL,
-	"quantity" integer DEFAULT 1 NOT NULL,
-	"amount_total" integer NOT NULL,
-	"currency" text DEFAULT 'USD' NOT NULL,
-	"status" text DEFAULT 'completed' NOT NULL,
-	"payment_method" text,
-	"created_at" timestamp with time zone DEFAULT now(),
-	CONSTRAINT "orders_stripe_session_id_unique" UNIQUE("stripe_session_id")
+-- Create orders table
+CREATE TABLE IF NOT EXISTS events.orders (
+  id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL REFERENCES events.events(id),
+  buyer_did TEXT,
+  ticket_type_id TEXT NOT NULL REFERENCES events.ticket_types(id),
+  quantity INTEGER NOT NULL DEFAULT 1,
+  amount_total INTEGER NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'CAD',
+  payment_method TEXT,
+  stripe_session_id TEXT,
+  payment_id TEXT,
+  fair_settlement JSONB,
+  purchased_at TIMESTAMPTZ,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 --> statement-breakpoint
-ALTER TABLE "events"."tickets" ADD COLUMN IF NOT EXISTS "stripe_session_id" text;
+CREATE INDEX IF NOT EXISTS idx_orders_event ON events.orders(event_id);
 --> statement-breakpoint
-ALTER TABLE "events"."orders" ADD CONSTRAINT "orders_event_id_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "events"."events"("id") ON DELETE no action ON UPDATE no action;
+CREATE INDEX IF NOT EXISTS idx_orders_buyer ON events.orders(buyer_did);
 --> statement-breakpoint
-ALTER TABLE "events"."orders" ADD CONSTRAINT "orders_ticket_type_id_ticket_types_id_fk" FOREIGN KEY ("ticket_type_id") REFERENCES "events"."ticket_types"("id") ON DELETE no action ON UPDATE no action;
+CREATE INDEX IF NOT EXISTS idx_orders_stripe_session ON events.orders(stripe_session_id);
 --> statement-breakpoint
-CREATE INDEX "idx_orders_event" ON "events"."orders" USING btree ("event_id");
+-- Add order_id to tickets (nullable for legacy tickets)
+ALTER TABLE events.tickets ADD COLUMN IF NOT EXISTS order_id TEXT REFERENCES events.orders(id);
 --> statement-breakpoint
-CREATE INDEX "idx_orders_buyer" ON "events"."orders" USING btree ("buyer_did");
---> statement-breakpoint
-CREATE INDEX "idx_orders_stripe_session" ON "events"."orders" USING btree ("stripe_session_id");
---> statement-breakpoint
-CREATE INDEX "idx_tickets_stripe_session" ON "events"."tickets" USING btree ("stripe_session_id");
+CREATE INDEX IF NOT EXISTS idx_tickets_order ON events.tickets(order_id);

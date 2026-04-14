@@ -178,17 +178,16 @@ async function getUserOrders(eventId: string, userDid: string) {
     const first = groupRows[0];
     const isLegacy = !first.ticket.orderId;
     const orderData = first.order;
-    const orderMeta = (orderData?.metadata || {}) as Record<string, any>;
     const ticketMeta = (first.ticket.metadata || {}) as Record<string, any>;
 
-    // Order-level settlement (WO2/3) takes precedence; fall back to legacy ticket-level
-    const fairSettlement = orderMeta.fair_settlement ?? ticketMeta.fair_settlement ?? null;
+    // Order-level settlement (fairSettlement column) takes precedence; fall back to legacy ticket-level
+    const fairSettlement = (orderData?.fairSettlement as any) ?? ticketMeta.fair_settlement ?? null;
 
     return {
       id: isLegacy ? first.ticket.id : first.ticket.orderId!,
       isLegacy,
       quantity: groupRows.length,
-      totalAmount: orderData?.totalAmount ?? first.ticket.pricePaid,
+      totalAmount: orderData?.amountTotal ?? first.ticket.pricePaid,
       currency: orderData?.currency ?? first.ticket.currency,
       purchasedAt: (first.ticket.purchasedAt || first.ticket.createdAt)?.toISOString() || null,
       ticketTypeName: first.ticketType?.name || 'Ticket',
