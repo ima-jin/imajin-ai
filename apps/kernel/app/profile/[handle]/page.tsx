@@ -68,14 +68,16 @@ export default async function ProfilePage({ params }: PageProps) {
 
   const viewerDid = await getViewerDid();
   const isSelf = viewerDid === profile.did;
+  const identity = await getIdentityInfo(profile.did);
   const connected = viewerDid && !isSelf ? await isConnected(viewerDid, profile.did) : false;
 
-  if (!isSelf && !connected) {
+  // Business/community profiles are publicly visible; actor/family require connection
+  const isPublicScope = identity.scope === 'business' || identity.scope === 'community';
+  if (!isSelf && !connected && !isPublicScope) {
     return <GatedProfile profile={profile} viewerDid={viewerDid} />;
   }
 
-  const [identity, counts, isFollowing, links] = await Promise.all([
-    getIdentityInfo(profile.did),
+  const [counts, isFollowing, links] = await Promise.all([
     getProfileCounts(profile.did),
     viewerDid && !isSelf ? getFollowStatus(viewerDid, profile.did) : Promise.resolve(false),
     profile.featureToggles?.links ? getLinks(profile.featureToggles.links) : Promise.resolve([]),

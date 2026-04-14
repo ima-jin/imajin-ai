@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, storedKeys, identityMembers, profiles } from '@/src/db';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { generateKeypair } from '@imajin/auth';
 import { didFromPublicKey, encryptPrivateKey } from '@/src/lib/auth/crypto';
@@ -161,7 +161,8 @@ export async function GET(request: NextRequest) {
       .where(
         and(
           eq(identityMembers.memberDid, caller.id),
-          isNull(identityMembers.removedAt)
+          isNull(identityMembers.removedAt),
+          inArray(identityMembers.role, ['owner', 'admin'])
         )
       );
 
