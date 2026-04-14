@@ -1,5 +1,6 @@
 import { Avatar } from './Avatar';
 import { getScopeLabel } from '../lib/profile-utils';
+import { isVerifiedTier } from '@imajin/auth';
 import type { ProfileData, IdentityInfo } from '../lib/types';
 
 interface ScopeHeaderProps {
@@ -9,7 +10,7 @@ interface ScopeHeaderProps {
 
 export function ScopeHeader({ profile, identity }: ScopeHeaderProps) {
   const typeLabel = getScopeLabel(identity.scope, identity.subtype);
-  const isSoftDID = identity.tier === 'soft';
+  const isSoftDID = !isVerifiedTier(identity.tier);
 
   return (
     <>

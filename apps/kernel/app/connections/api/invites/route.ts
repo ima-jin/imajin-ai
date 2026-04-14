@@ -4,7 +4,7 @@ import { eq, desc, and, sql, isNull } from 'drizzle-orm';
 import { db, invites, profiles, podMembers } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
-import { emitAttestation } from '@imajin/auth';
+import { emitAttestation, isVerifiedTier } from '@imajin/auth';
 import { buildPublicUrl } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
   if (delivery === 'email') {
     // Email invites require hard DID + trust graph membership
-    if (session.tier === 'soft') {
+    if (!isVerifiedTier(session.tier)) {
       return NextResponse.json({
         error: 'Only users with verified identities can send email invites'
       }, { status: 403 });

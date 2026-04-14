@@ -6,7 +6,7 @@ import { eq, and, desc, lt, isNull, inArray, ilike } from 'drizzle-orm';
 const log = createLogger('kernel');
 const chatEvents = createEmitter('chat');
 import { db, conversationsV2, messagesV2, messageReactionsV2, profiles } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, isVerifiedTier } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';
 import { hasCapability, requiredCapability, CAPABILITY_MESSAGES } from '@/src/lib/chat/capabilities';
@@ -138,7 +138,7 @@ export async function POST(
   const conversationDid = decodeURIComponent(id);
 
   // Soft DIDs cannot send messages
-  if (identity.tier === 'soft') {
+  if (!isVerifiedTier(identity.tier)) {
     return errorResponse('Please verify your account to send messages', 403);
   }
 

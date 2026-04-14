@@ -1,3 +1,5 @@
+import { isVerifiedTier } from "@imajin/auth";
+
 export type Capability =
   | "send:text"
   | "send:voice"
@@ -18,7 +20,7 @@ export function getCapabilities(ctx: CapabilityContext): Set<Capability> {
   // Everyone can send text
   caps.add("send:text");
 
-  if (ctx.tier === "preliminary" || ctx.tier === "established" || ctx.role === "cohost") {
+  if (isVerifiedTier(ctx.tier) || ctx.role === "cohost") {
     caps.add("send:voice");
     caps.add("send:media");
     caps.add("send:location");

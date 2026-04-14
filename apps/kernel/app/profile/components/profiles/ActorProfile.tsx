@@ -1,4 +1,5 @@
 import { buildPublicUrl } from '@imajin/config';
+import { isVerifiedTier } from '@imajin/auth';
 import { ScopeHeader } from '../ScopeHeader';
 import { ProfileStats } from '../ProfileStats';
 import { ContactCard } from '../ContactCard';
@@ -9,7 +10,7 @@ import { formatMemberSince } from '../../lib/profile-utils';
 import type { ProfileViewProps } from '../../lib/types';
 
 export function ActorProfile({ profile, identity, viewer, counts, links }: ProfileViewProps) {
-  const isSoftDID = identity.tier === 'soft';
+  const isSoftDID = !isVerifiedTier(identity.tier);
 
   return (
     <div className="max-w-lg mx-auto">

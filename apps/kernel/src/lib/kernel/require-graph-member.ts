@@ -1,5 +1,6 @@
 export { requireAuth, optionalAuth } from "@imajin/auth";
 export type { Identity, AuthResult, AuthError } from "@imajin/auth";
+import { isVerifiedTier } from "@imajin/auth";
 
 /**
  * Check if a DID is in the trust graph (has at least one active connection)
@@ -37,9 +38,9 @@ export async function requireGraphMember(
 
   const { identity } = authResult;
 
-  if (identity.tier === "soft") {
+  if (!isVerifiedTier(identity.tier)) {
     return {
-      error: "This action requires a full identity (hard DID)",
+      error: "This action requires a verified identity",
       status: 403,
     };
   }

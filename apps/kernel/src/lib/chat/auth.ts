@@ -1,5 +1,6 @@
 export { requireAuth, optionalAuth } from "@imajin/auth";
 export type { Identity, AuthResult, AuthError } from "@imajin/auth";
+import { isVerifiedTier } from "@imajin/auth";
 
 import { db, connections } from '@/src/db';
 import { or, and, eq, isNull } from 'drizzle-orm';
@@ -45,9 +46,9 @@ export async function requireGraphMember(
 
   const { identity } = authResult;
 
-  if (identity.tier === "soft") {
+  if (!isVerifiedTier(identity.tier)) {
     return {
-      error: "This action requires a full identity (hard DID)",
+      error: "This action requires a verified identity",
       status: 403,
     };
   }

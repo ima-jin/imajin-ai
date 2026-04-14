@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken, getSessionCookieOptions, SessionPayload } from './jwt';
-import { hexToMultibase } from '@imajin/auth';
+import { hexToMultibase, isVerifiedTier } from '@imajin/auth';
 import { db, identityChains, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { verifyChainLog } from './chain-providers';
@@ -121,8 +121,8 @@ export async function requireHardDID(request: NextRequest): Promise<SessionPaylo
     return null;
   }
 
-  // Check if this is a hard DID
-  if (session.tier === 'soft') {
+  // Require verified identity (preliminary or established)
+  if (!isVerifiedTier(session.tier)) {
     return null;
   }
 

@@ -1,6 +1,7 @@
 import * as jose from 'jose';
 import { webcrypto } from 'crypto';
 import { createLogger } from '@imajin/logger';
+import { normalizeTier } from '@imajin/auth';
 
 const log = createLogger('kernel');
 
@@ -113,8 +114,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       issuer: JWT_ISSUER,
     });
 
-    const rawTier = payload.tier as string || 'soft';
-    const tier = rawTier === 'hard' ? 'preliminary' : rawTier as 'soft' | 'preliminary' | 'established';
+    const tier = normalizeTier(payload.tier as string);
     return {
       sub: payload.sub as string,
       handle: payload.handle as string | undefined,
