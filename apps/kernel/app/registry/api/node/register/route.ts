@@ -11,7 +11,7 @@ import {
 import { provisionSubdomain, isHostnameAvailable } from '@/src/lib/registry/cloudflare';
 import { randomBytes } from 'crypto';
 import { withLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/events';
+import { createEmitter } from '@imajin/emit';
 
 const registryEvents = createEmitter('registry');
 

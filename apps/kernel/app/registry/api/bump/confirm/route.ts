@@ -6,7 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { notifyBumpDid } from '@/src/lib/registry/bump-notify';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/events';
+import { createEmitter } from '@imajin/emit';
 
 const log = createLogger('kernel');
 const eventBus = createEmitter('registry');

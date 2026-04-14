@@ -27,7 +27,7 @@ import { eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/events';
+import { createEmitter } from '@imajin/emit';
 
 const payEvents = createEmitter('pay');
 

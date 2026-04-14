@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { withLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/events';
+import { createEmitter } from '@imajin/emit';
 
 const chatEvents = createEmitter('chat');
 import { eq, desc, and, gt, ne, inArray, sql } from 'drizzle-orm';

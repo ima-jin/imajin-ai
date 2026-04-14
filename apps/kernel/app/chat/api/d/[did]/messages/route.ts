@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/events';
+import { createEmitter } from '@imajin/emit';
 import { eq, and, desc, lt, ne, isNull, inArray, ilike, or } from 'drizzle-orm';
 
 const log = createLogger('kernel');
