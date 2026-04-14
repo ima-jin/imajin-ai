@@ -264,6 +264,43 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
       payEvents.emit({ action: 'fee.record', payload: { transactionId: tx.id, recipientDid: 'stripe:processor', role: 'processor', amountCents: processingFeeCents, currency, estimated: actualStripeFeeCents === null } });
 
+      // Processing fee rebate: if actual Stripe fee < estimated, credit difference as MJNx to seller
+      if (actualStripeFeeCents !== null && actualStripeFeeCents < estimatedFeeCents) {
+        const rebateCents = estimatedFeeCents - actualStripeFeeCents;
+        const sellerEntry = manifest.chain.find(e => e.role === 'seller');
+        const sellerDid = sellerEntry?.did;
+
+        if (sellerDid && sellerDid !== 'NODE_PLACEHOLDER' && rebateCents > 0) {
+          // Record in fee ledger
+          await db.insert(feeLedger).values({
+            id: generateId('fl'),
+            transactionId: tx.id,
+            recipientDid: sellerDid,
+            role: 'processor_rebate',
+            amountCents: rebateCents,
+            currency,
+            status: 'accrued',
+          });
+
+          // Credit MJNx to seller balance
+          await db.insert(balances).values({
+            did: sellerDid,
+            cashAmount: '0',
+            creditAmount: (rebateCents / 100).toFixed(8),
+            currency,
+          }).onConflictDoUpdate({
+            target: balances.did,
+            set: {
+              creditAmount: sql`${balances.creditAmount} + ${(rebateCents / 100).toFixed(8)}`,
+              updatedAt: new Date(),
+            },
+          });
+
+          log.info({ transactionId: tx.id, sellerDid, rebateCents, estimatedFeeCents, actualStripeFeeCents }, '[webhook] Processing fee rebate → MJNx');
+          payEvents.emit({ action: 'fee.rebate', payload: { transactionId: tx.id, sellerDid, rebateCents, currency } });
+        }
+      }
+
       for (const entry of manifest.chain) {
         const amountCents = Math.round(totalAmountCents * entry.share);
         if (amountCents <= 0) continue;
