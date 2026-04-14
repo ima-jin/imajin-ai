@@ -34,23 +34,14 @@ export default function DocsPage() {
     setError(null);
     setSpec(null);
 
-    // Fetch through local proxy to avoid CORS
+    // Fetch through local proxy (returns JSON)
     fetch(`/registry/api/specs/${selected}`)
       .then(r => {
         if (!r.ok) throw new Error(`${r.status}`);
-        return r.text();
+        return r.json();
       })
-      .then(text => {
-        // Try JSON first, then try basic YAML parse
-        try {
-          setSpec(JSON.parse(text));
-        } catch {
-          try {
-            setSpec(parseSimpleYaml(text));
-          } catch {
-            setError('Could not parse spec');
-          }
-        }
+      .then(data => {
+        setSpec(data);
         setLoading(false);
       })
       .catch(() => {
@@ -175,68 +166,4 @@ function SpecViewer({ spec }: { spec: any }) {
       )}
     </div>
   );
-}
-
-// Simple YAML-to-JSON for OpenAPI specs (handles the subset we generate)
-function parseSimpleYaml(yaml: string): any {
-  // Use a simple line-based parser for our OpenAPI YAML
-  const lines = yaml.split('\n');
-  const root: any = {};
-  const stack: { obj: any; indent: number; key: string }[] = [{ obj: root, indent: -1, key: '' }];
-
-  for (const line of lines) {
-    if (!line.trim() || line.trim().startsWith('#')) continue;
-    
-    const indent = line.search(/\S/);
-    const trimmed = line.trim();
-    
-    // Pop stack to correct level
-    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
-      stack.pop();
-    }
-    
-    const parent = stack[stack.length - 1].obj;
-    
-    if (trimmed.startsWith('- ')) {
-      // Array item
-      const key = stack[stack.length - 1].key;
-      if (!Array.isArray(parent[key])) parent[key] = [];
-      const val = trimmed.slice(2).trim();
-      if (val.includes(': ')) {
-        const obj: any = {};
-        const [k, ...rest] = val.split(': ');
-        obj[k] = rest.join(': ').replace(/^['"](.*)['"]$/, '');
-        parent[key].push(obj);
-        stack.push({ obj: obj, indent: indent + 2, key: k });
-      } else {
-        parent[key].push(val.replace(/^['"](.*)['"]$/, ''));
-      }
-    } else if (trimmed.includes(': ')) {
-      const colonIdx = trimmed.indexOf(': ');
-      const key = trimmed.slice(0, colonIdx).replace(/^['"](.*)['"]$/, '');
-      const val = trimmed.slice(colonIdx + 2).trim();
-      
-      if (val === '' || val === '|' || val === '>') {
-        // Nested object or block scalar
-        parent[key] = {};
-        stack.push({ obj: parent[key], indent: indent, key: key });
-      } else if (val === 'true') {
-        parent[key] = true;
-      } else if (val === 'false') {
-        parent[key] = false;
-      } else if (!isNaN(Number(val)) && val !== '') {
-        parent[key] = Number(val);
-      } else {
-        parent[key] = val.replace(/^['"](.*)['"]$/, '');
-      }
-      // Track the key for potential array children
-      if (stack.length > 0) stack[stack.length - 1].key = key;
-    } else if (trimmed.endsWith(':')) {
-      const key = trimmed.slice(0, -1).replace(/^['"](.*)['"]$/, '');
-      parent[key] = {};
-      stack.push({ obj: parent[key], indent: indent, key: key });
-    }
-  }
-  
-  return root;
 }

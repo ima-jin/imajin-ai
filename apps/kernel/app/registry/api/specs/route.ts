@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
         category: s.category as ServiceCategory,
         url,
         ...(isExternal && { externalUrl: url }),
-        ...(!isExternal && { spec: `${url}/api/spec` }),
+        ...(!isExternal && s.name !== "kernel" && { spec: `${url}/api/spec` }),
       };
     }),
   }, { headers: cors });

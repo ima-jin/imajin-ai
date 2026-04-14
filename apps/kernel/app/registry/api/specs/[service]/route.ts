@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { corsHeaders, corsOptions, getService, SERVICES } from "@imajin/config";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
+import { parse as parseYaml } from "yaml";
 
 /** Kernel services serve specs from local YAML files */
 const KERNEL_SERVICES = new Set(
@@ -35,8 +36,9 @@ export async function GET(
       );
     }
     const text = readFileSync(specPath, "utf-8");
-    return new NextResponse(text, {
-      headers: { ...cors, "Content-Type": "text/yaml", "Cache-Control": "public, max-age=60" },
+    const json = JSON.stringify(parseYaml(text));
+    return new NextResponse(json, {
+      headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "public, max-age=60" },
     });
   }
 
@@ -59,6 +61,14 @@ export async function GET(
 
     const text = await res.text();
     const contentType = res.headers.get("content-type") || "";
+
+    // Convert YAML responses to JSON for the client
+    if (contentType.includes("yaml") || text.trimStart().startsWith("openapi:")) {
+      const json = JSON.stringify(parseYaml(text));
+      return new NextResponse(json, {
+        headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "public, max-age=60" },
+      });
+    }
 
     return new NextResponse(text, {
       headers: { ...cors, "Content-Type": contentType || "text/plain", "Cache-Control": "public, max-age=60" },
