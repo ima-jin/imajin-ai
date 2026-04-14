@@ -482,7 +482,7 @@ export default function ConnectionsPage() {
               {filteredPods.map((pod) => (
                 <a
                   key={pod.id}
-                  href={`/pods/${pod.id}`}
+                  href={`/connections/pods/${pod.id}`}
                   className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition"
                 >
                   <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-lg shrink-0">
