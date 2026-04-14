@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withLogger, createLogger } from '@imajin/logger';
-import { db, events, ticketTypes, tickets } from '@/src/db';
+import { db, events, ticketTypes, tickets, orders } from '@/src/db';
 
 const log = createLogger('events');
 import { eq, and, sql } from 'drizzle-orm';
@@ -224,15 +224,15 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const customerEmail = payload.customerEmail || null;
   const quantity = parseInt(metadata.quantity) || 1;
 
-  // Idempotency: check if tickets for this Stripe session already exist
-  const existingTickets = await db
-    .select({ id: tickets.id })
-    .from(tickets)
-    .where(sql`${tickets.metadata}->>'stripeSessionId' = ${sessionId}`)
+  // Idempotency: check if an order for this Stripe session already exists
+  const existingOrder = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(eq(orders.stripeSessionId, sessionId))
     .limit(1);
 
-  if (existingTickets.length > 0) {
-    log.info({ sessionId }, 'Duplicate webhook — tickets already exist for session');
+  if (existingOrder.length > 0) {
+    log.info({ sessionId }, 'Duplicate webhook — order already exists for session');
     return;
   }
 
@@ -312,6 +312,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       currency: currency.toUpperCase(),
       paymentId: paymentId || sessionId,
       paymentMethod: paymentId ? 'stripe' : 'etransfer',
+      stripeSessionId: sessionId,
       status: 'valid',
       purchasedAt: new Date(),
       signature,
@@ -342,7 +343,22 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     .set({ sold: sql`${ticketTypes.sold} + ${quantity}` })
     .where(eq(ticketTypes.id, ticketType.id));
 
-  log.info({ count: createdTickets.length, customerEmail }, 'Tickets created for customer');
+  // Create order record — one per Stripe session (idempotency anchor)
+  const orderId = `ord_${Date.now().toString(36)}`;
+  await db.insert(orders).values({
+    id: orderId,
+    stripeSessionId: sessionId,
+    eventId: event.id,
+    ticketTypeId: ticketType.id,
+    buyerDid: ownerDid,
+    quantity,
+    amountTotal,
+    currency: currency.toUpperCase(),
+    status: 'completed',
+    paymentMethod: paymentId ? 'stripe' : 'etransfer',
+  });
+
+  log.info({ count: createdTickets.length, orderId, customerEmail }, 'Tickets created for customer');
 
   // Notify buyer — fire and forget
   notify.send({
@@ -392,7 +408,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       currency,
       fairManifest: eventMetadata.fair || null,
       metadata: {
-        ticketId: createdTickets[0].id,
+        ticketIds: createdTickets.map(t => t.id),
         ticketTypeId: ticketType.id,
         stripeSessionId: sessionId,
       },

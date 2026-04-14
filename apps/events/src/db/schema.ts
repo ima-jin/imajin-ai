@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, integer, boolean, index, pgSchema } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, integer, boolean, index, pgSchema, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const eventsSchema = pgSchema('events');
 
@@ -129,6 +129,10 @@ export const tickets = eventsSchema.table('tickets', {
   // Signature (event signs ticket issuance)
   signature: text('signature'),
 
+  // Stripe session ID — denormalized from metadata for efficient idempotency checks
+  // SQL: ALTER TABLE events.tickets ADD COLUMN IF NOT EXISTS stripe_session_id TEXT;
+  stripeSessionId: text('stripe_session_id'),
+
   // Payment method: 'stripe' | 'etransfer' (null for legacy tickets)
   // SQL: ALTER TABLE events.tickets ADD COLUMN IF NOT EXISTS payment_method TEXT;
   paymentMethod: text('payment_method'),
@@ -157,6 +161,7 @@ export const tickets = eventsSchema.table('tickets', {
   heldByIdx: index('idx_tickets_held_by').on(table.heldBy),
 
   registrationStatusIdx: index('idx_tickets_registration_status').on(table.registrationStatus),
+  stripeSessionIdx: index('idx_tickets_stripe_session').on(table.stripeSessionId),
 }));
 
 /**
@@ -240,6 +245,32 @@ export const ticketRegistrations = eventsSchema.table('ticket_registrations', {
   emailIdx: index('idx_ticket_registrations_email').on(table.email),
 }));
 
+/**
+ * Orders - one order per Stripe checkout session, grouping 1-N tickets
+ *
+ * Created when checkout.completed webhook fires. Enables:
+ *   - O(1) idempotency check (vs JSONB scan on tickets)
+ *   - Admin orders view (WO4)
+ *   - Per-order settlement tracking
+ */
+export const orders = eventsSchema.table('orders', {
+  id: text('id').primaryKey(),                              // ord_xxx
+  stripeSessionId: text('stripe_session_id').notNull().unique(),
+  eventId: text('event_id').notNull().references(() => events.id),
+  ticketTypeId: text('ticket_type_id').notNull().references(() => ticketTypes.id),
+  buyerDid: text('buyer_did').notNull(),
+  quantity: integer('quantity').notNull().default(1),
+  amountTotal: integer('amount_total').notNull(),           // cents
+  currency: text('currency').notNull().default('USD'),
+  status: text('status').notNull().default('completed'),   // completed | refunded
+  paymentMethod: text('payment_method'),                   // stripe | etransfer
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  eventIdx: index('idx_orders_event').on(table.eventId),
+  buyerIdx: index('idx_orders_buyer').on(table.buyerDid),
+  sessionIdx: index('idx_orders_stripe_session').on(table.stripeSessionId),
+}));
+
 // Types
 export type Event = typeof events.$inferSelect;
 export type NewEvent = typeof events.$inferInsert;
@@ -251,3 +282,5 @@ export type EventInvite = typeof eventInvites.$inferSelect;
 export type NewEventInvite = typeof eventInvites.$inferInsert;
 export type TicketRegistration = typeof ticketRegistrations.$inferSelect;
 export type NewTicketRegistration = typeof ticketRegistrations.$inferInsert;
+export type Order = typeof orders.$inferSelect;
+export type NewOrder = typeof orders.$inferInsert;

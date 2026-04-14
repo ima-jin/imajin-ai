@@ -12,7 +12,7 @@
 
 import { createLogger } from '@imajin/logger';
 import { db, tickets } from '@/src/db';
-import { eq, sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 
 const log = createLogger('events');
 
@@ -48,7 +48,7 @@ interface SettleTicketPurchaseParams {
   currency: string;
   fairManifest: FairManifest | null;
   metadata: {
-    ticketId: string;
+    ticketIds: string[];  // all ticket IDs in the order (1-N)
     ticketTypeId: string;
     stripeSessionId: string;
   };
@@ -127,7 +127,7 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
     const result = await response.json();
     log.info({ ticketId: metadata.ticketId, result }, '[settle] Settlement complete for ticket');
 
-    // Snapshot the resolved .fair manifest onto the ticket — immutable receipt
+    // Snapshot the resolved .fair manifest onto ALL tickets in the order — immutable receipt
     try {
       // Resolve processing fees with estimated amounts for this transaction
       // Actual fee varies by card type — reconciled in pay webhook via balance_transaction
@@ -152,10 +152,10 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
         .set({
           metadata: sql`COALESCE(${tickets.metadata}, '{}'::jsonb) || ${JSON.stringify({ fair_settlement: fairSettlement })}::jsonb`,
         })
-        .where(eq(tickets.id, metadata.ticketId));
-      log.info({ ticketId: metadata.ticketId }, '[settle] .fair settlement snapshot saved to ticket');
+        .where(inArray(tickets.id, metadata.ticketIds));
+      log.info({ ticketIds: metadata.ticketIds }, '[settle] .fair settlement snapshot saved to all tickets');
     } catch (snapshotError) {
-      log.warn({ err: String(snapshotError) }, '[settle] Failed to snapshot .fair to ticket (non-fatal)');
+      log.warn({ err: String(snapshotError) }, '[settle] Failed to snapshot .fair to tickets (non-fatal)');
     }
   } catch (error) {
     log.error({ err: String(error) }, '[settle] Settlement request failed (non-fatal)');
