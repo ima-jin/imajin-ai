@@ -18,11 +18,20 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
+interface FairSettlementFee {
+  role: string;
+  name: string;
+  rateBps: number;
+  fixedCents: number;
+  amount: number;
+}
+
 interface FairSettlement {
   version?: string;
   settledAt: string;
   totalAmount: number;
   currency: string;
+  fees?: FairSettlementFee[];
   chain: { did: string; amount: number; role: string }[];
 }
 
@@ -308,6 +317,21 @@ function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
                 </span>
               </div>
               <span className="font-bold">{currencyFmt.format(entry.amount)}</span>
+            </div>
+          ))}
+          {settlement.fees && settlement.fees.length > 0 && settlement.fees.map((fee, i) => (
+            <div
+              key={`fee-${i}`}
+              className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-900/60 rounded-lg text-sm"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-gray-400" />
+                <span className="font-medium text-gray-500">{fee.name}</span>
+                <span className="text-xs text-gray-400">
+                  {(fee.rateBps / 100).toFixed(1)}%{fee.fixedCents > 0 ? ` + ${currencyFmt.format(fee.fixedCents / 100)}` : ''}
+                </span>
+              </div>
+              <span className="font-bold text-gray-500">{currencyFmt.format(fee.amount)}</span>
             </div>
           ))}
           <div className="flex justify-between px-3 pt-2 border-t border-gray-200 dark:border-gray-800 text-sm">

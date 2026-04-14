@@ -25,8 +25,16 @@ interface FairEntry {
   share: number; // 0–1 fraction
 }
 
+interface FairFee {
+  role: string;
+  name: string;
+  rateBps: number;
+  fixedCents: number;
+}
+
 interface FairManifest {
   version?: string;
+  fees?: FairFee[];
   chain?: FairEntry[];
   distributions?: FairEntry[];
   [key: string]: unknown;
@@ -121,11 +129,21 @@ export async function settleTicketPurchase(params: SettleTicketPurchaseParams): 
 
     // Snapshot the resolved .fair manifest onto the ticket — immutable receipt
     try {
+      // Resolve processing fees with actual amounts for this transaction
+      const resolvedFees = (fairManifest.fees || []).map((fee) => ({
+        role: fee.role,
+        name: fee.name,
+        rateBps: fee.rateBps,
+        fixedCents: fee.fixedCents,
+        amount: parseFloat(((amount * fee.rateBps / 10000 + fee.fixedCents) / 100).toFixed(2)),
+      }));
+
       const fairSettlement = {
         version: fairManifest.version || fairManifest.fair || '1.0',
         settledAt: new Date().toISOString(),
         totalAmount: totalDollars,
         currency: params.currency,
+        fees: resolvedFees,
         chain: resolvedChain,
       };
       await db.update(tickets)
