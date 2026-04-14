@@ -264,40 +264,70 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
       payEvents.emit({ action: 'fee.record', payload: { transactionId: tx.id, recipientDid: 'stripe:processor', role: 'processor', amountCents: processingFeeCents, currency, estimated: actualStripeFeeCents === null } });
 
-      // Processing fee rebate: if actual Stripe fee < estimated, credit difference as MJNx to seller
-      if (actualStripeFeeCents !== null && actualStripeFeeCents < estimatedFeeCents) {
-        const rebateCents = estimatedFeeCents - actualStripeFeeCents;
+      // Processing fee reconciliation: credit or debit MJNx based on estimate vs actual
+      if (actualStripeFeeCents !== null && actualStripeFeeCents !== estimatedFeeCents) {
         const sellerEntry = manifest.chain.find(e => e.role === 'seller');
         const sellerDid = sellerEntry?.did;
 
-        if (sellerDid && sellerDid !== 'NODE_PLACEHOLDER' && rebateCents > 0) {
-          // Record in fee ledger
-          await db.insert(feeLedger).values({
-            id: generateId('fl'),
-            transactionId: tx.id,
-            recipientDid: sellerDid,
-            role: 'processor_rebate',
-            amountCents: rebateCents,
-            currency,
-            status: 'accrued',
-          });
+        if (sellerDid && sellerDid !== 'NODE_PLACEHOLDER') {
+          const diffCents = Math.abs(estimatedFeeCents - actualStripeFeeCents);
 
-          // Credit MJNx to seller balance
-          await db.insert(balances).values({
-            did: sellerDid,
-            cashAmount: '0',
-            creditAmount: (rebateCents / 100).toFixed(8),
-            currency,
-          }).onConflictDoUpdate({
-            target: balances.did,
-            set: {
-              creditAmount: sql`${balances.creditAmount} + ${(rebateCents / 100).toFixed(8)}`,
-              updatedAt: new Date(),
-            },
-          });
+          if (actualStripeFeeCents < estimatedFeeCents) {
+            // Over-collected → rebate difference as MJNx to seller
+            await db.insert(feeLedger).values({
+              id: generateId('fl'),
+              transactionId: tx.id,
+              recipientDid: sellerDid,
+              role: 'processor_rebate',
+              amountCents: diffCents,
+              currency,
+              status: 'accrued',
+            });
 
-          log.info({ transactionId: tx.id, sellerDid, rebateCents, estimatedFeeCents, actualStripeFeeCents }, '[webhook] Processing fee rebate → MJNx');
-          payEvents.emit({ action: 'fee.rebate', payload: { transactionId: tx.id, sellerDid, rebateCents, currency } });
+            await db.insert(balances).values({
+              did: sellerDid,
+              cashAmount: '0',
+              creditAmount: (diffCents / 100).toFixed(8),
+              currency,
+            }).onConflictDoUpdate({
+              target: balances.did,
+              set: {
+                creditAmount: sql`${balances.creditAmount} + ${(diffCents / 100).toFixed(8)}`,
+                updatedAt: new Date(),
+              },
+            });
+
+            log.info({ transactionId: tx.id, sellerDid, rebateCents: diffCents, estimatedFeeCents, actualStripeFeeCents }, '[webhook] Processing fee rebate → MJNx');
+            payEvents.emit({ action: 'fee.rebate', payload: { transactionId: tx.id, sellerDid, amountCents: diffCents, currency } });
+
+          } else {
+            // Under-collected → debit difference from seller's MJNx balance
+            await db.insert(feeLedger).values({
+              id: generateId('fl'),
+              transactionId: tx.id,
+              recipientDid: sellerDid,
+              role: 'processor_surcharge',
+              amountCents: diffCents,
+              currency,
+              status: 'accrued',
+            });
+
+            await db.insert(balances).values({
+              did: sellerDid,
+              cashAmount: '0',
+              creditAmount: (-diffCents / 100).toFixed(8),
+              currency,
+            }).onConflictDoUpdate({
+              target: balances.did,
+              set: {
+                creditAmount: sql`${balances.creditAmount} + ${(-diffCents / 100).toFixed(8)}`,
+                updatedAt: new Date(),
+              },
+            });
+
+            log.info({ transactionId: tx.id, sellerDid, surchargeCents: diffCents, estimatedFeeCents, actualStripeFeeCents }, '[webhook] Processing fee surcharge → MJNx debit');
+            payEvents.emit({ action: 'fee.surcharge', payload: { transactionId: tx.id, sellerDid, amountCents: diffCents, currency } });
+          }
         }
       }
 
