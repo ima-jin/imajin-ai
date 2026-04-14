@@ -509,8 +509,13 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   // Only send the ticket confirmation (with QR) immediately for non-registration tickets
   if (!ticketType.requiresRegistration) {
     try {
-      // Generate QR code from ticket ID (for check-in scanning)
-      const qrCodeDataUri = await generateQRCode(createdTickets[0].id);
+      // Generate QR codes for ALL tickets in the order
+      const ticketsWithQr = await Promise.all(
+        createdTickets.map(async (t) => ({
+          id: t.id,
+          qrCodeDataUri: await generateQRCode(t.id),
+        }))
+      );
 
       await sendEmail({
         to: customerEmail,
@@ -518,7 +523,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         html: ticketConfirmationEmail({
           eventTitle: event.title,
           ticketType: ticketType.name,
-          ticketId: createdTickets[0].id + (quantity > 1 ? ` (+${quantity - 1} more)` : ''),
+          ticketId: createdTickets[0].id,  // fallback for single-ticket compat
           eventDate: formattedEventDate,
           eventTime: formattedEventTime,
           isVirtual: event.isVirtual ?? false,
@@ -527,7 +532,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
           magicLink,
           eventImageUrl,
           eventUrl: `${EVENTS_URL}/${event.id}`,
-          qrCodeDataUri,
+          tickets: ticketsWithQr,
         }),
       });
     } catch (emailError) {
