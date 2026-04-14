@@ -73,7 +73,8 @@ async function reverseGeocode(lat: number, lon: number): Promise<string | null> 
 }
 
 export default function EditStubPage() {
-  const { did } = useParams<{ did: string }>();
+  const params = useParams<{ did: string }>();
+  const did = decodeURIComponent(params.did);
   const router = useRouter();
 
   // Data loading
