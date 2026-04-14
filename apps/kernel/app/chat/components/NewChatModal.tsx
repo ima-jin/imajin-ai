@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useIdentity } from '@/src/contexts/IdentityContext';
+import useSWR from 'swr';
 
 // Browser-safe DID derivation using Web Crypto API
 async function sha256hex(input: string): Promise<string> {
@@ -47,16 +48,10 @@ function displayName(conn: Connection): string {
   return conn.did.slice(0, 24) + '...';
 }
 
-// Module-level cache — survives modal open/close cycles within the same page session
-let _connectionsCache: { did: string; connections: Connection[] } | null = null;
-
 export function NewChatModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const { identity } = useIdentity();
   const [tab, setTab] = useState<'dm' | 'group'>('dm');
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // DM state
   const [creatingDm, setCreatingDm] = useState<string | null>(null);
@@ -65,64 +60,10 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
   const [selectedDids, setSelectedDids] = useState<Set<string>>(new Set());
   const [groupName, setGroupName] = useState('');
 
-  useEffect(() => {
-    if (!identity?.did) return;
-
-    // Return cached connections if we already fetched for this identity
-    if (_connectionsCache && _connectionsCache.did === identity.did) {
-      setConnections(_connectionsCache.connections);
-      setLoading(false);
-      return;
-    }
-
-    async function loadConnections() {
-      try {
-        const connRes = await fetch(`${CONNECTIONS_URL}/api/connections`, {
-          credentials: 'include',
-        });
-        if (!connRes.ok) throw new Error('Failed to load connections');
-        const connData = await connRes.json();
-
-        const resolved = await Promise.all(
-          (connData.connections || []).map(async (conn: Connection) => {
-            try {
-              const lookupRes = await fetch(
-                `${AUTH_URL}/api/lookup/${encodeURIComponent(conn.did)}`,
-                { credentials: 'include' }
-              );
-              if (lookupRes.ok) {
-                const profile = await lookupRes.json();
-                return { ...conn, handle: profile.handle, name: profile.name, tier: profile.tier };
-              }
-            } catch {}
-            return conn;
-          })
-        );
-
-        // Deduplicate by DID (connections API may return one entry per pod)
-        // and filter out the current user
-        const seen = new Map<string, Connection>();
-        for (const conn of resolved) {
-          if (identity && conn.did === identity.did) continue; // exclude self
-          if (conn.tier === 'soft') continue; // soft DIDs cannot receive messages
-          const existing = seen.get(conn.did);
-          // Keep the entry with the most profile info
-          if (!existing || (conn.name && !existing.name)) {
-            seen.set(conn.did, conn);
-          }
-        }
-        const result = Array.from(seen.values());
-        _connectionsCache = { did: identity!.did, connections: result };
-        setConnections(result);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load connections');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadConnections();
-  }, [identity?.did]);
+  const { data, isLoading, error } = useSWR(
+    identity?.did ? `${CONNECTIONS_URL}/api/connections` : null
+  );
+  const connections = data?.connections ?? [];
 
   async function startDm(connection: Connection) {
     if (!identity) return;
@@ -246,12 +187,12 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
-            {error}
+            Failed to load connections
           </div>
         )}
 
         <div className="flex-1 overflow-y-auto">
-          {loading ? (
+          {isLoading ? (
             <div className="py-8 text-center text-gray-500 text-sm">Loading connections…</div>
           ) : connections.length === 0 ? (
             <div className="py-8 text-center">
@@ -262,7 +203,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
             </div>
           ) : tab === 'dm' ? (
             <div className="space-y-1">
-              {connections.map((conn) => (
+              {connections.map((conn: Connection) => (
                 <button
                   key={`dm-${conn.did}`}
                   onClick={() => startDm(conn)}
@@ -295,7 +236,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
               </div>
               <p className="text-xs text-gray-500 mb-2 font-medium">Select members:</p>
               <div className="space-y-1">
-                {connections.map((conn) => (
+                {connections.map((conn: Connection) => (
                   <label
                     key={`grp-${conn.did}`}
                     className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg cursor-pointer"
