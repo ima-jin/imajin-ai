@@ -10,6 +10,18 @@ interface ImageUploadProps {
   onUploadComplete: (url: string) => void;
   onToggleToEmoji?: () => void;
   showEmojiToggle?: boolean;
+  /** Override upload endpoint (default: /profile/api/upload) */
+  uploadUrl?: string;
+  /** FormData field name for the file (default: 'image') */
+  fileFieldName?: string;
+  /** Max dimension in px for client-side resize (default: 256) */
+  maxSize?: number;
+  /** Extra FormData fields to append (e.g. context JSON for media service) */
+  extraFields?: Record<string, string>;
+  /** Section label (default: 'Avatar') */
+  label?: string;
+  /** Preview shape: 'avatar' renders circular crop, 'banner' renders wide rectangle */
+  previewMode?: 'avatar' | 'banner';
 }
 
 /**
@@ -23,6 +35,12 @@ export function ImageUpload({
   onUploadComplete,
   onToggleToEmoji,
   showEmojiToggle = true,
+  uploadUrl = '/profile/api/upload',
+  fileFieldName = 'image',
+  maxSize: maxSizeProp = 256,
+  extraFields,
+  label = 'Avatar',
+  previewMode = 'avatar',
 }: ImageUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -85,8 +103,8 @@ export function ImageUpload({
       setIsUploading(true);
 
       try {
-        // Resize to 256x256 max and compress to 80% JPEG
-        const resized = await resizeImage(file, 256, 0.8);
+        // Resize to maxSize x maxSize max and compress to 80% JPEG
+        const resized = await resizeImage(file, maxSizeProp, 0.8);
 
         // Create preview from resized blob
         const objectUrl = URL.createObjectURL(resized);
@@ -94,10 +112,15 @@ export function ImageUpload({
 
         // Upload resized image to server
         const formData = new FormData();
-        formData.append('image', resized, `avatar-${Date.now()}.jpg`);
+        formData.append(fileFieldName, resized, `upload-${Date.now()}.jpg`);
         formData.append('did', did || '');
+        if (extraFields) {
+          for (const [k, v] of Object.entries(extraFields)) {
+            formData.append(k, v);
+          }
+        }
 
-        const response = await fetch('/profile/api/upload', {
+        const response = await fetch(uploadUrl, {
           method: 'POST',
           body: formData,
         });
@@ -169,17 +192,26 @@ export function ImageUpload({
 
   return (
     <div className="space-y-3">
-      <label className="block text-sm font-medium text-gray-300">Avatar</label>
+      <label className="block text-sm font-medium text-gray-300">{label}</label>
 
       {/* Preview */}
-      <div className="flex items-center gap-4">
-        <Avatar avatar={displayAvatar} size="xl" />
-        <div className="flex-1">
-          <p className="text-sm text-gray-400 mb-2">
-            {displayAvatar ? 'Current avatar' : 'No avatar set'}
-          </p>
+      {previewMode === 'banner' ? (
+        displayAvatar ? (
+          <div
+            className="w-full h-24 rounded bg-cover bg-center mb-2"
+            style={{ backgroundImage: `url(${displayAvatar})` }}
+          />
+        ) : null
+      ) : (
+        <div className="flex items-center gap-4">
+          <Avatar avatar={displayAvatar} size="xl" />
+          <div className="flex-1">
+            <p className="text-sm text-gray-400 mb-2">
+              {displayAvatar ? 'Current avatar' : 'No avatar set'}
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Upload Zone */}
       <div

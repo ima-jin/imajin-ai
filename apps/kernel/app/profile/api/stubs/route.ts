@@ -39,12 +39,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { name, subtype, handle, location, category } = body as {
+  const { name, subtype, handle, location, category, lat, lon } = body as {
     name?: string;
     subtype?: string;
     handle?: string;
     location?: string;
     category?: string;
+    lat?: number;
+    lon?: number;
   };
 
   if (!name || typeof name !== 'string' || !name.trim()) {
@@ -119,9 +121,36 @@ export async function POST(request: NextRequest) {
     });
 
     // Create profile
-    const metadata: Record<string, string> = {};
+    const metadata: Record<string, string | number> = {};
     if (location) metadata.location = String(location).slice(0, 200);
     if (category) metadata.category = String(category).slice(0, 100);
+    if (typeof lat === 'number' && typeof lon === 'number' && isFinite(lat) && isFinite(lon)) {
+      metadata.lat = Math.round(lat * 1e6) / 1e6;  // ~11cm precision
+      metadata.lon = Math.round(lon * 1e6) / 1e6;
+    }
+
+    // Server-side geocoding fallback: if no coords from client but location text is present, query Nominatim
+    let resolvedLat = lat;
+    let resolvedLon = lon;
+    if (!resolvedLat && !resolvedLon && location) {
+      try {
+        const geoUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=json&limit=1`;
+        const geoRes = await fetch(geoUrl, {
+          headers: { 'User-Agent': 'Imajin/1.0 (https://imajin.ai)' },
+        });
+        if (geoRes.ok) {
+          const geoData = await geoRes.json() as Array<{ lat: string; lon: string }>;
+          if (geoData.length > 0) {
+            resolvedLat = parseFloat(geoData[0].lat);
+            resolvedLon = parseFloat(geoData[0].lon);
+          }
+        }
+      } catch (err) {
+        log.error({ err: String(err) }, '[stubs] Nominatim geocode failed (non-fatal)');
+      }
+    }
+    if (resolvedLat != null) metadata.lat = String(resolvedLat);
+    if (resolvedLon != null) metadata.lon = String(resolvedLon);
 
     await db.insert(profiles).values({
       did: stubDid,

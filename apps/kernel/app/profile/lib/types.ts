@@ -14,6 +14,7 @@ export interface ProfileData {
   displayName: string;
   bio?: string;
   avatar?: string;
+  banner?: string;
   email?: string;
   phone?: string;
   contactEmail?: string;

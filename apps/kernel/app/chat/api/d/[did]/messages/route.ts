@@ -1,11 +1,11 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { createEmitter } from '@imajin/emit';
-import { eq, and, desc, lt, isNull, inArray, ilike, or } from 'drizzle-orm';
+import { eq, and, desc, lt, ne, isNull, inArray, ilike, or } from 'drizzle-orm';
 
 const log = createLogger('kernel');
 const chatEvents = createEmitter('chat');
-import { db, conversationsV2, messagesV2, messageReactionsV2, profiles } from '@/src/db';
+import { db, conversationsV2, conversationMembers, messagesV2, messageReactionsV2, profiles } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
@@ -190,7 +190,7 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const { content, replyToMessageId, mediaType, mediaPath, mediaAssetId, mediaMeta, conversationName } = body;
+    const { content, replyToMessageId, mediaType, mediaPath, mediaAssetId, mediaMeta, conversationName, recipientDid } = body;
 
     if (!content || typeof content !== 'object') {
       return errorResponse('content is required and must be an object', 400, cors);
@@ -230,6 +230,50 @@ export async function POST(
         name: name || did,
         createdBy: effectiveDid,
       }).onConflictDoNothing();
+    }
+
+    // Always ensure the sender is a conversation member (idempotent).
+    // Catches edge cases where the conversation exists but the sender isn't tracked.
+    await db.insert(conversationMembers).values({
+      conversationDid: did,
+      memberDid: effectiveDid,
+      role: 'member',
+    }).onConflictDoNothing();
+
+    // For DMs: ensure the recipient is also tracked as a member.
+    // The DM DID is a hash so we can't reverse it — use recipientDid from the client
+    // if provided, otherwise discover from existing conversation data.
+    const isDm = parseConversationDid(did).type === 'dm';
+    if (isDm) {
+      let otherDid = recipientDid || null;
+      if (!otherDid) {
+        // Try conversation creator (if it's not us, they're the other party)
+        const conv = existing || await db.query.conversationsV2.findFirst({
+          where: eq(conversationsV2.did, did),
+        });
+        if (conv?.createdBy && conv.createdBy !== effectiveDid) {
+          otherDid = conv.createdBy;
+        }
+      }
+      if (!otherDid) {
+        // Try existing messages from someone else
+        const [otherMsg] = await db
+          .select({ fromDid: messagesV2.fromDid })
+          .from(messagesV2)
+          .where(and(
+            eq(messagesV2.conversationDid, did),
+            ne(messagesV2.fromDid, effectiveDid),
+          ))
+          .limit(1);
+        otherDid = otherMsg?.fromDid || null;
+      }
+      if (otherDid) {
+        await db.insert(conversationMembers).values({
+          conversationDid: did,
+          memberDid: otherDid,
+          role: 'member',
+        }).onConflictDoNothing();
+      }
     }
 
     // Validate reply if provided
