@@ -26,14 +26,14 @@
     {
       "idx": 3,
       "version": "7",
-      "when": 1744570000000,
+      "when": 1776124800001,
       "tag": "0003_add-max-per-order",
       "breakpoints": true
     },
     {
       "idx": 4,
       "version": "7",
-      "when": 1744574400000,
+      "when": 1776124800002,
       "tag": "0004_add-orders-table",
       "breakpoints": true
     }
