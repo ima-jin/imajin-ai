@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
         role: identityMembers.role,
         name: profiles.displayName,
         handle: profiles.handle,
+        bio: profiles.bio,
         metadata: profiles.metadata,
         claimStatus: profiles.claimStatus,
       })

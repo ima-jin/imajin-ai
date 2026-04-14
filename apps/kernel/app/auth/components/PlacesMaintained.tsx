@@ -6,21 +6,25 @@ interface Props {
   sessionDid: string;
 }
 
+interface PlaceRow {
+  did: string;
+  name: string;
+  handle: string | null;
+  claimStatus: string | null;
+  metadata: { category?: string } | null;
+}
+
 export default async function PlacesMaintained({ sessionDid }: Props) {
-  let rows: Array<{
-    did: string;
-    name: string;
-    handle: string | null;
-    claimStatus: string | null;
-  }> = [];
+  let rows: PlaceRow[] = [];
 
   try {
-    rows = await db
+    rows = (await db
       .select({
         did: identityMembers.identityDid,
         name: profiles.displayName,
         handle: profiles.handle,
         claimStatus: profiles.claimStatus,
+        metadata: profiles.metadata,
       })
       .from(identityMembers)
       .innerJoin(profiles, eq(profiles.did, identityMembers.identityDid))
@@ -30,7 +34,7 @@ export default async function PlacesMaintained({ sessionDid }: Props) {
           eq(identityMembers.role, 'maintainer'),
           isNull(identityMembers.removedAt)
         )
-      );
+      )) as PlaceRow[];
   } catch {
     return null;
   }
@@ -48,14 +52,18 @@ export default async function PlacesMaintained({ sessionDid }: Props) {
           {rows.map((row) => (
             <Link
               key={row.did}
-              href={row.handle ? `/profile/${row.handle}` : `/profile/${row.did}`}
+              href={`/auth/stubs/${row.did}`}
               className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800/60 transition-colors no-underline"
             >
               <span className="text-lg leading-none">🏢</span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-white truncate">{row.name}</div>
-                {row.handle && (
-                  <div className="text-xs text-zinc-500 truncate">@{row.handle}</div>
+                {(row.handle || row.metadata?.category) && (
+                  <div className="text-xs text-zinc-500 truncate">
+                    {row.handle ? `@${row.handle}` : ''}
+                    {row.handle && row.metadata?.category ? ' · ' : ''}
+                    {row.metadata?.category ?? ''}
+                  </div>
                 )}
               </div>
               {row.claimStatus === 'unclaimed' && (
