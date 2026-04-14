@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
-import { eq, desc, and, sql, isNull } from 'drizzle-orm';
+import { eq, desc, and, sql, isNull, count } from 'drizzle-orm';
 import { db, invites, profiles, podMembers } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
@@ -85,21 +85,20 @@ export async function POST(request: NextRequest) {
       }, { status: 429 });
     }
 
-    // Check for existing pending email invite from this user
-    const [existingPending] = await db
-      .select()
+    // Check pending email invite count (max 10)
+    const MAX_PENDING_EMAIL_INVITES = 10;
+    const pendingEmailCount = await db
+      .select({ value: count() })
       .from(invites)
       .where(and(
         eq(invites.fromDid, session.did),
         eq(invites.delivery, 'email'),
         eq(invites.status, 'pending'),
-      ))
-      .limit(1);
+      ));
 
-    if (existingPending) {
+    if (pendingEmailCount[0]?.value >= MAX_PENDING_EMAIL_INVITES) {
       return NextResponse.json({
-        error: 'You already have a pending email invite. Please wait for it to be accepted or revoke it first.',
-        pendingInvite: existingPending
+        error: `You have ${MAX_PENDING_EMAIL_INVITES} pending email invites. Please wait for some to be accepted or revoke them first.`,
       }, { status: 429 });
     }
 
