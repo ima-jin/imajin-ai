@@ -40,7 +40,7 @@ export default async function AdminUsersPage({
     idx++;
   }
   if (type) {
-    conditions.push(`i.type = $${idx}`);
+    conditions.push(`i.scope = $${idx}`);
     binds.push(type);
     idx++;
   }
@@ -61,7 +61,8 @@ export default async function AdminUsersPage({
        i.id,
        i.handle,
        i.name,
-       i.type,
+       i.scope,
+       i.subtype,
        i.tier,
        i.suspended_at,
        i.created_at,
@@ -121,12 +122,11 @@ export default async function AdminUsersPage({
           defaultValue={type}
           className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
         >
-          <option value="">All types</option>
-          <option value="human">Human</option>
-          <option value="agent">Agent</option>
-          <option value="event">Event</option>
-          <option value="service">Service</option>
-          <option value="node">Node</option>
+          <option value="">All scopes</option>
+          <option value="actor">Actor</option>
+          <option value="family">Family</option>
+          <option value="community">Community</option>
+          <option value="business">Business</option>
         </select>
         <button
           type="submit"
@@ -157,7 +157,7 @@ export default async function AdminUsersPage({
                 <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Handle</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Name</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Type</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Scope</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Tier</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Created</th>
                 </tr>
@@ -196,8 +196,13 @@ export default async function AdminUsersPage({
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
-                          {row.type as string}
+                          {row.scope as string}
                         </span>
+                        {row.subtype && (
+                          <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">
+                            {row.subtype as string}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <TierBadge tier={row.tier as string} />
