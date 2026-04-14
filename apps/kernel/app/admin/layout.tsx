@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { label: 'Moderation', href: '/admin/moderation', icon: '🛡️' },
   { label: 'Events', href: '/admin/events', icon: '🔔' },
   { label: 'Telemetry', href: '/admin/telemetry', icon: '📈' },
+  { label: 'Logs', href: '/admin/logs', icon: '📋' },
 ];
 
 export default async function AdminLayout({

@@ -295,6 +295,28 @@ export const systemEvents = registrySchema.table('system_events', {
 
 export type SystemEvent = typeof systemEvents.$inferSelect;
 
+/**
+ * Application log entries — written by @imajin/logger Pino adapter when ENABLE_APP_LOG=true
+ */
+export const appLogs = registrySchema.table('app_logs', {
+  id: text('id').primaryKey(),
+  service: text('service').notNull(),
+  level: text('level').notNull(),                // debug, info, warn, error
+  message: text('message').notNull(),
+  correlationId: text('correlation_id'),
+  did: text('did'),
+  method: text('method'),
+  path: text('path'),
+  metadata: jsonb('metadata'),                   // remaining LogContext fields
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  createdIdx: index('idx_app_logs_created').on(table.createdAt),
+  serviceLevelIdx: index('idx_app_logs_service_level').on(table.service, table.level),
+  correlationIdx: index('idx_app_logs_correlation').on(table.correlationId),
+}));
+
+export type AppLog = typeof appLogs.$inferSelect;
+
 // Types
 export type Node = typeof nodes.$inferSelect;
 export type NewNode = typeof nodes.$inferInsert;
