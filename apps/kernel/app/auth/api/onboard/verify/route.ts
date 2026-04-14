@@ -251,6 +251,14 @@ export async function GET(request: NextRequest) {
       userAgent: request.headers.get("user-agent"),
     }).catch(err => log.error({ err: String(err) }, 'Session attestation error'));
 
+    // Fire-and-forget: migrate any guest tickets purchased with this email to the hard DID
+    const EVENTS_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:7006';
+    fetch(`${EVENTS_URL}/events/api/migrate-tickets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: normalizedEmail, hardDid: did }),
+    }).catch(err => log.warn({ err: String(err) }, 'Ticket migration call failed (non-fatal)'));
+
     return response;
 
   } catch (error) {
