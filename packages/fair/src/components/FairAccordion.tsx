@@ -55,6 +55,33 @@ const ROLE_LABELS: Record<string, string> = {
   creator: 'Creator',
 };
 
+const SELLER_ROLES = new Set(['seller', 'creator', 'event']);
+
+/**
+ * Compute the seller's net share range after processing fees.
+ * Returns null if no fees or entry is not a seller role.
+ */
+function sellerNetLabel(entry: FairEntry, fees: FairFee[]): string | null {
+  if (!SELLER_ROLES.has(entry.role) || !fees.length) return null;
+  const processorFee = fees.find(f => f.role === 'processor');
+  if (!processorFee) return null;
+
+  const grossPct = entry.share * 100;
+  const maxFeePct = processorFee.rateBps / 100;
+  const minFeePct = (processorFee.minRateBps ?? processorFee.rateBps) / 100;
+  const fixedCents = processorFee.fixedCents ?? 0;
+
+  // Net range: gross - maxFee to gross - minFee
+  const netLow = (grossPct - maxFeePct).toFixed(2);
+  const netHigh = (grossPct - minFeePct).toFixed(2);
+  const fixedStr = fixedCents > 0 ? ` − $${(fixedCents / 100).toFixed(2)}` : '';
+
+  if (netLow === netHigh) {
+    return `${netLow}%${fixedStr}`;
+  }
+  return `${netLow}–${netHigh}%${fixedStr}`;
+}
+
 interface FairAccordionProps {
   manifest: FairManifest | null;
   resolveProfile?: (did: string) => Promise<{ name: string; avatar?: string }>;
@@ -137,7 +164,12 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
                       </span>
                     )}
                   </div>
-                  <span className="text-sm font-bold">{(entry.share * 100).toFixed(2)}%</span>
+                  <span className="text-sm font-bold">
+                    {(() => {
+                      const net = sellerNetLabel(entry, manifest.fees ?? []);
+                      return net || `${(entry.share * 100).toFixed(2)}%`;
+                    })()}
+                  </span>
                 </div>
               ))}
             </div>
