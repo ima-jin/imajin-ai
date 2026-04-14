@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
+import { db, events, ticketTypes, tickets, orders, eventInvites } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { TicketsSection } from './tickets-section';
 import { generateQRCode } from '@/src/lib/email';
@@ -139,14 +139,16 @@ async function getTicketTypes(eventId: string) {
     .orderBy(ticketTypes.sortOrder);
 }
 
-async function getUserTickets(eventId: string, userDid: string) {
-  const userTickets = await db
+async function getUserOrders(eventId: string, userDid: string) {
+  const rows = await db
     .select({
       ticket: tickets,
       ticketType: ticketTypes,
+      order: orders,
     })
     .from(tickets)
     .leftJoin(ticketTypes, eq(tickets.ticketTypeId, ticketTypes.id))
+    .leftJoin(orders, eq(tickets.orderId, orders.id))
     .where(
       and(
         eq(tickets.eventId, eventId),
@@ -154,31 +156,61 @@ async function getUserTickets(eventId: string, userDid: string) {
       )
     );
 
-  return Promise.all(userTickets.map(async ({ ticket, ticketType }) => {
-    // Don't generate QR for pending-registration tickets — they can't check in yet
-    const qrCodeDataUri = ticket.registrationStatus !== 'pending'
-      ? (await generateQRCode(ticket.id) || undefined)
-      : undefined;
+  // Generate QR codes in parallel
+  const rowsWithQr = await Promise.all(
+    rows.map(async ({ ticket, ticketType, order }) => {
+      const qrCodeDataUri = ticket.registrationStatus !== 'pending'
+        ? (await generateQRCode(ticket.id) || undefined)
+        : undefined;
+      return { ticket, ticketType, order, qrCodeDataUri };
+    })
+  );
 
-    const ticketMeta = (ticket.metadata || {}) as Record<string, any>;
+  // Group by orderId; legacy tickets (null orderId) each become their own group
+  const groupMap = new Map<string, typeof rowsWithQr>();
+  for (const row of rowsWithQr) {
+    const key = row.ticket.orderId ?? `legacy:${row.ticket.id}`;
+    if (!groupMap.has(key)) groupMap.set(key, []);
+    groupMap.get(key)!.push(row);
+  }
+
+  return Array.from(groupMap.values()).map((groupRows) => {
+    const first = groupRows[0];
+    const isLegacy = !first.ticket.orderId;
+    const orderData = first.order;
+    const ticketMeta = (first.ticket.metadata || {}) as Record<string, any>;
+
+    // Order-level settlement (fairSettlement column) takes precedence; fall back to legacy ticket-level
+    const fairSettlement = (orderData?.fairSettlement as any) ?? ticketMeta.fair_settlement ?? null;
+
     return {
-      id: ticket.id,
-      status: ticket.status,
-      usedAt: ticket.usedAt?.toISOString() || null,
-      registrationStatus: ticket.registrationStatus || 'not_required',
-      purchasedAt: (ticket.purchasedAt || ticket.createdAt)?.toISOString() || null,
-      pricePaid: ticket.pricePaid,
-      currency: ticket.currency,
-      qrCodeDataUri,
-      fairSettlement: ticketMeta.fair_settlement || null,
-      ticketType: ticketType ? {
-        name: ticketType.name,
-        description: ticketType.description,
-        perks: ticketType.perks,
-        registrationFormId: ticketType.registrationFormId,
-      } : null,
+      id: isLegacy ? first.ticket.id : first.ticket.orderId!,
+      isLegacy,
+      quantity: groupRows.length,
+      totalAmount: orderData?.amountTotal ?? first.ticket.pricePaid,
+      currency: orderData?.currency ?? first.ticket.currency,
+      purchasedAt: (first.ticket.purchasedAt || first.ticket.createdAt)?.toISOString() || null,
+      ticketTypeName: first.ticketType?.name || 'Ticket',
+      fairSettlement,
+      tickets: groupRows.map(({ ticket, ticketType, qrCodeDataUri }) => ({
+        id: ticket.id,
+        status: ticket.status,
+        usedAt: ticket.usedAt?.toISOString() || null,
+        registrationStatus: ticket.registrationStatus || 'not_required',
+        pricePaid: ticket.pricePaid,
+        currency: ticket.currency,
+        qrCodeDataUri,
+        ticketType: ticketType
+          ? {
+              name: ticketType.name,
+              description: ticketType.description,
+              perks: ticketType.perks,
+              registrationFormId: ticketType.registrationFormId,
+            }
+          : null,
+      })),
     };
-  }));
+  });
 }
 
 interface OrganizerProfile {
@@ -279,9 +311,9 @@ export default async function EventPage({ params, searchParams }: Props) {
     }
   }
 
-  // Fetch user's tickets if logged in
-  const userTickets = session?.id ? await getUserTickets(event.id, session.id) : [];
-  const hasTicket = userTickets.length > 0;
+  // Fetch user's orders (+ legacy tickets) if logged in
+  const userOrders = session?.id ? await getUserOrders(event.id, session.id) : [];
+  const hasTicket = userOrders.length > 0;
 
   // Whether we should show the ticket purchase section
   const canSeeTickets =
@@ -707,7 +739,7 @@ export default async function EventPage({ params, searchParams }: Props) {
                 eventId={event.id}
                 eventTitle={event.title}
                 tickets={ticketTypesList}
-                userTickets={userTickets}
+                userOrders={userOrders}
                 hasTicket={hasTicket}
                 inviteToken={inviteToken}
                 etransferEnabled={etransferEnabled}

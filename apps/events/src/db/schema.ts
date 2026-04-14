@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, integer, boolean, index, pgSchema } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, integer, boolean, index, pgSchema, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const eventsSchema = pgSchema('events');
 
@@ -101,6 +101,52 @@ export const ticketTypes = eventsSchema.table('ticket_types', {
 }));
 
 /**
+ * Orders - groups of tickets purchased together
+ *
+ * SQL migration (WO1):
+ * CREATE TABLE IF NOT EXISTS events.orders (
+ *   id TEXT PRIMARY KEY,
+ *   event_id TEXT NOT NULL REFERENCES events.events(id),
+ *   buyer_did TEXT NOT NULL,
+ *   ticket_type_id TEXT NOT NULL REFERENCES events.ticket_types(id),
+ *   quantity INTEGER NOT NULL,
+ *   total_amount INTEGER NOT NULL,
+ *   currency TEXT NOT NULL DEFAULT 'CAD',
+ *   status TEXT NOT NULL DEFAULT 'pending',
+ *   payment_method TEXT,
+ *   stripe_payment_intent_id TEXT,
+ *   metadata JSONB DEFAULT '{}',
+ *   created_at TIMESTAMPTZ DEFAULT NOW(),
+ *   updated_at TIMESTAMPTZ DEFAULT NOW()
+ * );
+ * CREATE INDEX IF NOT EXISTS idx_orders_event ON events.orders(event_id);
+ * CREATE INDEX IF NOT EXISTS idx_orders_buyer ON events.orders(buyer_did);
+ * CREATE INDEX IF NOT EXISTS idx_orders_status ON events.orders(status);
+ * ALTER TABLE events.tickets ADD COLUMN IF NOT EXISTS order_id TEXT REFERENCES events.orders(id);
+ * CREATE INDEX IF NOT EXISTS idx_tickets_order ON events.tickets(order_id);
+ */
+export const orders = eventsSchema.table('orders', {
+  id: text('id').primaryKey(),                              // ord_xxx
+  eventId: text('event_id').references(() => events.id).notNull(),
+  buyerDid: text('buyer_did'),
+  ticketTypeId: text('ticket_type_id').references(() => ticketTypes.id).notNull(),
+  quantity: integer('quantity').notNull().default(1),
+  amountTotal: integer('amount_total').notNull(),           // cents
+  currency: text('currency').notNull().default('CAD'),
+  paymentMethod: text('payment_method'),                    // 'stripe' | 'etransfer' | 'free'
+  stripeSessionId: text('stripe_session_id'),
+  paymentId: text('payment_id'),                            // stripe payment_intent id
+  fairSettlement: jsonb('fair_settlement'),                  // resolved .fair receipt
+  purchasedAt: timestamp('purchased_at', { withTimezone: true }),
+  metadata: jsonb('metadata').default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  eventIdx: index('idx_orders_event').on(table.eventId),
+  buyerIdx: index('idx_orders_buyer').on(table.buyerDid),
+  stripeIdx: index('idx_orders_stripe_session').on(table.stripeSessionId),
+}));
+
+/**
  * Tickets - purchased tickets owned by DIDs
  */
 export const tickets = eventsSchema.table('tickets', {
@@ -108,6 +154,7 @@ export const tickets = eventsSchema.table('tickets', {
   eventId: text('event_id').references(() => events.id).notNull(),
   ticketTypeId: text('ticket_type_id').references(() => ticketTypes.id).notNull(),
   ownerDid: text('owner_did'),                              // Current owner (null if held/available)
+  orderId: text('order_id').references(() => orders.id),    // null for legacy tickets
   originalOwnerDid: text('original_owner_did'),             // First purchaser
   
   // Purchase info
@@ -155,6 +202,7 @@ export const tickets = eventsSchema.table('tickets', {
   ownerIdx: index('idx_tickets_owner').on(table.ownerDid),
   statusIdx: index('idx_tickets_status').on(table.status),
   heldByIdx: index('idx_tickets_held_by').on(table.heldBy),
+  orderIdx: index('idx_tickets_order').on(table.orderId),
 
   registrationStatusIdx: index('idx_tickets_registration_status').on(table.registrationStatus),
 }));
@@ -244,6 +292,8 @@ export const ticketRegistrations = eventsSchema.table('ticket_registrations', {
 export type Event = typeof events.$inferSelect;
 export type NewEvent = typeof events.$inferInsert;
 export type TicketType = typeof ticketTypes.$inferSelect;
+export type Order = typeof orders.$inferSelect;
+export type NewOrder = typeof orders.$inferInsert;
 export type Ticket = typeof tickets.$inferSelect;
 export type TicketTransfer = typeof ticketTransfers.$inferSelect;
 export type TicketQueueEntry = typeof ticketQueue.$inferSelect;

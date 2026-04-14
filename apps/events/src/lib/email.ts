@@ -17,6 +17,8 @@ interface TicketConfirmationData {
   eventImageUrl?: string;
   eventUrl?: string;
   qrCodeDataUri?: string;
+  /** Multi-ticket: render a QR block per ticket. Overrides ticketId/qrCodeDataUri when present. */
+  tickets?: Array<{ id: string; qrCodeDataUri?: string }>;
 }
 
 export function ticketConfirmationEmail(data: TicketConfirmationData): string {
@@ -89,13 +91,16 @@ export function ticketConfirmationEmail(data: TicketConfirmationData): string {
                       </tr>
                     </table>
 
-                    <!-- QR Code + Ticket ID -->
-                    <div style="margin-top:16px;padding:16px;background:#0a0a0a;border:1px solid #262626;border-radius:6px;text-align:center;">
-                      ${data.qrCodeDataUri ? `<img src="${data.qrCodeDataUri}" alt="Ticket QR Code" width="160" height="160" style="display:block;margin:0 auto 12px;" />` : ''}
+                    <!-- QR Code(s) + Ticket ID(s) -->
+                    ${(data.tickets && data.tickets.length > 0 ? data.tickets : [{ id: data.ticketId, qrCodeDataUri: data.qrCodeDataUri }]).map((t, i, arr) => `
+                    <div style="margin-top:${i === 0 ? '16' : '12'}px;padding:16px;background:#0a0a0a;border:1px solid #262626;border-radius:6px;text-align:center;">
+                      ${arr.length > 1 ? `<div style="font-size:11px;color:#52525b;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Ticket ${i + 1} of ${arr.length}</div>` : ''}
+                      ${t.qrCodeDataUri ? `<img src="${t.qrCodeDataUri}" alt="Ticket QR Code" width="160" height="160" style="display:block;margin:0 auto 12px;" />` : ''}
                       <div style="font-family:'SF Mono',Monaco,Consolas,monospace;font-size:13px;color:#71717a;">
-                        ${data.ticketId}
+                        ${t.id}
                       </div>
                     </div>
+                    `).join('')}
                   </td>
                 </tr>
               </table>

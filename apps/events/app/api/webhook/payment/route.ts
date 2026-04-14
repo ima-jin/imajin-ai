@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withLogger, createLogger } from '@imajin/logger';
-import { db, events, ticketTypes, tickets } from '@/src/db';
+import { db, events, ticketTypes, tickets, orders } from '@/src/db';
 
 const log = createLogger('events');
 import { eq, and, sql } from 'drizzle-orm';
@@ -224,15 +224,15 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const customerEmail = payload.customerEmail || null;
   const quantity = parseInt(metadata.quantity) || 1;
 
-  // Idempotency: check if tickets for this Stripe session already exist
-  const existingTickets = await db
-    .select({ id: tickets.id })
-    .from(tickets)
-    .where(sql`${tickets.metadata}->>'stripeSessionId' = ${sessionId}`)
+  // Idempotency: check if an order for this Stripe session already exists
+  const existingOrder = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(eq(orders.stripeSessionId, sessionId))
     .limit(1);
 
-  if (existingTickets.length > 0) {
-    log.info({ sessionId }, 'Duplicate webhook — tickets already exist for session');
+  if (existingOrder.length > 0) {
+    log.info({ sessionId }, 'Duplicate webhook — order already exists for session');
     return;
   }
 
@@ -283,6 +283,26 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     ownerDid = softSession.did;
   }
 
+  // Create order record BEFORE tickets — so we can link them via orderId
+  const orderId = `ord_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`;
+  await db.insert(orders).values({
+    id: orderId,
+    eventId: event.id,
+    buyerDid: ownerDid,
+    ticketTypeId: ticketType.id,
+    quantity,
+    amountTotal,
+    currency: currency.toUpperCase(),
+    paymentMethod: paymentId ? 'stripe' : 'etransfer',
+    stripeSessionId: sessionId,
+    paymentId: paymentId || null,
+    purchasedAt: new Date(),
+    metadata: {
+      purchaseEmail: customerEmail,
+      customerName: customerName || null,
+    },
+  });
+
   // Create ticket(s)
   const createdTickets = [];
 
@@ -306,6 +326,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       id: ticketId,
       eventId: event.id,
       ticketTypeId: ticketType.id,
+      orderId,
       ownerDid,
       originalOwnerDid: ownerDid,
       pricePaid: amountTotal / quantity,
@@ -342,7 +363,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     .set({ sold: sql`${ticketTypes.sold} + ${quantity}` })
     .where(eq(ticketTypes.id, ticketType.id));
 
-  log.info({ count: createdTickets.length, customerEmail }, 'Tickets created for customer');
+  log.info({ count: createdTickets.length, orderId, customerEmail }, 'Order + tickets created');
 
   // Notify buyer — fire and forget
   notify.send({
@@ -385,6 +406,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const eventMetadata = (event.metadata || {}) as Record<string, any>;
   try {
     await settleTicketPurchase({
+      orderId,
       eventId: event.id,
       eventDid: event.did,
       buyerDid: ownerDid,
@@ -392,7 +414,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       currency,
       fairManifest: eventMetadata.fair || null,
       metadata: {
-        ticketId: createdTickets[0].id,
+        ticketIds: createdTickets.map(t => t.id),
         ticketTypeId: ticketType.id,
         stripeSessionId: sessionId,
       },
@@ -487,8 +509,13 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   // Only send the ticket confirmation (with QR) immediately for non-registration tickets
   if (!ticketType.requiresRegistration) {
     try {
-      // Generate QR code from ticket ID (for check-in scanning)
-      const qrCodeDataUri = await generateQRCode(createdTickets[0].id);
+      // Generate QR codes for ALL tickets in the order
+      const ticketsWithQr = await Promise.all(
+        createdTickets.map(async (t) => ({
+          id: t.id,
+          qrCodeDataUri: await generateQRCode(t.id),
+        }))
+      );
 
       await sendEmail({
         to: customerEmail,
@@ -496,7 +523,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         html: ticketConfirmationEmail({
           eventTitle: event.title,
           ticketType: ticketType.name,
-          ticketId: createdTickets[0].id + (quantity > 1 ? ` (+${quantity - 1} more)` : ''),
+          ticketId: createdTickets[0].id,  // fallback for single-ticket compat
           eventDate: formattedEventDate,
           eventTime: formattedEventTime,
           isVirtual: event.isVirtual ?? false,
@@ -505,7 +532,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
           magicLink,
           eventImageUrl,
           eventUrl: `${EVENTS_URL}/${event.id}`,
-          qrCodeDataUri,
+          tickets: ticketsWithQr,
         }),
       });
     } catch (emailError) {
