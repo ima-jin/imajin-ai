@@ -40,13 +40,13 @@ export async function GET(
     });
   }
 
-  // Userspace services: fetch from their own process
+  // Userspace services: fetch from their own process (must include basePath)
   const svcDef = getService(service);
   const port = svcDef ? (process.env.NODE_ENV === "production" ? svcDef.prodPort : svcDef.devPort) : 3000;
   const internalUrl = `http://localhost:${port}`;
 
   try {
-    const res = await fetch(`${internalUrl}/api/spec`, {
+    const res = await fetch(`${internalUrl}/${service}/api/spec`, {
       next: { revalidate: 60 },
     });
 

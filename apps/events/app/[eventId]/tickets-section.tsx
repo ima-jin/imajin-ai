@@ -184,6 +184,13 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
         ))}
       </div>
 
+      {/* Registration surveys — full width, outside the QR grid */}
+      {order.tickets.filter(t => t.ticketType?.registrationFormId).map((ticket) => (
+        <div key={`reg-${ticket.id}`} className="mb-4">
+          <TicketRegistrationSurvey ticket={ticket} eventId={eventId} />
+        </div>
+      ))}
+
       {/* ONE .fair receipt per order */}
       {order.fairSettlement && (
         <TicketFairReceipt settlement={order.fairSettlement} />
@@ -192,34 +199,9 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
   );
 }
 
-function TicketQRCell({ ticket, eventId }: { ticket: OrderTicket; eventId: string }) {
-  const [regStatus, setRegStatus] = useState(ticket.registrationStatus);
-  const [qrCode, setQrCode] = useState(ticket.qrCodeDataUri);
-  const isPending = regStatus === 'pending';
-
-  async function handleRegistrationComplete() {
-    try {
-      const res = await apiFetch(`/api/register/${ticket.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formId: ticket.ticketType?.registrationFormId }),
-      });
-      if (res.ok) {
-        setRegStatus('complete');
-        try {
-          const qrRes = await apiFetch(`/api/tickets/${ticket.id}/qr`);
-          if (qrRes.ok) {
-            const data = await qrRes.json();
-            setQrCode(data.qrCodeDataUri);
-          }
-        } catch {
-          // Non-fatal — QR will show on next page load
-        }
-      }
-    } catch {
-      // Non-fatal — survey is saved in Dykil
-    }
-  }
+function TicketQRCell({ ticket }: { ticket: OrderTicket; eventId: string }) {
+  const isPending = ticket.registrationStatus === 'pending';
+  const [qrCode] = useState(ticket.qrCodeDataUri);
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -253,19 +235,41 @@ function TicketQRCell({ ticket, eventId }: { ticket: OrderTicket; eventId: strin
         </>
       )}
 
-      {/* Inline registration survey — per ticket */}
-      {ticket.ticketType?.registrationFormId && (
-        <SurveyAccordion
-          eventId={eventId}
-          surveyId={ticket.ticketType.registrationFormId}
-          surveyTitle={isPending ? 'Complete Registration' : 'Registration'}
-          surveyType="form"
-          defaultExpanded={isPending}
-          ticketId={ticket.id}
-          onComplete={handleRegistrationComplete}
-        />
-      )}
     </div>
+  );
+}
+
+function TicketRegistrationSurvey({ ticket, eventId }: { ticket: OrderTicket; eventId: string }) {
+  const [regStatus, setRegStatus] = useState(ticket.registrationStatus);
+  const isPending = regStatus === 'pending';
+
+  async function handleRegistrationComplete() {
+    try {
+      const res = await apiFetch(`/api/register/${ticket.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formId: ticket.ticketType?.registrationFormId }),
+      });
+      if (res.ok) {
+        setRegStatus('complete');
+      }
+    } catch {
+      // Non-fatal — survey is saved in Dykil
+    }
+  }
+
+  if (!ticket.ticketType?.registrationFormId) return null;
+
+  return (
+    <SurveyAccordion
+      eventId={eventId}
+      surveyId={ticket.ticketType.registrationFormId}
+      surveyTitle={isPending ? 'Complete Registration' : 'Registration'}
+      surveyType="form"
+      defaultExpanded={isPending}
+      ticketId={ticket.id}
+      onComplete={handleRegistrationComplete}
+    />
   );
 }
 
