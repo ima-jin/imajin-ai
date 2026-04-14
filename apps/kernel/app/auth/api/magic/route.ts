@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // DEPRECATED: Use /api/onboard/verify instead. Kept for existing magic links in the wild.
 
 /**
