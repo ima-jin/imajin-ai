@@ -13,21 +13,35 @@ export default async function AdminUserDetailPage({
   const { did } = await params;
   const decodedDid = decodeURIComponent(did);
 
-  // Identity
+  // Identity — only select columns guaranteed to exist, fetch extras safely
   const [identity] = await sql`
-    SELECT id, handle, name, scope, subtype, tier, public_key, contact_email, metadata, suspended_at, created_at
+    SELECT id, handle, name, scope, subtype, tier, public_key, suspended_at, created_at
     FROM auth.identities
     WHERE id = ${decodedDid}
     LIMIT 1
   `;
+  if (!identity) notFound();
+
+  // Extra identity columns (may not exist on all envs)
+  let contactEmail: string | null = null;
+  let metadata: Record<string, unknown> | null = null;
+  try {
+    const [extra] = await sql`SELECT contact_email, metadata FROM auth.identities WHERE id = ${decodedDid} LIMIT 1`;
+    if (extra) {
+      contactEmail = extra.contact_email as string | null;
+      metadata = extra.metadata as Record<string, unknown> | null;
+    }
+  } catch {}
 
   // Auth methods (login email, etc.)
-  const authMethods = await sql`
-    SELECT type, value, created_at FROM auth.auth_methods
-    WHERE did = ${decodedDid}
-    ORDER BY created_at ASC
-  `;
-  if (!identity) notFound();
+  let authMethods: Record<string, unknown>[] = [];
+  try {
+    authMethods = await sql`
+      SELECT type, value, created_at FROM auth.auth_methods
+      WHERE did = ${decodedDid}
+      ORDER BY created_at ASC
+    `;
+  } catch {}
 
   // Invited by (who invited this user)
   let invitedByRow: Record<string, unknown> | undefined;
@@ -166,8 +180,8 @@ export default async function AdminUserDetailPage({
         <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-5">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Email &amp; Auth Methods</h2>
           <div className="space-y-2 text-sm">
-            {identity.contact_email && (
-              <Row label="Contact Email" value={identity.contact_email as string} />
+            {contactEmail && (
+              <Row label="Contact Email" value={contactEmail} />
             )}
             {authMethods.length > 0 ? (
               authMethods.map((am, i) => (
@@ -180,9 +194,9 @@ export default async function AdminUserDetailPage({
         </div>
         <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-5">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Metadata</h2>
-          {identity.metadata && Object.keys(identity.metadata as Record<string, unknown>).length > 0 ? (
+          {metadata && Object.keys(metadata).length > 0 ? (
             <pre className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 overflow-x-auto max-h-48">
-              {JSON.stringify(identity.metadata, null, 2)}
+              {JSON.stringify(metadata, null, 2)}
             </pre>
           ) : (
             <p className="text-xs text-gray-400 dark:text-gray-500">Empty</p>

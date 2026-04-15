@@ -30,7 +30,7 @@ export default async function AdminUsersPage({
   let idx = 1;
 
   if (q) {
-    conditions.push(`(i.handle ILIKE $${idx} OR i.name ILIKE $${idx} OR p.display_name ILIKE $${idx} OR i.contact_email ILIKE $${idx} OR EXISTS (SELECT 1 FROM auth.auth_methods am WHERE am.did = i.id AND am.type = 'email' AND am.value ILIKE $${idx}))`);
+    conditions.push(`(i.handle ILIKE $${idx} OR i.name ILIKE $${idx} OR p.display_name ILIKE $${idx} OR COALESCE(i.contact_email, '') ILIKE $${idx})`);
     binds.push(`%${q}%`);
     idx++;
   }
@@ -67,9 +67,7 @@ export default async function AdminUsersPage({
        i.suspended_at,
        i.created_at,
        i.contact_email,
-       i.metadata,
-       p.display_name,
-       (SELECT am.value FROM auth.auth_methods am WHERE am.did = i.id AND am.type = 'email' LIMIT 1) AS login_email
+       p.display_name
      FROM auth.identities i
      LEFT JOIN profile.profiles p ON i.id = p.did
      ${whereClause}
@@ -201,7 +199,7 @@ export default async function AdminUsersPage({
                         {name ?? <span className="text-gray-400 dark:text-gray-600">—</span>}
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
-                        {(row.login_email || row.contact_email) as string ?? <span className="text-gray-400 dark:text-gray-600">—</span>}
+                        {(row.contact_email as string) || <span className="text-gray-400 dark:text-gray-600">—</span>}
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
