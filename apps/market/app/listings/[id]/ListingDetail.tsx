@@ -7,6 +7,7 @@ import { resolveMediaRef } from '@imajin/media';
 import { apiFetch } from '@imajin/config';
 import PriceDisplay from '../../components/PriceDisplay';
 import { OnboardGate } from '@imajin/onboard';
+import { FairAccordion } from '@imajin/fair';
 
 interface ContactInfo {
   phone?: string;
@@ -30,6 +31,7 @@ interface Listing {
   type: string;
   createdAt: string;
   updatedAt: string;
+  fairManifest?: Record<string, unknown> | null;
 }
 
 interface RelatedListing {
@@ -615,6 +617,15 @@ export default function ListingDetail() {
                   </p>
                 </div>
               )
+            )}
+
+            {/* .fair attribution */}
+            {listing.fairManifest && (
+              <FairAccordion
+                manifest={listing.fairManifest as any}
+                nodeDid={process.env.NEXT_PUBLIC_NODE_DID}
+                viewerDid={sessionDid || undefined}
+              />
             )}
 
             {/* Metadata */}

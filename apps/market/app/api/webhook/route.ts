@@ -12,6 +12,7 @@ import { db, listings } from '@/db';
 import { emitAttestation } from '@imajin/auth';
 import { notify } from '@imajin/notify';
 import { jsonResponse, errorResponse } from '@/lib/utils';
+import { settleListingPurchase } from '@/lib/settle';
 import { eq } from 'drizzle-orm';
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET!;
@@ -63,6 +64,16 @@ export async function POST(request: NextRequest) {
               })
               .where(eq(listings.id, listingId));
           }
+
+          // Settle .fair chain — fire and forget, never block the response
+          settleListingPurchase({
+            listingId,
+            sellerDid: listing.sellerDid,
+            buyerDid: body.metadata?.buyerDid || '',
+            amount: body.metadata?.amount || 0,
+            currency: body.metadata?.currency || 'CAD',
+            fairManifest: (listing.fairManifest as any) || null,
+          }).catch((err: unknown) => log.error({ err: String(err) }, 'Settlement error'));
         }
 
         // Fire and forget — never block the response
