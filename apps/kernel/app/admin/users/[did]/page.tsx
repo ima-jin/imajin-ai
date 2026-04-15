@@ -15,10 +15,17 @@ export default async function AdminUserDetailPage({
 
   // Identity
   const [identity] = await sql`
-    SELECT id, handle, name, scope, subtype, tier, public_key, suspended_at, created_at
+    SELECT id, handle, name, scope, subtype, tier, public_key, contact_email, metadata, suspended_at, created_at
     FROM auth.identities
     WHERE id = ${decodedDid}
     LIMIT 1
+  `;
+
+  // Auth methods (login email, etc.)
+  const authMethods = await sql`
+    SELECT type, value, created_at FROM auth.auth_methods
+    WHERE did = ${decodedDid}
+    ORDER BY created_at ASC
   `;
   if (!identity) notFound();
 
@@ -122,6 +129,35 @@ export default async function AdminUserDetailPage({
                 {formatDistanceToNow(new Date(identity.suspended_at as Date), { addSuffix: true })}
               </p>
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* Auth Methods + Metadata */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-5">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Email &amp; Auth Methods</h2>
+          <div className="space-y-2 text-sm">
+            {identity.contact_email && (
+              <Row label="Contact Email" value={identity.contact_email as string} />
+            )}
+            {authMethods.length > 0 ? (
+              authMethods.map((am, i) => (
+                <Row key={i} label={`${am.type as string}`} value={am.value as string} mono />
+              ))
+            ) : (
+              <p className="text-xs text-gray-400 dark:text-gray-500">No auth methods</p>
+            )}
+          </div>
+        </div>
+        <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-5">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Metadata</h2>
+          {identity.metadata && Object.keys(identity.metadata as Record<string, unknown>).length > 0 ? (
+            <pre className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 overflow-x-auto max-h-48">
+              {JSON.stringify(identity.metadata, null, 2)}
+            </pre>
+          ) : (
+            <p className="text-xs text-gray-400 dark:text-gray-500">Empty</p>
           )}
         </div>
       </div>
