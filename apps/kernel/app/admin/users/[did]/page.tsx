@@ -29,6 +29,15 @@ export default async function AdminUserDetailPage({
   `;
   if (!identity) notFound();
 
+  // Invited by (who invited this user)
+  const [invitedByRow] = await sql`
+    SELECT i.from_did, id2.handle AS inviter_handle, id2.name AS inviter_name
+    FROM connections.invites i
+    LEFT JOIN auth.identities id2 ON id2.id = i.from_did
+    WHERE (i.consumed_by = ${decodedDid} OR (i.to_did = ${decodedDid} AND i.status = 'accepted'))
+    LIMIT 1
+  `;
+
   // Profile
   const [profile] = await sql`
     SELECT display_name, bio, avatar, avatar_asset_id
@@ -75,9 +84,12 @@ export default async function AdminUserDetailPage({
   const publicKey = identity.public_key as string;
   const shortKey = publicKey ? `${publicKey.slice(0, 20)}…${publicKey.slice(-8)}` : '—';
   const createdAt = identity.created_at as Date;
-  const relTime = createdAt
-    ? formatDistanceToNow(new Date(createdAt), { addSuffix: true })
+  const createdTimestamp = createdAt
+    ? new Date(createdAt).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
     : '—';
+  const inviterHandle = invitedByRow?.inviter_handle as string | null;
+  const inviterName = invitedByRow?.inviter_name as string | null;
+  const inviterDid = invitedByRow?.from_did as string | null;
 
   return (
     <div className="p-6 lg:p-8 max-w-5xl">
@@ -120,7 +132,17 @@ export default async function AdminUserDetailPage({
           </div>
           <div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Created</p>
-            <p className="text-xs text-gray-700 dark:text-gray-300">{relTime}</p>
+            <p className="text-xs text-gray-700 dark:text-gray-300">{createdTimestamp}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Invited By</p>
+            {inviterDid ? (
+              <a href={`/admin/users/${encodeURIComponent(inviterDid)}`} className="text-xs text-orange-600 dark:text-orange-400 hover:underline">
+                {inviterHandle ? `@${inviterHandle}` : inviterName ?? inviterDid.slice(0, 20) + '…'}
+              </a>
+            ) : (
+              <p className="text-xs text-gray-400 dark:text-gray-500">Founding member</p>
+            )}
           </div>
           {isSuspended && (
             <div>
