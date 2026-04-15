@@ -116,6 +116,8 @@ export default async function AdminUsersPage({
           <option value="soft">Soft</option>
           <option value="preliminary">Preliminary</option>
           <option value="established">Established</option>
+          <option value="steward">Steward</option>
+          <option value="operator">Operator</option>
         </select>
         <select
           name="type"
@@ -258,6 +260,8 @@ function TierBadge({ tier }: { tier: string }) {
     soft: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
     preliminary: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400',
     established: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400',
+    steward: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400',
+    operator: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400',
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded ${styles[tier] ?? styles.soft}`}>

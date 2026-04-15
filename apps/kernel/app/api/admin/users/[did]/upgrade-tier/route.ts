@@ -6,12 +6,14 @@ import { requireAdmin } from '@imajin/auth';
 
 const sql = getClient();
 
-const VALID_TIERS = ['preliminary', 'established'] as const;
+const VALID_TIERS = ['preliminary', 'established', 'steward', 'operator'] as const;
 type Tier = (typeof VALID_TIERS)[number];
 
 const TIER_ATTESTATION_TYPE: Record<Tier, string> = {
   preliminary: 'identity.verified.preliminary',
   established: 'identity.verified.hard',
+  steward: 'identity.verified.steward',
+  operator: 'identity.verified.operator',
 };
 
 export async function POST(
@@ -35,7 +37,7 @@ export async function POST(
 
   const tier = body.tier as Tier;
   if (!VALID_TIERS.includes(tier)) {
-    return NextResponse.json({ error: 'Invalid tier. Must be preliminary or established.' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid tier. Must be preliminary, established, steward, or operator.' }, { status: 400 });
   }
 
   const [identity] = await sql`

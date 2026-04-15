@@ -41,7 +41,7 @@ export default function UserActions({ did, currentTier, isSuspended }: UserActio
     }
   }
 
-  async function handleUpgradeTier(tier: 'preliminary' | 'established') {
+  async function handleUpgradeTier(tier: 'preliminary' | 'established' | 'steward' | 'operator') {
     const confirmed = window.confirm(`Upgrade tier to "${tier}"? This will emit a verification attestation.`);
     if (!confirmed) return;
 
@@ -65,9 +65,9 @@ export default function UserActions({ did, currentTier, isSuspended }: UserActio
     }
   }
 
-  const upgradableToTiers: Array<'preliminary' | 'established'> = [];
-  if (currentTier === 'soft') upgradableToTiers.push('preliminary');
-  if (currentTier === 'soft' || currentTier === 'preliminary') upgradableToTiers.push('established');
+  const allTiers = ['soft', 'preliminary', 'established', 'steward', 'operator'] as const;
+  const currentIdx = allTiers.indexOf(currentTier as any);
+  const upgradableToTiers = allTiers.slice(Math.max(currentIdx + 1, 1)) as unknown as Array<'preliminary' | 'established' | 'steward' | 'operator'>;
 
   return (
     <div className="flex flex-col items-end gap-2 shrink-0">
