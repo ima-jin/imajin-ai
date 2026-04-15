@@ -1,4 +1,4 @@
-import { pgSchema, text, timestamp, jsonb, serial, bigserial, index, primaryKey, customType, integer } from 'drizzle-orm/pg-core';
+import { pgSchema, text, timestamp, jsonb, serial, bigserial, bigint, index, primaryKey, customType, integer } from 'drizzle-orm/pg-core';
 
 const bytea = customType<{ data: Buffer; notNull: false; default: false }>({
   dataType() {
@@ -94,4 +94,39 @@ export const relayOperationLog = relaySchema.table('relay_operation_log', {
   chainId: text('chain_id').notNull(),
 }, (table) => ({
   cidIdx: index('idx_relay_operation_log_cid').on(table.cid),
+}));
+
+export const relayRevocations = relaySchema.table('relay_revocations', {
+  cid: text('cid').notNull(),
+  issuerDid: text('issuer_did').notNull(),
+  credentialCid: text('credential_cid').notNull(),
+  jwsToken: text('jws_token').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.issuerDid, table.credentialCid] }),
+  cidIdx: index('idx_relay_revocations_cid').on(table.cid),
+}));
+
+export const relayPublicCredentials = relaySchema.table('relay_public_credentials', {
+  cid: text('cid').primaryKey(),
+  issuerDid: text('issuer_did'),
+  att: jsonb('att').default([]),
+  exp: bigint('exp', { mode: 'number' }),
+  jwsToken: text('jws_token'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  issuerDidIdx: index('idx_relay_public_credentials_issuer_did').on(table.issuerDid),
+}));
+
+export const relayDocuments = relaySchema.table('relay_documents', {
+  operationCid: text('operation_cid').notNull(),
+  contentId: text('content_id').notNull(),
+  documentCid: text('document_cid'),
+  document: jsonb('document'),
+  signerDid: text('signer_did'),
+  createdAt: text('created_at'),
+  seq: bigserial('seq', { mode: 'bigint' }).notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.contentId, table.operationCid] }),
+  contentIdSeqIdx: index('idx_relay_documents_content_id_seq').on(table.contentId, table.seq),
 }));

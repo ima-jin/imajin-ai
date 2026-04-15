@@ -22,6 +22,9 @@ import {
   relayOperationLog,
   relayPendingOperations,
   relayPeerCursors,
+  relayRevocations,
+  relayPublicCredentials,
+  relayDocuments,
 } from '@/src/db/schemas/relay';
 
 type OperationKind = 'identity-op' | 'content-op' | 'beacon' | 'artifact' | 'countersign';
@@ -71,8 +74,8 @@ export class PostgresRelayStore implements RelayStore {
       did: row.did,
       log: row.log as string[],
       state: row.state as StoredIdentityChain['state'],
-      headCID: row.headCid ?? undefined,
-      lastCreatedAt: row.lastCreatedAt?.toISOString() ?? undefined,
+      headCID: row.headCid ?? '',
+      lastCreatedAt: row.lastCreatedAt?.toISOString() ?? '',
     };
   }
 
@@ -110,7 +113,7 @@ export class PostgresRelayStore implements RelayStore {
       genesisCID: row.genesisCid,
       log: row.log as string[],
       state: row.state as StoredContentChain['state'],
-      lastCreatedAt: row.lastCreatedAt?.toISOString() ?? undefined,
+      lastCreatedAt: row.lastCreatedAt?.toISOString() ?? '',
     };
   }
 
@@ -427,6 +430,109 @@ export class PostgresRelayStore implements RelayStore {
       .update(relayPendingOperations)
       .set({ status: 'pending' })
       .where(sql`${relayPendingOperations.status} != 'rejected'`);
+  }
+
+  async getRevocations(issuerDID: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ credentialCid: relayRevocations.credentialCid })
+      .from(relayRevocations)
+      .where(eq(relayRevocations.issuerDid, issuerDID));
+    return rows.map((r) => r.credentialCid);
+  }
+
+  async addRevocation(revocation: { cid: string; issuerDID: string; credentialCID: string; jwsToken: string }): Promise<void> {
+    await this.db
+      .insert(relayRevocations)
+      .values({
+        cid: revocation.cid,
+        issuerDid: revocation.issuerDID,
+        credentialCid: revocation.credentialCID,
+        jwsToken: revocation.jwsToken,
+      })
+      .onConflictDoNothing();
+  }
+
+  async isCredentialRevoked(issuerDID: string, credentialCID: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ credentialCid: relayRevocations.credentialCid })
+      .from(relayRevocations)
+      .where(and(eq(relayRevocations.issuerDid, issuerDID), eq(relayRevocations.credentialCid, credentialCID)));
+    return rows.length > 0;
+  }
+
+  async getPublicCredentials(_resource: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ jwsToken: relayPublicCredentials.jwsToken })
+      .from(relayPublicCredentials);
+    return rows.map((r) => r.jwsToken).filter((t): t is string => t !== null);
+  }
+
+  async addPublicCredential(credential: { cid: string; issuerDID: string; att: unknown[]; exp: number; jwsToken: string }): Promise<void> {
+    await this.db
+      .insert(relayPublicCredentials)
+      .values({
+        cid: credential.cid,
+        issuerDid: credential.issuerDID,
+        att: credential.att,
+        exp: credential.exp,
+        jwsToken: credential.jwsToken,
+      })
+      .onConflictDoNothing();
+  }
+
+  async removePublicCredential(credentialCID: string): Promise<void> {
+    await this.db
+      .delete(relayPublicCredentials)
+      .where(eq(relayPublicCredentials.cid, credentialCID));
+  }
+
+  async getDocuments(
+    contentId: string,
+    params: { after?: string; limit: number },
+  ): Promise<{ documents: { operationCID: string; documentCID: string | null; document: unknown | null; signerDID: string; createdAt: string }[]; cursor: string | null }> {
+    let cursorSeq: bigint | null = null;
+    let cursorNotFound = false;
+
+    if (params.after) {
+      const cursorRows = await this.db
+        .select({ seq: relayDocuments.seq })
+        .from(relayDocuments)
+        .where(and(eq(relayDocuments.contentId, contentId), eq(relayDocuments.operationCid, params.after)));
+      const cursorRow = cursorRows[0];
+      if (cursorRow) {
+        cursorSeq = cursorRow.seq as bigint;
+      } else {
+        cursorNotFound = true;
+      }
+    }
+
+    if (cursorNotFound) {
+      return { documents: [], cursor: null };
+    }
+
+    const baseWhere = eq(relayDocuments.contentId, contentId);
+    const whereClause = cursorSeq !== null
+      ? and(baseWhere, gt(relayDocuments.seq, cursorSeq))
+      : baseWhere;
+
+    const rows = await this.db
+      .select()
+      .from(relayDocuments)
+      .where(whereClause)
+      .orderBy(relayDocuments.seq)
+      .limit(params.limit);
+
+    const documents = rows.map((row) => ({
+      operationCID: row.operationCid,
+      documentCID: row.documentCid ?? null,
+      document: row.document ?? null,
+      signerDID: row.signerDid ?? '',
+      createdAt: row.createdAt ?? '',
+    }));
+
+    const cursor = documents.length === params.limit ? documents[documents.length - 1].operationCID : null;
+
+    return { documents, cursor };
   }
 
   // --- legacy sequencer interface (kept for backwards compatibility) ---
