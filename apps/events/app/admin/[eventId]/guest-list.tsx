@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useToast } from '@imajin/ui';
 import { apiFetch } from '@imajin/config';
 import { TicketScanner } from './ticket-scanner';
@@ -9,6 +9,25 @@ interface Profile {
   name: string | null;
   handle: string | null;
   avatar: string | null;
+}
+
+interface FairSettlementFee {
+  role: string;
+  name: string;
+  rateBps: number;
+  fixedCents: number;
+  amount: number;
+  estimated?: boolean;
+}
+
+interface FairSettlement {
+  version?: string;
+  settledAt: string;
+  totalAmount: number;
+  netAmount?: number;
+  currency: string;
+  fees?: FairSettlementFee[];
+  chain: Array<{ did: string; amount: number; role: string }>;
 }
 
 interface Guest {
@@ -27,6 +46,8 @@ interface Guest {
   registrationStatus: string | null;
   attendeeName: string | null;
   lastEmailSentAt: string | null;
+  fairSettlement: FairSettlement | null;
+  orderAmountTotal: number | null;
 }
 
 interface GuestListProps {
@@ -138,6 +159,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [manualRefundInfo, setManualRefundInfo] = useState<{ ticketId: string; email?: string; amount: string; currency: string } | null>(null);
   const [markSentLoading, setMarkSentLoading] = useState(false);
+  const [expandedReceipt, setExpandedReceipt] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -459,7 +481,8 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {filteredGuests.map(guest => (
-                <tr key={guest.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <Fragment key={guest.id}>
+                <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                   <td className="px-4 py-3">
                     <ProfileCell ownerDid={guest.ownerDid} profile={guest.profile} paymentMethod={guest.paymentMethod} paymentId={guest.paymentId} />
                   </td>
@@ -480,7 +503,18 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                    {formatCurrency(guest.pricePaid, guest.currency)}
+                    <div className="flex items-center gap-1.5">
+                      {formatCurrency(guest.pricePaid, guest.currency)}
+                      {guest.fairSettlement && (
+                        <button
+                          onClick={() => setExpandedReceipt(prev => prev === guest.id ? null : guest.id)}
+                          className="text-base leading-none hover:scale-110 transition-transform"
+                          title=".fair settlement receipt"
+                        >
+                          ⚖️
+                        </button>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                     {formatDate(guest.purchasedAt)}
@@ -517,6 +551,14 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                     />
                   </td>
                 </tr>
+                {expandedReceipt === guest.id && guest.fairSettlement && (
+                  <tr className="bg-gray-50/50 dark:bg-gray-900/30">
+                    <td colSpan={8} className="px-6 pb-3 pt-0">
+                      <GuestFairReceipt settlement={guest.fairSettlement} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -665,6 +707,83 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const FAIR_ROLE_LABELS: Record<string, string> = {
+  buyer_credit: 'Buyer credit',
+  node: 'Node',
+  platform: 'Protocol (MJN)',
+  seller: 'Organizer',
+  creator: 'Creator',
+};
+
+function truncateFairDid(did: string): string {
+  return did.length > 16 ? did.slice(0, 10) + '…' + did.slice(-6) : did;
+}
+
+function GuestFairReceipt({ settlement }: { settlement: FairSettlement }) {
+  const currencyFmt = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: settlement.currency || 'CAD',
+  });
+
+  const netAmount = settlement.netAmount
+    ?? settlement.chain.find(e => e.role === 'seller')?.amount
+    ?? null;
+
+  return (
+    <div className="mt-1 mb-1 space-y-1.5 max-w-sm">
+      {settlement.chain.map((entry, i) => (
+        <div
+          key={i}
+          className="flex items-center justify-between px-3 py-1.5 bg-white dark:bg-gray-800 rounded-lg text-xs border border-gray-100 dark:border-gray-700"
+        >
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+              entry.role === 'seller' ? 'bg-orange-500' :
+              entry.role === 'buyer_credit' ? 'bg-green-500' :
+              entry.role === 'platform' ? 'bg-blue-500' :
+              'bg-gray-500'
+            }`} />
+            <span className="font-medium">{FAIR_ROLE_LABELS[entry.role] ?? entry.role}</span>
+            <span className="text-gray-400 font-mono">{truncateFairDid(entry.did)}</span>
+          </div>
+          <span className="font-bold">{currencyFmt.format(entry.amount)}</span>
+        </div>
+      ))}
+      {settlement.fees && settlement.fees.length > 0 && settlement.fees.map((fee, i) => (
+        <div
+          key={`fee-${i}`}
+          className="flex items-center justify-between px-3 py-1.5 bg-white dark:bg-gray-800 rounded-lg text-xs border border-gray-100 dark:border-gray-700"
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" />
+            <span className="font-medium text-gray-500">{fee.name}</span>
+            <span className="text-gray-400">
+              {(fee.rateBps / 100).toFixed(1)}%{fee.fixedCents > 0 ? ` + ${currencyFmt.format(fee.fixedCents / 100)}` : ''}
+            </span>
+          </div>
+          <span className="font-bold text-gray-500">
+            {fee.estimated ? '~' : ''}{currencyFmt.format(fee.amount)}
+          </span>
+        </div>
+      ))}
+      <div className="flex justify-between px-3 pt-1.5 border-t border-gray-200 dark:border-gray-700 text-xs">
+        <span className="text-gray-500">Total paid</span>
+        <span className="font-bold">{currencyFmt.format(settlement.totalAmount)}</span>
+      </div>
+      {netAmount !== null && (
+        <div className="flex justify-between px-3 text-xs">
+          <span className="text-gray-500">Organizer receives</span>
+          <span className="font-bold text-orange-500">{currencyFmt.format(netAmount)}</span>
+        </div>
+      )}
+      <p className="text-[10px] text-gray-400 px-3">
+        Settled {new Date(settlement.settledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+        {' · .fair v'}{settlement.version || '1.0'}
+      </p>
     </div>
   );
 }

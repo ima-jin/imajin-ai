@@ -55,10 +55,12 @@ export async function GET(
              t.payment_method, t.payment_id, t.hold_expires_at, t.registration_status,
              t.last_email_sent_at,
              tt.name as ticket_type,
-             tr.name as attendee_name
+             tr.name as attendee_name,
+             o.fair_settlement, o.amount_total
       FROM events.tickets t
       JOIN events.ticket_types tt ON t.ticket_type_id = tt.id
       LEFT JOIN events.ticket_registrations tr ON tr.ticket_id = t.id
+      LEFT JOIN events.orders o ON t.order_id = o.id
       WHERE t.event_id = ${id}
       ORDER BY t.created_at DESC
     `;
@@ -92,6 +94,8 @@ export async function GET(
         registrationStatus: t.registration_status ?? null,
         attendeeName: t.attendee_name ?? null,
         lastEmailSentAt: t.last_email_sent_at ?? null,
+        fairSettlement: t.fair_settlement ?? null,
+        orderAmountTotal: t.amount_total ?? null,
       };
     });
 
