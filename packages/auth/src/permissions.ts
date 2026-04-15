@@ -17,7 +17,7 @@ export type Action =
   | 'edit_profile' | 'create_event'
   | 'dm' | 'pod_chat' | 'send_invite' | 'create_pod' | 'connections';
 
-export type Tier = 'none' | 'soft' | 'preliminary' | 'established' | 'established+graph';
+export type Tier = 'none' | 'soft' | 'preliminary' | 'established' | 'established+graph' | 'steward' | 'operator';
 
 /**
  * Returns the minimum tier required for an action
@@ -63,7 +63,7 @@ export function requiredTier(action: Action): Tier {
 export async function canDo(
   did: string,
   action: Action,
-  currentTier: 'soft' | 'preliminary' | 'established',
+  currentTier: 'soft' | 'preliminary' | 'established' | 'steward' | 'operator',
   connectionsServiceUrl?: string
 ): Promise<boolean> {
   const required = requiredTier(action);
@@ -77,15 +77,15 @@ export async function canDo(
   }
 
   if (required === 'preliminary') {
-    return currentTier === 'preliminary' || currentTier === 'established';
+    return currentTier === 'preliminary' || currentTier === 'established' || currentTier === 'steward' || currentTier === 'operator';
   }
 
   if (required === 'established') {
-    return currentTier === 'established';
+    return currentTier === 'established' || currentTier === 'steward' || currentTier === 'operator';
   }
 
   if (required === 'established+graph') {
-    if (currentTier !== 'established') {
+    if (currentTier !== 'established' && currentTier !== 'steward' && currentTier !== 'operator') {
       return false;
     }
 
@@ -114,13 +114,15 @@ export async function canDo(
  * Checks if a user has the minimum tier required for an action
  * Does not check graph membership
  */
-export function hasTier(currentTier: 'none' | 'soft' | 'preliminary' | 'established', required: Tier): boolean {
+export function hasTier(currentTier: 'none' | 'soft' | 'preliminary' | 'established' | 'steward' | 'operator', required: Tier): boolean {
   const tierLevels: Record<string, number> = {
     'none': 0,
     'soft': 1,
     'preliminary': 2,
     'established': 3,
     'established+graph': 3, // tier check only, graph check is separate
+    'steward': 4,
+    'operator': 5,
   };
 
   return (tierLevels[currentTier] ?? 0) >= (tierLevels[required] ?? 0);

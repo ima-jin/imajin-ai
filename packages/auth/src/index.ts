@@ -7,7 +7,7 @@ export { getSession } from "./session";
 export type { SessionOptions } from "./session";
 export { requireHardDID } from "./require-hard-did";
 export { requireEstablishedDID } from "./require-established-did";
-export { isVerifiedTier, isEstablishedTier, normalizeTier } from "./tiers";
+export { isVerifiedTier, isEstablishedTier, isStewardTier, isOperatorTier, normalizeTier } from "./tiers";
 export type { IdentityTier } from "./tiers";
 export { canonicalize, sign, signSync } from "./sign";
 export { verify, isValidMessageStructure } from "./verify";
