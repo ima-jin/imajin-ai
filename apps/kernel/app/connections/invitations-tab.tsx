@@ -35,7 +35,7 @@ interface SentInvite {
 }
 
 interface Quota {
-  role: string;
+  tier: string;
   limit: number | null;
   pending: number;
   remaining: number | null;
@@ -107,7 +107,7 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
         const data = await res.json();
         setSentInvites(data.invites || []);
         const q = {
-          role: data.role,
+          tier: data.tier || data.role || 'unknown',
           limit: data.limit,
           pending: data.pending,
           remaining: data.remaining,
@@ -268,7 +268,7 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
               {quota.remaining === null
                 ? `${quota.pending} pending · unlimited`
                 : `${quota.remaining} remaining · ${quota.pending} pending`}
-              <span className="ml-1 text-gray-600">({quota.role})</span>
+              <span className="ml-1 text-gray-600">({quota.tier})</span>
             </span>
           )}
         </div>
@@ -367,9 +367,10 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
         {/* Email Invite panel */}
         {activeCreate === 'email' && (
           <div className="p-5 bg-white/5 border border-amber-500/20 rounded-lg">
-            {sentInvites.some(i => i.delivery === 'email' && i.status === 'pending') && (
+            {quota && quota.remaining !== null && quota.remaining <= 0 &&
+              sentInvites.some(i => i.delivery === 'email' && i.status === 'pending') && (
               <div className="mb-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-xs text-yellow-300">
-                ⚠️ You have a pending email invite. It must be accepted, expired, or revoked before you can send another.
+                ⚠️ Invite limit reached. Pending email invites must be accepted, expired, or revoked before you can send more.
               </div>
             )}
             {emailResult === 'success' ? (
