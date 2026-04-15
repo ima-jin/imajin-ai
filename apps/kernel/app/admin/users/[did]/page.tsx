@@ -30,13 +30,19 @@ export default async function AdminUserDetailPage({
   if (!identity) notFound();
 
   // Invited by (who invited this user)
-  const [invitedByRow] = await sql`
-    SELECT i.from_did, id2.handle AS inviter_handle, id2.name AS inviter_name
-    FROM connections.invites i
-    LEFT JOIN auth.identities id2 ON id2.id = i.from_did
-    WHERE (i.consumed_by = ${decodedDid} OR (i.to_did = ${decodedDid} AND i.status = 'accepted'))
-    LIMIT 1
-  `;
+  let invitedByRow: Record<string, unknown> | undefined;
+  try {
+    const invitedByRows = await sql`
+      SELECT i.from_did, id2.handle AS inviter_handle, id2.name AS inviter_name
+      FROM connections.invites i
+      LEFT JOIN auth.identities id2 ON id2.id = i.from_did
+      WHERE (i.consumed_by = ${decodedDid} OR (i.to_did = ${decodedDid} AND i.status = 'accepted'))
+      LIMIT 1
+    `;
+    invitedByRow = invitedByRows[0];
+  } catch {
+    // connections.invites may not exist or schema mismatch — graceful fallback
+  }
 
   // Profile
   const [profile] = await sql`
