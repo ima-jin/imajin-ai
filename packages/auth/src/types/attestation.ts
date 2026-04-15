@@ -30,6 +30,8 @@ export const ATTESTATION_TYPES = [
   'identity.created',
   'identity.verified.preliminary',
   'identity.verified.hard',
+  'identity.verified.steward',
+  'identity.verified.operator',
   'event.created',
   'handle.claimed',
   'ticket.purchased',
