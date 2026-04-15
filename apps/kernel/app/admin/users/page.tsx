@@ -30,7 +30,7 @@ export default async function AdminUsersPage({
   let idx = 1;
 
   if (q) {
-    conditions.push(`(i.handle ILIKE $${idx} OR i.name ILIKE $${idx} OR p.display_name ILIKE $${idx})`);
+    conditions.push(`(i.handle ILIKE $${idx} OR i.name ILIKE $${idx} OR p.display_name ILIKE $${idx} OR i.contact_email ILIKE $${idx} OR p.contact_email ILIKE $${idx})`);
     binds.push(`%${q}%`);
     idx++;
   }
@@ -66,7 +66,9 @@ export default async function AdminUsersPage({
        i.tier,
        i.suspended_at,
        i.created_at,
-       p.display_name
+       i.contact_email,
+       p.display_name,
+       p.contact_email AS profile_email
      FROM auth.identities i
      LEFT JOIN profile.profiles p ON i.id = p.did
      ${whereClause}
@@ -159,6 +161,7 @@ export default async function AdminUsersPage({
                 <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Handle</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Name</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Email</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Scope</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Tier</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Created</th>
@@ -195,6 +198,9 @@ export default async function AdminUsersPage({
                       </td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
                         {name ?? <span className="text-gray-400 dark:text-gray-600">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 truncate max-w-[180px]" title={(row.profile_email || row.contact_email) as string || ''}>
+                        {(row.profile_email || row.contact_email) as string || <span className="text-gray-400 dark:text-gray-600">—</span>}
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
