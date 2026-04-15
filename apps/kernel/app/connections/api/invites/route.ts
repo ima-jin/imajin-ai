@@ -16,20 +16,20 @@ const INVITE_COOLDOWN_DAYS = 7;
 const INVITE_EXPIRY_DAYS = 7;
 
 /**
- * Role-based invite limits (link invites only).
- * Role comes from the auth session (defaults to 'member').
- * Limit counts total pending link invites.
+ * Tier-based invite limits.
+ * Tier comes from the auth session identity tier.
+ * Limit counts total pending invites (link or email).
  */
 const INVITE_LIMITS: Record<string, number> = {
-  admin: Infinity,
-  legendary: 10,
-  trusted: 5,
-  member: 3,
-  newbie: 1,
+  soft: 0,
+  preliminary: 5,
+  established: 20,
+  steward: 50,
+  operator: Infinity,
 };
 
-function getInviteLimit(role: string): number {
-  return INVITE_LIMITS[role] ?? INVITE_LIMITS.member;
+function getInviteLimit(tier: string): number {
+  return INVITE_LIMITS[tier] ?? INVITE_LIMITS.preliminary;
 }
 
 async function isInTrustGraph(did: string): Promise<boolean> {
@@ -85,8 +85,8 @@ export async function POST(request: NextRequest) {
       }, { status: 429 });
     }
 
-    // Check pending email invite count (max 10)
-    const MAX_PENDING_EMAIL_INVITES = 10;
+    // Check pending email invite count (tier-based limit)
+    const emailLimit = getInviteLimit(session.tier);
     const pendingEmailCount = await db
       .select({ value: count() })
       .from(invites)
@@ -96,9 +96,11 @@ export async function POST(request: NextRequest) {
         eq(invites.status, 'pending'),
       ));
 
-    if (pendingEmailCount[0]?.value >= MAX_PENDING_EMAIL_INVITES) {
+    if (pendingEmailCount[0]?.value >= emailLimit) {
       return NextResponse.json({
-        error: `You have ${MAX_PENDING_EMAIL_INVITES} pending email invites. Please wait for some to be accepted or revoke them first.`,
+        error: emailLimit === Infinity
+          ? `You have too many pending email invites. Please wait for some to be accepted or revoke them first.`
+          : `You have reached your email invite limit (${emailLimit}) for your tier. Please wait for some to be accepted or revoke them first.`,
       }, { status: 429 });
     }
 
@@ -157,8 +159,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Link invite flow
-  const role: string = session.role || 'member';
-  const limit = getInviteLimit(role);
+  const limit = getInviteLimit(session.tier);
 
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -171,8 +172,8 @@ export async function POST(request: NextRequest) {
 
   if (count >= limit) {
     return NextResponse.json({
-      error: `Invite limit reached (${limit}). ${limit < Infinity ? `Your role "${role}" allows ${limit} pending invite${limit === 1 ? '' : 's'}.` : ''}`,
-      limit,
+      error: `Invite limit reached (${limit === Infinity ? 'unlimited' : limit}). ${limit < Infinity ? `Your tier allows ${limit} pending invite${limit === 1 ? '' : 's'}.` : ''}`,
+      limit: limit === Infinity ? null : limit,
       pending: count,
     }, { status: 429 });
   }
@@ -218,8 +219,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const role: string = session.role || 'member';
-  const limit = getInviteLimit(role);
+  const limit = getInviteLimit(session.tier);
 
   const results = await db
     .select({
@@ -246,7 +246,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     invites: withDaysAgo,
-    role,
+    tier: session.tier,
     limit: limit === Infinity ? null : limit,
     pending,
     remaining: limit === Infinity ? null : Math.max(0, limit - pending),

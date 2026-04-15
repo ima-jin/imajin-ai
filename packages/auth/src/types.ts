@@ -4,7 +4,7 @@ export interface Identity {
   subtype?: string;             // scope-dependent: 'human' | 'agent' | 'device' | etc.
   name?: string;
   handle?: string;
-  tier?: "soft" | "preliminary" | "established";
+  tier?: "soft" | "preliminary" | "established" | "steward" | "operator";
   chainVerified?: boolean;
   actingAs?: string;            // DID of group the caller is acting on behalf of
   actingAsServices?: string[];  // Services this controller can access (undefined = full access)
