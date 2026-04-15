@@ -605,6 +605,22 @@ paths:
                   created: { type: array, items: {} }
 
   /api/folders/{id}:
+    get:
+      tags: [media]
+      operationId: getFolder
+      summary: Get a virtual folder by ID
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Folder details with assets
+        "404":
+          description: Folder not found
     patch:
       tags: [media]
       operationId: updateFolder
@@ -775,61 +791,6 @@ paths:
                   transcript: { type: string, nullable: true }
         "404":
           description: Asset not found
-
-  /api/folders/{id}:
-    get:
-      tags: [media]
-      operationId: getFolder
-      summary: Get a virtual folder by ID
-      security:
-        - cookieAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Folder details with assets
-        "404":
-          description: Folder not found
-    patch:
-      tags: [media]
-      operationId: updateFolder
-      summary: Update folder metadata (name, description)
-      security:
-        - cookieAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                name: { type: string }
-                description: { type: string }
-      responses:
-        "200":
-          description: Folder updated
-    delete:
-      tags: [media]
-      operationId: deleteFolder
-      summary: Delete a virtual folder
-      security:
-        - cookieAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Folder deleted
 
   /api/transcribe:
     post:
