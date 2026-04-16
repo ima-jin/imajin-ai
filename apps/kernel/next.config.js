@@ -19,6 +19,13 @@ const nextConfig = {
   ],
   typescript: { ignoreBuildErrors: true },
   reactStrictMode: true,
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'jin.imajin.ai' },
+      { protocol: 'https', hostname: 'dev-jin.imajin.ai' },
+      { protocol: 'http', hostname: 'localhost' },
+    ],
+  },
   experimental: {
     serverComponentsExternalPackages: ['@metalabel/dfos-protocol'],
     serverActions: { bodySizeLimit: '2gb' },
