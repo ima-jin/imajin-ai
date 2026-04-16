@@ -356,15 +356,20 @@ export class PostgresRelayStore implements RelayStore {
 
     const resolveKey = createKeyResolver(this);
     const resolveIdentity = createHistoricalIdentityResolver(this);
-    const state = await verifyContentChain({ log: path, resolveKey, enforceAuthorization: true, resolveIdentity });
+    try {
+      const state = await verifyContentChain({ log: path, resolveKey, enforceAuthorization: true, resolveIdentity });
 
-    const targetDecoded = decodeJwsUnsafe(opsByCID.get(cid)!.jws);
-    const lastCreatedAt =
-      typeof (targetDecoded?.payload as Record<string, unknown>)?.['createdAt'] === 'string'
-        ? ((targetDecoded?.payload as Record<string, unknown>)['createdAt'] as string)
-        : '';
+      const targetDecoded = decodeJwsUnsafe(opsByCID.get(cid)!.jws);
+      const lastCreatedAt =
+        typeof (targetDecoded?.payload as Record<string, unknown>)?.['createdAt'] === 'string'
+          ? ((targetDecoded?.payload as Record<string, unknown>)['createdAt'] as string)
+          : '';
 
-    return { state, lastCreatedAt };
+      return { state, lastCreatedAt };
+    } catch (err) {
+      console.error(`[relay] getContentStateAtCID failed for ${contentId}@${cid}:`, err);
+      return null;
+    }
   }
 
   async getPeerCursor(peerUrl: string): Promise<string | undefined> {
