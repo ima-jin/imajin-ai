@@ -79,25 +79,11 @@ if [ "$ENV_CHECK_FAILED" = true ]; then
 fi
 echo "" >> "$REPORT"
 
-# Run pending migrations before building — stop if any fail
-# Uses migrate-service.mjs for per-service tracking tables (__drizzle_migrations_<app>)
-# to avoid conflicts from shared __drizzle_migrations table across 14+ services.
 echo "=== Running migrations ===" | tee -a "$REPORT"
-MIGRATION_FAILED=false
-for app in "${APPS[@]}"; do
-  if [ -f "apps/$app/drizzle.config.ts" ]; then
-    echo "--- Migrating $app ---" | tee -a "$REPORT"
-    if node scripts/migrate-service.mjs "$app" >> "$REPORT" 2>&1; then
-      echo "✅ $app migrations" | tee -a "$REPORT"
-    else
-      echo "❌ $app migrations FAILED" | tee -a "$REPORT"
-      MIGRATION_FAILED=true
-    fi
-  fi
-done
-if [ "$MIGRATION_FAILED" = true ]; then
-  echo "" | tee -a "$REPORT"
-  echo "❌ Migration failures detected. Aborting build." | tee -a "$REPORT"
+if node scripts/migrate.mjs >> "$REPORT" 2>&1; then
+  echo "✅ Migrations complete" | tee -a "$REPORT"
+else
+  echo "❌ Migrations FAILED" | tee -a "$REPORT"
   exit 1
 fi
 echo "" >> "$REPORT"

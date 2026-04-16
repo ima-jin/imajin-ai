@@ -1,1 +1,0 @@
-ALTER TABLE "events"."ticket_types" ADD COLUMN IF NOT EXISTS "max_per_order" integer;
