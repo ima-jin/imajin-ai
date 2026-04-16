@@ -25,12 +25,8 @@ jobs:
       - name: Build all apps
         run: pnpm build
 
-      - name: Push schemas
-        run: |
-          for app in auth profile registry www events chat; do
-            cd /home/jin/prod/imajin-ai/apps/$app
-            DATABASE_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2) npx drizzle-kit push --force 2>&1 | tail -2
-          done
+      - name: Run migrations
+        run: node scripts/migrate.mjs
 
       - name: Restart prod services
         run: |

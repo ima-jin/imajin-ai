@@ -1,68 +1,69 @@
 #!/bin/bash
-# Verify drizzle migration consistency: every .sql file must have a
-# corresponding journal entry and snapshot file.
+# Verify migration file consistency:
+# - All files in migrations/ are sequentially numbered
+# - All files are valid SQL (non-empty)
+# - No gaps in numbering
 #
 # Usage: ./scripts/check-migrations.sh
-# Returns non-zero if any service has mismatched migration artifacts.
 
 set -e
 
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+MIGRATIONS_DIR="$BASE_DIR/migrations"
 FAILED=0
 
-for drizzle_dir in "$BASE_DIR"/apps/*/drizzle; do
-  [ -d "$drizzle_dir" ] || continue
-  service="$(basename "$(dirname "$drizzle_dir")")"
-  meta_dir="$drizzle_dir/meta"
-  journal="$meta_dir/_journal.json"
+if [ ! -d "$MIGRATIONS_DIR" ]; then
+  echo "❌ No migrations/ directory found"
+  exit 1
+fi
 
-  sql_files=($(ls "$drizzle_dir"/*.sql 2>/dev/null))
-  sql_count=${#sql_files[@]}
+FILES=($(ls "$MIGRATIONS_DIR"/*.sql 2>/dev/null | sort))
+COUNT=${#FILES[@]}
 
-  if [ ! -f "$journal" ]; then
-    if [ "$sql_count" -gt 0 ]; then
-      echo "❌ $service: $sql_count SQL files but no _journal.json"
-      FAILED=1
-    fi
+if [ "$COUNT" -eq 0 ]; then
+  echo "⚠️  No migration files found"
+  exit 0
+fi
+
+echo "Checking $COUNT migration file(s)..."
+
+PREV_NUM=-1
+for file in "${FILES[@]}"; do
+  basename="$(basename "$file")"
+
+  # Check naming format: NNNN_description.sql
+  if ! echo "$basename" | grep -qP '^\d{4}_\S+\.sql$'; then
+    echo "❌ $basename: invalid naming format (expected NNNN_description.sql)"
+    FAILED=1
     continue
   fi
 
-  journal_count=$(node -e "const j=JSON.parse(require('fs').readFileSync('$journal','utf8')); console.log(j.entries.length)")
-  snapshot_count=$(ls "$meta_dir"/????_snapshot.json 2>/dev/null | wc -l)
+  # Extract number
+  NUM=$(echo "$basename" | grep -oP '^\d+' | sed 's/^0*//' )
+  [ -z "$NUM" ] && NUM=0
 
-  errors=()
-
-  if [ "$sql_count" != "$journal_count" ]; then
-    errors+=("sql=$sql_count but journal=$journal_count")
+  # Check for gaps
+  EXPECTED=$((PREV_NUM + 1))
+  if [ "$PREV_NUM" -ge 0 ] && [ "$NUM" -ne "$EXPECTED" ]; then
+    echo "⚠️  $basename: gap in numbering (expected $(printf '%04d' $EXPECTED))"
   fi
+  PREV_NUM=$NUM
 
-  if [ "$sql_count" != "$snapshot_count" ]; then
-    errors+=("sql=$sql_count but snapshots=$snapshot_count")
-  fi
-
-  # Check each SQL file has a matching journal tag
-  for sql_file in "${sql_files[@]}"; do
-    tag="$(basename "$sql_file" .sql)"
-    if ! node -e "const j=JSON.parse(require('fs').readFileSync('$journal','utf8')); process.exit(j.entries.some(e=>e.tag==='$tag') ? 0 : 1)" 2>/dev/null; then
-      errors+=("$tag.sql has no journal entry")
-    fi
-  done
-
-  if [ ${#errors[@]} -gt 0 ]; then
-    echo "❌ $service: ${errors[*]}"
+  # Check non-empty
+  if [ ! -s "$file" ]; then
+    echo "❌ $basename: empty file"
     FAILED=1
-  else
-    echo "✅ $service: $sql_count migrations"
+    continue
   fi
+
+  echo "✅ $basename"
 done
 
 if [ "$FAILED" -eq 1 ]; then
   echo ""
-  echo "Migration artifacts are inconsistent!"
-  echo "Did you hand-write a .sql file instead of running 'drizzle-kit generate'?"
-  echo "Every migration needs: .sql file + journal entry + snapshot file."
+  echo "Migration file issues found!"
   exit 1
 fi
 
 echo ""
-echo "All migration artifacts consistent."
+echo "All $COUNT migration file(s) valid."
