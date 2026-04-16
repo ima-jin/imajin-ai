@@ -8,6 +8,7 @@ import type {
   StoredBeacon,
   BlobKey,
   LogEntry,
+  OperationKind,
 } from '@metalabel/dfos-web-relay';
 import { createKeyResolver } from '@metalabel/dfos-web-relay';
 import { decodeJwsUnsafe } from '@metalabel/dfos-protocol/crypto';
@@ -27,7 +28,6 @@ import {
   relayDocuments,
 } from '@/src/db/schemas/relay';
 
-type OperationKind = 'identity-op' | 'content-op' | 'beacon' | 'artifact' | 'countersign';
 interface ReadLogResult {
   entries: LogEntry[];
   cursor: string | null;
@@ -460,14 +460,21 @@ export class PostgresRelayStore implements RelayStore {
     return rows.length > 0;
   }
 
-  async getPublicCredentials(_resource: string): Promise<string[]> {
+  async getPublicCredentials(resource: string): Promise<string[]> {
+    const isChainRequest = resource.startsWith('chain:');
     const rows = await this.db
       .select({ jwsToken: relayPublicCredentials.jwsToken })
-      .from(relayPublicCredentials);
+      .from(relayPublicCredentials)
+      .where(
+        isChainRequest
+          ? sql`${relayPublicCredentials.att} @> ${JSON.stringify([{ resource }])}::jsonb
+             OR ${relayPublicCredentials.att} @> '[{"resource":"chain:*"}]'::jsonb`
+          : sql`${relayPublicCredentials.att} @> ${JSON.stringify([{ resource }])}::jsonb`,
+      );
     return rows.map((r) => r.jwsToken).filter((t): t is string => t !== null);
   }
 
-  async addPublicCredential(credential: { cid: string; issuerDID: string; att: unknown[]; exp: number; jwsToken: string }): Promise<void> {
+  async addPublicCredential(credential: { cid: string; issuerDID: string; att: { resource: string; action: string }[]; exp: number; jwsToken: string }): Promise<void> {
     await this.db
       .insert(relayPublicCredentials)
       .values({
