@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
 
   if (existing) {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
-    const url = `${baseUrl}/api/assets/${existing.id}`;
+    const url = `${baseUrl}/media/api/assets/${existing.id}`;
     return NextResponse.json(
       {
         id: existing.id,
@@ -313,7 +313,7 @@ export async function POST(request: NextRequest) {
 
   // Build public URL — use configured base URL, not request origin (which may be localhost behind reverse proxy)
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
-  const url = `${baseUrl}/api/assets/${record.id}`;
+  const url = `${baseUrl}/media/api/assets/${record.id}`;
 
   const response = NextResponse.json(
     {
