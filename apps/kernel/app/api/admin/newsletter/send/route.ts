@@ -3,15 +3,38 @@ import { getClient } from '@imajin/db';
 import { sendEmail, renderBroadcastEmail } from '@imajin/email';
 import { withLogger } from '@imajin/logger';
 import { requireAdmin } from '@imajin/auth';
+import { generateUnsubscribeToken } from '@/src/lib/www/subscribe-tokens';
 
 const sql = getClient();
 
-async function sendBatch(emails: string[], subject: string, html: string, text: string) {
+function buildUnsubscribeUrl(email: string, listSlug: string): string {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://jin.imajin.ai';
+  const token = generateUnsubscribeToken(email, listSlug);
+  return `${baseUrl}/api/subscribe/unsubscribe?email=${encodeURIComponent(email)}&list=${encodeURIComponent(listSlug)}&token=${token}`;
+}
+
+interface SendBatchOptions {
+  emails: string[];
+  subject: string;
+  html: string;
+  text: string;
+  replyTo?: string;
+  listSlug?: string;
+}
+
+async function sendBatch({ emails, subject, html, text, replyTo, listSlug }: SendBatchOptions) {
   const BATCH_SIZE = 10;
   for (let i = 0; i < emails.length; i += BATCH_SIZE) {
     const batch = emails.slice(i, i + BATCH_SIZE);
     await Promise.all(
-      batch.map((to) => sendEmail({ to, subject, html, text }))
+      batch.map((to) => sendEmail({
+        to,
+        subject,
+        html,
+        text,
+        replyTo,
+        unsubscribeUrl: listSlug ? buildUnsubscribeUrl(to, listSlug) : undefined,
+      }))
     );
     if (i + BATCH_SIZE < emails.length) {
       await new Promise((r) => setTimeout(r, 200));
@@ -30,9 +53,10 @@ export const POST = withLogger('kernel', async (req, { log }) => {
     audienceId?: string;
     test?: boolean;
     testEmail?: string;
+    replyTo?: string;
   };
 
-  const { subject, markdown, audienceType, audienceId, test, testEmail } = body;
+  const { subject, markdown, audienceType, audienceId, test, testEmail, replyTo } = body;
   if (!subject || !markdown || !audienceType) {
     return NextResponse.json({ error: 'subject, markdown, and audienceType are required' }, { status: 400 });
   }
@@ -51,14 +75,28 @@ export const POST = withLogger('kernel', async (req, { log }) => {
     if (!targetEmail) {
       return NextResponse.json({ error: 'No test email provided and no contact email on operator profile' }, { status: 400 });
     }
-    await sendEmail({ to: targetEmail, subject: `[TEST] ${subject}`, html, text });
+    await sendEmail({
+      to: targetEmail,
+      subject: `[TEST] ${subject}`,
+      html,
+      text,
+      replyTo,
+      unsubscribeUrl: buildUnsubscribeUrl(targetEmail, 'updates'),
+    });
     return NextResponse.json({ sent: true, recipientCount: 1, sendId: null });
   }
 
   let emails: string[] = [];
 
+  let listSlug = 'updates'; // default for connections audience
+
   if (audienceType === 'newsletter') {
     if (!audienceId) return NextResponse.json({ error: 'audienceId required for newsletter' }, { status: 400 });
+
+    // Look up the list slug for unsubscribe URLs
+    const [listRow] = await sql`SELECT slug FROM www.mailing_lists WHERE id = ${audienceId} LIMIT 1`;
+    if (listRow?.slug) listSlug = listRow.slug as string;
+
     const rows = await sql`
       SELECT c.email
       FROM www.contacts c
@@ -103,7 +141,7 @@ export const POST = withLogger('kernel', async (req, { log }) => {
   `;
 
   // Fire and forget
-  sendBatch(emails, subject, html, text).catch((err) => {
+  sendBatch({ emails, subject, html, text, replyTo, listSlug }).catch((err) => {
     log.error({ err: String(err) }, 'Newsletter batch send error');
   });
 
