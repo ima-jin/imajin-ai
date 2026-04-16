@@ -10,7 +10,7 @@ import type {
   LogEntry,
   OperationKind,
 } from '@metalabel/dfos-web-relay';
-import { createKeyResolver } from '@metalabel/dfos-web-relay';
+import { createKeyResolver, createHistoricalIdentityResolver } from '@metalabel/dfos-web-relay';
 import { decodeJwsUnsafe } from '@metalabel/dfos-protocol/crypto';
 import { verifyIdentityChain, verifyContentChain } from '@metalabel/dfos-protocol/chain';
 import {
@@ -355,7 +355,8 @@ export class PostgresRelayStore implements RelayStore {
     }
 
     const resolveKey = createKeyResolver(this);
-    const state = await verifyContentChain({ log: path, resolveKey, enforceAuthorization: true });
+    const resolveIdentity = createHistoricalIdentityResolver(this);
+    const state = await verifyContentChain({ log: path, resolveKey, enforceAuthorization: true, resolveIdentity });
 
     const targetDecoded = decodeJwsUnsafe(opsByCID.get(cid)!.jws);
     const lastCreatedAt =
