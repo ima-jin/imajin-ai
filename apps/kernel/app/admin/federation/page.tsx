@@ -1,11 +1,26 @@
 import { getClient } from '@imajin/db';
 import { formatDistanceToNow } from 'date-fns';
+import PeerManager from './peer-manager';
 
 const sql = getClient();
 
-function formatBps(bps: number | null): string {
-  if (bps == null) return '—';
-  return `${(bps / 100).toFixed(2)}%`;
+async function getRelayWellKnown() {
+  try {
+    const baseUrl = process.env.REGISTRY_SERVICE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const res = await fetch(`${baseUrl}/registry/relay/.well-known/dfos-relay`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    return await res.json() as {
+      did: string;
+      protocol: string;
+      version: string;
+      capabilities: Record<string, boolean>;
+      profile: string;
+    };
+  } catch {
+    return null;
+  }
 }
 
 export default async function AdminFederationPage() {
@@ -16,11 +31,7 @@ export default async function AdminFederationPage() {
     LIMIT 1
   `;
 
-  const peers = await sql`
-    SELECT peer_url, cursor, updated_at
-    FROM relay.relay_peer_cursors
-    ORDER BY updated_at DESC NULLS LAST
-  `;
+  const wellKnown = await getRelayWellKnown();
 
   const [identityChainCount] = await sql`
     SELECT COUNT(*) AS count FROM relay.relay_identity_chains
@@ -38,6 +49,8 @@ export default async function AdminFederationPage() {
     ORDER BY created_at DESC
     LIMIT 15
   `;
+
+  const capabilities = wellKnown?.capabilities ?? {};
 
   return (
     <div className="p-6 lg:p-8 max-w-6xl">
@@ -57,7 +70,7 @@ export default async function AdminFederationPage() {
           <div>
             <dt className="text-xs text-gray-500 dark:text-gray-400 mb-1">DFOS DID</dt>
             <dd className="font-mono text-xs text-gray-900 dark:text-white break-all">
-              {relayConfigRow?.did ?? '—'}
+              {wellKnown?.did ?? relayConfigRow?.did ?? '—'}
             </dd>
           </div>
           <div>
@@ -68,11 +81,33 @@ export default async function AdminFederationPage() {
           </div>
           <div>
             <dt className="text-xs text-gray-500 dark:text-gray-400 mb-1">Relay Version</dt>
-            <dd className="text-sm text-gray-900 dark:text-white">@metalabel/dfos-web-relay 0.7.0</dd>
+            <dd className="text-sm text-gray-900 dark:text-white">
+              {wellKnown
+                ? `${wellKnown.protocol} ${wellKnown.version}`
+                : <span className="text-gray-400 italic">unavailable</span>
+              }
+            </dd>
           </div>
           <div>
-            <dt className="text-xs text-gray-500 dark:text-gray-400 mb-1">Conformance</dt>
-            <dd className="text-sm text-green-600 dark:text-green-400 font-semibold">100/100</dd>
+            <dt className="text-xs text-gray-500 dark:text-gray-400 mb-1">Capabilities</dt>
+            <dd className="flex flex-wrap gap-1.5">
+              {wellKnown ? (
+                Object.entries(capabilities).map(([cap, enabled]) => (
+                  <span
+                    key={cap}
+                    className={`text-xs px-2 py-0.5 rounded font-medium ${
+                      enabled
+                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 line-through'
+                    }`}
+                  >
+                    {cap}
+                  </span>
+                ))
+              ) : (
+                <span className="text-sm text-gray-400 italic">unavailable</span>
+              )}
+            </dd>
           </div>
         </dl>
       </div>
@@ -99,45 +134,8 @@ export default async function AdminFederationPage() {
         </div>
       </div>
 
-      {/* Peer Nodes */}
-      <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 overflow-hidden mb-6">
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Peer Nodes</h2>
-          <span className="text-xs text-gray-500 dark:text-gray-400">{peers.length} configured</span>
-        </div>
-        {peers.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">
-            No peers configured
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Peer URL</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Last Synced</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Cursor</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {peers.map((peer) => (
-                  <tr key={peer.peer_url as string} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                    <td className="px-4 py-3 font-mono text-xs text-gray-900 dark:text-white">{peer.peer_url as string}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                      {peer.updated_at
-                        ? formatDistanceToNow(new Date(peer.updated_at as Date), { addSuffix: true })
-                        : '—'}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
-                      {peer.cursor ? String(peer.cursor).slice(0, 20) + '…' : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {/* Peer Nodes — client component for management */}
+      <PeerManager />
 
       {/* Recent Operations */}
       <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 overflow-hidden">

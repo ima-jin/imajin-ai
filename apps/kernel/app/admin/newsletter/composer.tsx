@@ -24,6 +24,7 @@ interface Props {
 
 export default function NewsletterComposer({ initialLists, initialConnectionCount, recentSends }: Props) {
   const [subject, setSubject] = useState('');
+  const [replyTo, setReplyTo] = useState('');
   const [markdown, setMarkdown] = useState('');
   const [audienceType, setAudienceType] = useState<'newsletter' | 'connections'>('newsletter');
   const [selectedListId, setSelectedListId] = useState<string>(initialLists[0]?.id ?? '');
@@ -56,6 +57,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
           audienceId: audienceType === 'newsletter' ? selectedListId : undefined,
           test: true,
           testEmail: testEmail.trim() || undefined,
+          replyTo: replyTo.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -78,6 +80,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
           markdown,
           audienceType,
           audienceId: audienceType === 'newsletter' ? selectedListId : undefined,
+          replyTo: replyTo.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -115,6 +118,21 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
               placeholder="Your newsletter subject…"
               className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
+          </div>
+
+          {/* Reply-To */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply-To (optional)</label>
+            <input
+              type="email"
+              value={replyTo}
+              onChange={(e) => setReplyTo(e.target.value)}
+              placeholder="ryan@imajin.ai"
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Recipients who reply will send to this address instead of the default sender.
+            </p>
           </div>
 
           {/* Body */}
