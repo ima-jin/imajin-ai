@@ -25,7 +25,6 @@ import {
   relayPeerCursors,
   relayRevocations,
   relayPublicCredentials,
-  relayDocuments,
 } from '@/src/db/schemas/relay';
 
 interface ReadLogResult {
@@ -497,48 +496,57 @@ export class PostgresRelayStore implements RelayStore {
     contentId: string,
     params: { after?: string; limit: number },
   ): Promise<{ documents: { operationCID: string; documentCID: string | null; document: unknown | null; signerDID: string; createdAt: string }[]; cursor: string | null }> {
-    let cursorSeq: bigint | null = null;
-    let cursorNotFound = false;
+    const chain = await this.getContentChain(contentId);
+    if (!chain) return { documents: [], cursor: null };
 
+    // Derive document entries from the chain log (matches MemoryRelayStore behavior)
+    const entries: Array<{ cid: string; documentCID: string | null; signerDID: string; createdAt: string }> = [];
+    for (const jws of chain.log) {
+      const decoded = decodeJwsUnsafe(jws);
+      if (!decoded) continue;
+      const payload = decoded.payload as Record<string, unknown>;
+      const cid = typeof decoded.header.cid === 'string' ? decoded.header.cid : '';
+      const documentCID = typeof payload['documentCID'] === 'string' ? payload['documentCID'] : null;
+      const signerDID = typeof payload['did'] === 'string' ? payload['did'] : '';
+      const createdAt = typeof payload['createdAt'] === 'string' ? payload['createdAt'] : '';
+      entries.push({ cid, documentCID, signerDID, createdAt });
+    }
+
+    // Cursor is an operation CID — find its position and start after it
+    let startIdx = 0;
     if (params.after) {
-      const cursorRows = await this.db
-        .select({ seq: relayDocuments.seq })
-        .from(relayDocuments)
-        .where(and(eq(relayDocuments.contentId, contentId), eq(relayDocuments.operationCid, params.after)));
-      const cursorRow = cursorRows[0];
-      if (cursorRow) {
-        cursorSeq = cursorRow.seq as bigint;
-      } else {
-        cursorNotFound = true;
+      const idx = entries.findIndex((e) => e.cid === params.after);
+      startIdx = idx >= 0 ? idx + 1 : entries.length;
+    }
+    const page = entries.slice(startIdx, startIdx + params.limit);
+
+    // Fetch blobs for entries that have a documentCID
+    const documents = [];
+    for (const entry of page) {
+      let document: unknown = null;
+      if (entry.documentCID) {
+        const blob = await this.getBlob({
+          creatorDID: chain.state.creatorDID,
+          documentCID: entry.documentCID,
+        });
+        if (blob) {
+          try {
+            document = JSON.parse(new TextDecoder().decode(blob));
+          } catch {
+            document = null;
+          }
+        }
       }
+      documents.push({
+        operationCID: entry.cid,
+        documentCID: entry.documentCID,
+        document,
+        signerDID: entry.signerDID,
+        createdAt: entry.createdAt,
+      });
     }
 
-    if (cursorNotFound) {
-      return { documents: [], cursor: null };
-    }
-
-    const baseWhere = eq(relayDocuments.contentId, contentId);
-    const whereClause = cursorSeq !== null
-      ? and(baseWhere, gt(relayDocuments.seq, cursorSeq))
-      : baseWhere;
-
-    const rows = await this.db
-      .select()
-      .from(relayDocuments)
-      .where(whereClause)
-      .orderBy(relayDocuments.seq)
-      .limit(params.limit);
-
-    const documents = rows.map((row) => ({
-      operationCID: row.operationCid,
-      documentCID: row.documentCid ?? null,
-      document: row.document ?? null,
-      signerDID: row.signerDid ?? '',
-      createdAt: row.createdAt ?? '',
-    }));
-
-    const cursor = documents.length === params.limit ? documents[documents.length - 1].operationCID : null;
-
+    const cursor = page.length === params.limit ? page[page.length - 1].cid : null;
     return { documents, cursor };
   }
 
