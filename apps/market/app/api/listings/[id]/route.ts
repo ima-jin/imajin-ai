@@ -7,6 +7,8 @@ import { db, listings } from '@/db';
 import { requireAuth, getSession } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { resolveMediaRef } from '@imajin/media';
+import { buildFairManifest } from '@imajin/fair';
+import { getClient } from '@imajin/db';
 import { eq } from 'drizzle-orm';
 
 /**
@@ -138,6 +140,47 @@ export async function PATCH(
     if (type !== undefined) updates.type = type;
     if (showContactInfo !== undefined) updates.showContactInfo = showContactInfo;
     if (expiresAt !== undefined) updates.expiresAt = expiresAt ? new Date(expiresAt) : null;
+
+    // Recalculate .fair manifest if price, sellerTier, or seller DID changes
+    const priceChanged = price !== undefined && price !== listing.price;
+    const tierChanged = sellerTier !== undefined && sellerTier !== listing.sellerTier;
+    const currentDid = identity.actingAs || identity.id;
+    const sellerDidChanged = currentDid !== listing.sellerDid;
+
+    if (priceChanged || tierChanged || sellerDidChanged) {
+      try {
+        const rawSql = getClient();
+        const [relayRow] = await rawSql`
+          SELECT node_fee_bps, buyer_credit_bps, node_operator_did
+          FROM relay.relay_config
+          WHERE id = 'singleton'
+          LIMIT 1
+        `;
+        const scopeDid = listing.sellerDid !== currentDid ? null : (identity.actingAs || null);
+        let scopeFeeBps: number | null = null;
+        if (scopeDid) {
+          const [forestRow] = await rawSql`
+            SELECT scope_fee_bps
+            FROM profile.forest_config
+            WHERE group_did = ${scopeDid}
+            LIMIT 1
+          `;
+          scopeFeeBps = forestRow?.scope_fee_bps ?? null;
+        }
+        updates.fairManifest = buildFairManifest({
+          creatorDid: currentDid,
+          contentDid: params.id,
+          contentType: 'listing',
+          scopeDid,
+          scopeFeeBps,
+          nodeFeeBps: relayRow?.node_fee_bps ?? undefined,
+          buyerCreditBps: relayRow?.buyer_credit_bps ?? undefined,
+          nodeOperatorDid: relayRow?.node_operator_did ?? undefined,
+        });
+      } catch (manifestErr) {
+        log.warn({ err: String(manifestErr) }, 'Failed to recalculate .fair manifest (non-fatal)');
+      }
+    }
 
     const [updated] = await db.update(listings).set(updates).where(eq(listings.id, params.id)).returning();
 
