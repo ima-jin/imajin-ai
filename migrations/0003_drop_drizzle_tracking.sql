@@ -21,3 +21,7 @@ DROP TABLE IF EXISTS drizzle.__drizzle_migrations_registry CASCADE;
 DROP TABLE IF EXISTS drizzle.__drizzle_migrations_www CASCADE;
 
 DROP SCHEMA IF EXISTS drizzle CASCADE;
+
+-- Drop dead tables
+DROP TABLE IF EXISTS profile.connection_requests CASCADE;
+DROP TABLE IF EXISTS profile.did_migrations CASCADE;
