@@ -17,7 +17,7 @@ export function renderBroadcastEmail(
   markdown: string,
   eventContext?: EventContext,
 ): { html: string; text: string } {
-  const bodyHtml = marked.parse(markdown) as string;
+  const bodyHtml = marked.parse(markdown, { breaks: true }) as string;
 
   const eventImage = eventContext?.imageUrl
     ? `
