@@ -208,20 +208,13 @@ export class PostgresRelayStore implements RelayStore {
 
   async addCountersignature(operationCid: string, jwsToken: string): Promise<void> {
     const decoded = decodeJwsUnsafe(jwsToken);
-    if (decoded) {
-      const witnessDID = decoded.header.kid.split('#')[0];
-      const existing = await this.getCountersignatures(operationCid);
-      for (const existingJws of existing) {
-        const existingDecoded = decodeJwsUnsafe(existingJws);
-        if (existingDecoded && existingDecoded.header.kid.split('#')[0] === witnessDID) {
-          return;
-        }
-      }
-    }
+    const witnessDid = decoded ? decoded.header.kid.split('#')[0] : null;
+
     await this.db.insert(relayCountersignatures).values({
       operationCid,
       jwsToken,
-    });
+      witnessDid,
+    }).onConflictDoNothing();
   }
 
   async appendToLog(entry: LogEntry): Promise<void> {

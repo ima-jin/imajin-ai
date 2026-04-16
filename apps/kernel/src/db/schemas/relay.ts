@@ -1,4 +1,4 @@
-import { pgSchema, text, timestamp, jsonb, serial, bigserial, bigint, index, primaryKey, customType, integer } from 'drizzle-orm/pg-core';
+import { pgSchema, text, timestamp, jsonb, serial, bigserial, bigint, index, primaryKey, customType, integer, uniqueIndex } from 'drizzle-orm/pg-core';
 
 const bytea = customType<{ data: Buffer; notNull: false; default: false }>({
   dataType() {
@@ -55,9 +55,11 @@ export const relayCountersignatures = relaySchema.table('relay_countersignatures
   id: serial('id').primaryKey(),
   operationCid: text('operation_cid').notNull(),
   jwsToken: text('jws_token').notNull(),
+  witnessDid: text('witness_did'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   operationCidIdx: index('idx_relay_countersignatures_operation_cid').on(table.operationCid),
+  uniqueWitness: uniqueIndex('uq_relay_countersignatures_op_witness').on(table.operationCid, table.witnessDid),
 }));
 
 export const relayPendingOperations = relaySchema.table('relay_pending_operations', {
