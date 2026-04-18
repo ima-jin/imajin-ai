@@ -418,8 +418,8 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
                 )}
               </div>
 
-              <div className="flex md:flex-col items-center md:items-end gap-4 md:gap-3">
-                <div className="flex-1 md:flex-none text-left md:text-right">
+              <div className="flex flex-col items-stretch md:items-end gap-3">
+                <div className="text-left md:text-right">
                   <div className="text-3xl md:text-4xl font-bold">
                     {ticket.price === 0 ? 'Free' : `CA$${(ticket.price / 100).toFixed(2)}`}
                   </div>
