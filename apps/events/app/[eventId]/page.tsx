@@ -74,8 +74,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const baseUrl = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
   const url = `${baseUrl}/${event.id}`;
   
-  // Use event image or generate a placeholder description
-  const ogImage = event.imageUrl || `${baseUrl}/api/og?title=${encodeURIComponent(event.title)}&date=${encodeURIComponent(formattedDate)}&location=${encodeURIComponent(event.city || 'Virtual')}`;
+  // Ensure event image is an absolute URL for OG tags (relative paths resolve to localhost in SSR)
+  const absoluteImageUrl = event.imageUrl
+    ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${baseUrl}${event.imageUrl}`)
+    : null;
+  const ogImage = absoluteImageUrl || `${baseUrl}/api/og?title=${encodeURIComponent(event.title)}&date=${encodeURIComponent(formattedDate)}&location=${encodeURIComponent(event.city || 'Virtual')}`;
   
   return {
     title: `${event.title} | Imajin Events`,
@@ -86,18 +89,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url,
       siteName: 'Imajin Events',
       type: 'website',
-      images: event.imageUrl ? [{ url: event.imageUrl, width: 1200, height: 630 }] : undefined,
+      images: [{ url: ogImage, width: 1200, height: 630 }],
     },
     twitter: {
       card: 'summary_large_image',
       title: event.title,
       description,
-      images: event.imageUrl ? [event.imageUrl] : undefined,
+      images: [ogImage],
     },
     other: {
       'event:date': eventDate.toISOString(),
       'event:location': event.city || 'Virtual',
       ...(priceText && { 'event:price': priceText }),
+      image: ogImage,
     },
   };
 }
