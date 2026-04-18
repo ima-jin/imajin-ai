@@ -37,6 +37,12 @@ Every problem the protocol solves is a cell in this matrix. Every service in thi
 
 Each node is sovereign. Own your identity (Ed25519 keypairs). Own your payments (your Stripe keys, your Solana wallet). Own your data (self-hosted, no platform dependency). No subscriptions. No surveillance capitalism. No asking permission.
 
+### Proof of History, Not Proof of Work
+
+Crypto got proof of work wrong. Burning electricity to win a lottery isn't work — it's waste. Imajin's attestation model is **proof of history**: a signed, append-only record of real things that happened. You showed up. You created something. You paid for that. This person vouched for you.
+
+The value isn't in the burning — it's in the record. And that record can't be forked, because you can copy software but you can't copy lived experience.
+
 ---
 
 ## Apps
