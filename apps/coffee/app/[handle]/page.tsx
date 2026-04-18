@@ -21,6 +21,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const description = page.bio || 'Support this creator on the Imajin network';
   const url = `${buildPublicUrl('coffee')}/${page.handle}`;
   const avatarIsImage = page.avatar && (page.avatar.startsWith('http') || page.avatar.startsWith('/'));
+  const ogImage = avatarIsImage
+    ? (page.avatar!.startsWith('http') ? page.avatar! : `${buildPublicUrl('coffee')}${page.avatar}`)
+    : null;
 
   return {
     title,
@@ -31,13 +34,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       url,
       siteName: 'Imajin',
       type: 'profile',
-      ...(avatarIsImage ? { images: [{ url: page.avatar! }] } : {}),
+      ...(ogImage ? { images: [{ url: ogImage }] } : {}),
     },
     twitter: {
-      card: avatarIsImage ? 'summary_large_image' : 'summary',
+      card: ogImage ? 'summary_large_image' : 'summary',
       title,
       description,
-      ...(avatarIsImage ? { images: [page.avatar!] } : {}),
+      ...(ogImage ? { images: [ogImage] } : {}),
+    },
+    other: {
+      ...(ogImage && { image: ogImage }),
     },
   };
 }

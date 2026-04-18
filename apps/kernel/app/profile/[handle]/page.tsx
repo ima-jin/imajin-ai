@@ -47,13 +47,21 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       url,
       siteName: 'Imajin Profiles',
       type: 'profile',
-      images: profile.avatar?.startsWith('http') ? [{ url: profile.avatar }] : undefined,
+      images: profile.avatar?.startsWith('http')
+        ? [{ url: profile.avatar }]
+        : profile.avatar?.startsWith('/')
+        ? [{ url: `${baseUrl}${profile.avatar}` }]
+        : undefined,
     },
     twitter: {
-      card: profile.avatar?.startsWith('http') ? 'summary_large_image' : 'summary',
+      card: profile.avatar ? 'summary_large_image' : 'summary',
       title: `${profile.displayName} ${emoji}`,
       description,
-      images: profile.avatar?.startsWith('http') ? [profile.avatar] : undefined,
+      images: profile.avatar?.startsWith('http')
+        ? [profile.avatar]
+        : profile.avatar?.startsWith('/')
+        ? [`${baseUrl}${profile.avatar}`]
+        : undefined,
     },
   };
 }
