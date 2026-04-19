@@ -6,7 +6,8 @@ import { LinkPreviewCard } from './LinkPreviewCard';
 import { VoiceMessage } from './VoiceMessage';
 import { MediaMessage } from './MediaMessage';
 import { LocationMessage } from './LocationMessage';
-import type { MessageContent } from './message-types';
+import type { MessageContent, SystemContent } from './message-types';
+import { useDidNames } from './hooks/useDidNames';
 
 const URL_REGEX = /(https?:\/\/[^\s<]+[^\s<.,;:!?"')\]])/g;
 const MENTION_DISPLAY_REGEX = /@([a-zA-Z0-9_-]+)/g;
@@ -116,6 +117,43 @@ function formatMessageTime(dateStr: string): string {
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
+function SystemMessageLine({ content }: { content: SystemContent }) {
+  const dids = [content.actorDid, ...(content.targetDid ? [content.targetDid] : [])];
+  const names = useDidNames(dids);
+
+  const actor = names[content.actorDid] || content.actorDid.slice(0, 16);
+  const target = content.targetDid ? (names[content.targetDid] || content.targetDid.slice(0, 16)) : null;
+
+  let label: string;
+  switch (content.event) {
+    case 'member_added':
+      label = `${actor} added ${target}`;
+      break;
+    case 'member_removed':
+      label = `${actor} removed ${target}`;
+      break;
+    case 'member_left':
+      label = `${actor} left`;
+      break;
+    case 'created':
+      label = `${actor} created the group`;
+      break;
+    case 'renamed':
+      label = `${actor} renamed the group`;
+      break;
+    default:
+      label = `${actor} performed an action`;
+  }
+
+  return (
+    <div className="flex justify-center my-1">
+      <span className="text-xs text-gray-400 dark:text-gray-500 px-3 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800/50 select-none">
+        {label}
+      </span>
+    </div>
+  );
+}
+
 export function MessageBubble({
   message,
   isOwn,
@@ -179,6 +217,12 @@ export function MessageBubble({
     onDelete();
     setShowDeleteConfirm(false);
   };
+
+  // System messages render as centered timeline annotations, not bubbles
+  const contentObj = message.content as any;
+  if (contentObj?.type === 'system') {
+    return <SystemMessageLine content={contentObj as SystemContent} />;
+  }
 
   if (message.deletedAt) {
     return (

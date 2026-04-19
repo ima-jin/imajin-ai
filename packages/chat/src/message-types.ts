@@ -31,4 +31,13 @@ export type LocationContent = {
   accuracy?: number;         // meters
 };
 
-export type MessageContent = TextContent | VoiceContent | MediaContent | LocationContent;
+// System event message (member lifecycle, conversation events)
+export type SystemContent = {
+  type: "system";
+  event: "member_added" | "member_removed" | "member_left" | "created" | "renamed";
+  actorDid: string;          // who performed the action
+  targetDid?: string;        // who was affected (for add/remove)
+  meta?: Record<string, unknown>;
+};
+
+export type MessageContent = TextContent | VoiceContent | MediaContent | LocationContent | SystemContent;

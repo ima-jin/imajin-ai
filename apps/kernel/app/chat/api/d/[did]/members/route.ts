@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getClient } from '@imajin/db';
 import { requireAuth } from '@imajin/auth';
-import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { notify } from '@imajin/notify';
 import { emitAttestation } from '@imajin/auth';
@@ -93,6 +93,14 @@ export async function POST(
         context_id: did,
         context_type: 'chat.group',
       }).catch((err: unknown) => log.error({ err: String(err) }, 'Attestation (group.member.added) error'));
+
+      // Insert system message into the conversation timeline
+      const systemMsgId = generateId('msg');
+      const systemContent = JSON.stringify({ type: 'system', event: 'member_added', actorDid: effectiveDid, targetDid: memberDid });
+      sql`
+        INSERT INTO chat.messages_v2 (id, conversation_did, from_did, content, content_type, created_at)
+        VALUES (${systemMsgId}, ${did}, ${effectiveDid}, ${systemContent}::jsonb, 'application/json', NOW())
+      `.catch((err: unknown) => log.error({ err: String(err) }, 'System message insert error (member_added)'));
     } else {
       // Webhook / event-chat mode: no auth required
       // Ensure conversation exists (event chats may not exist yet)
