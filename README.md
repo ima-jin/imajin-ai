@@ -8,7 +8,11 @@
 
 ## What This Is
 
-MJN is an open application-layer protocol that carries what the internet never could: identity, attribution, consent, and value — natively, in every exchange. imajin-ai is the first working implementation.
+**An open wallet with apps that plug in.**
+
+Your identity, your transactions, your credentials, your history — in a wallet you own. Apps plug into it: events, marketplace, travel, agriculture, whatever comes next. The wallet is the constant. The apps are the variables.
+
+MJN is the open protocol underneath — carrying identity, attribution, consent, and value natively, in every exchange. imajin-ai is the first working implementation.
 
 The protocol is organized as a matrix of **four identity scopes** × **five primitives**:
 
@@ -21,7 +25,7 @@ The protocol is organized as a matrix of **four identity scopes** × **five prim
 
 Every problem the protocol solves is a cell in this matrix. Every service in this repo implements cells.
 
-1 kernel (9 domains) + 6 federated apps. 67 days. $5,940 in API costs. 15.77M tokens. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
+1 kernel (9 domains) + 6 federated apps. 78 days. ~133K lines of code. ~1,750 commits. ~135 identities. All open source. All self-hosted. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed — it was excavated.
 
 ```
 ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
