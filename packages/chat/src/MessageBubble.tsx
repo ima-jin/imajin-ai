@@ -117,7 +117,18 @@ function formatMessageTime(dateStr: string): string {
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
-function SystemMessageLine({ content }: { content: SystemContent }) {
+function formatShortDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  if (isToday) return 'today';
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'yesterday';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function SystemMessageLine({ content, createdAt }: { content: SystemContent; createdAt?: string }) {
   const dids = [content.actorDid, ...(content.targetDid ? [content.targetDid] : [])];
   const names = useDidNames(dids);
 
@@ -145,10 +156,23 @@ function SystemMessageLine({ content }: { content: SystemContent }) {
       label = `${actor} performed an action`;
   }
 
+  // Show the event date (from message createdAt or occurredAt)
+  const eventDate = content.occurredAt || createdAt;
+  const dateLabel = eventDate ? formatShortDate(eventDate) : null;
+
+  // If backfilled, show when it was recorded
+  const isBackfilled = content.recordedAt && content.occurredAt;
+
   return (
     <div className="flex justify-center my-1">
       <span className="text-xs text-gray-400 dark:text-gray-500 px-3 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800/50 select-none">
         {label}
+        {dateLabel && <> · {dateLabel}</>}
+        {isBackfilled && (
+          <span className="text-gray-300 dark:text-gray-600" title={`Recorded ${formatShortDate(content.recordedAt!)}`}>
+            {' '}· recorded {formatShortDate(content.recordedAt!)}
+          </span>
+        )}
       </span>
     </div>
   );
@@ -221,7 +245,7 @@ export function MessageBubble({
   // System messages render as centered timeline annotations, not bubbles
   const contentObj = message.content as any;
   if (contentObj?.type === 'system') {
-    return <SystemMessageLine content={contentObj as SystemContent} />;
+    return <SystemMessageLine content={contentObj as SystemContent} createdAt={message.createdAt} />;
   }
 
   if (message.deletedAt) {
