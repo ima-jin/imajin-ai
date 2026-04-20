@@ -1,20 +1,11 @@
 import { cookies } from 'next/headers';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { db, identities } from '@/src/db';
+import { db, profiles } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import Link from 'next/link';
-import IdentitySwitcher from './components/IdentitySwitcher';
-import IdentityDetail from './components/IdentityDetail';
-import AttestationList from './components/AttestationList';
-import PlacesMaintained from './components/PlacesMaintained';
+import Image from 'next/image';
 
-interface SearchParams {
-  type?: string;
-  role?: string;
-  page?: string;
-}
-
-export default async function AuthPage({ searchParams }: { searchParams: SearchParams }) {
+export default async function AuthPage() {
   const cookieConfig = getSessionCookieOptions();
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(cookieConfig.name)?.value;
@@ -25,7 +16,6 @@ export default async function AuthPage({ searchParams }: { searchParams: SearchP
     sessionDid = session?.sub ?? null;
   }
 
-  // Unauthenticated view
   if (!sessionDid) {
     return (
       <div className="max-w-2xl mx-auto text-center py-20">
@@ -44,47 +34,121 @@ export default async function AuthPage({ searchParams }: { searchParams: SearchP
     );
   }
 
-  // Fetch personal identity info for the switcher
-  const [personalIdentity] = await db
-    .select({ name: identities.name, handle: identities.handle })
-    .from(identities)
-    .where(eq(identities.id, sessionDid))
-    .limit(1);
-
-  const personalName = personalIdentity?.name ?? null;
-  const personalHandle = personalIdentity?.handle ?? null;
-
   // Effective DID: actingAs cookie OR personal DID
   const actingAs = cookieStore.get('x-acting-as')?.value || null;
   const effectiveDid = actingAs || sessionDid;
 
-  // Auth URL for the useIdentities hook (same-origin relative path)
-  const authUrl = '/auth';
-  const profileUrl = process.env.NEXT_PUBLIC_PROFILE_URL ?? '';
+  // Fetch profile data
+  const [profile] = await db
+    .select()
+    .from(profiles)
+    .where(eq(profiles.did, effectiveDid))
+    .limit(1);
+
+  if (!profile) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+        <p className="text-zinc-400 text-sm">No profile found for this identity.</p>
+        <Link
+          href="/profile/edit"
+          className="inline-block mt-3 text-sm text-amber-400 hover:text-amber-300 transition-colors"
+        >
+          Create profile →
+        </Link>
+      </div>
+    );
+  }
+
+  const metadata = (profile.metadata ?? {}) as Record<string, unknown>;
+  const location = metadata.location as string | undefined;
+  const website = metadata.website as string | undefined;
+
+  const mediaUrl = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
+
+  // Resolve avatar URL
+  let avatarSrc: string | null = null;
+  if (profile.avatarAssetId && mediaUrl) {
+    avatarSrc = `${mediaUrl}/api/media/${profile.avatarAssetId}`;
+  } else if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.startsWith('/'))) {
+    avatarSrc = profile.avatar;
+  }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 min-h-[calc(100vh-4rem)]">
-      {/* Left rail (desktop) / Top section (mobile) */}
-      <div className="lg:w-72 lg:shrink-0">
-        <div className="sticky top-6 bg-[#0a0a0a] border border-gray-800 rounded-2xl p-4">
-          <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3 px-1">
-            Identities
-          </h2>
-          <IdentitySwitcher
-            authUrl={authUrl}
-            profileUrl={profileUrl}
-            personalDid={sessionDid}
-            personalName={personalName}
-            personalHandle={personalHandle}
+    <div className="space-y-4">
+      {/* Banner */}
+      {profile.banner && (
+        <div className="relative h-32 rounded-xl overflow-hidden bg-zinc-800">
+          <Image
+            src={profile.bannerAssetId && mediaUrl ? `${mediaUrl}/api/media/${profile.bannerAssetId}` : profile.banner}
+            alt=""
+            fill
+            className="object-cover"
           />
-          <PlacesMaintained sessionDid={sessionDid} />
         </div>
-      </div>
+      )}
 
-      {/* Main area */}
-      <div className="flex-1 min-w-0 space-y-6">
-        <IdentityDetail did={effectiveDid} sessionDid={sessionDid} />
-        <AttestationList sessionDid={effectiveDid} searchParams={searchParams} />
+      {/* Profile info */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-4">
+        <div className="flex items-start gap-4">
+          {/* Avatar */}
+          {avatarSrc ? (
+            <div className="relative w-16 h-16 rounded-full overflow-hidden bg-zinc-800 shrink-0">
+              <Image src={avatarSrc} alt="" fill className="object-cover" />
+            </div>
+          ) : profile.avatar ? (
+            <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center text-2xl shrink-0">
+              {profile.avatar}
+            </div>
+          ) : null}
+
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-white">{profile.displayName}</h2>
+            {profile.handle && (
+              <p className="text-sm text-zinc-400">@{profile.handle}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Bio */}
+        {profile.bio && (
+          <p className="text-sm text-zinc-300 leading-relaxed">{profile.bio}</p>
+        )}
+
+        {/* Details */}
+        <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-zinc-400">
+          {location && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-zinc-600">📍</span> {location}
+            </span>
+          )}
+          {website && (
+            <a
+              href={website.startsWith('http') ? website : `https://${website}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 hover:text-amber-400 transition-colors"
+            >
+              <span className="text-zinc-600">🔗</span> {website.replace(/^https?:\/\//, '')}
+            </a>
+          )}
+          {profile.contactEmail && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-zinc-600">✉️</span> {profile.contactEmail}
+            </span>
+          )}
+          {profile.phone && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-zinc-600">📞</span> {profile.phone}
+            </span>
+          )}
+        </div>
+
+        {/* Visibility badge */}
+        {profile.visibility === 'incognito' && (
+          <span className="inline-block text-xs px-2 py-1 rounded-full bg-zinc-800 text-zinc-500 border border-zinc-700">
+            Incognito
+          </span>
+        )}
       </div>
     </div>
   );

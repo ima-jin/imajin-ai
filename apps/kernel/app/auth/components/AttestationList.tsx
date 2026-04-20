@@ -155,7 +155,7 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
           </button>
           {hasFilters && (
             <Link
-              href="/auth"
+              href="/auth/attestations"
               className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
             >
               Clear
@@ -170,7 +170,7 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
           No attestations found
           {hasFilters && (
             <div className="mt-2">
-              <Link href="/auth" className="text-amber-500 hover:text-amber-400 text-sm">
+              <Link href="/auth/attestations" className="text-amber-500 hover:text-amber-400 text-sm">
                 Clear filters
               </Link>
             </div>
@@ -305,7 +305,7 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
         <div className="flex justify-between items-center">
           {page > 1 ? (
             <Link
-              href={`/auth?${new URLSearchParams({ ...filterParams, page: String(page - 1) })}`}
+              href={`/auth/attestations?${new URLSearchParams({ ...filterParams, page: String(page - 1) })}`}
               className="px-4 py-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors"
             >
               ← Previous
@@ -315,7 +315,7 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
           )}
           {hasMore && (
             <Link
-              href={`/auth?${new URLSearchParams({ ...filterParams, page: String(page + 1) })}`}
+              href={`/auth/attestations?${new URLSearchParams({ ...filterParams, page: String(page + 1) })}`}
               className="px-4 py-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors"
             >
               Next →
