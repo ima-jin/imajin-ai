@@ -296,6 +296,32 @@ export const systemEvents = registrySchema.table('system_events', {
 export type SystemEvent = typeof systemEvents.$inferSelect;
 
 /**
+ * Registered third-party apps — for delegated session access (Issue #244)
+ */
+export const registryApps = registrySchema.table('apps', {
+  id: text('id').primaryKey(),                           // app_<nanoid(16)>
+  ownerDid: text('owner_did').notNull(),                 // DID of developer who registered
+  name: text('name').notNull(),
+  description: text('description'),
+  appDid: text('app_did').notNull().unique(),            // did:imajin:<nanoid(44)>
+  publicKey: text('public_key').notNull(),               // Ed25519 hex (64 chars)
+  callbackUrl: text('callback_url').notNull(),           // OAuth redirect URI
+  homepageUrl: text('homepage_url'),
+  logoUrl: text('logo_url'),
+  requestedScopes: jsonb('requested_scopes').$type<string[]>().default([]),
+  status: text('status').notNull().default('active'),   // 'active' | 'revoked'
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  ownerIdx: index('idx_registry_apps_owner').on(table.ownerDid),
+  statusIdx: index('idx_registry_apps_status').on(table.status),
+}));
+
+export type RegistryApp = typeof registryApps.$inferSelect;
+export type NewRegistryApp = typeof registryApps.$inferInsert;
+
+/**
  * Application log entries — written by @imajin/logger Pino adapter when ENABLE_APP_LOG=true
  */
 export const appLogs = registrySchema.table('app_logs', {
