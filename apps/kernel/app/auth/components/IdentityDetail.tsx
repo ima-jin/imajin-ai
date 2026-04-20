@@ -1,5 +1,6 @@
-import { db, identities, attestations, connections } from '@/src/db';
+import { db, identities, attestations, connections, identityMembers, profiles } from '@/src/db';
 import { eq, or, and, isNull, count } from 'drizzle-orm';
+import Link from 'next/link';
 
 function tierBadge(tier: string): { label: string; classes: string } {
   if (tier === 'established') return { label: 'established', classes: 'bg-green-900/30 text-green-400 border-green-800' };
@@ -9,9 +10,10 @@ function tierBadge(tier: string): { label: string; classes: string } {
 
 interface Props {
   did: string;
+  sessionDid: string;
 }
 
-export default async function IdentityDetail({ did }: Props) {
+export default async function IdentityDetail({ did, sessionDid }: Props) {
   const [identity] = await db
     .select()
     .from(identities)
@@ -43,6 +45,37 @@ export default async function IdentityDetail({ did }: Props) {
   const badge = tierBadge(identity.tier);
   const displayName = identity.name || (identity.handle ? `@${identity.handle}` : null);
 
+  // Determine edit href based on scope and membership role
+  let editHref: string | null = null;
+  if (identity.scope === 'actor') {
+    editHref = '/profile/edit';
+  } else {
+    const [[membership], [profile]] = await Promise.all([
+      db
+        .select({ role: identityMembers.role })
+        .from(identityMembers)
+        .where(
+          and(
+            eq(identityMembers.identityDid, did),
+            eq(identityMembers.memberDid, sessionDid),
+            isNull(identityMembers.removedAt)
+          )
+        )
+        .limit(1),
+      db
+        .select({ claimedBy: profiles.claimedBy })
+        .from(profiles)
+        .where(eq(profiles.did, did))
+        .limit(1),
+    ]);
+
+    if (membership?.role === 'maintainer' || profile?.claimedBy === null) {
+      editHref = `/auth/stubs/${did}`;
+    } else if (membership?.role === 'owner' || membership?.role === 'admin') {
+      editHref = `/auth/groups/${did}/settings`;
+    }
+  }
+
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-3">
       <div className="flex items-start justify-between gap-4">
@@ -54,9 +87,19 @@ export default async function IdentityDetail({ did }: Props) {
             <p className="text-zinc-400 text-sm mt-0.5">@{identity.handle}</p>
           )}
         </div>
-        <span className={`text-xs px-2 py-1 rounded-full border shrink-0 ${badge.classes}`}>
-          {badge.label}
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-xs px-2 py-1 rounded-full border ${badge.classes}`}>
+            {badge.label}
+          </span>
+          {editHref && (
+            <Link
+              href={editHref}
+              className="text-xs px-2 py-1 rounded-md border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors"
+            >
+              Edit
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="font-mono text-xs text-zinc-600 break-all">{did}</div>
