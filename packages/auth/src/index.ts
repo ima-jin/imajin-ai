@@ -29,3 +29,5 @@ export {
 export type { NodeHeartbeat, NodeRegistration, NodeRegistrationRequest, NodeRegistrationResponse, NodeAttestation } from "./types/node";
 export { getEmailForDid, getDidForEmail } from "./credentials";
 export { emitAttestation } from "./emit-attestation";
+export { SCOPES, validateScopes } from "./scopes";
+export type { Scope } from "./scopes";

@@ -37,6 +37,8 @@ export const ATTESTATION_TYPES = [
   'ticket.purchased',
   'listing.purchased',
   'tip.granted',
+  'app.authorized',
+  'app.revoked',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
