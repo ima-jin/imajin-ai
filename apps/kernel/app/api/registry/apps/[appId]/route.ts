@@ -3,7 +3,7 @@ import { db, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 
-// GET /api/registry/apps/:appId — app detail (public, privateKey excluded)
+// GET /api/registry/apps/:appId — app detail (public)
 export async function GET(
   _request: NextRequest,
   { params }: { params: { appId: string } }
@@ -80,9 +80,7 @@ export async function PATCH(
     .where(eq(registryApps.id, params.appId))
     .returning();
 
-  // Strip privateKey from response
-  const { privateKey: _pk, ...safeApp } = updated;
-  return NextResponse.json(safeApp);
+  return NextResponse.json(updated);
 }
 
 // DELETE /api/registry/apps/:appId — soft revoke (owner only)

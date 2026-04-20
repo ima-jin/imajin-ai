@@ -305,7 +305,6 @@ export const registryApps = registrySchema.table('apps', {
   description: text('description'),
   appDid: text('app_did').notNull().unique(),            // did:imajin:<nanoid(44)>
   publicKey: text('public_key').notNull(),               // Ed25519 hex (64 chars)
-  privateKey: text('private_key').notNull(),             // Ed25519 hex — returned once at registration
   callbackUrl: text('callback_url').notNull(),           // OAuth redirect URI
   homepageUrl: text('homepage_url'),
   logoUrl: text('logo_url'),

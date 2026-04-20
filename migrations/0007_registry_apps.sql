@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS registry.apps (
   description      TEXT,
   app_did          TEXT NOT NULL UNIQUE,
   public_key       TEXT NOT NULL,
-  private_key      TEXT NOT NULL,
+
   callback_url     TEXT NOT NULL,
   homepage_url     TEXT,
   logo_url         TEXT,

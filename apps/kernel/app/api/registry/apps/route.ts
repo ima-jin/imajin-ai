@@ -45,15 +45,14 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     description: typeof description === 'string' ? description.trim() || null : null,
     appDid: `did:imajin:${nanoid(44)}`,
     publicKey: keypair.publicKey,
-    privateKey: keypair.privateKey,
     callbackUrl,
     homepageUrl: typeof homepageUrl === 'string' ? homepageUrl || null : null,
     logoUrl: typeof logoUrl === 'string' ? logoUrl || null : null,
     requestedScopes: Array.isArray(requestedScopes) ? requestedScopes : [],
   }).returning();
 
-  // privateKey is returned only on registration — store it securely
-  return NextResponse.json(app, { status: 201 });
+  // Private key returned ONCE at registration — never stored. Developer must save it.
+  return NextResponse.json({ ...app, privateKey: keypair.privateKey }, { status: 201 });
 });
 
 // GET /api/registry/apps — list active apps (public, paginated)
