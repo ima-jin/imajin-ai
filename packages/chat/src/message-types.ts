@@ -31,4 +31,16 @@ export type LocationContent = {
   accuracy?: number;         // meters
 };
 
-export type MessageContent = TextContent | VoiceContent | MediaContent | LocationContent;
+// System event message (member lifecycle, conversation events)
+export type SystemContent = {
+  type: "system";
+  event: "member_added" | "member_removed" | "member_left" | "created" | "renamed";
+  actorDid: string;          // who performed the action
+  targetDid?: string;        // who was affected (for add/remove)
+  occurredAt?: string;       // when the event originally happened (ISO string, from attestation)
+  recordedAt?: string;       // when this message was recorded (ISO string, set on backfill)
+  attestationId?: string;    // source attestation ID (for chain verification)
+  meta?: Record<string, unknown>;
+};
+
+export type MessageContent = TextContent | VoiceContent | MediaContent | LocationContent | SystemContent;
