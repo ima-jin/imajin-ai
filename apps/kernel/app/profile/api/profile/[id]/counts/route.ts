@@ -4,6 +4,7 @@ import { getClient } from '@imajin/db';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { eq, count } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
+import { requireAppAuth } from '@imajin/auth';
 
 const log = createLogger('kernel');
 
@@ -16,6 +17,14 @@ interface RouteParams {
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
+
+  // App auth path — validate credentials before returning counts
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'profile:read' });
+    if ('error' in appResult) {
+      return errorResponse(appResult.error, appResult.status);
+    }
+  }
 
   try {
     const profile = await db.query.profiles.findFirst({

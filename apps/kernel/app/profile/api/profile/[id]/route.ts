@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { db, profiles, connections, identityMembers } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth } from '@imajin/auth';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { eq, or, and, isNull, count } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
@@ -71,6 +71,12 @@ async function verifySignedRequest(request: NextRequest, body: string): Promise<
   }
 }
 
+/** Fields safe to return for profile:read app scope */
+function filterProfileForApp(profile: Record<string, any>): Record<string, any> {
+  const { did, displayName, handle, avatar, bio, visibility, scope, subtype } = profile;
+  return { did, displayName, handle, avatar, bio, visibility, scope, subtype };
+}
+
 /** Try to get viewer DID from session cookie (non-blocking) */
 async function getViewerDid(request: NextRequest): Promise<string | null> {
   try {
@@ -113,6 +119,27 @@ export async function OPTIONS(request: NextRequest) {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
   const cors = corsHeaders(request);
+
+  // App auth path — takes precedence over cookie auth if app headers are present
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'profile:read' });
+    if ('error' in appResult) {
+      return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
+    }
+    try {
+      const profile = await db.query.profiles.findFirst({
+        where: (profiles, { eq, or }) =>
+          or(eq(profiles.did, id), eq(profiles.handle, id)),
+      });
+      if (!profile) {
+        return NextResponse.json({ error: 'Profile not found' }, { status: 404, headers: cors });
+      }
+      return NextResponse.json(filterProfileForApp(profile as Record<string, any>), { headers: cors });
+    } catch (error) {
+      log.error({ err: String(error) }, 'Failed to fetch profile (app auth)');
+      return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500, headers: cors });
+    }
+  }
 
   try {
     // Look up by DID or handle
