@@ -1,8 +1,16 @@
 import { NextRequest } from 'next/server';
 import { db, profiles } from '@/src/db';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { ilike, or, sql, type SQL } from 'drizzle-orm';
 import { withLogger } from '@imajin/logger';
+import { requireAppAuth } from '@imajin/auth';
+
+/** Fields safe to return for profile:read app scope */
+function filterProfileForApp(profile: Record<string, any>): Record<string, any> {
+  const { did, displayName, handle, avatar, bio, visibility, scope, subtype } = profile;
+  return { did, displayName, handle, avatar, bio, visibility, scope, subtype };
+}
 
 /**
  * GET /api/profile/search - Search profiles
@@ -13,6 +21,17 @@ import { withLogger } from '@imajin/logger';
  * - offset: pagination offset
  */
 export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
+  const cors = corsHeaders(request);
+
+  // App auth path — validate and return filtered results
+  const isAppRequest = !!request.headers.get('x-app-did');
+  if (isAppRequest) {
+    const appResult = await requireAppAuth(request, { scope: 'profile:read' });
+    if ('error' in appResult) {
+      return errorResponse(appResult.error, appResult.status, cors);
+    }
+  }
+
   const searchParams = request.nextUrl.searchParams;
 
   const q = searchParams.get('q');
@@ -49,15 +68,19 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     
     const total = Number(countResult[0]?.count || 0);
 
+    const profileData = isAppRequest
+      ? results.map(p => filterProfileForApp(p as Record<string, any>))
+      : results;
+
     return jsonResponse({
-      profiles: results,
+      profiles: profileData,
       pagination: {
         total,
         limit,
         offset,
         hasMore: offset + results.length < total,
       },
-    });
+    }, 200, isAppRequest ? cors : undefined);
   } catch (error) {
     log.error({ err: String(error) }, 'Failed to search profiles');
     return errorResponse('Failed to search profiles', 500);
