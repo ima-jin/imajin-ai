@@ -83,7 +83,7 @@ export default async function AuthPage({ searchParams }: { searchParams: SearchP
 
       {/* Main area */}
       <div className="flex-1 min-w-0 space-y-6">
-        <IdentityDetail did={effectiveDid} />
+        <IdentityDetail did={effectiveDid} sessionDid={sessionDid} />
         <AttestationList sessionDid={effectiveDid} searchParams={searchParams} />
       </div>
     </div>
