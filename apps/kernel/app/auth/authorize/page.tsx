@@ -86,9 +86,10 @@ function AuthorizeForm() {
         return;
       }
 
-      const { attestationId } = await res.json();
+      const { attestationId, userDid } = await res.json();
       const url = new URL(app.callbackUrl);
       url.searchParams.set('attestation_id', attestationId);
+      url.searchParams.set('user_did', userDid);
       window.location.href = url.toString();
     } catch {
       setError('Network error. Please try again.');

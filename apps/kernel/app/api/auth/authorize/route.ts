@@ -99,5 +99,5 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     issuedAt: new Date(issuedAtMs),
   });
 
-  return NextResponse.json({ attestationId }, { status: 201 });
+  return NextResponse.json({ attestationId, userDid: identity.id }, { status: 201 });
 });
