@@ -3,9 +3,8 @@ import { getClient } from '@imajin/db';
 import { withLogger } from '@imajin/logger';
 import { requireAdmin } from '@imajin/auth';
 
-const sql = getClient();
-
 export const GET = withLogger('kernel', async (req, { log }) => {
+  const sql = getClient();
   const session = await requireAdmin();
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
