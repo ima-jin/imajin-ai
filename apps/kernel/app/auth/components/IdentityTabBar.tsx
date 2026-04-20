@@ -18,6 +18,7 @@ const ALL_TABS: Tab[] = [
   { label: 'Profile', href: '/auth', exact: true },
   { label: 'Attestations', href: '/auth/attestations', exact: false },
   { label: 'Developer', href: '/auth/developer/apps', exact: false },
+  { label: 'Apps', href: '/auth/apps', exact: false },
   { label: 'Settings', href: '/auth/settings', exact: false },
   { label: 'Members', href: '/auth/members', exact: false },
 ];
