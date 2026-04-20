@@ -77,9 +77,11 @@ export async function POST(request: NextRequest) {
 
     // Get sender identity if authenticated
     let fromDid: string | null = null;
+    let fromHumanDid: string | null = null;
     const authResult = await requireAuth(request as any);
     if ('identity' in authResult) {
-      fromDid = authResult.identity.id;
+      fromDid = authResult.identity.actingAs || authResult.identity.id;
+      fromHumanDid = authResult.identity.id;
     }
 
     // Create tip record (pending)
@@ -142,7 +144,7 @@ export async function POST(request: NextRequest) {
       // Fire and forget — never block the response
       if (fromDid) {
         emitAttestation({
-          issuer_did: fromDid,
+          issuer_did: fromHumanDid!,
           subject_did: page.did,
           type: 'tip.granted',
           context_id: tipId,
@@ -179,7 +181,7 @@ export async function POST(request: NextRequest) {
       // Fire and forget — never block the response
       if (fromDid) {
         emitAttestation({
-          issuer_did: fromDid,
+          issuer_did: fromHumanDid!,
           subject_did: page.did,
           type: 'tip.granted',
           context_id: tipId,

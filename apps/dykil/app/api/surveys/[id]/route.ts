@@ -35,7 +35,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Only return published surveys to non-owners
     const authResult = await requireAuth(request);
-    const isOwner = !('error' in authResult) && authResult.identity.id === survey.did;
+    const isOwner = !('error' in authResult) && (authResult.identity.actingAs || authResult.identity.id) === survey.did;
 
     if (!isOwner && survey.status !== 'published') {
       return errorResponse('Survey not found', 404, cors);
@@ -61,6 +61,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     const existing = await db.query.surveys.findFirst({
@@ -71,7 +72,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return errorResponse('Survey not found', 404, cors);
     }
 
-    if (existing.did !== identity.id) {
+    if (existing.did !== did) {
       return errorResponse('Not authorized to update this survey', 403, cors);
     }
 
@@ -114,6 +115,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     const existing = await db.query.surveys.findFirst({
@@ -124,7 +126,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return errorResponse('Survey not found', 404, cors);
     }
 
-    if (existing.did !== identity.id) {
+    if (existing.did !== did) {
       return errorResponse('Not authorized to delete this survey', 403, cors);
     }
 

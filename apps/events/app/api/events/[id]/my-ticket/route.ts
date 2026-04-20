@@ -23,6 +23,7 @@ export async function GET(
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
   const { id: eventId } = await params;
 
   try {
@@ -37,7 +38,7 @@ export async function GET(
       .where(
         and(
           eq(tickets.eventId, eventId),
-          eq(tickets.ownerDid, identity.id)
+          eq(tickets.ownerDid, did)
         )
       );
 
@@ -53,7 +54,7 @@ export async function GET(
 
     if (event.length > 0) {
       // Direct creator check
-      if (event[0].creatorDid === identity.id) {
+      if (event[0].creatorDid === did) {
         isOrganizer = true;
       }
 
@@ -62,7 +63,7 @@ export async function GET(
         const podRole = await sql`
           SELECT role FROM connections.pod_members
           WHERE pod_id = ${event[0].podId}
-            AND did = ${identity.id}
+            AND did = ${did}
             AND role IN ('owner', 'host', 'cohost')
           LIMIT 1
         `;

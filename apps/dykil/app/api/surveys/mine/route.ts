@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
   const { searchParams } = new URL(request.url);
   const didsParam = searchParams.get('dids');
 
@@ -35,12 +36,12 @@ export async function GET(request: NextRequest) {
     if (didsParam) {
       // Return surveys for specified DIDs (caller must be one of them)
       ownerDids = didsParam.split(',').map(d => d.trim()).filter(Boolean);
-      // Always include the current user
-      if (!ownerDids.includes(identity.id)) {
-        ownerDids.push(identity.id);
+      // Always include the current user (or their active scope)
+      if (!ownerDids.includes(did)) {
+        ownerDids.push(did);
       }
     } else {
-      ownerDids = [identity.id];
+      ownerDids = [did];
     }
 
     const userSurveys = await db.query.surveys.findMany({

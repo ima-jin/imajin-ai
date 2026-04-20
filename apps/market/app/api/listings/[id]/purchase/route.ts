@@ -49,10 +49,10 @@ export async function POST(
       if ('error' in authResult) {
         return errorResponse('This listing requires a verified identity to purchase', 403);
       }
-      buyerDid = authResult.identity.id;
+      buyerDid = authResult.identity.actingAs || authResult.identity.id;
     } else {
       const session = await getSession(request);
-      buyerDid = session?.identity?.id;
+      buyerDid = session?.actingAs || session?.id;
     }
 
     // 3. Parse body for quantity
