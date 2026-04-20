@@ -31,3 +31,5 @@ export { getEmailForDid, getDidForEmail } from "./credentials";
 export { emitAttestation } from "./emit-attestation";
 export { SCOPES, validateScopes } from "./scopes";
 export type { Scope } from "./scopes";
+export { requireAppAuth } from "./require-app-auth";
+export type { AppAuthContext, AppAuthResult } from "./require-app-auth";
