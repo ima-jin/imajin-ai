@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { db, registryApps } from '@/src/db';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import { requireAuth, isValidPublicKey } from '@imajin/auth';
 import { didFromPublicKey, publicKeyFromDid } from '@/src/lib/auth/crypto';
 import { withLogger } from '@imajin/logger';
@@ -66,10 +66,25 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
 });
 
 // GET /api/registry/apps — list active apps (public, paginated)
+// ?owner=me — filter to apps owned by the authenticated user
 export const GET = withLogger('kernel', async (request: NextRequest) => {
   const url = new URL(request.url);
   const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10), 100);
   const offset = Math.max(parseInt(url.searchParams.get('offset') ?? '0', 10), 0);
+  const owner = url.searchParams.get('owner');
+
+  let ownerDid: string | null = null;
+  if (owner === 'me') {
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    ownerDid = authResult.identity.id;
+  }
+
+  const whereClause = ownerDid
+    ? and(eq(registryApps.ownerDid, ownerDid))
+    : eq(registryApps.status, 'active');
 
   const apps = await db
     .select({
@@ -87,7 +102,7 @@ export const GET = withLogger('kernel', async (request: NextRequest) => {
       createdAt: registryApps.createdAt,
     })
     .from(registryApps)
-    .where(eq(registryApps.status, 'active'))
+    .where(whereClause)
     .orderBy(desc(registryApps.createdAt))
     .limit(limit)
     .offset(offset);
