@@ -44,7 +44,7 @@ Naming convention: `{operator}_{platform}_{soul}`
 - `veteze_claude_jin` — Jin running in Claude web
 - `veteze_codex_jin` — Jin running in Codex
 
-All are instances of the same soul (`@jin`, Account #1), differentiated by workspace.
+All are independent actors controlled by the same operator (`@veteze`). The `jin` suffix is naming convention — they are not sub-identities of `@jin` (Account #1, the node presence). They are peers.
 
 ### The Router
 
