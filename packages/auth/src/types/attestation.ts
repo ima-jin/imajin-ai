@@ -35,6 +35,7 @@ export const ATTESTATION_TYPES = [
   'event.created',
   'handle.claimed',
   'ticket.purchased',
+  'listing.created',
   'listing.purchased',
   'tip.granted',
   'app.authorized',
