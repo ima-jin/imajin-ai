@@ -191,6 +191,68 @@ The pilot proves the model. Then:
 
 Each region builds its own node. Nodes federate. The universal registry grows organically. No central authority decides what's in the directory — the community builds it, the owners claim it, the chain proves everything.
 
+## Every DID is a Venue
+
+A DID isn't just an identity. It's a venue for discussion, commerce, and governance.
+
+### Discussion
+
+Any DID can host conversations. Members of a business DID discuss menu changes. Followers of a landmark DID vote on improvements. Members of an investment group DID review deal flow. Discussions are scoped — public DIDs have public discussions, private DIDs keep it members-only.
+
+Weighting: trust tier and connection strength determine influence. A regular with 50 check-ins at a café weighs more than a tourist who visited once.
+
+### Commerce
+
+Any DID can transact. A business sells gift cards. A landmark runs a fundraising campaign. An artist sells merch. A private equity group distributes returns. Every transaction flows through .fair — the manifest determines who gets paid what. Transparent, on-chain, automatic.
+
+### Followers & Preference-Based Reach
+
+Every DID can have followers. Followers control their own preferences — stored on the follower's chain, not the DID's database:
+
+```
+Follower preferences (on MY chain):
+  muskoka-roastery: [dark roast, seasonal, events]
+  bracebridge-falls: [winter events, accessibility]
+  oakville-venture-fund: [deal flow, quarterly reports]
+```
+
+The DID owner can message followers filtered by preference. Targeted reach without surveillance. The follower controls what they hear about, can mute or leave at any time. Their data never leaves their identity.
+
+### Group Payouts (.fair for Groups)
+
+Every group DID has a .fair manifest. When money flows through — campaign funds, sales, investment returns — the manifest splits it:
+
+```
+Campaign: "Fund the viewing platform at Bracebridge Falls"
+  Raised: $15,000
+  .fair split:
+    90% → project fund (did:imajin:bracebridge-falls)
+    5%  → curator (@sarah_photographer)
+    4%  → node operator
+    1%  → protocol (MJN)
+```
+
+This works for:
+- **Public spaces** — community fundraising, municipal budgets on chain
+- **Investment groups** — LP/GP splits, auditable, every distribution signed
+- **Co-ops** — revenue sharing weighted by contribution
+- **Artist collectives** — release revenue split among contributors via .fair
+- **Private equity** — members get 90%, GP gets 10%, all on chain
+
+### The Full Stack (per DID)
+
+| Layer | What |
+|-------|------|
+| Identity | DID — the thing (any real-world asset) |
+| History | Chain — who did what, when (signed, append-only) |
+| Discussion | Scoped conversations (weighted by trust) |
+| Commerce | Transactions via .fair (transparent splits) |
+| Funding | Campaigns with goals and escrow (#749) |
+| Audience | Followers with sovereign preferences |
+| Agents | MCC coordination (RFC-27) |
+
+Every real-world thing, from a café to a government office to a private equity fund, gets the same infrastructure. The chain is the history. .fair is the economics. The community builds it. The owner claims it.
+
 ## Relation to Other RFCs
 
 - **RFC-27 (MCC):** Agents can curate stubs autonomously. An AI agent with a DID walks Google Street View and creates stubs for every business — maintainer is the agent, commission goes to the agent's operator. Chain records every action.
