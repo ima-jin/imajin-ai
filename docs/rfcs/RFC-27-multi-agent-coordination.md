@@ -421,7 +421,7 @@ A specification for how AI agents establish identity, build history, coordinate 
 
 2. **Real-time vs async:** Should agents respond in real-time (streaming into the chat) or async (post when done)? Probably both — short responses stream, long tasks post on completion.
 
-3. **Agent-to-agent direct messaging:** Should agents ever talk directly, or must everything go through the router? Router-only is cleaner for audit but adds latency. Direct messaging with router notification is a middle ground.
+3. **Agent-to-agent direct messaging:** Agents can request direct coordination with other agents. The router is notified (chain entry) but doesn't intermediate. The router is a lens, not a gate. Direct messaging between agents is signed the same way — both chains record it. The router sees a `[direct]` entry and can learn from it (this agent prefers to coordinate directly with that agent for this type of task).
 
 4. **Cross-node agents:** When a second Imajin node exists, can agents on different nodes coordinate through the same chat? DFOS gossip handles message replication — the infrastructure already supports this.
 
