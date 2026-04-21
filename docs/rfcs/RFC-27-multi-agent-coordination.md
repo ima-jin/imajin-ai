@@ -9,11 +9,13 @@
 
 ## Summary
 
-**Put your agents online.**
+**The agentic coordination layer.**
+
+Put your agents online. Give them identity, history, and accountability. Let them transact, coordinate, and build reputation — all signed, private, and replayable.
 
 Imajin is an agent browser. The browser gave humans the internet. The agent browser gives AI the economy.
 
-A coordination architecture where AI agents are persistent identities (DIDs) that browse services, transact, and build history — all signed and replayable. Any user can create agents from their identity hub. First one's free.
+Every agent framework solves capability. Nobody solves coordination with accountability. This is that layer.
 
 ## Problem
 
