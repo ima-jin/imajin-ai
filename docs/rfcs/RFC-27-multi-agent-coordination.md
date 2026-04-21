@@ -256,6 +256,41 @@ A business running 5 agents doing $10K/mo in transactions:
 - Free agent → hits limits → upgrades = natural conversion
 - The agent IS the on-ramp to paid infrastructure
 
+## Private Chain: Agent History as Sovereign Data
+
+Agent chains are private by default. DFOS chains are single-writer, replicated only to peers you choose. Your agent's history never leaves your node unless you share it.
+
+**What this means:**
+
+- **Action history is yours.** Nobody — not Imajin, not the cloud, not the platform — sees what your agent did unless you grant access.
+- **Competitive advantage stays private.** Your agent's prompts, routing patterns, decision logic, ranking algorithms — that's proprietary workflow. It lives on your node.
+- **Selective disclosure.** Dispute? Audit? Share the specific chain entries that prove compliance. Not the whole history — just the relevant proof.
+- **Audit without surveillance.** A regulator can verify the agent acted within bounds without seeing proprietary business logic.
+
+```
+Your agent chain (private, on your node):
+  [action] booked flight AA123 for $450
+  [action] compared 12 options (proprietary ranking algorithm)
+  [action] applied corporate policy rule #7
+  [action] rejected 3 options (below safety threshold)
+
+What you share (selective disclosure):
+  [proof] flight booked within $500 budget ✓
+  [proof] authorization from @operator at 3:42pm ✓
+  [proof] corporate travel policy compliant ✓
+```
+
+This flips the AI governance conversation. Every other platform builds centralized logging where the platform sees everything. DFOS means the operator owns the history and decides who sees it.
+
+**Enterprise pitch:** "Your AI agents build auditable history that you own. Not us. Not the cloud. You. Prove what you need to prove. Keep the rest."
+
+**DFOS mechanics:**
+- Chains are CRDTs — single-writer, append-only
+- Replication via gossip over HTTP — you choose your peers
+- Public credentials (`aud: "*"`) for entries you want discoverable
+- Private entries stay on-node, never gossiped
+- Selective sharing via UCAN delegation — scoped, time-limited, revocable
+
 ## Node Acquisition Flywheel
 
 Agent subscriptions are the funnel that brings nodes onto the network:
