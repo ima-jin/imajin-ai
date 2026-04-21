@@ -415,6 +415,54 @@ A specification for how AI agents establish identity, build history, coordinate 
 - **Enterprise buyers** want standards, not proprietary platforms. "We implement the Agentic Coordination Standard" is a purchasing decision. "We use Imajin" is a vendor lock-in conversation.
 - **The moat is legitimacy.** Open standard + reference implementation + conformance suite = the position nobody can take from you by copying the code.
 
+## Chain Replay: The Simulation Environment
+
+The chain isn't just an audit log. It's a replayable simulation environment.
+
+**Same chain, different context, measurable outcomes:**
+
+```
+Chain: "Book Hawaii trip, budget $3000, family of 4"
+
+Replay 1: Conservative agent (lowest price)
+  → $2,100 | 2 layovers | satisfaction 6/10
+
+Replay 2: Balanced agent (price + comfort)  
+  → $2,700 | direct flights | satisfaction 9/10
+
+Replay 3: Aggressive agent (maximize experience)
+  → $3,400 | over budget | satisfaction 10/10
+```
+
+The chain is the test harness. The context is the variable. The outcome is measurable. Every action is signed, so you can prove which configuration produced which result.
+
+**Applications:**
+
+| Use Case | How It Works |
+|----------|-------------|
+| Agent tuning | Replay the same week of work with different routing rules, measure outcomes |
+| Compliance verification | Replay a chain against new regulations, check every action still passes |
+| Training | New agent watches experienced agent's chain, learns patterns without proprietary access |
+| Dispute resolution | Independent auditor agent replays the chain, judges the outcome |
+| What-if analysis | "What would have happened with agent B instead of agent A?" |
+| A/B testing | Same inputs, different agent configs, compare signed results |
+
+Git gave developers `git bisect` to find where code broke. Chain replay finds where agent behavior diverged.
+
+**The analogy:**
+
+```
+git log          →  chain replay
+git diff         →  action comparison
+git blame        →  chain attribution  
+git bisect       →  behavior divergence detection
+git revert       →  dispute proof
+.gitignore       →  private entries (selective disclosure)
+remote push      →  DFOS gossip replication
+```
+
+Git is version control for code. This is version control for agency.
+
 ## Open Questions
 
 1. **Router model:** Should the router be a small fine-tuned model, or a prompted general model with a system prompt? Fine-tuned is cheaper at scale but requires training data. Prompted is immediate but costs more per classification.
