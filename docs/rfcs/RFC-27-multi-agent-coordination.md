@@ -324,6 +324,53 @@ The protocol gets 1% on every transaction regardless of which node it runs on. N
 
 A browser without keys is useless — it's just the old internet begging to be let in. An agent without a DID is useless — it's just a process begging to be trusted.
 
+## Standards & Governance
+
+### The Play
+
+Whoever defines conformance tests shapes the protocol. We did this with DFOS (106/106 tests — we wrote them, we defined "compliant"). Same play for agent coordination.
+
+### Agentic Coordination Standard (working name)
+
+A specification for how AI agents establish identity, build history, coordinate work, and prove accountability. Not a framework — a standard that any framework can implement.
+
+**What it defines:**
+
+| Area | Spec |
+|------|------|
+| Agent identity | DID + Ed25519 keypair. What makes an agent a "citizen" vs a disposable process. |
+| Chain format | Action entry schema, required fields, signing scheme, hash-linking. |
+| Privacy model | Private by default. Selective disclosure via UCAN delegation — scoped, time-limited, revocable. |
+| Coordination vocabulary | Message types: task, response, handoff, status, routing. Standardized so any router can parse them. |
+| Router behavior | Classification, rewriting, forwarding. What a compliant router does and doesn't do. |
+| Accountability proofs | How you prove an agent acted within bounds without exposing proprietary logic. |
+| Conformance suite | Pass these tests, you're compliant. Binary. No "partially compliant." |
+
+### What We Have vs What We Need
+
+| Component | Status |
+|-----------|--------|
+| Spec | RFC-27 (this document) — seed |
+| Reference implementation | Imajin — building now |
+| Conformance suite | Not started — model on DFOS test suite |
+| Collaborators | Brandon/DFOS (chain layer), Jeff/Tripian (travel vertical), CSA (IAM framework) |
+| Formal body | Not yet — working group first, foundation later |
+
+### Path to Credibility
+
+1. **Ship the implementation.** Working code > position papers. We have agent DIDs today.
+2. **Write the conformance suite.** Tests that define compliant behavior. Open source.
+3. **Publish the spec.** Not as an Imajin product — as an open standard with Imajin as reference implementation.
+4. **Recruit collaborators.** CSA already recommends DIDs for agent identity (whitepaper, April 2026). Brandon's DFOS is the chain substrate. Tripian validates in enterprise travel.
+5. **SCIP consortium.** Canadian sovereign AI infrastructure program ($890M). Bring the agentic coordination spec as the governance layer. "Canada doesn't just build AI compute — it defines how AI agents are held accountable."
+
+### Why This Works
+
+- **CSA** is writing guidelines for agent IAM. We're writing implementation. The one with working code gets invited to the table.
+- **Every compliance framework** (SOC2, GDPR, AI Act) will need agent audit trails. A standard for how those trails are structured is inevitable. Better to define it than react to it.
+- **Enterprise buyers** want standards, not proprietary platforms. "We implement the Agentic Coordination Standard" is a purchasing decision. "We use Imajin" is a vendor lock-in conversation.
+- **The moat is legitimacy.** Open standard + reference implementation + conformance suite = the position nobody can take from you by copying the code.
+
 ## Open Questions
 
 1. **Router model:** Should the router be a small fine-tuned model, or a prompted general model with a system prompt? Fine-tuned is cheaper at scale but requires training data. Prompted is immediate but costs more per classification.
