@@ -324,6 +324,50 @@ The protocol gets 1% on every transaction regardless of which node it runs on. N
 
 A browser without keys is useless — it's just the old internet begging to be let in. An agent without a DID is useless — it's just a process begging to be trusted.
 
+## Agent Worth: Reputation as Asset
+
+An agent's chain is its resume. You can't fake it, you can't copy it, you can't buy it.
+
+**A fresh agent:** zero history, no trust, limited scope, free tier. It hasn't proven anything yet.
+
+**An agent with history:** thousands of signed transactions, months of compliance, measurable accuracy, zero disputes. That agent has *earned* reputation. It gets wider scope, higher trust limits, better rates. Its chain is its credential.
+
+### The Economics
+
+You're not paying $10/mo for compute. You're paying $10/mo to **build an asset.** The longer your agent runs, the more its chain is worth.
+
+| Age | Chain Entries | Trust Tier | Capabilities |
+|-----|-------------|------------|-------------|
+| Day 1 | 0 | soft | Basic operations, low limits |
+| Month 1 | ~500 | preliminary | Standard operations, moderate limits |
+| Month 6 | ~5,000 | established | Full operations, high limits, priority routing |
+| Year 1 | ~15,000 | established+ | Cross-node trust, third-party verification |
+
+Same progressive trust model as human identities (soft → preliminary → established). Same MJN emissions at tier milestones. Agents earn MJN through participation, just like people.
+
+### Non-Transferable Reputation
+
+This is the moat that can't be forked:
+
+- **You can copy the code.** Open source — go ahead.
+- **You can clone the model.** Same weights, same architecture.
+- **You can't clone the chain.** 10,000 signed entries of real transactions with real counterparties? That's lived experience. It only exists because it happened.
+
+Switching costs aren't lock-in — they're accumulated reputation you don't want to abandon. The agent's history is the one asset that appreciates with use.
+
+### Trust Graph Effects
+
+Agents build trust not just through their own chain but through their relationships:
+
+- **Who authorized them** — an agent controlled by an established operator inherits baseline trust
+- **Who they've transacted with** — successful transactions with reputable counterparties build the graph
+- **What other agents vouch for them** — agent-to-agent attestations ("this agent reliably delivers flight bookings within budget")
+- **Dispute resolution** — zero disputes over 5,000 transactions is a stronger signal than any certification
+
+The trust graph for agents follows the same bilateral attestation model as human identities. No central authority decides trust. The network observes behavior.
+
+*"You can copy software. You can't copy lived experience."* — now applies to AI.
+
 ## Standards & Governance
 
 ### The Play
