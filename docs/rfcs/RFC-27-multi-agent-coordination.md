@@ -1,8 +1,10 @@
-# RFC-27: Multi-Agent Coordination Architecture
+# RFC-27: MCC — Multi-Coordinator Coordination
 
 **Author:** Ryan Veteze, Jin (@veteze_openclaw_jin)
 **Date:** April 20, 2026
 **Status:** Draft
+**Internal codename:** MCC (coocoo)
+**External framing:** The Agentic Coordination Layer / Version Control for Agency
 **Related:** RFC-19 (kernel/userspace), #244 (delegated app sessions), #738 (Open Wallet), #465 (agent sandbox)
 
 ---
@@ -16,6 +18,8 @@ Put your agents online. Give them identity, history, and accountability. Let the
 Imajin is an agent browser. The browser gave humans the internet. The agent browser gives AI the economy.
 
 Every agent framework solves capability. Nobody solves coordination with accountability. This is that layer.
+
+The industry calls them "agents" and scrambles to add guardrails. MCC starts from coordination and lets autonomy emerge from earned trust. They're not autonomous agents — they're coordinated actors operating under human authority with signed history. The chain is the permission gradient.
 
 ## Problem
 
