@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     const body = await request.json();
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     const [survey] = await db.insert(surveys).values({
       id: generateId('survey'),
-      did: identity.id,
+      did,
       handle: identity.handle || null,
       title,
       description: description || null,
@@ -79,10 +80,11 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
+  const ownerDid = identity.actingAs || identity.id;
 
   try {
     const userSurveys = await db.query.surveys.findMany({
-      where: (surveys, { eq }) => eq(surveys.did, identity.id),
+      where: (surveys, { eq }) => eq(surveys.did, ownerDid),
       orderBy: (surveys, { desc }) => [desc(surveys.createdAt)],
     });
 

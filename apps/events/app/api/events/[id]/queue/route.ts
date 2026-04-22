@@ -20,6 +20,7 @@ export async function GET(
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
   const { searchParams } = new URL(request.url);
   const ticketTypeId = searchParams.get('ticketTypeId');
 
@@ -34,7 +35,7 @@ export async function GET(
       .from(ticketQueue)
       .where(and(
         eq(ticketQueue.ticketTypeId, ticketTypeId),
-        eq(ticketQueue.did, identity.id),
+        eq(ticketQueue.did, did),
         eq(ticketQueue.status, 'waiting')
       ))
       .limit(1);
@@ -84,6 +85,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
   const { id } = await params;
 
   try {
@@ -114,7 +116,7 @@ export async function POST(
       .from(ticketQueue)
       .where(and(
         eq(ticketQueue.ticketTypeId, ticketTypeId),
-        eq(ticketQueue.did, identity.id),
+        eq(ticketQueue.did, did),
         eq(ticketQueue.status, 'waiting')
       ))
       .limit(1);
@@ -140,7 +142,7 @@ export async function POST(
     const [entry] = await db.insert(ticketQueue).values({
       id: queueId,
       ticketTypeId,
-      did: identity.id,
+      did,
       position: nextPosition,
       status: 'waiting',
     }).returning();
@@ -170,6 +172,7 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
   const { searchParams } = new URL(request.url);
   const ticketTypeId = searchParams.get('ticketTypeId');
 
@@ -182,7 +185,7 @@ export async function DELETE(
       .delete(ticketQueue)
       .where(and(
         eq(ticketQueue.ticketTypeId, ticketTypeId),
-        eq(ticketQueue.did, identity.id),
+        eq(ticketQueue.did, did),
         eq(ticketQueue.status, 'waiting')
       ))
       .returning();

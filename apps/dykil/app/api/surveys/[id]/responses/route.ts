@@ -30,6 +30,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   try {
     // Get survey and check ownership
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return errorResponse('Survey not found', 404, cors);
     }
 
-    if (survey.did !== identity.id) {
+    if (survey.did !== did) {
       return errorResponse('Not authorized to view responses', 403, cors);
     }
 

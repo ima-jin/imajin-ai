@@ -17,6 +17,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
 
   const { identity } = authResult;
+  const did = identity.actingAs || identity.id;
 
   const courseResult = await db.select().from(courses).where(eq(courses.slug, slug)).limit(1);
   if (!courseResult[0]) return errorResponse('Course not found', 404);
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const enrollResult = await db.select().from(enrollments)
     .where(and(
       eq(enrollments.courseId, course.id),
-      eq(enrollments.studentDid, identity.id),
+      eq(enrollments.studentDid, did),
     )).limit(1);
 
   if (enrollResult.length === 0) {

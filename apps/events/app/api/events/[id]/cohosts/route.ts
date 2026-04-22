@@ -159,7 +159,7 @@ export async function POST(
     // Add to pod as cohost
     await sql`
       INSERT INTO connections.pod_members (pod_id, did, role, added_by, joined_at)
-      VALUES (${event.podId}, ${coHostDid}, 'cohost', ${identity.id}, NOW())
+      VALUES (${event.podId}, ${coHostDid}, 'cohost', ${did}, NOW())
       ON CONFLICT (pod_id, did) DO NOTHING
     `;
 
