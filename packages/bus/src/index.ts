@@ -13,4 +13,4 @@ registerReactor('settle', settleReactor);
 export { publish } from './publish';
 export { registerReactor } from './registry';
 export { getChainConfig } from './config';
-export type { BusEvent, ReactorConfig, ChainConfig, ReactorHandler } from './types';
+export type { BusEvent, BusEventMap, BusEventType, ReactorConfig, ChainConfig, ReactorHandler } from './types';

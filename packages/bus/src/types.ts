@@ -23,3 +23,85 @@ export interface ChainConfig {
 }
 
 export type ReactorHandler = (event: BusEvent, config: Record<string, unknown>) => Promise<void>;
+
+/** Type-safe event payloads — compiler catches bad call sites */
+export interface BusEventMap {
+  'identity.created': {
+    did?: string;
+    scope: string;
+    subtype: string | null;
+    tier: string;
+    platformDid?: string;
+    context_id: string;
+    context_type: string;
+  };
+  'identity.verified.preliminary': {
+    did?: string;
+    scope: string;
+    subtype: string | null;
+    tier: string;
+    context_id: string;
+    context_type: string;
+  };
+  'connection.accepted': {
+    invite_code: string;
+    context_id: string;
+    context_type: string;
+    name: string;
+    notifyEmail?: string;
+    email?: string;
+  };
+  'vouch': {
+    invite_code: string;
+    context_id: string;
+    context_type: string;
+  };
+  'tip.granted': {
+    amount: number;
+    currency: string;
+    context_id: string;
+    context_type: string;
+  };
+  'ticket.purchased': {
+    ticketId: string;
+    eventId: string;
+    amount: number;
+    currency: string;
+    context_id: string;
+    context_type: string;
+    to?: string;
+    interestDids?: string[];
+  };
+  'order.completed': {
+    orderId: string;
+    eventId: string;
+    eventDid: string;
+    buyerDid: string;
+    amount: number;
+    currency: string;
+    fairManifest: Record<string, unknown> | null;
+    ticketIds?: string[];
+    ticketTypeId?: string;
+    stripeSessionId?: string;
+    funded: boolean;
+    funded_provider: string;
+    email?: string;
+    eventTitle?: string;
+    ticketType?: string;
+    metadata?: Record<string, unknown>;
+  };
+  'listing.purchased': {
+    context_id: string;
+    context_type: string;
+    amount: number;
+    currency: string;
+    fairManifest: Record<string, unknown> | null;
+    funded: boolean;
+    funded_provider: string;
+    buyerDid: string;
+    metadata: Record<string, unknown>;
+    interestDids: string[];
+  };
+}
+
+export type BusEventType = keyof BusEventMap;

@@ -1,11 +1,14 @@
 import { createLogger } from '@imajin/logger';
 import { getChainConfig } from './config';
 import { getReactor } from './registry';
-import type { BusEvent } from './types';
+import type { BusEvent, BusEventMap, BusEventType } from './types';
 
 const log = createLogger('bus');
 
-export async function publish(type: string, event: Omit<BusEvent, 'type'>): Promise<void> {
+export async function publish<T extends BusEventType>(
+  type: T,
+  event: { issuer: string; subject: string; scope: string; payload: BusEventMap[T]; correlationId?: string; timestamp?: string }
+): Promise<void> {
   const fullEvent: BusEvent = {
     ...event,
     type,
