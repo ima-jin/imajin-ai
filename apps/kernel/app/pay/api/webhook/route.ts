@@ -18,13 +18,11 @@ import Stripe from 'stripe';
 import { db, transactions, feeLedger, balances, balanceRollups } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
-import { notify } from '@imajin/notify';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
+import { publish } from '@imajin/bus';
 import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
 
 const log = createLogger('kernel');
-const payEvents = createEmitter('pay');
 
 // Lazy Stripe initialization to avoid build-time errors in CI
 let _stripe: Stripe | null = null;
@@ -173,7 +171,12 @@ async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
 
   log.info({ stripeId: paymentIntent.id }, 'Transaction updated');
 
-  payEvents.emit({ action: 'payment.charge', payload: { paymentIntentId: paymentIntent.id, amount: paymentIntent.amount, currency: paymentIntent.currency, service: paymentIntent.metadata.service } });
+  publish('payment.charge', {
+    issuer: process.env.PLATFORM_DID || 'system',
+    subject: paymentIntent.metadata?.buyerDid || paymentIntent.metadata?.from_did || 'unknown',
+    scope: 'pay',
+    payload: { paymentIntentId: paymentIntent.id, amount: paymentIntent.amount, currency: paymentIntent.currency, service: paymentIntent.metadata.service },
+  }).catch((err) => log.error({ err: String(err) }, 'payment.charge publish error'));
 
   // Notify originating service
   if (paymentIntent.metadata.service === 'coffee') {
@@ -262,7 +265,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
         status: 'paid_out',
       });
 
-      payEvents.emit({ action: 'fee.record', payload: { transactionId: tx.id, recipientDid: 'stripe:processor', role: 'processor', amountCents: processingFeeCents, currency, estimated: actualStripeFeeCents === null } });
+      publish('fee.record', {
+        issuer: process.env.PLATFORM_DID || 'system',
+        subject: 'stripe:processor',
+        scope: 'pay',
+        payload: { transactionId: tx.id, recipientDid: 'stripe:processor', role: 'processor', amountCents: processingFeeCents, currency, estimated: actualStripeFeeCents === null },
+      }).catch((err) => log.error({ err: String(err) }, 'fee.record publish error'));
 
       // Processing fee reconciliation: credit or debit MJNx based on estimate vs actual
       if (actualStripeFeeCents !== null && actualStripeFeeCents !== estimatedFeeCents) {
@@ -298,7 +306,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
             });
 
             log.info({ transactionId: tx.id, sellerDid, rebateCents: diffCents, estimatedFeeCents, actualStripeFeeCents }, '[webhook] Processing fee rebate → MJNx');
-            payEvents.emit({ action: 'fee.rebate', payload: { transactionId: tx.id, sellerDid, amountCents: diffCents, currency } });
+            publish('fee.rebate', {
+              issuer: process.env.PLATFORM_DID || 'system',
+              subject: sellerDid,
+              scope: 'pay',
+              payload: { transactionId: tx.id, sellerDid, amountCents: diffCents, currency },
+            }).catch((err) => log.error({ err: String(err) }, 'fee.rebate publish error'));
 
           } else {
             // Under-collected → debit difference from seller's MJNx balance
@@ -326,7 +339,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
             });
 
             log.info({ transactionId: tx.id, sellerDid, surchargeCents: diffCents, estimatedFeeCents, actualStripeFeeCents }, '[webhook] Processing fee surcharge → MJNx debit');
-            payEvents.emit({ action: 'fee.surcharge', payload: { transactionId: tx.id, sellerDid, amountCents: diffCents, currency } });
+            publish('fee.surcharge', {
+              issuer: process.env.PLATFORM_DID || 'system',
+              subject: sellerDid,
+              scope: 'pay',
+              payload: { transactionId: tx.id, sellerDid, amountCents: diffCents, currency },
+            }).catch((err) => log.error({ err: String(err) }, 'fee.surcharge publish error'));
           }
         }
       }
@@ -353,7 +371,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
           status,
         });
 
-        payEvents.emit({ action: 'fee.record', payload: { transactionId: tx.id, recipientDid, role: entry.role, amountCents, currency } });
+        publish('fee.record', {
+          issuer: process.env.PLATFORM_DID || 'system',
+          subject: recipientDid,
+          scope: 'pay',
+          payload: { transactionId: tx.id, recipientDid, role: entry.role, amountCents, currency },
+        }).catch((err) => log.error({ err: String(err) }, 'fee.record publish error'));
 
         // Increment balance (skip unresolved and seller — seller's money is already in their Stripe)
         if (recipientDid !== 'unresolved' && !isSeller) {
@@ -425,27 +448,19 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     const buyerEmail = session.customer_email || session.customer_details?.email || undefined;
     const buyerName = session.customer_details?.name || undefined;
 
-    notify.send({
-      to: sellerDid,
-      scope: "market:sale",
-      data: {
-        listingTitle,
-        amount,
-        currency,
-        ...(buyerName && { buyerName }),
-      },
+    publish('market.sale', {
+      issuer: process.env.PLATFORM_DID || 'system',
+      subject: sellerDid,
+      scope: 'market',
+      payload: { listingTitle, amount, currency, ...(buyerName && { buyerName }) },
     }).catch((err) => log.error({ err: String(err) }, 'Notify market:sale error'));
 
     if (buyerDid) {
-      notify.send({
-        to: buyerDid,
-        scope: "market:purchase",
-        data: {
-          ...(buyerEmail && { email: buyerEmail }),
-          listingTitle,
-          amount,
-          currency,
-        },
+      publish('market.purchase', {
+        issuer: process.env.PLATFORM_DID || 'system',
+        subject: buyerDid,
+        scope: 'market',
+        payload: { ...(buyerEmail && { email: buyerEmail }), listingTitle, amount, currency },
       }).catch((err) => log.error({ err: String(err) }, 'Notify market:purchase error'));
     }
   }

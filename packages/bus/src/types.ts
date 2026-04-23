@@ -44,17 +44,25 @@ export interface BusEventMap {
     context_type: string;
   };
   'connection.accepted': {
-    invite_code: string;
+    invite_code?: string;
     context_id: string;
     context_type: string;
-    name: string;
+    name?: string;
     notifyEmail?: string;
     email?: string;
+    source?: string;
+    match_id?: string;
+    node_id?: string;
+    node_name?: string;
   };
   'vouch': {
-    invite_code: string;
+    invite_code?: string;
     context_id: string;
     context_type: string;
+    source?: string;
+    match_id?: string;
+    node_id?: string;
+    node_name?: string;
   };
   'tip.granted': {
     amount: number;
@@ -186,6 +194,97 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
     delivery: string;
+  };
+  'payment.refund': {
+    paymentId: string;
+    amount: number;
+    reversalId: string;
+    service: string;
+  };
+  'payment.charge': {
+    paymentIntentId: string;
+    amount: number;
+    currency: string;
+    service: string;
+  };
+  'fee.record': {
+    transactionId: string;
+    recipientDid: string;
+    role: string;
+    amountCents: number;
+    currency: string;
+  };
+  'fee.rebate': {
+    transactionId: string;
+    sellerDid: string;
+    amountCents: number;
+    currency: string;
+  };
+  'fee.surcharge': {
+    transactionId: string;
+    sellerDid: string;
+    amountCents: number;
+    currency: string;
+  };
+  'customer': {
+    role: string;
+    context_id: string;
+    context_type: string;
+  };
+  'transaction.settled': {
+    total_amount: number;
+    recipients: number;
+    source: string;
+    payerChainVerified: boolean;
+    payeeChainVerified: boolean;
+    context_id: string;
+    context_type: string;
+  };
+  'handle.claimed': {
+    handle: string;
+    context_id: string;
+    context_type: string;
+  };
+  'profile.update': {
+    profileDid: string;
+  };
+  'stub.created': {
+    name: string;
+    handle: string | null;
+    category: string | null;
+    context_id: string;
+    context_type: string;
+  };
+  'bump.confirm': {
+    matchId: string;
+    didA: string;
+    didB: string;
+  };
+  'connection.create': {
+    otherDid: string;
+    source: string;
+  };
+  'bump.match': {
+    matchId: string;
+    otherDid: string;
+    nodeId: string;
+  };
+  'app.register': {
+    nodeId: string;
+    hostname: string;
+    buildHash: string;
+  };
+  'market.sale': {
+    listingTitle?: string;
+    amount: number;
+    currency: string;
+    buyerName?: string;
+  };
+  'market.purchase': {
+    email?: string;
+    listingTitle?: string;
+    amount: number;
+    currency: string;
   };
 }
 

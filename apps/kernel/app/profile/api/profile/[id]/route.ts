@@ -7,10 +7,9 @@ import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { eq, or, and, isNull, count } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
+import { publish } from '@imajin/bus';
 
 const log = createLogger('kernel');
-const events = createEmitter('profile');
 
 // Configure ed25519 with sha512 (required for @noble/ed25519 v3)
 ed.hashes.sha512 = sha512;
@@ -283,7 +282,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       .where(eq(profiles.did, existing.did))
       .returning();
 
-    events.emit({ action: 'profile.update', did: identity.id, payload: { profileDid: existing.did } });
+    publish('profile.update', { issuer: identity.id, subject: identity.id, scope: 'profile', payload: { profileDid: existing.did } }).catch(() => {});
 
     return NextResponse.json(updated, { headers: cors });
   } catch (error) {

@@ -4,7 +4,7 @@ import { eq, and, isNull, count } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { generateKeypair } from '@imajin/auth';
 import { didFromPublicKey, encryptPrivateKey } from '@/src/lib/auth/crypto';
-import { emitAttestation } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -169,13 +169,11 @@ export async function POST(request: NextRequest) {
     });
 
     // Emit attestation (fire-and-forget)
-    emitAttestation({
-      issuer_did: caller.id,
-      subject_did: stubDid,
-      type: 'stub.created',
-      context_id: stubDid,
-      context_type: 'stub',
-      payload: { name: trimmedName, handle: handle || null, category: category || null },
+    publish('stub.created', {
+      issuer: caller.id,
+      subject: stubDid,
+      scope: 'profile',
+      payload: { name: trimmedName, handle: handle || null, category: category || null, context_id: stubDid, context_type: 'stub' },
     }).catch((err) => log.error({ err: String(err) }, '[stubs] Attestation failed (non-fatal)'));
 
     return NextResponse.json(

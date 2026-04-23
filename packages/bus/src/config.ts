@@ -89,6 +89,54 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'connection.invited': [
     { type: 'attestation', config: { attestationType: 'connection.invited' }, enabled: true },
   ],
+  'payment.refund': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'payment.charge': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'fee.record': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'fee.rebate': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'fee.surcharge': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'customer': [
+    { type: 'attestation', config: { attestationType: 'customer' }, enabled: true },
+  ],
+  'transaction.settled': [
+    { type: 'attestation', config: { attestationType: 'transaction.settled' }, enabled: true },
+  ],
+  'handle.claimed': [
+    { type: 'attestation', config: { attestationType: 'handle.claimed' }, enabled: true },
+  ],
+  'profile.update': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'stub.created': [
+    { type: 'attestation', config: { attestationType: 'stub.created' }, enabled: true },
+  ],
+  'bump.confirm': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'connection.create': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'bump.match': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'app.register': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'market.sale': [
+    { type: 'notify', config: { scope: 'market:sale' }, enabled: true },
+  ],
+  'market.purchase': [
+    { type: 'notify', config: { scope: 'market:purchase' }, enabled: true },
+  ],
 };
 
 export function getChainConfig(eventType: string, _scope: string): ChainConfig {
