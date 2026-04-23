@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, storedKeys, identityMembers, profiles } from '@/src/db';
 import { eq, and, isNull, inArray } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
-import { generateKeypair } from '@imajin/auth';
+import { requireAuth, generateKeypair } from '@imajin/auth';
 import { didFromPublicKey, encryptPrivateKey } from '@/src/lib/auth/crypto';
-import { emitAttestation } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -159,13 +158,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Emit attestation (fire-and-forget)
-    emitAttestation({
-      issuer_did: caller.id,
-      subject_did: groupDid,
-      type: 'group.created',
-      context_id: groupDid,
-      context_type: 'group',
-      payload: { scope, name: name.trim(), handle: handle || null },
+    publish('group.created', {
+      issuer: caller.id,
+      subject: groupDid,
+      scope: 'auth',
+      payload: { context_id: groupDid, context_type: 'group', scope, name: name.trim(), handle: handle || null },
     }).catch((err) => log.error({ err: String(err) }, '[groups] Attestation failed (non-fatal)'));
 
     return NextResponse.json({ did: groupDid, scope, handle: handle || null, name: name.trim() }, { status: 201 });

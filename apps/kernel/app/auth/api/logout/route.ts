@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
 import { corsHeaders } from '@imajin/config';
-import { createEmitter } from '@imajin/emit';
-
-const events = createEmitter('kernel');
+import { publish } from '@imajin/bus';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -24,7 +22,14 @@ export async function POST(request: NextRequest) {
     maxAge: 0,
   });
 
-  events.emit({ action: 'session.destroy', did: session?.sub });
+  if (session?.sub) {
+    publish('session.destroyed', {
+      issuer: session.sub,
+      subject: session.sub,
+      scope: 'kernel',
+      payload: {},
+    });
+  }
 
   return response;
 }

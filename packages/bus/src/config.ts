@@ -32,6 +32,27 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'settle', config: {}, await: true, enabled: true },
     { type: 'notify', config: { scope: 'market:purchase' }, enabled: true },
   ],
+  'attestation.created': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'group.created': [
+    { type: 'attestation', config: { attestationType: 'group.created' }, enabled: true },
+  ],
+  'group.controller.added': [
+    { type: 'attestation', config: { attestationType: 'group.member.added' }, enabled: true },
+  ],
+  'group.controller.removed': [
+    { type: 'attestation', config: { attestationType: 'group.member.removed' }, enabled: true },
+  ],
+  'session.created': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'session.destroyed': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'scope.onboard': [
+    { type: 'attestation', config: { attestationType: 'scope.onboard' }, enabled: true },
+  ],
 };
 
 export function getChainConfig(eventType: string, _scope: string): ChainConfig {

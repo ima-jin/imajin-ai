@@ -102,6 +102,35 @@ export interface BusEventMap {
     metadata: Record<string, unknown>;
     interestDids: string[];
   };
+  'attestation.created': {
+    attestationId: string;
+    type: string;
+    subjectDid: string;
+  };
+  'group.created': {
+    context_id: string;
+    context_type: string;
+    scope: string;
+    name: string;
+    handle: string | null;
+  };
+  'group.controller.added': {
+    context_id: string;
+    context_type: string;
+    role: string;
+  };
+  'group.controller.removed': {
+    context_id: string;
+    context_type: string;
+  };
+  'session.created': {
+    tier: string;
+  };
+  'session.destroyed': Record<string, never>;
+  'scope.onboard': {
+    context_id: string;
+    context_type: string;
+  };
 }
 
 export type BusEventType = keyof BusEventMap;

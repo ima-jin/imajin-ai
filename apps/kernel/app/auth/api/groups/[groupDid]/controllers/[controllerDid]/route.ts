@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identityMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
-import { requireAuth, emitAttestation } from '@imajin/auth';
+import { requireAuth } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -74,13 +75,11 @@ export async function DELETE(
         )
       );
 
-    emitAttestation({
-      issuer_did: caller.id,
-      subject_did: controllerDid,
-      type: 'group.member.removed',
-      context_id: groupDid,
-      context_type: 'group',
-      payload: {},
+    publish('group.controller.removed', {
+      issuer: caller.id,
+      subject: controllerDid,
+      scope: 'auth',
+      payload: { context_id: groupDid, context_type: 'group' },
     }).catch((err) => log.error({ err: String(err) }, '[groups] Attestation failed (non-fatal)'));
 
     return NextResponse.json({ ok: true });
