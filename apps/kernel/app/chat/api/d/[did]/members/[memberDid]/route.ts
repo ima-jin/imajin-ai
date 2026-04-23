@@ -3,8 +3,7 @@ import { getClient } from '@imajin/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
-import { notify } from '@imajin/notify';
-import { emitAttestation } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -93,16 +92,12 @@ export async function DELETE(
         AND member_did = ${memberDid}
     `;
 
-    notify.interest({ did: memberDid, attestationType: 'group.member.removed' })
-      .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
-
-    emitAttestation({
-      issuer_did: identity.id,
-      subject_did: memberDid,
-      type: 'group.member.removed',
-      context_id: did,
-      context_type: 'chat.group',
-    }).catch((err: unknown) => log.error({ err: String(err) }, 'Attestation (group.member.removed) error'));
+    publish('group.member.removed', {
+      issuer: identity.id,
+      subject: memberDid,
+      scope: 'chat',
+      payload: { context_id: did, context_type: 'chat.group' },
+    }).catch((err: unknown) => log.error({ err: String(err) }, 'Group member removed publish error'));
 
     // Insert system message into the conversation timeline
     const systemMsgId = generateId('msg');

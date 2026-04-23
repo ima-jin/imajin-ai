@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, pods, podMembers } from '@/src/db';
-import { emitAttestation } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { eq, and, isNull } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { createLogger } from '@imajin/logger';
@@ -40,13 +40,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }).returning();
 
   if (session.chainVerified) {
-    emitAttestation({
-      issuer_did: session.did,
-      subject_did: body.did,
-      type: 'pod.member.added',
-      context_id: params.id,
-      context_type: 'pod',
-      payload: { role: member.role },
+    publish('pod.member.added', {
+      issuer: session.did,
+      subject: body.did,
+      scope: 'connections',
+      payload: { context_id: params.id, context_type: 'pod', role: member.role },
     }).catch((err: unknown) => {
       log.error({ err: String(err) }, 'Attestation (pod.member.added) error');
     });
@@ -79,13 +77,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (!updated) return NextResponse.json({ error: 'Member not found' }, { status: 404 });
 
   if (session.chainVerified) {
-    emitAttestation({
-      issuer_did: session.did,
-      subject_did: body.did,
-      type: 'pod.role.changed',
-      context_id: params.id,
-      context_type: 'pod',
-      payload: { role: body.role },
+    publish('pod.role.changed', {
+      issuer: session.did,
+      subject: body.did,
+      scope: 'connections',
+      payload: { context_id: params.id, context_type: 'pod', role: body.role },
     }).catch((err: unknown) => {
       log.error({ err: String(err) }, 'Attestation (pod.role.changed) error');
     });
@@ -118,13 +114,11 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   if (!removed) return NextResponse.json({ error: 'Member not found' }, { status: 404 });
 
   if (session.chainVerified) {
-    emitAttestation({
-      issuer_did: session.did,
-      subject_did: body.did,
-      type: 'pod.member.removed',
-      context_id: params.id,
-      context_type: 'pod',
-      payload: {},
+    publish('pod.member.removed', {
+      issuer: session.did,
+      subject: body.did,
+      scope: 'connections',
+      payload: { context_id: params.id, context_type: 'pod' },
     }).catch((err: unknown) => {
       log.error({ err: String(err) }, 'Attestation (pod.member.removed) error');
     });

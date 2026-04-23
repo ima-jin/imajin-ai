@@ -4,7 +4,8 @@ import { eq, desc, and, sql, isNull, count } from 'drizzle-orm';
 import { db, invites, profiles, podMembers } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
-import { emitAttestation, isVerifiedTier } from '@imajin/auth';
+import { isVerifiedTier } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { buildPublicUrl } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 
@@ -144,13 +145,11 @@ export async function POST(request: NextRequest) {
       log.error({ err: String(err) }, 'Failed to send invite email');
     });
 
-    emitAttestation({
-      issuer_did: session.did,
-      subject_did: session.did,
-      type: 'connection.invited',
-      context_id: invite.id,
-      context_type: 'connection',
-      payload: { delivery: invite.delivery },
+    publish('connection.invited', {
+      issuer: session.did,
+      subject: session.did,
+      scope: 'connections',
+      payload: { context_id: invite.id, context_type: 'connection', delivery: invite.delivery },
     }).catch((err: unknown) => {
       log.error({ err: String(err) }, 'Attestation (connection.invited) error');
     });
@@ -195,13 +194,11 @@ export async function POST(request: NextRequest) {
 
   const inviteUrl = `${buildPublicUrl('connections')}/invite/${session.did}/${code}`;
 
-  emitAttestation({
-    issuer_did: session.did,
-    subject_did: session.did,
-    type: 'connection.invited',
-    context_id: invite.id,
-    context_type: 'connection',
-    payload: { delivery: invite.delivery },
+  publish('connection.invited', {
+    issuer: session.did,
+    subject: session.did,
+    scope: 'connections',
+    payload: { context_id: invite.id, context_type: 'connection', delivery: invite.delivery },
   }).catch((err: unknown) => {
     log.error({ err: String(err) }, 'Attestation (connection.invited) error');
   });

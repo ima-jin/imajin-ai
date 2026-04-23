@@ -1,16 +1,14 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
+import { publish } from '@imajin/bus';
 import { eq, and, desc, lt, isNull, inArray, ilike } from 'drizzle-orm';
 
 const log = createLogger('kernel');
-const chatEvents = createEmitter('chat');
 import { db, conversationsV2, messagesV2, messageReactionsV2, profiles } from '@/src/db';
 import { requireAuth, isVerifiedTier } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';
 import { hasCapability, requiredCapability, CAPABILITY_MESSAGES } from '@/src/lib/chat/capabilities';
-import { notify } from '@imajin/notify';
 import { checkAccess } from '@/src/lib/kernel/access';
 
 const MENTION_REGEX = /@([a-zA-Z0-9_-]+)/g;
@@ -223,7 +221,7 @@ export async function POST(
       where: eq(messagesV2.id, messageId),
     });
 
-    chatEvents.emit({ action: 'message.send', did: effectiveDid, payload: { conversationDid: conversationDid, messageId } });
+    publish('message.send', { issuer: effectiveDid, subject: effectiveDid, scope: 'chat', payload: { conversationDid, messageId } }).catch(() => {});
 
     // Broadcast via WebSocket
     if (message) {
@@ -245,20 +243,18 @@ export async function POST(
           try {
             const mentionedDid = await resolveHandleToDid(handle);
             if (!mentionedDid || mentionedDid === effectiveDid) continue;
-            notify.send({
-              to: mentionedDid,
-              scope: 'chat:mention',
-              data: {
+            publish('chat.mention', {
+              issuer: effectiveDid,
+              subject: mentionedDid,
+              scope: 'chat',
+              payload: {
                 conversationId: conversationDid,
                 messageId,
                 senderName: identity.handle || identity.id.slice(0, 16),
                 messagePreview: messageText.slice(0, 100),
+                interestDids: [mentionedDid],
               },
-            }).catch((err: unknown) => log.error({ err: String(err) }, 'Mention notify error'));
-
-            // Record interest signal — chat.mention → chat scope
-            notify.interest({ did: mentionedDid, attestationType: 'chat.mention' })
-              .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
+            }).catch((err: unknown) => log.error({ err: String(err) }, 'Mention publish error'));
           } catch (err) {
             log.error({ err: String(err) }, 'Handle resolution error');
           }
