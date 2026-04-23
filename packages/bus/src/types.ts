@@ -131,6 +131,62 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
+  'message.send': {
+    conversationDid: string;
+    messageId: string;
+  };
+  'conversation.create': {
+    conversationDid: string;
+    type: string;
+    name?: string;
+  };
+  'group.member.left': {
+    context_id: string;
+    context_type: string;
+  };
+  'group.member.removed': {
+    context_id: string;
+    context_type: string;
+  };
+  'group.member.added': {
+    context_id: string;
+    context_type: string;
+  };
+  'chat.mention': {
+    conversationId: string;
+    messageId: string;
+    senderName: string;
+    messagePreview: string;
+    interestDids?: string[];
+  };
+  'connection.disconnect': {
+    otherDid: string;
+  };
+  'pod.member.added': {
+    context_id: string;
+    context_type: string;
+    role?: string;
+  };
+  'pod.role.changed': {
+    context_id: string;
+    context_type: string;
+    role: string;
+  };
+  'pod.member.removed': {
+    context_id: string;
+    context_type: string;
+  };
+  'pod.created': {
+    context_id: string;
+    context_type: string;
+    name: string;
+    type: string;
+  };
+  'connection.invited': {
+    context_id: string;
+    context_type: string;
+    delivery: string;
+  };
 }
 
 export type BusEventType = keyof BusEventMap;
