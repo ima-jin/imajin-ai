@@ -6,16 +6,13 @@ import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt'
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { generateId } from '@/src/lib/kernel/utils';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
-import { emitAttestation } from '@imajin/auth';
-import { notify } from '@imajin/notify';
 import { sendEmail } from '@imajin/email';
+import { bus } from '@imajin/bus';
 import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-tokens';
 import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
 
 const log = createLogger('kernel');
-const events = createEmitter('kernel');
 
 /**
  * POST /api/register
@@ -260,30 +257,16 @@ export async function POST(request: NextRequest) {
 
     response.cookies.set(cookieConfig.name, token, cookieConfig.options);
 
-    events.emit({ action: 'identity.register', did: identity.id, payload: { scope: identity.scope, subtype: identity.subtype, tier: 'preliminary' } });
-
-    // Emit identity.created attestation → triggers 10 MJN emission
-    emitAttestation({
-      issuer_did: identity.id,
-      subject_did: identity.id,
-      type: 'identity.created',
-      context_id: identity.id,
-      context_type: 'identity',
-      payload: { tier: 'preliminary', scope: identity.scope, subtype: identity.subtype },
-    }).catch((err) => log.error({ err: String(err) }, '[register] Attestation (identity.created) error (non-fatal)'));
-
-    // Emit identity.verified.preliminary → triggers 100 MJN emission
+    // Emit identity.created + identity.verified.preliminary attestations, and system event
     // Key-based registrations are preliminary by definition (proved key ownership).
-    // checkPreliminaryEligibility only fires for 'soft' tier, so we emit directly here.
     const platformDid = await getNodeDid();
-    emitAttestation({
-      issuer_did: platformDid,
-      subject_did: identity.id,
-      type: 'identity.verified.preliminary',
-      context_id: identity.id,
-      context_type: 'identity',
-      payload: { tier: 'preliminary', scope: identity.scope, subtype: identity.subtype },
-    }).catch((err) => log.error({ err: String(err) }, '[register] Attestation (identity.verified.preliminary) error (non-fatal)'));
+    bus.publish('identity.registered', {
+      did: identity.id,
+      scope: identity.scope,
+      subtype: identity.subtype,
+      tier: 'preliminary',
+      platformDid,
+    }).catch((err) => log.error({ err: String(err) }, '[register] bus identity.registered error (non-fatal)'));
 
     // Create profile row so the user is visible/discoverable
     try {
@@ -407,8 +390,6 @@ export async function POST(request: NextRequest) {
             set: { disconnectedAt: null, connectedAt: new Date() },
           });
 
-        events.emit({ action: 'connection.create', did: identity.id, payload: { otherDid: inviteData.fromDid, source: 'invite' } });
-
         const now = new Date().toISOString();
         await db
           .update(invites)
@@ -421,41 +402,15 @@ export async function POST(request: NextRequest) {
           })
           .where(eq(invites.code, inviteCode));
 
-        emitAttestation({
-          issuer_did: identity.id,
-          subject_did: inviteData.fromDid,
-          type: 'connection.accepted',
-          context_id: podId,
-          context_type: 'connection',
-          payload: { invite_code: inviteCode },
-        }).catch((err) => log.error({ err: String(err) }, '[register] Attestation (connection.accepted) error (non-fatal)'));
-
-        emitAttestation({
-          issuer_did: inviteData.fromDid,
-          subject_did: identity.id,
-          type: 'vouch',
-          context_id: podId,
-          context_type: 'connection',
-          payload: { invite_code: inviteCode },
-        }).catch((err) => log.error({ err: String(err) }, '[register] Attestation (vouch) error (non-fatal)'));
-
-        // Notify inviter — fire and forget
-        (async () => {
-          const [inviterProfile] = await db
-            .select()
-            .from(profiles)
-            .where(eq(profiles.did, inviteData.fromDid))
-            .limit(1);
-
-          notify.send({
-            to: inviteData.fromDid,
-            scope: 'connection:invite-accepted',
-            data: {
-              ...(inviterProfile?.contactEmail && { email: inviterProfile.contactEmail }),
-              name: identity.handle || identity.id.slice(0, 16),
-            },
-          }).catch((err: unknown) => log.error({ err: String(err) }, '[register] Notify error (non-fatal)'));
-        })().catch((err: unknown) => log.error({ err: String(err) }, '[register] Notify setup error (non-fatal)'));
+        // Publish connection.accepted — fires attestations (connection.accepted, vouch),
+        // system emit (connection.create), and notify to inviter
+        bus.publish('connection.accepted', {
+          did: identity.id,
+          fromDid: inviteData.fromDid,
+          newUserLabel: identity.handle || identity.id.slice(0, 16),
+          podId,
+          inviteCode,
+        }).catch((err) => log.error({ err: String(err) }, '[register] bus connection.accepted error (non-fatal)'));
 
         const acceptedResponse = NextResponse.json({
           did: identity.id,
