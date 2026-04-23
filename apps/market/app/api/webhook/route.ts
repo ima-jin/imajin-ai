@@ -9,10 +9,8 @@ import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('market');
 import { db, listings } from '@/db';
-import { emitAttestation } from '@imajin/auth';
-import { notify } from '@imajin/notify';
 import { jsonResponse, errorResponse } from '@/lib/utils';
-import { settleListingPurchase } from '@/lib/settle';
+import { bus } from '@imajin/bus';
 import { eq } from 'drizzle-orm';
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET!;
@@ -64,37 +62,17 @@ export async function POST(request: NextRequest) {
               })
               .where(eq(listings.id, listingId));
           }
-
-          // Settle .fair chain — fire and forget, never block the response
-          settleListingPurchase({
-            listingId,
-            sellerDid: listing.sellerDid,
-            buyerDid: body.metadata?.buyerDid || '',
-            amount: body.metadata?.amount || 0,
-            currency: body.metadata?.currency || 'CAD',
-            fairManifest: (listing.fairManifest as any) || null,
-          }).catch((err: unknown) => log.error({ err: String(err) }, 'Settlement error'));
         }
 
-        // Fire and forget — never block the response
-        emitAttestation({
-          issuer_did: body.metadata?.buyerDid,
-          subject_did: listing.sellerDid,
-          type: 'listing.purchased',
-          context_id: listingId,
-          context_type: 'market',
-          payload: { amount: body.metadata?.amount },
-        }).catch((err: unknown) => log.error({ err: String(err) }, 'Attestation emit error'));
-
-        // Record interest signals — listing.purchased → market scope (buyer + seller)
-        if (body.metadata?.buyerDid) {
-          notify.interest({ did: body.metadata.buyerDid, attestationType: 'listing.purchased' })
-            .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
-        }
-        if (listing.sellerDid) {
-          notify.interest({ did: listing.sellerDid, attestationType: 'listing.purchased' })
-            .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
-        }
+        // Fire and forget — attestation, interest signals, and settle via bus
+        bus.publish('listing.purchased', {
+          buyerDid: body.metadata?.buyerDid || '',
+          sellerDid: listing?.sellerDid || '',
+          listingId,
+          amount: body.metadata?.amount || 0,
+          currency: body.metadata?.currency || 'CAD',
+          fairManifest: (listing?.fairManifest as any) || null,
+        }).catch((err: unknown) => log.error({ err: String(err) }, '[webhook] bus listing.purchased error'));
       }
     }
 
