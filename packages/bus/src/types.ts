@@ -89,6 +89,8 @@ export interface BusEventMap {
     currency: string;
     context_id: string;
     context_type: string;
+    tipperName?: string;
+    interestDids?: string[];
   };
   'ticket.purchased': {
     ticketId: string;
@@ -362,6 +364,14 @@ export interface BusEventMap {
     course_title: string;
     completed_at: string;
     modules_completed: number;
+  };
+  'tip.sent': {
+    amount: number;
+    currency: string;
+    context_id: string;
+    context_type: string;
+    pageName?: string;
+    interestDids?: string[];
   };
   'listing.purchase': {
     listingId: string;

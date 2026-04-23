@@ -28,6 +28,10 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'tip.granted': [
     { type: 'attestation', config: { attestationType: 'tip.granted' }, enabled: true },
+    { type: 'notify', config: { scope: 'coffee:tip' }, enabled: true },
+  ],
+  'tip.sent': [
+    { type: 'notify', config: { scope: 'coffee:tip-sent' }, enabled: true },
   ],
   'ticket.purchased': [
     { type: 'attestation', config: { attestationType: 'ticket.purchased' }, enabled: true },

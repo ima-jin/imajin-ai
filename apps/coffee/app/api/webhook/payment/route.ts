@@ -4,10 +4,8 @@ const log = createLogger('coffee');
 import { db, tips, coffeePages } from '@/db';
 import { eq } from 'drizzle-orm';
 import { settleTip } from '@/lib/settle';
-import { notify } from '@imajin/notify';
-import { getEmailForDid } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 
-const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL || 'http://localhost:3005';
 const COFFEE_URL = process.env.NEXT_PUBLIC_COFFEE_URL || 'https://coffee.imajin.ai';
 
 /**
@@ -26,8 +24,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const {
-      type, tipId, paymentId, amount, fromDid, fromName, fromEmail,
-      to_did, pageId, pageHandle, message, stripeSessionId,
+      type, tipId, paymentId, amount, fromDid, fromName,
+      to_did, pageId, pageHandle, stripeSessionId,
     } = await request.json();
 
     if (!tipId) {
@@ -82,44 +80,40 @@ export async function POST(request: NextRequest) {
           log.warn({ tipId }, '[webhook] Cannot settle tip — missing recipientDid or amount');
         }
 
-        // Format amount for display
-        const displayAmount = tipAmount ? `$${(tipAmount / 100).toFixed(2)}` : 'a tip';
         const displayFrom = fromName || 'Anonymous';
-        const pageUrl = handle ? `${COFFEE_URL}/${handle}` : COFFEE_URL;
 
-        // Notify recipient
+        // Notify recipient + record interest via bus
         if (recipientDid) {
-          const recipientEmail = await resolveEmailForDid(recipientDid).catch(() => null);
-          notify.send({
-            to: recipientDid,
-            scope: "coffee:tip",
-            data: {
-              ...(recipientEmail && { email: recipientEmail }),
-              amount: displayAmount,
+          publish('tip.granted', {
+            issuer: fromDid || recipientDid,
+            subject: recipientDid,
+            scope: 'coffee',
+            payload: {
+              amount: tipAmount,
+              currency: 'USD',
+              context_id: tipId,
+              context_type: 'coffee',
+              interestDids: [recipientDid],
               tipperName: displayFrom,
             },
-          }).catch((err) => log.error({ err: String(err) }, '[webhook] Notify recipient error'));
-
-          // Record interest signal — tip.granted → coffee scope
-          notify.interest({ did: recipientDid, attestationType: 'tip.granted' })
-            .catch((err) => log.error({ err: String(err) }, '[webhook] Interest signal error'));
+          }).catch((err) => log.error({ err: String(err) }, '[webhook] Bus publish (tip.granted) error'));
         }
 
-        // Notify sender
+        // Notify sender + record interest via bus
         if (fromDid) {
-          notify.send({
-            to: fromDid,
-            scope: "coffee:tip-sent",
-            data: {
-              ...(fromEmail && { email: fromEmail }),
-              amount: displayAmount,
+          publish('tip.sent', {
+            issuer: recipientDid || fromDid,
+            subject: fromDid,
+            scope: 'coffee',
+            payload: {
+              amount: tipAmount,
+              currency: 'USD',
+              context_id: tipId,
+              context_type: 'coffee',
+              interestDids: [fromDid],
               pageName: pageTitle || 'a creator',
             },
-          }).catch((err) => log.error({ err: String(err) }, '[webhook] Notify sender error'));
-
-          // Record interest signal — tip.sent → coffee scope
-          notify.interest({ did: fromDid, attestationType: 'tip.sent' })
-            .catch((err) => log.error({ err: String(err) }, '[webhook] Interest signal error'));
+          }).catch((err) => log.error({ err: String(err) }, '[webhook] Bus publish (tip.sent) error'));
         }
 
         break;
@@ -145,24 +139,4 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * Look up email for a DID via profile service, with credentials table as fallback.
- */
-async function resolveEmailForDid(did: string): Promise<string | null> {
-  // Try profile contact email first (user's preferred transactional email)
-  try {
-    const res = await fetch(`${PROFILE_SERVICE_URL}/api/profile/${encodeURIComponent(did)}`, {
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-    });
-    if (res.ok) {
-      const profile = await res.json();
-      if (profile.contactEmail) return profile.contactEmail;
-    }
-  } catch {
-    // Fall through to credentials lookup
-  }
 
-  // Fall back to auth credentials (login email)
-  return getEmailForDid(did);
-}
