@@ -4,6 +4,7 @@
 **Date:** April 23, 2026
 **Status:** Draft
 **Related:** RFC-13 (Progressive Trust), RFC-22 (Federated Authentication), RFC-27 (MCC), RFC-06 (Identity Portability)
+**Standards:** KERI (Key Event Receipt Infrastructure), ACDC (Authentic Chained Data Containers), CESR, Trust over IP, W3C Verifiable Credentials
 
 ---
 
@@ -324,45 +325,88 @@ Federated nodes can set their own policies. A node in a high-regulation jurisdic
 
 | Standard | Relevance |
 |----------|-----------|
-| **W3C Verifiable Credentials** | Credential format and presentation protocol |
-| **W3C DID Core** | Identifier model (already Imajin's foundation) |
+| **KERI / ACDC / CESR** | **Reference standard.** Key Event Receipt Infrastructure for identifier verification; Authentic Chained Data Containers for credential chaining; Concise Event Streaming Representation for encoding. Trust over IP (Linux Foundation) ratified specs. |
+| **W3C Verifiable Credentials** | Supported credential format alongside ACDC |
+| **W3C DID Core** | Identifier model (already Imajin's foundation). `did:keri` accepted as external DID method. |
+| **vLEI (GLEIF)** | Verifiable Legal Entity Identifiers — live production use of KERI for business identity. Natural integration for business scope verification. |
 | **eIDAS 2.0 / EUDIW** | EU digital identity wallet — biometric VCs are the compliance path |
 | **NIST SP 800-63-3** | Identity Assurance Levels (IAL2/IAL3 map to verified tier) |
 | **ICAO DTC** | Digital Travel Credentials — travel vertical alignment (SHITSUJI) |
 | **ISO/IEC 30107** | Presentation attack detection (liveness) |
 | **CSA Agent IAM** | Canadian Standards Association recommends DIDs for agent identity management |
 
+## Reference Implementation: KERI/ACDC
+
+The reference implementation for credential verification uses the KERI protocol suite (KERI, ACDC, CESR) rather than a specific vendor. This means:
+
+1. **Imajin is a credential verifier, not an issuer.** The node verifies incoming KERI/ACDC credentials and maps them to attestations on Imajin DID chains. Credential issuance is the verifier's responsibility.
+
+2. **`signify-ts`** (TypeScript KERI client, maintained by Web of Trust / Veridian team) provides the verification library. It handles CESR decoding, key state resolution, and ACDC signature verification.
+
+3. **`did:keri` resolution.** The node resolves KERI Autonomic Identifiers (AIDs) to retrieve current key state for signature verification. No KERI infrastructure (witnesses, watchers) needs to run on the Imajin node — that's the issuer's infrastructure.
+
+4. **ACDC → Attestation mapping.** Each ACDC credential type maps to an Imajin attestation type:
+
+| ACDC Schema | Imajin Attestation | Trust Tier |
+|-------------|-------------------|------------|
+| Biometric verification | `biometric_verification` | Verified |
+| vLEI (Legal Entity) | `legal_entity_verification` | Verified (business scope) |
+| OOR (Official Organizational Role) | `role_attestation` | Established+ |
+| Document verification | `document_verification` | Established |
+
+5. **Multi-format support.** The verifier endpoint accepts both ACDC credentials (KERI-signed) and W3C Verifiable Credentials (JSON-LD signed). The attestation recorded on the Imajin chain is format-agnostic — it records what was verified, by whom, using what standard.
+
+6. **Vendor verifiers plug in.** Indicio, Regula, government eID providers — any verifier that issues ACDC or W3C VC credentials can register as a trusted issuer. The node doesn't care who issued the credential, only that the cryptographic chain verifies and the issuer is in the trusted registry.
+
+### What Imajin Builds
+
+- KERI credential verification layer (`signify-ts` integration)
+- `did:keri` resolution for external AID lookup
+- ACDC schema → attestation type mapping
+- Trusted issuer registry (KERI AIDs + W3C VC issuer DIDs)
+- Credential presentation endpoint (accepts ACDC + W3C VC)
+- Conformance tests against KERI test vectors
+
+### What Imajin Does NOT Build
+
+- KERI infrastructure (witnesses, watchers, key event logs) — issuer's responsibility
+- Credential issuance — verifiers issue, Imajin verifies
+- Wallet — users bring their own (Veridian, or any KERI-compatible wallet)
+- Biometric capture — verifier's responsibility, never touches Imajin
+
 ## Implementation Phases
 
-### Phase 1: Protocol Spec
-- Define credential format, presentation protocol, attestation schema
-- Define verifier registration and conformance requirements
-- Publish as open spec alongside DFOS
+### Phase 1: KERI Verification Layer
+- Integrate `signify-ts` into kernel
+- Implement `did:keri` AID resolution
+- ACDC credential signature verification
+- Credential presentation endpoint (ACDC + W3C VC)
+- Map ACDC schemas to Imajin attestation types
 
-### Phase 2: Trusted Verifier Registry
-- Node-level registry of accepted verifier DIDs
-- Admin console UI for managing trusted verifiers
-- Revocation mechanism for compromised verifiers
+### Phase 2: Trusted Issuer Registry
+- Node-level registry of accepted issuer AIDs/DIDs
+- Admin console UI for managing trusted issuers
+- Revocation mechanism for compromised issuers
+- Seed with GLEIF root AID for vLEI credentials
 
-### Phase 3: Reference Integration (Indicio)
-- Partner with Indicio to build first verifier app
-- Hosted on Imajin infrastructure as userspace app
-- Face + fingerprint + document verification
-- Conformance suite validation
+### Phase 3: Attestation Integration
+- Wire credential verification to identity chain attestations
+- Trust tier escalation on successful verification
+- Conformance tests against KERI test vectors
 
 ### Phase 4: Biometric Login
 - On-device biometric match → challenge-response → session
 - Replace password-based login with biometric-first flow
 - Cross-device recovery via re-verification
 
-### Phase 5: Cross-Node Portable Trust
-- Biometric VCs verifiable by any federated node
-- Trust portability without social graph dependency
-- Regulatory compliance for multi-jurisdiction operation
+### Phase 5: Vendor Verifier Onboarding
+- Indicio, Regula, government eID providers as registered issuers
+- Verifier app spec for hosting on Imajin infrastructure
+- Cross-node portable trust via federated issuer registries
 
 ## Open Questions
 
-1. **Credential portability between DID methods.** If a verifier issues a VC using Hyperledger AnonCreds and Imajin uses Ed25519/DFOS, what's the bridge? Likely: accept multiple proof types, verify the issuer signature regardless of method.
+1. **Credential portability between DID methods.** Resolved: accept both ACDC (KERI-signed) and W3C VC (JSON-LD signed). Verify the issuer signature regardless of method. `did:keri` and `did:imajin` coexist as recognized DID methods.
 
 2. **Biometric template binding.** The VC says "face verified" — but how does the node confirm the local biometric match actually happened? Trusted device attestation? Platform API (Android BiometricPrompt, iOS LocalAuthentication)? This needs speccing.
 
