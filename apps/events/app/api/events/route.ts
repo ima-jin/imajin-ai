@@ -62,11 +62,11 @@ export const POST = withLogger('events', async (request, { log, correlationId })
     // Register event DID with auth service
     const eventKeypair = await generateEventKeypair();
 
-    // Sign the registration payload
+    // Sign the registration payload — must match what /api/register verifies
     const ed = await import('@noble/ed25519');
     const { sha512 } = await import('@noble/hashes/sha2.js');
     ed.hashes.sha512 = sha512;
-    const regPayload = JSON.stringify({ publicKey: eventKeypair.publicKey, name: title, type: 'event' });
+    const regPayload = JSON.stringify({ publicKey: eventKeypair.publicKey, name: title, scope: 'actor', subtype: 'event' });
     const msgBytes = new TextEncoder().encode(regPayload);
     const privBytes = hexToBytes(eventKeypair.privateKey);
     const sigBytes = await ed.signAsync(msgBytes, privBytes);
@@ -77,7 +77,8 @@ export const POST = withLogger('events', async (request, { log, correlationId })
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         publicKey: eventKeypair.publicKey,
-        type: 'event',
+        scope: 'actor',
+        subtype: 'event',
         name: title,
         signature,
       }),
