@@ -27,9 +27,7 @@ import { eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
-
-const payEvents = createEmitter('pay');
+import { publish } from '@imajin/bus';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -224,7 +222,13 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
       }
     }
 
-    payEvents.emit({ action: 'payment.refund', correlationId, payload: { paymentId, amount: refundedDollars, reversalId, service: originalTx.service } });
+    publish('payment.refund', {
+      issuer: process.env.PLATFORM_DID || 'system',
+      subject: originalTx.fromDid || 'unknown',
+      scope: 'pay',
+      payload: { paymentId, amount: refundedDollars, reversalId, service: originalTx.service },
+      correlationId,
+    }).catch((err) => log.error({ err: String(err) }, 'payment.refund publish error'));
 
     return NextResponse.json({
       id: refundResult.id,

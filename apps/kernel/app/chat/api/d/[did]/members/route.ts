@@ -3,8 +3,7 @@ import { getClient } from '@imajin/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
-import { notify } from '@imajin/notify';
-import { emitAttestation } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { lookupIdentity } from '@/src/lib/kernel/lookup';
 import { createLogger } from '@imajin/logger';
 
@@ -83,16 +82,12 @@ export async function POST(
           WHERE chat.conversation_members.left_at IS NOT NULL
       `;
 
-      notify.interest({ did: memberDid, attestationType: 'group.member.added' })
-        .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
-
-      emitAttestation({
-        issuer_did: identity.id,
-        subject_did: memberDid,
-        type: 'group.member.added',
-        context_id: did,
-        context_type: 'chat.group',
-      }).catch((err: unknown) => log.error({ err: String(err) }, 'Attestation (group.member.added) error'));
+      publish('group.member.added', {
+        issuer: identity.id,
+        subject: memberDid,
+        scope: 'chat',
+        payload: { context_id: did, context_type: 'chat.group' },
+      }).catch((err: unknown) => log.error({ err: String(err) }, 'Group member added publish error'));
 
       // Insert system message into the conversation timeline
       const systemMsgId = generateId('msg');

@@ -7,10 +7,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
+import { publish } from '@imajin/bus';
 import { db, events, ticketTypes, eventInvites } from '@/src/db';
 
-const emitter = createEmitter('events');
+
 import { eq, and, sql } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
@@ -179,7 +179,13 @@ export const POST = withLogger('events', async (request, { log, correlationId })
     
     const checkout = await payResponse.json();
 
-    emitter.emit({ action: 'ticket.purchase', did: buyerDid, correlationId, payload: { eventId: body.eventId, ticketTypeId: body.ticketTypeId, quantity, sellerDid: event.creatorDid } });
+    publish('ticket.purchase', {
+      issuer: buyerDid || '',
+      subject: event.creatorDid,
+      scope: 'events',
+      payload: { eventId: body.eventId, ticketTypeId: body.ticketTypeId, quantity, sellerDid: event.creatorDid },
+      correlationId,
+    }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
 
     // Increment invite used_count on successful checkout session creation
     if (inviteRecord) {

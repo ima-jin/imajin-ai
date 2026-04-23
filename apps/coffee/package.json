@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@imajin/auth": "workspace:*",
+    "@imajin/bus": "workspace:*",
     "@imajin/logger": "workspace:*",
     "@imajin/fair": "workspace:*",
     "@imajin/media": "workspace:*",

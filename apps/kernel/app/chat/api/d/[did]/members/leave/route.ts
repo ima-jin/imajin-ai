@@ -3,8 +3,7 @@ import { getClient } from '@imajin/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
-import { notify } from '@imajin/notify';
-import { emitAttestation } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -92,16 +91,12 @@ export async function POST(
         AND member_did = ${effectiveDid}
     `;
 
-    notify.interest({ did: effectiveDid, attestationType: 'group.member.left' })
-      .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
-
-    emitAttestation({
-      issuer_did: effectiveDid,
-      subject_did: effectiveDid,
-      type: 'group.member.left',
-      context_id: did,
-      context_type: 'chat.group',
-    }).catch((err: unknown) => log.error({ err: String(err) }, 'Attestation (group.member.left) error'));
+    publish('group.member.left', {
+      issuer: effectiveDid,
+      subject: effectiveDid,
+      scope: 'chat',
+      payload: { context_id: did, context_type: 'chat.group' },
+    }).catch((err: unknown) => log.error({ err: String(err) }, 'Group member left publish error'));
 
     // Insert system message into the conversation timeline
     const systemMsgId = generateId('msg');

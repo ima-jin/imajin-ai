@@ -8,8 +8,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
+import { publish } from '@imajin/bus';
 import { db, tickets, ticketTypes, events } from '@/src/db';
-import { requireAuth, emitAttestation } from '@imajin/auth';
+import { requireAuth } from '@imajin/auth';
 
 const log = createLogger('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
@@ -76,14 +77,19 @@ export async function POST(
     const [event] = await db.select().from(events).where(eq(events.id, ticket.eventId)).limit(1);
 
     // Fire and forget — never block the response
-    emitAttestation({
-      issuer_did: ticket.ownerDid,
-      subject_did: event?.creatorDid ?? ticket.eventId,
-      type: 'ticket.purchased',
-      context_id: ticket.eventId,
-      context_type: 'event',
-      payload: { ticketId: confirmed.id },
-    }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
+    publish('ticket.purchased', {
+      issuer: ticket.ownerDid || '',
+      subject: event?.creatorDid ?? ticket.eventId,
+      scope: 'events',
+      payload: {
+        ticketId: confirmed.id,
+        eventId: ticket.eventId,
+        amount: ticket.pricePaid ?? 0,
+        currency: ticket.currency || 'USD',
+        context_id: ticket.eventId,
+        context_type: 'event',
+      },
+    }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
 
     return NextResponse.json({ ticket: confirmed });
   } catch (error) {

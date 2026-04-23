@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
+import { publish } from '@imajin/bus';
 import { revalidatePath } from 'next/cache';
 
 const log = createLogger('events');
-const eventBus = createEmitter('events');
+
 import { db, events, ticketTypes } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
@@ -116,7 +116,12 @@ export async function PATCH(
     revalidatePath(`/${id}`);
     revalidatePath('/');
 
-    eventBus.emit({ action: 'event.update', did, payload: { eventId: id, status: newStatus } });
+    publish('event.update', {
+      issuer: did,
+      subject: did,
+      scope: 'events',
+      payload: { eventId: id, status: newStatus },
+    }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
 
     return NextResponse.json({ event: updated });
   } catch (error) {
@@ -224,7 +229,12 @@ export async function PUT(
     // Bust the cache for this event page
     revalidatePath(`/${id}`);
 
-    eventBus.emit({ action: 'event.update', did, payload: { eventId: id } });
+    publish('event.update', {
+      issuer: did,
+      subject: did,
+      scope: 'events',
+      payload: { eventId: id },
+    }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
 
     return NextResponse.json({ event: updated });
   } catch (error) {

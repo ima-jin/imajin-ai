@@ -5,7 +5,7 @@ import { db } from '@/db';
 import { courses, enrollments, lessons, modules, lessonProgress } from '@/db/schema';
 import { requireAuth } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
-import { emitAttestation } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { eq, and } from 'drizzle-orm';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
@@ -68,17 +68,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    await emitAttestation({
-      issuer_did: course.creatorDid,
-      subject_did: identity.id,
-      type: 'learn.enrolled',
-      context_id: course.id,
-      context_type: 'course',
+    publish('learn.enrolled', {
+      issuer: course.creatorDid,
+      subject: identity.id,
+      scope: 'learn',
       payload: {
+        context_id: course.id,
+        context_type: 'course',
         course_title: course.title,
         enrolled_at: new Date().toISOString(),
       },
-    });
+    }).catch(() => {});
 
     return jsonResponse({ enrolled: true, enrollment }, 201);
   }

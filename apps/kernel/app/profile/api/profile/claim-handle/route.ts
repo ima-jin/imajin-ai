@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db, profiles, identities } from '@/src/db';
-import { requireAuth, emitAttestation } from '@imajin/auth';
+import { requireAuth } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { isValidHandle, HANDLE_ERROR } from '@imajin/config';
 import { checkPreliminaryEligibility } from '@/src/lib/kernel/verification';
@@ -70,13 +71,11 @@ export async function POST(request: NextRequest) {
       .where(eq(identities.id, identity.id));
 
     // Fire and forget — never block the response
-    emitAttestation({
-      issuer_did: identity.id,
-      subject_did: identity.id,
-      type: 'handle.claimed',
-      context_id: handle,
-      context_type: 'profile',
-      payload: { handle },
+    publish('handle.claimed', {
+      issuer: identity.id,
+      subject: identity.id,
+      scope: 'profile',
+      payload: { handle, context_id: handle, context_type: 'profile' },
     }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
 
     // Check preliminary eligibility for this DID — fire-and-forget

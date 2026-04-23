@@ -12,14 +12,12 @@ import { db, events, ticketTypes, tickets, orders } from '@/src/db';
 const log = createLogger('events');
 import { eq, and, sql } from 'drizzle-orm';
 import { sendEmail, ticketConfirmationEmail, purchaseReceiptEmail, generateQRCode } from '@/src/lib/email';
-import { settleTicketPurchase } from '@/src/lib/settle';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js';
 import { randomBytes } from 'crypto';
 import { getClient } from '@imajin/db';
-import { emitAttestation } from '@imajin/auth';
-import { notify } from '@imajin/notify';
+import * as bus from '@imajin/bus';
 
 // Configure ed25519 with sha512
 ed.hashes.sha512 = sha512;
@@ -347,14 +345,16 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     createdTickets.push(ticket);
 
     // Fire and forget — never block the response
-    emitAttestation({
-      issuer_did: ownerDid,
-      subject_did: event.creatorDid,
-      type: 'ticket.purchased',
-      context_id: event.id,
-      context_type: 'event',
-      payload: { ticketId: ticket.id, amount: amountTotal / quantity, currency },
-    }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
+    bus.publish('ticket.purchased', {
+      issuer: ownerDid, subject: event.creatorDid, scope: 'events',
+      payload: {
+        ticketId: ticket.id, eventId: event.id,
+        amount: amountTotal / quantity, currency,
+        context_id: event.id, context_type: 'event',
+        to: ownerDid,
+        interestDids: [ownerDid],
+      }
+    });
   }
 
   // Update sold count
@@ -364,23 +364,6 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     .where(eq(ticketTypes.id, ticketType.id));
 
   log.info({ count: createdTickets.length, orderId, customerEmail }, 'Order + tickets created');
-
-  // Notify buyer — fire and forget
-  notify.send({
-    to: ownerDid,
-    scope: "event:ticket",
-    data: {
-      email: customerEmail,
-      eventTitle: event.title,
-      ticketType: ticketType.name,
-      amount: amountTotal,
-      currency: currency.toUpperCase(),
-    },
-  }).catch((err) => log.error({ err: String(err) }, 'Notify error'));
-
-  // Record interest signal — ticket.purchased → events scope
-  notify.interest({ did: ownerDid, attestationType: 'ticket.purchased' })
-    .catch((err) => log.error({ err: String(err) }, 'Interest signal error'));
 
   // Add buyer to event chat conversation_members (non-fatal)
   // The event DID is the conversation DID
@@ -402,22 +385,28 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     }
   }
 
-  // After ticket creation, trigger .fair settlement (non-fatal)
+  // Trigger settlement and notification signals via bus
   const eventMetadata = (event.metadata || {}) as Record<string, any>;
   try {
-    await settleTicketPurchase({
-      orderId,
-      eventId: event.id,
-      eventDid: event.did,
-      buyerDid: ownerDid,
-      amount: amountTotal, // cents from Stripe
-      currency,
-      fairManifest: eventMetadata.fair || null,
-      metadata: {
-        ticketIds: createdTickets.map(t => t.id),
-        ticketTypeId: ticketType.id,
-        stripeSessionId: sessionId,
-      },
+    await bus.publish('order.completed', {
+      issuer: ownerDid, subject: event.creatorDid, scope: 'events',
+      payload: {
+        orderId,
+        eventId: event.id,
+        eventDid: event.did,
+        buyerDid: ownerDid,
+        amount: amountTotal,
+        currency,
+        fairManifest: eventMetadata.fair || null,
+        metadata: {
+          ticketIds: createdTickets.map(t => t.id),
+          ticketTypeId: ticketType.id,
+          stripeSessionId: sessionId,
+          eventId: event.id,
+        },
+        funded: true,
+        funded_provider: 'stripe',
+      }
     });
   } catch (settleError) {
     log.error({ err: String(settleError) }, '[settle] Unexpected settlement error (non-fatal)');

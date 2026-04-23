@@ -10,7 +10,7 @@ import { db } from '@/src/db';
 import { onboardTokens, identities, credentials, identityMembers } from '@/src/db';
 import { createSessionToken, getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
 import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation';
-import { emitAttestation } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { eq, and, gt, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
@@ -184,13 +184,18 @@ export async function GET(request: NextRequest) {
       });
 
       // Emit identity.created attestation → triggers 10 MJN emission (soft DID)
-      emitAttestation({
-        issuer_did: did,
-        subject_did: did,
-        type: 'identity.created',
-        context_id: did,
-        context_type: 'identity',
-        payload: { tier: 'soft', source: 'onboard' },
+      publish('identity.created', {
+        issuer: did,
+        subject: did,
+        scope: 'auth',
+        payload: {
+          did,
+          scope: 'actor',
+          subtype: 'human',
+          tier: 'soft',
+          context_id: did,
+          context_type: 'identity',
+        },
       }).catch((err) => log.error({ err: String(err) }, '[onboard/verify] Attestation (identity.created) error (non-fatal)'));
     }
 
@@ -238,8 +243,12 @@ export async function GET(request: NextRequest) {
         log.error({ err: String(err) }, '[onboard/verify] Forest member add failed (non-fatal)');
       }
       // Emit scope.onboard attestation
-      emitAttestation({ issuer_did: scopeDid, subject_did: did, type: 'scope.onboard', context_id: scopeDid, context_type: 'forest' })
-        .catch(err => log.error({ err: String(err) }, '[onboard/verify] Scope attestation failed (non-fatal)'));
+      publish('scope.onboard', {
+        issuer: scopeDid,
+        subject: did,
+        scope: 'auth',
+        payload: { context_id: scopeDid, context_type: 'forest' },
+      }).catch(err => log.error({ err: String(err) }, '[onboard/verify] Scope attestation failed (non-fatal)'));
       // Set active forest cookie
       response.cookies.set('x-acting-as', scopeDid, { path: '/', maxAge: 31536000, sameSite: 'lax' });
     }

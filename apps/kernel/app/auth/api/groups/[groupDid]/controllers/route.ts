@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identityMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
-import { requireAuth, emitAttestation } from '@imajin/auth';
+import { requireAuth } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -101,13 +102,11 @@ export async function POST(
       });
     }
 
-    emitAttestation({
-      issuer_did: caller.id,
-      subject_did: did,
-      type: 'group.member.added',
-      context_id: groupDid,
-      context_type: 'group',
-      payload: { role },
+    publish('group.controller.added', {
+      issuer: caller.id,
+      subject: did,
+      scope: 'auth',
+      payload: { context_id: groupDid, context_type: 'group', role },
     }).catch((err) => log.error({ err: String(err) }, '[groups] Attestation failed (non-fatal)'));
 
     return NextResponse.json({ ok: true, identityDid: groupDid, memberDid: did, role }, { status: 201 });

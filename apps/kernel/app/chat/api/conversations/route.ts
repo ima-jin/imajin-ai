@@ -1,8 +1,6 @@
 import { NextRequest } from 'next/server';
 import { withLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
-
-const chatEvents = createEmitter('chat');
+import { publish } from '@imajin/bus';
 import { eq, desc, and, gt, ne, inArray, sql } from 'drizzle-orm';
 import { db, conversationsV2, messagesV2, conversationReadsV2 } from '@/src/db';
 import { getClient } from '@imajin/db';
@@ -290,7 +288,7 @@ export const POST = withLogger('kernel', async (request, { log, correlationId })
         where: eq(conversationsV2.did, convDid),
       });
 
-      chatEvents.emit({ action: 'conversation.create', did: effectiveDid, correlationId, payload: { conversationDid: convDid, type: 'direct' } });
+      publish('conversation.create', { issuer: effectiveDid, subject: effectiveDid, scope: 'chat', payload: { conversationDid: convDid, type: 'direct' }, correlationId }).catch(() => {});
 
       return jsonResponse({ conversation: conv }, 201);
     }
@@ -334,7 +332,7 @@ export const POST = withLogger('kernel', async (request, { log, correlationId })
       where: eq(conversationsV2.did, convDid),
     });
 
-    chatEvents.emit({ action: 'conversation.create', did: effectiveDid, correlationId, payload: { conversationDid: convDid, type: 'group', name } });
+    publish('conversation.create', { issuer: effectiveDid, subject: effectiveDid, scope: 'chat', payload: { conversationDid: convDid, type: 'group', name }, correlationId }).catch(() => {});
 
     return jsonResponse({ conversation: conv }, 201);
   } catch (error) {

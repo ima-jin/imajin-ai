@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { emitAttestation } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { requireAdmin } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 
 const sql = getClient();
 
@@ -41,7 +41,7 @@ export async function POST(
   }
 
   const [identity] = await sql`
-    SELECT id, tier FROM auth.identities WHERE id = ${decodedDid} LIMIT 1
+    SELECT id, tier, scope, subtype FROM auth.identities WHERE id = ${decodedDid} LIMIT 1
   `;
   if (!identity) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -55,13 +55,19 @@ export async function POST(
 
   const issuerDid = await getNodeDid();
   if (issuerDid) {
-    await emitAttestation({
-      issuer_did: issuerDid,
-      subject_did: decodedDid,
-      type: TIER_ATTESTATION_TYPE[tier],
-      context_id: decodedDid,
-      context_type: 'identity',
-    });
+    publish(TIER_ATTESTATION_TYPE[tier] as Parameters<typeof publish>[0], {
+      issuer: issuerDid,
+      subject: decodedDid,
+      scope: 'auth',
+      payload: {
+        did: decodedDid,
+        scope: identity.scope,
+        subtype: identity.subtype,
+        tier,
+        context_id: decodedDid,
+        context_type: 'identity',
+      },
+    }).catch(() => {});
   }
 
   return NextResponse.json({ ok: true, tier });

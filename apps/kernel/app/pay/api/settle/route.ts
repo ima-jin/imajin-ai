@@ -28,8 +28,9 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { verifyManifest } from '@imajin/fair';
-import { createDbResolver, emitAttestation } from '@imajin/auth';
+import { createDbResolver } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
+import { publish } from '@imajin/bus';
 
 const log = createLogger('kernel');
 
@@ -61,13 +62,11 @@ async function emitAttestations(
   // One "customer" attestation per recipient
   for (const recipient of fair_manifest.chain) {
     attestationCalls.push(
-      emitAttestation({
-        issuer_did: recipient.did,
-        subject_did: from_did,
-        type: 'customer',
-        context_id: batchId,
-        context_type: 'service',
-        payload: { role: recipient.role },
+      publish('customer', {
+        issuer: recipient.did,
+        subject: from_did,
+        scope: 'pay',
+        payload: { role: recipient.role, context_id: batchId, context_type: 'service' },
       }).catch((err) => {
         log.error({ err: String(err), did: recipient.did }, `Attestation (customer) error for ${recipient.did}`);
       })
@@ -78,13 +77,11 @@ async function emitAttestations(
   const platformDid = process.env.PLATFORM_DID;
   if (platformDid) {
     attestationCalls.push(
-      emitAttestation({
-        issuer_did: platformDid,
-        subject_did: from_did,
-        type: 'transaction.settled',
-        context_id: batchId,
-        context_type: 'service',
-        payload: { total_amount, recipients: fair_manifest.chain.length, source, payerChainVerified, payeeChainVerified },
+      publish('transaction.settled', {
+        issuer: platformDid,
+        subject: from_did,
+        scope: 'pay',
+        payload: { total_amount, recipients: fair_manifest.chain.length, source, payerChainVerified, payeeChainVerified, context_id: batchId, context_type: 'service' },
       }).catch((err) => {
         log.error({ err: String(err) }, 'Attestation (transaction.settled) error');
       })

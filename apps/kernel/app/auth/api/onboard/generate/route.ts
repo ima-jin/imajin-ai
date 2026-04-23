@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, credentials, identityMembers, profiles } from '@/src/db';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { emitAttestation } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { corsHeaders } from '@imajin/config';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { eq, and } from 'drizzle-orm';
@@ -124,8 +124,12 @@ export async function POST(request: NextRequest) {
       } catch (err) {
         log.error({ err: String(err) }, '[onboard/generate] Forest member add failed (non-fatal)');
       }
-      emitAttestation({ issuer_did: scopeDid, subject_did: did, type: 'scope.onboard', context_id: scopeDid, context_type: 'forest' })
-        .catch(err => log.error({ err: String(err) }, '[onboard/generate] Scope attestation failed (non-fatal)'));
+      publish('scope.onboard', {
+        issuer: scopeDid,
+        subject: did,
+        scope: 'auth',
+        payload: { context_id: scopeDid, context_type: 'forest' },
+      }).catch(err => log.error({ err: String(err) }, '[onboard/generate] Scope attestation failed (non-fatal)'));
       response.cookies.set('x-acting-as', scopeDid, { path: '/', maxAge: 31536000, sameSite: 'lax' });
     }
 

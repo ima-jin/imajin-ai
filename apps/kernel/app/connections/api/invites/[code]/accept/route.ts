@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
 import { db, invites, profiles, pods, podMembers, connections } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
-import { emitAttestation } from '@imajin/auth';
-import { notify } from '@imajin/notify';
+import { publish } from '@imajin/bus';
 import { checkPreliminaryEligibility, checkHardEligibility } from '@/src/lib/kernel/verification';
 import { createLogger } from '@imajin/logger';
 
@@ -137,42 +136,45 @@ export async function POST(
       .where(eq(profiles.did, invite.fromDid))
       .limit(1);
 
-    notify.send({
-      to: invite.fromDid,
-      scope: "connection:invite-accepted",
-      data: {
-        ...(inviterProfile?.contactEmail && { email: inviterProfile.contactEmail }),
+    publish('connection.accepted', {
+      issuer: session.did,
+      subject: invite.fromDid,
+      scope: 'connections',
+      payload: {
+        invite_code: invite.code,
+        context_id: podId,
+        context_type: 'connection',
         name: session.handle || session.did.slice(0, 16),
+        email: inviterProfile?.contactEmail || undefined,
       },
-    }).catch((err: unknown) => log.error({ err: String(err) }, 'Notify error'));
-
-    // Record interest signals — connection.accepted → connections scope (both parties)
-    notify.interest({ did: invite.fromDid, attestationType: 'connection.accepted' })
-      .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
-    notify.interest({ did: session.did, attestationType: 'connection.accepted' })
-      .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
+    }).catch((err: unknown) => log.error({ err: String(err) }, 'Notify publish error'));
   })().catch((err: unknown) => log.error({ err: String(err) }, 'Notify setup error'));
 
   // Only emit attestations for NEW connections — prevents sybil farming via disconnect/reconnect
   if (!isReconnect) {
-    emitAttestation({
-      issuer_did: session.did,
-      subject_did: invite.fromDid,
-      type: 'connection.accepted',
-      context_id: podId,
-      context_type: 'connection',
-      payload: { invite_id: invite.id },
+    publish('connection.accepted', {
+      issuer: session.did,
+      subject: invite.fromDid,
+      scope: 'connections',
+      payload: {
+        invite_code: invite.code,
+        context_id: podId,
+        context_type: 'connection',
+        name: session.handle || session.did.slice(0, 16),
+      },
     }).catch((err: unknown) => {
       log.error({ err: String(err) }, 'Attestation (connection.accepted) error');
     });
 
-    emitAttestation({
-      issuer_did: invite.fromDid,
-      subject_did: session.did,
-      type: 'vouch',
-      context_id: podId,
-      context_type: 'connection',
-      payload: { invite_id: invite.id, delivery: invite.delivery },
+    publish('vouch', {
+      issuer: invite.fromDid,
+      subject: session.did,
+      scope: 'connections',
+      payload: {
+        invite_code: invite.code,
+        context_id: podId,
+        context_type: 'connection',
+      },
     }).catch((err: unknown) => {
       log.error({ err: String(err) }, 'Attestation (vouch) error');
     });

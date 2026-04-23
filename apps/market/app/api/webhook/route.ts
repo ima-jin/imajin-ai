@@ -9,10 +9,8 @@ import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('market');
 import { db, listings } from '@/db';
-import { emitAttestation } from '@imajin/auth';
-import { notify } from '@imajin/notify';
+import * as bus from '@imajin/bus';
 import { jsonResponse, errorResponse } from '@/lib/utils';
-import { settleListingPurchase } from '@/lib/settle';
 import { eq } from 'drizzle-orm';
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET!;
@@ -65,35 +63,24 @@ export async function POST(request: NextRequest) {
               .where(eq(listings.id, listingId));
           }
 
-          // Settle .fair chain — fire and forget, never block the response
-          settleListingPurchase({
-            listingId,
-            sellerDid: listing.sellerDid,
-            buyerDid: body.metadata?.buyerDid || '',
-            amount: body.metadata?.amount || 0,
-            currency: body.metadata?.currency || 'CAD',
-            fairManifest: (listing.fairManifest as any) || null,
-          }).catch((err: unknown) => log.error({ err: String(err) }, 'Settlement error'));
-        }
-
-        // Fire and forget — never block the response
-        emitAttestation({
-          issuer_did: body.metadata?.buyerDid,
-          subject_did: listing.sellerDid,
-          type: 'listing.purchased',
-          context_id: listingId,
-          context_type: 'market',
-          payload: { amount: body.metadata?.amount },
-        }).catch((err: unknown) => log.error({ err: String(err) }, 'Attestation emit error'));
-
-        // Record interest signals — listing.purchased → market scope (buyer + seller)
-        if (body.metadata?.buyerDid) {
-          notify.interest({ did: body.metadata.buyerDid, attestationType: 'listing.purchased' })
-            .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
-        }
-        if (listing.sellerDid) {
-          notify.interest({ did: listing.sellerDid, attestationType: 'listing.purchased' })
-            .catch((err: unknown) => log.error({ err: String(err) }, 'Interest signal error'));
+          // Publish listing.purchased → attestation + settle + notify reactors
+          bus.publish('listing.purchased', {
+            issuer: body.metadata?.buyerDid || '',
+            subject: listing.sellerDid,
+            scope: 'market',
+            payload: {
+              context_id: listingId,
+              context_type: 'market',
+              amount: body.metadata?.amount || 0,
+              currency: body.metadata?.currency || 'CAD',
+              fairManifest: (listing.fairManifest as any) || null,
+              funded: true,
+              funded_provider: 'stripe',
+              buyerDid: body.metadata?.buyerDid || '',
+              metadata: { listingId },
+              interestDids: [body.metadata?.buyerDid, listing.sellerDid].filter(Boolean),
+            },
+          }).catch((err: unknown) => log.error({ err: String(err) }, 'Bus publish error'));
         }
       }
     }

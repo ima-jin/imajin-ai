@@ -1,15 +1,13 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
 const log = createLogger('market');
-const marketEvents = createEmitter('market');
 import { db, listings } from '@/db';
-import { requireAuth, getSession, emitAttestation } from '@imajin/auth';
-import { notify } from '@imajin/notify';
+import { requireAuth, getSession } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
 import { resolveMediaRef } from '@imajin/media';
 import { getClient } from '@imajin/db';
 import { buildFairManifest } from '@imajin/fair';
+import { publish } from '@imajin/bus';
 import { eq, ilike, and, desc, asc, sql, ne } from 'drizzle-orm';
 
 const VALID_SELLER_TIERS = ['public_offplatform', 'public_onplatform', 'trust_gated'] as const;
@@ -126,21 +124,27 @@ export async function POST(request: NextRequest) {
       fairManifest,
     }).returning();
 
-    marketEvents.emit({ action: 'listing.create', did, payload: { listingId: listing.id, title, price } });
+    publish('listing.create', {
+      issuer: did,
+      subject: did,
+      scope: 'market',
+      payload: { listingId: listing.id, title, price },
+    }).catch(() => {});
 
     // Fire and forget — never block the response
-    emitAttestation({
-      issuer_did: identity.id,
-      subject_did: identity.id,
-      type: 'listing.created',
-      context_id: listing.id,
-      context_type: 'market',
-      payload: { title, price, currency: listing.currency },
+    publish('listing.created', {
+      issuer: identity.id,
+      subject: identity.id,
+      scope: 'market',
+      payload: {
+        context_id: listing.id,
+        context_type: 'market',
+        title,
+        price,
+        currency: listing.currency,
+        interestDids: [identity.id],
+      },
     }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
-
-    // Record interest signal — listing.created → market scope
-    notify.interest({ did: identity.id, attestationType: 'listing.created' })
-      .catch((err) => log.error({ err: String(err) }, 'Interest signal error'));
 
     return jsonResponse(listing, 201);
   } catch (error) {

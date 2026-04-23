@@ -11,9 +11,7 @@ import {
 import { provisionSubdomain, isHostnameAvailable } from '@/src/lib/registry/cloudflare';
 import { randomBytes } from 'crypto';
 import { withLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
-
-const registryEvents = createEmitter('registry');
+import { publish } from '@imajin/bus';
 
 /**
  * POST /api/node/register
@@ -263,7 +261,13 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
       attestation,
     });
 
-    registryEvents.emit({ action: 'app.register', correlationId, payload: { nodeId: attestation.nodeId, hostname: attestation.hostname, buildHash: attestation.buildHash } });
+    publish('app.register', {
+      issuer: attestation.nodeId,
+      subject: attestation.nodeId,
+      scope: 'registry',
+      correlationId,
+      payload: { nodeId: attestation.nodeId, hostname: attestation.hostname, buildHash: attestation.buildHash },
+    }).catch((err) => log.error({ err: String(err), correlationId }, '[register] publish app.register error'));
 
     return NextResponse.json({
       status: 'verified',

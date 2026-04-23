@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
+import { publish } from '@imajin/bus';
 import { db, events, ticketTypes } from '@/src/db';
 
-const emitter = createEmitter('events');
-import { requireHardDID, emitAttestation } from '@imajin/auth';
+
+import { requireHardDID } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 import { buildFairManifest } from '@imajin/fair';
 import { and, asc, desc, eq, gt } from 'drizzle-orm';
@@ -151,17 +151,26 @@ export const POST = withLogger('events', async (request, { log, correlationId })
       metadata: { fair: fairManifest },
     }).returning();
 
-    emitter.emit({ action: 'event.create', did, correlationId, payload: { eventId: event.id, eventDid: event.did, title } });
+    publish('event.create', {
+      issuer: did,
+      subject: did,
+      scope: 'events',
+      payload: { eventId: event.id, eventDid: event.did, title },
+      correlationId,
+    }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
 
     // Fire and forget — never block the response
-    emitAttestation({
-      issuer_did: identity.id,
-      subject_did: identity.id,
-      type: 'event.created',
-      context_id: event.id,
-      context_type: 'event',
-      payload: { eventDid: event.did, title },
-    }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
+    publish('event.created', {
+      issuer: identity.id,
+      subject: identity.id,
+      scope: 'events',
+      payload: {
+        eventDid: event.did,
+        title,
+        context_id: event.id,
+        context_type: 'event',
+      },
+    }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
 
     // Create ticket types if provided
     const createdTicketTypes = [];

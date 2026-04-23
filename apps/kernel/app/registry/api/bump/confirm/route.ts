@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
-import { requireAuth, emitAttestation } from '@imajin/auth';
+import { requireAuth } from '@imajin/auth';
 import { db, bumpSessions, bumpMatches, pods, podMembers, connections, profiles, nodes } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { notifyBumpDid } from '@/src/lib/registry/bump-notify';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
+import { publish } from '@imajin/bus';
 
 const log = createLogger('kernel');
-const eventBus = createEmitter('registry');
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -144,30 +143,36 @@ export async function POST(request: NextRequest) {
           .set({ connectionId: podId })
           .where(eq(bumpMatches.id, matchId));
 
-        eventBus.emit({ action: 'bump.confirm', did: callerDid, payload: { matchId, didA: sessionA.did, didB: sessionB.did } });
+        publish('bump.confirm', {
+          issuer: callerDid,
+          subject: callerDid,
+          scope: 'registry',
+          payload: { matchId, didA: sessionA.did, didB: sessionB.did },
+        }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] publish bump.confirm error'));
         if (!isReconnect) {
-          eventBus.emit({ action: 'connection.create', did: didA, payload: { otherDid: didB, source: 'bump' } });
+          publish('connection.create', {
+            issuer: didA,
+            subject: didA,
+            scope: 'registry',
+            payload: { otherDid: didB, source: 'bump' },
+          }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] publish connection.create error'));
         }
 
         // Only emit attestations for NEW connections — prevents sybil farming via disconnect/reconnect
         if (!isReconnect) {
-          emitAttestation({
-            issuer_did: didA,
-            subject_did: didB,
-            type: 'connection.accepted',
-            context_id: podId,
-            context_type: 'connection',
-            payload: { source: 'bump', match_id: matchId, node_id: match.nodeId, node_name: nodeName },
-          }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] attestation (connection.accepted) error'));
+          publish('connection.accepted', {
+            issuer: didA,
+            subject: didB,
+            scope: 'registry',
+            payload: { source: 'bump', match_id: matchId, node_id: match.nodeId, node_name: nodeName, context_id: podId, context_type: 'connection' },
+          }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] publish connection.accepted error'));
 
-          emitAttestation({
-            issuer_did: didB,
-            subject_did: didA,
-            type: 'vouch',
-            context_id: podId,
-            context_type: 'connection',
-            payload: { source: 'bump', match_id: matchId, node_id: match.nodeId, node_name: nodeName },
-          }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] attestation (vouch) error'));
+          publish('vouch', {
+            issuer: didB,
+            subject: didA,
+            scope: 'registry',
+            payload: { source: 'bump', match_id: matchId, node_id: match.nodeId, node_name: nodeName, context_id: podId, context_type: 'connection' },
+          }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] publish vouch error'));
         }
 
         // Notify both parties of the connection (profiles already fetched above)

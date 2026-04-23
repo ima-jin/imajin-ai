@@ -14,8 +14,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 import { sendEmail, ticketConfirmationEmail, generateQRCode } from '@/src/lib/email';
-import { emitAttestation } from '@imajin/auth';
-import { notify } from '@imajin/notify';
+import { publish } from '@imajin/bus';
 import { getClient } from '@imajin/db';
 import { randomBytes } from 'crypto';
 
@@ -248,32 +247,20 @@ export const POST = withLogger('events', async (request, { log }) => {
         .where(eq(eventInvites.id, inviteRecord.id));
     }
 
-    // Emit attestation (fire and forget)
-    emitAttestation({
-      issuer_did: ownerDid,
-      subject_did: event.creatorDid,
-      type: 'ticket.purchased',
-      context_id: event.id,
-      context_type: 'event',
-      payload: { ticketId: ticket.id, amount: 0, currency: ticketType.currency },
-    }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
-
-    // Notify (fire and forget)
-    notify.send({
-      to: ownerDid,
-      scope: 'event:ticket',
-      data: {
-        email: ownerEmail,
-        eventTitle: event.title,
-        ticketType: ticketType.name,
+    publish('ticket.purchased', {
+      issuer: ownerDid,
+      subject: event.creatorDid,
+      scope: 'events',
+      payload: {
+        ticketId: ticket.id,
+        eventId: event.id,
         amount: 0,
         currency: ticketType.currency,
+        context_id: event.id,
+        context_type: 'event',
+        interestDids: [ownerDid],
       },
-    }).catch((err) => log.error({ err: String(err) }, 'Notify error'));
-
-    // Interest signal
-    notify.interest({ did: ownerDid, attestationType: 'ticket.purchased' })
-      .catch((err) => log.error({ err: String(err) }, 'Interest signal error'));
+    }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
 
     // Add to event chat (fire and forget)
     const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;

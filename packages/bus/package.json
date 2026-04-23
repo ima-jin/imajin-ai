@@ -1,0 +1,19 @@
+{
+  "name": "@imajin/bus",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@imajin/logger": "workspace:*",
+    "@imajin/auth": "workspace:*",
+    "@imajin/emit": "workspace:*",
+    "@imajin/notify": "workspace:*"
+  },
+  "peerDependencies": {
+    "next": ">=14"
+  }
+}
