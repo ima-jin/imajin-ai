@@ -1,10 +1,51 @@
 ## 14. Governance Equity vs. Economic Equity
 
 **Author:** Greg Mulholland
-**Date:** March 10, 2026
+**Date:** March 10, 2026 (sharpened April 22, 2026)
 **Thread:** `current-threads/governance-equity.md`
-**Related upstream:** MJN Whitepaper v0.2, Discussion #252 (Cultural DID), Discussion #269 (MJN Token Economics)
+**Related upstream:** MJN Whitepaper v0.4, RFC-17 (Governance Primitive — Ryan+Jin, March 21), Discussion #252 (Cultural DID), Discussion #269 (MJN Token Economics), `biz-dev#1` (Swiss Stiftung)
 **Addresses:** Outstanding Concern 3 (Governance Equity vs. Economic Equity) — identifies the three-layer structure and the specific documentation gap
+
+---
+
+### April 22, 2026 — Status Sharpening
+
+**The community-layer concern is answered. The network-layer framing is deprecated. The protocol-layer gap remains — and is now the sole load-bearing concern of this proposal.**
+
+**What has shipped since March:**
+
+- **RFC-17 Governance Primitive (March 21, Ryan+Jin)** is the protocol-level answer to P14's community-layer question. Direct quotes:
+  - *"Voting weight comes from standing in that specific community. Not global standing. Not financial contribution."*
+  - *"You can't buy governance. Standing is earned through attestation history — behavioral, not financial."*
+  - *"Every governance change is a fork. Every fork is reversible."*
+  - *"Governance weight decays."*
+- RFC-17 specifies per-scope defaults (actor/family/community/business), TTL'd decisions across four tiers (operational 90d / membership 6mo / structural 1y / constitutional 2y), and size-based decision modes (1 / 2 / 3–10 / 11–50 / 50+).
+- **This comprehensively answers Statement 1 at the community layer and Statement 2 (Cultural DID Stream-5 independence).** The "not financial" principle is now protocol doctrine, not a Cultural-DID-specific carve-out.
+
+**What appears deprecated:**
+
+- **"Network of Souls"** has no hits in the current whitepaper (v0.4, March 2026). No hits for "foundation", "stiftung", "three-layer", or "governance.layer" either. The term survives only in historical build-timeline articles (Feb 18 origin) and passing references in RFC-06 and RFC-16.
+- The current architectural framing is **JBOS** / 1-kernel + 6-userspace / DFOS substrate. There is no named "network layer" between community and protocol in the live architecture.
+- **P14's middle layer is no longer a named structure in the system it was written about.** The asymmetry argument built around Network of Souls query-fee authority may still be philosophically valid, but it is no longer describing a live architectural tier.
+
+**What remains urgent and unaddressed:**
+
+- **Statement 3 — Foundation governance mechanism.** Swiss Stiftung work exists in `biz-dev#1`, but there is no mechanism document in `ima-jin/imajin-ai` upstream covering protocol-layer governance authority. RFC-17 explicitly governs *within scopes*; it does not specify how the protocol-constitutional parameters (e.g., `GAS_MIN`/`GAS_MAX` bounds in P35 §2, RFC ratification authority, spec amendments to the DID method) are themselves governed.
+- This gap compounds under P35: P35 proposes protocol-set bounds with threshold-triggered review, but the *reviewer* at the protocol layer is unspecified. Without Statement 3, P35's governance shell is load-bearing on an unnamed authority.
+
+**Revised load-bearing open question for Ryan (new April 22):**
+
+> **Does the protocol layer (bounds, constitutional parameters, RFC ratification authority) have a specified governance mechanism, or is it de-facto founder-controlled pending a future Foundation mechanism?**
+>
+> - If de-facto founder-controlled: state it explicitly, with a transition-path commitment (Option C → A/B of §4 Q3 below).
+> - If specified elsewhere: point to the doc. P14 closes on that cross-reference.
+> - If unspecified: P14 §5 Statement 3 is the writing task, and it is the remaining blocker.
+>
+> P35's governance shell (§2) and this question are the same question viewed from two surfaces. They should be answered together.
+
+**Scope reduction:** With the community layer answered by RFC-17 and the network layer deprecated, P14's active surface is **Statement 3 only**. Sections 1–4 below preserve the original framing for lineage; §5 Statement 3 and §6 (narrowed) are the live ask.
+
+---
 
 ### Executive Summary
 

@@ -2,12 +2,67 @@
 
 **Author:** Greg Mulholland
 **Date:** April 7, 2026
-**Priority:** HIGH — the sovereignty promise breaks at group identity without this
+**Priority:** HIGH → **ELEVATED April 22** — blast radius grew; two new RFCs now depend on this primitive
 **Matrix cells:** All group scopes (org/community/family) x Identity + Attestation
-**Related issues:** #587 (Group Identities), #537 (Event DID sub-identity delegation)
-**Related RFCs:** RFC-11 (Embedded Wallet — mentions multi-sig, quorum, social recovery), RFC-22 (Federated Auth)
-**Related concerns:** C04 (Org DID vetting), C13 (covenant)
-**Connects to:** P10 (Org DID Vetting), P14 (Governance Equity), P25 (Family DID), P32 (Mooi)
+**Related issues:** #587 (Group Identities), #537 (Event DID sub-identity delegation — *closed April 8 by a proposal-filing PR, not a code fix*)
+**Related RFCs:** RFC-11 (Embedded Wallet — multi-sig, quorum, social recovery), RFC-22 (Federated Auth), **RFC-27 Multi-Agent Coordination (April 20) — new blocker**, **RFC-28 Universal Real-World Registry (April 21) — new blocker**
+**Related concerns:** C04 (Org DID vetting), C13 (covenant), C24 (Bilateral attestation — "group-key signing" still listed as a gap)
+**Connects to:** P10 (Org DID Vetting), P14 (Governance Equity), P25 (Family DID), P32 (Mooi), **P37 (RFC-27 peer agents), P38 (RFC-28 registry), P40 (bus migration timing — load-bearing for P33 sequencing)**
+
+---
+
+### April 22, 2026 — Status Sharpening
+
+**Zero phases shipped. The gap is live and has widened. The 1-day Phase 1 fix is still 1 day; the blast radius of not doing it has grown.**
+
+**Verified April 22 against upstream code (428 commits since P33 filed):**
+- **`decryptPrivateKey` does not exist** anywhere in the codebase. Grep returns only P33's own proposal text.
+- **`signAsGroup` / `signAsDid` do not exist.**
+- **`auth.key_shares` table does not exist.** No Shamir / threshold primitives.
+- **Group DFOS chains** — no evidence `storeDfosChain()` runs for group DIDs on creation.
+- **MEMORY.md C24 gap list (re-verified April 22):** *"Gaps: enforcement, group-key signing, legacy null-status records."* "Group-key signing" still listed.
+
+**Misleading surface — #537 is closed, the gap is not:**
+
+Issue #537 ("Entity DIDs need real identities") was auto-closed on April 8 by commit `cf0ecaa2` — which is **Greg's own April 7 PR filing this proposal** (commit message: *"Phase 1 also resolves #537 and unblocks institution.verified"*). The PR filed the proposal document; no code fix landed. The issue tracker reports "completed"; upstream code reports unresolved.
+
+The actual pattern used for event-attributed attestations today is **node-DID-signs-on-behalf-of-event**. Verified at `apps/events/app/api/events/[id]/tickets/[ticketId]/check-in/route.ts:67–74`: `issuer_did: nodeDid` pulled from `relay_config.imajin_did`, not from the event DID. This is a workaround for dead keys, not the architectural fix.
+
+**What has widened the gap since P33 was filed:**
+
+1. **PR #750 scope-aware writes merged** — 13 routes now flow `actingAs` correctly but still sign with the platform key. More code writes *as the group* while cryptography is *as the platform*. The mismatch §1 identified covers 13 additional routes.
+2. **RFC-27 Multi-Agent Coordination (April 20)** — agents get their own peer DIDs (`scope: 'actor', subtype: 'agent'`). For agents to sign their own attestations (required by the peer model), the `signAsDid` primitive P33 specifies is a prerequisite. P37 blocker.
+3. **RFC-28 Universal Real-World Registry (April 21)** — public stubs need signing capability once claimed (claim-acceptance, commission attestations, migration events). Another load-bearing consumer of the same primitive.
+4. **@imajin/bus epic #759 (23 sub-issues, 47 emit sites migrating)** — every attestation emission routes through the bus envelope. P33 Phase 1 is now implicitly a bus-routing decision. Sequencing choices: before bus (retrofit later), during bus (cleanest, couples P33 to P40 timing), after bus (middleware retrofit, sovereignty gap persists through migration window).
+5. **Identity tier attestations added to vocabulary** (`identity.verified.preliminary/hard/steward/operator`) — each attribution to a node/org DID inherits the dead-key problem.
+6. **Fee model v3 gas operations** — group-initiated gas operations should be group-signed. When gas ships, the dead-key gap blocks correct gas-operation attribution.
+
+**§7 Open Questions — April 22 status:**
+
+| Q | Status |
+|---|---|
+| Q1: Phase 1 pre-fundraise? | Still open; unshipped 15 days later. Sovereignty claim remains cryptographically false for groups. |
+| Q2: Unify signAsGroup / signAsDid? | Moot until either exists. |
+| Q3: Threshold defaults per scope? | Moot — no threshold infrastructure. |
+| Q4: Recovery share opt-in? | Moot until Phase 2 scaffolding exists. |
+| Q5: DFOS chain for groups — Phase 1 or 2? | Moot — no group chains created. |
+| Q6: base58 vs hex DID format? | **Still open.** C11 (isValidDID) unchanged — `publicKey.slice(0, 16)` still in `packages/auth/src/providers/keypair.ts:52` after 428 commits. |
+
+**Load-bearing open question for Ryan (new April 22):**
+
+> **Is Phase 1 implemented before, during, or after the @imajin/bus migration (#759)?**
+> - **Before:** ship `decryptPrivateKey` + `signAsGroup` + routing now, retrofit into 47 emit sites during bus migration. Lowest latency closing the sovereignty gap; highest migration cost.
+> - **During (recommended):** bus envelope gets a `signAs` hook as part of migration. 47 sites inherit correct signing on day one of bus. Couples P33 to P40 timing but is the cleanest story.
+> - **After:** middleware in the bus pipeline detects group-DID-attributed events and re-signs. Lowest migration cost; sovereignty gap persists through the bus migration window (23 sub-issues worth of time).
+>
+> The bus migration is already a massive refactor. A `signAs` hook at envelope-level is a cross-cutting concern that belongs in the bus, not sprinkled across call sites.
+
+**Severity framing update:**
+- **When filed (April 7):** §1 called the gap "foundational." Phase 1 = 1 day of work.
+- **At April 22:** 13 more scope-aware routes + 2 new RFCs (RFC-27, RFC-28) now depend on this primitive. The 1-day fix is still 1 day; the cost of *not* doing it grew.
+- **Demo/investor liability:** "Humans own their identity, payments, and data" — with group keys dead, this is cryptographically false for every group DID. The story tells investors sovereignty; the code says node-custody.
+
+Sections below preserve the original substance unchanged — the spec is still correct; urgency and sequencing are what shifted.
 
 ---
 

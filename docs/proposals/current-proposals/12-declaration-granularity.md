@@ -1,10 +1,37 @@
-## 12. Declaration Granularity Standards — Stream 2
+## 12. Declaration Granularity Standards — Stream 2 Privacy Envelope
 
 **Author:** Greg Mulholland
-**Date:** March 10, 2026
+**Date:** March 10, 2026 (sharpened April 22, 2026)
 **Thread:** `current-threads/declaration-granularity.md`
-**Related upstream:** Discussion #253 (Stream 2), `packages/fair/` (for pattern reference)
+**Related upstream:** Discussion #253 (Stream 2), `packages/fair/` (for pattern reference), RFC-28 (Universal Real-World Registry — possible alternate pattern), P35 (Gas Governance and Rent-Extraction Limits — provides Option C)
 **Addresses:** Outstanding Concern 6 (Declaration Granularity Standards)
+
+---
+
+### April 22, 2026 — Status Sharpening
+
+**Still open. No code shipped against the privacy substance. Blocked on Stream 2 surface, not on implementation difficulty.**
+
+**Explicit non-confusion:** P12 is NOT satisfied by `registry.did_interests` / `did_preferences` / `interests` in `apps/kernel/src/db/schemas/registry.ts` (shipped via #538/#539). Those tables are a **notification-channel consent** layer (lazy per-DID per-scope booleans: marketing/email/inapp/chat, populated from attestation activity). P12's declaration layer is the inverse direction: a user *states an intent* that businesses *query with offers*, with match counts returned under k-anonymity suppression. Different data flow, different threat model, different primitive.
+
+**What has advanced adjacently:**
+- **Identity tiers (preliminary/hard) shipped** — unblocks P12 §5's Soft-DID / Hard-DID gating for sensitive declarations. The gating mechanism now exists.
+- **Ed25519 signing utilities mature in `@imajin/auth`** — signed-declaration infrastructure is ready when the type system lands.
+- **P35 will answer Option C** (§2, economic-deterrence / probe rate limit) when Stream 2 exists — the frequency-scaled multiplier curve is the protocol-level expression of probe throttling.
+
+**What complicates P12 since writing:**
+- **RFC-28 Universal Real-World Registry** introduces a *public-stub* pattern (anyone creates stubs for venues/businesses, rightful owner claims later with commission split). This is the inverse of P12's private, k-anonymized local-match model. **Load-bearing open question below.**
+
+**Load-bearing open question for Ryan (new April 22):**
+
+> **Does Stream 2 adopt the RFC-28 public-registry pattern, or maintain the local-match model that P12 assumes?**
+>
+> - If RFC-28-pattern: P12's entire k-anonymity threat model needs to be replaced, not sharpened. Public stubs are observable by anyone; the attack surface is different.
+> - If local-match: P12 remains the canonical answer and ratifies as-written with the §7 answers below.
+>
+> This is an architecture decision, not a proposal decision. P12 is blocked on it.
+
+---
 
 ### Executive Summary
 

@@ -39,6 +39,63 @@
 
 ---
 
+### 11.1 April 22 Delta — Escrow and Campaign Events
+
+**Advancing meaningfully. The §6 crowd-funded events feature — P32's most novel and most open part — moved from "no infrastructure" to "escrow route shipped + campaign events tracker filed." Still not fully complete.**
+
+**Shipped since April 7:**
+- **Escrow infrastructure live** at `apps/kernel/app/pay/api/escrow/route.ts` — POST /api/escrow with Stripe + Solana providers. Fields: `amount`, `currency`, `from` (depositor DID), `to` (recipient DID), `arbiter` (dispute resolver DID), `conditions` (`releaseAfter` ISO auto-release, `requireSignatures` DID array for conditional release). Returns held/released status with provider discrimination. This is the hold-and-release mechanism P32 §6.2 called for. The arbiter DID field maps to CulturalDID-governance-arbitration; the signature-based conditional release maps to the threshold-met flow in §6.1.
+- **Campaign events scoped** — issue #749 filed April 20: *"Campaign events: goal-based crowdfunding via events app."* Ryan's Mooi epic #581 comment (April 20): *"Crowd-funded events are a core Mooi requirement. V1: Stripe SetupIntent (no charge until goal met). V2: MJNx escrow (zero fees). Depends on #363."*
+- **Mooi epic #581 active** — last updated April 20. Critical path (subdomain, .fair cascade, escrow) — escrow line-item moved from "TODO" to "route-shipped + V1/V2 plan."
+
+**Still open at April 22:**
+- **Attestation types P32 §6.3 enumerated** — `event.proposed`, `event.interest`, `event.funded`, `event.confirmed`, `treasury.contributed` — **NONE of the 5 shipped** in the 35-type vocabulary. Settlement flow needs attestation emission to complete the trust-signal harvest §6.3 described.
+- **Forum/BBS threaded-discussion UI** — chat has `conversations/` but no thread semantics. Still §5.5 / §6 Stage-1 dependency.
+- **Per-user feature preferences UI** — `profile.feature_toggles` JSONB exists; no UI.
+- **Theme customization UI** — `forest_config.theme` JSONB exists; no UI.
+- **Mooi subdomain** — no verification that `mooi.imajin.ai` resolves.
+- **Escrow epic #363** — conditional-settlement-with-attestation-based-release — still OPEN. Route shipped; attestation-release semantics incomplete.
+
+**Changed since P32 was filed:**
+- **#749 V1/V2 phasing** simplifies §6.1's 4-stage flow into SetupIntent-based commitment for V1. This is pragmatically right for shipping but *changes the attestation trail*: V1 has no `event.interest` attestation, no separate polling-vs-commitment stage. The "lightweight commitment then real commitment" dual-signal §6.1 described collapses into one signal. Trust graph loses a distinction.
+- **MJNx as V2** is a direct consequence of fee model v3 dual-token (post-P32). V2 "zero fees" makes crowd-funded events a flagship MJNx use case.
+- **RFC-28 Universal Real-World Registry** (April 21) introduces an alternative entry path: Mooi as a public stub → claim-by-Borzoo → upgrade to CulturalDID. P32 assumes CulturalDID from day one. No answer yet on whether both paths are supported.
+- **@imajin/bus #759** will migrate escrow-related emit sites; P40 safety-plan territory.
+
+**§9 Open Questions — April 22 status:**
+
+| Q | Status |
+|---|---|
+| Q1: CulturalDID formation <5 founders? | Partially resolved — multi-controller shipped; RFC-07 5-7 minimum answer still owed. |
+| Q2: Node config table vs CulturalDID-scoped? | **Resolved** — `forest_config` on group identity. |
+| Q3: Extend `feature_toggles` for both? | **Architecturally resolved** — forest_config (node) + profile.feature_toggles (user). User UI missing. |
+| Q4: Stripe Payment Intents vs Connect? | **Resolved** — escrow route supports both Stripe + Solana via provider abstraction. |
+| Q5: Forum as new service vs chat adaptation? | Still open. |
+| Q6: Mooi first event timeline? | Still open. |
+| Q7: Nav simplification alignment? | Partially shipped per §11. Per-user prefs still TODO. |
+
+**Load-bearing open question for Ryan (new April 22):**
+
+> **Does #749 V1/V2 phasing (SetupIntent → MJNx escrow) replace §6.1's 4-stage flow, or is §6.1 the target end-state and V1/V2 is the on-ramp?**
+>
+> - If V1 replaces §6.1: the 5 attestation types collapse to 2 (`event.proposed`, `event.funded`). Interest-polling-without-commitment disappears. P32 §6 retires with a lineage note to #749.
+> - If §6.1 is target end-state: V1 is an abbreviated launch, V2 adds the polling layer back in. The 5 attestation types stay in P32's spec. P32 §6 remains canonical for the full flow.
+>
+> **Architectural reference:** `resolved/34-crowd-funded-events.md` is the full architectural target spec for the 4-stage flow (propose → poll → fund → confirm/refund), the scope-fee-in-.fair-manifest worked example, the alternatives analysis (Options A/B/C for windows >31 days), and the full attestation chain. P34 was consolidated into this proposal + #749 on 2026-04-22 — not completed, but retired as a standalone tracking item. If V2 revives the full crowd-fund lifecycle, that file is where the spec lives.
+
+**Carry-forward list (April 22 → next audit):**
+1. Mooi subdomain resolution
+2. Forum/BBS threaded UI decision (Q5)
+3. 5 crowd-funding attestation types (depends on Q above)
+4. Per-user feature toggles UI
+5. Theme UI
+6. §6.1 vs #749 V1 spec reconciliation (load-bearing question; full spec preserved at `resolved/34-crowd-funded-events.md`)
+7. RFC-28 stub-path vs CulturalDID-day-one entry path decision
+
+Sections below preserve the original substance unchanged.
+
+---
+
 ### 1. Context — Mooi and the Problem It Reveals
 
 **Mooi** is an event space in Toronto with capacity for 150–500 people. Borzoo, the operator, met with Greg in late March 2026. Borzoo wants a membership platform and event hosting/ticket sales system. He is willing to try Imajin — but only if it's simple, focused, and doesn't require him to babysit the process.

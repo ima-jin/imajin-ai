@@ -6,7 +6,69 @@
 **Matrix cells:** All scopes × Attestation (the primitive everything else depends on)
 **Related issues:** #461 (attestation chain coverage), #321 (progressive trust), #25 (demo), #163 (bilateral attestations)
 **Related concerns:** C02 (.fair automated nodes), C12 (consent primitive), C15 (agent authority scope)
-**Related proposals:** P01 (resolved — Progressive Trust), P02 (resolved — Trust Accountability), P07 (resolved — Cryptographic Trust Layer), P08 (resolved — Attestation Data Layer), P28 (Launch Readiness)
+**Related proposals:** P01 (resolved — Progressive Trust), P02 (resolved — Trust Accountability), P07 (resolved — Cryptographic Trust Layer), P08 (resolved — Attestation Data Layer), P28 (resolved — Launch Readiness), P37 (RFC-27 agent attribution), P38 (RFC-28 registry), P40 (bus migration), P36 (founding supporter — P28 §4 extraction)
+
+---
+
+### April 22, 2026 — Status Sharpening
+
+**Substantially advanced; core coverage goal exceeded. Three residual gaps carry forward: Tier 3 residue, §5 backfill decision, §6 diversity multiplier, §8 vocabulary governance. Retrospective framing (pre-/post-#461 audit, April 1 evaporation risk, investor proof point, phase timeline) retires.**
+
+**Verified April 22 against `packages/auth/src/types/attestation.ts`:**
+- **35 attestation types in the controlled vocabulary today** (P29 targeted 21). 67% past target.
+- **Tier 1 (must emit before April 1) — SHIPPED:** `event.attendance`, `ticket.purchased`.
+- **Tier 2 (must emit before Founding Supporter #474) — PARTIAL:** `event.created` shipped. `supporter.founding` NOT shipped — carried by **P36** (extracted today from P28 §4), not P29.
+- **Tier 3 (before Progressive Trust #321 meaningful) — PARTIAL:** `learn.completed` ✓, `listing.purchased` ✓ (= P29's `market.purchased`), `listing.created` ✓. **Still missing:** `media.uploaded`, `key.rotated`.
+- **Tier 4 (post-fundraise) — as scheduled, unshipped:** `chain.presented`, `checkin.verified`, `agent.action`, `message.signed`.
+- **`institution.verified` regression RESOLVED** — back in the vocabulary at line 9.
+
+**Net-new surface area P29 did not enumerate (shipped past the spec):**
+- **Identity tier graduation primitives** (5 types): `identity.created`, `identity.verified.preliminary` / `.hard` / `.steward` / `.operator`. These ARE the progressive trust mechanism (#321). Landed.
+- **Forest/group scope** (5 types): `group.created`, `group.member.added` / `.removed` / `.left`, `scope.onboard`. Enables family/community/business scope.
+- **Handle primitive**: `handle.claimed`.
+- **Delegated app sessions** (2 types, PR #244): `app.authorized` / `app.revoked` — OAuth-style delegated consent (adjacent to P18, not a replacement).
+- **Trust accountability** (2 types): `flag.yellow` / `flag.cleared` (TODO at P29 writing).
+- **Vouch split** (2 types): `vouch.given` / `vouch.received` (P29 had flat `vouch`).
+- **Tip seam** named `tip.granted` (P29 proposed `tip.received` — same semantics, different name).
+
+**§7 Bilateral attestation layer — SHIPPED as architecture:**
+- `authorJws`, `witnessJws`, `attestationStatus` ('pending' | 'bilateral' | 'declined'), `cid` — live on `auth.attestations`.
+- Countersign route at `apps/kernel/app/auth/api/attestations/countersign/route.ts:69` sets `bilateral`.
+- Decline route exists; OpenAPI documented.
+- **Gaps that remain:** bilateral is opt-in, not default; enforcement not required by settlement; group-key signing not implemented; legacy null-status records exist. The §7 table is now live architecture needing *enforcement tightening*, not proposal.
+
+**What P29 asked for that is NOT in upstream today:**
+- **§3 Tier 3 residue:** `media.uploaded`, `key.rotated` — still missing.
+- **§5 `legacy.seed` backfill type** — not in vocabulary. No explicit decision recorded; appears to be implicit Option 1 (clean start).
+- **§6 Type-diversity multiplier** — no evidence of `distinct_attestation_types()` logic in standing computation.
+- **§8 Vocabulary governance** — `ATTESTATION_TYPES` still a hard-coded string array (Option 1). Greg's stated preference (Option 2, config-based per service) not adopted.
+
+**What complicates P29 since writing:**
+- **RFC-27 Multi-Agent Coordination** — `agent.action` (Tier 4) has an unresolved subject/issuer question under the peer model: is it issued *by* the agent DID or *about* the agent DID? P37 blocks the spec of this type. P29 cannot finalize `agent.action` schema without the P37 decision.
+- **RFC-28 Universal Real-World Registry** — introduces potential new types (`stub.created`, `stub.claimed`, `stub.commission.earned`, or equivalents). Not yet in vocabulary. P38 pairs here.
+- **@imajin/bus epic #759** — all 47 emit sites migrate to the bus envelope. This implicitly answers §8: the bus topic namespaces become the de facto vocabulary registry. P29's config-based-vocabulary proposal may be obviated by "whatever the bus allows as a topic is the vocabulary" (P40 territory).
+- **Identity tier attestations live** makes the §3.1 bootstrap paradox example obsolete — standing now has 35 types × bilateral tier signals × .fair chain signals to work with, not the 6 unilateral types the scenario assumed.
+
+**Load-bearing open questions for Ryan (new April 22):**
+
+> **(1) Is the type-diversity multiplier (§6) live in standing computation, or does standing weight only count + recency today?**
+> - If live: §6 retires.
+> - If not: it remains Greg's proposal. The 35-type vocabulary makes diversity weighting *more* valuable, not less — signal-to-noise advantage of diversity weighting scales with type count.
+>
+> **(2) Does the @imajin/bus migration absorb the vocabulary governance question (§8), or is vocabulary a separate concern that needs its own answer?**
+> - If absorbed: §8 retires; P29 references P40 for the vocabulary-as-bus-topics story.
+> - If separate: §8 remains open — pick config-vs-hard-coded post-bus, explicitly.
+>
+> **(3) Was `legacy.seed` backfill decided implicitly as "clean start" (Option 1), or deferred?**
+> - If clean start: §5 retires with an explicit acknowledgment. The 120+ pre-March DIDs are permanently standing-zero in historical record.
+> - If deferred: §5 remains open; cost grows as more un-backfilled activity accumulates.
+
+**Revised scope for P29:**
+- **Retires with this sharpening:** §1 pre-/post-#461 audit (retrospective), §3 regressed/shipped row annotations (historical), §3.2 April 1 evaporation risk (past), §3.3 investor proof point framing, §4 Tier 1–2 timing (past), §9 phase timeline (past), `institution.verified` regression row.
+- **Keep & sharpen:** §3 Tier 3 residue (`media.uploaded`, `key.rotated` only), §5 backfill decision, §6 diversity multiplier, §8 vocabulary governance, §7 bilateral *enforcement* (not existence).
+- **Reframe §10 around the three load-bearing questions above.**
+
+Sections below preserve the original substance unchanged — the spec is still correct where upstream hasn't reached it; the framing around it is what shifted.
 
 ---
 
