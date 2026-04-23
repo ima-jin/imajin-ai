@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('coffee');
 import { db, coffeePages, tips } from '@/db';
-import { requireAuth, emitAttestation } from '@imajin/auth';
+import { requireAuth } from '@imajin/auth';
+import { bus } from '@imajin/bus';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
 
@@ -143,14 +144,14 @@ export async function POST(request: NextRequest) {
 
       // Fire and forget — never block the response
       if (fromDid) {
-        emitAttestation({
-          issuer_did: fromHumanDid!,
-          subject_did: page.did,
-          type: 'tip.granted',
-          context_id: tipId,
-          context_type: 'coffee',
-          payload: { amount, currency },
-        }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
+        bus.publish('tip.initiated', {
+          fromDid,
+          fromHumanDid: fromHumanDid!,
+          toDid: page.did,
+          tipId,
+          amount,
+          currency,
+        }).catch((err) => log.error({ err: String(err) }, '[tip] bus tip.initiated error'));
       }
 
       // Return checkout URL for redirect
@@ -180,14 +181,14 @@ export async function POST(request: NextRequest) {
 
       // Fire and forget — never block the response
       if (fromDid) {
-        emitAttestation({
-          issuer_did: fromHumanDid!,
-          subject_did: page.did,
-          type: 'tip.granted',
-          context_id: tipId,
-          context_type: 'coffee',
-          payload: { amount, currency: 'SOL' },
-        }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
+        bus.publish('tip.initiated', {
+          fromDid,
+          fromHumanDid: fromHumanDid!,
+          toDid: page.did,
+          tipId,
+          amount,
+          currency: 'SOL',
+        }).catch((err) => log.error({ err: String(err) }, '[tip] bus tip.initiated error'));
       }
 
       return jsonResponse({
