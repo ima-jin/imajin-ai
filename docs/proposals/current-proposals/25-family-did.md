@@ -14,6 +14,51 @@
 
 ---
 
+### April 22, 2026 — Status Sharpening
+
+**Partially shipped at the primitive layer; distinctive family semantics still open. The proposal is still relevant but narrower than when filed.**
+
+**What shipped (March 26 – April 7 forest infrastructure sprint):**
+- **`scope: 'family'` is first-class** in `auth.identities`. Verified at `apps/kernel/src/db/schemas/auth.ts`: the `scope` column accepts `'actor' | 'family' | 'community' | 'business'`. Family is NOT a separate table — Ryan chose the single-table answer to Decision #1 below.
+- **Family group formation route** lives at `apps/kernel/app/auth/api/groups/route.ts:12` — `VALID_SCOPES = ['business', 'community', 'family']`. Controllers, keypairs, scope-aware services all apply to family-scope DIDs today.
+- **Family-specific UX** exists at `apps/kernel/app/profile/components/profiles/FamilyProfile.tsx` — member-only privacy view ("Private family group" lock for non-members), flat `MemberList` with an explicit comment *"flat, no role grouping"*. This partially answers §7 (privacy defaults — member-only roster visibility is live) and implicitly answers §4 (role model shipped as flat-member, not Guardian/Member/Dependent).
+- **Work orders delivered the primitive:** `wo-689-scope-profile-pages` and `wo-346-identity-scopes`.
+
+**What this resolves in P25:**
+- **§1 (What Family DID Is)** — the container exists. `did:imajin:family:{id}` is a real shape on the network.
+- **§3 (Formation)** — a guardian actor DID creates a family-scoped group with a keypair. Multi-controller supported. Single-guardian families valid.
+- **§7 (Privacy Defaults)** — member-only roster visibility is live in `FamilyProfile.tsx`. The strong defaults described in §7 are partially expressed as "non-members see a lock view."
+- **§10 (Matrix Placement)** — family scope now participates in all 12 scope-aware userspace services via the forest config model.
+- **Decision #1** (new type vs separate table) — **resolved**: single table, `scope` column discriminator.
+
+**What P25 says that is NOT in the upstream today:**
+- **§4 — Guardian / Member / Dependent role model.** Upstream has `controllers` and flat `members`; no role discrimination within family scope. `FamilyProfile.tsx` explicitly ships flat.
+- **§4 — Dependent references without a keypair.** No mechanism for named dependents who haven't registered an actor DID. Decision #2 (placeholder vs soft DID) still open.
+- **§5 — Age-graduated rights via attestation accumulation.** No `family_governance_weight` computation. No `family.external_attestation_threshold` parameter. No external-attestation/internal-standing/self-declaration channel model.
+- **§6 — TTL'd cross-node permission grants** specific to family settlement semantics (allowances, spend-up-to, succession). The generic scope-aware permission model does not carry the family-shaped grant primitives.
+- **§6 — Family `.fair` attribution with internal distribution chain.** `.fair` chain can target `did:imajin:family:{id}` today (because it's a regular DID), but internal distribution governance is not modeled.
+- **§8 — Fork semantics for separation / dual-custody / reconciliation.** RFC-17 speaks to this at the governance layer; no code implements family-fork-specific behavior (dependent dual-copy, grant suspension-on-fork).
+- **§9 — Community formation trigger from 2+ connecting families.** No governance operation that recognizes "family-to-family connection → trigger community scope."
+
+**What complicates P25 since writing:**
+- **RFC-27 Multi-Agent Coordination** uses the vocabulary **"guardian"** (guardian DID → agent DID relationships). This collides with P25's Guardian role. Either P25's role name changes, or the two meanings are explicitly distinguished (family-guardian vs agent-guardian). Flag for Ryan.
+- **RFC-17 Governance Primitive** has moved further along since P25 was filed — the custodial / age-graduated / fork-semantics language P25 cited is now canonical RFC-17 content. P25 should reference RFC-17 as the governance source and focus on *what the family identity primitive must expose* to satisfy those rules, not re-specify them.
+- **RFC-28 Universal Real-World Registry** — families that operate as a shared public presence (band, business, newsletter) may register public stubs via RFC-28 rather than using family-scope discovery declarations. Section 6 ("Family Discovery") should be read against the RFC-28 public-stub surface.
+
+**Load-bearing open question for Ryan (new April 22):**
+
+> **Is the current flat-family-group (scope=`'family'`, controllers + flat members) the end-state, or is it the MVP pending the Guardian / Member / Dependent role model?**
+>
+> - If end-state: P25 §4–§5 retire. The distinction P25 draws (age-graduation via attestation, dependent-before-keypair) goes away. Families are just groups whose scope happens to be `'family'`.
+> - If MVP: P25 §4–§5 are still the spec. The `FamilyProfile.tsx` "flat, no role grouping" comment is a placeholder, and role discrimination is a follow-on.
+> - If partial: family scope keeps flat members but gains the dependent-reference primitive (a named non-DID reference that transitions to member on keypair registration). This is §4's minimum viable add.
+
+**Revised scope for P25:** keep §1, §4 (narrowed to dependent-references), §5 (attestation-based graduation), §6 (family-shaped grants), §8 (fork semantics), §9 (community formation trigger). Retire §3 and §7's overlap with shipped forest-group formation. §10 matrix placement is mostly resolved; the gaps are the cells in the distinctive-family rows, not the scope row itself.
+
+Sections below preserve the original substance unchanged — the spec is still correct where upstream hasn't reached it.
+
+---
+
 ## Why This Gap Exists Now
 
 The 4-scopes × 5-primitives matrix has three of four identity primitives:

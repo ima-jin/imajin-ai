@@ -1,12 +1,55 @@
 # Proposal 21 — Attentional Sovereignty
 ## Imajin as Infrastructure for Human Self-Determination
 
-**Filed:** 2026-03-17
+**Filed:** 2026-03-17 (sharpened 2026-04-22)
 **Author:** Greg Mulholland (Tonalith)
 **Series:** Proposal 09 of the Greg architectural review series
-**Against upstream HEAD:** 39331e0
-**Relates to:** Proposal 05 (Gas Model), Proposal 03 (Cultural DID), RFC-07 (Cultural DID), RFC-08 (Org DID), Discovery Primitive, Proposal 17 (Intent-Bearing Transactions)
-**Upstream evidence:** None — not yet in upstream docs/proposals/
+**Against upstream HEAD:** 39331e0 (original) / 5a31be1a (April 22 re-verification)
+**Relates to:** Proposal 05 (Gas Model), Proposal 03 (Cultural DID), RFC-07 (Cultural DID), RFC-08 (Org DID), Discovery Primitive, Proposal 17 (Intent-Bearing Transactions), Proposal 22 (Identity Archaeology — §2.3 spec owner), RFC-27 (Multi-Agent Coordination), RFC-28 (Universal Real-World Registry), @imajin/bus epic #759
+**Upstream evidence:** Partial — essay-19 footnote only; whitepaper and UX surfaces untouched
+
+---
+
+### April 22, 2026 — Status Sharpening
+
+**Substantively unresolved. The framing has made one beachhead (a single essay footnote). Every Decision in the §Decisions Required table remains Open. Two new architectural questions have surfaced that P21's core claim depends on.**
+
+**What has partially landed:**
+
+- **`docs/articles/essay-19-how-to-save-the-ad-industry.md:358`** — a footnote cites Browne & Watzl (Springer 2025, `s11098-025-02436-3`) and uses *"attentional landscaping potential"*. This is the **only** upstream surface outside Greg's own proposals dir to pick up the framing.
+- **Resolved P27 (Unified Identity Substrate)** line 262 explicitly names *"sovereign presence (P21's attentional sovereignty)"* as an inference-context consumer. The framing is carried forward architecturally, even though the documentation surfaces haven't updated.
+
+**What is NOT in upstream (re-verified April 22):**
+
+| Decision | Status | Evidence |
+|---|---|---|
+| #6 whitepaper references Browne & Watzl / attentional sovereignty | **Not landed** | Zero hits in `docs/mjn-whitepaper.md` v0.4 |
+| #3 Section 3 moved to `docs/philosophy/` | **Not landed** | Folder does not exist |
+| #2 Onboarding UX copy references authoring attentional environment | **Not landed** | Zero hits for "attentional" / "consent-to-influence" across `apps/` |
+| #5 Community DID removal trigger includes attentional-landscape manipulation | **Not landed** | No hits in governance docs or RFC-17 |
+| #4 Behavior-seeded declaration confirmation screen | **Blocked** | Stream 2 itself not shipped (same block as P12) |
+| #1 "Consent-to-influence" framing in whitepaper | **Not landed** | Zero hits in whitepaper |
+| Four-dimension inversion table in pitch deck | **Needs biz-dev check** | Lives in `biz-dev/tonalith/`, not this repo |
+
+**Decision #6 is the load-bearing signal.** The whitepaper is where this framing has to land for the proposal to count as resolved. The essay-19 footnote is a crack in the door, not an entrance.
+
+**What complicates P21 since writing:**
+
+- **RFC-27 Multi-Agent Coordination (peer agents).** P21 §2.1 frames declarations as *"the user's cryptographic assertion of what attentional landscapes they are willing to inhabit."* If agents are peer DIDs acting in a principal's context (per RFC-27), whose attentional environment is being authored when an agent filters on the principal's behalf? The §3.1 inversion table's "Self-authored" column assumes human-only attentional authorship. Peer agents break that assumption cleanly. Mirrors the P37 / P24 reconciliation problem.
+- **RFC-28 Universal Real-World Registry (public-stub pattern).** Same architectural tension P12 is blocked on. Public stubs are not user-authored — they are curator-created observations of venues/businesses. If RFC-28's public-registry model wins over the local-match model P12 assumes, §2.1's *"cryptographic act of self-directed attentional landscaping"* describes one of two Stream 2 patterns, not both. The proposal's central framing becomes model-dependent.
+- **@imajin/bus migration (#759, 47 emit sites).** §2.3's "identity archaeology" claim assumes attestations flow through a consistent event path. During the 47-site migration (see P40), attestation event lineage is less stable than §2.3 implicitly assumes. §2.3 is now owned by P22; P21 just references.
+
+**Load-bearing open question for Ryan (new April 22):**
+
+> **Does Stream 2's model (local-match per P12, or public-stub per RFC-28) determine the validity of P21 §2.1's "consent-to-influence" framing?**
+>
+> - If RFC-28 public-registry wins: the declared-intent → self-authored-environment claim applies only to a subset of Stream 2 surfaces. The whitepaper copy and inversion table need to reflect that split.
+> - If P12 local-match holds: §2.1 framing ratifies as-written.
+> - If hybrid: P21 needs a new section distinguishing user-authored surfaces (declarations) from curator-observed surfaces (stubs) — and only the former carries the full consent-to-influence claim.
+>
+> This is the same architecture decision P12 is blocked on, viewed from the philosophical/framing angle instead of the privacy-mechanism angle.
+
+**Scope reduction:** §2.3 (identity archaeology) is now owned by P22 — P21 references it. The active surfaces for P21 remain the six Decisions and the new Stream 2 model question above. Sections below preserve the original philosophical work unchanged.
 
 ---
 

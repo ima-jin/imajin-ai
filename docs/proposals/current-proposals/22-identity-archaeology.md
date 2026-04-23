@@ -1,13 +1,64 @@
 # Proposal 22 — Identity Archaeology
 ## Specifying the Read-Side View of the Attestation Layer
 
-**Filed:** 2026-03-17
+**Filed:** 2026-03-17 (sharpened 2026-04-22)
 **Author:** Greg Mulholland (Tonalith)
 **Series:** Proposal 10 of the Greg architectural review series
-**Against upstream HEAD:** 39331e0
-**Relates to:** Proposal 21 (Attentional Sovereignty), Proposal 01 (Progressive Trust Model), RFC-07 (Cultural DID), Proposal 05 (BaggageDID)
+**Against upstream HEAD:** 39331e0 (original) / 5a31be1a (April 22 re-verification)
+**Relates to:** Proposal 21 (Attentional Sovereignty), Proposal 01 (Progressive Trust Model), RFC-07 (Cultural DID), Proposal 05 (BaggageDID), RFC-27 (Multi-Agent Coordination), @imajin/bus epic #759, PR #244 (Delegated App Sessions), C24 (Bilateral Attestation — advanced)
 **Ryan's directive:** Spec now, build when 100+ active users
-**Upstream evidence:** None — not yet in upstream docs/proposals/
+**Upstream evidence:** Partial — bilateral attestation layer shipped; archaeology endpoint/UI/schema gaps all absent
+
+---
+
+### April 22, 2026 — Status Sharpening
+
+**The live `auth.attestations` schema diverged from P22's baseline in a different direction than P22 anticipated. The 2-gap framing understates the reality — the gap list is now ~5, and one of them is architectural (encryption model), not additive.**
+
+**What has shipped (`apps/kernel/src/db/schemas/auth.ts:89–110`):**
+
+Live columns: `id`, `issuer_did`, `subject_did`, `type`, `context_id`, `context_type`, `payload` (plain `jsonb`), `signature`, **`cid`**, **`author_jws`**, **`witness_jws`**, **`attestation_status`** ('pending' | 'bilateral' | 'declined'), `issued_at`, `expires_at`, `revoked_at`.
+
+Two new layers P22 didn't plan for:
+- **Bilateral signing infrastructure** (`authorJws` / `witnessJws` / `attestationStatus`) — C24's bilateral attestation surface advanced significantly. Countersignature flow exists at `apps/kernel/app/auth/api/attestations/countersign/route.ts`.
+- **dag-cbor CID addressing** (`cid` column) — #400's industrial-grade content addressing that Ryan confirmed as direction on March 20 has landed. The DFOS integration note's conditional on this is now unconditional.
+
+**Where P22's schema assumptions don't hold (re-verified April 22):**
+
+| P22 §2 assumed field | Live schema | Impact on spec |
+|---|---|---|
+| `node_context TEXT NOT NULL` | **Missing** | §3 queries (`WHERE node_context = $node_did`) don't execute. Node-scoped archaeology has no enforcement column. |
+| `payload_hint JSONB` | **Missing** | §2.3 standing trajectory depends on this encrypted/aggregate split. Not present. |
+| `issuer_type TEXT NOT NULL` | **Missing** | §5.2 human/agent/system resolver has no discriminator. Grows urgent under RFC-27 peer agents. |
+| `payload` encrypted under subject key | Live is plain `jsonb('payload')` | Entire §2 "Critical: Client-Side Decryption" architecture assumes at-rest encryption that the shipped schema does not reflect. |
+
+**The gap list is now (approximately) five, not two:**
+
+- Gap 1 — `client_hint` (original — still missing)
+- Gap 2 — `category` (original — still missing)
+- **Gap 3 (new) — `node_context`** or functional equivalent for node-scoped archaeology
+- **Gap 4 (new) — `payload_hint`** split for trajectory computation without decryption
+- **Gap 5 (new, architectural) — encryption-model specification.** Is `payload` encrypted at rest? If not, what is the privacy story for archaeology? This is not additive; it is a decision P22 needs made before the rest of the spec can be ratified against the shipped schema.
+
+**What has not shipped (re-verified April 22):**
+
+Zero hits for `archaeology`, `client_hint`, `payload_hint` across upstream outside Greg's proposals. No `/api/archaeology/:did` endpoint. No migration for any of the five gaps. No archaeology UI. UI absence is expected (per Ryan's 100+ active-user threshold); schema absence is not (Ryan said *"spec now"*).
+
+**What complicates P22 since writing:**
+
+- **RFC-27 Multi-Agent Coordination (peer agents).** P22's five-domain view assumes human subjects and human/org/system issuers. Peer agent DIDs raise questions §5.2 doesn't answer: does an agent have its own archaeology? Does a principal's archaeology surface actions taken by their agents? Gap 5 (`issuer_type` discriminator) becomes actively blocking, not nice-to-have. Mirrors the P37/P24 conflict.
+- **@imajin/bus migration (epic #759, 47 emit sites).** Attestation emissions are among the call sites being migrated (P40 safety plan). Spec'ing archaeology against the pre-bus emission path risks rewriting it after the bus lands. Anchor P22 to post-bus, like P18.
+- **Bilateral attestation layer.** §5.2 individual attestation card should surface `attestationStatus` — *"pending counter-signature"* vs *"bilateral"* vs *"declined"* — and bilateral attestations need to show both `authorJws` and `witnessJws` issuers. New display concern not in original §5.2.
+
+**Load-bearing open question for Ryan (new April 22):**
+
+> **Is P22's encryption model (client-side subject-key decryption of `payload`, with `payload_hint` for server-side aggregates) still the target architecture — or has the shipped schema taken a different direction (transparent `payload` + bilateral JWS signing + CID content-addressing) that P22 should adapt to?**
+>
+> - **If P22's model is still the target:** the schema work is larger than originally scoped — at-rest encryption, `payload_hint` split, `node_context`, `issuer_type` — a real migration, not two additive columns.
+> - **If the shipped schema is canonical:** P22 needs a rewrite grounded in the bilateral + CID model. "Privacy" is then provided by what's *not in* `payload` at write time, not by decryption. §2.3 trajectory re-specifies on shipped fields.
+> - **If hybrid:** split P22 into (a) additive fields that can ship now (`client_hint`, `category`) and (b) architecture decision deferred.
+
+**Scope reduction:** The schema-additive framing of the original proposal is no longer sufficient. The load-bearing question above must be answered before §2–§5 can be ratified against live code. Below this block, the proposal is preserved unchanged for lineage; the five-gap list and the architecture question are the live ask.
 
 ---
 

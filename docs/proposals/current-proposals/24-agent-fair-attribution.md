@@ -1,12 +1,72 @@
 # Proposal 24 — Agent Attribution
 ## `.fair` Schema Extension and `gh-fair` CLI for AI Contributors
 
-**Filed:** 2026-03-20
+**Filed:** 2026-03-20 (sharpened 2026-04-22)
 **Author:** Greg Mulholland (Tonalith)
 **Addresses:** #365 (gh-fair CLI extension), #366 (Agent-principal pairing)
-**Relates to:** `packages/fair/src/types.ts`, `docs/FAIR_ROADMAP.md`, RFC-16 (Jin Workspace Agent)
-**Depends on:** #319 (three-tier model), #366 (agent identity schema)
-**Upstream evidence:** #365 and #366 filed and open — this proposal fills the gap between them
+**Relates to:** `packages/fair/src/types.ts`, `docs/FAIR_ROADMAP.md`, RFC-16 (Jin Workspace Agent), **RFC-27 (Multi-Agent Coordination / MCC, epic #751 — structural conflict)**, **P37 (partner document — reconciles P24 with RFC-27)**, **C24 bilateral attestation layer (advanced)**, **@imajin/bus epic #759**
+**Depends on:** #319 (three-tier model), #366 (agent identity schema), **P37 resolution**
+**Upstream evidence:** Partial — scope/subtype + three-role keys + bilateral attestations + dag-cbor CIDs all shipped; proposed `FairEntry` extensions and `IssueManifest` type have not landed
+
+---
+
+### April 22, 2026 — Status Sharpening
+
+**Structurally conflicted with RFC-27. Nothing in P24's proposed schema has landed. The two-track insight (attestation DID vs economic DID) is still correct; the enforcement mechanism (`principalSignature`) needs to be re-architected on what actually shipped. P37 is the partner blocker.**
+
+**Re-verified against upstream HEAD `5a31be1a` — none of the core schema changes have landed:**
+
+- **`FairEntry`** (`packages/fair/src/types.ts:7–16`): has `did`, `role`, `share`, `note`, `chainProof`. **Missing:** `contributorType`, `principal`, `image`, `economicFlow`.
+- **`FairManifest`**: has `signature`, `platformSignature`. **No `principalSignature`.**
+- **`IssueManifest`**: does not exist. Zero hits.
+- **`validate.ts`**: no principal-signature check for agent contributors.
+- **`.fair/issues/`**: directory does not exist.
+- **`gh-fair` CLI**: no package or binary.
+- **`auth.identities`**: has `scope` / `subtype` columns, but **no `principal_did` / `image_id`** columns.
+- **`.imajin/fair.json`**: no schema or example.
+
+Every row of §9 Decisions Required remains Open.
+
+**What has shipped adjacent that changes P24's foundation:**
+
+| Surface | Impact on P24 |
+|---|---|
+| **`auth.identities.scope` / `subtype`** (`auth.ts:17–18`) — `scope: 'actor' \| 'family' \| 'community' \| 'business'` with `subtype: 'human' \| 'agent' \| 'device'`. | Agents are typed as peer actors, not as sub-identities. Structural conflict with P24's principal-hierarchy assumption. |
+| **RFC-27 Multi-Agent Coordination (epic #751, April 20)** — agents are **peer DIDs** (`scope: 'actor', subtype: 'agent'`), not sub-identities of a principal. "Principal" is administrative, not structural. | Breaks P24 §5's `principalSignature` requirement — there is no well-defined hierarchical principal to countersign. P37 names this conflict directly. |
+| **`keyRoles` JSONB** — three-role key architecture (`auth` / `assert` / `controller`) is live. | The DFOS-integration-note's conditional is unconditional. `controller` is the correct role if any external-authority countersignature is needed. |
+| **`chainProof` field on `FairEntry`** — chain-verification state carried at manifest creation. | P24 didn't anticipate this. Attribution entries now include a verification layer P24 should build on, not ignore. |
+| **Bilateral attestation layer** (`authorJws` / `witnessJws` / `attestationStatus: 'pending' \| 'bilateral' \| 'declined'`) — C24 advanced. | This is the canonical countersignature primitive. P24's bespoke `principalSignature` field is now duplicative. Agent-attribution countersignature should route through bilateral attestations, not a new FairManifest slot. |
+| **dag-cbor CIDs** (#400 shipped) | `IssueManifest.integrity` should use CIDs from day one. Conditional in the original DFOS note is resolved. |
+| **@imajin/bus epic #759 (47 emit sites)** | `fair.attribution` attestation emission (P24 §7) is among the migrating sites. Building P24 now against pre-bus emit paths means re-anchoring during migration. |
+
+**Durable insight preserved:** The two-track split (attestation DID for provenance, economic DID for value flow) is correct regardless of which hierarchy model wins. Peer agents can still route economic value wherever they're configured to. §1's core distinction is the still-correct contribution; §2–§5's enforcement structure is what needs re-architecting.
+
+**Load-bearing open questions for Ryan (new April 22):**
+
+> **1. Does P24's principal-agent hierarchy survive RFC-27's peer-DID model, or does "principal" need a new definition?**
+>
+> Same question P37 asks, from the attribution side. Three possible answers:
+> - **(a) Hierarchical principal persists as an administrative relationship** (e.g., `principal` field in `auth.identities` metadata JSONB). P24 §2 ratifies as-written.
+> - **(b) Peer model is canonical; `principal` → `introducer`.** The DID that first attested the agent's existence signs where P24 said principal signs. §2 retains the two-track split but reframes `principalSignature` as `introducerSignature`. "Authority scope" becomes "first-peer vouching."
+> - **(c) Peer model is canonical; no external signer.** The agent signs its own manifest; economic routing is administrative metadata on the agent DID, not gated by any external authority.
+>
+> Greg's current lean: **(b)** — preserves the authority scope that closes the forge gap, while fitting the peer model.
+>
+> **2. Does agent countersignature go through the bilateral attestation layer (`authorJws` / `witnessJws`) or a new `principalSignature` slot on `FairManifest`?**
+>
+> Greg's new position: **route through bilateral attestation.** A `fair.attribution` attestation with `authorJws` = agent and `witnessJws` = principal/introducer expresses exactly what P24 §5 asks for, using infrastructure that already exists. The `attestationStatus` lifecycle ('pending' | 'bilateral' | 'declined') becomes the validation signal — an `IssueManifest` is valid when its associated `fair.attribution` reaches `bilateral`. Eliminates a new FairManifest field and aligns with the `attestationStatus` surface already in use.
+
+**Revised implementation sketch (what the sharpening proposes as the target):**
+
+1. Keep §1 (two-track split — attestation DID vs economic DID).
+2. Keep §2's additive FairEntry fields (`contributorType`, `image`, `economicFlow`) but **replace `principal` with `introducer`** (pending Ryan's answer on Q1).
+3. Keep §3's `IssueManifest` type, but `IssueManifest.integrity` uses a CID (not SHA-256 hex), per #400.
+4. **Remove `principalSignature` from `IssueManifest`.** Replace with requirement that an `IssueManifest` with any agent contributor MUST have a linked `fair.attribution` attestation in `bilateral` status.
+5. Keep §6 `.imajin/fair.json` schema, rename `principal` → `introducer` inside.
+6. Keep §7 connection to the attestation layer — it's already the correct design, now validated by how bilateral attestations shipped.
+7. Add a new §8 entry: **RFC-28 stub-curator attribution** — if the Muskoka pilot stub-claim flow generates `.fair` entries for stub curators, `role: 'curator'` + `contributorType: 'stub-curator'` may be a new type. Flagged, not yet specified.
+
+**Scope reduction:** P24 is blocked on P37's resolution. Nothing else will unblock it. Once P37 answers the peer-vs-hierarchical question, P24 becomes a mechanical schema migration (plus the bilateral-routing reframe above) against shipped primitives.
 
 ---
 

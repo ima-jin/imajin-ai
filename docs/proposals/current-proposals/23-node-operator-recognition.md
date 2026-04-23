@@ -1,12 +1,54 @@
 # Proposal 23 — MJN Node Operator Guide
 ## Recognition Over Endorsement
 
-**Filed:** 2026-03-17
+**Filed:** 2026-03-17 (sharpened 2026-04-22)
 **Author:** Greg Mulholland (Tonalith), incorporating Ryan Veteze feedback
 **Series:** Proposal 11 of the Greg architectural review series / Node Operator Guide Section
-**Against upstream HEAD:** 39331e0
-**Relates to:** Proposal 21 (Attentional Sovereignty), Proposal 22 (Identity Archaeology), RFC-07 (Cultural DID), Proposal 04 (Org DID Vetting)
-**Upstream evidence:** None — not yet in upstream docs/proposals/
+**Against upstream HEAD:** 39331e0 (original) / 5a31be1a (April 22 re-verification)
+**Relates to:** Proposal 21 (Attentional Sovereignty), Proposal 22 (Identity Archaeology), RFC-07 (Cultural DID), Proposal 04 (Org DID Vetting), RFC-17 (Governance Primitive — new canonical home for community governance), RFC-27 (Multi-Agent Coordination — new participant type), RFC-28 (Universal Real-World Registry — new operator scenario), P32 (Mooi onboarding — shipped)
+**Upstream evidence:** None — no upstream docs surface has picked up the framing
+
+---
+
+### April 22, 2026 — Status Sharpening
+
+**Content is ready. Address is not. P23 is blocked on placement, not on substance.**
+
+**Re-verified April 22 — nothing has landed:**
+
+- `docs/node-operator-guide/` — directory does not exist.
+- `docs/philosophy/` — directory does not exist (same gap P21 identified).
+- "Recognition over endorsement" — zero hits outside Greg's proposals 21/22/23.
+- "Attentional-landscape manipulation" as a removal trigger — zero hits in RFC-07, RFC-17, or any governance doc.
+- Onboarding UX copy — no evidence of recognition-framed copy in `apps/`.
+
+Every row of §Decisions Required and every resolution signal remains Open.
+
+**What has landed adjacent that changes P23's anchor:**
+
+- **RFC-17 Governance Primitive (March 21, Ryan+Jin)** is now the canonical community governance doc — the intended home for Decision #3 has shifted from RFC-07 to RFC-17. But RFC-17 is built around governance *mechanism* (standing, weight, decision tiers, fork-merge, TTLs), not human *practice*. P23 doesn't cleanly fit as an RFC-17 section — it's a different register.
+- **Forest infrastructure / P32 Mooi onboarding shipped (April 3–7).** Contextual onboarding, scope-aware services, launcher filtering are live. P23 Part 2 ("Onboarding: The First Conversation") now has a concrete surface to attach to. P23 should cross-reference P32's onboarding flow rather than exist alongside it.
+- **Post-April 1 live seed-node data.** Three weeks of real events. The "Seed Node Steward" role section can be dogfooded against actual experience rather than staying purely speculative.
+- **PR #244 Delegated App Sessions (merged)** + **RFC-27 peer agents (April 20).** P23's "performer / lurker / optimiser / genuinely uncertain" typology assumes human members. Peer agents and delegated sessions introduce a new participant type P23 doesn't address — an agent acting on a principal's behalf is structurally different from a human archetype. The role-specific guidance needs a short agent-handling section.
+- **RFC-28 Universal Real-World Registry (April 21, Muskoka pilot).** The stub-claim pattern creates an operator-facing workflow P23 didn't anticipate: what does an operator say to someone whose business was stubbed by a stranger and is being asked to claim? The 90/10 commission split (flagged in P38) creates a conversation the recognition framework should address.
+
+**Load-bearing open question for Ryan (new April 22):**
+
+> **Where does P23 live upstream?**
+>
+> | Option | Pro | Con |
+> |---|---|---|
+> | **(a) Standalone `docs/node-operator-guide/`** | Weight where P23 wants it | Requires new docs section + ongoing maintenance commitment |
+> | **(b) "Practice" appendix to RFC-17** | Integrates with the governance substrate | Register mismatch — P23 is narrative, RFC-17 is structural |
+> | **(c) Essay in `docs/articles/`** | Low friction, no structural change | Loses "authoritative guide" framing; may get skimmed like a blog post |
+>
+> Greg's current position: **(a) if Ryan wants a real operator documentation layer**, otherwise **(b) with a register adaptation pass**. (c) is the graceful fallback if operator practice is going to emerge from lived experience rather than prescription.
+
+**Scope changes since writing:**
+
+- **Not blocked on architecture** — unlike P21/P22/P18, the community governance substrate has largely landed (RFC-17, Forest, 30 attestation types, bilateral attestations, P32 onboarding). P23 can ratify without further architectural prerequisites once the placement question is answered.
+- **Two small additions needed** before landing: a sub-section for delegated apps / RFC-27 peer agents ("how does an operator handle an agent acting on behalf of a member who hasn't shown up in three months?"), and a sub-section for RFC-28 stub-claim scenarios specifically for Muskoka pilot operators.
+- **`docs/philosophy/` coupling:** P23's connecting references to Section 3 content from P21 break if that folder doesn't exist. P23 and P21 are coupled on this decision.
 
 ---
 

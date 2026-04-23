@@ -6,8 +6,66 @@
 **Matrix cells:** All scopes × Settlement
 **Related issues:** #474 (founding supporter), RFC-12 (MJN Token Economics)
 **Related concerns:** C14 (Foundation governance)
-**Connects to:** P11 (Gas Model), P14 (Governance Equity)
+**Connects to:** P11 (Gas Model — resolved, superseded by P35), P14 (Governance Equity), P35 (Gas Governance — gas-specific successor)
 **Protocol repos:** [mjn-protocol](https://github.com/ima-jin/mjn-protocol) (RFC-0001 core spec, RFC-0004 token economics), [.fair](https://github.com/ima-jin/.fair) (settlement RFC)
+
+---
+
+### April 22, 2026 — Status Sharpening
+
+**Substantially resolved at the spec level. Fee model v3 adopted P31's core governance mechanism. Four residual items carry forward; one bounds delta needs Greg's explicit acceptance or pushback.**
+
+**What became canon (`docs/rfcs/drafts/fee-model.md` verified April 22):**
+- **§5 governance mechanism adopted verbatim:** *"Only the **protocol fee** is governance-controlled"* (line 74); *"Bounded: 0.25% floor (starvation prevention), 2% ceiling (capture prevention)"* (line 76). P31's §2 failure-mode framing is now the canonical anti-capture argument.
+- **RFC-17 Governance Primitive (shipped March 21, Ryan+Jin)** provides the engine §5 assumed: TTL'd decisions, standing-weighted voting, fork-reversible. P31's "trust-graph-elected governance body" has a specified mechanism it did not when filed.
+- **§3 DID-scoped fee proposal — partially vindicated as scope fee.** The scope fee (0.25% default, sovereign, no protocol ceiling) is a DID-scoped fee, but *community-controlled* not *protocol-controlled* — a stronger answer than P31 proposed on the sovereignty axis.
+- **§8 Q2 (voting mechanism) — RESOLVED by RFC-17 + dual-token split:** standing-weighted (behavioral, not financial). MJN is earned-through-standing, not ownable-through-purchase; MJNx is non-governance-bearing. The capture vector P31 worried about (wealthy actor buys votes) is structurally closed.
+- **§6 business plan implications — integrated.** App studio model now business-plan canon; "protocol fee doesn't fund the company alone" is load-bearing for fundraise narrative.
+- **§7/§7.1 already updated in-place** with fee model v3 integration on April 5.
+
+**Bounds delta — needs Greg's explicit sign-off:**
+
+| | Floor | Ceiling |
+|---|---|---|
+| P31 §4 (Ryan's March 29 response) | 0.75% | 3% |
+| fee-model.md canon (April 22) | **0.25%** | **2%** |
+
+Both moved downward since P31 filed. Floor -0.50% (more adoption latitude, more starvation risk). Ceiling -1.0% (tighter anti-capture; even a captured governance body cannot 3× the fee).
+
+**Greg's open position owed:** accept 0.25%/2%, or push back for 0.50%/2% (keep the lower ceiling, raise the floor to preserve starvation protection)? Floor stress test: at $155K Y1 volume, 0.25% floor = $388/yr vs 0.75% floor = $1,163/yr. Y1 revenue is not the binding constraint (app studio is), but floor scenarios matter for the "protocol still funds development in adoption mode" story.
+
+**§8 Open questions — April 22 status:**
+
+| Q | P31 framing | Current status |
+|---|---|---|
+| Q1: Enforcement location — kernel or Solana? | Open | **Still open.** `fee-model.md:88`: *"Solana contract holds the protocol rate (or reads from governance state)"* — ambiguous. No `protocolFee` / `PROTOCOL_FEE` enforcement code in `apps/kernel` (only refund route + build-log match). Specified but not implemented. |
+| Q2: Voting mechanism? | Open | **Resolved by RFC-17 + dual-token:** standing-weighted, not MJN-weighted, not one-DID-one-vote. |
+| Q3: Foundation → trust-graph transition timing? | Open | **Still open at the trigger layer.** RFC-17 specifies the mechanism; no trigger conditions (count threshold, declaration, time-box) are specified anywhere. Decentralization-narrative load-bearing for fundraise. |
+| Q4: Multi-node consistency in federation? | Open | **Still open.** RFC-28 stubs span nodes; nodes may disagree on protocol rate if reading different governance-state replicas. Unaddressed. |
+
+**What complicates P31 since writing:**
+- **Dual-token MJN/MJNx** structurally closes the "wealthy actor buys votes" capture vector (§8 Q2 dimension).
+- **RFC-28 Universal Real-World Registry** adds a 90/10 commission layer *above* the 4-layer fee stack. P31's total-effective-rate analysis needs to account for stub commissions. **P38** pairs here — P38's commission ceiling argument is the RFC-28 analogue of P31's anti-capture bounds for protocol fee.
+- **@imajin/bus #759** — fee adjustments will emit via the bus envelope. P31's "chain-recorded attestation for every fee change" maps to a bus event. P40 safety-plan territory.
+- **P35 (Gas Governance, filed April 22)** is the gas-specific successor for the `fee-model.md:184` open question on gas rate governance. P31 and P35 share the "governance-controlled rate with bounds" pattern.
+
+**Load-bearing open questions for Ryan (new April 22):**
+
+> **(1) Bounds delta — accept 0.25% / 2%, or push back to 0.50% / 2%?**
+> 2% ceiling is stronger anti-capture; worth keeping. 0.25% floor is aggressive — 0.50% preserves starvation protection with the same adoption latitude for most scenarios.
+>
+> **(2) Where is protocol fee enforced — kernel (upgradeable) or Solana contract (immutable)?**
+> This is `fee-model.md:88` restated. The answer shapes the entire anti-capture argument: kernel-enforced means governance is captureable via kernel control; contract-enforced means governance is at arm's length from operational control.
+>
+> **(3) Foundation → trust-graph handoff — under what triggers?**
+> Candidate triggers: (a) standing-weighted participant count crosses threshold, (b) Foundation declares by governance operation, (c) time-boxed (e.g., 5 years post-launch). Business-plan-relevant for the decentralization-over-time narrative.
+
+**Revised scope for P31:**
+- **Effectively resolved by fee-model.md + RFC-17:** §1, §2, §3, §4 (minus bounds delta), §5, §6, §7, §7.1, §8 Q2.
+- **Carry forward as open items:** bounds delta (§4), §8 Q1 enforcement location, §8 Q3 Foundation transition timing, §8 Q4 multi-node consistency, gas governance cross-reference to P35.
+- **Reframe as a "residual items" document** — the original proposal's big moves are in canon; what remains is implementation + three specific decisions.
+
+Sections below preserve the original substance unchanged.
 
 ---
 
