@@ -14,10 +14,9 @@ import {
 import { notifyBumpDid } from '@/src/lib/registry/bump-notify';
 import { profiles } from '@/src/db';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
+import { publish } from '@imajin/bus';
 
 const log = createLogger('kernel');
-const eventBus = createEmitter('registry');
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -202,7 +201,12 @@ export async function POST(request: NextRequest) {
       expiresAt: matchExpiry,
     });
 
-    eventBus.emit({ action: 'bump.match', did, payload: { matchId, otherDid: other.did, nodeId: session.nodeId } });
+    publish('bump.match', {
+      issuer: did,
+      subject: did,
+      scope: 'registry',
+      payload: { matchId, otherDid: other.did, nodeId: session.nodeId },
+    }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/event] publish bump.match error'));
 
     // Notify both parties via WebSocket
     const expiresAtISO = matchExpiry.toISOString();
