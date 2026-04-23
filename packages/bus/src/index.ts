@@ -19,4 +19,5 @@ registerReactor('webhook', webhookReactor);
 export { publish } from './publish';
 export { registerReactor } from './registry';
 export { getChainConfig } from './config';
+export { EMISSION_SCHEDULE } from './emissions';
 export type { BusEvent, BusEventMap, BusEventType, ReactorConfig, ChainConfig, ReactorHandler } from './types';
