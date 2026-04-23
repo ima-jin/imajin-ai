@@ -7,12 +7,11 @@
 
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
 const log = createLogger('market');
-const marketEvents = createEmitter('market');
 import { db, listings } from '@/db';
 import { getSession, requireHardDID } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
+import { publish } from '@imajin/bus';
 import { eq } from 'drizzle-orm';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
@@ -109,7 +108,12 @@ export async function POST(
 
     const checkout = await payResponse.json();
 
-    marketEvents.emit({ action: 'listing.purchase', did: buyerDid, payload: { listingId: listing.id, sellerDid: listing.sellerDid, quantity } });
+    publish('listing.purchase', {
+      issuer: listing.sellerDid,
+      subject: buyerDid || listing.sellerDid,
+      scope: 'market',
+      payload: { listingId: listing.id, sellerDid: listing.sellerDid, quantity },
+    }).catch(() => {});
 
     return jsonResponse({ url: checkout.url, sessionId: checkout.id });
 

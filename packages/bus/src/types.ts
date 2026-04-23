@@ -47,6 +47,22 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
+  'identity.verified.steward': {
+    did?: string;
+    scope: string;
+    subtype: string | null;
+    tier: string;
+    context_id: string;
+    context_type: string;
+  };
+  'identity.verified.operator': {
+    did?: string;
+    scope: string;
+    subtype: string | null;
+    tier: string;
+    context_id: string;
+    context_type: string;
+  };
   'connection.accepted': {
     invite_code?: string;
     context_id: string;
@@ -333,6 +349,40 @@ export interface BusEventMap {
     ticketTypeId: string;
     quantity: number;
     sellerDid: string;
+  };
+  'learn.enrolled': {
+    context_id: string;
+    context_type: string;
+    course_title: string;
+    enrolled_at: string;
+  };
+  'learn.completed': {
+    context_id: string;
+    context_type: string;
+    course_title: string;
+    completed_at: string;
+    modules_completed: number;
+  };
+  'listing.purchase': {
+    listingId: string;
+    sellerDid: string;
+    quantity: number;
+  };
+  'listing.update': {
+    listingId: string;
+  };
+  'listing.create': {
+    listingId: string;
+    title: string;
+    price: number;
+  };
+  'listing.created': {
+    context_id: string;
+    context_type: string;
+    title: string;
+    price: number;
+    currency: string;
+    interestDids?: string[];
   };
 }
 

@@ -13,6 +13,12 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'identity.verified.hard': [
     { type: 'attestation', config: { attestationType: 'identity.verified.hard' }, enabled: true },
   ],
+  'identity.verified.steward': [
+    { type: 'attestation', config: { attestationType: 'identity.verified.steward' }, enabled: true },
+  ],
+  'identity.verified.operator': [
+    { type: 'attestation', config: { attestationType: 'identity.verified.operator' }, enabled: true },
+  ],
   'connection.accepted': [
     { type: 'attestation', config: { attestationType: 'connection.accepted' }, enabled: true },
     { type: 'notify', config: { template: 'invite_accepted' }, enabled: true },
@@ -163,6 +169,25 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'ticket.purchase': [
     { type: 'emit', config: {}, enabled: true },
+  ],
+  'learn.enrolled': [
+    { type: 'attestation', config: { attestationType: 'learn.enrolled' }, enabled: true },
+  ],
+  'learn.completed': [
+    { type: 'attestation', config: { attestationType: 'learn.completed' }, enabled: true },
+  ],
+  'listing.purchase': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'listing.update': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'listing.create': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'listing.created': [
+    { type: 'attestation', config: { attestationType: 'listing.created' }, enabled: true },
+    { type: 'notify', config: {}, enabled: true },
   ],
 };
 

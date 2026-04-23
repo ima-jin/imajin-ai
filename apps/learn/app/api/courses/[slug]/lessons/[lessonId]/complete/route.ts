@@ -3,7 +3,7 @@ import { db } from '@/db';
 import { courses, enrollments, lessonProgress, lessons, modules } from '@/db/schema';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
-import { emitAttestation } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { eq, and, sql } from 'drizzle-orm';
 
 type RouteParams = { params: Promise<{ slug: string; lessonId: string }> };
@@ -96,18 +96,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       .set({ completedAt: now })
       .where(eq(enrollments.id, enrollment.id));
 
-    await emitAttestation({
-      issuer_did: course.creatorDid,
-      subject_did: identity.id,
-      type: 'learn.completed',
-      context_id: course.id,
-      context_type: 'course',
+    publish('learn.completed', {
+      issuer: course.creatorDid,
+      subject: identity.id,
+      scope: 'learn',
       payload: {
+        context_id: course.id,
+        context_type: 'course',
         course_title: course.title,
         completed_at: now.toISOString(),
         modules_completed: total,
       },
-    });
+    }).catch(() => {});
   }
 
   return jsonResponse({
