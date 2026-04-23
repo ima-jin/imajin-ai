@@ -15,7 +15,7 @@ const log = createLogger('events');
 import { eq, and } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { sendEmail, ticketConfirmationEmail, generateQRCode } from '@/src/lib/email';
-import { notify } from '@imajin/notify';
+import { publish } from '@imajin/bus';
 
 export async function POST(
   request: NextRequest,
@@ -132,18 +132,28 @@ export async function POST(
 
     // Notify attendee — fire and forget
     if (ticket.ownerDid && registration.email) {
-      notify.send({
-        to: ticket.ownerDid,
-        scope: "event:registration",
-        data: {
-          email: registration.email,
+      publish('event.registration', {
+        issuer: ticket.ownerDid,
+        subject: ticket.ownerDid,
+        scope: 'events',
+        payload: {
           eventTitle: event.title,
+          email: registration.email,
+          context_id: event.id,
+          context_type: 'event',
         },
-      }).catch((err) => log.error({ err: String(err) }, 'Notify error'));
+      }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
 
-      // Record interest signal — event.rsvp → events scope
-      notify.interest({ did: ticket.ownerDid, attestationType: 'event.rsvp' })
-        .catch((err) => log.error({ err: String(err) }, 'Interest signal error'));
+      publish('event.rsvp', {
+        issuer: ticket.ownerDid,
+        subject: '',
+        scope: 'events',
+        payload: {
+          context_id: event.id,
+          context_type: 'event',
+          interestDids: [ticket.ownerDid],
+        },
+      }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
     }
 
     // Send ticket confirmation email to the registered attendee (skip if no email, e.g. Dykil form)

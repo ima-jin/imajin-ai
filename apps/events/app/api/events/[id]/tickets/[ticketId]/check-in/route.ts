@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { createEmitter } from '@imajin/emit';
-import { requireAuth, emitAttestation } from '@imajin/auth';
+import { publish } from '@imajin/bus';
+import { requireAuth } from '@imajin/auth';
 
 const log = createLogger('events');
-const eventBus = createEmitter('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 
@@ -65,12 +64,14 @@ async function triggerHardEligibilityCheck(did: string): Promise<void> {
   if (!upgraded) return;
 
   const nodeDid = await getNodeDid();
-  emitAttestation({
-    issuer_did: nodeDid,
-    subject_did: did,
-    type: 'identity.verified.hard',
-    context_id: did,
-    context_type: 'identity',
+  publish('identity.verified.hard', {
+    issuer: nodeDid,
+    subject: did,
+    scope: 'events',
+    payload: {
+      context_id: did,
+      context_type: 'identity',
+    },
   }).catch((err) => log.error({ err: String(err) }, '[verification] hard emit error'));
 }
 
@@ -121,7 +122,12 @@ export async function POST(
       RETURNING id, used_at, status
     `;
 
-    eventBus.emit({ action: 'checkin.create', did, payload: { eventId: id, ticketId, attendeeDid: ticket.owner_did ?? undefined } });
+    publish('checkin.create', {
+      issuer: did,
+      subject: did,
+      scope: 'events',
+      payload: { eventId: id, ticketId, attendeeDid: ticket.owner_did ?? undefined },
+    }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
 
     // Fire-and-forget attestations — do not block check-in on failure
     if (ticket.owner_did) {
@@ -130,14 +136,18 @@ export async function POST(
       // Event DIDs are not real identities (no keypair, no chain). Need sub-identity
       // delegation model before this can be cryptographically correct. See #537.
       // For now, only emit event.attendance (organizer vouches for attendee).
-      emitAttestation({
-        issuer_did: identity.id,
-        subject_did: attendeeDid,
-        type: 'event.attendance',
-        context_id: id,
-        context_type: 'event',
-        payload: { ticketId, usedAt: updated.used_at, checkedInBy: identity.id },
-      }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
+      publish('event.attendance', {
+        issuer: identity.id,
+        subject: attendeeDid,
+        scope: 'events',
+        payload: {
+          ticketId,
+          usedAt: updated.used_at,
+          checkedInBy: identity.id,
+          context_id: id,
+          context_type: 'event',
+        },
+      }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
 
       // Check hard verification eligibility — fire-and-forget
       triggerHardEligibilityCheck(attendeeDid)

@@ -43,6 +43,10 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
+  'identity.verified.hard': {
+    context_id: string;
+    context_type: string;
+  };
   'connection.accepted': {
     invite_code?: string;
     context_id: string;
@@ -285,6 +289,50 @@ export interface BusEventMap {
     listingTitle?: string;
     amount: number;
     currency: string;
+  };
+  'event.create': {
+    eventId: string;
+    eventDid: string;
+    title: string;
+  };
+  'event.update': {
+    eventId: string;
+    status?: string;
+  };
+  'checkin.create': {
+    eventId: string;
+    ticketId: string;
+    attendeeDid?: string;
+  };
+  'event.created': {
+    eventDid: string;
+    title: string;
+    context_id: string;
+    context_type: string;
+  };
+  'event.attendance': {
+    ticketId: string;
+    usedAt: Date | string;
+    checkedInBy: string;
+    context_id: string;
+    context_type: string;
+  };
+  'event.registration': {
+    eventTitle: string;
+    email?: string;
+    context_id: string;
+    context_type: string;
+  };
+  'event.rsvp': {
+    context_id: string;
+    context_type: string;
+    interestDids?: string[];
+  };
+  'ticket.purchase': {
+    eventId: string;
+    ticketTypeId: string;
+    quantity: number;
+    sellerDid: string;
   };
 }
 

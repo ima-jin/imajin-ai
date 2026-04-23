@@ -10,6 +10,9 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'identity.verified.preliminary': [
     { type: 'attestation', config: { attestationType: 'identity.verified.preliminary' }, enabled: true },
   ],
+  'identity.verified.hard': [
+    { type: 'attestation', config: { attestationType: 'identity.verified.hard' }, enabled: true },
+  ],
   'connection.accepted': [
     { type: 'attestation', config: { attestationType: 'connection.accepted' }, enabled: true },
     { type: 'notify', config: { template: 'invite_accepted' }, enabled: true },
@@ -136,6 +139,30 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'market.purchase': [
     { type: 'notify', config: { scope: 'market:purchase' }, enabled: true },
+  ],
+  'event.create': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'event.update': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'checkin.create': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'event.created': [
+    { type: 'attestation', config: { attestationType: 'event.created' }, enabled: true },
+  ],
+  'event.attendance': [
+    { type: 'attestation', config: { attestationType: 'event.attendance' }, enabled: true },
+  ],
+  'event.registration': [
+    { type: 'notify', config: { scope: 'event:registration' }, enabled: true },
+  ],
+  'event.rsvp': [
+    { type: 'notify', config: {}, enabled: true },
+  ],
+  'ticket.purchase': [
+    { type: 'emit', config: {}, enabled: true },
   ],
 };
 
