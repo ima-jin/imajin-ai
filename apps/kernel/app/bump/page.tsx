@@ -1,7 +1,23 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
+import type { Metadata } from 'next';
 import BumpPageClient from './client';
+
+export const metadata: Metadata = {
+  title: 'Bump — connect in person',
+  description: 'Bump phones to connect instantly. No QR codes, no typing.',
+  openGraph: {
+    title: 'Bump?',
+    description: 'Bump phones to connect instantly.',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Bump?',
+    description: 'Bump phones to connect instantly.',
+  },
+};
 
 export default async function BumpPage() {
   const cookieConfig = getSessionCookieOptions();
