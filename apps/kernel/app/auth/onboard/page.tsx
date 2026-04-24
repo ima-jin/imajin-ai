@@ -17,7 +17,13 @@ interface ScopeProfile {
   scope?: string;
 }
 
-type Flow = 'choose' | 'email' | 'email-sent' | 'keypair-confirm' | 'keypair-loading';
+interface SessionInfo {
+  did: string;
+  handle?: string;
+  name?: string;
+}
+
+type Flow = 'choose' | 'email' | 'email-sent' | 'keypair-confirm' | 'keypair-loading' | 'join' | 'join-loading' | 'join-done';
 
 function OnboardContent() {
   const params = useSearchParams();
@@ -27,6 +33,8 @@ function OnboardContent() {
   const [flow, setFlow] = useState<Flow>('choose');
   const [scopeProfile, setScopeProfile] = useState<ScopeProfile | null>(null);
   const [scopeLoading, setScopeLoading] = useState(!!scope);
+  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   // Email flow
   const [email, setEmail] = useState('');
@@ -38,6 +46,23 @@ function OnboardContent() {
   const [keypair, setKeypair] = useState<{ privateKey: string; publicKey: string } | null>(null);
   const [keypairAck, setKeypairAck] = useState(false);
   const [keypairError, setKeypairError] = useState('');
+
+  // Join flow
+  const [joinError, setJoinError] = useState('');
+
+  // Check session
+  useEffect(() => {
+    fetch('/auth/api/session', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.did) {
+          setSessionInfo({ did: data.did, handle: data.handle, name: data.name });
+          if (scope) setFlow('join');
+        }
+      })
+      .catch(() => {})
+      .finally(() => setSessionChecked(true));
+  }, [scope]);
 
   useEffect(() => {
     if (!scope) return;
@@ -147,6 +172,31 @@ function OnboardContent() {
     }
   }
 
+  // ── Join flow (already authenticated) ───────────────────────────────────
+
+  async function handleJoin() {
+    setFlow('join-loading');
+    setJoinError('');
+    try {
+      const res = await fetch('/auth/api/onboard/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ scopeDid: scope }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setJoinError(data.error || 'Failed to join');
+        setFlow('join');
+        return;
+      }
+      setFlow('join-done');
+    } catch {
+      setJoinError('Network error. Please try again.');
+      setFlow('join');
+    }
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────
 
   const loginUrl = `/login${redirect || scope ? `?next=${encodeURIComponent(redirect || '/')}${scope ? `&scope=${encodeURIComponent(scope)}` : ''}` : ''}`;
@@ -179,7 +229,59 @@ function OnboardContent() {
         </div>
 
         {/* Flows */}
-        {flow === 'choose' && (
+        {!sessionChecked && scope && (
+          <div className="text-center py-6">
+            <div className="text-gray-600 text-sm">Loading…</div>
+          </div>
+        )}
+
+        {flow === 'join' && sessionInfo && (
+          <div className="space-y-3">
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center space-y-2">
+              <p className="text-sm text-gray-400">
+                Signed in as <span className="text-white font-medium">{sessionInfo.name || sessionInfo.handle || sessionInfo.did.slice(0, 20)}</span>
+              </p>
+            </div>
+            {joinError && <p className="text-red-400 text-sm text-center">{joinError}</p>}
+            <button
+              onClick={handleJoin}
+              className="w-full py-3 bg-amber-500 hover:bg-amber-400 rounded-xl text-gray-950 font-semibold transition"
+            >
+              Join {scopeName || 'this group'}
+            </button>
+            <button
+              onClick={() => setFlow('choose')}
+              className="w-full py-2 text-sm text-gray-500 hover:text-gray-300 transition"
+            >
+              Use a different account
+            </button>
+          </div>
+        )}
+
+        {flow === 'join-loading' && (
+          <div className="text-center space-y-3 py-6">
+            <div className="text-3xl animate-pulse">🤝</div>
+            <p className="text-gray-400 text-sm">Joining…</p>
+          </div>
+        )}
+
+        {flow === 'join-done' && (
+          <div className="text-center space-y-4 bg-gray-900 border border-gray-800 rounded-2xl p-6">
+            <div className="text-4xl">✅</div>
+            <h2 className="text-white font-semibold">You&apos;re in!</h2>
+            <p className="text-gray-400 text-sm">
+              You&apos;ve joined {scopeName || 'this group'}.
+            </p>
+            <a
+              href={redirect || '/'}
+              className="inline-block px-6 py-2.5 bg-amber-500 hover:bg-amber-400 rounded-xl text-gray-950 font-semibold transition no-underline"
+            >
+              Continue
+            </a>
+          </div>
+        )}
+
+        {flow === 'choose' && sessionChecked && (
           <div className="space-y-3">
             <button
               onClick={() => setFlow('email')}

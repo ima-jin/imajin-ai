@@ -63,6 +63,10 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
+  'identity.member_added': {
+    context_id: string;
+    context_type: string;
+  };
   'connection.accepted': {
     invite_code?: string;
     context_id: string;
