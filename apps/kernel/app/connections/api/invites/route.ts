@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
   // Link invite flow
   const limit = getInviteLimit(session.tier);
 
-  const [{ count }] = await db
+  const [{ count: pendingCount }] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(invites)
     .where(and(
@@ -169,11 +169,11 @@ export async function POST(request: NextRequest) {
       eq(invites.status, 'pending'),
     ));
 
-  if (count >= limit) {
+  if (pendingCount >= limit) {
     return NextResponse.json({
       error: `Invite limit reached (${limit === Infinity ? 'unlimited' : limit}). ${limit < Infinity ? `Your tier allows ${limit} pending invite${limit === 1 ? '' : 's'}.` : ''}`,
       limit: limit === Infinity ? null : limit,
-      pending: count,
+      pending: pendingCount,
     }, { status: 429 });
   }
 
@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     invite,
     url: inviteUrl,
-    remaining: limit - count - 1,
+    remaining: limit - pendingCount - 1,
   }, { status: 201 });
 }
 
