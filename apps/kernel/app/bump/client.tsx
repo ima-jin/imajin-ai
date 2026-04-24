@@ -15,8 +15,8 @@ export default function BumpPageClient() {
           onClick={() => setStarted(true)}
           className="flex flex-col items-center gap-4 group"
         >
-          <span className="text-[5rem] sm:text-[7rem] font-black text-white tracking-tight">Bump?</span>
-          <span className="text-[10rem] sm:text-[14rem] leading-none select-none group-active:scale-110 transition-transform">🤜🤛</span>
+          <span className="text-[3.5rem] sm:text-[7rem] font-black text-white tracking-tight">Bump?</span>
+          <span className="text-[7rem] sm:text-[14rem] leading-none select-none group-active:scale-110 transition-transform">🤜🤛</span>
         </button>
       </div>
     );
