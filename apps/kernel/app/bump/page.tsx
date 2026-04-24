@@ -1,14 +1,21 @@
-'use client';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
+import BumpPageClient from './client';
 
-import { useRouter } from 'next/navigation';
-import BumpConnect from '../connections/bump/BumpConnect';
+export default async function BumpPage() {
+  const cookieConfig = getSessionCookieOptions();
+  const cookieStore = await cookies();
+  const token = cookieStore.get(cookieConfig.name)?.value;
 
-export default function BumpPage() {
-  const router = useRouter();
+  if (!token) {
+    redirect('/auth/login?next=/bump');
+  }
 
-  return (
-    <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
-      <BumpConnect onClose={() => router.push('/connections')} />
-    </div>
-  );
+  const session = await verifySessionToken(token);
+  if (!session) {
+    redirect('/auth/login?next=/bump');
+  }
+
+  return <BumpPageClient />;
 }
