@@ -44,6 +44,7 @@ interface BumpMatch {
 interface BumpConnectedInfo {
   connectionId: string;
   peer: BumpPeer;
+  redirectUrl?: string;
 }
 
 interface Props {
@@ -191,33 +192,10 @@ export default function BumpConnect({ onClose }: Props) {
       const redirectUrl = data.redirectUrl as string | undefined;
       clearConfirmTimers();
       setState('connected');
-      setConnectedInfo({ connectionId, peer });
+      setConnectedInfo({ connectionId, peer, redirectUrl });
       setShowGreenFlash(true);
       vibrate([100, 50, 100, 50, 100]);
       setTimeout(() => setShowGreenFlash(false), 500);
-      setTimeout(() => {
-        if (redirectUrl) {
-          // External URLs only allowed if they start with / (kernel route) or same origin
-          if (redirectUrl.startsWith('/')) {
-            window.location.href = redirectUrl;
-          } else {
-            try {
-              const url = new URL(redirectUrl);
-              if (url.origin === window.location.origin) {
-                window.location.href = redirectUrl;
-              } else {
-                // External URL — open in new tab for safety, stay in bump
-                window.open(redirectUrl, '_blank', 'noopener');
-                setState(session ? 'active' : 'idle');
-              }
-            } catch {
-              setState(session ? 'active' : 'idle');
-            }
-          }
-        } else {
-          setState(session ? 'active' : 'idle');
-        }
-      }, 3000);
     }
 
     if (type === 'bump:match_expired') {
@@ -730,9 +708,24 @@ export default function BumpConnect({ onClose }: Props) {
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
           <div className="text-5xl mb-4">🤝</div>
           <p className="text-white text-2xl font-bold">
-            Connected with @{connectedInfo.peer.handle}
+            Connected with @{connectedInfo.peer.handle || connectedInfo.peer.did.slice(0, 16)}
           </p>
-          <p className="text-gray-500 text-sm mt-3">Taking you to their profile…</p>
+          <div className="flex flex-col gap-3 mt-6 w-full max-w-xs">
+            {connectedInfo.redirectUrl && (
+              <a
+                href={connectedInfo.redirectUrl}
+                className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold rounded-xl transition text-center no-underline"
+              >
+                View @{connectedInfo.peer.handle || 'profile'}
+              </a>
+            )}
+            <button
+              onClick={() => setState(session ? 'active' : 'idle')}
+              className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl transition font-medium"
+            >
+              Keep bumping
+            </button>
+          </div>
         </div>
       )}
 
