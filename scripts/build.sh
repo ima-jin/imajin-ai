@@ -8,8 +8,9 @@
 # Detects environment from the working directory if --prod/--dev not given.
 
 set -e
-export PATH=/home/jin/.nvm/versions/node/v22.22.0/bin:$PATH
 export NODE_ENV=production
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Parse environment flag
 ENV="auto"
@@ -31,12 +32,11 @@ if [ "$ENV" = "auto" ]; then
 fi
 
 # Set paths based on environment
+BASE_DIR="$REPO_ROOT"
 if [ "$ENV" = "prod" ]; then
-  BASE_DIR="/home/jin/prod/imajin-ai"
   PM2_PREFIX="prod-"
   LABEL="PROD"
 else
-  BASE_DIR="/home/jin/dev/imajin-ai"
   PM2_PREFIX="dev-"
   LABEL="DEV"
 fi

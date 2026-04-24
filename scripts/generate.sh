@@ -5,7 +5,6 @@
 # If no apps specified, runs for all apps with drizzle.config.ts
 
 set -e
-export PATH=/home/jin/.nvm/versions/node/v22.22.0/bin:$PATH
 
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 

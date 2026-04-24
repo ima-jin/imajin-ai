@@ -14,11 +14,8 @@ case "$1" in
   --dev)  ENV="dev" ;;
 esac
 
-if [ "$ENV" = "prod" ]; then
-  ENV_FILE="/home/jin/prod/imajin-ai/apps/registry/.env.local"
-else
-  ENV_FILE="/home/jin/dev/imajin-ai/apps/registry/.env.local"
-fi
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ENV_FILE="$REPO_ROOT/apps/registry/.env.local"
 
 # Check if already configured
 if grep -q "RELAY_DID=" "$ENV_FILE" 2>/dev/null; then

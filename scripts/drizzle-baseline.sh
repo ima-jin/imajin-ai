@@ -11,7 +11,6 @@
 #      if schema.ts matches the DB. Any migration produced here means DRIFT.
 
 set -e
-export PATH=/home/jin/.nvm/versions/node/v22.22.0/bin:$PATH
 
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
