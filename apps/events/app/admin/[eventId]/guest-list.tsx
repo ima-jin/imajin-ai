@@ -151,6 +151,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmRefund, setConfirmRefund] = useState<string | null>(null);
   const [confirmETransfer, setConfirmETransfer] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
   const [surveyModalTicketId, setSurveyModalTicketId] = useState<string | null>(null);
   const [surveyQuestions, setSurveyQuestions] = useState<Array<{ question: string; answer: unknown }>>([]);
   const [surveyLoading, setSurveyLoading] = useState(false);
@@ -263,6 +264,27 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
       // silently fail — modal still shows with empty state
     } finally {
       setSurveyLoading(false);
+    }
+  };
+
+  const handleCancel = async (ticketId: string) => {
+    setConfirmCancel(null);
+    setActionLoading(ticketId);
+    try {
+      const res = await apiFetch(`/api/events/${eventId}/tickets/${ticketId}/cancel`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Cancel failed');
+        return;
+      }
+      setGuests(prev => prev.map(g =>
+        g.id === ticketId ? { ...g, status: 'cancelled' } : g
+      ));
+      toast.success('Ticket cancelled');
+    } catch {
+      toast.error('Cancel failed');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -546,6 +568,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                       loading={actionLoading === guest.id}
                       onCheckIn={() => handleCheckIn(guest.id)}
                       onRefundRequest={() => setConfirmRefund(guest.id)}
+                      onCancelRequest={() => setConfirmCancel(guest.id)}
                       onMarkSent={() => handleMarkRefundSent(guest.id)}
                       markSentLoading={markSentLoading}
                     />
@@ -676,6 +699,32 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
                 className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition disabled:opacity-50"
               >
                 {markSentLoading ? '…' : 'Mark Refund Sent'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel held ticket confirmation dialog */}
+      {confirmCancel && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-semibold mb-2">Cancel Ticket</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Cancel this unconfirmed e-Transfer ticket? No payment was received, so there&apos;s nothing to refund.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmCancel(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+              >
+                Keep
+              </button>
+              <button
+                onClick={() => handleCancel(confirmCancel)}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition"
+              >
+                Cancel Ticket
               </button>
             </div>
           </div>
@@ -866,6 +915,7 @@ interface ActionsCellProps {
   loading: boolean;
   onCheckIn: () => void;
   onRefundRequest: () => void;
+  onCancelRequest: () => void;
   onMarkSent: () => void;
   markSentLoading: boolean;
 }
@@ -921,10 +971,12 @@ function ResendEmailButton({ loading, resendState, lastEmailSentAt, onResendEmai
   );
 }
 
-function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onMarkSent, markSentLoading }: ActionsCellProps) {
+function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onCancelRequest, onMarkSent, markSentLoading }: ActionsCellProps) {
   const isValid = guest.status === 'valid';
+  const isHeld = guest.status === 'held';
   const isCheckedIn = !!guest.usedAt;
   const isRefunded = guest.status === 'refunded';
+  const isCancelled = guest.status === 'cancelled';
   const isRefundPending = guest.status === 'refund_pending';
   const isFree = !guest.pricePaid || guest.pricePaid === 0;
 
@@ -932,6 +984,14 @@ function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onMa
     return (
       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300">
         Refunded
+      </span>
+    );
+  }
+
+  if (isCancelled) {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400">
+        Cancelled
       </span>
     );
   }
@@ -953,6 +1013,18 @@ function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onMa
       <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
         ✓ Checked In
       </span>
+    );
+  }
+
+  if (isHeld && isOwner) {
+    return (
+      <button
+        onClick={onCancelRequest}
+        disabled={loading}
+        className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-red-100 dark:hover:bg-red-900/40 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition disabled:opacity-50"
+      >
+        {loading ? '…' : 'Cancel'}
+      </button>
     );
   }
 

@@ -69,9 +69,15 @@ export default async function AdminPage({ params }: Props) {
     .where(eq(tickets.eventId, eventId))
     .orderBy(desc(tickets.createdAt));
   
-  // Calculate stats
-  const totalSold = allTickets.length;
-  const totalRevenue = allTickets.reduce((sum, t) => sum + (t.ticket.pricePaid || 0), 0);
+  // Calculate stats — exclude cancelled/refunded from "sold" count
+  const activeTickets = allTickets.filter(t => !['cancelled', 'refunded'].includes(t.ticket.status));
+  const totalSold = activeTickets.length;
+  const confirmedRevenue = allTickets
+    .filter(t => t.ticket.status === 'valid' || t.ticket.status === 'used')
+    .reduce((sum, t) => sum + (t.ticket.pricePaid || 0), 0);
+  const heldRevenue = allTickets
+    .filter(t => t.ticket.status === 'held')
+    .reduce((sum, t) => sum + (t.ticket.pricePaid || 0), 0);
   const checkedIn = allTickets.filter(t => t.ticket.usedAt).length;
 
   // Count distinct confirmed attendees for broadcast
@@ -121,7 +127,7 @@ export default async function AdminPage({ params }: Props) {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4 md:mb-8">
         <StatCard label="Tickets Sold" value={totalSold} />
-        <StatCard label="Revenue" value={formatCurrency(totalRevenue, 'CAD')} />
+        <StatCard label="Revenue" value={formatRevenue(confirmedRevenue, heldRevenue, 'CAD')} />
         <StatCard label="Checked In" value={`${checkedIn} / ${totalSold}`} />
         <StatCard 
           label="Event Date" 
@@ -186,8 +192,25 @@ function NamePolicyBadge({ policy }: { policy: string }) {
 }
 
 function formatCurrency(cents: number, currency: string): string {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-CA', {
     style: 'currency',
     currency,
   }).format(cents / 100);
+}
+
+function formatCurrencyRound(cents: number, currency: string): string {
+  return new Intl.NumberFormat('en-CA', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
+function formatRevenue(confirmedCents: number, heldCents: number, currency: string): string {
+  const confirmed = formatCurrencyRound(confirmedCents, currency);
+  if (heldCents > 0) {
+    return `${confirmed} (+${formatCurrencyRound(heldCents, currency)} pending)`;
+  }
+  return confirmed;
 }
