@@ -755,14 +755,12 @@ export default function BumpConnect({ onClose }: Props) {
       {/* ── Idle ─────────────────────────────────────────────────────────────── */}
       {state === 'idle' && (
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-          <div className="text-5xl mb-4">🤜🤛</div>
-          <p className="text-white text-xl font-semibold mb-2">Session ended</p>
-          <p className="text-gray-500 text-sm mb-8">Start a new session to keep bumping</p>
+          <div className="text-[8rem] leading-none mb-6 select-none">🤜🤛</div>
           <button
             onClick={() => setState('selecting')}
-            className="px-8 py-3 bg-orange-500 hover:bg-orange-600 text-black font-bold rounded-xl transition min-h-[48px]"
+            className="px-10 py-4 bg-orange-500 hover:bg-orange-600 text-black text-lg font-bold rounded-xl transition min-h-[48px]"
           >
-            Start Again
+            Bump
           </button>
         </div>
       )}
