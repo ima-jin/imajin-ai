@@ -149,6 +149,22 @@ export default async function AuthPage() {
             Incognito
           </span>
         )}
+
+        {/* Actions */}
+        <div className="flex items-center gap-3 pt-2 border-t border-zinc-800">
+          <Link
+            href={`/profile/edit?did=${encodeURIComponent(effectiveDid)}`}
+            className="inline-block px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-black text-sm font-semibold rounded-lg transition-colors"
+          >
+            Edit Profile
+          </Link>
+          <Link
+            href={`/profile/${encodeURIComponent(profile.handle ?? effectiveDid)}`}
+            className="inline-block px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-semibold rounded-lg transition-colors"
+          >
+            View Public Profile
+          </Link>
+        </div>
       </div>
     </div>
   );
