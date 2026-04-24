@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 interface Props {
   showSettings: boolean;
   showMembers: boolean;
+  showSecurity: boolean;
 }
 
 interface Tab {
@@ -19,14 +20,16 @@ const ALL_TABS: Tab[] = [
   { label: 'Attestations', href: '/auth/attestations', exact: false },
   { label: 'Developer', href: '/auth/developer/apps', exact: false },
   { label: 'Apps', href: '/auth/apps', exact: false },
+  { label: 'Security', href: '/auth/security', exact: false },
   { label: 'Settings', href: '/auth/settings', exact: false },
   { label: 'Members', href: '/auth/members', exact: false },
 ];
 
-export default function IdentityTabBar({ showSettings, showMembers }: Props) {
+export default function IdentityTabBar({ showSettings, showMembers, showSecurity }: Props) {
   const pathname = usePathname();
 
   const tabs = ALL_TABS.filter((tab) => {
+    if (tab.href === '/auth/security') return showSecurity;
     if (tab.href === '/auth/settings') return showSettings;
     if (tab.href === '/auth/members') return showMembers;
     return true;

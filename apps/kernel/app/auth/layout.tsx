@@ -47,6 +47,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
 
   let showSettings = false;
   let showMembers = false;
+  const showSecurity = effectiveIdentity?.scope === 'actor';
   if (effectiveIdentity?.scope && effectiveIdentity.scope !== 'actor') {
     const [membership] = await db
       .select({ role: identityMembers.role })
@@ -82,7 +83,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   );
 
   const identityDetail = <IdentityDetail did={effectiveDid} sessionDid={sessionDid} />;
-  const tabBar = <IdentityTabBar showSettings={showSettings} showMembers={showMembers} />;
+  const tabBar = <IdentityTabBar showSettings={showSettings} showMembers={showMembers} showSecurity={showSecurity} />;
 
   return (
     <AuthLayoutShell leftRail={leftRail} identityDetail={identityDetail} tabBar={tabBar}>
