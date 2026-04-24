@@ -1,7 +1,4 @@
 import { getSession } from './session';
-import { getClient } from '@imajin/db';
-
-const sql = getClient();
 
 /**
  * Shared requireAdmin helper — extracted from the copy-pasted pattern
