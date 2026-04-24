@@ -229,8 +229,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404, headers: cors });
     }
 
-    // Check ownership
-    if (existing.did !== identity.id) {
+    // Check ownership — allow personal DID or acting-as DID
+    const effectiveDid = identity.actingAs || identity.id;
+    if (existing.did !== identity.id && existing.did !== effectiveDid) {
       return NextResponse.json({ error: 'Not authorized to update this profile' }, { status: 403, headers: cors });
     }
 

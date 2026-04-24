@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import * as ed from '@noble/ed25519';
 import { buildPublicUrl } from '@imajin/config';
 import { useIdentity } from '../context/IdentityContext';
@@ -41,9 +41,12 @@ const SERVICES = [
   { key: 'inference', label: 'Ask Me', description: 'Let people query your presence' },
 ];
 
-export default function EditProfilePage() {
+function EditProfileContent() {
   const router = useRouter();
-  const { did, isLoggedIn, isLoading: identityLoading, refreshProfile } = useIdentity();
+  const searchParams = useSearchParams();
+  const { did: sessionDid, isLoggedIn, isLoading: identityLoading, refreshProfile } = useIdentity();
+  // Allow ?did= param to edit a different identity (e.g. acting-as)
+  const did = searchParams.get('did') || sessionDid;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -66,7 +69,7 @@ export default function EditProfilePage() {
     // Don't redirect until the session check has completed
     if (identityLoading) return;
 
-    if (!isLoggedIn || !did) {
+    if (!isLoggedIn || !sessionDid) {
       window.location.href = `${buildPublicUrl('auth')}/login?next=${encodeURIComponent(window.location.href)}`;
       return;
     }
@@ -505,5 +508,13 @@ export default function EditProfilePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function EditProfilePage() {
+  return (
+    <Suspense fallback={<div className="text-gray-500 text-sm py-8">Loading…</div>}>
+      <EditProfileContent />
+    </Suspense>
   );
 }

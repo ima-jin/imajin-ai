@@ -31,9 +31,12 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       return errorResponse(HANDLE_ERROR);
     }
 
+    // Use acting-as DID if present, otherwise personal DID
+    const effectiveDid = identity.actingAs || identity.id;
+
     // Check if profile already exists for this DID
     const existing = await db.query.profiles.findFirst({
-      where: (profiles, { eq }) => eq(profiles.did, identity.id),
+      where: (profiles, { eq }) => eq(profiles.did, effectiveDid),
     });
 
     if (existing) {
@@ -53,7 +56,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     // Create profile
     const result = await db.insert(profiles).values({
-      did: identity.id,
+      did: effectiveDid,
       displayName,
       avatar: avatar || null,
       avatarAssetId: avatarAssetId || null,

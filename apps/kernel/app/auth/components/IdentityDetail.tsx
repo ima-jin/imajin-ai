@@ -48,7 +48,8 @@ export default async function IdentityDetail({ did, sessionDid }: Props) {
   // Determine edit href based on scope and membership role
   let editHref: string | null = null;
   if (identity.scope === 'actor') {
-    editHref = '/profile/edit';
+    // If viewing own profile, no param needed. If acting-as, pass the DID.
+    editHref = did === sessionDid ? '/profile/edit' : `/profile/edit?did=${encodeURIComponent(did)}`;
   } else {
     const [[membership], [profile]] = await Promise.all([
       db
