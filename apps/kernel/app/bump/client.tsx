@@ -25,7 +25,7 @@ export default function BumpPageClient() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center p-4">
       <h1 className="text-[5rem] sm:text-[7rem] font-black text-white tracking-tight mb-4">Bump!</h1>
-      <BumpConnect onClose={() => router.push('/connections')} />
+      <BumpConnect onClose={() => setStarted(false)} />
     </div>
   );
 }

@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useIdentity } from './context/IdentityContext';
 import InvitationsTab from './invitations-tab';
-import BumpConnect from './bump/BumpConnect';
 import useSWR from 'swr';
 
 import { buildPublicUrl } from '@imajin/config';
@@ -122,7 +121,6 @@ function NicknameEditor({
 
 export default function ConnectionsPage() {
   const { did, handle, isLoggedIn, loading } = useIdentity();
-  const [showBump, setShowBump] = useState(false);
   const [activeTab, setActiveTab] = useState<'connections' | 'groups' | 'invitations'>('connections');
   const [invitePending, setInvitePending] = useState(0);
   const [inviteRemaining, setInviteRemaining] = useState<number | null>(null);
@@ -238,19 +236,15 @@ export default function ConnectionsPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* Bump Connect overlay */}
-      {showBump && <BumpConnect onClose={() => setShowBump(false)} />}
-
       {/* Bump entry button */}
       <div className="flex justify-end mb-4">
-        <button
-          onClick={() => setShowBump(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-orange-500/10 border border-white/10 hover:border-orange-500/30 text-gray-400 hover:text-orange-400 rounded-lg transition text-sm min-h-[48px]"
-          title="Bump to connect"
+        <a
+          href="/bump"
+          className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-orange-500/10 border border-white/10 hover:border-orange-500/30 text-gray-400 hover:text-orange-400 rounded-lg transition text-sm min-h-[48px] no-underline"
         >
           <span>🤜🤛</span>
           <span>Bump</span>
-        </button>
+        </a>
       </div>
 
       {/* Tab navigation */}
