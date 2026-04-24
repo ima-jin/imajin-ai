@@ -86,6 +86,7 @@ export async function getSession(options?: SessionOptions): Promise<Identity | n
       subtype: data.subtype || undefined,
       name: data.name,
       handle: data.handle,
+      email: data.email ?? null,
       tier: data.tier || "soft",
     };
 

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { db } from '@/src/db';
-import { identities, identityChains } from '@/src/db';
-import { eq } from 'drizzle-orm';
+import { db, identities, identityChains, credentials } from '@/src/db';
+import { eq, and } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
@@ -48,10 +47,16 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     const metadata = identity[0].metadata as Record<string, unknown> || {};
     const tier = (identity[0] as any).tier || 'soft';
 
-    const chain = await db.select({ did: identityChains.did })
-      .from(identityChains)
-      .where(eq(identityChains.did, session.sub))
-      .limit(1);
+    const [chain, emailCred] = await Promise.all([
+      db.select({ did: identityChains.did })
+        .from(identityChains)
+        .where(eq(identityChains.did, session.sub))
+        .limit(1),
+      db.select({ value: credentials.value })
+        .from(credentials)
+        .where(and(eq(credentials.did, session.sub), eq(credentials.type, 'email')))
+        .limit(1),
+    ]);
     const chainVerified = chain.length > 0;
 
     return NextResponse.json({
@@ -60,6 +65,7 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
       scope: identity[0].scope || session.scope,
       subtype: identity[0].subtype || session.subtype || undefined,
       name: identity[0].name || session.name,
+      email: emailCred[0]?.value ?? null,
       role: metadata.role || 'member',
       tier,
       chainVerified,

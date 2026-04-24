@@ -12,6 +12,7 @@ interface Props {
   etransferEnabled?: boolean;
   stripeDisabled?: boolean;
   maxPerOrder?: number;
+  sessionEmail?: string;
 }
 
 interface ETransferInstructions {
@@ -26,11 +27,11 @@ interface ETransferInstructions {
 
 type Step = 'button' | 'selector' | 'loading-card' | 'etransfer-confirm' | 'loading-etransfer' | 'etransfer-done' | 'rsvp-form' | 'loading-rsvp' | 'rsvp-done';
 
-export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false, stripeDisabled = false, maxPerOrder }: Props) {
+export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false, stripeDisabled = false, maxPerOrder, sessionEmail }: Props) {
   const [step, setStep] = useState<Step>('button');
   const [error, setError] = useState<string | null>(null);
   const [etransfer, setEtransfer] = useState<ETransferInstructions | null>(null);
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(sessionEmail || '');
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState(1);
 
@@ -192,29 +193,37 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
       <div className="w-full max-w-md rounded-xl border border-orange-500/30 bg-orange-500/5 dark:bg-orange-500/10 p-5 space-y-4">
         <h3 className="font-semibold text-base">📬 RSVP — {eventTitle}</h3>
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          Enter your details to reserve your free spot.
+          {sessionEmail ? 'Confirm your RSVP.' : 'Enter your details to reserve your free spot.'}
         </p>
         <div className="space-y-2">
-          <input
-            type="text"
-            placeholder="Your name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={step === 'loading-rsvp'}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
-          />
-          <input
-            type="email"
-            placeholder="Your email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={step === 'loading-rsvp'}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
-          />
+          {!sessionEmail && (
+            <input
+              type="text"
+              placeholder="Your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={step === 'loading-rsvp'}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
+            />
+          )}
+          {sessionEmail ? (
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Confirmation will be sent to <span className="font-medium">{sessionEmail}</span>
+            </p>
+          ) : (
+            <input
+              type="email"
+              placeholder="Your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={step === 'loading-rsvp'}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
+            />
+          )}
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => handleFreeRsvp(true)}
+            onClick={() => handleFreeRsvp(!!sessionEmail)}
             disabled={step === 'loading-rsvp' || !email.includes('@')}
             className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${
               step === 'loading-rsvp'
@@ -299,22 +308,30 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
           Interac e-Transfer within 72 hours. Your ticket will be held until payment is confirmed.
         </p>
         <div className="space-y-2">
-          <input
-            type="text"
-            placeholder="Your name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={step === 'loading-etransfer'}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
-          />
-          <input
-            type="email"
-            placeholder="Your email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={step === 'loading-etransfer'}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
-          />
+          {!sessionEmail && (
+            <input
+              type="text"
+              placeholder="Your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={step === 'loading-etransfer'}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
+            />
+          )}
+          {sessionEmail ? (
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Confirmation will be sent to <span className="font-medium">{sessionEmail}</span>
+            </p>
+          ) : (
+            <input
+              type="email"
+              placeholder="Your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={step === 'loading-etransfer'}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
+            />
+          )}
         </div>
         <div className="flex gap-2">
           <button

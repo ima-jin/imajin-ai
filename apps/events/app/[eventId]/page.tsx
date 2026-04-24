@@ -748,6 +748,7 @@ export default async function EventPage({ params, searchParams }: Props) {
                 inviteToken={inviteToken}
                 etransferEnabled={etransferEnabled}
                 isAuthenticated={!!session}
+                sessionEmail={session?.email ?? undefined}
                 sellerConnected={sellerConnected}
               />
             </TicketsGate>

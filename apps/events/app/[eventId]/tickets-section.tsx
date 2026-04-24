@@ -74,10 +74,11 @@ interface Props {
   inviteToken?: string;
   etransferEnabled?: boolean;
   isAuthenticated?: boolean;
+  sessionEmail?: string;
   sellerConnected?: boolean;
 }
 
-export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], hasTicket = false, inviteToken, etransferEnabled = false, isAuthenticated = false, sellerConnected = true }: Props) {
+export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], hasTicket = false, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sellerConnected = true }: Props) {
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'buy-tickets'>(
     hasTicket ? 'my-tickets' : 'buy-tickets'
   );
@@ -94,7 +95,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
 
   // If user doesn't have tickets, show purchase UI only
   if (!hasTicket || userOrders.length === 0) {
-    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sellerConnected={sellerConnected} />;
+    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sellerConnected={sellerConnected} />;
   }
 
   // User has tickets - show tabbed interface
@@ -128,7 +129,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
       {activeTab === 'my-tickets' ? (
         <MyTicketsTab userOrders={userOrders} eventId={eventId} />
       ) : (
-        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sellerConnected={sellerConnected} />
+        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sellerConnected={sellerConnected} />
       )}
     </div>
   );
@@ -369,7 +370,7 @@ function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
   );
 }
 
-function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnabled = false, isAuthenticated = false, sellerConnected = true }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sellerConnected?: boolean }) {
+function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sellerConnected = true }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sessionEmail?: string; sellerConnected?: boolean }) {
   return (
     <div className="space-y-3 md:space-y-4">
       {tickets.map((ticket) => {
@@ -437,6 +438,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
                       inviteToken={inviteToken}
                       etransferEnabled={etransferEnabled}
                       stripeDisabled={true}
+                      sessionEmail={sessionEmail}
                     />
                   ) : (
                     <p className="text-sm text-gray-500 dark:text-gray-400 italic">
@@ -450,6 +452,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
                     ticket={ticket}
                     inviteToken={inviteToken}
                     etransferEnabled={etransferEnabled}
+                    sessionEmail={sessionEmail}
                   />
                 ) : (
                   <OnboardGate
@@ -464,6 +467,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
                       ticket={ticket}
                       inviteToken={inviteToken}
                       etransferEnabled={etransferEnabled}
+                      sessionEmail={sessionEmail}
                     />
                   </OnboardGate>
                 )}
