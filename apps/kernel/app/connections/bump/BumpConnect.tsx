@@ -188,6 +188,7 @@ export default function BumpConnect({ onClose }: Props) {
     if (type === 'bump:connected') {
       const peer = data.peer as BumpPeer;
       const connectionId = data.connectionId as string;
+      const redirectUrl = data.redirectUrl as string | undefined;
       clearConfirmTimers();
       setState('connected');
       setConnectedInfo({ connectionId, peer });
@@ -195,7 +196,27 @@ export default function BumpConnect({ onClose }: Props) {
       vibrate([100, 50, 100, 50, 100]);
       setTimeout(() => setShowGreenFlash(false), 500);
       setTimeout(() => {
-        setState(session ? 'active' : 'idle');
+        if (redirectUrl) {
+          // External URLs only allowed if they start with / (kernel route) or same origin
+          if (redirectUrl.startsWith('/')) {
+            window.location.href = redirectUrl;
+          } else {
+            try {
+              const url = new URL(redirectUrl);
+              if (url.origin === window.location.origin) {
+                window.location.href = redirectUrl;
+              } else {
+                // External URL — open in new tab for safety, stay in bump
+                window.open(redirectUrl, '_blank', 'noopener');
+                setState(session ? 'active' : 'idle');
+              }
+            } catch {
+              setState(session ? 'active' : 'idle');
+            }
+          }
+        } else {
+          setState(session ? 'active' : 'idle');
+        }
       }, 3000);
     }
 
@@ -711,7 +732,7 @@ export default function BumpConnect({ onClose }: Props) {
           <p className="text-white text-2xl font-bold">
             Connected with @{connectedInfo.peer.handle}
           </p>
-          <p className="text-gray-500 text-sm mt-3">Returning to bump mode...</p>
+          <p className="text-gray-500 text-sm mt-3">Taking you to their profile…</p>
         </div>
       )}
 

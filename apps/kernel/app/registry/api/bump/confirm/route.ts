@@ -176,14 +176,19 @@ export async function POST(request: NextRequest) {
         }
 
         // Notify both parties of the connection (profiles already fetched above)
+        const metaA = (profileA?.metadata ?? {}) as Record<string, unknown>;
+        const metaB = (profileB?.metadata ?? {}) as Record<string, unknown>;
+
         notifyBumpDid(didA, {
           type: 'bump:connected', matchId, connectionId: podId,
-          peer: { did: didB, handle: profileB?.handle ?? undefined },
+          peer: { did: didB, handle: profileB?.handle ?? undefined, name: profileB?.displayName ?? undefined, avatar: profileB?.avatar ?? undefined },
+          redirectUrl: (metaB.bumpRedirectUrl as string) || (profileB?.handle ? `/profile/@${profileB.handle}` : `/profile/${didB}`),
         }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] notify connected error'));
 
         notifyBumpDid(didB, {
           type: 'bump:connected', matchId, connectionId: podId,
-          peer: { did: didA, handle: profileA?.handle ?? undefined },
+          peer: { did: didA, handle: profileA?.handle ?? undefined, name: profileA?.displayName ?? undefined, avatar: profileA?.avatar ?? undefined },
+          redirectUrl: (metaA.bumpRedirectUrl as string) || (profileA?.handle ? `/profile/@${profileA.handle}` : `/profile/${didA}`),
         }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] notify connected error'));
 
         return NextResponse.json({ status: 'connected' }, { headers: cors });
