@@ -30,7 +30,7 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
   const authUrl =
     typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_AUTH_URL ?? '');
   const profileUrl = buildPublicUrl('profile');
-  const onboardUrl = `${authUrl}/onboard?scope=${encodeURIComponent(groupDid)}`;
+  const onboardUrl = `${authUrl}/auth/onboard?scope=${encodeURIComponent(groupDid)}`;
 
   useEffect(() => {
     loadData();
