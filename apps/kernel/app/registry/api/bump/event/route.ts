@@ -107,8 +107,11 @@ export async function POST(request: NextRequest) {
           gt(bumpSessions.expiresAt, now),
         ));
 
-      const minTime = new Date(eventTime.getTime() - BUMP_MATCH_WINDOW_MS);
-      const maxTime = new Date(eventTime.getTime() + BUMP_MATCH_WINDOW_MS);
+      // Match on client time OR server time (covers clock skew between devices)
+      const minClientTime = new Date(eventTime.getTime() - BUMP_MATCH_WINDOW_MS);
+      const maxClientTime = new Date(eventTime.getTime() + BUMP_MATCH_WINDOW_MS);
+      const minServerTime = new Date(now.getTime() - BUMP_MATCH_WINDOW_MS);
+      const maxServerTime = new Date(now.getTime() + BUMP_MATCH_WINDOW_MS);
 
       let bestCandidate: { other: typeof otherSessions[0]; otherEvent: typeof bumpEvents.$inferSelect; score: number } | null = null;
 
@@ -118,8 +121,12 @@ export async function POST(request: NextRequest) {
           .from(bumpEvents)
           .where(and(
             eq(bumpEvents.sessionId, other.id),
-            gte(bumpEvents.timestamp, minTime),
-            lte(bumpEvents.timestamp, maxTime),
+            or(
+              // Client timestamps within window
+              and(gte(bumpEvents.timestamp, minClientTime), lte(bumpEvents.timestamp, maxClientTime)),
+              // Server timestamps within window
+              and(gte(bumpEvents.createdAt, minServerTime), lte(bumpEvents.createdAt, maxServerTime)),
+            ),
           ))
           .orderBy(desc(bumpEvents.createdAt))
           .limit(1);
