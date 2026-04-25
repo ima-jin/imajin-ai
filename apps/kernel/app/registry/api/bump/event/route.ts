@@ -95,60 +95,69 @@ export async function POST(request: NextRequest) {
       location: location ?? null,
     });
 
-    // Find other active sessions on the same node
-    const otherSessions = await db
-      .select()
-      .from(bumpSessions)
-      .where(and(
-        eq(bumpSessions.nodeId, session.nodeId),
-        ne(bumpSessions.id, sessionId),
-        isNull(bumpSessions.deactivatedAt),
-        gt(bumpSessions.expiresAt, now),
-      ));
-
-    // Time window for matching
-    const minTime = new Date(eventTime.getTime() - BUMP_MATCH_WINDOW_MS);
-    const maxTime = new Date(eventTime.getTime() + BUMP_MATCH_WINDOW_MS);
-
-    // Collect candidates: any session with an event in the time window + location range
-    let bestCandidate: { other: typeof otherSessions[0]; otherEvent: typeof bumpEvents.$inferSelect; score: number } | null = null;
-
-    for (const other of otherSessions) {
-      const [otherEvent] = await db
+    // Search for matching candidates
+    async function findCandidate() {
+      const otherSessions = await db
         .select()
-        .from(bumpEvents)
+        .from(bumpSessions)
         .where(and(
-          eq(bumpEvents.sessionId, other.id),
-          gte(bumpEvents.timestamp, minTime),
-          lte(bumpEvents.timestamp, maxTime),
-        ))
-        .orderBy(desc(bumpEvents.createdAt))
-        .limit(1);
+          eq(bumpSessions.nodeId, session.nodeId),
+          ne(bumpSessions.id, sessionId),
+          isNull(bumpSessions.deactivatedAt),
+          gt(bumpSessions.expiresAt, now),
+        ));
 
-      if (!otherEvent) {
-        log.info({ otherSessionId: other.id, minTime: minTime.toISOString(), maxTime: maxTime.toISOString() }, '[bump/event] candidate has no event in window');
-        continue;
+      const minTime = new Date(eventTime.getTime() - BUMP_MATCH_WINDOW_MS);
+      const maxTime = new Date(eventTime.getTime() + BUMP_MATCH_WINDOW_MS);
+
+      let bestCandidate: { other: typeof otherSessions[0]; otherEvent: typeof bumpEvents.$inferSelect; score: number } | null = null;
+
+      for (const other of otherSessions) {
+        const [otherEvent] = await db
+          .select()
+          .from(bumpEvents)
+          .where(and(
+            eq(bumpEvents.sessionId, other.id),
+            gte(bumpEvents.timestamp, minTime),
+            lte(bumpEvents.timestamp, maxTime),
+          ))
+          .orderBy(desc(bumpEvents.createdAt))
+          .limit(1);
+
+        if (!otherEvent) continue;
+
+        // Check location proximity (skip if either side has no location)
+        if (location && otherEvent.location) {
+          const otherLoc = otherEvent.location as { lat: number; lng: number };
+          const dist = haversineDistance(location.lat, location.lng, otherLoc.lat, otherLoc.lng);
+          if (dist > BUMP_LOCATION_RADIUS_M) continue;
+        }
+
+        const score = correlateBump(
+          waveform,
+          rotationRate,
+          otherEvent.waveform as number[],
+          otherEvent.rotationRate as number[],
+        );
+
+        if (!bestCandidate || score > bestCandidate.score) {
+          bestCandidate = { other, otherEvent, score };
+        }
       }
 
-      // Check location proximity (skip if either side has no location)
-      if (location && otherEvent.location) {
-        const otherLoc = otherEvent.location as { lat: number; lng: number };
-        const dist = haversineDistance(location.lat, location.lng, otherLoc.lat, otherLoc.lng);
-        if (dist > BUMP_LOCATION_RADIUS_M) continue;
-      }
+      return { bestCandidate, otherSessionCount: otherSessions.length };
+    }
 
-      // Waveform correlation for ranking — NOT a gate.
-      // Temporal + spatial coincidence is sufficient for v1.
-      // Both users must confirm, which is the human filter.
-      const score = correlateBump(
-        waveform,
-        rotationRate,
-        otherEvent.waveform as number[],
-        otherEvent.rotationRate as number[],
-      );
+    // First attempt
+    let { bestCandidate, otherSessionCount } = await findCandidate();
 
-      if (!bestCandidate || score > bestCandidate.score) {
-        bestCandidate = { other, otherEvent, score };
+    // Retry after 500ms if there are active peers but no match yet
+    // (handles race condition where both phones bump simultaneously)
+    if (!bestCandidate && otherSessionCount > 0) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      ({ bestCandidate, otherSessionCount } = await findCandidate());
+      if (bestCandidate) {
+        log.info({ sessionId }, '[bump/event] matched on retry');
       }
     }
 
@@ -157,14 +166,14 @@ export async function POST(request: NextRequest) {
       log.info({
         sessionId,
         nodeId: session.nodeId,
-        otherActiveSessions: otherSessions.length,
+        otherActiveSessions: otherSessionCount,
         eventTime: eventTime.toISOString(),
         hasLocation: !!location,
       }, '[bump/event] no match — no candidate found');
       return NextResponse.json({
         matched: false,
         debug: {
-          otherActiveSessions: otherSessions.length,
+          otherActiveSessions: otherSessionCount,
           windowMs: BUMP_MATCH_WINDOW_MS,
           nodeId: session.nodeId,
         },
