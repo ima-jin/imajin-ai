@@ -122,6 +122,7 @@ export default function BumpConnect({ onClose }: Props) {
   const [debugPeak, setDebugPeak] = useState<number>(0);
   const [debugHasMotion, setDebugHasMotion] = useState<boolean | null>(null);
   const [debugRaw, setDebugRaw] = useState<string>('—');
+  const [debugEvent, setDebugEvent] = useState<string>('');
   const peakRef = useRef<number>(0);
 
   // WebSocket
@@ -388,24 +389,38 @@ export default function BumpConnect({ onClose }: Props) {
     vibrate(50);
 
     try {
-      const res = await fetch(`${REGISTRY_URL}/event`, {
+      const url = `${REGISTRY_URL}/event`;
+      const payload = {
+        sessionId: sess.sessionId,
+        waveform,
+        rotationRate,
+        timestamp: Date.now(),
+        location: locationRef.current ?? undefined,
+      };
+      console.log('[bump] sending event to', url, 'sessionId:', sess.sessionId, 'waveform length:', waveform.length);
+      const res = await fetch(url, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: sess.sessionId,
-          waveform,
-          rotationRate,
-          timestamp: Date.now(),
-          location: locationRef.current ?? undefined,
-        }),
+        body: JSON.stringify(payload),
       });
+      console.log('[bump] event response:', res.status);
+      setDebugEvent(`POST ${res.status}`);
 
       if (res.ok) {
         const data = await res.json();
+        console.log('[bump] event data:', JSON.stringify(data));
+        setDebugEvent(`POST ${res.status}: ${JSON.stringify(data).slice(0, 80)}`);
         if (data.matched) return; // WS bump:matched will arrive
+      } else {
+        const text = await res.text().catch(() => '');
+        console.error('[bump] event failed:', res.status, text);
+        setDebugEvent(`FAIL ${res.status}: ${text.slice(0, 80)}`);
       }
-    } catch {}
+    } catch (err) {
+      console.error('[bump] event fetch error:', err);
+      setDebugEvent(`ERR: ${String(err).slice(0, 80)}`);
+    }
 
     // No match from HTTP — wait 3s then return to active
     matchingTimer.current = setTimeout(() => {
@@ -647,6 +662,7 @@ export default function BumpConnect({ onClose }: Props) {
                 <p>motion: {debugHasMotion === null ? 'waiting…' : debugHasMotion ? '✓' : '✗ no events'}</p>
                 <p>peak: <span className="text-amber-400">{debugPeak} m/s²</span></p>
                 <p className="break-all text-gray-500">{debugRaw}</p>
+                {debugEvent && <p className="break-all text-cyan-400">{debugEvent}</p>}
               </div>
             )}
           </div>
