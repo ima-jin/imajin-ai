@@ -397,6 +397,7 @@ export default function BumpConnect({ onClose }: Props) {
         timestamp: Date.now(),
         location: locationRef.current ?? undefined,
       };
+      setDebugEvent(`sending to ${url}...`);
       console.log('[bump] sending event to', url, 'sessionId:', sess.sessionId, 'waveform length:', waveform.length);
       const res = await fetch(url, {
         method: 'POST',
@@ -422,10 +423,10 @@ export default function BumpConnect({ onClose }: Props) {
       setDebugEvent(`ERR: ${String(err).slice(0, 80)}`);
     }
 
-    // No match from HTTP — wait 3s then return to active
+    // No match from HTTP — wait 8s then return to active (gives time to read debug)
     matchingTimer.current = setTimeout(() => {
       setState('active');
-    }, 3000);
+    }, 8000);
   }
 
   // ─── Start bumping ────────────────────────────────────────────────────────────
