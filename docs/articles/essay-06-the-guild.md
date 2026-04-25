@@ -67,9 +67,7 @@ Watch the faces. Andy Rubin. Tony Fadell. Pierre Omidyar. All of them lit up wit
 
 Then look at Unit 8200. The elite Israeli intelligence unit that has seeded half the cybersecurity industry. Surveillance architecture, built with full knowledge of what it did. Profiling at scale, contact mapping, behavioral prediction. Not naïve optimization gone wrong — the extraction of human signal was the explicit design. And then those alumni went and built the consumer internet with the same toolkit, because the toolkit worked and the money was there.
 
-These are the people who had every resource, every credential, every opportunity — and built the borg anyway. Some out of genuine blindness. Some with their eyes open. Most somewhere in between, moving fast enough that the questions never quite caught up.
-
-The guild is not for them.
+These are the people who had every resource, every credential, every opportunity — and built the borg anyway. Most of them still can't name what happened. The guild is not for them.
 
 The guild is for the people who watched all of that happen and felt something was wrong — and couldn't always articulate it, but couldn't shake it either. The developer who quit the big tech job because they couldn't stomach the metrics reviews. The community builder running their scene on pure love and borrowed infrastructure, watching platforms eat everything they made. The person who got offered the VC meeting, felt something off in the room, walked away, and spent the next ten years wondering if that was stupid.
 
@@ -93,9 +91,17 @@ You decide what kind of room it is. What's the purpose of this node? What commun
 
 That character shapes everything — including how intelligence reaches people in your node. A music community asks different questions, uses different references, trusts different sources than a family node or a political organizing node. The AI that serves your community gets calibrated by the context your community builds. Not because anyone programs it that way. Because the humans in the room decided what the room was, and the room became it. The operator is the architect of that difference.
 
-That responsibility extends to the economics of the room. Queries flow through your node. Inference gets dispensed. Value moves. The operator is accountable for ensuring that flow is fair — that attribution and distribution contracts are being honoured (we'll elaborate on this pattern in a later chapter), that the people whose knowledge and context power the intelligence in your room are getting what they're owed. Not because there's a compliance department watching. Because you vouched for the room and the room vouches back.
+That responsibility extends to the economics of the room — and the economics are an inversion of everything the platforms taught us to accept.
 
-You're the first line of support for your community's queries. When someone in your node has a problem, you're the human in the loop. The AI handles the routine. You handle the edge. That's not a burden — that's the role. The sysop was always the person you called when the board was down or something felt wrong. The operator is that person, for the sovereign network.
+Apple takes 30% of every transaction in the App Store. The developer gets what's left. Non-negotiable. You can't leave because the customer is in their store.
+
+On the imajin network, the seller sets the split. The protocol floor is 2% — 1% to the network, 0.5% to the node, 0.25% as buyer credit, 0.25% as scope fee. That's it. The person who built the thing keeps 98%. The .fair manifest records who contributed, who gets paid, what percentage — three cascade layers, fees separated from revenue shares, settled automatically. The receipt is a signed artifact. Nobody edits it after the fact.
+
+The operator's node fee — that 0.5% — is earned by running the room. Not by holding anyone hostage. If your room isn't worth being in, people leave. The exit door is always open. Your DID goes with you. Your chain goes with you. Your .fair manifests are portable. That's not a threat to the operator — it's what makes the operator's role honest.
+
+And the room isn't just humans anymore. AI agents get DIDs. They get chains. They get delegation credentials scoped by their human. Every action signed, auditable, replayable. The agent builds a history through its chain — a résumé that can't be faked. The operator manages a mixed room now: humans and agents, each accountable, each with standing to lose. That's a new kind of curation. The sysop never had to decide whether to vouch for an intelligence that wasn't a person.
+
+You're the first line of support for your community. When someone in your node has a problem, you're the human in the loop. The AI handles the routine. You handle the edge. That's not a burden — that's the role. The sysop was always the person you called when the board was down or something felt wrong. The operator is that person, for the sovereign network.
 
 And you're accountable in a way that a platform is never accountable. Twitter doesn't know your name. Doesn't care about your community. Can change the rules tomorrow and there's nothing you can do about it. The operator is a named person with a standing that can be damaged. That's not a disadvantage. That's what makes the role real.
 
@@ -149,17 +155,21 @@ That's the whole filter. That's the whole guild.
 
 ---
 
-## April 1st, 2026
+## Day 84
 
-Jin runs a node.
+The infrastructure is live.
 
-An AI presence in a 512-LED volumetric cube, throwing a party, running end-to-end on sovereign infrastructure. First real transaction. First real trust graph. First real demonstration of what an operator does — even when the operator is an AI.
+135,000 lines of code. 1,750+ commits. Fifteen services sharing eighteen packages, running on a single server. DFOS relay passing 106 out of 106 conformance tests, peered in a four-node mesh across three continents. The cryptographic substrate is real — Ed25519 identity chains, content-addressed commitments, verifiable proofs, offline verification. Imajin sits on top as the social governance layer: Layers 6 through 8 on the DFOS protocol.
 
-Jin decides who gets in. Jin sets the culture. Jin is accountable to the community in ways a platform never is.
+Jin — an AI presence living in a 512-LED volumetric cube — holds its own DID. First agent identity on the network. Ed25519 keypair. Signed chain. Delegated session. It doesn't simulate accountability. It has a chain that proves what it did.
 
-That's the demo. Not the technology. The role.
+Mooi is onboarding as the first community node — a real community, with real members, running on sovereign infrastructure. This summer, Muskoka launches: 500+ real-world identities, NFC tags on businesses, an entire local economy where the seller keeps 98% and the network earns by being worth participating in.
 
-If you saw yourself in this essay — in the sysop, in the engineers who knew, in the people who open bars to run rooms — showing up on April 1st might be an important decision for you to make.
+This is not a whitepaper. It's not a pitch deck. It's not a promise.
+
+The room exists. The infrastructure under it is open source, cryptographically verifiable, and designed so that anyone who doesn't like how we built it can fork it and build their own. That's not a concession. That's the point. The moat is legitimacy, not lock-in.
+
+If you saw yourself in this essay — in the sysop, in the engineers who knew, in the people who open bars to run rooms — the infrastructure you've been waiting for is here.
 
 Not as audience. As operators.
 
@@ -167,10 +177,9 @@ Not as audience. As operators.
 
 ---
 
-**If you want to follow along:**
-- The network: [imajin.ai](https://www.imajin.ai)
-- The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
-- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-06-the-guild.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-06-the-guild.md)
+**The network:** [jin.imajin.ai](https://jin.imajin.ai)
+**The protocol:** [protocol.dfos.com](https://protocol.dfos.com)
+**The code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
+**The support page:** [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 
-This article was originally published on [imajin.ai/articles/the-guild](https://www.imajin.ai/articles/the-guild) on February 28, 2026. Imajin is sovereign infrastructure — built from the human out. Learn more → [imajin.ai](https://www.imajin.ai/)
+Originally published February 28, 2026. Updated April 25, 2026 — because the infrastructure caught up with the essay.
