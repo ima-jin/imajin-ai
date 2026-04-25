@@ -27,7 +27,7 @@ export async function POST(
   const token = generateVerifyToken(email, expiresAt);
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL ?? 'https://imajin.ai';
-  const verifyUrl = `${baseUrl}/subscribe/verify?email=${encodeURIComponent(email)}&token=${token}&expires=${expiresAt}`;
+  const verifyUrl = `${baseUrl}/api/subscribe/verify?email=${encodeURIComponent(email)}&token=${token}&expires=${expiresAt}`;
 
   await sendEmail({
     to: email,
