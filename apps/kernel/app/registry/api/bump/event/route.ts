@@ -125,7 +125,10 @@ export async function POST(request: NextRequest) {
         .orderBy(desc(bumpEvents.createdAt))
         .limit(1);
 
-      if (!otherEvent) continue;
+      if (!otherEvent) {
+        log.info({ otherSessionId: other.id, minTime: minTime.toISOString(), maxTime: maxTime.toISOString() }, '[bump/event] candidate has no event in window');
+        continue;
+      }
 
       // Check location proximity (skip if either side has no location)
       if (location && otherEvent.location) {
@@ -151,7 +154,21 @@ export async function POST(request: NextRequest) {
 
     // No candidate found
     if (!bestCandidate) {
-      return NextResponse.json({ matched: false }, { headers: cors });
+      log.info({
+        sessionId,
+        nodeId: session.nodeId,
+        otherActiveSessions: otherSessions.length,
+        eventTime: eventTime.toISOString(),
+        hasLocation: !!location,
+      }, '[bump/event] no match — no candidate found');
+      return NextResponse.json({
+        matched: false,
+        debug: {
+          otherActiveSessions: otherSessions.length,
+          windowMs: BUMP_MATCH_WINDOW_MS,
+          nodeId: session.nodeId,
+        },
+      }, { headers: cors });
     }
 
     const { other, score } = bestCandidate;
