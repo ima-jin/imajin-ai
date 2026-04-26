@@ -12,13 +12,17 @@ type: "essay"
 
 Every piece of recorded music exists in at least three places: a streaming platform, a torrent index, and a metadata database. Spotify has 100 million tracks. MusicBrainz has metadata for 30+ million releases. The torrent ecosystem has content hashes for nearly every album ever pressed.
 
-None of them belong to the artist.
+None of them belong to the people who made them.
 
-Spotify owns the relationship between the listener and the catalog. The label owns the master. MusicBrainz is a volunteer effort with no economic layer. The torrent index is anonymous by design. The person who made the music — who sat in the studio, who wrote the lyrics, who played the session — has no canonical identity attached to their work that they control.
+Spotify owns the relationship between the listener and the catalog. MusicBrainz is a volunteer effort with no economic layer. The torrent index is anonymous by design. The artist who sat in the studio, the label that funded the session, the publisher who registered the composition, the engineer who mixed it at 3am — none of them have a canonical identity attached to the work that *they* control.
 
-ISRCs exist. UPCs exist. Spotify URIs exist. None of them are sovereign. All of them are identifiers issued by someone else, controlled by someone else, revocable by someone else. An ISRC doesn't know who played guitar on the track. A Spotify URI stops working when Spotify decides it does.
+Labels invest real money. They advance recording costs, carry legal risk, handle distribution, fight sample disputes, manage rights across territories. Publishers register compositions, chase royalties across borders, deal with collection societies in 30 countries. This is real work. Real infrastructure. The music industry runs on it.
 
-The music industry built a $28 billion streaming economy on top of a catalog with no attribution layer.
+But the tools they use to track it are broken. ISRCs exist. UPCs exist. Spotify URIs exist. None of them are sovereign. All of them are identifiers issued by someone else, controlled by someone else, revocable by someone else. An ISRC doesn't know who played guitar on the track. A Spotify URI stops working when Spotify decides it does. And a label's master rights — the thing they invested €50,000 to produce — live in a contract PDF that no system on earth can read automatically.
+
+Some countries do it better. Germany's GEMA and its Urheberrecht model give creators and rights holders stronger protections than almost anywhere else. The session pianist gets registered. The publisher gets their share. It works — inside Germany. But the moment that track crosses a border, it's back to spreadsheets, collection society delays, and manual reconciliation across territories that don't talk to each other.
+
+The music industry built a $28 billion streaming economy on top of a catalog with no attribution layer. Not because nobody cared. Because the infrastructure to connect rights holders — all of them — to a verifiable, portable, machine-readable record of who's owed what was never built.
 
 ---
 
@@ -34,20 +38,25 @@ DID: did:imajin:track-midnight-architecture
 Creator: did:imajin:studio-collective
 
 .fair manifest:
-  Writer:     @sarah_keys      40%
-  Producer:   @marcus_waves    25%
-  Vocalist:   @elena_voice     20%
-  Mix:        @dave_console    10%
-  Master:     @abbey_road      5%
+  Label:      @velvet_records   30%  (master rights, advance recoup)
+  Publisher:  @nightshift_pub   15%  (composition, sync licensing)
+  Writer:     @sarah_keys       25%  (lyrics, toplining)
+  Producer:   @marcus_waves     15%  (production, arrangement)
+  Vocalist:   @elena_voice      8%   (session performance)
+  Mix:        @dave_console     5%   (mix engineering)
+  Master:     @abbey_road       2%   (mastering)
 
 Attestations:
   MusicBrainz: MB-release-abc123
   ISRC: USRC17607839
+  GEMA: werk-nr-12345678
   Torrent: magnet:?xt=urn:btih:a3f2...
   Spotify: spotify:track:4iV5W9uY
 ```
 
-Signed. On-chain. Append-only. Nobody edits it after the fact. The guitarist who played the session is on the manifest forever. Not because the label decided to credit them. Because the artist signed it.
+Signed. On-chain. Append-only. The label's master rights, the publisher's composition share, the session vocalist's 8% — all of it encoded in the manifest, enforced everywhere the track generates revenue. Not because a platform decided to honor the contract. Because the contract is the identity.
+
+The label that invested in the recording is on the manifest forever. The publisher who registered the composition is on the manifest forever. The guitarist who played the session — the one that collection societies lose track of — is on the manifest forever. Because the rights holders signed it together.
 
 The torrent hash isn't piracy. It's a content attestation — proof the work exists, content-addressed, distributed. The DID doesn't host the music. It *identifies* it. The platforms are playback surfaces that reference the DID. The DID outlives the platform.
 
@@ -75,9 +84,11 @@ An artist shows up. Finds their catalog already tagged — every album, every tr
 
 They claim it. One action. The DID transfers to their control. They inherit everything — every connection, every attestation, every piece of context the community built around their work.
 
-Then they fill in what the databases don't know.
+A label shows up. Finds 200 releases already stubbed, metadata intact, cross-referenced across databases. Claims the catalog. One action per release — or bulk. The master rights that live in filing cabinets and contract PDFs are now cryptographically attached to the work itself.
 
-The .fair manifest on a MusicBrainz stub has credits — but it doesn't have splits. It doesn't know that the bass player got 8% of the publishing or that the sample clearance ate 15% of the revenue. The artist fills that in. Signs it. The attribution chain that never existed on any platform — the one that actually says who gets paid what — is now on-chain.
+Then the rights holders fill in what the databases don't know.
+
+The .fair manifest on a MusicBrainz stub has credits — but it doesn't have splits. It doesn't know that the label advanced €50,000 for recording and gets 30% until recouped. It doesn't know the publisher registered the composition and handles sync licensing for 15%. It doesn't know the bass player got 8% of the publishing or that the sample clearance ate 15% of the revenue. The rights holders fill that in. Sign it together. The attribution chain that never existed on any platform — the one that actually says who gets paid what — is now on-chain.
 
 The person who tagged the catalog — who did the work of connecting the commons to its creators — earns a commission on the scope fee. Declared at creation, negotiable on claim. The Muskoka model: curators earn when stubs generate value.
 
@@ -85,25 +96,25 @@ The person who tagged the catalog — who did the work of connecting the commons
 
 ## The Piracy Inversion
 
-The music industry spent 25 years fighting torrents. Suing teenagers. Shutting down Napster. Taking down Pirate Bay mirrors. $100 billion in estimated losses, depending on who's counting.
+The music industry spent 25 years fighting torrents. Suing teenagers. Shutting down Napster. Taking down Pirate Bay mirrors. Labels lost real money — not theoretical losses on an analyst's spreadsheet, but catalogs they'd invested in being distributed for free, with no attribution and no compensation for anyone in the chain.
 
-The torrents won. The content is in the swarm. It's not coming back.
+The torrents won. The content is in the swarm. It's not coming back. That's the reality, and pretending otherwise hasn't worked.
 
-But the metadata from that effort — the careful tagging, the complete discographies, the scene-level organization that torrent communities maintained with obsessive precision — that metadata is the most complete index of recorded music ever assembled. More complete than any label's catalog. More complete than Spotify's database. Built by people who cared about music enough to spend thousands of hours organizing it for free.
+But something unexpected came out of that fight. The metadata — the careful tagging, the complete discographies, the scene-level organization that torrent communities maintained with obsessive precision — is the most complete index of recorded music ever assembled. More complete than any label's catalog. More complete than Spotify's database. Built by people who cared about music enough to spend thousands of hours organizing it for free.
 
-We take that index and turn it into the attribution layer the industry never built.
+What if that index became evidence *for* rights holders instead of against them? A content-addressed hash tied to a DID that carries a .fair manifest — proof that a master exists, who owns it, who's owed what. The same infrastructure that the industry spent billions trying to destroy becomes the foundation of the attribution layer that was never built.
 
-The pirates did the cataloging. The creators get the identity. The curators who connect them earn a commission. The industry that fought the pirates for a generation gets the one thing it never had: a sovereign, verifiable record of who made what and who's owed what.
+The pirates did the cataloging. The creators get the identity. The labels get enforceable rights. The curators who connect them earn a commission. And the industry that fought the pirates for a generation gets the one thing it never had: a sovereign, verifiable record of who made what and who's owed what.
 
-Not because a label decided to publish credits. Not because Spotify chose to show songwriter names. Because the attribution is on-chain, signed by the artist, and nobody can edit it.
+Not because a platform decided to publish credits. Because the attribution is on-chain, signed by the rights holders, and nobody can edit it.
 
 ---
 
 ## The Economics
 
-Artist claims their catalog. Free. No fee to claim what's yours.
+Claim your catalog. Free. No fee to claim what's yours — whether you're an artist, a label, or a publisher.
 
-Someone buys merch through the artist's DID. Streams through a sovereign player. Buys a ticket to a show. Licenses a track. Any transaction against that DID flows through .fair:
+Someone buys merch through the artist's DID. Streams through a sovereign player. Buys a ticket to a show. Licenses a track for a sync. Any transaction against that DID flows through .fair:
 
 ```
 Protocol:  1%    → MJN (network equity)
@@ -112,13 +123,15 @@ Buyer:     0.25% → buyer credit
 Scope:     0.25% → scope fee (split with curator)
 ```
 
-Artist keeps 98%. The .fair manifest splits their share among contributors — the band, the producer, the engineer. Automatically. Every time.
+The remaining 98% splits according to the .fair manifest — label, publisher, artist, session musicians, engineer. Automatically. Every time. Everywhere.
 
-Compare: Spotify pays $0.004 per stream. The label takes 80%. The artist gets $0.0008. The session musicians get nothing unless they negotiated publishing, which most didn't. The songwriter gets a fraction of a fraction, processed through a collection society that takes 18 months to pay.
+Compare how it works today: Spotify pays $0.004 per stream. The split between label and artist is whatever was negotiated — usually 80/20, sometimes better, sometimes worse. The session musicians get nothing unless they negotiated publishing, which most didn't. The songwriter gets a fraction of a fraction, processed through a collection society that takes 18 months to pay. And the label — the one that funded the recording, carried the legal risk, handled the distribution — is stuck chasing royalties across 30 territories through collection societies that each operate on their own timeline.
 
-On Imajin, a fan pays $2 for a direct download through the artist's DID. The artist and their collaborators split $1.96 instantly, per the manifest they signed. The guitarist who played the session — the one Spotify doesn't know exists — gets their 10% because the artist put them on the manifest.
+On Imajin, a fan pays $2 for a direct download. The .fair manifest executes instantly: the label gets its 30%, the publisher gets 15%, the artist gets their share, the session musicians get theirs. Settled in seconds. Not 18 months. Not "pending reconciliation." Done.
 
-5,000 fans × $2/month = $120,000/year. Split fairly. Settled automatically. No label. No platform. No collection society.
+**For an indie artist with no label:** 5,000 fans × $2/month = $120,000/year. Split among collaborators per the manifest they signed.
+
+**For a label with 200 releases:** every stream, every sync, every live play across 40 countries settles automatically per manifest. No chasing SACEM for French royalties. No reconciling JASRAC statements against GEMA registrations. The manifest is the contract, and the contract executes itself.
 
 ---
 
