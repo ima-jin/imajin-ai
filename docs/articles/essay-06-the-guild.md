@@ -61,7 +61,7 @@ The sysop kept the BBS alive. The operator makes the network real.
 
 ## Who The Guild Is For
 
-Unit 8200. The elite Israeli intelligence unit that seeded half the cybersecurity industry. Surveillance architecture, built with full knowledge of what it did. Profiling at scale, contact mapping, behavioral prediction. Not naïve optimization gone wrong — the extraction of human signal was the explicit design. Those alumni went and built the consumer internet with the same toolkit, because the toolkit worked and the money was there.
+The General Magic team built the smartphone twelve years early and didn't see the extraction model coming. Unit 8200 built surveillance architecture knowing exactly what it did — profiling at scale, contact mapping, behavioral prediction. Both groups went on to build the consumer internet. One out of naïveté, the other because the toolkit worked and the money was there.
 
 The guild is not for them.
 
