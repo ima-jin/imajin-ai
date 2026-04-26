@@ -79,7 +79,7 @@ Come run a node.
 
 ## What Running a Node Actually Means
 
-An operator on the imajin network runs a node. Let me be specific about what that means, because "node" sounds technical and the reality is almost entirely human.
+An operator on the imajin network runs a node — a dark forest with an operator. Let me be specific about what that means, because "node" sounds technical and the reality is almost entirely human.
 
 You decide who gets into your node. One by one. You vouch for people — which means your standing is attached to their behavior. If you vouch for someone who poisons the well, the poison traces back to you. Not punitively. Structurally. The trust graph records who vouched for whom. Accountability is baked into the architecture.
 
@@ -91,7 +91,7 @@ Apple takes 30% of every transaction in the App Store. The developer gets what's
 
 On the imajin network, the seller sets the split. The protocol floor is 2% — 1% to the network, 0.5% to the node, 0.25% as buyer credit, 0.25% as scope fee. That's it. The person who built the thing keeps 98%. The .fair manifest records who contributed, who gets paid, what percentage — three cascade layers, fees separated from revenue shares, settled automatically. The receipt is a signed artifact. Nobody edits it after the fact.
 
-The operator earns 0.5% by running the room. Not by holding anyone hostage. If your room isn't worth being in, people leave. The exit door is always open. Your DID, your chain, your .fair manifests — portable. That's what makes the role honest.
+The operator earns 0.5% by running the room. Not by holding anyone hostage. If your room isn't worth being in, people leave. The exit door is always open. Your DID, your chain, your .fair manifests — portable. The dark forest is yours to leave. That's what makes the role honest.
 
 The room isn't just humans anymore. AI agents get DIDs, chains, delegation credentials scoped by their human. Every action signed, auditable, replayable. The operator manages a mixed room: humans and agents, each with standing to lose. The sysop never had to decide whether to vouch for an intelligence that wasn't a person.
 
