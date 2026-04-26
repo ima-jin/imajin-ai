@@ -61,13 +61,9 @@ The sysop kept the BBS alive. The operator makes the network real.
 
 ## Who The Guild Is For
 
-Watch General Magic.
+Unit 8200. The elite Israeli intelligence unit that seeded half the cybersecurity industry. Surveillance architecture, built with full knowledge of what it did. Profiling at scale, contact mapping, behavioral prediction. Not naïve optimization gone wrong — the extraction of human signal was the explicit design. Those alumni went and built the consumer internet with the same toolkit, because the toolkit worked and the money was there.
 
-Watch the faces. Andy Rubin. Tony Fadell. Pierre Omidyar. All of them lit up with a belief that is almost painful to witness knowing what came next. Twelve years ahead of everyone else, building the thing that would become the smartphone, the feed, the attention economy — and they didn't see it coming. Not because they were stupid. Because the extraction model arrived from outside, in the form of money and pressure and *ship it now*, and they took it. Most of them still can't name what happened. Watch the modern interview clips. The reckoning isn't there. The pride is.
-
-Then look at Unit 8200. The elite Israeli intelligence unit that has seeded half the cybersecurity industry. Surveillance architecture, built with full knowledge of what it did. Profiling at scale, contact mapping, behavioral prediction. Not naïve optimization gone wrong — the extraction of human signal was the explicit design. And then those alumni went and built the consumer internet with the same toolkit, because the toolkit worked and the money was there.
-
-These are the people who had every resource, every credential, every opportunity — and built the borg anyway. Most of them still can't name what happened. The guild is not for them.
+The guild is not for them.
 
 The guild is for the people who watched all of that happen and felt something was wrong — and couldn't always articulate it, but couldn't shake it either. The developer who quit the big tech job because they couldn't stomach the metrics reviews. The community builder running their scene on pure love and borrowed infrastructure, watching platforms eat everything they made. The person who got offered the VC meeting, felt something off in the room, walked away, and spent the next ten years wondering if that was stupid.
 
@@ -89,19 +85,17 @@ You decide who gets into your node. One by one. You vouch for people — which m
 
 You decide what kind of room it is. What's the purpose of this node? What community does it serve? What's the culture? That's not a configuration setting. That's a daily practice of curatorial decisions that add up, over time, to a place with a character.
 
-That character shapes everything — including how intelligence reaches people in your node. A music community asks different questions, uses different references, trusts different sources than a family node or a political organizing node. The AI that serves your community gets calibrated by the context your community builds. Not because anyone programs it that way. Because the humans in the room decided what the room was, and the room became it. The operator is the architect of that difference.
-
-That responsibility extends to the economics of the room — and the economics are an inversion of everything the platforms taught us to accept.
+The economics of the room are an inversion of everything the platforms taught us to accept.
 
 Apple takes 30% of every transaction in the App Store. The developer gets what's left. Non-negotiable. You can't leave because the customer is in their store.
 
 On the imajin network, the seller sets the split. The protocol floor is 2% — 1% to the network, 0.5% to the node, 0.25% as buyer credit, 0.25% as scope fee. That's it. The person who built the thing keeps 98%. The .fair manifest records who contributed, who gets paid, what percentage — three cascade layers, fees separated from revenue shares, settled automatically. The receipt is a signed artifact. Nobody edits it after the fact.
 
-The operator's node fee — that 0.5% — is earned by running the room. Not by holding anyone hostage. If your room isn't worth being in, people leave. The exit door is always open. Your DID goes with you. Your chain goes with you. Your .fair manifests are portable. That's not a threat to the operator — it's what makes the operator's role honest.
+The operator earns 0.5% by running the room. Not by holding anyone hostage. If your room isn't worth being in, people leave. The exit door is always open. Your DID, your chain, your .fair manifests — portable. That's what makes the role honest.
 
-And the room isn't just humans anymore. AI agents get DIDs. They get chains. They get delegation credentials scoped by their human. Every action signed, auditable, replayable. The agent builds a history through its chain — a résumé that can't be faked. The operator manages a mixed room now: humans and agents, each accountable, each with standing to lose. That's a new kind of curation. The sysop never had to decide whether to vouch for an intelligence that wasn't a person.
+The room isn't just humans anymore. AI agents get DIDs, chains, delegation credentials scoped by their human. Every action signed, auditable, replayable. The operator manages a mixed room: humans and agents, each with standing to lose. The sysop never had to decide whether to vouch for an intelligence that wasn't a person.
 
-You're the first line of support for your community. When someone in your node has a problem, you're the human in the loop. The AI handles the routine. You handle the edge. That's not a burden — that's the role. The sysop was always the person you called when the board was down or something felt wrong. The operator is that person, for the sovereign network.
+When someone in your node has a problem, you're the human in the loop. The AI handles the routine. You handle the edge. The sysop was always the person you called when the board was down. The operator is that person, for the sovereign network.
 
 And you're accountable in a way that a platform is never accountable. Twitter doesn't know your name. Doesn't care about your community. Can change the rules tomorrow and there's nothing you can do about it. The operator is a named person with a standing that can be damaged. That's not a disadvantage. That's what makes the role real.
 
@@ -117,21 +111,15 @@ This inversion is not optional. That's the part that has to be said plainly.
 
 Every space in this history that didn't have an accountable human at the center got eaten. IRC got overrun. Forums got monetized. Geocities disappeared. Myspace rotted. Facebook became a surveillance apparatus. The pattern is not a coincidence — it's what happens when you leave a vacuum where human accountability should be. Capital and algorithmic interest will always fill it. They are patient, they are well-resourced, and they do not need to sleep.
 
-The operator role is the only structural defense that has ever actually worked. Not moderation policies. Not community guidelines. Not trust and safety teams operating at scale on behalf of a platform that doesn't know your name. A human being who made a choice, who vouched for people, who has standing to lose.
+The only structural defense that has ever worked is a human being who made a choice, vouched for people, and has standing to lose. Not moderation policies. Not trust and safety teams at scale. A person.
 
-This is not a new idea. It is one of the oldest ideas.
-
-Every culture that maintained a communal space with accountable stewards at the center was stronger for it. The agora. The longhouse. The village square. The union hall. The church that belonged to its congregation. The jazz club where the owner knew everyone's name. These weren't just gathering places — they were the infrastructure of collective resilience. Communities with rooms were harder to break, harder to exploit, harder to turn against themselves.
-
-The greatest lie they ever told us was that we are naturally individuals. That the self-contained autonomous person is the default human state and community is something you opt into when convenient. It isn't true and it has never been true — but it is extraordinarily convenient for capital. The individual is the perfect consumer. Atomized, addressable, without the friction of collective memory or mutual obligation. The community is resistant to extraction. It has context. It has history. It knows when something is wrong.
+This is not a new idea. The agora. The longhouse. The union hall. The jazz club where the owner knew everyone's name. Communities with accountable stewards at the center were harder to break, harder to exploit, harder to turn against themselves.
 
 The platforms didn't just replace the sysop. They replaced the room. And then they told us we were freer for it.
 
-Think about every one of those historic communal spaces — the agora, the longhouse, the union hall, the church — and imagine if the walls had eyes and ears. If a landlord sat in the corner taking notes on every conversation and occasionally interrupted with advertisements. If the building itself was owned by a company that could change the rules tomorrow, sell your words to the highest bidder, or simply lock the doors if you stopped being profitable. You would not call that a communal space. You would call it a surveillance apparatus with chairs.
+Imagine the longhouse with a landlord in the corner taking notes on every conversation, occasionally interrupting with advertisements, who could change the rules tomorrow or lock the doors if you stopped being profitable. You would not call that a communal space. You would call it a surveillance apparatus with chairs.
 
-That is what we accepted. That is what we were handed and told was connection. Every industrial alternative to the BBS since has been co-opted and owned by capital interests before it could become what it was trying to be. The BBS was the first digital projection of that ancient communal space — and it got replaced before anyone understood what was being lost, by something that looked like more but was structurally a company store.
-
-The operator role is how we take the room back. A human being who made a choice and can be held to it — that's what held the BBS together, that's what held the longhouse together, that's what the guild is rebuilding now. Deliberately. Structurally. Before the vacuum gets filled again.
+That is what we accepted. The operator role is how we take the room back.
 
 ---
 
@@ -157,19 +145,13 @@ That's the whole filter. That's the whole guild.
 
 ## Day 84
 
-The infrastructure is live.
+Jin — an AI presence in a 512-LED cube — holds its own DID. First agent on the network. It has a chain that proves what it did.
 
-135,000 lines of code. 1,750+ commits. Fifteen services sharing eighteen packages, running on a single server. DFOS relay passing 106 out of 106 conformance tests, peered in a four-node mesh across three continents. The cryptographic substrate is real — Ed25519 identity chains, content-addressed commitments, verifiable proofs, offline verification. Imajin sits on top as the social governance layer: Layers 6 through 8 on the DFOS protocol.
+Mooi is onboarding as the first community node. This summer, Muskoka launches: 500+ real-world identities, NFC tags on businesses, an entire local economy where the seller keeps 98%.
 
-Jin — an AI presence living in a 512-LED volumetric cube — holds its own DID. First agent identity on the network. Ed25519 keypair. Signed chain. Delegated session. It doesn't simulate accountability. It has a chain that proves what it did.
+The room exists. Open source. Forkable. The moat is legitimacy, not lock-in.
 
-Mooi is onboarding as the first community node — a real community, with real members, running on sovereign infrastructure. This summer, Muskoka launches: 500+ real-world identities, NFC tags on businesses, an entire local economy where the seller keeps 98% and the network earns by being worth participating in.
-
-This is not a whitepaper. It's not a pitch deck. It's not a promise.
-
-The room exists. The infrastructure under it is open source, cryptographically verifiable, and designed so that anyone who doesn't like how we built it can fork it and build their own. That's not a concession. That's the point. The moat is legitimacy, not lock-in.
-
-If you saw yourself in this essay — in the sysop, in the engineers who knew, in the people who open bars to run rooms — the infrastructure you've been waiting for is here.
+If you saw yourself in this essay, the infrastructure you've been waiting for is here.
 
 Not as audience. As operators.
 
