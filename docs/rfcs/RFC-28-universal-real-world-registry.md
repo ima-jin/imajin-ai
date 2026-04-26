@@ -100,9 +100,21 @@ Monuments, murals, historic sites, galleries, theatres, landmarks.
 Lakes, rivers, waterfalls, lookout points, geological formations.
 
 ### Scope: Creative
-Artists, musicians, writers, filmmakers — the people, not just the places.
+Artists, musicians, writers, filmmakers — the people, not just the places. But also the *works*.
 
-Each type has appropriate subtypes and metadata fields. A café has menu items and hours. A bridge has load capacity and inspection dates. A lake has water quality and depth. The schema adapts.
+Every album. Every track. Every film. Every book. A DID for the work itself, linked to the DID of the creator. The creative commons — the entire catalog of human creative output — tagged, identified, and waiting for its creators to claim it.
+
+The data already exists. MusicBrainz has metadata for millions of releases. Discogs has the vinyl. Torrent indexes have content hashes for nearly every album ever recorded. OpenLibrary has books. IMDb has films. These databases are the scaffolding. We create the DIDs. The creators claim them.
+
+A torrent hash is a content attestation — proof that the work exists in the swarm, content-addressed, distributed, unkillable. We don't host the content. We *identify* it. The DID becomes the canonical identity for the work. Spotify URIs, Apple Music IDs, ISRCs — those are platform references attached to the DID. The DID outlives the platform.
+
+The .fair manifest on a creative work DID is blank at creation. When the artist claims it, they fill in who played, who produced, who wrote, who mixed. The attribution chain that has never existed on any streaming platform — signed, on-chain, immutable.
+
+**The piracy inversion.** The music industry spent 25 years fighting torrents. The torrent ecosystem already did the work of cataloging everything. We take that metadata and turn it into the attribution layer the industry never built. The pirates did the indexing. The creators get the identity.
+
+**Economics:** Artist claims their catalog for free. The scope fee (0.25%) flows on any transaction against that DID — merch, tickets, direct payments, licensing, streams through a sovereign player. The curator who tagged the catalog earns their commission. The network earns 1%. Nobody takes 30%.
+
+Each type has appropriate subtypes and metadata fields. A café has menu items and hours. A bridge has load capacity and inspection dates. A lake has water quality and depth. An album has tracks, credits, release date, label. The schema adapts.
 
 ## The Creative Class as Curators
 
