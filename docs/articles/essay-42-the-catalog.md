@@ -1,5 +1,5 @@
 ---
-title: "The Catalog"
+title: "The answer to everything"
 subtitle: "How to give every piece of music its own identity"
 description: "The pirates already indexed everything. The streaming platforms captured the catalog. The attribution layer was never built. Until now."
 date: "2026-04-26"
