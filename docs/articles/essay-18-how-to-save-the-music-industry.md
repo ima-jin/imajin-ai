@@ -249,10 +249,11 @@ Come bring your music.
 
 ---
 
-**If you want to follow along:**
-- The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- The network: [imajin.ai](imajin.ai)
-- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
-- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-18-how-to-save-the-music-industry.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-18-how-to-save-the-music-industry.md)
+**The music trilogy:**
+- **Essay 18** (this) — Why music needs the relationship back
+- **[Essay 21 — How to Save Media Streaming](https://www.imajin.ai/articles/how-to-save-media-streaming)** — How streaming broke the pipe
+- **[Essay 42 — The Catalog](https://github.com/ima-jin/imajin-ai/blob/main/docs/articles/essay-42-the-catalog.md)** — DID every track, .fair every credit, torrent as CDN
 
-This article was originally published on [imajin.ai/articles/how-to-save-the-music-industry](https://www.imajin.ai/articles/how-to-save-the-music-industry) on March 17, 2026. Imajin is building sovereign technology infrastructure — identity, payments, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)
+**The network:** [jin.imajin.ai](https://jin.imajin.ai)
+**The code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
+**The support page:** [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)

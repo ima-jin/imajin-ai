@@ -140,7 +140,11 @@ Free. Open. Sovereign.
 
 ---
 
+**The music trilogy:**
+- **[Essay 18 — How to Save the Music Industry](https://www.imajin.ai/articles/how-to-save-the-music-industry)** — Why music needs the relationship back
+- **[Essay 21 — How to Save Media Streaming](https://www.imajin.ai/articles/how-to-save-media-streaming)** — How streaming broke the pipe
+- **Essay 42** (this) — DID every track, .fair every credit, torrent as CDN
+
 **The network:** [jin.imajin.ai](https://jin.imajin.ai)
 **The protocol:** [protocol.dfos.com](https://protocol.dfos.com)
 **The code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-**The music essay:** [Essay 18 — How to Save the Music Industry](https://www.imajin.ai/articles/how-to-save-the-music-industry)

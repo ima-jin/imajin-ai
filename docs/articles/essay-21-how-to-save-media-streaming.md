@@ -211,12 +211,13 @@ The chain is ready to honor you.
 
 ---
 
-**If you want to follow along:**
-- The code: [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- The inspiration: [WeR1](https://www.wer1.ai/)
-- The network: [imajin.ai](imajin.ai)
-- The support page: [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
-- The history of this document: [github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-21-how-to-save-media-streaming.md](https://github.com/ima-jin/imajin-ai/blob/main/apps/www/articles/essay-20-how-to-save-media-streaming.md)
+**The music trilogy:**
+- **[Essay 18 — How to Save the Music Industry](https://www.imajin.ai/articles/how-to-save-the-music-industry)** — Why music needs the relationship back
+- **Essay 21** (this) — How streaming broke the pipe
+- **[Essay 42 — The Catalog](https://github.com/ima-jin/imajin-ai/blob/main/docs/articles/essay-42-the-catalog.md)** — DID every track, .fair every credit, torrent as CDN
 
-This article was originally published on [imajin.ai/articles/how-to-save-media-streaming](https://www.imajin.ai/articles/how-to-save-media-streaming) on March 24, 2026. Imajin is building sovereign technology infrastructure — identity, attribution, trust, settlement, and presence without platform lock-in. Learn more → [imajin.ai](https://www.imajin.ai/)
+**The network:** [jin.imajin.ai](https://jin.imajin.ai)
+**The inspiration:** [WeR1](https://www.wer1.ai/)
+**The code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
+**The support page:** [coffee.imajin.ai/veteze](https://coffee.imajin.ai/veteze)
 
