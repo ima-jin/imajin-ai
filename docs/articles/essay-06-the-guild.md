@@ -153,7 +153,7 @@ The room exists. Open source. Forkable. The moat is legitimacy, not lock-in.
 
 If you saw yourself in this essay, the infrastructure you've been waiting for is here.
 
-Not as audience. As operators.
+Not as audience. As participants. As operators.
 
 *— Ryan VETEZE, Founder, imajin.ai aka b0b*
 
