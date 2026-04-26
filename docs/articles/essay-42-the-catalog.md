@@ -148,5 +148,6 @@ Free. Open. Sovereign.
 - **Essay 42** (this) — DID every track, .fair every credit, torrent as CDN
 
 **The network:** [jin.imajin.ai](https://jin.imajin.ai)
+**The why:** [Essay 18 — How to Save the Music Industry](https://www.imajin.ai/articles/how-to-save-the-music-industry)
 **The protocol:** [protocol.dfos.com](https://protocol.dfos.com)
 **The code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
