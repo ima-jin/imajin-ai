@@ -127,9 +127,13 @@ That is what we accepted. The operator role is how we take the room back.
 
 There's a type of person who opens a bar because they want to run a room, not because they ran the numbers on beverage margins.
 
-They open a bookshop when everyone says bookshops are dying. They start a podcast network and turn it into a community before they figure out the business model. They launch a Discord that somehow becomes the real home for a scene that has no other home. They start a church, or leave one to start a better one, because the institution stopped being the point and the congregation still is.
+They open a bookshop when everyone says bookshops are dying. They run a nightclub where art happens — where a DJ plays a set that changes someone's life, where a visual artist projects onto the walls, where a community forms around sound and sweat and presence in a dark room at 2am. Every cultural movement that mattered — house, techno, punk, hip hop, jazz — came out of a room like that. Art doesn't start in galleries. It starts in nightclubs. And the person who holds the door is the operator.
 
-These people are operators who don't have the infrastructure yet.
+They launch a Discord that somehow becomes the real home for a scene that has no other home. They start a church, or leave one to start a better one, because the institution stopped being the point and the congregation still is.
+
+These people are operators who don't have the infrastructure yet. They're paying Square 2.6% and Eventbrite 3.5% and Ticketmaster whatever Ticketmaster feels like charging. They're settling with artists via invoice, 90 days out, through systems that don't know who played what. They're managing their community across five platforms that don't talk to each other and don't give them anything back.
+
+The only way we're getting out of this is by making creation currency instead of oil. The .fair manifest is the mechanism. Every track played, every piece shown, every performance witnessed — attributed, settled, on-chain. The act of creation generates economic value directly. Not through an extraction layer. Not through a platform that takes 30% and calls it a service.
 
 The sysop was this person in 1991. I didn't rig a third phone line to b0bby's World because I wanted to be a system administrator. I did it because I wanted three people in the room at once, making music together. The technical part was the cost of admission. The room was the point.
 
