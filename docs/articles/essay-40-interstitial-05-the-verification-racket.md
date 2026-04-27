@@ -4,14 +4,8 @@ type: essay
 status: draft
 slug: essay-40-interstitial-05-the-verification-racket
 topics:
-  - fair
   - identity
-  - agents
-  - dfos
-  - settlement
-  - events
-  - federation
-  - sovereignty
+  - legibility
 ---
 # Interstitial 05 — The Verification Racket
 

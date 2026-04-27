@@ -6,12 +6,13 @@ author: Ryan Veteze
 slug: essay-36-come-peer-with-us
 topics:
   - identity
-  - agents
-  - settlement
-  - events
-  - sovereignty
-subtitle: How lemonade stands, ravers, and farmers build an economy without permission
-description: "The network doesn't grow from the center. It grows from the edges — from the weird overlaps between communities that have nothing in common except one person who's in both. That overlap is a peering point. And peering is how sovereign economies become a mesh."
+  - federation
+subtitle: 'How lemonade stands, ravers, and farmers build an economy without permission'
+description: >-
+  The network doesn't grow from the center. It grows from the edges — from the
+  weird overlaps between communities that have nothing in common except one
+  person who's in both. That overlap is a peering point. And peering is how
+  sovereign economies become a mesh.
 ---
 ## The Lemonade Stand
 

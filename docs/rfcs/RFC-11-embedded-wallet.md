@@ -1,27 +1,23 @@
 ---
-title: Embedded Wallet — DID keypair as MJN-scoped Solana wallet with hierarchical key derivation
+title: >-
+  Embedded Wallet — DID keypair as MJN-scoped Solana wallet with hierarchical
+  key derivation
 type: rfc
 status: draft
 slug: RFC-11-embedded-wallet
 topics:
-  - fair
   - identity
-  - agents
-  - dfos
   - settlement
-  - governance
-  - events
-  - sovereignty
 refs:
   issues:
-  - 256
-  - 257
-  - 252
-  - 253
-  - 255
+    - 256
+    - 257
+    - 252
+    - 253
+    - 255
   packages:
-  - "@imajin/auth"
-  - "@imajin/fair"
+    - '@imajin/auth'
+    - '@imajin/fair'
 ---
 # RFC-11: RFC: Embedded Wallet — DID keypair as MJN-scoped Solana wallet with hierarchical key derivation
 

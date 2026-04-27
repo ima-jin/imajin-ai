@@ -2,29 +2,23 @@
 title: Intent-Bearing Transactions and Contribution Pools
 type: rfc
 status: draft
-author: Ryan Veteze, Jin
+author: 'Ryan Veteze, Jin'
 slug: RFC-05-intent-bearing-transactions
 topics:
-  - fair
-  - identity
-  - agents
-  - dfos
   - settlement
-  - governance
-  - events
-  - sovereignty
+  - fair
 refs:
   rfcs:
-  - 1
-  - 2
-  - 4
-  - 3
+    - 1
+    - 2
+    - 4
+    - 3
   issues:
-  - 141
-  - 143
-  - 110
-  - 111
-  - 117
+    - 141
+    - 143
+    - 110
+    - 111
+    - 117
 ---
 # RFC-05: Intent-Bearing Transactions and Contribution Pools
 

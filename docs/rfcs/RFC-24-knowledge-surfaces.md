@@ -1,18 +1,11 @@
 ---
-title: Knowledge Surfaces — Learn, MCP, and the Queryable Profile
+title: 'Knowledge Surfaces — Learn, MCP, and the Queryable Profile'
 type: rfc
 status: draft
 author: Ryan Veteze
 slug: RFC-24-knowledge-surfaces
 topics:
-  - fair
-  - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
-  - federation
+  - legibility
 ---
 # RFC-24: Knowledge Surfaces — Learn, MCP, and the Queryable Profile
 

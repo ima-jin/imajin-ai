@@ -1,26 +1,22 @@
 ---
-title: Application Plugin Architecture — Third-Party Apps, Launcher Dock, and Dev Bounties
+title: >-
+  Application Plugin Architecture — Third-Party Apps, Launcher Dock, and Dev
+  Bounties
 type: rfc
 status: draft
 date: TBD
 author: TBD
 slug: RFC-09-application-plugin-architecture
 topics:
-  - legibility
-  - fair
-  - agents
-  - settlement
-  - governance
-  - events
-  - sovereignty
+  - federation
 refs:
   issues:
-  - 249
-  - 244
-  - 248
-  - 247
-  - 246
-  - 114
+    - 249
+    - 244
+    - 248
+    - 247
+    - 246
+    - 114
 ---
 # RFC-09: Application Plugin Architecture — Third-Party Apps, Launcher Dock, and Dev Bounties
 

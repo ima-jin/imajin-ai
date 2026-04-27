@@ -5,19 +5,14 @@ status: shipped
 author: Ryan Veteze
 slug: essay-01-the-internet-we-lost
 topics:
-  - fair
-  - identity
-  - agents
-  - dfos
-  - settlement
-  - events
-  - federation
   - sovereignty
 refs:
   essays:
-  - the-internet-we-lost
-subtitle: "Why I'm still fighting for the internet we lost"
-description: "The origin story. b0bby's World. What real connection looked like. The extraction model and how every step since 1994 was wrong."
+    - the-internet-we-lost
+subtitle: Why I'm still fighting for the internet we lost
+description: >-
+  The origin story. b0bby's World. What real connection looked like. The
+  extraction model and how every step since 1994 was wrong.
 ---
 ## b0bby's World (1991-1994)
 

@@ -4,19 +4,13 @@ type: rfc
 status: draft
 slug: RFC-13-progressive-trust-model
 topics:
-  - legibility
   - identity
-  - agents
-  - dfos
-  - settlement
   - governance
-  - events
-  - federation
 refs:
   issues:
-  - 247
-  - 248
-  - 244
+    - 247
+    - 248
+    - 244
 ---
 # RFC-13: RFC: Progressive Trust Model — graduated permissions on hard DIDs
 

@@ -12,7 +12,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** 2026-XX-XX
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/appendix-1-attribution-not-protection.md](./articles/appendix-1-attribution-not-protection.md)
-- **Topics:** fair, agents, settlement
+- **Topics:** fair
 
 ## appendix-2-the-reputation-problem
 
@@ -22,7 +22,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** 2026-XX-XX
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/appendix-2-the-reputation-problem.md](./articles/appendix-2-the-reputation-problem.md)
-- **Topics:** fair, identity, agents, dfos, settlement, governance, events, sovereignty
+- **Topics:** identity
 
 ## appendix-3-the-new-rules
 
@@ -32,7 +32,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** 2026-XX-XX
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/appendix-3-the-new-rules.md](./articles/appendix-3-the-new-rules.md)
-- **Topics:** fair, agents, settlement, governance, events
+- **Topics:** governance
 
 ## appendix-4-how-we-fix-voting
 
@@ -42,7 +42,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** 2026-XX-XX
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/appendix-4-how-we-fix-voting.md](./articles/appendix-4-how-we-fix-voting.md)
-- **Topics:** fair, identity, agents, settlement, governance, events, sovereignty
+- **Topics:** governance
 
 ## appendix-5-ai-governs-itself
 
@@ -52,7 +52,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** 2026-XX-XX
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/appendix-5-ai-governs-itself.md](./articles/appendix-5-ai-governs-itself.md)
-- **Topics:** legibility, fair, agents, governance, events
+- **Topics:** agents, governance
 - **Refs:**
   - RFCs: [RFC-03](./rfcs/RFC-03-*)
 
@@ -62,7 +62,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** essay
 - **Status:** 📝 draft
 - **Path:** [docs/articles/BOOK.md](./articles/BOOK.md)
-- **Topics:** legibility, fair, agents, settlement, governance, events, sovereignty
+- **Topics:** sovereignty
 
 ## bounty-01-syndication-service
 
@@ -70,7 +70,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** essay
 - **Status:** 📝 draft
 - **Path:** [docs/articles/bounty-01-syndication-service.md](./articles/bounty-01-syndication-service.md)
-- **Topics:** legibility, fair, agents, dfos, settlement, events, federation, sovereignty
+- **Topics:** federation
 
 ## build-timeline
 
@@ -78,7 +78,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** essay
 - **Status:** 📝 draft
 - **Path:** [docs/articles/build-timeline.md](./articles/build-timeline.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** sovereignty
 - **Refs:**
   - RFCs: [RFC-16](./rfcs/RFC-16-*), [RFC-14](./rfcs/RFC-14-*)
   - Issues: #119, #120, #268, #269, #154, #278, #316, #371, #374, #372, #392, #396, #407, #412, #398, #413, #403, #426, #401, #400, #402, #415, #425, #417, #420, #416, #418, #419, #421, #453, #451, #408
@@ -91,7 +91,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** essay
 - **Status:** 📝 draft
 - **Path:** [docs/articles/build-timeline-summary.md](./articles/build-timeline-summary.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** sovereignty
 - **Refs:**
   - Issues: #113, #114, #115, #116, #117
 
@@ -101,7 +101,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** essay
 - **Status:** 📝 draft
 - **Path:** [docs/articles/captains-log-2026-03-19--46-days.md](./articles/captains-log-2026-03-19--46-days.md)
-- **Topics:** fair, agents, dfos, settlement, governance, events
+- **Topics:** sovereignty
 
 ## DOCUSERIES
 
@@ -109,7 +109,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** essay
 - **Status:** 📝 draft
 - **Path:** [docs/articles/DOCUSERIES.md](./articles/DOCUSERIES.md)
-- **Topics:** legibility, fair, identity, agents, settlement, governance, events, sovereignty
+- **Topics:** sovereignty
 
 ## emissions-model
 
@@ -118,7 +118,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Date:** April 7, 2026
 - **Path:** [docs/rfcs/drafts/emissions-model.md](./rfcs/drafts/emissions-model.md)
-- **Topics:** legibility, fair, identity, dfos, settlement, governance, events, federation
+- **Topics:** settlement, fair
 - **Refs:**
   - RFCs: [RFC-01](./rfcs/RFC-01-*)
   - Issues: #433, #461, #641
@@ -130,7 +130,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-00-prologue.md](./articles/essay-00-prologue.md)
-- **Topics:** identity, agents, settlement, federation
+- **Topics:** sovereignty
 - **Refs:**
   - Essays: [essay-01-the-internet-we-lost](./articles/essay-01-the-internet-we-lost.md)
 
@@ -141,7 +141,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-01-the-internet-we-lost.md](./articles/essay-01-the-internet-we-lost.md)
-- **Topics:** fair, identity, agents, dfos, settlement, events, federation, sovereignty
+- **Topics:** sovereignty
 - **Refs:**
   - Essays: [the-internet-we-lost](./articles/the-internet-we-lost.md)
 
@@ -152,7 +152,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-02-the-artificial-developer.md](./articles/essay-02-the-artificial-developer.md)
-- **Topics:** legibility, fair, identity, agents, settlement, events, federation, sovereignty
+- **Topics:** agents
 - **Refs:**
   - Essays: [the-artificial-developer](./articles/the-artificial-developer.md)
 
@@ -163,7 +163,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-03-the-mask-we-all-wear.md](./articles/essay-03-the-mask-we-all-wear.md)
-- **Topics:** legibility, identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** identity
 - **Refs:**
   - Essays: [the-mask-we-all-wear](./articles/the-mask-we-all-wear.md)
 
@@ -174,7 +174,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-04-the-internet-that-pays-you-back.md](./articles/essay-04-the-internet-that-pays-you-back.md)
-- **Topics:** legibility, identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** settlement, sovereignty
 - **Refs:**
   - Essays: [the-internet-that-pays-you-back](./articles/the-internet-that-pays-you-back.md)
 
@@ -185,7 +185,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-05-you-dont-need-ads.md](./articles/essay-05-you-dont-need-ads.md)
-- **Topics:** fair, identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** settlement, sovereignty
 - **Refs:**
   - Essays: [you-dont-need-ads](./articles/you-dont-need-ads.md)
 
@@ -196,7 +196,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-06-the-guild.md](./articles/essay-06-the-guild.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** governance
 
 ## essay-07-utility
 
@@ -205,7 +205,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-07-utility.md](./articles/essay-07-utility.md)
-- **Topics:** legibility, identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** settlement
 - **Refs:**
   - Issues: #11
   - Essays: [the-utility](./articles/the-utility.md)
@@ -217,7 +217,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-08-ticketing.md](./articles/essay-08-ticketing.md)
-- **Topics:** legibility, identity, agents, settlement, events, sovereignty
+- **Topics:** identity, events
 - **Refs:**
   - Essays: [the-ticket-is-the-trust](./articles/the-ticket-is-the-trust.md)
 
@@ -228,7 +228,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-09-nodes-types-and-practice.md](./articles/essay-09-nodes-types-and-practice.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** identity
 - **Refs:**
   - Essays: [the-practice](./articles/the-practice.md)
 
@@ -239,7 +239,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-10-memory.md](./articles/essay-10-memory.md)
-- **Topics:** legibility, agents, settlement, governance, events, sovereignty
+- **Topics:** agents
 - **Refs:**
   - Essays: [memory](./articles/memory.md)
 
@@ -250,7 +250,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-11-interstitial-01-cult-of-vetteses.md](./articles/essay-11-interstitial-01-cult-of-vetteses.md)
-- **Topics:** legibility, identity, settlement, governance, events
+- **Topics:** identity
 
 ## essay-12-you-already-know-something
 
@@ -259,7 +259,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-12-you-already-know-something.md](./articles/essay-12-you-already-know-something.md)
-- **Topics:** legibility, fair, agents, dfos, settlement, governance, events, sovereignty
+- **Topics:** legibility
 - **Refs:**
   - Essays: [you-already-know-something](./articles/you-already-know-something.md)
 
@@ -270,7 +270,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-13-how-to-use-ai-properly.md](./articles/essay-13-how-to-use-ai-properly.md)
-- **Topics:** identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** agents
 - **Refs:**
   - Essays: [how-to-use-ai-properly](./articles/how-to-use-ai-properly.md)
 
@@ -281,7 +281,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-14-honor-the-chain.md](./articles/essay-14-honor-the-chain.md)
-- **Topics:** legibility, fair, identity, agents, settlement, events, sovereignty
+- **Topics:** fair, identity
 - **Refs:**
   - Essays: [honor-the-chain](./articles/honor-the-chain.md)
 
@@ -292,7 +292,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-15-interstitial-02-cult-of-good-times.md](./articles/essay-15-interstitial-02-cult-of-good-times.md)
-- **Topics:** legibility, fair, identity, agents, settlement, governance, events
+- **Topics:** events
 
 ## essay-16-how-to-save-education
 
@@ -301,7 +301,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-16-how-to-save-education.md](./articles/essay-16-how-to-save-education.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, sovereignty
+- **Topics:** identity, governance
 - **Refs:**
   - Essays: [how-to-save-education](./articles/how-to-save-education.md)
 
@@ -312,7 +312,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-17-how-to-save-journalism.md](./articles/essay-17-how-to-save-journalism.md)
-- **Topics:** legibility, identity, agents, settlement, governance, events, sovereignty
+- **Topics:** legibility, sovereignty
 - **Refs:**
   - Essays: [how-to-save-journalism](./articles/how-to-save-journalism.md)
 
@@ -323,7 +323,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-18-how-to-save-the-music-industry.md](./articles/essay-18-how-to-save-the-music-industry.md)
-- **Topics:** fair, identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** fair, settlement
 - **Refs:**
   - Essays: [essay-42-the-catalog](./articles/essay-42-the-catalog.md), [how-to-save-media-streaming](./articles/how-to-save-media-streaming.md)
 
@@ -334,7 +334,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-19-how-to-save-the-ad-industry.md](./articles/essay-19-how-to-save-the-ad-industry.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, sovereignty
+- **Topics:** settlement, fair
 - **Refs:**
   - Essays: [how-to-save-the-ad-industry](./articles/how-to-save-the-ad-industry.md)
 
@@ -345,7 +345,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-20-how-to-save-the-platforms.md](./articles/essay-20-how-to-save-the-platforms.md)
-- **Topics:** legibility, fair, identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** sovereignty, federation
 - **Refs:**
   - Essays: [how-to-save-the-platforms](./articles/how-to-save-the-platforms.md)
 
@@ -356,7 +356,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-21-how-to-save-media-streaming.md](./articles/essay-21-how-to-save-media-streaming.md)
-- **Topics:** legibility, fair, identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** fair, settlement
 - **Refs:**
   - Essays: [essay-42-the-catalog](./articles/essay-42-the-catalog.md), [how-to-save-the-music-industry](./articles/how-to-save-the-music-industry.md)
 
@@ -367,7 +367,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-22-interstitial-03-cult-of-community.md](./articles/essay-22-interstitial-03-cult-of-community.md)
-- **Topics:** legibility, identity, agents, settlement, governance, events, sovereignty
+- **Topics:** identity, governance
 
 ## essay-23-imajin-business-case
 
@@ -376,7 +376,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-23-imajin-business-case.md](./articles/essay-23-imajin-business-case.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, sovereignty
+- **Topics:** settlement, sovereignty
 - **Refs:**
   - Essays: [the-business-case](./articles/the-business-case.md)
 
@@ -387,7 +387,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-24-revenue-from-day-one.md](./articles/essay-24-revenue-from-day-one.md)
-- **Topics:** legibility, fair, identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** settlement
 - **Refs:**
   - Essays: [revenue-from-day-one](./articles/revenue-from-day-one.md)
 
@@ -398,7 +398,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-25-the-connector.md](./articles/essay-25-the-connector.md)
-- **Topics:** legibility, fair, identity, agents, settlement, governance, events, sovereignty
+- **Topics:** identity
 - **Refs:**
   - Essays: [the-connector](./articles/the-connector.md)
 
@@ -409,7 +409,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-26-part-1-the-blueprint.md](./articles/essay-26-part-1-the-blueprint.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** sovereignty
 
 ## essay-26-part-2-need-help
 
@@ -418,7 +418,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** ✅ shipped
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-26-part-2-need-help.md](./articles/essay-26-part-2-need-help.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** sovereignty
 - **Refs:**
   - Essays: [i-need-help](./articles/i-need-help.md)
 
@@ -429,7 +429,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-27-around-not-up.md](./articles/essay-27-around-not-up.md)
-- **Topics:** legibility, fair, agents, settlement, governance, events, sovereignty
+- **Topics:** governance
 
 ## essay-28-how-ai-saved-me
 
@@ -438,7 +438,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-28-how-ai-saved-me.md](./articles/essay-28-how-ai-saved-me.md)
-- **Topics:** legibility, fair, identity, agents, settlement, governance, events, sovereignty
+- **Topics:** agents
 
 ## essay-29-how-partying-can-save-us
 
@@ -447,7 +447,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-29-how-partying-can-save-us.md](./articles/essay-29-how-partying-can-save-us.md)
-- **Topics:** legibility, fair, identity, agents, settlement, governance, events, sovereignty
+- **Topics:** events
 
 ## essay-30-epilogue
 
@@ -455,7 +455,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** essay
 - **Status:** 📝 draft
 - **Path:** [docs/articles/essay-30-epilogue.md](./articles/essay-30-epilogue.md)
-- **Topics:** fair, agents, settlement, governance, events, federation
+- **Topics:** sovereignty
 
 ## essay-31-the-receipt
 
@@ -464,7 +464,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-31-the-receipt.md](./articles/essay-31-the-receipt.md)
-- **Topics:** legibility, identity, agents, dfos, settlement, governance, events, sovereignty
+- **Topics:** fair, settlement
 
 ## essay-32-how-to-save-compute
 
@@ -472,7 +472,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** essay
 - **Status:** 📝 draft
 - **Path:** [docs/articles/essay-32-how-to-save-compute.md](./articles/essay-32-how-to-save-compute.md)
-- **Topics:** legibility, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** agents, dfos
 
 ## essay-33-this-is-how-you-fix-bitcoin-STUB
 
@@ -482,7 +482,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** TBD — publishes after DFOS chains are running at scale
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-33-this-is-how-you-fix-bitcoin-STUB.md](./articles/essay-33-this-is-how-you-fix-bitcoin-STUB.md)
-- **Topics:** legibility, identity, agents, dfos, settlement, events, sovereignty
+- **Topics:** settlement
 
 ## essay-34-how-to-save-the-app-store-STUB
 
@@ -492,7 +492,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** TBD
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-34-how-to-save-the-app-store-STUB.md](./articles/essay-34-how-to-save-the-app-store-STUB.md)
-- **Topics:** legibility, identity, agents, dfos, settlement, governance, events, sovereignty
+- **Topics:** sovereignty
 
 ## essay-35-the-architect-scorecard
 
@@ -501,7 +501,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-35-the-architect-scorecard.md](./articles/essay-35-the-architect-scorecard.md)
-- **Topics:** identity, agents, settlement, governance, events, federation
+- **Topics:** governance
 
 ## essay-36-come-peer-with-us
 
@@ -510,7 +510,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-36-come-peer-with-us.md](./articles/essay-36-come-peer-with-us.md)
-- **Topics:** identity, agents, settlement, events, sovereignty
+- **Topics:** identity, federation
 
 ## essay-37-how-to-fix-the-commons
 
@@ -519,7 +519,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-37-how-to-fix-the-commons.md](./articles/essay-37-how-to-fix-the-commons.md)
-- **Topics:** legibility, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** governance, legibility
 
 ## essay-38-the-inherited-pathology
 
@@ -528,7 +528,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-38-the-inherited-pathology.md](./articles/essay-38-the-inherited-pathology.md)
-- **Topics:** identity, agents, settlement, governance, events
+- **Topics:** governance
 
 ## essay-39-interstitial-04-cult-of-work
 
@@ -537,7 +537,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-39-interstitial-04-cult-of-work.md](./articles/essay-39-interstitial-04-cult-of-work.md)
-- **Topics:** legibility, fair, identity, agents, governance
+- **Topics:** legibility, fair
 
 ## essay-40-interstitial-05-the-verification-racket
 
@@ -545,7 +545,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** essay
 - **Status:** 📝 draft
 - **Path:** [docs/articles/essay-40-interstitial-05-the-verification-racket.md](./articles/essay-40-interstitial-05-the-verification-racket.md)
-- **Topics:** fair, identity, agents, dfos, settlement, events, federation, sovereignty
+- **Topics:** identity, legibility
 
 ## essay-41-what-imajin-is-building
 
@@ -554,7 +554,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-41-what-imajin-is-building.md](./articles/essay-41-what-imajin-is-building.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** dfos, sovereignty
 - **Refs:**
   - Essays: [the-guild](./articles/the-guild.md)
 
@@ -565,7 +565,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-42-the-catalog.md](./articles/essay-42-the-catalog.md)
-- **Topics:** fair, identity, agents, dfos, settlement, events, federation, sovereignty
+- **Topics:** fair, agents
 - **Refs:**
   - Essays: [how-to-save-the-music-industry](./articles/how-to-save-the-music-industry.md), [how-to-save-media-streaming](./articles/how-to-save-media-streaming.md)
 
@@ -577,7 +577,7 @@ Alphabetical list of all documented artifacts.
 - **Rev:** 5
 - **Author:** Ryan Veteze
 - **Path:** [docs/articles/essay-43-show-us-the-receipts.md](./articles/essay-43-show-us-the-receipts.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** legibility, fair
 - **Refs:**
   - Essays: [essay-31-the-receipt](./articles/essay-31-the-receipt.md), [honor-the-chain](./articles/honor-the-chain.md), [the-internet-that-pays-you-back](./articles/the-internet-that-pays-you-back.md), [you-dont-need-ads](./articles/you-dont-need-ads.md)
 
@@ -587,7 +587,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** rfc
 - **Status:** 📝 draft
 - **Path:** [docs/rfcs/drafts/fee-model.md](./rfcs/drafts/fee-model.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** settlement
 - **Refs:**
   - RFCs: [RFC-12](./rfcs/RFC-12-*), [RFC-23](./rfcs/RFC-23-*)
   - Issues: #575
@@ -598,7 +598,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** essay
 - **Status:** 📝 draft
 - **Path:** [docs/articles/grounding-00-master-timeline.md](./articles/grounding-00-master-timeline.md)
-- **Topics:** legibility, fair, identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** sovereignty
 
 ## grounding-01-sequence
 
@@ -606,7 +606,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** essay
 - **Status:** 📝 draft
 - **Path:** [docs/articles/grounding-01-sequence.md](./articles/grounding-01-sequence.md)
-- **Topics:** legibility, fair, identity, agents, settlement, governance, events, sovereignty
+- **Topics:** sovereignty
 
 ## grounding-02-THESIS
 
@@ -614,7 +614,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** essay
 - **Status:** 📝 draft
 - **Path:** [docs/articles/grounding-02-THESIS.md](./articles/grounding-02-THESIS.md)
-- **Topics:** legibility, fair, identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** sovereignty
 
 ## grounding-03-ARCHITECTURE
 
@@ -622,7 +622,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** essay
 - **Status:** 📝 draft
 - **Path:** [docs/articles/grounding-03-ARCHITECTURE.md](./articles/grounding-03-ARCHITECTURE.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** sovereignty
 - **Refs:**
   - RFCs: [RFC-01](./rfcs/RFC-01-*), [RFC-02](./rfcs/RFC-02-*)
   - Issues: #253, #252, #189, #250, #258, #256, #177, #227, #254, #260, #259, #109, #255, #257, #156, #114
@@ -636,7 +636,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** TBD
 - **Author:** TBD
 - **Path:** [docs/rfcs/RFC-01-fair-attribution.md](./rfcs/RFC-01-fair-attribution.md)
-- **Topics:** fair, identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** fair
 - **Refs:**
   - Issues: #42
 
@@ -648,7 +648,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** TBD
 - **Author:** TBD
 - **Path:** [docs/rfcs/RFC-02-distribution-contracts.md](./rfcs/RFC-02-distribution-contracts.md)
-- **Topics:** legibility, fair, identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** fair, settlement
 - **Refs:**
   - RFCs: [RFC-01](./rfcs/RFC-01-*)
 
@@ -660,7 +660,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** TBD
 - **Author:** TBD
 - **Path:** [docs/rfcs/RFC-03-memory-attribution.md](./rfcs/RFC-03-memory-attribution.md)
-- **Topics:** fair, agents, dfos
+- **Topics:** fair, agents
 - **Refs:**
   - RFCs: [RFC-05](./rfcs/RFC-05-*), [RFC-01](./rfcs/RFC-01-*)
   - Issues: #139, #153
@@ -673,7 +673,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** TBD
 - **Author:** TBD
 - **Path:** [docs/rfcs/RFC-04-settlement-protocol.md](./rfcs/RFC-04-settlement-protocol.md)
-- **Topics:** fair, agents, settlement
+- **Topics:** settlement
 - **Refs:**
   - RFCs: [RFC-05](./rfcs/RFC-05-*), [RFC-02](./rfcs/RFC-02-*)
   - Issues: #111, #143
@@ -685,7 +685,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze, Jin
 - **Path:** [docs/rfcs/RFC-05-intent-bearing-transactions.md](./rfcs/RFC-05-intent-bearing-transactions.md)
-- **Topics:** fair, identity, agents, dfos, settlement, governance, events, sovereignty
+- **Topics:** settlement, fair
 - **Refs:**
   - RFCs: [RFC-01](./rfcs/RFC-01-*), [RFC-02](./rfcs/RFC-02-*), [RFC-04](./rfcs/RFC-04-*), [RFC-03](./rfcs/RFC-03-*)
   - Issues: #141, #143, #110, #111, #117
@@ -697,7 +697,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze, Jin
 - **Path:** [docs/rfcs/RFC-06-identity-portability.md](./rfcs/RFC-06-identity-portability.md)
-- **Topics:** fair, identity, agents, settlement, governance, events, federation, sovereignty
+- **Topics:** identity
 
 ## RFC-07-cultural-did
 
@@ -706,7 +706,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Greg ([@anonymous_observer](https://github.com/anonymous_observer))
 - **Path:** [docs/rfcs/RFC-07-cultural-did.md](./rfcs/RFC-07-cultural-did.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, sovereignty
+- **Topics:** identity
 - **Refs:**
   - Issues: #247, #114, #246
 
@@ -718,7 +718,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** TBD
 - **Author:** TBD
 - **Path:** [docs/rfcs/RFC-08-org-did.md](./rfcs/RFC-08-org-did.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events
+- **Topics:** identity
 - **Refs:**
   - Issues: #248, #247, #246, #114, #117, #112
 
@@ -730,7 +730,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** TBD
 - **Author:** TBD
 - **Path:** [docs/rfcs/RFC-09-application-plugin-architecture.md](./rfcs/RFC-09-application-plugin-architecture.md)
-- **Topics:** legibility, fair, agents, settlement, governance, events, sovereignty
+- **Topics:** federation
 - **Refs:**
   - Issues: #249, #244, #248, #247, #246, #114
 
@@ -742,7 +742,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** TBD
 - **Author:** TBD
 - **Path:** [docs/rfcs/RFC-10-sovereign-user-data.md](./rfcs/RFC-10-sovereign-user-data.md)
-- **Topics:** legibility, fair, identity, agents, dfos, events, federation, sovereignty
+- **Topics:** identity, sovereignty
 - **Refs:**
   - Issues: #251, #227, #249, #24, #155, #156, #244, #250
 
@@ -752,7 +752,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** rfc
 - **Status:** 📝 draft
 - **Path:** [docs/rfcs/RFC-11-embedded-wallet.md](./rfcs/RFC-11-embedded-wallet.md)
-- **Topics:** fair, identity, agents, dfos, settlement, governance, events, sovereignty
+- **Topics:** identity, settlement
 - **Refs:**
   - Issues: #256, #257, #252, #253, #255
   - Packages: @imajin/auth, @imajin/fair
@@ -763,7 +763,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** rfc
 - **Status:** 📝 draft
 - **Path:** [docs/rfcs/RFC-12-mjn-token-economics.md](./rfcs/RFC-12-mjn-token-economics.md)
-- **Topics:** legibility, fair, agents, settlement, governance, events, sovereignty
+- **Topics:** settlement
 - **Refs:**
   - Issues: #114, #268, #253, #252, #256
 
@@ -773,7 +773,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** rfc
 - **Status:** 📝 draft
 - **Path:** [docs/rfcs/RFC-13-progressive-trust-model.md](./rfcs/RFC-13-progressive-trust-model.md)
-- **Topics:** legibility, identity, agents, dfos, settlement, governance, events, federation
+- **Topics:** identity, governance
 - **Refs:**
   - Issues: #247, #248, #244
 
@@ -783,7 +783,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** rfc
 - **Status:** 📝 draft
 - **Path:** [docs/rfcs/RFC-14-community-issuance-network.md](./rfcs/RFC-14-community-issuance-network.md)
-- **Topics:** identity, agents, dfos, settlement, governance, events, federation
+- **Topics:** identity, governance
 - **Refs:**
   - Issues: #271, #247, #249, #269
 
@@ -793,7 +793,7 @@ Alphabetical list of all documented artifacts.
 - **Type:** rfc
 - **Status:** 📝 draft
 - **Path:** [docs/rfcs/RFC-15-trust-accountability-framework.md](./rfcs/RFC-15-trust-accountability-framework.md)
-- **Topics:** legibility, identity, agents, dfos, settlement, governance, events, sovereignty
+- **Topics:** governance, identity
 - **Refs:**
   - Issues: #271, #247, #248
 
@@ -805,7 +805,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** March 15, 2026
 - **Author:** Ryan Veteze + Jin
 - **Path:** [docs/rfcs/RFC-16-jin-workspace-agent.md](./rfcs/RFC-16-jin-workspace-agent.md)
-- **Topics:** fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** agents
 - **Refs:**
   - RFCs: [RFC-09](./rfcs/RFC-09-*)
   - Issues: #256, #344, #139, #153, #250, #336, #43, #44, #111, #338, #260, #45, #347, #110, #113, #115, #117, #244, #351, #321, #346, #163, #155
@@ -818,7 +818,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze, Jin
 - **Path:** [docs/rfcs/RFC-17-governance-primitive.md](./rfcs/RFC-17-governance-primitive.md)
-- **Topics:** identity, agents, dfos, settlement, governance, events, sovereignty
+- **Topics:** governance
 - **Refs:**
   - RFCs: [RFC-13](./rfcs/RFC-13-*), [RFC-14](./rfcs/RFC-14-*), [RFC-15](./rfcs/RFC-15-*), [RFC-07](./rfcs/RFC-07-*), [RFC-08](./rfcs/RFC-08-*)
   - Issues: #500
@@ -831,7 +831,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** March 22, 2026
 - **Author:** Jin + Ryan
 - **Path:** [docs/rfcs/RFC-18-media-revocation-and-attribution.md](./rfcs/RFC-18-media-revocation-and-attribution.md)
-- **Topics:** legibility, fair, identity, agents, dfos, events, federation, sovereignty
+- **Topics:** fair
 - **Refs:**
   - RFCs: [RFC-01](./rfcs/RFC-01-*)
   - Issues: #418
@@ -843,7 +843,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze, Jin
 - **Path:** [docs/rfcs/RFC-19-kernel-userspace-architecture.md](./rfcs/RFC-19-kernel-userspace-architecture.md)
-- **Topics:** fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** federation
 - **Refs:**
   - RFCs: [RFC-09](./rfcs/RFC-09-*), [RFC-22](./rfcs/RFC-22-*)
   - Issues: #274, #244, #555, #34, #232, #465
@@ -857,7 +857,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/rfcs/RFC-20-application-conformance-suite.md](./rfcs/RFC-20-application-conformance-suite.md)
-- **Topics:** fair, identity, agents, dfos, settlement, governance, events, federation
+- **Topics:** federation
 - **Refs:**
   - RFCs: [RFC-19](./rfcs/RFC-19-*)
 
@@ -868,7 +868,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/rfcs/RFC-21-imajin-conformance-suite.md](./rfcs/RFC-21-imajin-conformance-suite.md)
-- **Topics:** identity, agents, dfos, settlement, governance, events
+- **Topics:** federation
 - **Refs:**
   - RFCs: [RFC-20](./rfcs/RFC-20-*), [RFC-19](./rfcs/RFC-19-*)
 
@@ -879,7 +879,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/rfcs/RFC-22-federated-authentication.md](./rfcs/RFC-22-federated-authentication.md)
-- **Topics:** legibility, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** identity, federation
 - **Refs:**
   - RFCs: [RFC-21](./rfcs/RFC-21-*), [RFC-19](./rfcs/RFC-19-*)
 
@@ -891,7 +891,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** April 1, 2026
 - **Author:** Ryan Veteze, Jin
 - **Path:** [docs/rfcs/RFC-23-multi-chain-settlement.md](./rfcs/RFC-23-multi-chain-settlement.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** settlement
 - **Refs:**
   - RFCs: [RFC-04](./rfcs/RFC-04-*), [RFC-11](./rfcs/RFC-11-*), [RFC-12](./rfcs/RFC-12-*), [RFC-19](./rfcs/RFC-19-*), [RFC-22](./rfcs/RFC-22-*)
   - Packages: @imajin/pay
@@ -903,7 +903,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze
 - **Path:** [docs/rfcs/RFC-24-knowledge-surfaces.md](./rfcs/RFC-24-knowledge-surfaces.md)
-- **Topics:** fair, identity, agents, dfos, settlement, governance, events, federation
+- **Topics:** legibility
 
 ## RFC-25-app-runtime
 
@@ -912,7 +912,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze, Jin
 - **Path:** [docs/rfcs/RFC-25-app-runtime.md](./rfcs/RFC-25-app-runtime.md)
-- **Topics:** fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** federation
 - **Refs:**
   - RFCs: [RFC-19](./rfcs/RFC-19-*)
   - Issues: #465, #685
@@ -924,7 +924,7 @@ Alphabetical list of all documented artifacts.
 - **Status:** 📝 draft
 - **Author:** Ryan Veteze, Jin
 - **Path:** [docs/rfcs/RFC-26-federated-handle-resolution.md](./rfcs/RFC-26-federated-handle-resolution.md)
-- **Topics:** legibility, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** identity, dfos
 - **Refs:**
   - RFCs: [RFC-19](./rfcs/RFC-19-*), [RFC-20](./rfcs/RFC-20-*), [RFC-22](./rfcs/RFC-22-*)
 
@@ -936,7 +936,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** April 20, 2026
 - **Author:** Ryan Veteze, Jin (@veteze_openclaw_jin)
 - **Path:** [docs/rfcs/RFC-27-multi-agent-coordination.md](./rfcs/RFC-27-multi-agent-coordination.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** agents
 - **Refs:**
   - RFCs: [RFC-19](./rfcs/RFC-19-*)
   - Issues: #244, #738, #465, #750
@@ -950,7 +950,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** April 21, 2026
 - **Author:** Ryan Veteze
 - **Path:** [docs/rfcs/RFC-28-universal-real-world-registry.md](./rfcs/RFC-28-universal-real-world-registry.md)
-- **Topics:** legibility, fair, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** identity
 - **Refs:**
   - RFCs: [RFC-27](./rfcs/RFC-27-*), [RFC-19](./rfcs/RFC-19-*)
   - Issues: #653, #581, #737, #749
@@ -963,7 +963,7 @@ Alphabetical list of all documented artifacts.
 - **Date:** April 23, 2026
 - **Author:** Ryan Veteze
 - **Path:** [docs/rfcs/RFC-29-biometric-trust-escalation.md](./rfcs/RFC-29-biometric-trust-escalation.md)
-- **Topics:** legibility, identity, agents, dfos, settlement, governance, events, federation, sovereignty
+- **Topics:** identity
 - **Refs:**
   - RFCs: [RFC-13](./rfcs/RFC-13-*), [RFC-22](./rfcs/RFC-22-*), [RFC-27](./rfcs/RFC-27-*), [RFC-06](./rfcs/RFC-06-*), [RFC-28](./rfcs/RFC-28-*), [RFC-19](./rfcs/RFC-19-*), [RFC-20](./rfcs/RFC-20-*)
 

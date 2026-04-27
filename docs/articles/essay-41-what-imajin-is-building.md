@@ -5,21 +5,15 @@ status: draft
 author: Ryan Veteze
 slug: essay-41-what-imajin-is-building
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
   - dfos
-  - settlement
-  - governance
-  - events
-  - federation
   - sovereignty
 refs:
   essays:
-  - the-guild
+    - the-guild
 subtitle: A social governance layer on the DFOS substrate
-description: "DFOS gives you the keys. Imajin gives you the room. What we're building on the protocol, why it needs to exist, and an invitation to build with us."
+description: >-
+  DFOS gives you the keys. Imajin gives you the room. What we're building on the
+  protocol, why it needs to exist, and an invitation to build with us.
 ---
 ## The Substrate
 

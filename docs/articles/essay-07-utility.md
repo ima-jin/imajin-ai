@@ -5,21 +5,16 @@ status: shipped
 author: Ryan Veteze
 slug: essay-07-utility
 topics:
-  - legibility
-  - identity
-  - agents
   - settlement
-  - governance
-  - events
-  - federation
-  - sovereignty
 refs:
   issues:
-  - 11
+    - 11
   essays:
-  - the-utility
+    - the-utility
 subtitle: What sovereignty looks like as infrastructure
-description: The architecture. What imajin actually is as a category of thing. Distributed utility infrastructure — like the electric grid, like water.
+description: >-
+  The architecture. What imajin actually is as a category of thing. Distributed
+  utility infrastructure — like the electric grid, like water.
 ---
 ## The Pattern Is Settled
 

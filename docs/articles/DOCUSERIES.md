@@ -4,13 +4,6 @@ type: essay
 status: draft
 slug: DOCUSERIES
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
-  - settlement
-  - governance
-  - events
   - sovereignty
 ---
 # imajin.ai — The Docuseries

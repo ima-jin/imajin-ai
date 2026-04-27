@@ -8,14 +8,13 @@ slug: RFC-03-memory-attribution
 topics:
   - fair
   - agents
-  - dfos
 refs:
   rfcs:
-  - 5
-  - 1
+    - 5
+    - 1
   issues:
-  - 139
-  - 153
+    - 139
+    - 153
 ---
 # RFC-03: Memory Attribution (HRPOS)
 

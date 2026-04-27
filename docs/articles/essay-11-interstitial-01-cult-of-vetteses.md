@@ -5,13 +5,11 @@ status: shipped
 author: Ryan Veteze
 slug: essay-11-interstitial-01-cult-of-vetteses
 topics:
-  - legibility
   - identity
-  - settlement
-  - governance
-  - events
 subtitle: What I learned before I had language for any of it
-description: "A personal interstitial. The Rexdale house. Lou's concrete. A village that crossed an ocean and forgot what it was for."
+description: >-
+  A personal interstitial. The Rexdale house. Lou's concrete. A village that
+  crossed an ocean and forgot what it was for.
 ---
 The CN Tower is concrete.
 

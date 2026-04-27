@@ -4,14 +4,6 @@ type: essay
 status: draft
 slug: grounding-02-THESIS
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
-  - settlement
-  - governance
-  - events
-  - federation
   - sovereignty
 ---
 # The Imajin Thesis

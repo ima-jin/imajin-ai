@@ -2,30 +2,21 @@
 title: MCC — Multi-Coordinator Coordination
 type: rfc
 status: draft
-date: April 20, 2026
-author: Ryan Veteze, Jin (@veteze_openclaw_jin)
+date: 'April 20, 2026'
+author: 'Ryan Veteze, Jin (@veteze_openclaw_jin)'
 slug: RFC-27-multi-agent-coordination
 topics:
-  - legibility
-  - fair
-  - identity
   - agents
-  - dfos
-  - settlement
-  - governance
-  - events
-  - federation
-  - sovereignty
 refs:
   rfcs:
-  - 19
+    - 19
   issues:
-  - 244
-  - 738
-  - 465
-  - 750
+    - 244
+    - 738
+    - 465
+    - 750
   prs:
-  - 750
+    - 750
 ---
 # RFC-27: MCC — Multi-Coordinator Coordination
 

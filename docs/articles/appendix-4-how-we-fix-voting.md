@@ -1,20 +1,17 @@
 ---
-title: "Appendix 4: How We Fix Voting"
+title: 'Appendix 4: How We Fix Voting'
 type: essay
 status: draft
 date: 2026-XX-XX
 author: Ryan Veteze
 slug: appendix-4-how-we-fix-voting
 topics:
-  - fair
-  - identity
-  - agents
-  - settlement
   - governance
-  - events
-  - sovereignty
 subtitle: The most contentious piece
-description: "Voting is a query against the trust graph with a specific output: a decision. The secret ballot solved coercion and enabled unaccountability. The trust graph solves both."
+description: >-
+  Voting is a query against the trust graph with a specific output: a decision.
+  The secret ballot solved coercion and enabled unaccountability. The trust
+  graph solves both.
 ---
 ## The Thing Nobody Wants to Touch
 

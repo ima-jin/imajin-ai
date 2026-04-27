@@ -1,15 +1,10 @@
 ---
-title: "Epilogue: And Now We Can Be Human Beings Again"
+title: 'Epilogue: And Now We Can Be Human Beings Again'
 type: essay
 status: draft
 slug: essay-30-epilogue
 topics:
-  - fair
-  - agents
-  - settlement
-  - governance
-  - events
-  - federation
+  - sovereignty
 ---
 # Epilogue: And Now We Can Be Human Beings Again
 

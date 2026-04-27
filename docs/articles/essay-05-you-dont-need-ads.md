@@ -1,23 +1,19 @@
 ---
-title: "You Don't Need Ads. You Need a Better Business Model."
+title: You Don't Need Ads. You Need a Better Business Model.
 type: essay
 status: shipped
 author: Ryan Veteze
 slug: essay-05-you-dont-need-ads
 topics:
-  - fair
-  - identity
-  - agents
   - settlement
-  - governance
-  - events
-  - federation
   - sovereignty
 refs:
   essays:
-  - you-dont-need-ads
-subtitle: An open letter to Sam, Dario, Sundar, and Elon
-description: The direct address to power. Open letter to Sam, Dario, Sundar, Elon. The inference business vs. the attention business.
+    - you-dont-need-ads
+subtitle: 'An open letter to Sam, Dario, Sundar, and Elon'
+description: >-
+  The direct address to power. Open letter to Sam, Dario, Sundar, Elon. The
+  inference business vs. the attention business.
 ---
 You're all in the news this week for the same reason. Ads. Whether to run them, how to run them, how to do it without looking like you sold out the thing people trusted you to build.
 

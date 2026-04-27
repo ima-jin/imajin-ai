@@ -5,17 +5,10 @@ status: draft
 author: Ryan Veteze
 slug: RFC-20-application-conformance-suite
 topics:
-  - fair
-  - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
   - federation
 refs:
   rfcs:
-  - 19
+    - 19
 ---
 # RFC-20: Application Conformance Suite
 

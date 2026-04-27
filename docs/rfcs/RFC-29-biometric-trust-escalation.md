@@ -2,28 +2,20 @@
 title: Biometric Trust Escalation — Verifiable Credentials for Identity Binding
 type: rfc
 status: draft
-date: April 23, 2026
+date: 'April 23, 2026'
 author: Ryan Veteze
 slug: RFC-29-biometric-trust-escalation
 topics:
-  - legibility
   - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
-  - federation
-  - sovereignty
 refs:
   rfcs:
-  - 13
-  - 22
-  - 27
-  - 6
-  - 28
-  - 19
-  - 20
+    - 13
+    - 22
+    - 27
+    - 6
+    - 28
+    - 19
+    - 20
 ---
 # RFC-29: Biometric Trust Escalation — Verifiable Credentials for Identity Binding
 

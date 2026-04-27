@@ -1,5 +1,5 @@
 ---
-title: "Interstitial 04: The Cult of Work"
+title: 'Interstitial 04: The Cult of Work'
 type: essay
 status: draft
 author: Ryan Veteze
@@ -7,11 +7,10 @@ slug: essay-39-interstitial-04-cult-of-work
 topics:
   - legibility
   - fair
-  - identity
-  - agents
-  - governance
 subtitle: All you had to do was pay us enough to live
-description: "A warehouse burned down. A CEO got a Molotov cocktail. I've met the boss who made both inevitable."
+description: >-
+  A warehouse burned down. A CEO got a Molotov cocktail. I've met the boss who
+  made both inevitable.
 ---
 A man burned down a 1.2 million square foot warehouse last week.
 

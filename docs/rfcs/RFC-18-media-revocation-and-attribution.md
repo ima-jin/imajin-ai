@@ -2,23 +2,16 @@
 title: Media Revocation & Cross-Graph Attribution
 type: rfc
 status: draft
-date: March 22, 2026
+date: 'March 22, 2026'
 author: Jin + Ryan
 slug: RFC-18-media-revocation-and-attribution
 topics:
-  - legibility
   - fair
-  - identity
-  - agents
-  - dfos
-  - events
-  - federation
-  - sovereignty
 refs:
   rfcs:
-  - 1
+    - 1
   issues:
-  - 418
+    - 418
 ---
 # RFC-18: Media Revocation & Cross-Graph Attribution
 

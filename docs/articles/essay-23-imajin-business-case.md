@@ -5,19 +5,12 @@ status: shipped
 author: Ryan Veteze
 slug: essay-23-imajin-business-case
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
-  - dfos
   - settlement
-  - governance
-  - events
   - sovereignty
 refs:
   essays:
-  - the-business-case
-subtitle: "You didn't break it. But you're the only one who can fix it."
+    - the-business-case
+subtitle: You didn't break it. But you're the only one who can fix it.
 description: The economic argument — and the one group nobody wanted to implicate.
 ---
 ## Everything Is Fine

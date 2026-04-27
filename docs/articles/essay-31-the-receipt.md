@@ -5,16 +5,14 @@ status: draft
 author: Ryan Veteze
 slug: essay-31-the-receipt
 topics:
-  - legibility
-  - identity
-  - agents
-  - dfos
+  - fair
   - settlement
-  - governance
-  - events
-  - sovereignty
-subtitle: "What a token launch looks like when nobody's speculating"
-description: "Every token in history launched on a promise. This one launches on a receipt. The DFOS identity chain records every interaction before the token exists. When the token arrives, it doesn't create value — it recognizes value that's already there."
+subtitle: What a token launch looks like when nobody's speculating
+description: >-
+  Every token in history launched on a promise. This one launches on a receipt.
+  The DFOS identity chain records every interaction before the token exists.
+  When the token arrives, it doesn't create value — it recognizes value that's
+  already there.
 ---
 ## How Every Token Has Launched
 

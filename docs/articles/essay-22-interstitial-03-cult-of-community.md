@@ -5,15 +5,12 @@ status: shipped
 author: Ryan Veteze
 slug: essay-22-interstitial-03-cult-of-community
 topics:
-  - legibility
   - identity
-  - agents
-  - settlement
   - governance
-  - events
-  - sovereignty
 subtitle: What it feels like before you systematize it
-description: The burn model follows you home. The cynicism is earned. The isolation is exactly what the extraction model needs. We build anyway.
+description: >-
+  The burn model follows you home. The cynicism is earned. The isolation is
+  exactly what the extraction model needs. We build anyway.
 ---
 The repo has 99 commits. Three weeks. Fourteen to sixteen hours a day.
 

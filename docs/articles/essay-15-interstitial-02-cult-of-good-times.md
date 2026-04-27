@@ -5,15 +5,11 @@ status: shipped
 author: Ryan Veteze
 slug: essay-15-interstitial-02-cult-of-good-times
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
-  - settlement
-  - governance
   - events
 subtitle: Everyone is the Good Times Gang
-description: A personal interstitial. The crew, the platforms, and the specific way communities fail to honor what people make.
+description: >-
+  A personal interstitial. The crew, the platforms, and the specific way
+  communities fail to honor what people make.
 ---
 You know the group I'm talking about.
 

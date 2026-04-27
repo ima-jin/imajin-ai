@@ -5,16 +5,11 @@ status: draft
 author: Ryan Veteze
 slug: RFC-21-imajin-conformance-suite
 topics:
-  - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
+  - federation
 refs:
   rfcs:
-  - 20
-  - 19
+    - 20
+    - 19
 ---
 # RFC-21: Imajin Conformance Suite
 

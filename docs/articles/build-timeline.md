@@ -1,71 +1,62 @@
 ---
-title: "Build Timeline: The Architecture of Trust"
+title: 'Build Timeline: The Architecture of Trust'
 type: essay
 status: draft
 slug: build-timeline
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
-  - federation
   - sovereignty
 refs:
   rfcs:
-  - 16
-  - 14
+    - 16
+    - 14
   issues:
-  - 119
-  - 120
-  - 268
-  - 269
-  - 154
-  - 278
-  - 316
-  - 371
-  - 374
-  - 372
-  - 392
-  - 396
-  - 407
-  - 412
-  - 398
-  - 413
-  - 403
-  - 426
-  - 401
-  - 400
-  - 402
-  - 415
-  - 425
-  - 417
-  - 420
-  - 416
-  - 418
-  - 419
-  - 421
-  - 453
-  - 451
-  - 408
+    - 119
+    - 120
+    - 268
+    - 269
+    - 154
+    - 278
+    - 316
+    - 371
+    - 374
+    - 372
+    - 392
+    - 396
+    - 407
+    - 412
+    - 398
+    - 413
+    - 403
+    - 426
+    - 401
+    - 400
+    - 402
+    - 415
+    - 425
+    - 417
+    - 420
+    - 416
+    - 418
+    - 419
+    - 421
+    - 453
+    - 451
+    - 408
   prs:
-  - 407
-  - 412
-  - 413
-  - 426
-  - 453
-  - 451
+    - 407
+    - 412
+    - 413
+    - 426
+    - 453
+    - 451
   packages:
-  - "@imajin/db"
-  - "@imajin/fair"
-  - "@imajin/llm"
-  - "@imajin/graph"
-  - "@imajin/dfos"
-  - "@imajin/cid"
-  - "@imajin/auth"
+    - '@imajin/db'
+    - '@imajin/fair'
+    - '@imajin/llm'
+    - '@imajin/graph'
+    - '@imajin/dfos'
+    - '@imajin/cid'
+    - '@imajin/auth'
 ---
 # Build Timeline: The Architecture of Trust
 

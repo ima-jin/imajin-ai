@@ -4,12 +4,7 @@ type: essay
 status: draft
 slug: captains-log-2026-03-19--46-days
 topics:
-  - fair
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
+  - sovereignty
 ---
 # Day 46
 

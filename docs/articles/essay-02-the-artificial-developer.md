@@ -1,21 +1,14 @@
 ---
-title: "I've Been an AI Since 1988"
+title: I've Been an AI Since 1988
 type: essay
 status: shipped
 author: Ryan Veteze
 slug: essay-02-the-artificial-developer
 topics:
-  - legibility
-  - fair
-  - identity
   - agents
-  - settlement
-  - events
-  - federation
-  - sovereignty
 refs:
   essays:
-  - the-artificial-developer
+    - the-artificial-developer
 subtitle: The autobiography of how my brain works
 description: Pattern recognition without formal comprehension. The bottleneck dissolved.
 ---

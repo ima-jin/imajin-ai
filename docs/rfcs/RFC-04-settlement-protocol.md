@@ -6,16 +6,14 @@ date: TBD
 author: TBD
 slug: RFC-04-settlement-protocol
 topics:
-  - fair
-  - agents
   - settlement
 refs:
   rfcs:
-  - 5
-  - 2
+    - 5
+    - 2
   issues:
-  - 111
-  - 143
+    - 111
+    - 143
 ---
 # RFC-04: Settlement Protocol
 

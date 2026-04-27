@@ -1,18 +1,18 @@
 ---
-title: "Appendix 3: The New Rules"
+title: 'Appendix 3: The New Rules'
 type: essay
 status: draft
 date: 2026-XX-XX
 author: Ryan Veteze
 slug: appendix-3-the-new-rules
 topics:
-  - fair
-  - agents
-  - settlement
   - governance
-  - events
-subtitle: AI regulated by human trust, not institutional authority
-description: "The substrate must be regulated. Not by bureaucracy, not by legislation written by people who can't explain what a token is. By the trust graph. The institutions with the most destructive capacity and the least accountability are the last ones who should wield it unsupervised."
+subtitle: 'AI regulated by human trust, not institutional authority'
+description: >-
+  The substrate must be regulated. Not by bureaucracy, not by legislation
+  written by people who can't explain what a token is. By the trust graph. The
+  institutions with the most destructive capacity and the least accountability
+  are the last ones who should wield it unsupervised.
 ---
 ## The Precedent
 

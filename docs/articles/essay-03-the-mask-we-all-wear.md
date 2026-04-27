@@ -5,19 +5,14 @@ status: shipped
 author: Ryan Veteze
 slug: essay-03-the-mask-we-all-wear
 topics:
-  - legibility
   - identity
-  - agents
-  - settlement
-  - governance
-  - events
-  - federation
-  - sovereignty
 refs:
   essays:
-  - the-mask-we-all-wear
-subtitle: On exhaustion, performance, and the gap we found when the world stopped
-description: The psychological and emotional core. The office and the feed as one system. Exhaustion as the product. The most personal essay in the series.
+    - the-mask-we-all-wear
+subtitle: 'On exhaustion, performance, and the gap we found when the world stopped'
+description: >-
+  The psychological and emotional core. The office and the feed as one system.
+  Exhaustion as the product. The most personal essay in the series.
 ---
 I have felt it my entire adult life and I could never name it.
 

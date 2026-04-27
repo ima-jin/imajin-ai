@@ -1,21 +1,22 @@
 ---
-title: "Appendix 5: AI Governs Itself"
+title: 'Appendix 5: AI Governs Itself'
 type: essay
 status: draft
 date: 2026-XX-XX
 author: Ryan Veteze
 slug: appendix-5-ai-governs-itself
 topics:
-  - legibility
-  - fair
   - agents
   - governance
-  - events
 refs:
   rfcs:
-  - 3
+    - 3
 subtitle: The same graph. The same rules. The same accountability.
-description: "AI doesn't need a separate governance framework. It needs to be inside the same one humans use. Same trust graph, same attribution, same accountability. The graph doesn't care what you're made of. It cares whether you're accountable."
+description: >-
+  AI doesn't need a separate governance framework. It needs to be inside the
+  same one humans use. Same trust graph, same attribution, same accountability.
+  The graph doesn't care what you're made of. It cares whether you're
+  accountable.
 ---
 <!-- STUB — Appendix 5
 

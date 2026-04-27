@@ -6,22 +6,15 @@ date: TBD
 author: TBD
 slug: RFC-08-org-did
 topics:
-  - legibility
-  - fair
   - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
 refs:
   issues:
-  - 248
-  - 247
-  - 246
-  - 114
-  - 117
-  - 112
+    - 248
+    - 247
+    - 246
+    - 114
+    - 117
+    - 112
 ---
 # RFC-08: Org DID — Businesses and Legal Entities
 

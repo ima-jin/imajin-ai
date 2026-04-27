@@ -4,43 +4,34 @@ type: essay
 status: draft
 slug: grounding-03-ARCHITECTURE
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
-  - federation
   - sovereignty
 refs:
   rfcs:
-  - 1
-  - 2
+    - 1
+    - 2
   issues:
-  - 253
-  - 252
-  - 189
-  - 250
-  - 258
-  - 256
-  - 177
-  - 227
-  - 254
-  - 260
-  - 259
-  - 109
-  - 255
-  - 257
-  - 156
-  - 114
+    - 253
+    - 252
+    - 189
+    - 250
+    - 258
+    - 256
+    - 177
+    - 227
+    - 254
+    - 260
+    - 259
+    - 109
+    - 255
+    - 257
+    - 156
+    - 114
   packages:
-  - "@imajin/auth"
-  - "@imajin/fair"
-  - "@imajin/pay"
-  - "@imajin/ui"
-  - "@imajin/db"
+    - '@imajin/auth'
+    - '@imajin/fair'
+    - '@imajin/pay'
+    - '@imajin/ui'
+    - '@imajin/db'
 ---
 # The Imajin Architecture
 

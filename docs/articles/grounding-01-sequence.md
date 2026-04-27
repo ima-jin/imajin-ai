@@ -4,13 +4,6 @@ type: essay
 status: draft
 slug: grounding-01-sequence
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
-  - settlement
-  - governance
-  - events
   - sovereignty
 ---
 # imajin.ai Essay Series — Master Sequence

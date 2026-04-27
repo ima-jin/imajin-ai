@@ -5,13 +5,14 @@ status: draft
 author: Ryan Veteze
 slug: essay-38-the-inherited-pathology
 topics:
-  - identity
-  - agents
-  - settlement
   - governance
-  - events
-subtitle: The training data is an ungoverned commons. Your AI tools inherited the worst of it.
-description: "LLMs reproduce the dominant patterns of the systems that trained them — including the pathologies. The fix is the same one Ostrom described for any commons: not better rules, better infrastructure."
+subtitle: >-
+  The training data is an ungoverned commons. Your AI tools inherited the worst
+  of it.
+description: >-
+  LLMs reproduce the dominant patterns of the systems that trained them —
+  including the pathologies. The fix is the same one Ostrom described for any
+  commons: not better rules, better infrastructure.
 ---
 ## The Wrong Lesson
 

@@ -6,24 +6,18 @@ date: TBD
 author: TBD
 slug: RFC-10-sovereign-user-data
 topics:
-  - legibility
-  - fair
   - identity
-  - agents
-  - dfos
-  - events
-  - federation
   - sovereignty
 refs:
   issues:
-  - 251
-  - 227
-  - 249
-  - 24
-  - 155
-  - 156
-  - 244
-  - 250
+    - 251
+    - 227
+    - 249
+    - 24
+    - 155
+    - 156
+    - 244
+    - 250
 ---
 # RFC-10: Sovereign User Data — Portable Identity Bundles and Federated User Operations
 

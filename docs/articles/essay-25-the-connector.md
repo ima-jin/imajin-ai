@@ -5,19 +5,14 @@ status: shipped
 author: Ryan Veteze
 slug: essay-25-the-connector
 topics:
-  - legibility
-  - fair
   - identity
-  - agents
-  - settlement
-  - governance
-  - events
-  - sovereignty
 refs:
   essays:
-  - the-connector
+    - the-connector
 subtitle: For the ones who die with the pattern in their heads
-description: The essay for the person whose gift is holding relationships between things. The griot, the troubadour, the BBS sysop. Connection encoded is permanent.
+description: >-
+  The essay for the person whose gift is holding relationships between things.
+  The griot, the troubadour, the BBS sysop. Connection encoded is permanent.
 ---
 *Someone like me would have died with this in their head in the before time.*
 

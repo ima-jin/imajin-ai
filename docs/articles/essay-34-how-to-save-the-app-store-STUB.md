@@ -6,16 +6,14 @@ date: TBD
 author: Ryan Veteze
 slug: essay-34-how-to-save-the-app-store-STUB
 topics:
-  - legibility
-  - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
   - sovereignty
 subtitle: Discovery without extraction. Distribution without dependency.
-description: "Every app on Apple and Google's store surrenders everything — user data, 30% revenue, the kill switch. The sovereign network inverts this: apps consume cryptographic proofs, not personal data. The store becomes a registry, not a landlord. This is what app distribution looks like when the user owns their identity and the developer owns their business."
+description: >-
+  Every app on Apple and Google's store surrenders everything — user data, 30%
+  revenue, the kill switch. The sovereign network inverts this: apps consume
+  cryptographic proofs, not personal data. The store becomes a registry, not a
+  landlord. This is what app distribution looks like when the user owns their
+  identity and the developer owns their business.
 ---
 *Publishes after: Registry is running with third-party apps, at least one external developer has shipped an app on the network.*
 

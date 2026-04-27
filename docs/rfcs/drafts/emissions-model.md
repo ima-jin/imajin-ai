@@ -2,24 +2,18 @@
 title: Emissions Model — .fair-Driven MJN Emissions
 type: rfc
 status: draft
-date: April 7, 2026
+date: 'April 7, 2026'
 slug: emissions-model
 topics:
-  - legibility
-  - fair
-  - identity
-  - dfos
   - settlement
-  - governance
-  - events
-  - federation
+  - fair
 refs:
   rfcs:
-  - 1
+    - 1
   issues:
-  - 433
-  - 461
-  - 641
+    - 433
+    - 461
+    - 641
 ---
 # Emissions Model — .fair-Driven MJN Emissions
 

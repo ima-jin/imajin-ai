@@ -2,24 +2,16 @@
 title: App Runtime — Sandboxed Execution for Third-Party Applications
 type: rfc
 status: draft
-author: Ryan Veteze, Jin
+author: 'Ryan Veteze, Jin'
 slug: RFC-25-app-runtime
 topics:
-  - fair
-  - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
   - federation
-  - sovereignty
 refs:
   rfcs:
-  - 19
+    - 19
   issues:
-  - 465
-  - 685
+    - 465
+    - 685
 ---
 # RFC-25: App Runtime — Sandboxed Execution for Third-Party Applications
 

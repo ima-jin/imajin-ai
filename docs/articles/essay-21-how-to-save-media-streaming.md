@@ -5,21 +5,19 @@ status: shipped
 author: Ryan Veteze
 slug: essay-21-how-to-save-media-streaming
 topics:
-  - legibility
   - fair
-  - identity
-  - agents
   - settlement
-  - governance
-  - events
-  - federation
-  - sovereignty
 refs:
   essays:
-  - essay-42-the-catalog
-  - how-to-save-the-music-industry
-subtitle: Every play should find the artist. Every artist should find the listener. The pipe between them is broken.
-description: "Spotify, Apple Music, YouTube, Twitch — the streaming platforms solved access and broke everything else. Inspired by WeR1, here's what the pipe looks like when it actually works."
+    - essay-42-the-catalog
+    - how-to-save-the-music-industry
+subtitle: >-
+  Every play should find the artist. Every artist should find the listener. The
+  pipe between them is broken.
+description: >-
+  Spotify, Apple Music, YouTube, Twitch — the streaming platforms solved access
+  and broke everything else. Inspired by WeR1, here's what the pipe looks like
+  when it actually works.
 ---
 An open letter to every artist who's been told a million streams is success, and every listener who thinks their subscription supports the people they love.
 

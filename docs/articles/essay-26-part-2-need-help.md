@@ -5,21 +5,14 @@ status: shipped
 author: Ryan Veteze
 slug: essay-26-part-2-need-help
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
-  - federation
   - sovereignty
 refs:
   essays:
-  - i-need-help
-subtitle: "The thing founders aren't supposed to say"
-description: "The thing founders aren't supposed to say. Twenty-five essays of proof, then the honest ask: financial backing, dev help, other brains, community."
+    - i-need-help
+subtitle: The thing founders aren't supposed to say
+description: >-
+  The thing founders aren't supposed to say. Twenty-five essays of proof, then
+  the honest ask: financial backing, dev help, other brains, community.
 ---
 I have spent these essays proving that I know what I’m talking about.
 

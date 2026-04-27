@@ -4,20 +4,14 @@ type: rfc
 status: draft
 slug: RFC-12-mjn-token-economics
 topics:
-  - legibility
-  - fair
-  - agents
   - settlement
-  - governance
-  - events
-  - sovereignty
 refs:
   issues:
-  - 114
-  - 268
-  - 253
-  - 252
-  - 256
+    - 114
+    - 268
+    - 253
+    - 252
+    - 256
 ---
 # RFC-12: RFC: MJN Token Economics — reserve-backed utility token with fiat bridge
 

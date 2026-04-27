@@ -6,19 +6,15 @@ author: Ryan Veteze
 slug: essay-42-the-catalog
 topics:
   - fair
-  - identity
   - agents
-  - dfos
-  - settlement
-  - events
-  - federation
-  - sovereignty
 refs:
   essays:
-  - how-to-save-the-music-industry
-  - how-to-save-media-streaming
+    - how-to-save-the-music-industry
+    - how-to-save-media-streaming
 subtitle: How to give every piece of music its own identity
-description: The pirates already indexed everything. The streaming platforms captured the catalog. The attribution layer was never built. Until now.
+description: >-
+  The pirates already indexed everything. The streaming platforms captured the
+  catalog. The attribution layer was never built. Until now.
 ---
 ## The Problem Nobody Fixed
 

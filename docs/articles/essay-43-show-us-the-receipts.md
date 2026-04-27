@@ -8,22 +8,18 @@ slug: essay-43-show-us-the-receipts
 topics:
   - legibility
   - fair
-  - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
-  - federation
-  - sovereignty
 refs:
   essays:
-  - essay-31-the-receipt
-  - honor-the-chain
-  - the-internet-that-pays-you-back
-  - you-dont-need-ads
+    - essay-31-the-receipt
+    - honor-the-chain
+    - the-internet-that-pays-you-back
+    - you-dont-need-ads
 subtitle: Legibility is the layer that makes the fix possible
-description: Inequality is an accounting trick performed at scale, made possible by the fact that receipts are private by default. Make the receipts visible, build the architecture that lets them propagate, and the math changes — for everyone in the chain.
+description: >-
+  Inequality is an accounting trick performed at scale, made possible by the
+  fact that receipts are private by default. Make the receipts visible, build
+  the architecture that lets them propagate, and the math changes — for everyone
+  in the chain.
 ---
 ## The Receipt You Never Get
 

@@ -5,16 +5,11 @@ status: draft
 author: Ryan Veteze
 slug: essay-29-how-partying-can-save-us
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
-  - settlement
-  - governance
   - events
-  - sovereignty
 subtitle: The reason for all of it
-description: The finale. What AI has to do with partying. How capitalism stole the most welcoming culture we ever built. How we take it back.
+description: >-
+  The finale. What AI has to do with partying. How capitalism stole the most
+  welcoming culture we ever built. How we take it back.
 ---
 You've made it.
 

@@ -2,17 +2,10 @@
 title: Identity Portability & Backup Nodes
 type: rfc
 status: draft
-author: Ryan Veteze, Jin
+author: 'Ryan Veteze, Jin'
 slug: RFC-06-identity-portability
 topics:
-  - fair
   - identity
-  - agents
-  - settlement
-  - governance
-  - events
-  - federation
-  - sovereignty
 ---
 # RFC-06: Identity Portability & Backup Nodes
 

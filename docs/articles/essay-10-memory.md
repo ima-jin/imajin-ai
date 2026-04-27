@@ -5,17 +5,14 @@ status: shipped
 author: Ryan Veteze
 slug: essay-10-memory
 topics:
-  - legibility
   - agents
-  - settlement
-  - governance
-  - events
-  - sovereignty
 refs:
   essays:
-  - memory
+    - memory
 subtitle: Who owns the record of what happened
-description: What memory actually is vs. what platforms do with it. Infrastructure for records that belong to the people who made them, not to an algorithm.
+description: >-
+  What memory actually is vs. what platforms do with it. Infrastructure for
+  records that belong to the people who made them, not to an algorithm.
 ---
 My sister met her husband on my BBS in 1993.
 

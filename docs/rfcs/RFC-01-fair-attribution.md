@@ -7,16 +7,9 @@ author: TBD
 slug: RFC-01-fair-attribution
 topics:
   - fair
-  - identity
-  - agents
-  - settlement
-  - governance
-  - events
-  - federation
-  - sovereignty
 refs:
   issues:
-  - 42
+    - 42
 ---
 # RFC-01: .fair Attribution from Commit History
 

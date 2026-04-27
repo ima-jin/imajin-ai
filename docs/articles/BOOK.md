@@ -4,12 +4,6 @@ type: essay
 status: draft
 slug: BOOK
 topics:
-  - legibility
-  - fair
-  - agents
-  - settlement
-  - governance
-  - events
   - sovereignty
 ---
 # How to Save the World by Partying

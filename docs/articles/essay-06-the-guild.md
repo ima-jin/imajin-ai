@@ -5,18 +5,11 @@ status: shipped
 author: Ryan Veteze
 slug: essay-06-the-guild
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
-  - dfos
-  - settlement
   - governance
-  - events
-  - federation
-  - sovereignty
 subtitle: For the people who have figured out that the room was the point
-description: The invitation to operators. The Homebrew Computer Club guys. Unit 8200 alumni. The sysop role made available to everyone.
+description: >-
+  The invitation to operators. The Homebrew Computer Club guys. Unit 8200
+  alumni. The sysop role made available to everyone.
 ---
 ## What a Sysop Actually Was
 

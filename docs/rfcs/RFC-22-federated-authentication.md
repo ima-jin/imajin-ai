@@ -5,19 +5,12 @@ status: draft
 author: Ryan Veteze
 slug: RFC-22-federated-authentication
 topics:
-  - legibility
   - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
   - federation
-  - sovereignty
 refs:
   rfcs:
-  - 21
-  - 19
+    - 21
+    - 19
 ---
 # RFC-22: Federated Authentication
 

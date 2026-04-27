@@ -5,17 +5,16 @@ status: shipped
 author: Ryan Veteze
 slug: essay-08-ticketing
 topics:
-  - legibility
   - identity
-  - agents
-  - settlement
   - events
-  - sovereignty
 refs:
   essays:
-  - the-ticket-is-the-trust
+    - the-ticket-is-the-trust
 subtitle: Why we let middlemen sell us permission to be somewhere
-description: Ticketmaster as the clearest example of extraction. A ticket is a signed assertion that you belong in a room — problem solved without the 30% surcharge.
+description: >-
+  Ticketmaster as the clearest example of extraction. A ticket is a signed
+  assertion that you belong in a room — problem solved without the 30%
+  surcharge.
 ---
 ## What Ticketmaster Actually Sells
 

@@ -2,29 +2,20 @@
 title: Universal Real-World Registry — DIDs for Everything
 type: rfc
 status: draft
-date: April 21, 2026
+date: 'April 21, 2026'
 author: Ryan Veteze
 slug: RFC-28-universal-real-world-registry
 topics:
-  - legibility
-  - fair
   - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
-  - federation
-  - sovereignty
 refs:
   rfcs:
-  - 27
-  - 19
+    - 27
+    - 19
   issues:
-  - 653
-  - 581
-  - 737
-  - 749
+    - 653
+    - 581
+    - 737
+    - 749
 ---
 # RFC-28: Universal Real-World Registry — DIDs for Everything
 

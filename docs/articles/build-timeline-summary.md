@@ -4,23 +4,14 @@ type: essay
 status: draft
 slug: build-timeline-summary
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
-  - federation
   - sovereignty
 refs:
   issues:
-  - 113
-  - 114
-  - 115
-  - 116
-  - 117
+    - 113
+    - 114
+    - 115
+    - 116
+    - 117
 ---
 # Build Timeline Summary & Pressure Test
 

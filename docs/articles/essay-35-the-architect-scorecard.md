@@ -5,14 +5,12 @@ status: draft
 author: Ryan Veteze
 slug: essay-35-the-architect-scorecard
 topics:
-  - identity
-  - agents
-  - settlement
   - governance
-  - events
-  - federation
 subtitle: Measuring what matters when humans stop writing code
-description: "COCOMO measured person-months per thousand lines. That metric is dead. The new question: how good are you at directing machines? The answer is measurable, and almost nobody is measuring it."
+description: >-
+  COCOMO measured person-months per thousand lines. That metric is dead. The new
+  question: how good are you at directing machines? The answer is measurable,
+  and almost nobody is measuring it.
 ---
 ## The Old Metric Is Dead
 

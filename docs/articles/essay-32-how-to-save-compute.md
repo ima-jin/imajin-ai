@@ -1,18 +1,11 @@
 ---
-title: "Essay 32: How to Save Compute From Eating Itself"
+title: 'Essay 32: How to Save Compute From Eating Itself'
 type: essay
 status: draft
 slug: essay-32-how-to-save-compute
 topics:
-  - legibility
-  - identity
   - agents
   - dfos
-  - settlement
-  - governance
-  - events
-  - federation
-  - sovereignty
 ---
 # Essay 32: How to Save Compute From Eating Itself
 

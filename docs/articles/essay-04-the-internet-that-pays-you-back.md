@@ -5,19 +5,15 @@ status: shipped
 author: Ryan Veteze
 slug: essay-04-the-internet-that-pays-you-back
 topics:
-  - legibility
-  - identity
-  - agents
   - settlement
-  - governance
-  - events
-  - federation
   - sovereignty
 refs:
   essays:
-  - the-internet-that-pays-you-back
+    - the-internet-that-pays-you-back
 subtitle: How trust becomes infrastructure and value flows back to people
-description: The vision. Trust graph model in full — sovereign presence, vouching relationships, inference fees circulating through human networks.
+description: >-
+  The vision. Trust graph model in full — sovereign presence, vouching
+  relationships, inference fees circulating through human networks.
 ---
 We built the most connected network in human history and ended up lonelier — and more broke — than ever.
 

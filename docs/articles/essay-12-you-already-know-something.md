@@ -6,18 +6,13 @@ author: Ryan Veteze
 slug: essay-12-you-already-know-something
 topics:
   - legibility
-  - fair
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
-  - sovereignty
 refs:
   essays:
-  - you-already-know-something
-subtitle: "Where you fit in the thing I've been building"
-description: "You don't need to be a creator, a teacher, or a developer. You just need to be a person who knows something. Here's where you fit."
+    - you-already-know-something
+subtitle: Where you fit in the thing I've been building
+description: >-
+  You don't need to be a creator, a teacher, or a developer. You just need to be
+  a person who knows something. Here's where you fit.
 ---
 ## Stop Watching
 

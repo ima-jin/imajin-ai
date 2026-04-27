@@ -5,16 +5,12 @@ status: draft
 author: Ryan Veteze
 slug: essay-28-how-ai-saved-me
 topics:
-  - legibility
-  - fair
-  - identity
   - agents
-  - settlement
-  - governance
-  - events
-  - sovereignty
-subtitle: "I've been seeing patterns my whole life. I just couldn't tell you about them."
-description: Twenty-three essays in a month. From someone who spent forty years unable to get the shape out of his head and into language. This is what AI actually did for me.
+subtitle: I've been seeing patterns my whole life. I just couldn't tell you about them.
+description: >-
+  Twenty-three essays in a month. From someone who spent forty years unable to
+  get the shape out of his head and into language. This is what AI actually did
+  for me.
 ---
 ## The Shape Was Always There
 

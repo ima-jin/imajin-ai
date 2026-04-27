@@ -5,17 +5,14 @@ status: draft
 author: Ryan Veteze
 slug: essay-37-how-to-fix-the-commons
 topics:
-  - legibility
-  - identity
-  - agents
-  - dfos
-  - settlement
   - governance
-  - events
-  - federation
-  - sovereignty
-subtitle: "Hardin was wrong. Ostrom was right. Now there's an implementation."
-description: "The tragedy of the commons was never a tragedy of human nature — it was a tragedy of missing infrastructure. Elinor Ostrom proved communities can govern shared resources. The internet proved they can't do it on platforms owned by someone else. The fix isn't policy. It's architecture."
+  - legibility
+subtitle: Hardin was wrong. Ostrom was right. Now there's an implementation.
+description: >-
+  The tragedy of the commons was never a tragedy of human nature — it was a
+  tragedy of missing infrastructure. Elinor Ostrom proved communities can govern
+  shared resources. The internet proved they can't do it on platforms owned by
+  someone else. The fix isn't policy. It's architecture.
 ---
 ## The Wrong Lesson
 

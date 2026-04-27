@@ -1,24 +1,21 @@
 ---
-title: "You Don't Need Streams. You Need the Relationship Back."
+title: You Don't Need Streams. You Need the Relationship Back.
 type: essay
 status: draft
 author: Ryan Veteze
 slug: essay-18-how-to-save-the-music-industry
 topics:
   - fair
-  - identity
-  - agents
   - settlement
-  - governance
-  - events
-  - federation
-  - sovereignty
 refs:
   essays:
-  - essay-42-the-catalog
-  - how-to-save-media-streaming
+    - essay-42-the-catalog
+    - how-to-save-media-streaming
 subtitle: An open letter to the people streaming artists into poverty
-description: "Open letter to Daniel Ek, Lucian Grainge, and the artists they're both failing. What the direct relationship looks like when the trust graph replaces the platform."
+description: >-
+  Open letter to Daniel Ek, Lucian Grainge, and the artists they're both
+  failing. What the direct relationship looks like when the trust graph replaces
+  the platform.
 ---
 An open letter to Daniel Ek, Lucian Grainge, and the artists they're both failing.
 

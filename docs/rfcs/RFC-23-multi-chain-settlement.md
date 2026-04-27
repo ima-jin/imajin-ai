@@ -2,29 +2,20 @@
 title: Multi-Chain Settlement — Chain-Agnostic Payment Rails with Privacy Selection
 type: rfc
 status: draft
-date: April 1, 2026
-author: Ryan Veteze, Jin
+date: 'April 1, 2026'
+author: 'Ryan Veteze, Jin'
 slug: RFC-23-multi-chain-settlement
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
-  - dfos
   - settlement
-  - governance
-  - events
-  - federation
-  - sovereignty
 refs:
   rfcs:
-  - 4
-  - 11
-  - 12
-  - 19
-  - 22
+    - 4
+    - 11
+    - 12
+    - 19
+    - 22
   packages:
-  - "@imajin/pay"
+    - '@imajin/pay'
 ---
 # RFC-23: Multi-Chain Settlement — Chain-Agnostic Payment Rails with Privacy Selection
 

@@ -5,21 +5,15 @@ status: shipped
 author: Ryan Veteze
 slug: essay-09-nodes-types-and-practice
 topics:
-  - legibility
-  - fair
   - identity
-  - agents
-  - dfos
-  - settlement
-  - governance
-  - events
-  - federation
-  - sovereignty
 refs:
   essays:
-  - the-practice
+    - the-practice
 subtitle: You exist. Then you host a room. The arc from profile to practice.
-description: The ground-level operator manual. Before you run a room, you exist on the network. Before you build a community, you host a birthday party. Each stage produces the skills the next one requires.
+description: >-
+  The ground-level operator manual. Before you run a room, you exist on the
+  network. Before you build a community, you host a birthday party. Each stage
+  produces the skills the next one requires.
 ---
 ## You, First
 

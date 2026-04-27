@@ -1,17 +1,9 @@
 ---
-title: "Master Timeline: Ryan VETEZE aka b0b"
+title: 'Master Timeline: Ryan VETEZE aka b0b'
 type: essay
 status: draft
 slug: grounding-00-master-timeline
 topics:
-  - legibility
-  - fair
-  - identity
-  - agents
-  - settlement
-  - governance
-  - events
-  - federation
   - sovereignty
 ---
 # Master Timeline: Ryan VETEZE aka b0b
