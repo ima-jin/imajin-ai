@@ -96,9 +96,9 @@ export function BalanceBadge({ did, payUrl, authToken, className = '' }: Balance
 
   return (
     <div
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-500/20 ${className}`}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated border border-imajin-orange/20 ${className}`}
     >
-      <span className="text-sm font-medium text-green-600 dark:text-green-400">
+      <span className="text-sm font-medium text-success">
         ${balance.amount.toFixed(2)}
       </span>
     </div>

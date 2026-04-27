@@ -33,7 +33,7 @@ export function MarkdownEditor({ value, onChange, placeholder, maxLength }: Mark
 
   return (
     <div
-      className="rounded-lg border border-gray-600 overflow-hidden"
+      className="border border-white/[0.12] overflow-hidden"
       style={
         {
           '--baseBg': '#1a1a1a',
@@ -41,9 +41,9 @@ export function MarkdownEditor({ value, onChange, placeholder, maxLength }: Mark
           '--baseTextContrast': '#e5e7eb',
           '--baseText': '#d1d5db',
           '--baseBorder': '#374151',
-          '--accentBase': '#f97316',
-          '--accentBgHover': 'rgba(249,115,22,0.15)',
-          '--accentTextContrast': '#f97316',
+          '--accentBase': '#8b5cf6',
+          '--accentBgHover': 'rgba(139,92,246,0.15)',
+          '--accentTextContrast': '#8b5cf6',
         } as React.CSSProperties
       }
     >

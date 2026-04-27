@@ -11,21 +11,21 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
       <ReactMarkdown
         components={{
           h1: ({ children }) => (
-            <h1 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">{children}</h1>
+            <h1 className="text-2xl font-mono font-bold mb-4 text-primary">{children}</h1>
           ),
           h2: ({ children }) => (
-            <h2 className="text-xl font-bold mb-3 text-gray-900 dark:text-white">{children}</h2>
+            <h2 className="text-xl font-mono font-bold mb-3 text-primary">{children}</h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">{children}</h3>
+            <h3 className="text-lg font-mono font-semibold mb-2 text-primary">{children}</h3>
           ),
           p: ({ children }) => (
-            <p className="mb-4 leading-relaxed text-gray-700 dark:text-gray-200">{children}</p>
+            <p className="mb-4 leading-relaxed text-secondary">{children}</p>
           ),
           a: ({ href, children }) => (
             <a
               href={href}
-              className="text-orange-500 dark:text-orange-400 hover:text-orange-600 dark:hover:text-orange-300 underline"
+              className="text-imajin-purple hover:text-imajin-blue underline"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -33,31 +33,31 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
             </a>
           ),
           ul: ({ children }) => (
-            <ul className="list-disc list-inside mb-4 space-y-1 text-gray-700 dark:text-gray-200">
+            <ul className="list-disc list-inside mb-4 space-y-1 text-secondary">
               {children}
             </ul>
           ),
           ol: ({ children }) => (
-            <ol className="list-decimal list-inside mb-4 space-y-1 text-gray-700 dark:text-gray-200">
+            <ol className="list-decimal list-inside mb-4 space-y-1 text-secondary">
               {children}
             </ol>
           ),
           li: ({ children }) => (
-            <li className="text-gray-700 dark:text-gray-200">{children}</li>
+            <li className="text-secondary">{children}</li>
           ),
           blockquote: ({ children }) => (
-            <blockquote className="border-l-4 border-orange-500 pl-4 my-4 italic text-gray-500 dark:text-gray-400">
+            <blockquote className="border-l-4 border-imajin-purple pl-4 my-4 italic text-muted">
               {children}
             </blockquote>
           ),
           strong: ({ children }) => (
-            <strong className="font-bold text-gray-900 dark:text-white">{children}</strong>
+            <strong className="font-bold text-primary">{children}</strong>
           ),
           em: ({ children }) => (
-            <em className="italic text-gray-700 dark:text-gray-200">{children}</em>
+            <em className="italic text-secondary">{children}</em>
           ),
           code: ({ children }) => (
-            <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-sm font-mono text-orange-600 dark:text-orange-300">
+            <code className="bg-surface-elevated px-1 py-0.5 text-sm font-mono text-imajin-orange">
               {children}
             </code>
           ),

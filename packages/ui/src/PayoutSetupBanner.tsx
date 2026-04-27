@@ -62,22 +62,22 @@ export function PayoutSetupBanner({
   if (loading || !shouldShow) return null;
 
   return (
-    <div className="bg-orange-900/20 border border-orange-800/50 rounded-xl p-4 mb-6">
+    <div className="bg-imajin-orange/10 border border-imajin-orange/20 p-4 mb-6">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse shrink-0" />
-          <p className="text-sm text-orange-200">{message}</p>
+          <div className="w-2 h-2 bg-imajin-orange rounded-full animate-pulse shrink-0" />
+          <p className="text-sm text-imajin-orange">{message}</p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <a
             href={`${payUrl}/payouts`}
-            className="text-sm text-orange-400 hover:text-orange-300 font-medium transition-colors whitespace-nowrap"
+            className="text-sm text-imajin-orange hover:text-imajin-orange/80 font-mono font-medium transition-colors whitespace-nowrap"
           >
             Set up payouts →
           </a>
           <button
             onClick={handleDismiss}
-            className="text-orange-400/60 hover:text-orange-400 text-lg leading-none transition-colors"
+            className="text-imajin-orange/60 hover:text-imajin-orange text-lg leading-none transition-colors"
             aria-label="Dismiss"
           >
             ×

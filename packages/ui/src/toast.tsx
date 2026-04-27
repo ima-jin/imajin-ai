@@ -76,13 +76,13 @@ function ToastItem({
 }) {
   return (
     <div
-      className={`flex items-start gap-3 bg-gray-900 text-white px-4 py-3 rounded-lg shadow-lg border-l-4 ${BORDER_COLORS[toast.type]} min-w-[280px] max-w-sm`}
+      className={`flex items-start gap-3 bg-surface-surface text-primary px-4 py-3 border-l-4 ${BORDER_COLORS[toast.type]} min-w-[280px] max-w-sm`}
       style={{ animation: 'toastSlideIn 0.2s ease-out' }}
     >
       <p className="flex-1 text-sm">{toast.message}</p>
       <button
         onClick={onDismiss}
-        className="text-gray-400 hover:text-white transition-colors shrink-0 text-lg leading-none"
+        className="text-muted hover:text-primary transition-colors shrink-0 text-lg leading-none"
         aria-label="Dismiss"
       >
         ×

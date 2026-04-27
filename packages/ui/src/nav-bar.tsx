@@ -261,7 +261,7 @@ export function NavBar({
   }, [showDropdown]);
 
   return (
-    <nav className="w-full border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm relative z-50">
+    <nav className="w-full border-b border-white/[0.08] bg-surface-base/80 backdrop-blur-sm relative z-50">
       {isDev && (
         <div className="w-full bg-amber-500/90 text-black text-xs font-bold text-center py-1 tracking-wide">
           ⚠ DEVELOPMENT ENVIRONMENT
@@ -273,8 +273,8 @@ export function NavBar({
           href={buildUrl('www', servicePrefix, domain, serviceUrls)}
           className="flex items-center hover:opacity-80 transition shrink-0"
         >
-          <span className="w-8 h-8 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 flex items-center justify-center">
-            <span className="text-xl font-bold text-amber-500">人</span>
+          <span className="w-8 h-8 bg-imajin-orange/10 flex items-center justify-center">
+            <span className="text-xl font-bold text-imajin-orange">人</span>
           </span>
         </a>
 
@@ -295,19 +295,19 @@ export function NavBar({
             <>
               <a
                 href={userLinks.messages}
-                className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
+                className="relative p-2 hover:bg-surface-elevated transition no-underline"
                 title="Messages"
               >
                 <span className="text-lg">💬</span>
                 {unread > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-orange-500 text-white text-[10px] font-bold rounded-full min-w-[1.1rem] h-[1.1rem] flex items-center justify-center px-1">
+                  <span className="absolute -top-0.5 -right-0.5 bg-imajin-red text-primary text-[10px] font-bold rounded-full min-w-[1.1rem] h-[1.1rem] flex items-center justify-center px-1">
                     {unread > 99 ? '99+' : unread}
                   </span>
                 )}
               </a>
               <a
                 href={userLinks.connections}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
+                className="p-2 hover:bg-surface-elevated transition no-underline"
                 title="Connections"
               >
                 <span className="text-lg">🤝</span>
@@ -326,7 +326,7 @@ export function NavBar({
         {/* Mobile hamburger */}
         <button
           onClick={() => setShowMobileMenu(!showMobileMenu)}
-          className="sm:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+          className="sm:hidden p-2 hover:bg-surface-elevated transition"
         >
           <span className="text-xl">{showMobileMenu ? '✕' : '☰'}</span>
         </button>
@@ -337,7 +337,7 @@ export function NavBar({
             /* Soft DID — just a logout button, no dropdown */
             <button
               onClick={() => identity.onLogout?.()}
-              className="px-3 py-1.5 rounded-lg text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+              className="px-3 py-1.5 text-sm text-error hover:bg-surface-elevated transition"
             >
               Logout
             </button>
@@ -346,7 +346,7 @@ export function NavBar({
               {(cashBalance !== null && cashBalance > 0) && (
                 <a
                   href={buildUrl('pay', servicePrefix, domain, serviceUrls)}
-                  className="text-sm font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full hover:bg-green-100 dark:hover:bg-green-900/40 transition no-underline"
+                  className="text-sm font-mono font-medium text-success bg-success/10 px-2.5 py-1 hover:bg-success/10 transition no-underline"
                 >
                   ${cashBalance.toFixed(2)}
                 </a>
@@ -354,7 +354,7 @@ export function NavBar({
               {(mjnBalance !== null && mjnBalance > 0) && (
                 <a
                   href={buildUrl('pay', servicePrefix, domain, serviceUrls)}
-                  className="text-sm font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-full hover:bg-amber-100 dark:hover:bg-amber-900/40 transition no-underline"
+                  className="text-sm font-mono font-medium text-imajin-orange bg-imajin-orange/10 px-2.5 py-1 hover:bg-imajin-orange/10 transition no-underline"
                 >
                   人{Math.round(mjnBalance)}
                 </a>
@@ -362,18 +362,18 @@ export function NavBar({
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowDropdown(!showDropdown)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-surface-elevated transition"
               >
                 <span className="text-xl">
                   {activeIdentityData ? scopeIcon(activeIdentityData.scope) : '👤'}
                 </span>
                 <span className="flex flex-col items-start" style={{ gap: '2px' }}>
                   {activeIdentityData && (
-                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium leading-none">
+                    <span className="text-[10px] text-imajin-orange font-mono font-medium leading-none">
                       acting as
                     </span>
                   )}
-                  <span className="text-sm font-medium leading-none">
+                  <span className="text-sm font-mono font-medium leading-none">
                     {activeIdentityData
                       ? (activeIdentityData.name || activeIdentityData.handle || 'Identity')
                       : identity.handle
@@ -386,13 +386,13 @@ export function NavBar({
               </button>
 
               {showDropdown && (
-                <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg py-1 z-50">
+                <div className="absolute right-0 mt-2 w-52 bg-surface-surface border border-white/[0.1] py-1 z-50">
                   {identity.tier !== 'soft' && (
                     <>
                       {identity.onViewProfile && (
                         <button
                           onClick={() => { identity.onViewProfile?.(); setShowDropdown(false); }}
-                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2"
                         >
                           <span>👤</span> View Profile
                         </button>
@@ -400,61 +400,61 @@ export function NavBar({
                       {identity.onEditProfile && (
                         <button
                           onClick={() => { identity.onEditProfile?.(); setShowDropdown(false); }}
-                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2"
                         >
                           <span>✏️</span> Edit Profile
                         </button>
                       )}
                       <a
                         href={`${buildUrl('auth', servicePrefix, domain, serviceUrls)}/settings/security`}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2 no-underline text-inherit"
                       >
                         <span>🔒</span> Security
                       </a>
                       <a
                         href={`${buildUrl('notify', servicePrefix, domain, serviceUrls)}/settings`}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2 no-underline text-inherit"
                       >
                         <span>🔔</span> Notifications
                       </a>
-                      <hr className="my-1 border-gray-200 dark:border-gray-800" />
+                      <hr className="my-1 border-white/[0.1]" />
                       <a
                         href={userLinks.messages}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2 no-underline text-inherit"
                       >
                         <span>💬</span> Messages
                         {unread > 0 && (
-                          <span className="ml-auto bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
+                          <span className="ml-auto bg-imajin-red text-primary text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
                             {unread}
                           </span>
                         )}
                       </a>
                       <a
                         href={userLinks.connections}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2 no-underline text-inherit"
                       >
                         <span>🤝</span> Connections
                       </a>
                       <a
                         href={buildUrl('pay', servicePrefix, domain, serviceUrls)}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2 no-underline text-inherit"
                       >
                         <span>💰</span> Wallet
                       </a>
                       <a
                         href={buildUrl('media', servicePrefix, domain, serviceUrls)}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2 no-underline text-inherit"
                       >
                         <span>📁</span> Media
                       </a>
                       <a
                         href={buildUrl('auth', servicePrefix, domain, serviceUrls)}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2 no-underline text-inherit"
                       >
                         <span>🔑</span> Identities
                       </a>
-                      <hr className="my-1 border-gray-200 dark:border-gray-800" />
-                      <div className="px-4 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                      <hr className="my-1 border-white/[0.1]" />
+                      <div className="px-4 py-1 text-[10px] font-mono font-semibold uppercase tracking-wider text-muted">
                         Switch To
                       </div>
                       {activeIdentity && identity && (
@@ -464,7 +464,7 @@ export function NavBar({
                               setActiveIdentity(null);
                               setShowDropdown(false);
                             }}
-                            className="flex-1 text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
+                            className="flex-1 text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2"
                           >
                             <span>👤</span>
                             <span>
@@ -482,20 +482,20 @@ export function NavBar({
                                 setActiveIdentity(isActive ? null : ident.groupDid);
                                 setShowDropdown(false);
                               }}
-                              className="flex-1 text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
+                              className="flex-1 text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2"
                             >
                               <span>{scopeIcon(ident.scope)}</span>
                               <span className={isActive ? 'font-medium' : ''}>
                                 {ident.name || ident.handle || ident.groupDid.slice(0, 12)}
                               </span>
                               {isActive && (
-                                <span className="ml-auto text-amber-600 dark:text-amber-400 font-bold text-xs">✓</span>
+                                <span className="ml-auto text-imajin-orange font-bold text-xs">✓</span>
                               )}
                             </button>
                             <a
                               href={`${authUrl}/groups/${encodeURIComponent(ident.groupDid)}/settings`}
                               onClick={e => e.stopPropagation()}
-                              className="pr-3 py-2 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition opacity-0 group-hover/identity:opacity-100 no-underline text-sm"
+                              className="pr-3 py-2 text-muted hover:text-secondary transition opacity-0 group-hover/identity:opacity-100 no-underline text-sm"
                               title="Settings"
                             >
                               ⚙️
@@ -506,21 +506,21 @@ export function NavBar({
                       {identities.length > 5 && (
                         <a
                           href={buildUrl('auth', servicePrefix, domain, serviceUrls)}
-                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit text-gray-500 dark:text-gray-400"
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2 no-underline text-inherit text-muted"
                         >
                           View all →
                         </a>
                       )}
-                      <hr className="my-1 border-gray-200 dark:border-gray-800" />
+                      <hr className="my-1 border-white/[0.1]" />
                       <button
                         onClick={toggleTheme}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2"
                       >
                         <span>{theme === 'dark' ? '☀️' : '🌙'}</span> {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
                       </button>
                       <a
                         href={`${buildUrl('www', servicePrefix, domain, serviceUrls)}/bugs`}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2 no-underline text-inherit"
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-surface-elevated transition flex items-center gap-2 no-underline text-inherit"
                       >
                         <span>🐛</span> Report a Bug
                       </a>
@@ -528,10 +528,10 @@ export function NavBar({
                   )}
                   {identity.onLogout && (
                     <>
-                      {identity.tier !== 'soft' && <hr className="my-1 border-gray-200 dark:border-gray-800" />}
+                      {identity.tier !== 'soft' && <hr className="my-1 border-white/[0.1]" />}
                       <button
                         onClick={() => { identity.onLogout?.(); setShowDropdown(false); }}
-                        className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
+                        className="w-full text-left px-4 py-2 text-sm text-error hover:bg-surface-elevated transition flex items-center gap-2"
                       >
                         <span>🚪</span> Logout
                       </button>
@@ -546,7 +546,8 @@ export function NavBar({
               {identity.onLogin && (
                 <button
                   onClick={identity.onLogin}
-                  className="px-3 py-1.5 rounded-lg text-sm bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-medium"
+                  className="px-3 py-1.5 text-sm text-primary hover:brightness-110 transition font-mono font-medium"
+                  style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }}
                 >
                   Login
                 </button>
@@ -558,7 +559,7 @@ export function NavBar({
 
       {/* Mobile menu */}
       {showMobileMenu && (
-        <div className="sm:hidden border-t border-gray-200 dark:border-gray-800 px-4 py-3">
+        <div className="sm:hidden border-t border-white/[0.08] px-4 py-3">
           {children && <div className="mb-3">{children}</div>}
           <AppLauncher
             registryUrl={registryUrl}
@@ -570,21 +571,21 @@ export function NavBar({
             enabledServices={activeConfig?.enabledServices}
           />
           {identity?.isLoggedIn && identity?.tier !== 'soft' && (
-            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
+            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/[0.08]">
               <a
                 href={userLinks.messages}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline text-sm text-inherit"
+                className="flex items-center gap-2 px-3 py-2 hover:bg-surface-elevated transition no-underline text-sm text-inherit"
               >
                 <span>💬</span> Messages
                 {unread > 0 && (
-                  <span className="bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
+                  <span className="bg-imajin-red text-primary text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
                     {unread}
                   </span>
                 )}
               </a>
               <a
                 href={userLinks.connections}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline text-sm text-inherit"
+                className="flex items-center gap-2 px-3 py-2 hover:bg-surface-elevated transition no-underline text-sm text-inherit"
               >
                 <span>🤝</span> Connections
               </a>

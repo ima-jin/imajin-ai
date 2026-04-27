@@ -27,12 +27,12 @@ interface ActionProps {
 
 function Reactions({ emojis, onSelect }: ReactionsProps) {
   return (
-    <div className="flex justify-around px-4 py-3 border-b border-gray-700">
+    <div className="flex justify-around px-4 py-3 border-b border-white/[0.1]">
       {emojis.map((emoji) => (
         <button
           key={emoji}
           onClick={() => onSelect(emoji)}
-          className="w-11 h-11 flex items-center justify-center text-2xl hover:bg-gray-700 rounded-full transition"
+          className="w-11 h-11 flex items-center justify-center text-2xl hover:bg-surface-elevated transition"
           aria-label={emoji}
         >
           {emoji}
@@ -44,7 +44,7 @@ function Reactions({ emojis, onSelect }: ReactionsProps) {
 
 function Actions({ children }: ActionsProps) {
   return (
-    <div className="border-b border-gray-700 last:border-b-0">
+    <div className="border-b border-white/[0.1] last:border-b-0">
       {children}
     </div>
   );
@@ -54,8 +54,8 @@ function Action({ icon, label, onPress, variant = 'default' }: ActionProps) {
   return (
     <button
       onClick={onPress}
-      className={`w-full flex items-center gap-3 px-5 py-3.5 text-left text-sm transition hover:bg-gray-800 ${
-        variant === 'danger' ? 'text-red-400' : 'text-white'
+      className={`w-full flex items-center gap-3 px-5 py-3.5 text-left text-sm transition hover:bg-surface-elevated ${
+        variant === 'danger' ? 'text-error' : 'text-primary'
       }`}
     >
       {icon && <span className="text-lg w-6 text-center">{icon}</span>}
@@ -86,7 +86,7 @@ export function ActionSheet({ open, onClose, title, children }: ActionSheetProps
       `}</style>
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60"
+        className="absolute inset-0 bg-surface-base/60"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -95,16 +95,16 @@ export function ActionSheet({ open, onClose, title, children }: ActionSheetProps
         role="dialog"
         aria-modal="true"
         aria-label={title ?? 'Actions'}
-        className="relative w-full bg-gray-900 rounded-t-2xl border-t border-gray-700 max-h-[70vh] overflow-y-auto"
+        className="relative w-full bg-surface-surface border-t border-white/[0.1] max-h-[70vh] overflow-y-auto"
         style={{ animation: 'actionSheetSlideUp 0.25s ease-out' }}
       >
         {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 rounded-full bg-gray-600" />
+          <div className="w-10 h-1 bg-muted" />
         </div>
         {title && (
-          <div className="px-5 py-2 border-b border-gray-700">
-            <p className="text-sm font-medium text-gray-400 text-center">{title}</p>
+          <div className="px-5 py-2 border-b border-white/[0.1]">
+            <p className="text-sm font-mono font-medium text-muted text-center">{title}</p>
           </div>
         )}
         {children}
