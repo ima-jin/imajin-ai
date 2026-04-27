@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+const tokenTheme = require('@imajin/tokens/dist/tailwind.js');
+
 module.exports = {
   content: [
     './src/**/*.{js,ts,jsx,tsx,mdx}',
@@ -7,11 +9,7 @@ module.exports = {
   ],
   theme: {
     extend: {
-      colors: {
-        imajin: {
-          orange: '#f97316',
-        },
-      },
+      ...tokenTheme,
     },
   },
   plugins: [],

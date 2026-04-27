@@ -7,6 +7,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "@imajin/tokens": "workspace:*"
+  },
   "peerDependencies": {
     "next": ">=14"
   }
