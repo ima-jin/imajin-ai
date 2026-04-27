@@ -34,9 +34,7 @@ export function PrimitiveMatrix({ active, compact }: PrimitiveMatrixProps) {
         {COLS.map((col, ci) => (
           <div
             key={ci}
-            className={`flex justify-center h-20 transition-colors duration-500 ${
-              showAll || (active || []).some(([, c]) => c === ci) ? 'text-white/60' : 'text-white/20'
-            }`}
+            className={`flex justify-center h-20 transition-colors duration-500 ${ showAll || (active || []).some(([, c]) => c === ci) ? 'text-primary/60' : 'text-primary/20' }`}
           >
             <span
               className="text-[10px] uppercase tracking-wider font-medium whitespace-nowrap origin-center"
@@ -58,9 +56,7 @@ export function PrimitiveMatrix({ active, compact }: PrimitiveMatrixProps) {
             style={{ gridTemplateColumns: `80px repeat(${COLS.length}, 1fr)` }}
           >
             {/* Row label */}
-            <div className={`flex items-center gap-2 pr-2 transition-colors duration-500 ${
-              rowActive ? 'text-white/70' : 'text-white/20'
-            }`}>
+            <div className={`flex items-center gap-2 pr-2 transition-colors duration-500 ${ rowActive ? 'text-primary/70' : 'text-primary/20' }`}>
               <span className="text-xs opacity-50">{ROW_ICONS[ri]}</span>
               <span className="text-xs font-medium truncate">{row}</span>
             </div>
@@ -73,16 +69,10 @@ export function PrimitiveMatrix({ active, compact }: PrimitiveMatrixProps) {
               return (
                 <div
                   key={ci}
-                  className={`aspect-square rounded-sm flex items-center justify-center transition-all duration-700 ${
-                    isActive && rendered
-                      ? 'bg-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.4)]'
-                      : isActive && !rendered
-                      ? 'bg-white/5 border border-white/10'
-                      : 'bg-white/5 border border-white/10'
-                  }`}
+                  className={`aspect-square flex items-center justify-center transition-all duration-700 ${ isActive && rendered ? 'bg-imajin-orange/80 shadow-[0_0_12px_rgba(245,158,11,0.4)]' : isActive && !rendered ? 'bg-surface-card/5 border border-white/10' : 'bg-surface-card/5 border border-white/10' }`}
                 >
                   {showAll && (
-                    <span className="text-white/50 text-xs">✓</span>
+                    <span className="text-primary/50 text-xs">✓</span>
                   )}
                 </div>
               );

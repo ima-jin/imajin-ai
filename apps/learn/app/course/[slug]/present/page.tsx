@@ -86,20 +86,20 @@ export default function PresentPage() {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-[#0a0a0a] text-white flex items-center justify-center">
-        <div className="text-white/30 text-sm tracking-widest">LOADING</div>
+      <div className="fixed inset-0 bg-[#0a0a0a] text-primary flex items-center justify-center">
+        <div className="text-primary/30 text-sm tracking-widest">LOADING</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="fixed inset-0 bg-[#0a0a0a] text-white flex items-center justify-center">
+      <div className="fixed inset-0 bg-[#0a0a0a] text-primary flex items-center justify-center">
         <div className="text-center space-y-4">
-          <p className="text-white/40">{error}</p>
+          <p className="text-primary/40">{error}</p>
           <button
             onClick={() => router.push(`/course/${slug}`)}
-            className="text-amber-500 hover:text-amber-400 text-sm"
+            className="text-imajin-orange:text-amber-400 text-sm"
           >
             ← Back to course
           </button>

@@ -48,8 +48,8 @@ export default async function AdminNewsletterPage() {
   return (
     <div className="p-6 lg:p-8 max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Newsletter</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-primary font-mono">Newsletter</h1>
+        <p className="mt-1 text-sm text-secondary dark:text-secondary">
           Compose and send newsletters to subscribers or connections
         </p>
       </div>

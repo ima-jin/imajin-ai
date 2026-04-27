@@ -88,13 +88,13 @@ export default function DashboardPage() {
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case 'published':
-        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
+        return 'bg-success/10 text-success dark:bg-success/10 dark:text-success';
       case 'draft':
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400';
+        return 'bg-surface-elevated text-gray-800 dark:bg-surface-elevated dark:text-secondary';
       case 'closed':
-        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+        return 'bg-error/10 text-error dark:bg-error/10 dark:text-error';
       default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400';
+        return 'bg-surface-elevated text-gray-800 dark:bg-surface-elevated dark:text-secondary';
     }
   };
 
@@ -112,28 +112,28 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold">My Surveys</h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-muted dark:text-secondary mt-1">
               Manage your surveys and view responses
             </p>
           </div>
           <button
             onClick={() => router.push('/create')}
-            className="px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition"
+            className="px-6 py-3 bg-imajin-orange text-primary font-semibold hover:brightness-110 transition"
           >
             Create Survey
           </button>
         </div>
 
         {surveys.length === 0 ? (
-          <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="text-center py-16 bg-white dark:bg-surface-elevated border border-white/10 dark:border-white/10">
             <div className="text-6xl mb-4">📊</div>
             <h2 className="text-2xl font-bold mb-2">No surveys yet</h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
+            <p className="text-muted dark:text-secondary mb-6">
               Create your first survey to get started
             </p>
             <button
               onClick={() => router.push('/create')}
-              className="px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition"
+              className="px-6 py-3 bg-imajin-orange text-primary font-semibold hover:brightness-110 transition"
             >
               Create Your First Survey
             </button>
@@ -143,7 +143,7 @@ export default function DashboardPage() {
             {surveys.map((survey) => (
               <div
                 key={survey.id}
-                className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 hover:shadow-md transition"
+                className="bg-white dark:bg-surface-elevated border border-white/10 dark:border-white/10 p-6 transition"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -155,12 +155,12 @@ export default function DashboardPage() {
                     </div>
 
                     {survey.description && (
-                      <p className="text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
+                      <p className="text-muted dark:text-secondary mb-3 line-clamp-2">
                         {survey.description}
                       </p>
                     )}
 
-                    <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-500">
+                    <div className="flex items-center gap-4 text-sm text-secondary dark:text-secondary">
                       <span>
                         {survey._responseCount || 0} response{survey._responseCount !== 1 ? 's' : ''}
                       </span>
@@ -180,7 +180,7 @@ export default function DashboardPage() {
                           navigator.clipboard.writeText(url);
                           toast.success('Survey link copied!');
                         }}
-                        className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                        className="px-4 py-2 border border-white/10 dark:border-white/10 text-sm font-medium:bg-surface-elevated dark:hover:bg-surface-elevated transition"
                         title="Copy survey link"
                       >
                         Copy Link
@@ -189,21 +189,21 @@ export default function DashboardPage() {
 
                     <button
                       onClick={() => router.push(`/create?id=${survey.id}`)}
-                      className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                      className="px-4 py-2 border border-white/10 dark:border-white/10 text-sm font-medium:bg-surface-elevated dark:hover:bg-surface-elevated transition"
                     >
                       Edit
                     </button>
 
                     <button
                       onClick={() => router.push(`/survey/${survey.id}/results`)}
-                      className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition"
+                      className="px-4 py-2 bg-imajin-orange text-primary text-sm font-medium hover:brightness-110 transition"
                     >
                       View Results
                     </button>
 
                     <button
                       onClick={() => deleteSurvey(survey.id)}
-                      className="px-4 py-2 border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 rounded-lg text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+                      className="px-4 py-2 border border-error/20 dark:border-error/20 text-error dark:text-error text-sm font-medium:bg-error/10 dark:hover:bg-red-900/20 transition"
                     >
                       Delete
                     </button>

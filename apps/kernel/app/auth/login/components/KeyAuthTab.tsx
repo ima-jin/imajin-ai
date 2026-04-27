@@ -186,13 +186,13 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: KeyAut
       <div className="flex gap-2 mb-6">
         <button
           onClick={() => setMethod('file')}
-          className={`flex-1 px-4 py-2 rounded-lg transition ${method === 'file' ? 'bg-[#F59E0B] text-black font-medium' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`}
+          className={`flex-1 px-4 py-2 transition ${method === 'file' ? 'bg-[#F59E0B] text-black font-medium' : 'bg-surface-surface text-secondary hover:bg-surface-elevated'}`}
         >
           Import File
         </button>
         <button
           onClick={() => setMethod('paste')}
-          className={`flex-1 px-4 py-2 rounded-lg transition ${method === 'paste' ? 'bg-[#F59E0B] text-black font-medium' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`}
+          className={`flex-1 px-4 py-2 transition ${method === 'paste' ? 'bg-[#F59E0B] text-black font-medium' : 'bg-surface-surface text-secondary hover:bg-surface-elevated'}`}
         >
           Paste Key
         </button>
@@ -204,12 +204,12 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: KeyAut
           onDrop={handleDrop}
           onDragOver={e => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={e => { e.preventDefault(); setDragOver(false); }}
-          className={`border-2 border-dashed rounded-lg p-8 text-center transition ${dragOver ? 'border-[#F59E0B] bg-[#F59E0B]/10' : 'border-gray-700 hover:border-gray-600'}`}
+          className={`border-2 border-dashed p-8 text-center transition ${dragOver ? 'border-[#F59E0B] bg-[#F59E0B]/10' : 'border-white/10 hover:border-gray-600'}`}
         >
           <div className="text-4xl mb-3">📁</div>
-          <p className="text-gray-300 mb-2">Drag & drop your backup file</p>
-          <p className="text-sm text-gray-500 mb-4">or</p>
-          <label className="inline-block px-6 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition cursor-pointer font-medium">
+          <p className="text-primary mb-2">Drag & drop your backup file</p>
+          <p className="text-sm text-secondary mb-4">or</p>
+          <label className="inline-block px-6 py-2 bg-[#F59E0B] text-black hover:bg-[#D97706] transition cursor-pointer font-medium">
             Choose File
             <input
               type="file"
@@ -226,7 +226,7 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: KeyAut
       {method === 'paste' && (
         <form onSubmit={handlePasteImport} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Private Key (hex)</label>
+            <label className="block text-sm font-medium mb-1 text-primary">Private Key (hex)</label>
             <textarea
               value={privateKeyHex}
               onChange={e => setPrivateKeyHex(e.target.value)}
@@ -234,13 +234,13 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: KeyAut
               rows={3}
               required
               autoFocus
-              className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white font-mono text-sm focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
+              className="w-full px-4 py-2 border border-white/10 bg-surface-base text-primary font-mono text-sm focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
             />
           </div>
           <button
             type="submit"
             disabled={keypairLoading || !privateKeyHex.trim()}
-            className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-6 py-3 bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {keypairLoading ? 'Importing…' : 'Import & Sign In'}
           </button>
@@ -248,15 +248,15 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: KeyAut
       )}
 
       {keypairError && (
-        <div className="mt-4 p-3 bg-red-900/20 border border-red-800 rounded-lg">
-          <p className="text-sm text-red-400">{keypairError}</p>
+        <div className="mt-4 p-3 bg-error/20 border border-red-800">
+          <p className="text-sm text-error">{keypairError}</p>
         </div>
       )}
 
       {keypairLoading && (
         <div className="mt-4 text-center">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#F59E0B]"></div>
-          <p className="text-sm text-gray-400 mt-2">Verifying identity…</p>
+          <p className="text-sm text-secondary mt-2">Verifying identity…</p>
         </div>
       )}
 

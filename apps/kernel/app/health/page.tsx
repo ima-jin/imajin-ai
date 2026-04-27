@@ -21,9 +21,9 @@ interface HealthResponse {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  up: 'bg-green-500',
-  down: 'bg-red-500',
-  degraded: 'bg-yellow-500',
+  up: 'bg-success',
+  down: 'bg-error',
+  degraded: 'bg-warning',
 };
 
 const STATUS_TEXT: Record<string, string> = {
@@ -34,7 +34,7 @@ const STATUS_TEXT: Record<string, string> = {
 
 function ServiceRow({ service }: { service: ServiceCheck }) {
   return (
-    <div className="flex items-center justify-between p-4 bg-gray-900 rounded-lg border border-gray-800">
+    <div className="flex items-center justify-between p-4 bg-surface-surface border border-white/10">
       <div className="flex items-center gap-4">
         <div className={`w-2.5 h-2.5 rounded-full ${STATUS_COLORS[service.status]}`} />
         <div>
@@ -42,26 +42,26 @@ function ServiceRow({ service }: { service: ServiceCheck }) {
             href={service.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium hover:text-orange-400 transition-colors"
+            className="font-medium hover:text-imajin-orange transition-colors"
           >
             {service.label || service.name}
           </a>
-          <p className="text-sm text-gray-500">{service.name}.imajin.ai</p>
+          <p className="text-sm text-secondary">{service.name}.imajin.ai</p>
         </div>
       </div>
       <div className="text-right">
         <p className={`font-medium ${
-          service.status === 'up' ? 'text-green-400' :
-          service.status === 'down' ? 'text-red-400' :
-          'text-yellow-400'
+          service.status === 'up' ? 'text-success' :
+          service.status === 'down' ? 'text-error' :
+          'text-warning'
         }`}>
           {STATUS_TEXT[service.status]}
         </p>
         {service.responseTime !== null && (
-          <p className="text-sm text-gray-500">{service.responseTime}ms</p>
+          <p className="text-sm text-secondary">{service.responseTime}ms</p>
         )}
         {service.error && (
-          <p className="text-sm text-red-400 max-w-48 truncate" title={service.error}>{service.error}</p>
+          <p className="text-sm text-error max-w-48 truncate" title={service.error}>{service.error}</p>
         )}
       </div>
     </div>
@@ -110,27 +110,27 @@ export default function HealthPage() {
         <div className="mb-12">
           <Link
             href="/"
-            className="text-gray-500 hover:text-gray-300 transition-colors"
+            className="text-secondary hover:text-primary transition-colors"
           >
             ← Home
           </Link>
         </div>
 
         <div className="mb-12">
-          <h1 className="text-4xl font-light tracking-tight mb-4">System Status</h1>
+          <h1 className="text-4xl font-light tracking-tight mb-4 font-mono">System Status</h1>
 
           {/* Overall status banner */}
-          <div className={`rounded-lg p-6 ${
-            loading ? 'bg-gray-800' :
-            allUp ? 'bg-green-900/30 border border-green-800' :
-            'bg-yellow-900/30 border border-yellow-800'
+          <div className={`p-6 ${
+            loading ? 'bg-surface-elevated' :
+            allUp ? 'bg-success/30 border border-green-800' :
+            'bg-warning/20 border border-yellow-800'
           }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 {loading ? (
                   <div className="w-3 h-3 rounded-full bg-gray-500 animate-pulse" />
                 ) : (
-                  <div className={`w-3 h-3 rounded-full ${allUp ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                  <div className={`w-3 h-3 rounded-full ${allUp ? 'bg-success' : 'bg-warning'}`} />
                 )}
                 <span className="text-xl font-medium">
                   {loading ? 'Checking...' : allUp ? 'All Systems Operational' : 'Some Systems Degraded'}
@@ -139,13 +139,13 @@ export default function HealthPage() {
               <button
                 onClick={checkHealth}
                 disabled={loading}
-                className="px-4 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-sm bg-surface-elevated hover:bg-gray-600 transition-colors disabled:opacity-50"
               >
                 {loading ? 'Checking...' : 'Refresh'}
               </button>
             </div>
             {lastChecked && (
-              <p className="text-gray-500 text-sm mt-2">
+              <p className="text-secondary text-sm mt-2">
                 Last checked: {lastChecked.toLocaleTimeString()}
               </p>
             )}
@@ -153,20 +153,20 @@ export default function HealthPage() {
         </div>
 
         {error && (
-          <div className="mb-8 p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400">
+          <div className="mb-8 p-4 bg-error/30 border border-red-800 text-error">
             {error}
           </div>
         )}
 
         {/* Services list */}
         <div className="space-y-3">
-          <h2 className="text-xl font-medium text-gray-400 mb-4">Core Platform</h2>
+          <h2 className="text-xl font-medium text-secondary mb-4 font-mono">Core Platform</h2>
           {coreServices.map(s => <ServiceRow key={s.name} service={s} />)}
         </div>
 
         {appServices.length > 0 && (
           <div className="space-y-3 mt-8">
-            <h2 className="text-xl font-medium text-gray-400 mb-4">Applications</h2>
+            <h2 className="text-xl font-medium text-secondary mb-4 font-mono">Applications</h2>
             {appServices.map(s => <ServiceRow key={s.name} service={s} />)}
           </div>
         )}
@@ -174,13 +174,13 @@ export default function HealthPage() {
         {loading && !health && (
           <div className="space-y-3">
             {[...Array(14)].map((_, i) => (
-              <div key={i} className="h-20 bg-gray-900 rounded-lg animate-pulse" />
+              <div key={i} className="h-20 bg-surface-surface animate-pulse" />
             ))}
           </div>
         )}
 
         {/* Footer */}
-        <div className="mt-16 pt-8 border-t border-gray-800 text-center text-gray-500 text-sm">
+        <div className="mt-16 pt-8 border-t border-white/10 text-center text-secondary text-sm">
           <p>
             Imajin services status page. Auto-refreshes every 30 seconds.
           </p>

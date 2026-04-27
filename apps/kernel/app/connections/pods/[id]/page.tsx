@@ -151,7 +151,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
   if (loading || loadingPod) {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-secondary">Loading...</div>
       </div>
     );
   }
@@ -159,10 +159,10 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
   if (!isLoggedIn) {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
-        <h1 className="text-2xl font-bold mb-4">Sign in required</h1>
+        <h1 className="text-2xl font-bold mb-4 font-mono">Sign in required</h1>
         <a
           href={`${PROFILE_URL}/login?next=${encodeURIComponent(`${SERVICE_PREFIX}connections.${DOMAIN}`)}`}
-          className="inline-block px-8 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg transition"
+          className="inline-block px-8 py-3 bg-warning hover:bg-warning text-black font-semibold transition"
         >
           Sign In
         </a>
@@ -173,8 +173,8 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
   if (error) {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
-        <div className="text-gray-400 mb-4">{error}</div>
-        <a href="/connections?tab=groups" className="text-amber-400 hover:underline">Back to Groups</a>
+        <div className="text-secondary mb-4">{error}</div>
+        <a href="/connections?tab=groups" className="text-warning hover:underline">Back to Groups</a>
       </div>
     );
   }
@@ -185,25 +185,25 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
     <div className="max-w-2xl mx-auto">
       {/* Back link */}
       <div className="mb-6">
-        <a href="/connections?tab=groups" className="text-gray-400 hover:text-white text-sm transition">
+        <a href="/connections?tab=groups" className="text-secondary hover:text-primary text-sm transition">
           ← Back to Groups
         </a>
       </div>
 
       {/* Pod header */}
-      <div className="p-6 bg-white/5 border border-white/10 rounded-lg mb-6">
+      <div className="p-6 bg-white/5 border border-white/10 mb-6">
         {editing ? (
           <div className="space-y-3">
             <input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-lg font-semibold"
+              className="w-full bg-white/5 border border-white/10 px-3 py-2 text-primary text-lg font-semibold"
               placeholder="Group name"
             />
             <textarea
               value={editDesc}
               onChange={(e) => setEditDesc(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm resize-none"
+              className="w-full bg-white/5 border border-white/10 px-3 py-2 text-primary text-sm resize-none"
               placeholder="Description (optional)"
               rows={2}
             />
@@ -211,13 +211,13 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
               <button
                 onClick={saveEdit}
                 disabled={saving || !editName.trim()}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-medium rounded-lg transition text-sm"
+                className="px-4 py-2 bg-warning hover:bg-warning disabled:opacity-50 text-black font-medium transition text-sm"
               >
                 {saving ? 'Saving...' : 'Save'}
               </button>
               <button
                 onClick={() => setEditing(false)}
-                className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
+                className="px-4 py-2 bg-white/10 hover:bg-white/15 text-primary transition text-sm"
               >
                 Cancel
               </button>
@@ -227,22 +227,22 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <h1 className="text-2xl font-bold">{pod.name}</h1>
-                <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                <h1 className="text-2xl font-bold font-mono">{pod.name}</h1>
+                <span className={`px-2 py-0.5 text-xs font-medium ${
                   pod.type === 'event'
                     ? 'bg-purple-500/20 text-purple-300'
-                    : 'bg-amber-500/20 text-amber-300'
+                    : 'bg-warning/20 text-warning/70'
                 }`}>
                   {pod.type === 'event' ? 'Event' : 'Group'}
                 </span>
                 {isReadOnly && (
-                  <span className="px-2 py-0.5 text-xs rounded-full bg-white/10 text-gray-400">Read-only</span>
+                  <span className="px-2 py-0.5 text-xs bg-white/10 text-secondary">Read-only</span>
                 )}
               </div>
               {pod.description && (
-                <p className="text-gray-400 text-sm mb-2">{pod.description}</p>
+                <p className="text-secondary text-sm mb-2">{pod.description}</p>
               )}
-              <p className="text-gray-500 text-xs">
+              <p className="text-secondary text-xs">
                 {pod.memberCount} member{pod.memberCount !== 1 ? 's' : ''} · Created {new Date(pod.createdAt).toLocaleDateString()}
               </p>
             </div>
@@ -254,13 +254,13 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
                     setEditDesc(pod.description || '');
                     setEditing(true);
                   }}
-                  className="px-3 py-1.5 text-sm bg-white/10 hover:bg-white/15 text-white rounded-lg transition"
+                  className="px-3 py-1.5 text-sm bg-white/10 hover:bg-white/15 text-primary transition"
                 >
                   Edit
                 </button>
                 <button
                   onClick={deleteGroup}
-                  className="px-3 py-1.5 text-sm bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition"
+                  className="px-3 py-1.5 text-sm bg-error/10 hover:bg-error/20 text-error transition"
                 >
                   Delete
                 </button>
@@ -273,11 +273,11 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
       {/* Members section */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Members</h2>
+          <h2 className="text-lg font-semibold font-mono">Members</h2>
           {isOwner && !isReadOnly && (
             <button
               onClick={() => setShowAddMember(!showAddMember)}
-              className="px-3 py-1.5 text-sm bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition"
+              className="px-3 py-1.5 text-sm bg-warning hover:bg-warning text-black font-medium transition"
             >
               + Add Member
             </button>
@@ -286,8 +286,8 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
 
         {/* Add member panel */}
         {showAddMember && (
-          <div className="mb-4 p-4 bg-white/5 border border-amber-500/30 rounded-lg">
-            <p className="text-sm text-gray-400 mb-3">Select from your connections:</p>
+          <div className="mb-4 p-4 bg-white/5 border border-amber-500/30">
+            <p className="text-sm text-secondary mb-3">Select from your connections:</p>
             <ConnectionPicker
               connectionsUrl="/connections/api/connections"
               excludeDids={memberDids}
@@ -297,7 +297,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
             <div className="mt-3">
               <button
                 onClick={() => setShowAddMember(false)}
-                className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
+                className="px-4 py-2 bg-white/10 hover:bg-white/15 text-primary transition text-sm"
               >
                 Cancel
               </button>
@@ -310,10 +310,10 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
           {members.map((member) => (
             <div
               key={member.did}
-              className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-lg"
+              className="flex items-center gap-3 p-3 bg-white/5 border border-white/10"
             >
               <div
-                className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-lg shrink-0 cursor-pointer"
+                className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center text-warning text-lg shrink-0 cursor-pointer"
                 onClick={() => {
                   if (member.handle) window.open(`${PROFILE_URL}/${member.handle}`, '_blank');
                 }}
@@ -322,30 +322,30 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-white text-sm truncate">
+                  <span className="font-medium text-primary text-sm truncate">
                     {member.name || (member.handle ? `@${member.handle}` : member.did.slice(0, 24) + '...')}
                   </span>
-                  <span className={`px-1.5 py-0.5 text-xs rounded font-medium shrink-0 ${
+                  <span className={`px-1.5 py-0.5 text-xs  font-medium shrink-0 ${
                     member.role === 'owner'
-                      ? 'bg-amber-500/20 text-amber-300'
+                      ? 'bg-warning/20 text-warning/70'
                       : member.role === 'admin'
                       ? 'bg-blue-500/20 text-blue-300'
-                      : 'bg-white/10 text-gray-400'
+                      : 'bg-white/10 text-secondary'
                   }`}>
                     {member.role}
                   </span>
                 </div>
                 {member.handle && member.name && (
-                  <div className="text-gray-400 text-xs">@{member.handle}</div>
+                  <div className="text-secondary text-xs">@{member.handle}</div>
                 )}
-                <div className="text-gray-500 text-xs">
+                <div className="text-secondary text-xs">
                   Joined {new Date(member.joinedAt).toLocaleDateString()}
                 </div>
               </div>
               {isOwner && !isReadOnly && member.did !== did && (
                 <button
                   onClick={() => removeMember(member.did)}
-                  className="px-2 py-1 text-xs bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded transition shrink-0"
+                  className="px-2 py-1 text-xs bg-white/5 hover:bg-error/20 text-secondary hover:text-error transition shrink-0"
                   title="Remove member"
                 >
                   Remove

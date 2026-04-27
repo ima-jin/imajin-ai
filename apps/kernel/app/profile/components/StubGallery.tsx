@@ -140,9 +140,9 @@ export function StubGallery({ identityDid, isMaintainer }: StubGalleryProps) {
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs text-gray-500 uppercase tracking-wider">Photos</h3>
+        <h3 className="text-xs text-secondary uppercase tracking-wider font-mono">Photos</h3>
         {isMaintainer && (
-          <span className="text-xs text-gray-600">{images.length}/{MAX_GALLERY_IMAGES}</span>
+          <span className="text-xs text-muted">{images.length}/{MAX_GALLERY_IMAGES}</span>
         )}
       </div>
 
@@ -153,21 +153,21 @@ export function StubGallery({ identityDid, isMaintainer }: StubGalleryProps) {
               <img
                 src={image.url}
                 alt={image.caption || ''}
-                className="w-full h-full object-cover rounded"
+                className="w-full h-full object-cover "
               />
               {isMaintainer && (
                 <button
                   type="button"
                   onClick={() => handleDelete(image.id)}
                   className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity
-                             bg-black/70 text-white rounded text-xs px-1.5 py-0.5 hover:bg-red-900/80"
+                             bg-surface-base/70 text-primary  text-xs px-1.5 py-0.5 hover:bg-error/80"
                   title="Remove photo"
                 >
                   ✕
                 </button>
               )}
               {image.caption && (
-                <p className="text-xs text-gray-400 mt-0.5 truncate">{image.caption}</p>
+                <p className="text-xs text-secondary mt-0.5 truncate">{image.caption}</p>
               )}
             </div>
           ))}
@@ -187,7 +187,7 @@ export function StubGallery({ identityDid, isMaintainer }: StubGalleryProps) {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
-            className="w-full py-2 border border-dashed border-sky-800/60 rounded-lg text-xs text-sky-400
+            className="w-full py-2 border border-dashed border-sky-800/60 text-xs text-sky-400
                        hover:border-sky-600/80 hover:bg-sky-900/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isUploading ? (
@@ -203,7 +203,7 @@ export function StubGallery({ identityDid, isMaintainer }: StubGalleryProps) {
       )}
 
       {error && (
-        <p className="text-xs text-red-400 text-center mt-1">{error}</p>
+        <p className="text-xs text-error text-center mt-1">{error}</p>
       )}
     </div>
   );

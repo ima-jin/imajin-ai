@@ -104,10 +104,10 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
         key={service.name}
         href={service.url}
         {...(isExternal && { target: '_blank', rel: 'noopener noreferrer' })}
-        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition no-underline ${
+        className={`flex items-center gap-3 px-3 py-2.5 text-sm transition no-underline ${
           isCurrent
-            ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium'
-            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+            ? 'bg-imajin-orange/10 text-imajin-orange font-medium'
+            : 'text-secondary hover:bg-surface-elevated'
         }`}
       >
         <span className="text-lg flex-shrink-0">{service.icon}</span>
@@ -122,10 +122,10 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
       <a
         key={service.name}
         href={service.url}
-        className={`flex flex-col items-center justify-center w-16 h-16 rounded-lg text-center transition no-underline ${
+        className={`flex flex-col items-center justify-center w-16 h-16 text-center transition no-underline ${
           isCurrent
-            ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
-            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+            ? 'bg-imajin-orange/10 text-imajin-orange'
+            : 'text-secondary hover:bg-surface-elevated'
         }`}
       >
         <span className="text-2xl">{service.icon}</span>
@@ -135,8 +135,8 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   }
 
   const identitiesSection = showIdentities && (identities.length > 0 || authUrl) ? (
-    <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-1">
-      <div className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+    <div className="border-t border-white/[0.1] mt-1 pt-1">
+      <div className="px-3 pt-1 pb-1 text-[10px] font-mono font-semibold uppercase tracking-wider text-muted">
         Switch To
       </div>
       {identities.map((ident) => {
@@ -145,15 +145,15 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
           <button
             key={ident.groupDid}
             onClick={() => { setActiveIdentity(isActive ? null : ident.groupDid); setShowPanel(false); }}
-            className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
+            className={`w-full text-left flex items-center gap-3 px-3 py-2 text-sm transition ${
               isActive
-                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 font-medium'
-                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                ? 'bg-imajin-orange/10 text-imajin-orange font-medium'
+                : 'text-secondary hover:bg-surface-elevated'
             }`}
           >
             <span className="text-lg flex-shrink-0">{scopeIcon(ident.scope)}</span>
             <span>{ident.name || ident.handle || ident.groupDid.slice(0, 12)}</span>
-            {isActive && <span className="ml-auto text-amber-600 dark:text-amber-400 font-bold text-xs">✓</span>}
+            {isActive && <span className="ml-auto text-imajin-orange font-bold text-xs">✓</span>}
           </button>
         );
       })}
@@ -161,10 +161,10 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   ) : null;
 
   const footer = (
-    <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-1">
+    <div className="border-t border-white/[0.1] mt-1 pt-1">
       <a
         href={`${wwwUrl}/`}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
+        className="flex items-center gap-2 px-3 py-2 text-xs text-muted hover:bg-surface-elevated transition no-underline"
       >
         See all apps →
       </a>
@@ -175,7 +175,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
     <>
       {kernel.length > 0 && (
         <div>
-          <div className="col-span-4 px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+          <div className="col-span-4 px-3 pt-1 pb-1 text-[10px] font-mono font-semibold uppercase tracking-wider text-muted">
             Kernel Services
           </div>
           <div className="grid grid-cols-4 gap-1 px-2">
@@ -190,7 +190,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
       )}
       {creator.length > 0 && (
         <div>
-          <div className="col-span-4 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+          <div className="col-span-4 px-3 pt-2 pb-1 text-[10px] font-mono font-semibold uppercase tracking-wider text-muted">
             Creator Tools
           </div>
           <div className="grid grid-cols-4 gap-1 px-2">
@@ -200,7 +200,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
       )}
       {developer.length > 0 && (
         <div>
-          <div className="col-span-4 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+          <div className="col-span-4 px-3 pt-2 pb-1 text-[10px] font-mono font-semibold uppercase tracking-wider text-muted">
             Developers
           </div>
           <div className="grid grid-cols-4 gap-1 px-2">
@@ -215,7 +215,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
     <>
       {kernel.length > 0 && (
         <div>
-          <div className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+          <div className="px-3 pt-1 pb-1 text-[10px] font-mono font-semibold uppercase tracking-wider text-muted">
             Kernel Services
           </div>
           {kernel.map(renderTile)}
@@ -228,7 +228,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
       )}
       {creator.length > 0 && (
         <div>
-          <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+          <div className="px-3 pt-2 pb-1 text-[10px] font-mono font-semibold uppercase tracking-wider text-muted">
             Creator Tools
           </div>
           {creator.map(renderTile)}
@@ -236,7 +236,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
       )}
       {developer.length > 0 && (
         <div>
-          <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+          <div className="px-3 pt-2 pb-1 text-[10px] font-mono font-semibold uppercase tracking-wider text-muted">
             Developers
           </div>
           {developer.map(renderTile)}
@@ -244,7 +244,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
       )}
       {meta.length > 0 && (
         <div>
-          <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+          <div className="px-3 pt-2 pb-1 text-[10px] font-mono font-semibold uppercase tracking-wider text-muted">
             Project
           </div>
           {meta.map(renderTile)}
@@ -264,30 +264,30 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
     <div className="relative" ref={panelRef}>
       <button
         onClick={() => setShowPanel(!showPanel)}
-        className={`px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-1.5 ${
+        className={`px-3 py-1.5 text-sm transition flex items-center gap-1.5 ${
           showPanel
-            ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
-            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+            ? 'bg-imajin-orange/10 text-imajin-orange'
+            : 'text-secondary hover:bg-surface-elevated'
         }`}
       >
         {variant === 'grid' ? (
           <span className="grid grid-cols-2 gap-0.5 w-4 h-4">
-            <span className="w-1.5 h-1.5 rounded-sm bg-current" />
-            <span className="w-1.5 h-1.5 rounded-sm bg-current" />
-            <span className="w-1.5 h-1.5 rounded-sm bg-current" />
-            <span className="w-1.5 h-1.5 rounded-sm bg-current" />
+            <span className="w-1.5 h-1.5 bg-current" />
+            <span className="w-1.5 h-1.5 bg-current" />
+            <span className="w-1.5 h-1.5 bg-current" />
+            <span className="w-1.5 h-1.5 bg-current" />
           </span>
         ) : (
           <>
             <span>🚀</span>
-            <span className="hidden sm:inline">Launcher</span>
+            <span className="hidden sm:inline font-mono">Launcher</span>
           </>
         )}
       </button>
       {showPanel && (
-        <div className={`absolute left-0 mt-2 ${variant === 'grid' ? 'w-72' : 'w-56'} bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl py-2 z-50`}>
+        <div className={`absolute left-0 mt-2 ${variant === 'grid' ? 'w-72' : 'w-56'} bg-surface-surface border border-white/[0.1] py-2 z-50`}>
           {visible.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-gray-400">Loading...</div>
+            <div className="px-4 py-3 text-sm text-muted">Loading...</div>
           ) : (
             content
           )}

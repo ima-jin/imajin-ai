@@ -43,7 +43,7 @@ export default async function AppDetailPage({
       <div>
         <Link
           href="/auth/developer/apps"
-          className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+          className="text-xs text-muted hover:text-zinc-300 transition-colors"
         >
           ← Developer Apps
         </Link>

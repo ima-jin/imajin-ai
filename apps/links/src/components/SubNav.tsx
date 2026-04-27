@@ -16,16 +16,12 @@ export function SubNav({ isAuthenticated }: SubNavProps) {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+    <div className="bg-white dark:bg-surface-surface border-b border-white/10 dark:border-white/10">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex gap-6 py-3">
           <Link
             href="/"
-            className={`text-sm font-medium transition ${
-              pathname === '/'
-                ? 'text-orange-500'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
-            }`}
+            className={`text-sm font-medium transition ${ pathname === '/' ? 'text-imajin-orange' : 'text-muted dark:text-secondary:text-primary dark:hover:text-primary' }`}
           >
             Home
           </Link>
@@ -34,22 +30,14 @@ export function SubNav({ isAuthenticated }: SubNavProps) {
             <>
               <Link
                 href="/edit"
-                className={`text-sm font-medium transition ${
-                  pathname === '/edit'
-                    ? 'text-orange-500'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
-                }`}
+                className={`text-sm font-medium transition ${ pathname === '/edit' ? 'text-imajin-orange' : 'text-muted dark:text-secondary:text-primary dark:hover:text-primary' }`}
               >
                 Edit
               </Link>
 
               <Link
                 href="/dashboard"
-                className={`text-sm font-medium transition ${
-                  pathname === '/dashboard'
-                    ? 'text-orange-500'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
-                }`}
+                className={`text-sm font-medium transition ${ pathname === '/dashboard' ? 'text-imajin-orange' : 'text-muted dark:text-secondary:text-primary dark:hover:text-primary' }`}
               >
                 Stats
               </Link>

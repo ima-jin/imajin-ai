@@ -51,7 +51,7 @@ const THEME_PRESETS = {
     textColor: '#c9d1d9',
     buttonColor: '#238636',
     buttonTextColor: '#ffffff',
-    buttonStyle: 'rounded',
+    buttonStyle: '',
   },
   sunset: {
     name: 'Sunset',
@@ -59,7 +59,7 @@ const THEME_PRESETS = {
     textColor: '#78350f',
     buttonColor: '#f59e0b',
     buttonTextColor: '#ffffff',
-    buttonStyle: 'rounded',
+    buttonStyle: '',
   },
   ocean: {
     name: 'Ocean',
@@ -296,7 +296,7 @@ export default function EditPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-surface-elevated dark:bg-surface-surface">
         <div className="text-xl">Loading...</div>
       </div>
     );
@@ -305,14 +305,14 @@ export default function EditPage() {
   if (!page) {
     if (autoCreateError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="min-h-screen flex items-center justify-center bg-surface-elevated dark:bg-surface-surface">
           <div className="text-center">
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
+            <p className="text-muted dark:text-secondary mb-4">
               Failed to set up your links page. Please try refreshing.
             </p>
             <button
               onClick={() => { setAutoCreateError(false); setLoading(true); fetchPage(); }}
-              className="px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition"
+              className="px-6 py-3 bg-imajin-orange text-primary font-semibold hover:brightness-110 transition"
             >
               Retry
             </button>
@@ -324,17 +324,17 @@ export default function EditPage() {
   }
 
   return (
-    <div className="min-h-screen py-12 px-4 bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen py-12 px-4 bg-surface-elevated dark:bg-surface-surface">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold">My Links</h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-muted dark:text-secondary mt-1">
               <a
                 href={`/${page.handle}`}
                 target="_blank"
-                className="text-orange-500 hover:underline"
+                className="text-imajin-orange:underline"
               >
                 links.imajin.ai/{page.handle}
               </a>
@@ -343,7 +343,7 @@ export default function EditPage() {
           <div className="flex gap-3">
             <a
               href="/dashboard"
-              className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+              className="px-4 py-2 border border-white/10 dark:border-white/10 font-medium:bg-surface-elevated dark:hover:bg-surface-elevated transition"
             >
               Go to Stats
             </a>
@@ -352,7 +352,7 @@ export default function EditPage() {
                 setFormData({ theme: 'dark' });
                 setShowEditForm(true);
               }}
-              className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+              className="px-4 py-2 border border-white/10 dark:border-white/10 font-medium:bg-surface-elevated dark:hover:bg-surface-elevated transition"
             >
               Edit Theme
             </button>
@@ -361,7 +361,7 @@ export default function EditPage() {
 
         {/* Edit Page Form */}
         {showEditForm && (
-          <div className="mb-8 p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="mb-8 p-6 bg-white dark:bg-surface-elevated border border-white/10 dark:border-white/10">
             <h2 className="text-xl font-semibold mb-4">Edit Page</h2>
             <form onSubmit={updatePage} className="space-y-4">
               <div>
@@ -369,7 +369,7 @@ export default function EditPage() {
                 <select
                   value={formData.theme}
                   onChange={(e) => setFormData({ ...formData, theme: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
+                  className="w-full px-4 py-2 border border-white/10 dark:border-white/10 bg-white dark:bg-surface-elevated"
                 >
                   {Object.entries(THEME_PRESETS).map(([key, preset]) => (
                     <option key={key} value={key}>{preset.name}</option>
@@ -380,14 +380,14 @@ export default function EditPage() {
               <div className="flex gap-3">
                 <button
                   type="submit"
-                  className="px-6 py-2 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition"
+                  className="px-6 py-2 bg-imajin-orange text-primary font-semibold hover:brightness-110 transition"
                 >
                   Save Changes
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowEditForm(false)}
-                  className="px-6 py-2 border border-gray-300 dark:border-gray-700 rounded-lg font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                  className="px-6 py-2 border border-white/10 dark:border-white/10 font-semibold:bg-surface-elevated dark:hover:bg-surface-elevated transition"
                 >
                   Cancel
                 </button>
@@ -401,7 +401,7 @@ export default function EditPage() {
           <h2 className="text-2xl font-bold">Links ({page.links.length})</h2>
           <button
             onClick={() => setShowLinkForm(true)}
-            className="px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition"
+            className="px-4 py-2 bg-imajin-orange text-primary font-medium hover:brightness-110 transition"
           >
             Add Link
           </button>
@@ -409,7 +409,7 @@ export default function EditPage() {
 
         {/* Link Form */}
         {(showLinkForm || editingLink) && (
-          <div className="mb-6 p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="mb-6 p-6 bg-white dark:bg-surface-elevated border border-white/10 dark:border-white/10">
             <h3 className="text-lg font-semibold mb-4">
               {editingLink ? 'Edit Link' : 'Add New Link'}
             </h3>
@@ -422,7 +422,7 @@ export default function EditPage() {
                   onChange={(e) => setLinkFormData({ ...linkFormData, title: e.target.value })}
                   placeholder="Link title"
                   required
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
+                  className="w-full px-4 py-2 border border-white/10 dark:border-white/10 bg-white dark:bg-surface-elevated"
                 />
               </div>
 
@@ -434,7 +434,7 @@ export default function EditPage() {
                   onChange={(e) => setLinkFormData({ ...linkFormData, url: e.target.value })}
                   placeholder="https://example.com"
                   required
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
+                  className="w-full px-4 py-2 border border-white/10 dark:border-white/10 bg-white dark:bg-surface-elevated"
                 />
               </div>
 
@@ -445,7 +445,7 @@ export default function EditPage() {
                   value={linkFormData.icon}
                   onChange={(e) => setLinkFormData({ ...linkFormData, icon: e.target.value })}
                   placeholder="🔗"
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
+                  className="w-full px-4 py-2 border border-white/10 dark:border-white/10 bg-white dark:bg-surface-elevated"
                 />
               </div>
 
@@ -454,7 +454,7 @@ export default function EditPage() {
                 <select
                   value={linkFormData.visibility}
                   onChange={(e) => setLinkFormData({ ...linkFormData, visibility: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
+                  className="w-full px-4 py-2 border border-white/10 dark:border-white/10 bg-white dark:bg-surface-elevated"
                 >
                   <option value="public">Public (visible to everyone)</option>
                   <option value="authenticated">Authenticated only (logged in users)</option>
@@ -477,7 +477,7 @@ export default function EditPage() {
               <div className="flex gap-3">
                 <button
                   type="submit"
-                  className="px-6 py-2 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition"
+                  className="px-6 py-2 bg-imajin-orange text-primary font-semibold hover:brightness-110 transition"
                 >
                   {editingLink ? 'Save Changes' : 'Add Link'}
                 </button>
@@ -488,7 +488,7 @@ export default function EditPage() {
                     setEditingLink(null);
                     setLinkFormData({ title: '', url: '', icon: '', visibility: 'public', isActive: true });
                   }}
-                  className="px-6 py-2 border border-gray-300 dark:border-gray-700 rounded-lg font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                  className="px-6 py-2 border border-white/10 dark:border-white/10 font-semibold:bg-surface-elevated dark:hover:bg-surface-elevated transition"
                 >
                   Cancel
                 </button>
@@ -500,32 +500,32 @@ export default function EditPage() {
         {/* Links List */}
         <div className="space-y-3">
           {page.links.length === 0 ? (
-            <div className="text-center py-12 text-gray-500 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="text-center py-12 text-secondary bg-white dark:bg-surface-elevated border border-white/10 dark:border-white/10">
               <p>No links yet. Add your first link above!</p>
             </div>
           ) : (
             page.links.map((link, index) => (
               <div
                 key={link.id}
-                className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-between"
+                className="p-4 border border-white/10 dark:border-white/10 bg-white dark:bg-surface-elevated flex items-center justify-between"
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     {link.icon && <span>{link.icon}</span>}
                     <span className="font-semibold">{link.title}</span>
                     {!link.isActive && (
-                      <span className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded">Inactive</span>
+                      <span className="text-xs px-2 py-1 bg-surface-elevated dark:bg-surface-elevated">Inactive</span>
                     )}
                     {link.visibility === 'authenticated' && (
-                      <span className="text-xs px-2 py-1 bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300 rounded">
+                      <span className="text-xs px-2 py-1 bg-imajin-orange/10 dark:bg-imajin-orange/10 text-imajin-orange dark:text-imajin-orange">
                         🔒 Auth only
                       </span>
                     )}
                   </div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate">
+                  <div className="text-sm text-secondary dark:text-secondary mt-1 truncate">
                     {link.url}
                   </div>
-                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  <div className="text-xs text-secondary dark:text-secondary mt-1">
                     {link.clicks} clicks
                   </div>
                 </div>
@@ -533,14 +533,14 @@ export default function EditPage() {
                   <button
                     onClick={() => moveLink(link.id, 'up')}
                     disabled={index === 0}
-                    className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="px-2 py-1 border border-white/10 dark:border-white/10 disabled:opacity-30:bg-surface-elevated dark:hover:bg-surface-elevated"
                   >
                     ↑
                   </button>
                   <button
                     onClick={() => moveLink(link.id, 'down')}
                     disabled={index === page.links.length - 1}
-                    className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="px-2 py-1 border border-white/10 dark:border-white/10 disabled:opacity-30:bg-surface-elevated dark:hover:bg-surface-elevated"
                   >
                     ↓
                   </button>
@@ -555,13 +555,13 @@ export default function EditPage() {
                         isActive: link.isActive,
                       });
                     }}
-                    className="px-3 py-1 border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="px-3 py-1 border border-white/10 dark:border-white/10:bg-surface-elevated dark:hover:bg-surface-elevated"
                   >
                     Edit
                   </button>
                   <button
                     onClick={() => deleteLink(link.id)}
-                    className="px-3 py-1 border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+                    className="px-3 py-1 border border-error/20 dark:border-error/20 text-error dark:text-error:bg-error/10 dark:hover:bg-red-900/20"
                   >
                     Delete
                   </button>

@@ -23,7 +23,7 @@ export function TypingIndicator({ typingUsers }: TypingIndicatorProps) {
   };
 
   return (
-    <div className="flex items-center gap-2 text-sm text-gray-500 px-4 py-2">
+    <div className="flex items-center gap-2 text-sm text-secondary px-4 py-2">
       <span>{displayText()}</span>
       <span className="flex gap-1">
         <span className="animate-bounce inline-block" style={{ animationDelay: '0ms' }}>.</span>

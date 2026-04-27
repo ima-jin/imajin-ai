@@ -26,8 +26,8 @@ export default async function AdminModerationPage() {
     <div className="p-6 lg:p-8 max-w-6xl">
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Moderation</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-primary font-mono">Moderation</h1>
+          <p className="mt-1 text-sm text-secondary dark:text-secondary">
             Flag queue and moderation audit log
           </p>
         </div>
@@ -36,18 +36,18 @@ export default async function AdminModerationPage() {
 
       {/* Flag Queue */}
       <div className="mb-8">
-        <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+        <h2 className="text-sm font-semibold text-secondary dark:text-secondary uppercase tracking-wide mb-3 font-mono">
           Pending Flags
           {pendingFlags.length > 0 && (
-            <span className="ml-2 bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded text-xs">
+            <span className="ml-2 bg-imajin-orange/10 dark:bg-imajin-orange/20 text-imajin-orange dark:text-imajin-orange px-2 py-0.5 text-xs">
               {pendingFlags.length}
             </span>
           )}
         </h2>
 
         {pendingFlags.length === 0 ? (
-          <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 px-6 py-10 text-center">
-            <p className="text-sm text-gray-400 dark:text-gray-500">No pending flags</p>
+          <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 px-6 py-10 text-center">
+            <p className="text-sm text-secondary dark:text-secondary">No pending flags</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -58,23 +58,23 @@ export default async function AdminModerationPage() {
               return (
                 <div
                   key={flagId}
-                  className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-5"
+                  className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 p-5"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded font-medium">
+                        <span className="text-xs bg-imajin-orange/10 dark:bg-imajin-orange/20 text-imajin-orange dark:text-imajin-orange px-2 py-0.5 font-medium">
                           {flag.target_type as string}
                         </span>
-                        <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
+                        <span className="font-mono text-xs text-secondary dark:text-secondary">
                           {String(flag.target_id).slice(0, 24)}…
                         </span>
                       </div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      <p className="text-sm font-medium text-gray-900 dark:text-primary">
                         {flag.reason as string}
                       </p>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 space-x-2">
-                        <span>Reporter: <span className="text-gray-700 dark:text-gray-300">{reporterName}</span></span>
+                      <div className="text-xs text-secondary dark:text-secondary space-x-2">
+                        <span>Reporter: <span className="text-gray-700 dark:text-primary">{reporterName}</span></span>
                         <span>·</span>
                         <span>Target: <span className="font-mono">{String(flag.target_did).slice(0, 20)}…</span></span>
                         <span>·</span>
@@ -92,46 +92,46 @@ export default async function AdminModerationPage() {
 
       {/* Audit Log */}
       <div>
-        <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+        <h2 className="text-sm font-semibold text-secondary dark:text-secondary uppercase tracking-wide mb-3 font-mono">
           Audit Log
         </h2>
-        <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 overflow-hidden">
           {auditLog.length === 0 ? (
-            <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">
+            <p className="px-6 py-8 text-sm text-secondary dark:text-secondary text-center">
               No moderation actions recorded
             </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Operator</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Action</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Target</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Reason</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">When</th>
+                  <tr className="bg-gray-50 dark:bg-surface-elevated/50 border-b border-gray-100 dark:border-white/10">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Operator</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Action</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Target</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Reason</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">When</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                <tbody className="divide-y divide-gray-100 dark:divide-white/10">
                   {auditLog.map((entry) => {
                     const id = entry.id as string;
                     const createdAt = entry.created_at as Date;
                     const operatorName = (entry.operator_name ?? entry.operator_did) as string;
                     return (
-                      <tr key={id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                        <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-300">
+                      <tr key={id} className="hover:bg-gray-50 dark:hover:bg-surface-elevated/40">
+                        <td className="px-4 py-3 text-xs text-gray-700 dark:text-primary">
                           {operatorName}
                         </td>
                         <td className="px-4 py-3">
                           <ActionBadge action={entry.action as string} />
                         </td>
-                        <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
+                        <td className="px-4 py-3 font-mono text-xs text-secondary dark:text-secondary">
                           {String(entry.target_did).slice(0, 20)}…
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 max-w-xs truncate">
+                        <td className="px-4 py-3 text-xs text-secondary dark:text-secondary max-w-xs truncate">
                           {(entry.reason as string | null) ?? '—'}
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                        <td className="px-4 py-3 text-xs text-secondary dark:text-secondary whitespace-nowrap">
                           {createdAt ? formatDistanceToNow(new Date(createdAt), { addSuffix: true }) : '—'}
                         </td>
                       </tr>
@@ -149,15 +149,15 @@ export default async function AdminModerationPage() {
 
 function ActionBadge({ action }: { action: string }) {
   const styles: Record<string, string> = {
-    suspend: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400',
-    unsuspend: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400',
-    ban: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400',
-    warn: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400',
-    dismiss_flag: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
-    remove_content: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400',
+    suspend: 'bg-imajin-orange/10 dark:bg-imajin-orange/20 text-imajin-orange dark:text-imajin-orange',
+    unsuspend: 'bg-success/10 dark:bg-success/40 text-success dark:text-success',
+    ban: 'bg-error/10 dark:bg-error/40 text-error dark:text-error',
+    warn: 'bg-yellow-100 dark:bg-warning/20/40 text-warning dark:text-warning',
+    dismiss_flag: 'bg-gray-100 dark:bg-surface-elevated text-muted dark:text-secondary',
+    remove_content: 'bg-error/10 dark:bg-error/40 text-error dark:text-error',
   };
   return (
-    <span className={`text-xs px-2 py-0.5 rounded ${styles[action] ?? styles.dismiss_flag}`}>
+    <span className={`text-xs px-2 py-0.5  ${styles[action] ?? styles.dismiss_flag}`}>
       {action.replace(/_/g, ' ')}
     </span>
   );

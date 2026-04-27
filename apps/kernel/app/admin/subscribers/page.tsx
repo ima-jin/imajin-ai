@@ -137,14 +137,14 @@ export default async function AdminSubscribersPage({
     <div className="p-6 lg:p-8 max-w-6xl">
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Subscribers</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-primary font-mono">Subscribers</h1>
+          <p className="mt-1 text-sm text-secondary dark:text-secondary">
             Manage mailing lists and subscribers
           </p>
         </div>
         <a
           href={`/api/admin/subscribers/export${listSlug ? `?list=${listSlug}` : ''}`}
-          className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+          className="border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-primary hover:bg-gray-50 dark:hover:bg-surface-elevated"
         >
           Export CSV
         </a>
@@ -159,12 +159,12 @@ export default async function AdminSubscribersPage({
         ].map((stat) => (
           <div
             key={stat.label}
-            className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-4"
+            className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 p-4"
           >
-            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+            <p className="text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">
               {stat.label}
             </p>
-            <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-primary">{stat.value}</p>
           </div>
         ))}
       </div>
@@ -172,44 +172,44 @@ export default async function AdminSubscribersPage({
       {/* Mailing Lists */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Mailing Lists</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-primary font-mono">Mailing Lists</h2>
           <CreateList />
         </div>
         {lists.length === 0 ? (
-          <p className="text-sm text-gray-400 dark:text-gray-500">No mailing lists yet.</p>
+          <p className="text-sm text-secondary dark:text-secondary">No mailing lists yet.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {lists.map((list) => (
               <Link
                 key={list.id as string}
                 href={`/admin/subscribers?list=${list.slug}`}
-                className={`rounded-xl bg-white dark:bg-gray-800 shadow border p-4 transition-colors hover:border-orange-300 dark:hover:border-orange-700 ${
+                className={`bg-white dark:bg-surface-elevated border p-4 transition-colors hover:border-imajin-orange/30 dark:hover:border-imajin-orange/30 ${
                   listSlug === (list.slug as string)
-                    ? 'border-orange-500 dark:border-orange-500'
-                    : 'border-gray-100 dark:border-gray-700'
+                    ? 'border-imajin-orange dark:border-imajin-orange'
+                    : 'border-gray-100 dark:border-white/10'
                 }`}
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="font-medium text-gray-900 dark:text-white text-sm">{list.name as string}</p>
+                    <p className="font-medium text-gray-900 dark:text-primary text-sm">{list.name as string}</p>
                     {list.description && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
+                      <p className="text-xs text-secondary dark:text-secondary mt-0.5 line-clamp-2">
                         {list.description as string}
                       </p>
                     )}
                   </div>
-                  <span className="ml-2 text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+                  <span className="ml-2 text-xs bg-imajin-orange/10 dark:bg-imajin-orange/20 text-imajin-orange dark:text-imajin-orange px-2 py-0.5 font-medium whitespace-nowrap">
                     {Number(list.subscriber_count).toLocaleString()}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-gray-400 dark:text-gray-600 font-mono">{list.slug as string}</p>
+                <p className="mt-1 text-xs text-secondary dark:text-muted font-mono">{list.slug as string}</p>
               </Link>
             ))}
           </div>
         )}
         {listSlug && (
           <div className="mt-2">
-            <Link href="/admin/subscribers" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
+            <Link href="/admin/subscribers" className="text-sm text-secondary dark:text-secondary hover:underline">
               ← Show all lists
             </Link>
           </div>
@@ -224,12 +224,12 @@ export default async function AdminSubscribersPage({
           name="q"
           defaultValue={q}
           placeholder="Search email…"
-          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-52"
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated text-gray-900 dark:text-primary px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-imajin-purple w-52"
         />
         <select
           name="verified"
           defaultValue={verified}
-          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated text-gray-900 dark:text-primary px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-imajin-purple"
         >
           <option value="">All</option>
           <option value="true">Verified</option>
@@ -237,77 +237,77 @@ export default async function AdminSubscribersPage({
         </select>
         <button
           type="submit"
-          className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 text-sm font-medium"
+          style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className=" hover:brightness-110 text-primary px-3 py-1.5 text-sm font-medium"
         >
           Filter
         </button>
         {(q || verified) && (
           <Link
             href={listSlug ? `/admin/subscribers?list=${listSlug}` : '/admin/subscribers'}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            className="text-sm text-secondary dark:text-secondary hover:text-gray-700 dark:hover:text-primary"
           >
             Clear
           </Link>
         )}
-        <span className="ml-auto text-sm text-gray-500 dark:text-gray-400">
+        <span className="ml-auto text-sm text-secondary dark:text-secondary">
           {total.toLocaleString()} subscriber{total !== 1 ? 's' : ''}
         </span>
       </form>
 
       {/* Subscribers Table */}
-      <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 overflow-hidden">
         {rows.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">
+          <p className="px-6 py-8 text-sm text-secondary dark:text-secondary text-center">
             No subscribers found
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Email</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Source</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Verified</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Subscribed</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">List</th>
+                <tr className="bg-gray-50 dark:bg-surface-elevated/50 border-b border-gray-100 dark:border-white/10">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Email</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Source</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Verified</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Subscribed</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Status</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">List</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              <tbody className="divide-y divide-gray-100 dark:divide-white/10">
                 {rows.map((row) => {
                   const subscribedAt = row.subscribed_at ? new Date(row.subscribed_at as string) : null;
                   const relTime = subscribedAt
                     ? formatDistanceToNow(subscribedAt, { addSuffix: true })
                     : '—';
                   return (
-                    <tr key={`${row.id}-${row.list_slug}`} className="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">{row.email as string}</td>
+                    <tr key={`${row.id}-${row.list_slug}`} className="hover:bg-gray-50 dark:hover:bg-surface-elevated/40 transition-colors">
+                      <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-primary">{row.email as string}</td>
                       <td className="px-4 py-3">
-                        <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
+                        <span className="text-xs bg-gray-100 dark:bg-surface-elevated text-muted dark:text-secondary px-2 py-0.5 ">
                           {row.source as string}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm">
                         {row.is_verified ? (
-                          <span className="text-green-600 dark:text-green-400">✓</span>
+                          <span className="text-success dark:text-success">✓</span>
                         ) : (
-                          <span className="text-gray-400 dark:text-gray-600">✗</span>
+                          <span className="text-secondary dark:text-muted">✗</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      <td className="px-4 py-3 text-xs text-secondary dark:text-secondary whitespace-nowrap">
                         {relTime}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded ${
+                        <span className={`text-xs px-2 py-0.5  ${
                           row.status === 'subscribed'
-                            ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                            ? 'bg-success/10 dark:bg-success/40 text-success dark:text-success'
+                            : 'bg-gray-100 dark:bg-surface-elevated text-muted dark:text-secondary'
                         }`}>
                           {row.status as string}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 font-mono">
+                      <td className="px-4 py-3 text-xs text-secondary dark:text-secondary font-mono">
                         {row.list_slug as string}
                       </td>
                       <td className="px-4 py-3">
@@ -329,21 +329,21 @@ export default async function AdminSubscribersPage({
       {/* Pagination */}
       <div className="mt-4 flex items-center gap-3">
         {hasPrev ? (
-          <Link href={buildUrl({ page: String(page - 1) })} className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+          <Link href={buildUrl({ page: String(page - 1) })} className="border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-primary hover:bg-gray-50 dark:hover:bg-surface-elevated">
             ← Previous
           </Link>
         ) : (
-          <span className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-400 dark:text-gray-600 cursor-not-allowed">
+          <span className="border border-gray-200 dark:border-white/10 px-3 py-1.5 text-sm text-secondary dark:text-muted cursor-not-allowed">
             ← Previous
           </span>
         )}
-        <span className="text-sm text-gray-500 dark:text-gray-400">Page {page}</span>
+        <span className="text-sm text-secondary dark:text-secondary">Page {page}</span>
         {hasNext ? (
-          <Link href={buildUrl({ page: String(page + 1) })} className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+          <Link href={buildUrl({ page: String(page + 1) })} className="border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-primary hover:bg-gray-50 dark:hover:bg-surface-elevated">
             Next →
           </Link>
         ) : (
-          <span className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-400 dark:text-gray-600 cursor-not-allowed">
+          <span className="border border-gray-200 dark:border-white/10 px-3 py-1.5 text-sm text-secondary dark:text-muted cursor-not-allowed">
             Next →
           </span>
         )}

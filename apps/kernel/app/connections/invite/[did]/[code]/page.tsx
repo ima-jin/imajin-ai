@@ -28,13 +28,13 @@ export default async function InvitePage({
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
         <div className="text-center max-w-md mx-auto px-6">
           <div className="text-6xl mb-6">🔗</div>
-          <h1 className="text-2xl font-bold text-white mb-3">Invalid Invite Link</h1>
-          <p className="text-gray-400">
+          <h1 className="text-2xl font-bold text-primary mb-3 font-mono">Invalid Invite Link</h1>
+          <p className="text-secondary">
             This invite link is not valid or has been removed.
           </p>
           <a
             href={buildPublicUrl('www')}
-            className="inline-block mt-6 px-6 py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-lg transition"
+            className="inline-block mt-6 px-6 py-2.5 bg-white/10 hover:bg-white/15 text-primary transition"
           >
             Go to Imajin
           </a>
@@ -48,13 +48,13 @@ export default async function InvitePage({
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
         <div className="text-center max-w-md mx-auto px-6">
           <div className="text-6xl mb-6">✅</div>
-          <h1 className="text-2xl font-bold text-white mb-3">Invite Already Used</h1>
-          <p className="text-gray-400">
+          <h1 className="text-2xl font-bold text-primary mb-3 font-mono">Invite Already Used</h1>
+          <p className="text-secondary">
             This invite has already been accepted.
           </p>
           <a
             href={buildPublicUrl('connections')}
-            className="inline-block mt-6 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition"
+            className="inline-block mt-6 px-6 py-2.5 bg-warning hover:bg-warning text-black font-medium transition"
           >
             View Your Connections
           </a>
@@ -72,13 +72,13 @@ export default async function InvitePage({
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
       <div className="text-center max-w-md mx-auto px-6">
         <div className="text-6xl mb-6">🟠</div>
-        <h1 className="text-2xl font-bold text-white mb-3">
+        <h1 className="text-2xl font-bold text-primary mb-3 font-mono">
           {displayName} wants to connect with you on Imajin
         </h1>
         {invite.note && (
-          <p className="text-gray-300 mb-4 italic">&ldquo;{invite.note}&rdquo;</p>
+          <p className="text-primary mb-4 italic">&ldquo;{invite.note}&rdquo;</p>
         )}
-        <p className="text-gray-400 mb-8 text-sm">
+        <p className="text-secondary mb-8 text-sm">
           Accept this invite to create a trusted connection.
         </p>
 

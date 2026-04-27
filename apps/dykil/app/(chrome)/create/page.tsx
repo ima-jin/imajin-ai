@@ -32,7 +32,7 @@ function FieldFormPanel({
   isEditing: boolean;
 }) {
   return (
-    <div className="mb-2 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border-2 border-orange-500/50">
+    <div className="mb-2 p-4 bg-surface-elevated border-2 border-imajin-purple/50">
       <h3 className="text-lg font-semibold mb-3">
         {isEditing ? 'Edit Question' : `Add ${fieldForm.type} Question`}
       </h3>
@@ -45,7 +45,7 @@ function FieldFormPanel({
             value={fieldForm.title}
             onChange={(e) => setFieldForm({ ...fieldForm, title: e.target.value })}
             placeholder="What would you like to ask?"
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+            className="w-full px-3 py-2 border border-white/10 dark:border-white/10 bg-white dark:bg-surface-elevated text-sm"
             autoFocus
           />
         </div>
@@ -56,7 +56,7 @@ function FieldFormPanel({
             checked={fieldForm.isRequired || false}
             onChange={(e) => setFieldForm({ ...fieldForm, isRequired: e.target.checked })}
             id={`required-${isEditing ? 'edit' : 'new'}`}
-            className="rounded"
+            className=""
           />
           <label htmlFor={`required-${isEditing ? 'edit' : 'new'}`} className="text-sm">Required question</label>
         </div>
@@ -77,7 +77,7 @@ function FieldFormPanel({
                       setFieldForm({ ...fieldForm, choices: newChoices });
                     }}
                     placeholder={`Choice ${i + 1}`}
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className="flex-1 px-3 py-2 border border-white/10 dark:border-white/10 bg-white dark:bg-surface-elevated text-sm"
                   />
                   {i > 0 && (
                     <button
@@ -85,7 +85,7 @@ function FieldFormPanel({
                         const newChoices = (fieldForm.choices || []).filter((_, idx) => idx !== i);
                         setFieldForm({ ...fieldForm, choices: newChoices });
                       }}
-                      className="px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                      className="px-2 py-1 text-error:bg-error/10 dark:hover:bg-red-900/20"
                     >
                       ×
                     </button>
@@ -97,7 +97,7 @@ function FieldFormPanel({
               onClick={() => {
                 setFieldForm({ ...fieldForm, choices: [...(fieldForm.choices || []), ''] });
               }}
-              className="text-sm text-orange-500 hover:text-orange-600"
+              className="text-sm text-imajin-orange:text-imajin-orange"
             >
               + Add choice
             </button>
@@ -112,7 +112,7 @@ function FieldFormPanel({
                 type="number"
                 value={fieldForm.rateMin || 1}
                 onChange={(e) => setFieldForm({ ...fieldForm, rateMin: Number(e.target.value) })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                className="w-full px-3 py-2 border border-white/10 dark:border-white/10 bg-white dark:bg-surface-elevated text-sm"
               />
             </div>
             <div>
@@ -121,7 +121,7 @@ function FieldFormPanel({
                 type="number"
                 value={fieldForm.rateMax || 5}
                 onChange={(e) => setFieldForm({ ...fieldForm, rateMax: Number(e.target.value) })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                className="w-full px-3 py-2 border border-white/10 dark:border-white/10 bg-white dark:bg-surface-elevated text-sm"
               />
             </div>
           </div>
@@ -133,7 +133,7 @@ function FieldFormPanel({
             <select
               value={fieldForm.inputType || 'text'}
               onChange={(e) => setFieldForm({ ...fieldForm, inputType: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+              className="w-full px-3 py-2 border border-white/10 dark:border-white/10 bg-white dark:bg-surface-elevated text-sm"
             >
               <option value="text">Text</option>
               <option value="email">Email</option>
@@ -145,13 +145,13 @@ function FieldFormPanel({
         <div className="flex gap-2 pt-2">
           <button
             onClick={onSave}
-            className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
+            className="px-4 py-2 bg-imajin-orange text-primary text-sm hover:brightness-110 transition"
           >
             {isEditing ? 'Save Changes' : 'Add Question'}
           </button>
           <button
             onClick={onCancel}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+            className="px-4 py-2 border border-white/10 dark:border-white/10 text-sm:bg-surface-elevated dark:hover:bg-surface-elevated transition"
           >
             Cancel
           </button>
@@ -375,7 +375,7 @@ function CreateSurveyContent() {
           </h1>
           <button
             onClick={() => router.push('/dashboard')}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+            className="px-4 py-2 border border-white/10 dark:border-white/10:bg-surface-elevated dark:hover:bg-surface-elevated transition"
           >
             Cancel
           </button>
@@ -384,7 +384,7 @@ function CreateSurveyContent() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Builder Panel */}
           <div className="space-y-6">
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-surface-elevated p-6 border border-white/10 dark:border-white/10">
               <h2 className="text-xl font-semibold mb-4">Survey Details</h2>
 
               <div className="space-y-4">
@@ -395,7 +395,7 @@ function CreateSurveyContent() {
                     value={survey.title}
                     onChange={(e) => setSurvey({ ...survey, title: e.target.value })}
                     placeholder="Survey title"
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
+                    className="w-full px-4 py-2 border border-white/10 dark:border-white/10 bg-white dark:bg-surface-surface"
                   />
                 </div>
 
@@ -406,13 +406,13 @@ function CreateSurveyContent() {
                     onChange={(e) => setSurvey({ ...survey, description: e.target.value })}
                     placeholder="Optional description"
                     rows={3}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
+                    className="w-full px-4 py-2 border border-white/10 dark:border-white/10 bg-white dark:bg-surface-surface"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-surface-elevated p-6 border border-white/10 dark:border-white/10">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold">Questions ({survey.fields.elements.length})</h2>
               </div>
@@ -420,43 +420,43 @@ function CreateSurveyContent() {
               <div className="mb-4 flex flex-wrap gap-2">
                 <button
                   onClick={() => openFieldForm('text')}
-                  className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
+                  className="px-3 py-2 bg-imajin-orange text-primary text-sm hover:brightness-110 transition"
                 >
                   + Text
                 </button>
                 <button
                   onClick={() => openFieldForm('comment')}
-                  className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
+                  className="px-3 py-2 bg-imajin-orange text-primary text-sm hover:brightness-110 transition"
                 >
                   + Comment
                 </button>
                 <button
                   onClick={() => openFieldForm('radiogroup')}
-                  className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
+                  className="px-3 py-2 bg-imajin-orange text-primary text-sm hover:brightness-110 transition"
                 >
                   + Radio
                 </button>
                 <button
                   onClick={() => openFieldForm('checkbox')}
-                  className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
+                  className="px-3 py-2 bg-imajin-orange text-primary text-sm hover:brightness-110 transition"
                 >
                   + Checkbox
                 </button>
                 <button
                   onClick={() => openFieldForm('dropdown')}
-                  className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
+                  className="px-3 py-2 bg-imajin-orange text-primary text-sm hover:brightness-110 transition"
                 >
                   + Dropdown
                 </button>
                 <button
                   onClick={() => openFieldForm('rating')}
-                  className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
+                  className="px-3 py-2 bg-imajin-orange text-primary text-sm hover:brightness-110 transition"
                 >
                   + Rating
                 </button>
                 <button
                   onClick={() => openFieldForm('boolean')}
-                  className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
+                  className="px-3 py-2 bg-imajin-orange text-primary text-sm hover:brightness-110 transition"
                 >
                   + Yes/No
                 </button>
@@ -475,7 +475,7 @@ function CreateSurveyContent() {
 
               <div className="space-y-2">
                 {survey.fields.elements.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500 text-sm">
+                  <div className="text-center py-8 text-secondary text-sm">
                     No questions yet. Add a question using the buttons above.
                   </div>
                 ) : (
@@ -491,13 +491,13 @@ function CreateSurveyContent() {
                           isEditing={true}
                         />
                       ) : (
-                        <div className="p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
+                        <div className="p-3 border border-white/10 dark:border-white/10 bg-surface-elevated flex items-center justify-between">
                           <div className="flex-1">
                             <div className="font-medium text-sm">
                               {field.title}
-                              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+                              {field.isRequired && <span className="text-error ml-1">*</span>}
                             </div>
-                            <div className="text-xs text-gray-500">
+                            <div className="text-xs text-secondary">
                               {field.type}
                               {(field.type === 'radiogroup' || field.type === 'checkbox' || field.type === 'dropdown') &&
                                 ` (${field.choices?.length || 0} choices)`}
@@ -508,26 +508,26 @@ function CreateSurveyContent() {
                             <button
                               onClick={() => moveField(index, 'up')}
                               disabled={index === 0}
-                              className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs disabled:opacity-30"
+                              className="px-2 py-1 border border-white/10 dark:border-white/10 text-xs disabled:opacity-30"
                             >
                               ↑
                             </button>
                             <button
                               onClick={() => moveField(index, 'down')}
                               disabled={index === survey.fields.elements.length - 1}
-                              className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs disabled:opacity-30"
+                              className="px-2 py-1 border border-white/10 dark:border-white/10 text-xs disabled:opacity-30"
                             >
                               ↓
                             </button>
                             <button
                               onClick={() => editField(index)}
-                              className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs hover:bg-gray-100 dark:hover:bg-gray-800"
+                              className="px-2 py-1 border border-white/10 dark:border-white/10 text-xs:bg-surface-elevated dark:hover:bg-surface-elevated"
                             >
                               Edit
                             </button>
                             <button
                               onClick={() => deleteField(index)}
-                              className="px-2 py-1 border border-red-300 dark:border-red-700 text-red-600 rounded text-xs hover:bg-red-50 dark:hover:bg-red-900/20"
+                              className="px-2 py-1 border border-error/20 dark:border-error/20 text-error text-xs:bg-error/10 dark:hover:bg-red-900/20"
                             >
                               Delete
                             </button>
@@ -544,14 +544,14 @@ function CreateSurveyContent() {
               <button
                 onClick={() => saveSurvey(false)}
                 disabled={saving}
-                className="flex-1 px-6 py-3 border border-gray-300 dark:border-gray-700 rounded-lg font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition disabled:opacity-50"
+                className="flex-1 px-6 py-3 border border-white/10 dark:border-white/10 font-semibold:bg-surface-elevated dark:hover:bg-surface-elevated transition disabled:opacity-50"
               >
                 {saving ? 'Saving...' : 'Save as Draft'}
               </button>
               <button
                 onClick={() => saveSurvey(true)}
                 disabled={saving}
-                className="flex-1 px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition disabled:opacity-50"
+                className="flex-1 px-6 py-3 bg-imajin-orange text-primary font-semibold hover:brightness-110 transition disabled:opacity-50"
               >
                 {saving ? 'Publishing...' : 'Publish Survey'}
               </button>
@@ -560,21 +560,21 @@ function CreateSurveyContent() {
 
           {/* Preview Panel */}
           <div className="lg:sticky lg:top-6 h-fit">
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-surface-elevated p-6 border border-white/10 dark:border-white/10">
               <h2 className="text-xl font-semibold mb-4">Live Preview</h2>
 
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <div className="border-t border-white/10 dark:border-white/10 pt-4">
                 <h3 className="text-2xl font-bold mb-2">
                   {survey.title || 'Untitled Survey'}
                 </h3>
                 {survey.description && (
-                  <p className="text-gray-600 dark:text-gray-400 mb-6">
+                  <p className="text-muted dark:text-secondary mb-6">
                     {survey.description}
                   </p>
                 )}
 
                 {survey.fields.elements.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500 text-sm">
+                  <div className="text-center py-12 text-secondary text-sm">
                     Preview will appear here as you add questions
                   </div>
                 ) : previewModel ? (
@@ -591,7 +591,7 @@ function CreateSurveyContent() {
 
 export default function CreateSurveyPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-orange-500" /></div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-imajin-purple" /></div>}>
       <CreateSurveyContent />
     </Suspense>
   );

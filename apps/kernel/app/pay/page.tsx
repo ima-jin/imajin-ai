@@ -45,8 +45,8 @@ export default async function Home() {
     <div className="max-w-4xl mx-auto space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-white">Payment Dashboard</h1>
-        <p className="text-zinc-400 mt-1">
+        <h1 className="text-3xl font-bold text-primary font-mono">Payment Dashboard</h1>
+        <p className="text-secondary mt-1">
           {session.actingAs ? `Scope: ${session.actingAs.slice(-8)}` : session.handle ? `@${session.handle}` : session.name || session.id}
         </p>
       </div>
@@ -66,25 +66,25 @@ export default async function Home() {
       <div className="flex gap-4">
         <Link
           href="/pay/payouts"
-          className="flex-1 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 text-center transition-colors group"
+          className="flex-1 bg-surface-base border border-white/10 hover:border-white/10 p-4 text-center transition-colors group"
         >
           <div className="text-2xl mb-2">💰</div>
-          <div className="text-sm font-medium text-white group-hover:text-orange-400 transition-colors">
+          <div className="text-sm font-medium text-primary group-hover:text-imajin-orange transition-colors">
             Payouts
           </div>
-          <div className="text-xs text-zinc-500 mt-1">
+          <div className="text-xs text-muted mt-1">
             Bank account & withdrawals
           </div>
         </Link>
         <Link
           href="/pay/history"
-          className="flex-1 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 text-center transition-colors group"
+          className="flex-1 bg-surface-base border border-white/10 hover:border-white/10 p-4 text-center transition-colors group"
         >
           <div className="text-2xl mb-2">📊</div>
-          <div className="text-sm font-medium text-white group-hover:text-orange-400 transition-colors">
+          <div className="text-sm font-medium text-primary group-hover:text-imajin-orange transition-colors">
             History
           </div>
-          <div className="text-xs text-zinc-500 mt-1">
+          <div className="text-xs text-muted mt-1">
             All transactions
           </div>
         </Link>
@@ -93,18 +93,18 @@ export default async function Home() {
       {/* Recent Transactions */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-white">Recent Transactions</h2>
-          <Link href="/pay/history" className="text-orange-500 hover:text-orange-400 text-sm transition-colors">
+          <h2 className="text-xl font-semibold text-primary font-mono">Recent Transactions</h2>
+          <Link href="/pay/history" className="text-imajin-orange hover:text-imajin-orange text-sm transition-colors">
             View all →
           </Link>
         </div>
 
         {recentTxs.length === 0 ? (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center text-zinc-500">
+          <div className="bg-surface-base border border-white/10 p-8 text-center text-muted">
             No transactions yet
           </div>
         ) : (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800">
+          <div className="bg-surface-base border border-white/10 divide-y divide-white/10">
             {recentTxs.map((tx) => {
               const isIncoming = tx.toDid === did;
               const amount = parseFloat(tx.amount);
@@ -113,10 +113,10 @@ export default async function Home() {
                 <div key={tx.id} className="px-5 py-4 flex items-center gap-4">
                   <span className="text-xl w-6 text-center shrink-0">{icon}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-white capitalize">
+                    <div className="text-sm font-medium text-primary capitalize">
                       {tx.type.replace(/_/g, ' ')}
                     </div>
-                    <div className="text-xs text-zinc-500 mt-0.5">
+                    <div className="text-xs text-muted mt-0.5">
                       {tx.service}
                       {tx.createdAt
                         ? ' · ' +
@@ -131,8 +131,8 @@ export default async function Home() {
                   <div
                     className={`text-base font-semibold shrink-0 ${
                       tx.currency === 'MJN'
-                        ? 'text-amber-400'
-                        : isIncoming ? 'text-green-400' : 'text-red-400'
+                        ? 'text-warning'
+                        : isIncoming ? 'text-success' : 'text-error'
                     }`}
                   >
                     {isIncoming ? '+' : '-'}

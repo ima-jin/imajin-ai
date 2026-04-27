@@ -75,7 +75,7 @@ export function PayoutActions({ status, did }: PayoutActionsProps) {
       <button
         onClick={handleOnboard}
         disabled={loading}
-        className="px-6 py-3 bg-orange-600 hover:bg-orange-500 disabled:bg-orange-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+        className="px-6 py-3 bg-imajin-orange hover:brightness-110 disabled:bg-imajin-orange/50 disabled:opacity-50 text-primary font-medium transition-colors"
       >
         {loading ? 'Setting up...' : 'Set up payouts'}
       </button>
@@ -87,7 +87,7 @@ export function PayoutActions({ status, did }: PayoutActionsProps) {
       <button
         onClick={handleOnboard}
         disabled={loading}
-        className="px-6 py-3 bg-orange-600 hover:bg-orange-500 disabled:bg-orange-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+        className="px-6 py-3 bg-imajin-orange hover:brightness-110 disabled:bg-imajin-orange/50 disabled:opacity-50 text-primary font-medium transition-colors"
       >
         {loading ? 'Continuing setup...' : 'Continue setup'}
       </button>
@@ -99,7 +99,7 @@ export function PayoutActions({ status, did }: PayoutActionsProps) {
       <button
         onClick={handleDashboard}
         disabled={loading}
-        className="px-6 py-3 bg-orange-600 hover:bg-orange-500 disabled:bg-orange-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+        className="px-6 py-3 bg-imajin-orange hover:brightness-110 disabled:bg-imajin-orange/50 disabled:opacity-50 text-primary font-medium transition-colors"
       >
         {loading ? 'Opening dashboard...' : 'Manage payouts'}
       </button>

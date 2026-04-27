@@ -21,11 +21,11 @@ const TYPE_BADGE: Record<string, { label: string; classes: string }> = {
   },
   'transaction.settled': {
     label: 'payment',
-    classes: 'bg-green-900/30 text-green-400 border-green-800',
+    classes: 'bg-success/30 text-success border-green-800',
   },
   customer: {
     label: 'customer',
-    classes: 'bg-amber-900/30 text-amber-400 border-amber-800',
+    classes: 'bg-warning/20 text-warning border-amber-800',
   },
 };
 
@@ -33,7 +33,7 @@ const ALL_TYPES = Object.keys(TYPE_BADGE);
 
 function getBadge(type: string) {
   return (
-    TYPE_BADGE[type] ?? { label: type, classes: 'bg-zinc-800 text-zinc-400 border-zinc-700' }
+    TYPE_BADGE[type] ?? { label: type, classes: 'bg-surface-elevated text-secondary border-white/10' }
   );
 }
 
@@ -110,19 +110,19 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
   return (
     <div className="space-y-4">
       {/* Header */}
-      <h2 className="text-xl font-bold text-white">Attestations</h2>
+      <h2 className="text-xl font-bold text-primary font-mono">Attestations</h2>
 
       {/* Filter bar */}
       <form
         method="GET"
-        className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-wrap gap-3 items-end"
+        className="bg-surface-base border border-white/10 p-4 flex flex-wrap gap-3 items-end"
       >
         <div className="flex-1 min-w-[160px]">
-          <label className="block text-xs text-zinc-500 mb-1.5">Role</label>
+          <label className="block text-xs text-muted mb-1.5">Role</label>
           <select
             name="role"
             defaultValue={role}
-            className="w-full bg-black border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+            className="w-full bg-surface-base border border-white/10 px-3 py-2 text-sm text-primary focus:border-imajin-purple focus:outline-none"
           >
             <option value="all">All (issued or about me)</option>
             <option value="issued">Issued by me</option>
@@ -131,11 +131,11 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
         </div>
 
         <div className="flex-1 min-w-[180px]">
-          <label className="block text-xs text-zinc-500 mb-1.5">Type</label>
+          <label className="block text-xs text-muted mb-1.5">Type</label>
           <select
             name="type"
             defaultValue={typeFilter || ''}
-            className="w-full bg-black border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+            className="w-full bg-surface-base border border-white/10 px-3 py-2 text-sm text-primary focus:border-imajin-purple focus:outline-none"
           >
             <option value="">All types</option>
             {ALL_TYPES.map((t) => (
@@ -149,14 +149,14 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
         <div className="flex gap-2">
           <button
             type="submit"
-            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-sm font-medium rounded-lg transition-colors"
+            className="px-4 py-2 bg-warning hover:bg-warning text-black text-sm font-medium transition-colors"
           >
             Filter
           </button>
           {hasFilters && (
             <Link
               href="/auth/attestations"
-              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
+              className="px-4 py-2 bg-surface-elevated hover:bg-surface-elevated text-zinc-300 text-sm font-medium transition-colors"
             >
               Clear
             </Link>
@@ -166,18 +166,18 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
 
       {/* Attestation list */}
       {items.length === 0 ? (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-12 text-center text-zinc-500">
+        <div className="bg-surface-base border border-white/10 p-12 text-center text-muted">
           No attestations found
           {hasFilters && (
             <div className="mt-2">
-              <Link href="/auth/attestations" className="text-amber-500 hover:text-amber-400 text-sm">
+              <Link href="/auth/attestations" className="text-warning hover:text-warning text-sm">
                 Clear filters
               </Link>
             </div>
           )}
         </div>
       ) : (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800">
+        <div className="bg-surface-base border border-white/10 divide-y divide-white/10">
           {items.map((att) => {
             const badge = getBadge(att.type);
             const issuer = identityMap.get(att.issuerDid);
@@ -204,10 +204,10 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
 
             return (
               <details key={att.id} className="group">
-                <summary className="px-5 py-4 flex items-center gap-3 cursor-pointer hover:bg-zinc-800/40 transition-colors [list-style:none] [&::-webkit-details-marker]:hidden">
+                <summary className="px-5 py-4 flex items-center gap-3 cursor-pointer hover:bg-surface-elevated/40 transition-colors [list-style:none] [&::-webkit-details-marker]:hidden">
                   {/* Type badge */}
                   <span
-                    className={`text-xs px-2 py-0.5 rounded-full border shrink-0 ${badge.classes}`}
+                    className={`text-xs px-2 py-0.5 border shrink-0 ${badge.classes}`}
                   >
                     {badge.label}
                   </span>
@@ -215,16 +215,16 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
                   {/* Main info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap text-sm">
-                      <span className={`font-medium ${isIssuer ? 'text-amber-400' : 'text-zinc-300'}`}>
+                      <span className={`font-medium ${isIssuer ? 'text-warning' : 'text-zinc-300'}`}>
                         {resolvedName(att.issuerDid, issuer)}
                       </span>
-                      <span className="text-zinc-600">→</span>
-                      <span className={`font-medium ${isSubject ? 'text-amber-400' : 'text-zinc-300'}`}>
+                      <span className="text-muted">→</span>
+                      <span className={`font-medium ${isSubject ? 'text-warning' : 'text-zinc-300'}`}>
                         {resolvedName(att.subjectDid, subject)}
                       </span>
                     </div>
                     {att.contextId && (
-                      <div className="text-xs text-zinc-600 mt-0.5 font-mono truncate">
+                      <div className="text-xs text-muted mt-0.5 font-mono truncate">
                         {att.contextId}
                       </div>
                     )}
@@ -232,11 +232,11 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
 
                   {/* Time + chevron */}
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-xs text-zinc-500" title={absoluteTime}>
+                    <span className="text-xs text-muted" title={absoluteTime}>
                       {relTime}
                     </span>
                     <svg
-                      className="w-4 h-4 text-zinc-600 transition-transform group-open:rotate-180"
+                      className="w-4 h-4 text-muted transition-transform group-open:rotate-180"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -248,36 +248,36 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
                 </summary>
 
                 {/* Expanded: full signed payload */}
-                <div className="px-5 pb-5 border-t border-zinc-800/60 space-y-3">
+                <div className="px-5 pb-5 border-t border-white/10/60 space-y-3">
                   <div className="pt-3 space-y-1 text-xs">
                     <div className="flex gap-2">
-                      <span className="text-zinc-600 w-14 shrink-0">Issuer</span>
-                      <span className="font-mono text-zinc-400 break-all">
+                      <span className="text-muted w-14 shrink-0">Issuer</span>
+                      <span className="font-mono text-secondary break-all">
                         {issuer?.handle && (
                           <span className="text-zinc-300 mr-1">@{issuer.handle}</span>
                         )}
                         {!issuer?.handle && issuer?.name && (
                           <span className="text-zinc-300 mr-1">{issuer.name}</span>
                         )}
-                        <span className="text-zinc-600">{att.issuerDid}</span>
+                        <span className="text-muted">{att.issuerDid}</span>
                       </span>
                     </div>
                     <div className="flex gap-2">
-                      <span className="text-zinc-600 w-14 shrink-0">Subject</span>
-                      <span className="font-mono text-zinc-400 break-all">
+                      <span className="text-muted w-14 shrink-0">Subject</span>
+                      <span className="font-mono text-secondary break-all">
                         {subject?.handle && (
                           <span className="text-zinc-300 mr-1">@{subject.handle}</span>
                         )}
                         {!subject?.handle && subject?.name && (
                           <span className="text-zinc-300 mr-1">{subject.name}</span>
                         )}
-                        <span className="text-zinc-600">{att.subjectDid}</span>
+                        <span className="text-muted">{att.subjectDid}</span>
                       </span>
                     </div>
                     {att.expiresAt && (
                       <div className="flex gap-2">
-                        <span className="text-zinc-600 w-14 shrink-0">Expires</span>
-                        <span className="text-zinc-500">
+                        <span className="text-muted w-14 shrink-0">Expires</span>
+                        <span className="text-muted">
                           {att.expiresAt.toLocaleString(undefined, {
                             dateStyle: 'medium',
                             timeStyle: 'short',
@@ -288,8 +288,8 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
                   </div>
 
                   <div>
-                    <div className="text-xs font-medium text-zinc-400 mb-2">Signed payload</div>
-                    <pre className="text-xs font-mono bg-black/40 border border-zinc-800 rounded-lg p-3 text-zinc-500 overflow-auto whitespace-pre-wrap">
+                    <div className="text-xs font-medium text-secondary mb-2">Signed payload</div>
+                    <pre className="text-xs font-mono bg-surface-base/40 border border-white/10 p-3 text-muted overflow-auto whitespace-pre-wrap">
                       {JSON.stringify(signedPayload, null, 2)}
                     </pre>
                   </div>
@@ -306,7 +306,7 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
           {page > 1 ? (
             <Link
               href={`/auth/attestations?${new URLSearchParams({ ...filterParams, page: String(page - 1) })}`}
-              className="px-4 py-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors"
+              className="px-4 py-2 bg-surface-base border border-white/10 hover:border-white/10 text-zinc-300 text-sm transition-colors"
             >
               ← Previous
             </Link>
@@ -316,7 +316,7 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
           {hasMore && (
             <Link
               href={`/auth/attestations?${new URLSearchParams({ ...filterParams, page: String(page + 1) })}`}
-              className="px-4 py-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors"
+              className="px-4 py-2 bg-surface-base border border-white/10 hover:border-white/10 text-zinc-300 text-sm transition-colors"
             >
               Next →
             </Link>

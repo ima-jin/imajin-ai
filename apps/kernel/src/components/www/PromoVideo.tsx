@@ -42,16 +42,16 @@ export function PromoVideo() {
       <section className="w-full max-w-4xl mx-auto mb-10 px-0">
         <button
           onClick={handlePlay}
-          className="relative w-full rounded-xl overflow-hidden group cursor-pointer"
+          className="relative w-full overflow-hidden group cursor-pointer"
           style={{ aspectRatio: '16/9' }}
         >
           <img
             src={posterId ? getPosterSrc(posterId) : `/media/api/assets/${assetId}/og`}
             alt="Imajin — Watch the video"
-            className="w-full h-full object-cover bg-gray-900"
+            className="w-full h-full object-cover bg-surface-surface"
           />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
-            <span className="flex items-center justify-center w-16 h-16 rounded-full bg-black/50 border-2 border-white/30 text-white text-3xl backdrop-blur-sm transition-all group-hover:scale-110 group-hover:bg-black/60 group-hover:border-white/50">
+          <div className="absolute inset-0 flex items-center justify-center bg-surface-base/20 group-hover:bg-surface-base/30 transition-colors">
+            <span className="flex items-center justify-center w-16 h-16 rounded-full bg-surface-base/50 border-2 border-white/30 text-primary text-3xl backdrop-blur-sm transition-all group-hover:scale-110 group-hover:bg-surface-base/60 group-hover:border-white/50">
               ▶
             </span>
           </div>
@@ -67,7 +67,7 @@ export function PromoVideo() {
         <video
           ref={videoRef}
           src={getVideoSrc(assetId)}
-          className="w-full h-full rounded-xl object-contain bg-gray-900"
+          className="w-full h-full object-contain bg-surface-surface"
           playsInline
           controls
           autoPlay

@@ -230,20 +230,20 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: P
       <div>
         <button
           onClick={() => { setStep('identifier'); setError(''); setPassword(''); }}
-          className="text-sm text-gray-500 hover:text-gray-300 transition mb-4 flex items-center gap-1"
+          className="text-sm text-secondary hover:text-primary transition mb-4 flex items-center gap-1"
         >
           ← Change account
         </button>
 
-        <div className="mb-4 p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg">
-          <p className="text-xs text-amber-400">
-            Signing in as <strong className="text-amber-300">@{handle.replace(/^@/, '')}</strong>
+        <div className="mb-4 p-3 bg-warning/20 border border-warning/50">
+          <p className="text-xs text-warning">
+            Signing in as <strong className="text-warning/70">@{handle.replace(/^@/, '')}</strong>
           </p>
         </div>
 
         <form onSubmit={handlePasswordSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Password</label>
+            <label className="block text-sm font-medium mb-1 text-primary">Password</label>
             <input
               type="password"
               value={password}
@@ -251,20 +251,20 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: P
               placeholder="Enter your password"
               required
               autoFocus
-              className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+              className="w-full px-4 py-2 border border-white/10 bg-surface-base text-primary focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
             />
           </div>
 
           {error && (
-            <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg">
-              <p className="text-sm text-red-400">{error}</p>
+            <div className="p-3 bg-error/20 border border-red-800">
+              <p className="text-sm text-error">{error}</p>
             </div>
           )}
 
           <button
             type="submit"
             disabled={loading || !password}
-            className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-6 py-3 bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
@@ -276,7 +276,7 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: P
   return (
     <form onSubmit={handleIdentifierSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium mb-1 text-gray-300">Handle</label>
+        <label className="block text-sm font-medium mb-1 text-primary">Handle</label>
         <input
           type="text"
           value={handle}
@@ -284,20 +284,20 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: P
           placeholder="@yourhandle"
           required
           autoFocus
-          className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+          className="w-full px-4 py-2 border border-white/10 bg-surface-base text-primary focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
         />
       </div>
 
       {error && (
-        <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg">
-          <p className="text-sm text-red-400">{error}</p>
+        <div className="p-3 bg-error/20 border border-red-800">
+          <p className="text-sm text-error">{error}</p>
         </div>
       )}
 
       <button
         type="submit"
         disabled={loading || !handle.trim()}
-        className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full px-6 py-3 bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {loading ? 'Looking up…' : 'Continue'}
       </button>

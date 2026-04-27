@@ -156,11 +156,11 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
   );
 
   return (
-    <div className="h-full flex flex-col bg-[#1a1a1a] text-white overflow-hidden">
+    <div className="h-full flex flex-col bg-[#1a1a1a] text-primary overflow-hidden">
       {/* Mobile header (hamburger only — search is in NavBar) */}
-      <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-gray-800 bg-[#1a1a1a] shrink-0">
+      <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-white/10 bg-[#1a1a1a] shrink-0">
         <button
-          className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+          className="p-1.5 text-secondary hover:text-primary hover:bg-white/10 transition-colors"
           onClick={() => setMobileSidebarOpen(true)}
           aria-label="Open folders"
         >
@@ -171,7 +171,7 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar — desktop */}
-        <aside className="hidden md:block w-56 border-r border-gray-800 shrink-0 overflow-hidden">
+        <aside className="hidden md:block w-56 border-r border-white/10 shrink-0 overflow-hidden">
           {sidebarContent}
         </aside>
 
@@ -179,10 +179,10 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
         {mobileSidebarOpen && (
           <div className="fixed inset-0 z-40 flex md:hidden">
             <div
-              className="fixed inset-0 bg-black/60"
+              className="fixed inset-0 bg-surface-base/60"
               onClick={() => setMobileSidebarOpen(false)}
             />
-            <div className="relative z-50 w-64 h-full bg-[#1a1a1a] border-r border-gray-800">
+            <div className="relative z-50 w-64 h-full bg-[#1a1a1a] border-r border-white/10">
               {sidebarContent}
             </div>
           </div>

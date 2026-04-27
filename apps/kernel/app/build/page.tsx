@@ -17,7 +17,7 @@ export default async function BuildPage() {
         <div className="mb-12">
           <Link
             href="/"
-            className="text-sm text-gray-500 hover:text-gray-300 transition-colors"
+            className="text-sm text-secondary hover:text-primary transition-colors"
           >
             ← Home
           </Link>
@@ -25,8 +25,8 @@ export default async function BuildPage() {
 
         {/* Header */}
         <header className="mb-16">
-          <h1 className="text-4xl font-bold text-white mb-4">Build Log</h1>
-          <p className="text-lg text-gray-400">
+          <h1 className="text-4xl font-bold text-primary mb-4 font-mono">Build Log</h1>
+          <p className="text-lg text-secondary">
             What we shipped, when we shipped it. Building sovereign technology in public.
           </p>
         </header>
@@ -37,11 +37,11 @@ export default async function BuildPage() {
             <article key={i} className="relative">
               {/* Date & title */}
               <div className="mb-6">
-                <time className="text-sm font-mono text-amber-500/80">
+                <time className="text-sm font-mono text-warning/80">
                   {entry.date}
                 </time>
                 {entry.title && (
-                  <h2 className="text-2xl font-semibold text-white mt-1">
+                  <h2 className="text-2xl font-semibold text-primary mt-1 font-mono">
                     {entry.title}
                   </h2>
                 )}
@@ -50,10 +50,10 @@ export default async function BuildPage() {
               {/* Content */}
               <div
                 className="prose prose-invert prose-sm max-w-none
-                  prose-li:text-gray-300
-                  prose-strong:text-white
-                  prose-code:text-amber-400
-                  prose-a:text-amber-500 prose-a:no-underline hover:prose-a:underline"
+                  prose-li:text-primary
+                  prose-strong:text-primary
+                  prose-code:text-warning
+                  prose-a:text-warning prose-a:no-underline hover:prose-a:underline"
                 dangerouslySetInnerHTML={{ __html: entry.contentHtml }}
               />
 
@@ -67,7 +67,7 @@ export default async function BuildPage() {
 
         {/* Footer */}
         <footer className="mt-24 pt-8 border-t border-white/5 text-center">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-secondary">
             🟠 Built with sovereignty in mind.
           </p>
         </footer>

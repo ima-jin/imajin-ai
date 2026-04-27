@@ -45,7 +45,7 @@ type AvatarMode = 'emoji' | 'image';
 
 export default function RegisterPageWrapper() {
   return (
-    <Suspense fallback={<div className="max-w-md mx-auto text-center py-12 text-gray-500">Loading...</div>}>
+    <Suspense fallback={<div className="max-w-md mx-auto text-center py-12 text-secondary">Loading...</div>}>
       <RegisterPage />
     </Suspense>
   );
@@ -295,18 +295,18 @@ function RegisterPage() {
   if (step === 'no-invite') {
     return (
       <div className="max-w-md mx-auto text-center">
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+        <div className="bg-[#0a0a0a] border border-white/10 p-8">
           <div className="text-6xl mb-4">🔒</div>
-          <h1 className="text-2xl font-bold mb-2 text-white">Invite Only</h1>
-          <p className="text-gray-400 mb-6">
+          <h1 className="text-2xl font-bold mb-2 text-primary font-mono">Invite Only</h1>
+          <p className="text-secondary mb-6">
             Imajin is an invite-only network. You need an invite link from an existing member to create an account.
           </p>
-          <p className="text-gray-500 text-sm mb-6">
+          <p className="text-secondary text-sm mb-6">
             Already have an account?
           </p>
           <a
             href="/auth/login"
-            className="inline-block px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold"
+            className="inline-block px-6 py-3 bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-semibold"
           >
             Login
           </a>
@@ -318,35 +318,35 @@ function RegisterPage() {
   if (step === 'success' && profile) {
     return (
       <div className="max-w-md mx-auto text-center">
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+        <div className="bg-[#0a0a0a] border border-white/10 p-8">
           <div className="text-6xl mb-4">🟠</div>
-          <h1 className="text-2xl font-bold mb-2 text-white">Welcome to Imajin!</h1>
-          <p className="text-gray-400 mb-6">
+          <h1 className="text-2xl font-bold mb-2 text-primary font-mono">Welcome to Imajin!</h1>
+          <p className="text-secondary mb-6">
             Your sovereign identity has been created.
           </p>
 
           <div
             onClick={() => copyDid(profile.did)}
-            className="bg-black/50 rounded-lg p-4 mb-6 text-left border border-gray-800 cursor-pointer hover:border-[#F59E0B]/50 transition"
+            className="bg-surface-base/50 p-4 mb-6 text-left border border-white/10 cursor-pointer hover:border-[#F59E0B]/50 transition"
           >
-            <p className="text-sm text-gray-500 mb-1 flex justify-between">
+            <p className="text-sm text-secondary mb-1 flex justify-between">
               Your DID
               <span className="text-xs">{copied ? '✅ Copied!' : '📋 Click to copy'}</span>
             </p>
-            <p className="font-mono text-xs break-all text-gray-300">{profile.did}</p>
+            <p className="font-mono text-xs break-all text-primary">{profile.did}</p>
           </div>
 
-          <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg p-4 mb-6 text-left">
+          <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 p-4 mb-6 text-left">
             <p className="text-sm font-semibold text-[#F59E0B] mb-2">
               🔐 Back Up Your Keys Now
             </p>
-            <p className="text-xs text-gray-300 mb-3">
+            <p className="text-xs text-primary mb-3">
               Your private key is only stored in this browser. If you clear your data or lose this device,
               <strong> you will permanently lose access to your identity.</strong>
             </p>
             <button
               onClick={downloadKeys}
-              className="w-full px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition text-sm font-medium"
+              className="w-full px-4 py-2 bg-[#F59E0B] text-black hover:bg-[#D97706] transition text-sm font-medium"
             >
               ⬇️ Download Backup Keys
             </button>
@@ -355,14 +355,14 @@ function RegisterPage() {
           {redirectUrl ? (
             <a
               href={redirectUrl}
-              className="block w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold text-center"
+              className="block w-full px-6 py-3 bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-semibold text-center"
             >
               Continue →
             </a>
           ) : (
             <button
               onClick={() => router.push(`/profile/${profile.handle || profile.did}`)}
-              className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold"
+              className="w-full px-6 py-3 bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-semibold"
             >
               View Your Profile →
             </button>
@@ -375,13 +375,13 @@ function RegisterPage() {
   if (step === 'error') {
     return (
       <div className="max-w-md mx-auto text-center">
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+        <div className="bg-[#0a0a0a] border border-white/10 p-8">
           <div className="text-6xl mb-4">😕</div>
-          <h1 className="text-2xl font-bold mb-2 text-white">Something went wrong</h1>
-          <p className="text-red-400 mb-6">{error}</p>
+          <h1 className="text-2xl font-bold mb-2 text-primary font-mono">Something went wrong</h1>
+          <p className="text-error mb-6">{error}</p>
           <button
             onClick={() => setStep('form')}
-            className="px-6 py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition"
+            className="px-6 py-3 bg-surface-elevated text-primary hover:bg-surface-elevated transition"
           >
             Try Again
           </button>
@@ -393,10 +393,10 @@ function RegisterPage() {
   if (step === 'creating') {
     return (
       <div className="max-w-md mx-auto text-center">
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+        <div className="bg-[#0a0a0a] border border-white/10 p-8">
           <div className="text-6xl mb-4 animate-pulse">🔐</div>
-          <h1 className="text-2xl font-bold mb-2 text-white">Creating your identity...</h1>
-          <p className="text-gray-400">
+          <h1 className="text-2xl font-bold mb-2 text-primary font-mono">Creating your identity...</h1>
+          <p className="text-secondary">
             Generating keypair and registering on the network.
           </p>
         </div>
@@ -407,7 +407,7 @@ function RegisterPage() {
   return (
     <div className="max-w-md mx-auto">
       {showBanner && (
-        <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg p-4 mb-4 flex items-center justify-between">
+        <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 p-4 mb-4 flex items-center justify-between">
           <div className="flex-1">
             <p className="text-sm text-[#F59E0B] font-medium">
               Already registered as {loggedInHandle ? `@${loggedInHandle}` : 'a user'}
@@ -419,10 +419,10 @@ function RegisterPage() {
               >
                 Go to profile
               </button>
-              <span className="text-gray-600">•</span>
+              <span className="text-muted">•</span>
               <button
                 onClick={() => setShowBanner(false)}
-                className="text-xs text-gray-400 hover:underline"
+                className="text-xs text-secondary hover:underline"
               >
                 Register new identity
               </button>
@@ -431,43 +431,43 @@ function RegisterPage() {
         </div>
       )}
 
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-        <h1 className="text-2xl font-bold mb-2 text-center text-white">Join Imajin</h1>
-        <p className="text-gray-400 text-center mb-6">
+      <div className="bg-[#0a0a0a] border border-white/10 p-8">
+        <h1 className="text-2xl font-bold mb-2 text-center text-primary font-mono">Join Imajin</h1>
+        <p className="text-secondary text-center mb-6">
           Create your sovereign identity. No passwords, no email.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Display Name *</label>
+            <label className="block text-sm font-medium mb-1 text-primary">Display Name *</label>
             <input
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Your name"
               required
-              className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+              className="w-full px-4 py-2 border border-white/10 bg-surface-base text-primary focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Handle</label>
+            <label className="block text-sm font-medium mb-1 text-primary">Handle</label>
             <div className="flex items-center">
-              <span className="text-gray-500 mr-1">@</span>
+              <span className="text-secondary mr-1">@</span>
               <input
                 type="text"
                 value={handle}
                 onChange={(e) => setHandle(normalizeHandleInput(e.target.value))}
                 placeholder="yourhandle"
                 pattern="[a-z0-9\-]{3,30}"
-                className="flex-1 px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                className="flex-1 px-4 py-2 border border-white/10 bg-surface-base text-primary focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
               />
             </div>
             {handleStatus !== 'idle' && handle.length >= 3 && (
               <p className={`text-xs mt-1 flex items-center gap-1 ${
-                handleStatus === 'checking' ? 'text-gray-400' :
-                handleStatus === 'available' ? 'text-green-400' :
-                'text-red-400'
+                handleStatus === 'checking' ? 'text-secondary' :
+                handleStatus === 'available' ? 'text-success' :
+                'text-error'
               }`}>
                 {handleStatus === 'checking' && '⏳ Checking...'}
                 {handleStatus === 'available' && '✅ Available'}
@@ -477,19 +477,19 @@ function RegisterPage() {
               </p>
             )}
             {(handleStatus === 'idle' || handle.length < 3) && (
-              <p className="text-xs text-gray-500 mt-1">3-30 chars, lowercase, alphanumeric + hyphens</p>
+              <p className="text-xs text-secondary mt-1">3-30 chars, lowercase, alphanumeric + hyphens</p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Bio (optional)</label>
+            <label className="block text-sm font-medium mb-1 text-primary">Bio (optional)</label>
             <textarea
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               placeholder="Tell us about yourself..."
               rows={3}
               maxLength={500}
-              className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
+              className="w-full px-4 py-2 border border-white/10 bg-surface-base text-primary focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
             />
           </div>
 
@@ -508,13 +508,13 @@ function RegisterPage() {
               />
             ) : (
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-300">Avatar (emoji)</label>
+                <label className="block text-sm font-medium mb-1 text-primary">Avatar (emoji)</label>
                 <input
                   type="text"
                   value={avatar}
                   onChange={(e) => setAvatar(e.target.value)}
                   placeholder="👤"
-                  className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-white/10 bg-surface-base text-primary focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
                 />
                 <button
                   type="button"
@@ -529,13 +529,13 @@ function RegisterPage() {
 
           <button
             type="submit"
-            className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold"
+            className="w-full px-6 py-3 bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-semibold"
           >
             Create Identity
           </button>
         </form>
 
-        <p className="text-xs text-gray-500 text-center mt-6">
+        <p className="text-xs text-secondary text-center mt-6">
           By creating an identity, you generate a cryptographic keypair.
           <br />
           No data leaves your device until you submit.

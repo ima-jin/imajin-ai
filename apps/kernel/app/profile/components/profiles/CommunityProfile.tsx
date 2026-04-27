@@ -16,12 +16,12 @@ export async function CommunityProfile({ profile, identity, viewer }: ProfileVie
 
   return (
     <div className="max-w-lg mx-auto">
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 text-center">
+      <div className="bg-[#0a0a0a] border border-white/10 p-8 text-center">
         <ScopeHeader profile={profile} identity={identity} />
 
         {/* Purpose / about */}
         {profile.bio && (
-          <p className="text-gray-300 mb-6">{profile.bio}</p>
+          <p className="text-primary mb-6">{profile.bio}</p>
         )}
 
         {/* Member list grouped by role */}
@@ -43,13 +43,13 @@ export async function CommunityProfile({ profile, identity, viewer }: ProfileVie
         />
 
         {/* Member since */}
-        <p className="text-xs text-gray-500 mt-4">
+        <p className="text-xs text-secondary mt-4">
           Member since {formatMemberSince(profile.createdAt)}
         </p>
       </div>
 
       {/* DID */}
-      <p className="text-center text-xs text-gray-500 mt-4 font-mono break-all">
+      <p className="text-center text-xs text-secondary mt-4 font-mono break-all">
         {profile.did}
       </p>
     </div>

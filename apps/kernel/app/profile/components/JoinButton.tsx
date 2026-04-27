@@ -18,7 +18,7 @@ export function JoinButton({ identityDid, viewerDid, initialMemberRole }: JoinBu
       <div className="mb-6">
         <button
           disabled
-          className="px-6 py-2 bg-gray-900 border border-gray-800 rounded-lg text-gray-500 text-sm cursor-not-allowed"
+          className="px-6 py-2 bg-surface-surface border border-white/10 text-secondary text-sm cursor-not-allowed"
         >
           Sign in to join
         </button>
@@ -29,7 +29,7 @@ export function JoinButton({ identityDid, viewerDid, initialMemberRole }: JoinBu
   if (memberRole) {
     return (
       <div className="mb-6">
-        <div className="px-6 py-2 bg-gray-900/50 border border-gray-800 rounded-lg text-gray-400 text-sm inline-block">
+        <div className="px-6 py-2 bg-surface-surface/50 border border-white/10 text-secondary text-sm inline-block">
           ✓ You&apos;re a {memberRole}
         </div>
       </div>
@@ -61,11 +61,11 @@ export function JoinButton({ identityDid, viewerDid, initialMemberRole }: JoinBu
       <button
         onClick={handleJoin}
         disabled={loading}
-        className="px-6 py-2 bg-[#F59E0B]/10 border border-[#F59E0B]/30 text-[#F59E0B] rounded-lg hover:bg-[#F59E0B]/20 transition text-sm font-medium disabled:opacity-50"
+        className="px-6 py-2 bg-[#F59E0B]/10 border border-[#F59E0B]/30 text-[#F59E0B] hover:bg-[#F59E0B]/20 transition text-sm font-medium disabled:opacity-50"
       >
         {loading ? 'Joining...' : '+ Join Community'}
       </button>
-      {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
+      {error && <p className="text-error text-xs mt-2">{error}</p>}
     </div>
   );
 }

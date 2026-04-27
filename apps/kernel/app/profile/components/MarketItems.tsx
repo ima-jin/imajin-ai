@@ -40,14 +40,14 @@ export function MarketItems({ did, handle, marketBaseUrl }: MarketItemsProps) {
   if (loading) {
     return (
       <div className="mt-6">
-        <div className="h-5 w-24 bg-gray-800 rounded animate-pulse mb-3" />
+        <div className="h-5 w-24 bg-surface-elevated animate-pulse mb-3" />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden animate-pulse">
-              <div className="aspect-square bg-gray-800" />
+            <div key={i} className="bg-surface-surface border border-white/10 overflow-hidden animate-pulse">
+              <div className="aspect-square bg-surface-elevated" />
               <div className="p-2 space-y-1">
-                <div className="h-3 bg-gray-800 rounded w-3/4" />
-                <div className="h-3 bg-gray-800 rounded w-1/2" />
+                <div className="h-3 bg-surface-elevated w-3/4" />
+                <div className="h-3 bg-surface-elevated w-1/2" />
               </div>
             </div>
           ))}
@@ -61,9 +61,9 @@ export function MarketItems({ did, handle, marketBaseUrl }: MarketItemsProps) {
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-gray-300">
+        <h2 className="text-sm font-semibold text-primary font-mono">
           🏪 Market
-          <span className="ml-1.5 text-gray-500 font-normal">({listings.length})</span>
+          <span className="ml-1.5 text-secondary font-normal">({listings.length})</span>
         </h2>
         <a
           href={handle ? `${marketBase}/seller/${encodeURIComponent(handle)}` : `${marketBase}/listings?seller_did=${encodeURIComponent(did)}`}
@@ -82,9 +82,9 @@ export function MarketItems({ did, handle, marketBaseUrl }: MarketItemsProps) {
             href={`${marketBase}/listings/${listing.id}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hover:border-gray-700 transition group"
+            className="bg-surface-surface border border-white/10 overflow-hidden hover:border-white/10 transition group"
           >
-            <div className="aspect-square bg-gray-800 flex items-center justify-center overflow-hidden">
+            <div className="aspect-square bg-surface-elevated flex items-center justify-center overflow-hidden">
               {listing.images && listing.images.length > 0 ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -97,7 +97,7 @@ export function MarketItems({ did, handle, marketBaseUrl }: MarketItemsProps) {
               )}
             </div>
             <div className="p-2">
-              <p className="text-xs text-white font-medium truncate">{listing.title}</p>
+              <p className="text-xs text-primary font-medium truncate">{listing.title}</p>
               <p className="text-xs text-[#F59E0B] mt-0.5">{formatPrice(listing.price, listing.currency)}</p>
             </div>
           </a>

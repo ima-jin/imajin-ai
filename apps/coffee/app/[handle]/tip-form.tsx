@@ -111,26 +111,18 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* One-time vs Monthly Toggle */}
       <div className="flex justify-center">
-        <div className="inline-flex bg-white/50 rounded-xl p-1">
+        <div className="inline-flex bg-surface-card/50 p-1">
           <button
             type="button"
             onClick={() => setIsRecurring(false)}
-            className={`px-6 py-2 rounded-lg font-medium transition ${
-              !isRecurring
-                ? 'bg-white shadow text-gray-900'
-                : 'text-gray-500'
-            }`}
+            className={`px-6 py-2 font-medium transition ${ !isRecurring ? 'bg-surface-card text-primary' : 'text-secondary' }`}
           >
             One-time
           </button>
           <button
             type="button"
             onClick={() => setIsRecurring(true)}
-            className={`px-6 py-2 rounded-lg font-medium transition ${
-              isRecurring
-                ? 'bg-white shadow text-gray-900'
-                : 'text-gray-500'
-            }`}
+            className={`px-6 py-2 font-medium transition ${ isRecurring ? 'bg-surface-card text-primary' : 'text-secondary' }`}
           >
             Monthly
           </button>
@@ -147,11 +139,7 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
               setSelectedAmount(amount);
               setCustomAmount('');
             }}
-            className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-              selectedAmount === amount && !customAmount
-                ? 'text-white shadow-lg scale-105'
-                : 'bg-white/50 hover:bg-white/80 text-gray-700'
-            }`}
+            className={`px-6 py-3 font-semibold transition-all ${ selectedAmount === amount && !customAmount ? 'text-primary scale-105' : 'bg-surface-card/50:bg-surface-card/80 text-muted' }`}
             style={
               selectedAmount === amount && !customAmount
                 ? { backgroundColor: primaryColor }
@@ -168,7 +156,7 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
       {page.allowCustomAmount && (
         <div>
           <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-secondary">$</span>
             <input
               type="number"
               step="0.01"
@@ -179,7 +167,7 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
                 setCustomAmount(e.target.value);
                 setSelectedAmount(null);
               }}
-              className="w-full pl-8 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white/50"
+              className="w-full pl-8 pr-4 py-3 border border-white/10 focus:outline-none focus:ring-2 focus:ring-imajin-purple bg-surface-card/50"
             />
           </div>
         </div>
@@ -188,18 +176,14 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
       {/* Fund Direction */}
       {fundDirections.length > 0 && (
         <div className="space-y-2">
-          <p className="text-sm text-gray-600 text-center">Where should this go?</p>
+          <p className="text-sm text-muted text-center">Where should this go?</p>
           <div className="flex flex-wrap justify-center gap-2">
             {fundDirections.map((fd) => (
               <button
                 key={fd.id}
                 type="button"
                 onClick={() => setFundDirection(fundDirection === fd.id ? '' : fd.id)}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                  fundDirection === fd.id
-                    ? 'text-white shadow-md scale-105'
-                    : 'bg-white/50 hover:bg-white/80 text-gray-700'
-                }`}
+                className={`px-4 py-2 text-sm font-medium transition-all ${ fundDirection === fd.id ? 'text-primary scale-105' : 'bg-surface-card/50:bg-surface-card/80 text-muted' }`}
                 style={fundDirection === fd.id ? { backgroundColor: primaryColor } : {}}
                 title={fd.description}
               >
@@ -208,7 +192,7 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
             ))}
           </div>
           {fundDirection && fundDirections.find(d => d.id === fundDirection)?.description && (
-            <p className="text-xs text-gray-500 text-center italic">
+            <p className="text-xs text-secondary text-center italic">
               {fundDirections.find(d => d.id === fundDirection)?.description}
             </p>
           )}
@@ -223,7 +207,7 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={2}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white/50 resize-none"
+            className="w-full px-4 py-3 border border-white/10 focus:outline-none focus:ring-2 focus:ring-imajin-purple bg-surface-card/50 resize-none"
           />
         </div>
       )}
@@ -235,7 +219,7 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
           placeholder="Your name (optional)"
           value={fromName}
           onChange={(e) => setFromName(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white/50"
+          className="w-full px-4 py-3 border border-white/10 focus:outline-none focus:ring-2 focus:ring-imajin-purple bg-surface-card/50"
         />
       </div>
 
@@ -245,22 +229,14 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
           <button
             type="button"
             onClick={() => setPaymentMethod('stripe')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-              paymentMethod === 'stripe'
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
+            className={`px-4 py-2 text-sm font-medium transition ${ paymentMethod === 'stripe' ? 'bg-surface-surface text-primary' : 'bg-surface-elevated text-muted:bg-surface-elevated' }`}
           >
             💳 Card
           </button>
           <button
             type="button"
             onClick={() => setPaymentMethod('solana')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-              paymentMethod === 'solana'
-                ? 'bg-purple-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
+            className={`px-4 py-2 text-sm font-medium transition ${ paymentMethod === 'solana' ? 'bg-purple-600 text-primary' : 'bg-surface-elevated text-muted:bg-surface-elevated' }`}
           >
             ◎ Solana
           </button>
@@ -269,19 +245,19 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
 
       {/* Error */}
       {error && (
-        <p className="text-red-500 text-sm text-center">{error}</p>
+        <p className="text-error text-sm text-center">{error}</p>
       )}
 
       {/* Submit or unavailable message */}
       {!stripeAvailable && !hasSolana ? (
-        <p className="text-center text-sm text-gray-500 italic py-2">
+        <p className="text-center text-sm text-secondary italic py-2">
           Payments not yet available
         </p>
       ) : (
         <button
           type="submit"
           disabled={isLoading || getAmount() < 100}
-          className="w-full py-4 rounded-xl text-white font-semibold text-lg transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-4 text-primary font-semibold text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ backgroundColor: primaryColor }}
         >
           {isLoading

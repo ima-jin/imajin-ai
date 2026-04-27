@@ -84,7 +84,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
 
   return (
     <div
-      className="fixed inset-0 bg-[#0a0a0a] text-white select-none z-50"
+      className="fixed inset-0 bg-[#0a0a0a] text-primary select-none z-50"
       onTouchStart={(e) => {
         setTouchStart(e.touches[0].clientX);
         setTouchStartY(e.touches[0].clientY);
@@ -102,15 +102,15 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
     >
       {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 h-14 flex items-center justify-between px-8 md:px-16 bg-[#0a0a0a] z-10">
-        <div className="text-white/40 text-sm tracking-widest font-medium">IMAJIN</div>
+        <div className="text-primary/40 text-sm tracking-widest font-medium">IMAJIN</div>
         <div className="flex items-center gap-5">
           <button
             onClick={onExit}
-            className="text-white/25 hover:text-white/60 text-xs tracking-widest transition-colors"
+            className="text-primary/25:text-primary/60 text-xs tracking-widest transition-colors"
           >
             ESC
           </button>
-          <div className="text-white/40 text-sm font-mono">
+          <div className="text-primary/40 text-sm font-mono">
             {current + 1} / {slides.length}
           </div>
         </div>
@@ -131,7 +131,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
               </h1>
               {slide.content && (
                 <div
-                  className="text-lg text-white/70 leading-relaxed"
+                  className="text-lg text-primary/70 leading-relaxed"
                   dangerouslySetInnerHTML={{ __html: simpleMarkdown(slide.content) }}
                 />
               )}
@@ -154,13 +154,13 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
 
             {/* Subtitle */}
             {meta?.subtitle && (
-              <p className="text-xl text-white/50 mb-10">{meta.subtitle}</p>
+              <p className="text-xl text-primary/50 mb-10">{meta.subtitle}</p>
             )}
 
             {/* Plain markdown content (when no structured data overrides it) */}
             {slide.content && !meta?.items && !meta?.stats && !meta?.compare && (
               <div
-                className="text-lg text-white/70 leading-relaxed"
+                className="text-lg text-primary/70 leading-relaxed"
                 dangerouslySetInnerHTML={{ __html: simpleMarkdown(slide.content) }}
               />
             )}
@@ -170,8 +170,8 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
               <div className={`space-y-6 mt-6 ${isCenter ? 'text-left max-w-2xl mx-auto' : ''}`}>
                 {meta.items.map((item, i) => (
                   <div key={i} className="flex gap-4 text-lg md:text-xl">
-                    <span className="text-white/30 font-mono shrink-0">{i + 1}</span>
-                    <span className="text-white/80">{item}</span>
+                    <span className="text-primary/30 font-mono shrink-0">{i + 1}</span>
+                    <span className="text-primary/80">{item}</span>
                   </div>
                 ))}
               </div>
@@ -179,13 +179,13 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
 
             {/* Stats rows */}
             {meta?.stats && (
-              <div className="border border-white/10 rounded-lg p-6 mt-8">
+              <div className="border border-white/10 p-6 mt-8">
                 {meta.stats.map((stat, i) => (
                   <div
                     key={i}
                     className="flex justify-between border-b border-white/10 py-3 last:border-0 gap-4"
                   >
-                    <span className="text-white/50">{stat.label}</span>
+                    <span className="text-primary/50">{stat.label}</span>
                     <span className="font-medium text-right">{stat.value}</span>
                   </div>
                 ))}
@@ -194,8 +194,8 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
 
             {/* Comparison table */}
             {meta?.compare && (
-              <div className="border border-white/10 rounded-lg p-6 mt-8">
-                <div className="flex justify-between py-2 border-b border-white/20 text-sm text-white/40 uppercase tracking-wider">
+              <div className="border border-white/10 p-6 mt-8">
+                <div className="flex justify-between py-2 border-b border-white/20 text-sm text-primary/40 uppercase tracking-wider">
                   {meta.compare.headers.map((h, i) => (
                     <span key={i} className={`flex-1 ${i > 0 ? 'text-right' : ''}`}>{h}</span>
                   ))}
@@ -203,9 +203,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
                 {meta.compare.rows.map((row, i) => (
                   <div
                     key={i}
-                    className={`flex justify-between py-3 border-b border-white/10 last:border-0 ${
-                      row.highlight ? 'text-white font-medium' : 'text-white/60'
-                    }`}
+                    className={`flex justify-between py-3 border-b border-white/10 last:border-0 ${ row.highlight ? 'text-primary font-medium' : 'text-primary/60' }`}
                   >
                     {row.cells.map((cell, j) => (
                       <span key={j} className={`flex-1 ${j > 0 ? 'text-right' : ''}`}>{cell}</span>
@@ -217,14 +215,14 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
 
             {/* Generic table */}
             {meta?.table && (
-              <div className="border border-white/10 rounded-lg p-6 mt-8 overflow-x-auto">
+              <div className="border border-white/10 p-6 mt-8 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-white/20">
                       {meta.table.headers.map((h, i) => (
                         <th
                           key={i}
-                          className="py-2 text-left text-white/40 uppercase tracking-wider text-xs pr-6 font-normal"
+                          className="py-2 text-left text-primary/40 uppercase tracking-wider text-xs pr-6 font-normal"
                         >
                           {h}
                         </th>
@@ -235,7 +233,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
                     {meta.table.rows.map((row, i) => (
                       <tr key={i} className="border-b border-white/10 last:border-0">
                         {row.map((cell, j) => (
-                          <td key={j} className={`py-3 pr-6 ${j === 0 ? 'text-white font-mono' : 'text-white/50'}`}>
+                          <td key={j} className={`py-3 pr-6 ${j === 0 ? 'text-primary font-mono' : 'text-primary/50'}`}>
                             {cell}
                           </td>
                         ))}
@@ -249,7 +247,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
             {/* Content rendered after structured data (if both exist) */}
             {slide.content && (meta?.items || meta?.stats || meta?.compare) && (
               <div
-                className="text-white/40 mt-8 text-lg leading-relaxed"
+                className="text-primary/40 mt-8 text-lg leading-relaxed"
                 dangerouslySetInnerHTML={{ __html: simpleMarkdown(slide.content) }}
               />
             )}
@@ -258,7 +256,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
             {meta?.cta && (
               <a
                 href={meta.cta.href}
-                className="mt-10 inline-block text-white/40 hover:text-white transition-colors text-lg"
+                className="mt-10 inline-block text-primary/40:text-primary transition-colors text-lg"
               >
                 {meta.cta.text} →
               </a>
@@ -273,7 +271,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
         <button
           onClick={prev}
           disabled={current === 0}
-          className="hover:text-white disabled:opacity-0 text-white/50 transition-colors px-4 py-2"
+          className="hover:text-primary disabled:opacity-0 text-primary/50 transition-colors px-4 py-2"
         >
           ←
         </button>
@@ -283,9 +281,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
             <button
               key={i}
               onClick={() => goTo(i)}
-              className={`w-2 h-2 rounded-full transition-colors ${
-                i === current ? 'bg-white/80' : 'bg-white/25 hover:bg-white/50'
-              }`}
+              className={`w-2 h-2 rounded-full transition-colors ${ i === current ? 'bg-surface-card/80' : 'bg-surface-card/25:bg-surface-card/50' }`}
             />
           ))}
         </div>
@@ -293,7 +289,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
         <button
           onClick={next}
           disabled={current === slides.length - 1}
-          className="hover:text-white disabled:opacity-0 text-white/50 transition-colors px-4 py-2"
+          className="hover:text-primary disabled:opacity-0 text-primary/50 transition-colors px-4 py-2"
         >
           →
         </button>

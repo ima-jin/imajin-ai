@@ -13,7 +13,7 @@ export function BugReportButton() {
         data-bug-reporter-trigger
         title="Report a bug"
         aria-label="Report a bug"
-        className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg hover:bg-orange-400 transition-colors"
+        style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full text-primary hover:brightness-110 transition-colors"
       >
         <span className="text-xl" aria-hidden>🐛</span>
       </button>

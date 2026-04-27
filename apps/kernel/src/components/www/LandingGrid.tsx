@@ -47,11 +47,11 @@ function ServiceTile({ service, onAuthRequired }: { service: ServiceEntry; onAut
       href={service.url}
       onClick={handleClick}
       {...(isExternal && { target: '_blank', rel: 'noopener noreferrer' })}
-      className="group flex flex-col items-center justify-center gap-2 w-20 h-20 md:w-24 md:h-24 rounded-xl border border-gray-800 hover:border-amber-500/40 hover:bg-amber-500/5 transition-colors"
+      className="group flex flex-col items-center justify-center gap-2 w-20 h-20 md:w-24 md:h-24 border border-white/10 hover:border-warning/40 hover:bg-warning/5 transition-colors"
       title={service.description}
     >
       <span className="text-3xl leading-none">{service.icon}</span>
-      <span className="text-xs text-gray-500 group-hover:text-gray-300 transition-colors leading-none">{service.label}</span>
+      <span className="text-xs text-secondary group-hover:text-primary transition-colors leading-none">{service.label}</span>
     </a>
   );
 }
@@ -61,7 +61,7 @@ function TileGroup({ label, services, onAuthRequired }: { label?: string; servic
   return (
     <div>
       {label && (
-        <p className="text-[10px] uppercase tracking-widest text-gray-600 mb-3 text-center">{label}</p>
+        <p className="text-[10px] uppercase tracking-widest text-muted mb-3 text-center">{label}</p>
       )}
       <div className="flex flex-wrap justify-center gap-3">
         {services.map((s) => (
@@ -121,7 +121,7 @@ export function LandingGrid() {
     return (
       <div className="flex flex-wrap justify-center gap-3">
         {SKELETON_KEYS.map((id) => (
-          <div key={id} className="w-20 h-20 md:w-24 md:h-24 rounded-xl border border-gray-800 bg-gray-900/40 animate-pulse" />
+          <div key={id} className="w-20 h-20 md:w-24 md:h-24 border border-white/10 bg-surface-surface/40 animate-pulse" />
         ))}
       </div>
     );
@@ -183,9 +183,9 @@ export function EmailCapture() {
     const isPendingVerification = subscribeStatus === 'pending_verification';
     return (
       <div>
-        <p className="text-sm text-gray-400">{message}</p>
+        <p className="text-sm text-secondary">{message}</p>
         {isPendingVerification && (
-          <p className="text-xs text-gray-600 mt-1">Click the link in the email to confirm.</p>
+          <p className="text-xs text-muted mt-1">Click the link in the email to confirm.</p>
         )}
       </div>
     );
@@ -194,8 +194,8 @@ export function EmailCapture() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       <div>
-        <h2 className="text-lg font-semibold text-gray-100">This is coming.</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Join our mailing list to stay informed about updates.</p>
+        <h2 className="text-lg font-semibold text-primary font-mono">This is coming.</h2>
+        <p className="text-sm text-secondary mt-0.5">Join our mailing list to stay informed about updates.</p>
       </div>
       <div className="flex items-center gap-2">
         <input
@@ -204,17 +204,17 @@ export function EmailCapture() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="your@email.com"
           required
-          className="bg-gray-900 border border-gray-800 rounded-md px-3 py-1.5 text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:border-amber-500/60 w-48"
+          className="bg-surface-surface border border-white/10 px-3 py-1.5 text-sm text-primary placeholder-muted focus:outline-none focus:border-imajin-purple w-48"
         />
         <button
           type="submit"
           disabled={status === 'loading'}
-          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 text-sm font-medium rounded-md transition-colors"
+          className="px-3 py-1.5 bg-warning hover:bg-warning disabled:opacity-50 text-black text-sm font-medium transition-colors"
         >
           {status === 'loading' ? '…' : 'Subscribe'}
         </button>
       </div>
-      {status === 'error' && <span className="text-xs text-red-400">{message}</span>}
+      {status === 'error' && <span className="text-xs text-error">{message}</span>}
     </form>
   );
 }

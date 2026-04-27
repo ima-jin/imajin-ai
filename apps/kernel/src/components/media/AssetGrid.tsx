@@ -235,11 +235,11 @@ export function AssetGrid({
       onDrop={handleDrop}
     >
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800 bg-[#1a1a1a] shrink-0">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10 bg-[#1a1a1a] shrink-0">
         <select
           value={typeFilter}
           onChange={(e) => onTypeFilterChange(e.target.value)}
-          className="bg-[#252525] border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-orange-500"
+          className="bg-[#252525] border border-white/10 px-2 py-1 text-xs text-primary focus:outline-none focus:border-imajin-orange"
         >
           <option value="">All types</option>
           <option value="image">Images</option>
@@ -250,7 +250,7 @@ export function AssetGrid({
 
         <div className="flex-1" />
 
-        <span className="text-xs text-gray-600">Sort:</span>
+        <span className="text-xs text-muted">Sort:</span>
         {(["created", "name", "size"] as const).map((s) => (
           <button
             key={s}
@@ -262,10 +262,10 @@ export function AssetGrid({
                 onOrderChange("desc");
               }
             }}
-            className={`text-xs px-2 py-1 rounded transition-colors capitalize ${
+            className={`text-xs px-2 py-1  transition-colors capitalize ${
               sort === s
-                ? "bg-orange-500 text-white"
-                : "text-gray-400 hover:text-gray-200 hover:bg-white/10"
+                ? "bg-imajin-orange text-primary"
+                : "text-secondary hover:text-primary hover:bg-white/10"
             }`}
           >
             {s}
@@ -275,16 +275,16 @@ export function AssetGrid({
 
         <button
           onClick={() => uploadRef.current?.openPicker()}
-          className="ml-1 px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-lg transition-colors"
+          style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="ml-1 px-3 py-1 hover:brightness-110 text-primary text-xs font-medium transition-colors"
         >
           + Upload
         </button>
 
         {/* View toggle — large grid | small grid | list */}
-        <div className="flex items-center border border-gray-700 rounded overflow-hidden ml-1">
+        <div className="flex items-center border border-white/10 overflow-hidden ml-1">
           <button
             onClick={() => handleSetViewMode("large-grid")}
-            className={`p-1.5 text-xs transition-colors ${viewMode === "large-grid" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-200 hover:bg-white/10"}`}
+            className={`p-1.5 text-xs transition-colors ${viewMode === "large-grid" ? "bg-imajin-orange text-primary" : "text-secondary hover:text-primary hover:bg-white/10"}`}
             title="Large grid"
             aria-label="Large grid view"
           >
@@ -292,7 +292,7 @@ export function AssetGrid({
           </button>
           <button
             onClick={() => handleSetViewMode("small-grid")}
-            className={`p-1.5 text-xs transition-colors ${viewMode === "small-grid" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-200 hover:bg-white/10"}`}
+            className={`p-1.5 text-xs transition-colors ${viewMode === "small-grid" ? "bg-imajin-orange text-primary" : "text-secondary hover:text-primary hover:bg-white/10"}`}
             title="Small grid"
             aria-label="Small grid view"
           >
@@ -300,7 +300,7 @@ export function AssetGrid({
           </button>
           <button
             onClick={() => handleSetViewMode("list")}
-            className={`p-1.5 text-xs transition-colors ${viewMode === "list" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-200 hover:bg-white/10"}`}
+            className={`p-1.5 text-xs transition-colors ${viewMode === "list" ? "bg-imajin-orange text-primary" : "text-secondary hover:text-primary hover:bg-white/10"}`}
             title="List view"
             aria-label="List view"
           >
@@ -314,16 +314,16 @@ export function AssetGrid({
 
       {/* Drop upload progress */}
       {dropUploading && (
-        <div className="px-4 py-2 bg-[#1a1a1a] border-b border-gray-800 shrink-0">
+        <div className="px-4 py-2 bg-[#1a1a1a] border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div className="flex-1 h-1.5 bg-surface-elevated overflow-hidden">
               <div
-                className="h-full bg-orange-500 rounded-full transition-all duration-500"
+                className="h-full bg-imajin-orange transition-all duration-500"
                 style={{ width: `${dropProgress}%` }}
               />
             </div>
             {dropSuggestion && (
-              <span className="text-xs text-orange-400 whitespace-nowrap">
+              <span className="text-xs text-imajin-orange whitespace-nowrap">
                 Suggested: 📁 {dropSuggestion}
               </span>
             )}
@@ -331,9 +331,9 @@ export function AssetGrid({
         </div>
       )}
       {dropError && (
-        <div className="px-4 py-1.5 bg-red-500/10 border-b border-red-500/20 text-xs text-red-400 shrink-0 flex items-center justify-between">
+        <div className="px-4 py-1.5 bg-error/10 border-b border-red-500/20 text-xs text-error shrink-0 flex items-center justify-between">
           <span>{dropError}</span>
-          <button onClick={() => setDropError(null)} className="hover:text-red-200 ml-2">
+          <button onClick={() => setDropError(null)} className="hover:text-error ml-2">
             ✕
           </button>
         </div>
@@ -341,14 +341,14 @@ export function AssetGrid({
 
       {/* Batch action bar — visible when >1 selected */}
       {selectedAssetIds.size > 1 && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-orange-500/10 border-b border-orange-500/30 shrink-0 flex-wrap">
-          <span className="text-xs text-orange-400 font-medium">
+        <div className="flex items-center gap-2 px-4 py-2 bg-imajin-orange/10 border-b border-imajin-orange/30 shrink-0 flex-wrap">
+          <span className="text-xs text-imajin-orange font-medium">
             {selectedAssetIds.size} selected
           </span>
           <div className="flex-1" />
           <button
             onClick={handleBatchDownload}
-            className="text-xs px-2.5 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition-colors"
+            className="text-xs px-2.5 py-1 bg-white/10 text-primary hover:bg-white/20 transition-colors"
           >
             ↓ Download
           </button>
@@ -357,7 +357,7 @@ export function AssetGrid({
               <select
                 value={moveFolderId}
                 onChange={(e) => setMoveFolderId(e.target.value)}
-                className="bg-[#252525] border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-orange-500"
+                className="bg-[#252525] border border-white/10 px-2 py-1 text-xs text-primary focus:outline-none focus:border-imajin-orange"
               >
                 <option value="">Move to folder…</option>
                 {folders.map((f) => (
@@ -369,7 +369,7 @@ export function AssetGrid({
               {moveFolderId && (
                 <button
                   onClick={handleBatchMove}
-                  className="text-xs px-2.5 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition-colors"
+                  className="text-xs px-2.5 py-1 bg-white/10 text-primary hover:bg-white/20 transition-colors"
                 >
                   Move
                 </button>
@@ -378,13 +378,13 @@ export function AssetGrid({
           )}
           <button
             onClick={handleBatchDelete}
-            className="text-xs px-2.5 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+            className="text-xs px-2.5 py-1 bg-error/20 text-error hover:bg-error/30 transition-colors"
           >
             Delete
           </button>
           <button
             onClick={() => setSelectedAssetIds(new Set())}
-            className="text-xs px-2 py-1 rounded text-gray-500 hover:text-gray-300 hover:bg-white/10 transition-colors"
+            className="text-xs px-2 py-1 text-secondary hover:text-primary hover:bg-white/10 transition-colors"
           >
             ✕
           </button>
@@ -396,11 +396,11 @@ export function AssetGrid({
         {loading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="bg-[#252525] rounded-xl overflow-hidden animate-pulse">
+              <div key={i} className="bg-[#252525] overflow-hidden animate-pulse">
                 <div className="aspect-square bg-[#2a2a2a]" />
                 <div className="p-2 space-y-1">
-                  <div className="h-2 bg-[#2a2a2a] rounded w-3/4" />
-                  <div className="h-2 bg-[#2a2a2a] rounded w-1/2" />
+                  <div className="h-2 bg-[#2a2a2a] w-3/4" />
+                  <div className="h-2 bg-[#2a2a2a] w-1/2" />
                 </div>
               </div>
             ))}
@@ -408,11 +408,11 @@ export function AssetGrid({
         ) : assets.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center py-16 min-h-[300px]">
             <span className="text-6xl mb-4">📂</span>
-            <p className="text-gray-400 text-lg font-medium mb-1">No files here</p>
-            <p className="text-gray-600 text-sm mb-6">Drag and drop files to upload, or click + Upload</p>
+            <p className="text-secondary text-lg font-medium mb-1">No files here</p>
+            <p className="text-muted text-sm mb-6">Drag and drop files to upload, or click + Upload</p>
             <button
               onClick={() => uploadRef.current?.openPicker()}
-              className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg transition-colors"
+              style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="px-4 py-2 hover:brightness-110 text-primary text-sm transition-colors"
             >
               Upload your first file
             </button>
@@ -457,9 +457,9 @@ export function AssetGrid({
                   key={asset.id}
                   role="button"
                   tabIndex={0}
-                  className={`group flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
+                  className={`group flex items-center gap-3 px-3 py-2 cursor-pointer border transition-colors ${
                     asset.id === selectedAssetId || isChecked
-                      ? "border-orange-500 bg-orange-500/10"
+                      ? "border-imajin-orange bg-imajin-orange/10"
                       : "border-transparent hover:bg-white/5"
                   }`}
                   onClick={(e) => handleCardClick(e, asset, idx)}
@@ -476,20 +476,20 @@ export function AssetGrid({
                     onClick={(e) => handleCheckClick(e, asset.id, idx)}
                   >
                     <div
-                      className={`w-4 h-4 rounded border-2 flex items-center justify-center text-[9px] font-bold transition-colors ${
+                      className={`w-4 h-4  border-2 flex items-center justify-center text-[9px] font-bold transition-colors ${
                         isChecked
-                          ? "bg-orange-500 border-orange-500 text-white"
-                          : "bg-black/60 border-gray-400 text-transparent"
+                          ? "bg-imajin-orange border-imajin-orange text-primary"
+                          : "bg-surface-base/60 border-gray-400 text-transparent"
                       }`}
                     >
                       ✓
                     </div>
                   </div>
                   <span className="text-lg shrink-0">{getMimeIcon(asset.mimeType)}</span>
-                  <span className="text-sm text-gray-200 flex-1 truncate min-w-0">{asset.filename}</span>
-                  <span className="text-xs text-gray-500 shrink-0 w-16 text-right hidden sm:block">{formatSize(asset.size)}</span>
-                  <span className="text-xs text-gray-600 shrink-0 w-16 hidden md:block">{asset.mimeType.split("/")[0]}</span>
-                  <span className="text-xs text-gray-600 shrink-0 w-24 text-right hidden lg:block">{date}</span>
+                  <span className="text-sm text-primary flex-1 truncate min-w-0">{asset.filename}</span>
+                  <span className="text-xs text-secondary shrink-0 w-16 text-right hidden sm:block">{formatSize(asset.size)}</span>
+                  <span className="text-xs text-muted shrink-0 w-16 hidden md:block">{asset.mimeType.split("/")[0]}</span>
+                  <span className="text-xs text-muted shrink-0 w-24 text-right hidden lg:block">{date}</span>
                   <span className="w-10 shrink-0 text-right">
                     {fairAccess !== null && <FairBadge access={fairAccess} />}
                   </span>
@@ -502,10 +502,10 @@ export function AssetGrid({
 
       {/* Drag-over overlay */}
       {dragging && (
-        <div className="absolute inset-0 bg-orange-500/10 border-2 border-dashed border-orange-500 rounded pointer-events-none z-10 flex items-center justify-center">
+        <div className="absolute inset-0 bg-imajin-orange/10 border-2 border-dashed border-imajin-orange pointer-events-none z-10 flex items-center justify-center">
           <div className="text-center">
             <span className="text-5xl block mb-2">📤</span>
-            <p className="text-orange-400 text-lg font-semibold">Drop to upload</p>
+            <p className="text-imajin-orange text-lg font-semibold">Drop to upload</p>
           </div>
         </div>
       )}

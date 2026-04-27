@@ -21,7 +21,7 @@ export async function BusinessProfile({ profile, identity, viewer, counts, links
 
   return (
     <div className="max-w-lg mx-auto">
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl overflow-hidden text-center">
+      <div className="bg-[#0a0a0a] border border-white/10 overflow-hidden text-center">
         {/* Banner */}
         {profile.banner && (
           <div
@@ -35,7 +35,7 @@ export async function BusinessProfile({ profile, identity, viewer, counts, links
 
         {/* Bio / about */}
         {profile.bio && (
-          <p className="text-gray-300 mb-6">{profile.bio}</p>
+          <p className="text-primary mb-6">{profile.bio}</p>
         )}
 
         {/* Business metadata */}
@@ -83,11 +83,11 @@ export async function BusinessProfile({ profile, identity, viewer, counts, links
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-left"
+                className="block px-4 py-3 bg-surface-surface border border-white/10 hover:bg-surface-elevated transition text-left"
               >
-                <p className="text-white text-sm font-medium">{link.title}</p>
+                <p className="text-primary text-sm font-medium">{link.title}</p>
                 {link.description && (
-                  <p className="text-gray-500 text-xs mt-0.5">{link.description}</p>
+                  <p className="text-secondary text-xs mt-0.5">{link.description}</p>
                 )}
               </a>
             ))}
@@ -95,14 +95,14 @@ export async function BusinessProfile({ profile, identity, viewer, counts, links
         )}
 
         {/* Member since */}
-        <p className="text-xs text-gray-500 mt-4">
+        <p className="text-xs text-secondary mt-4">
           Member since {formatMemberSince(profile.createdAt)}
         </p>
         </div>
       </div>
 
       {/* DID */}
-      <p className="text-center text-xs text-gray-500 mt-4 font-mono break-all">
+      <p className="text-center text-xs text-secondary mt-4 font-mono break-all">
         {profile.did}
       </p>
     </div>

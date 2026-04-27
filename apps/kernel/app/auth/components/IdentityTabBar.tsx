@@ -37,7 +37,7 @@ export default function IdentityTabBar({ showSettings, showMembers, showSecurity
   });
 
   return (
-    <div className="border-b border-zinc-800 flex gap-1">
+    <div className="border-b border-white/10 flex gap-1">
       {tabs.map((tab) => {
         const isActive = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
         return (
@@ -46,8 +46,8 @@ export default function IdentityTabBar({ showSettings, showMembers, showSecurity
             href={tab.href}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
               isActive
-                ? 'border-amber-500 text-amber-400'
-                : 'border-transparent text-zinc-400 hover:text-white hover:border-zinc-600'
+                ? 'border-amber-500 text-warning'
+                : 'border-transparent text-secondary hover:text-primary hover:border-white/10'
             }`}
           >
             {tab.label}

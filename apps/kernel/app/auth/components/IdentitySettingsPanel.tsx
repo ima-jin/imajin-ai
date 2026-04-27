@@ -97,7 +97,7 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
   }
 
   if (loading) {
-    return <div className="text-gray-400 py-8">Loading settings…</div>;
+    return <div className="text-secondary py-8">Loading settings…</div>;
   }
 
   const enabledServiceOptions = SELECTABLE_SERVICES.filter((s) => enabledServices.includes(s.name));
@@ -106,10 +106,10 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
     <div className="space-y-6">
       {status && (
         <div
-          className={`p-4 rounded-lg border ${
+          className={`p-4 border ${
             status.type === 'success'
-              ? 'bg-green-900/20 border-green-800 text-green-400'
-              : 'bg-red-900/20 border-red-800 text-red-400'
+              ? 'bg-success/20 border-green-800 text-success'
+              : 'bg-error/20 border-red-800 text-error'
           }`}
         >
           {status.text}
@@ -117,18 +117,18 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
       )}
 
       {/* Included (kernel) services */}
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">
+      <div className="bg-[#0a0a0a] border border-white/10 p-6">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-secondary mb-1 font-mono">
           Included with every identity
         </h2>
-        <p className="text-sm text-gray-400 mb-4">
+        <p className="text-sm text-secondary mb-4">
           These core services are always available and cannot be disabled.
         </p>
         <div className="flex flex-wrap gap-2">
           {KERNEL_SERVICES.map((svc) => (
             <span
               key={svc.name}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-800 bg-gray-900/50 text-gray-500 text-sm"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-white/10 bg-surface-surface/50 text-secondary text-sm"
             >
               <span>{svc.icon}</span>
               <span>{svc.label}</span>
@@ -138,11 +138,11 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
       </div>
 
       {/* Selectable services */}
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">
+      <div className="bg-[#0a0a0a] border border-white/10 p-6">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-secondary mb-1 font-mono">
           Available Apps
         </h2>
-        <p className="text-sm text-gray-400 mb-4">
+        <p className="text-sm text-secondary mb-4">
           Toggle which apps are available for this identity.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -152,16 +152,16 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
               <button
                 key={svc.name}
                 onClick={() => toggleService(svc.name)}
-                className={`flex flex-col items-start gap-1 p-3 rounded-xl border transition text-left ${
+                className={`flex flex-col items-start gap-1 p-3 border transition text-left ${
                   isEnabled
-                    ? 'border-amber-500/60 bg-amber-500/10 text-white'
-                    : 'border-gray-800 bg-gray-900/30 text-gray-500 hover:border-gray-700 hover:text-gray-400'
+                    ? 'border-amber-500/60 bg-warning/10 text-primary'
+                    : 'border-white/10 bg-surface-surface/30 text-secondary hover:border-white/10 hover:text-secondary'
                 }`}
               >
                 <span className="text-xl">{svc.icon}</span>
                 <span className="text-sm font-medium leading-tight">{svc.label}</span>
                 <span
-                  className={`text-xs leading-tight ${isEnabled ? 'text-amber-400/70' : 'text-gray-600'}`}
+                  className={`text-xs leading-tight ${isEnabled ? 'text-warning/70' : 'text-muted'}`}
                 >
                   {isEnabled ? 'Enabled' : 'Disabled'}
                 </span>
@@ -172,17 +172,17 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
       </div>
 
       {/* Landing page */}
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">
+      <div className="bg-[#0a0a0a] border border-white/10 p-6">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-secondary mb-1 font-mono">
           Landing Page
         </h2>
-        <p className="text-sm text-gray-400 mb-4">
+        <p className="text-sm text-secondary mb-4">
           Choose which app loads first for this identity.
         </p>
         <select
           value={landingService ?? ''}
           onChange={(e) => setLandingService(e.target.value || null)}
-          className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+          className="w-full px-4 py-2 border border-white/10 bg-surface-base text-primary focus:ring-2 focus:ring-amber-500 focus:border-transparent"
         >
           <option value="">— Default (no preference) —</option>
           {enabledServiceOptions.map((svc) => (
@@ -192,22 +192,22 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
           ))}
         </select>
         {enabledServiceOptions.length === 0 && (
-          <p className="text-xs text-gray-600 mt-2">
+          <p className="text-xs text-muted mt-2">
             Enable at least one app to set a landing page.
           </p>
         )}
       </div>
 
       {/* Onboarding */}
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">
+      <div className="bg-[#0a0a0a] border border-white/10 p-6">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-secondary mb-1 font-mono">
           Onboarding
         </h2>
-        <p className="text-sm text-gray-400 mb-4">
+        <p className="text-sm text-secondary mb-4">
           Share this link to invite people to this identity.
         </p>
         <div className="flex items-center gap-2">
-          <code className="flex-1 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-300 font-mono overflow-x-auto whitespace-nowrap">
+          <code className="flex-1 px-3 py-2 bg-surface-surface border border-white/10 text-sm text-primary font-mono overflow-x-auto whitespace-nowrap">
             {onboardUrl}
           </code>
           <button
@@ -217,7 +217,7 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
                 setTimeout(() => setCopyLabel('Copy'), 2000);
               });
             }}
-            className="px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition whitespace-nowrap"
+            className="px-3 py-2 bg-surface-elevated hover:bg-surface-elevated border border-white/10 text-sm text-primary transition whitespace-nowrap"
           >
             {copyLabel}
           </button>
@@ -229,7 +229,7 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold rounded-lg transition disabled:opacity-50"
+          className="px-6 py-2.5 bg-warning hover:bg-warning text-gray-950 font-semibold transition disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save Changes'}
         </button>

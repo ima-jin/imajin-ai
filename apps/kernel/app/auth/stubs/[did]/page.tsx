@@ -392,12 +392,12 @@ export default function EditStubPage() {
   if (loading) {
     return (
       <div className="max-w-lg mx-auto py-8">
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 animate-pulse">
-          <div className="h-6 bg-zinc-800 rounded w-1/3 mb-4" />
+        <div className="bg-[#0a0a0a] border border-white/10 p-8 animate-pulse">
+          <div className="h-6 bg-surface-elevated w-1/3 mb-4" />
           <div className="space-y-3">
-            <div className="h-10 bg-zinc-800 rounded-lg" />
-            <div className="h-10 bg-zinc-800 rounded-lg" />
-            <div className="h-10 bg-zinc-800 rounded-lg" />
+            <div className="h-10 bg-surface-elevated" />
+            <div className="h-10 bg-surface-elevated" />
+            <div className="h-10 bg-surface-elevated" />
           </div>
         </div>
       </div>
@@ -407,10 +407,10 @@ export default function EditStubPage() {
   if (notFound || !stub) {
     return (
       <div className="max-w-lg mx-auto py-8 text-center">
-        <p className="text-zinc-500">Place not found or you don&apos;t have access.</p>
+        <p className="text-muted">Place not found or you don&apos;t have access.</p>
         <button
           onClick={() => router.push('/auth')}
-          className="mt-4 text-sm text-amber-400 hover:text-amber-300 transition-colors"
+          className="mt-4 text-sm text-warning hover:text-warning/70 transition-colors"
         >
           ← Back to Identity Hub
         </button>
@@ -423,22 +423,22 @@ export default function EditStubPage() {
   return (
     <div className="max-w-lg mx-auto py-8 space-y-6">
       {/* Edit form */}
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+      <div className="bg-[#0a0a0a] border border-white/10 p-8">
         <div className="flex items-start justify-between mb-1">
-          <h1 className="text-2xl font-bold text-white">Edit Place</h1>
+          <h1 className="text-2xl font-bold text-primary font-mono">Edit Place</h1>
           {stub.claimStatus === 'unclaimed' && (
-            <span className="text-[10px] px-2 py-1 bg-amber-900/30 border border-amber-700/50 rounded text-amber-400">
+            <span className="text-[10px] px-2 py-1 bg-warning/20 border border-warning/50 text-warning">
               unclaimed
             </span>
           )}
         </div>
-        <p className="text-zinc-400 text-sm mb-6">
+        <p className="text-secondary text-sm mb-6">
           Update details for this community-maintained stub.
         </p>
 
         {/* Avatar upload */}
         <div className="mb-5">
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+          <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-2">
             Avatar
           </label>
           <div className="flex items-center gap-4">
@@ -446,15 +446,15 @@ export default function EditStubPage() {
               <img
                 src={avatar}
                 alt="Avatar"
-                className="w-16 h-16 rounded-full object-cover border border-gray-700 shrink-0"
+                className="w-16 h-16 rounded-full object-cover border border-white/10 shrink-0"
               />
             ) : (
-              <div className="w-16 h-16 rounded-full bg-zinc-800 border border-gray-700 flex items-center justify-center shrink-0">
-                <span className="text-zinc-600 text-xs">None</span>
+              <div className="w-16 h-16 rounded-full bg-surface-elevated border border-white/10 flex items-center justify-center shrink-0">
+                <span className="text-muted text-xs">None</span>
               </div>
             )}
             <div className="flex-1">
-              <label className="cursor-pointer inline-block px-3 py-1.5 bg-zinc-900 border border-gray-700 rounded-lg text-xs text-zinc-400 hover:text-white hover:border-gray-500 transition-colors">
+              <label className="cursor-pointer inline-block px-3 py-1.5 bg-surface-base border border-white/10 text-xs text-secondary hover:text-primary hover:border-gray-500 transition-colors">
                 {avatarUploading ? 'Uploading…' : avatar ? 'Change avatar' : 'Upload avatar'}
                 <input
                   type="file"
@@ -468,7 +468,7 @@ export default function EditStubPage() {
                 />
               </label>
               {avatarError && (
-                <p className="mt-1 text-xs text-red-400">{avatarError}</p>
+                <p className="mt-1 text-xs text-error">{avatarError}</p>
               )}
             </div>
           </div>
@@ -476,16 +476,16 @@ export default function EditStubPage() {
 
         {/* Banner upload */}
         <div className="mb-6">
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+          <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-2">
             Banner
           </label>
           {banner && (
             <div
-              className="w-full h-24 rounded-lg bg-cover bg-center mb-2 border border-gray-700"
+              className="w-full h-24 bg-cover bg-center mb-2 border border-white/10"
               style={{ backgroundImage: `url(${banner})` }}
             />
           )}
-          <label className="cursor-pointer inline-block px-3 py-1.5 bg-zinc-900 border border-gray-700 rounded-lg text-xs text-zinc-400 hover:text-white hover:border-gray-500 transition-colors">
+          <label className="cursor-pointer inline-block px-3 py-1.5 bg-surface-base border border-white/10 text-xs text-secondary hover:text-primary hover:border-gray-500 transition-colors">
             {bannerUploading ? 'Uploading…' : banner ? 'Change banner' : 'Upload banner'}
             <input
               type="file"
@@ -499,17 +499,17 @@ export default function EditStubPage() {
             />
           </label>
           {bannerError && (
-            <p className="mt-1 text-xs text-red-400">{bannerError}</p>
+            <p className="mt-1 text-xs text-error">{bannerError}</p>
           )}
         </div>
 
-        <div className="border-t border-gray-800 mb-6" />
+        <div className="border-t border-white/10 mb-6" />
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Name */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-              Name <span className="text-red-400">*</span>
+            <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-1.5">
+              Name <span className="text-error">*</span>
             </label>
             <input
               type="text"
@@ -518,13 +518,13 @@ export default function EditStubPage() {
               placeholder="e.g. Rosetta Café"
               maxLength={100}
               required
-              className="w-full bg-zinc-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors"
+              className="w-full bg-surface-base border border-white/10 px-4 py-2.5 text-primary placeholder-muted focus:outline-none focus:border-imajin-purple transition-colors"
             />
           </div>
 
           {/* Category */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-1.5">
               Category
             </label>
             <div className="flex flex-wrap gap-2 mb-2">
@@ -533,10 +533,10 @@ export default function EditStubPage() {
                   key={preset}
                   type="button"
                   onClick={() => setCategory(category === preset ? '' : preset)}
-                  className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                  className={`px-3 py-1 text-xs border transition-colors ${
                     category === preset
-                      ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
-                      : 'bg-zinc-900 border-gray-700 text-zinc-400 hover:border-gray-500'
+                      ? 'bg-warning/20 border-amber-500/50 text-warning'
+                      : 'bg-surface-base border-white/10 text-secondary hover:border-gray-500'
                   }`}
                 >
                   {preset}
@@ -549,25 +549,25 @@ export default function EditStubPage() {
               onChange={(e) => setCategory(e.target.value)}
               placeholder="or type your own…"
               maxLength={100}
-              className="w-full bg-zinc-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors"
+              className="w-full bg-surface-base border border-white/10 px-4 py-2.5 text-primary placeholder-muted focus:outline-none focus:border-imajin-purple transition-colors"
             />
           </div>
 
           {/* Location */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+              <label className="text-xs font-semibold text-secondary uppercase tracking-wider">
                 Location
               </label>
               {deviceLoc ? (
-                <span className="text-[10px] text-zinc-500 font-mono tabular-nums">
+                <span className="text-[10px] text-muted font-mono tabular-nums">
                   📍 {deviceLoc.lat.toFixed(4)}, {deviceLoc.lon.toFixed(4)}
-                  <span className="text-zinc-600 ml-1">(±{Math.round(deviceLoc.accuracy)}m)</span>
+                  <span className="text-muted ml-1">(±{Math.round(deviceLoc.accuracy)}m)</span>
                 </span>
               ) : deviceLocError ? (
-                <span className="text-[10px] text-zinc-600">{deviceLocError}</span>
+                <span className="text-[10px] text-muted">{deviceLocError}</span>
               ) : (
-                <span className="text-[10px] text-zinc-600">Locating…</span>
+                <span className="text-[10px] text-muted">Locating…</span>
               )}
             </div>
 
@@ -581,21 +581,21 @@ export default function EditStubPage() {
                   onBlur={() => { setTimeout(() => setShowSuggestions(false), 200); }}
                   placeholder="e.g. 123 Main St, Portland OR"
                   maxLength={200}
-                  className="w-full bg-zinc-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors"
+                  className="w-full bg-surface-base border border-white/10 px-4 py-2.5 text-primary placeholder-muted focus:outline-none focus:border-imajin-purple transition-colors"
                 />
 
                 {showSuggestions && suggestions.length > 0 && (
-                  <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-zinc-900 border border-gray-700 rounded-lg overflow-hidden shadow-xl max-h-48 overflow-y-auto">
+                  <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-surface-base border border-white/10 overflow-hidden max-h-48 overflow-y-auto">
                     {suggestions.map((s, i) => (
                       <button
                         key={i}
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => selectSuggestion(s)}
-                        className="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors border-b border-gray-800 last:border-0"
+                        className="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-surface-elevated transition-colors border-b border-white/10 last:border-0"
                       >
                         <span className="line-clamp-2">{s.displayName}</span>
-                        <span className="text-[10px] text-zinc-600 font-mono block mt-0.5">
+                        <span className="text-[10px] text-muted font-mono block mt-0.5">
                           {s.lat.toFixed(5)}, {s.lon.toFixed(5)}
                         </span>
                       </button>
@@ -609,7 +609,7 @@ export default function EditStubPage() {
                 onClick={useDeviceLocation}
                 disabled={!deviceLoc || reversingDevice}
                 title="Use device location"
-                className="px-3 py-2.5 bg-zinc-900 border border-gray-700 rounded-lg text-zinc-400 hover:text-amber-400 hover:border-amber-500/50 disabled:opacity-30 disabled:hover:text-zinc-400 disabled:hover:border-gray-700 transition-colors shrink-0"
+                className="px-3 py-2.5 bg-surface-base border border-white/10 text-secondary hover:text-warning hover:border-amber-500/50 disabled:opacity-30 disabled:hover:text-secondary disabled:hover:border-white/10 transition-colors shrink-0"
               >
                 {reversingDevice ? (
                   <span className="text-xs">…</span>
@@ -621,16 +621,16 @@ export default function EditStubPage() {
 
             {resolvedLat !== null && resolvedLon !== null && (
               <div className="mt-2 flex items-center gap-2">
-                <span className="text-[10px] font-mono text-amber-400/80 tabular-nums">
+                <span className="text-[10px] font-mono text-warning/80 tabular-nums">
                   {resolvedLat.toFixed(5)}, {resolvedLon.toFixed(5)}
                 </span>
-                <span className="text-[10px] text-zinc-600">
+                <span className="text-[10px] text-muted">
                   via {geocodeSource === 'device' ? 'GPS' : 'address lookup'}
                 </span>
                 <button
                   type="button"
                   onClick={() => { setResolvedLat(null); setResolvedLon(null); setGeocodeSource(null); }}
-                  className="text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
+                  className="text-[10px] text-muted hover:text-secondary transition-colors"
                 >
                   ✕
                 </button>
@@ -640,11 +640,11 @@ export default function EditStubPage() {
 
           {/* Handle */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-              Handle <span className="text-zinc-600">(optional)</span>
+            <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-1.5">
+              Handle <span className="text-muted">(optional)</span>
             </label>
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-sm">@</span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted text-sm">@</span>
               <input
                 type="text"
                 value={handle}
@@ -652,15 +652,15 @@ export default function EditStubPage() {
                 placeholder="rosetta_cafe"
                 maxLength={30}
                 pattern="[a-z0-9_]{3,30}"
-                className="w-full bg-zinc-900 border border-gray-700 rounded-lg pl-8 pr-4 py-2.5 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors"
+                className="w-full bg-surface-base border border-white/10 pl-8 pr-4 py-2.5 text-primary placeholder-muted focus:outline-none focus:border-imajin-purple transition-colors"
               />
             </div>
-            <p className="mt-1 text-xs text-zinc-600">3–30 lowercase letters, numbers, or underscores</p>
+            <p className="mt-1 text-xs text-muted">3–30 lowercase letters, numbers, or underscores</p>
           </div>
 
           {/* Bio */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-1.5">
               Bio
             </label>
             <textarea
@@ -669,19 +669,19 @@ export default function EditStubPage() {
               placeholder="A short description of this place…"
               maxLength={500}
               rows={3}
-              className="w-full bg-zinc-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors resize-none"
+              className="w-full bg-surface-base border border-white/10 px-4 py-2.5 text-primary placeholder-muted focus:outline-none focus:border-imajin-purple transition-colors resize-none"
             />
-            <p className="mt-1 text-xs text-zinc-600 text-right">{bio.length}/500</p>
+            <p className="mt-1 text-xs text-muted text-right">{bio.length}/500</p>
           </div>
 
           {error && (
-            <p className="text-sm text-red-400 bg-red-900/20 border border-red-800/40 rounded-lg px-4 py-3">
+            <p className="text-sm text-error bg-error/20 border border-red-800/40 px-4 py-3">
               {error}
             </p>
           )}
 
           {saved && (
-            <p className="text-sm text-green-400 bg-green-900/20 border border-green-800/40 rounded-lg px-4 py-3">
+            <p className="text-sm text-success bg-success/20 border border-green-800/40 px-4 py-3">
               Saved successfully.
             </p>
           )}
@@ -690,14 +690,14 @@ export default function EditStubPage() {
             <button
               type="button"
               onClick={() => router.push('/auth')}
-              className="flex-1 px-4 py-2.5 bg-zinc-900 border border-gray-700 rounded-lg text-zinc-400 hover:text-white hover:border-gray-500 transition-colors text-sm font-medium"
+              className="flex-1 px-4 py-2.5 bg-surface-base border border-white/10 text-secondary hover:text-primary hover:border-gray-500 transition-colors text-sm font-medium"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving || !name.trim()}
-              className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-900/40 disabled:text-amber-700 text-black font-semibold rounded-lg transition-colors text-sm"
+              className="flex-1 px-4 py-2.5 bg-warning hover:bg-warning disabled:bg-warning/20 disabled:text-warning text-black font-semibold transition-colors text-sm"
             >
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
@@ -706,18 +706,18 @@ export default function EditStubPage() {
       </div>
 
       {/* Image Gallery */}
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+      <div className="bg-[#0a0a0a] border border-white/10 p-8">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-bold text-white">Gallery</h2>
-            <p className="text-xs text-zinc-500 mt-0.5">{images.length} / {MAX_IMAGES} images</p>
+            <h2 className="text-lg font-bold text-primary font-mono">Gallery</h2>
+            <p className="text-xs text-muted mt-0.5">{images.length} / {MAX_IMAGES} images</p>
           </div>
           {images.length < MAX_IMAGES && (
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="px-3 py-1.5 bg-zinc-900 border border-gray-700 rounded-lg text-xs text-zinc-400 hover:text-white hover:border-gray-500 disabled:opacity-40 transition-colors"
+              className="px-3 py-1.5 bg-surface-base border border-white/10 text-xs text-secondary hover:text-primary hover:border-gray-500 disabled:opacity-40 transition-colors"
             >
               {uploading ? 'Uploading…' : '+ Upload'}
             </button>
@@ -738,23 +738,23 @@ export default function EditStubPage() {
         </div>
 
         {uploadError && (
-          <p className="text-sm text-red-400 bg-red-900/20 border border-red-800/40 rounded-lg px-4 py-3 mb-4">
+          <p className="text-sm text-error bg-error/20 border border-red-800/40 px-4 py-3 mb-4">
             {uploadError}
           </p>
         )}
 
         {images.length === 0 ? (
           <div
-            className="border-2 border-dashed border-gray-800 rounded-xl py-12 text-center cursor-pointer hover:border-gray-600 transition-colors"
+            className="border-2 border-dashed border-white/10 py-12 text-center cursor-pointer hover:border-gray-600 transition-colors"
             onClick={() => fileInputRef.current?.click()}
           >
-            <p className="text-zinc-600 text-sm">No images yet</p>
+            <p className="text-muted text-sm">No images yet</p>
             <p className="text-zinc-700 text-xs mt-1">Click to upload the first one</p>
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-3">
             {images.map((img) => (
-              <div key={img.id} className="relative group aspect-square rounded-lg overflow-hidden bg-zinc-900">
+              <div key={img.id} className="relative group aspect-square overflow-hidden bg-surface-base">
                 <Image
                   src={img.url}
                   alt={img.caption ?? ''}
@@ -765,7 +765,7 @@ export default function EditStubPage() {
                 <button
                   type="button"
                   onClick={() => handleDeleteImage(img.id)}
-                  className="absolute top-1.5 right-1.5 w-6 h-6 flex items-center justify-center bg-black/70 hover:bg-red-900/80 rounded-full text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-1.5 right-1.5 w-6 h-6 flex items-center justify-center bg-surface-base/70 hover:bg-error/80 rounded-full text-primary text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Remove image"
                 >
                   ✕
@@ -780,7 +780,7 @@ export default function EditStubPage() {
       <div className="text-center">
         <a
           href={profileUrl}
-          className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+          className="text-sm text-muted hover:text-zinc-300 transition-colors"
         >
           View public profile →
         </a>

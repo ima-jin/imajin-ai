@@ -13,8 +13,8 @@ function barBg(pct: number): string {
 }
 
 function glowClass(pct: number): string {
-  if (pct >= 75) return 'shadow-[0_0_8px_rgba(245,158,11,0.3)]';
-  if (pct >= 50) return 'shadow-[0_0_4px_rgba(245,158,11,0.15)]';
+  if (pct >= 75) return '';
+  if (pct >= 50) return '';
   return '';
 }
 
@@ -33,7 +33,7 @@ export function PrimitiveMatrix({ cells, overall }: PrimitiveMatrixProps) {
       >
         <div /> {/* empty corner */}
         {PRIMITIVES.map((col, ci) => (
-          <div key={ci} className="flex justify-center h-20 text-white/50">
+          <div key={ci} className="flex justify-center h-20 text-primary/50">
             <span
               className="text-[10px] uppercase tracking-wider font-medium whitespace-nowrap origin-center"
               style={{ writingMode: 'vertical-lr', transform: 'rotate(180deg)' }}
@@ -52,7 +52,7 @@ export function PrimitiveMatrix({ cells, overall }: PrimitiveMatrixProps) {
           style={{ gridTemplateColumns: `100px repeat(${PRIMITIVES.length}, 1fr)` }}
         >
           {/* Row label */}
-          <div className="flex items-center gap-1.5 pr-2 text-white/60">
+          <div className="flex items-center gap-1.5 pr-2 text-primary/60">
             <span className="text-xs opacity-40">{SCOPE_ICONS[ri]}</span>
             <span className="text-xs font-medium">{scope}</span>
           </div>
@@ -64,7 +64,7 @@ export function PrimitiveMatrix({ cells, overall }: PrimitiveMatrixProps) {
             return (
               <div
                 key={ci}
-                className={`h-10 rounded-sm border border-white/10 ${glowClass(pct)}`}
+                className={`h-10 border border-white/10 ${glowClass(pct)}`}
                 title={`${scope} × ${primitive}: ${pct}%`}
                 style={{
                   background: pct > 0
@@ -79,8 +79,8 @@ export function PrimitiveMatrix({ cells, overall }: PrimitiveMatrixProps) {
 
       {/* Legend — bottom right, small */}
       <div className="flex justify-end mt-3">
-        <div className="flex items-center gap-2 text-[10px] text-white/40">
-          <div className="w-2.5 h-2.5 rounded-sm bg-amber-500/80" />
+        <div className="flex items-center gap-2 text-[10px] text-primary/40">
+          <div className="w-2.5 h-2.5 bg-warning/80" />
           <span>{overall}% complete</span>
         </div>
       </div>

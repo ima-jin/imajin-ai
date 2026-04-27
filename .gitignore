@@ -5,6 +5,7 @@ node_modules/
 # Build
 .next/
 dist/
+!packages/tokens/dist/
 .turbo/
 next-env.d.ts
 

@@ -541,45 +541,45 @@ export default function BumpConnect({ onClose }: Props) {
             if (isActive && session) deactivate(session.sessionId);
             onClose();
           }}
-          className="text-gray-500 hover:text-gray-300 transition p-2 min-h-[48px] min-w-[48px] flex items-center justify-center"
+          className="text-secondary hover:text-primary transition p-2 min-h-[48px] min-w-[48px] flex items-center justify-center"
         >
           ✕
         </button>
-        <span className="text-gray-500 text-sm">Bump Connect</span>
+        <span className="text-secondary text-sm">Bump Connect</span>
         <div className="w-12" />
       </div>
 
       {/* ── Selecting ─────────────────────────────────────────────────────────── */}
       {state === 'selecting' && (
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          <h2 className="text-white text-2xl font-bold mb-1">Find nearby people</h2>
-          <p className="text-gray-400 text-sm mb-6">Bump phones to connect instantly</p>
+          <h2 className="text-primary text-2xl font-bold mb-1 font-mono">Find nearby people</h2>
+          <p className="text-secondary text-sm mb-6">Bump phones to connect instantly</p>
 
           {geoError && (
-            <p className="text-amber-400/70 text-xs mb-4">{geoError}</p>
+            <p className="text-warning/70 text-xs mb-4">{geoError}</p>
           )}
 
           {/* Node list */}
           <div className="mb-6">
-            <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Select a node</p>
+            <p className="text-secondary text-xs uppercase tracking-wider mb-2">Select a node</p>
             {loadingNodes ? (
-              <div className="text-gray-500 text-sm py-4">Finding nearby nodes...</div>
+              <div className="text-secondary text-sm py-4">Finding nearby nodes...</div>
             ) : nodes.length === 0 ? (
-              <div className="text-gray-500 text-sm py-4">No nodes found nearby.</div>
+              <div className="text-secondary text-sm py-4">No nodes found nearby.</div>
             ) : (
               <div className="space-y-2">
                 {nodes.map((node) => (
                   <button
                     key={node.id}
                     onClick={() => setSelectedNode(node)}
-                    className={`w-full text-left p-4 rounded-xl border transition min-h-[48px] ${
+                    className={`w-full text-left p-4 border transition min-h-[48px] ${
                       selectedNode?.id === node.id
-                        ? 'border-orange-500 bg-orange-500/10 text-white'
-                        : 'border-white/10 bg-white/5 text-gray-300 hover:bg-white/10'
+                        ? 'border-imajin-orange bg-imajin-orange/10 text-primary'
+                        : 'border-white/10 bg-white/5 text-primary hover:bg-white/10'
                     }`}
                   >
                     <div className="font-medium">{node.name}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
+                    <div className="text-xs text-secondary mt-0.5">
                       {node.type}
                       {node.distanceM != null && ` · ${node.distanceM < 1000
                         ? `${Math.round(node.distanceM)}m`
@@ -593,16 +593,16 @@ export default function BumpConnect({ onClose }: Props) {
 
           {/* Expiry */}
           <div className="mb-8">
-            <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Active for</p>
+            <p className="text-secondary text-xs uppercase tracking-wider mb-2">Active for</p>
             <div className="flex gap-2">
               {EXPIRY_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   onClick={() => setExpiry(opt.value)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition min-h-[48px] ${
+                  className={`flex-1 py-2 text-sm font-medium transition min-h-[48px] ${
                     expiry === opt.value
-                      ? 'bg-orange-500 text-black'
-                      : 'bg-white/10 text-gray-400 hover:text-white'
+                      ? 'bg-imajin-orange text-black'
+                      : 'bg-white/10 text-secondary hover:text-primary'
                   }`}
                 >
                   {opt.label}
@@ -614,7 +614,7 @@ export default function BumpConnect({ onClose }: Props) {
           <button
             onClick={startBumping}
             disabled={!selectedNode || loadingNodes}
-            className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-black font-bold text-lg rounded-xl transition min-h-[48px]"
+            style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="w-full py-4 hover:brightness-110 disabled:opacity-40 text-black font-bold text-lg transition min-h-[48px]"
           >
             Start Bumping
           </button>
@@ -626,7 +626,7 @@ export default function BumpConnect({ onClose }: Props) {
         <div className="flex-1 flex flex-col items-center justify-center px-6 relative overflow-hidden">
           {/* Ambient glow */}
           <div
-            className="absolute w-72 h-72 rounded-full"
+            className="absolute w-72 h-72"
             style={{
               backgroundColor: '#f97316',
               animation: state === 'matching'
@@ -639,30 +639,30 @@ export default function BumpConnect({ onClose }: Props) {
           <div className="relative z-10 text-center">
             {state === 'matching' ? (
               <>
-                <p className="text-white text-3xl font-bold mb-2">Matching...</p>
-                <p className="text-gray-400 text-base">Hold still</p>
+                <p className="text-primary text-3xl font-bold mb-2">Matching...</p>
+                <p className="text-secondary text-base">Hold still</p>
               </>
             ) : (
               <>
-                <p className="text-white text-3xl font-bold mb-2">Bump to connect</p>
-                <p className="text-orange-400 text-base">{nodeName}</p>
+                <p className="text-primary text-3xl font-bold mb-2">Bump to connect</p>
+                <p className="text-imajin-orange text-base">{nodeName}</p>
               </>
             )}
 
             {/* Time remaining */}
             {state === 'active' && timeRemaining > 0 && (
-              <p className="text-gray-600 text-sm mt-4">
+              <p className="text-muted text-sm mt-4">
                 {Math.floor(timeRemaining / 60)}:{String(timeRemaining % 60).padStart(2, '0')} remaining
               </p>
             )}
 
             {/* Debug: accelerometer readings */}
             {state === 'active' && (
-              <div className="mt-6 text-gray-300 text-xs font-mono space-y-0.5 bg-black/80 p-3 rounded-lg">
-                <p>mag: <span className={debugMag > 15 ? 'text-green-400 font-bold' : ''}>{debugMag} m/s²</span> (threshold: {debugRaw.startsWith('a:null') || debugRaw.includes('a:undefined') ? '20' : '15'})</p>
+              <div className="mt-6 text-primary text-xs font-mono space-y-0.5 bg-surface-base/80 p-3">
+                <p>mag: <span className={debugMag > 15 ? 'text-success font-bold' : ''}>{debugMag} m/s²</span> (threshold: {debugRaw.startsWith('a:null') || debugRaw.includes('a:undefined') ? '20' : '15'})</p>
                 <p>motion: {debugHasMotion === null ? 'waiting…' : debugHasMotion ? '✓' : '✗ no events'}</p>
-                <p>peak: <span className="text-amber-400">{debugPeak} m/s²</span></p>
-                <p className="break-all text-gray-500">{debugRaw}</p>
+                <p>peak: <span className="text-warning">{debugPeak} m/s²</span></p>
+                <p className="break-all text-secondary">{debugRaw}</p>
                 {debugEvent && <p className="break-all text-cyan-400">{debugEvent}</p>}
               </div>
             )}
@@ -670,20 +670,20 @@ export default function BumpConnect({ onClose }: Props) {
 
           {/* BumpIndicator pill (minimized version within active state) */}
           <div
-            className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-full"
+            className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5"
             style={{ backgroundColor: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)' }}
           >
             <span
-              className="w-2 h-2 rounded-full bg-orange-500"
+              className="w-2 h-2 rounded-full bg-imajin-orange"
               style={{ animation: 'bump-breathe 1.5s ease-in-out infinite' }}
             />
-            <span className="text-orange-400 text-xs font-medium">Bumping</span>
+            <span className="text-imajin-orange text-xs font-medium">Bumping</span>
           </div>
 
           {/* Stop button */}
           <button
             onClick={handleStop}
-            className="absolute bottom-8 left-1/2 -translate-x-1/2 px-10 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl transition text-base font-medium min-h-[48px]"
+            className="absolute bottom-8 left-1/2 -translate-x-1/2 px-10 py-3 bg-white/10 hover:bg-white/20 text-primary transition text-base font-medium min-h-[48px]"
           >
             Stop
           </button>
@@ -698,7 +698,7 @@ export default function BumpConnect({ onClose }: Props) {
               handle={match.peer.handle}
               name={match.peer.name}
               label={peerConfirmed ? `✓ @${match.peer.handle} accepted` : undefined}
-              labelColor="text-green-400"
+              labelColor="text-success"
               note={`Met at ${nodeName} · ${confirmTimeLeft}s to decide`}
             />
           </div>
@@ -706,13 +706,13 @@ export default function BumpConnect({ onClose }: Props) {
           <div className="w-full space-y-3">
             <button
               onClick={() => handleConfirm(match.matchId, true)}
-              className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-black font-bold text-lg rounded-xl transition min-h-[48px]"
+              style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="w-full py-4 hover:brightness-110 text-black font-bold text-lg transition min-h-[48px]"
             >
               Connect
             </button>
             <button
               onClick={() => handleConfirm(match.matchId, false)}
-              className="w-full py-3 bg-white/10 hover:bg-white/15 text-gray-400 rounded-xl transition text-base min-h-[48px]"
+              className="w-full py-3 bg-white/10 hover:bg-white/15 text-secondary transition text-base min-h-[48px]"
             >
               Not now
             </button>
@@ -724,21 +724,21 @@ export default function BumpConnect({ onClose }: Props) {
       {state === 'connected' && connectedInfo && (
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
           <div className="text-5xl mb-4">🤝</div>
-          <p className="text-white text-2xl font-bold">
+          <p className="text-primary text-2xl font-bold">
             Connected with @{connectedInfo.peer.handle || connectedInfo.peer.did.slice(0, 16)}
           </p>
           <div className="flex flex-col gap-3 mt-6 w-full max-w-xs">
             {connectedInfo.redirectUrl && (
               <a
                 href={connectedInfo.redirectUrl}
-                className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold rounded-xl transition text-center no-underline"
+                className="px-6 py-3 bg-warning hover:bg-warning text-gray-950 font-semibold transition text-center no-underline"
               >
                 View @{connectedInfo.peer.handle || 'profile'}
               </a>
             )}
             <button
               onClick={() => setState(session ? 'active' : 'idle')}
-              className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl transition font-medium"
+              className="px-6 py-3 bg-white/10 hover:bg-white/20 text-primary transition font-medium"
             >
               Keep bumping
             </button>
@@ -754,7 +754,7 @@ export default function BumpConnect({ onClose }: Props) {
             name={alreadyConnectedPeer.name}
             avatar={alreadyConnectedPeer.avatar}
             label="Already connected"
-            labelColor="text-orange-400"
+            labelColor="text-imajin-orange"
             note={alreadyConnectedSince
               ? `Connected since ${new Date(alreadyConnectedSince).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
               : undefined
@@ -762,7 +762,7 @@ export default function BumpConnect({ onClose }: Props) {
           />
           <button
             onClick={() => setState(session ? 'active' : 'idle')}
-            className="mt-8 px-8 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl transition text-base font-medium min-h-[48px]"
+            className="mt-8 px-8 py-3 bg-white/10 hover:bg-white/20 text-primary transition text-base font-medium min-h-[48px]"
           >
             Back to bumping
           </button>
@@ -775,7 +775,7 @@ export default function BumpConnect({ onClose }: Props) {
           <div className="text-[8rem] leading-none mb-6 select-none">🤜🤛</div>
           <button
             onClick={() => setState('selecting')}
-            className="px-10 py-4 bg-orange-500 hover:bg-orange-600 text-black text-lg font-bold rounded-xl transition min-h-[48px]"
+            style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="px-10 py-4 hover:brightness-110 text-black text-lg font-bold transition min-h-[48px]"
           >
             Bump
           </button>

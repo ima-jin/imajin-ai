@@ -59,7 +59,7 @@ export default function RegisterPageWrapper() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-900 dark:to-gray-800 p-4">
-        <p className="text-gray-500 dark:text-gray-400">Loading…</p>
+        <p className="text-secondary dark:text-secondary">Loading…</p>
       </div>
     }>
       <RegisterPage />
@@ -193,7 +193,7 @@ function RegisterPage() {
   if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-900 dark:to-gray-800 p-4">
-        <p className="text-gray-500 dark:text-gray-400">Checking invite…</p>
+        <p className="text-secondary dark:text-secondary">Checking invite…</p>
       </div>
     );
   }
@@ -202,28 +202,28 @@ function RegisterPage() {
   if (!inviteValid) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-900 dark:to-gray-800 p-4">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
+        <div className="bg-white dark:bg-surface-elevated p-8 w-full max-w-md text-center">
           <div className="text-6xl mb-6">🟠</div>
-          <h1 className="text-2xl font-bold mb-3">Imajin is invite-only</h1>
-          <p className="text-gray-500 dark:text-gray-400 mb-6">
+          <h1 className="text-2xl font-bold mb-3 font-mono">Imajin is invite-only</h1>
+          <p className="text-secondary dark:text-secondary mb-6">
             You need an invite from an existing member to join the network.
             Each connection is intentional.
           </p>
           {inviteCode && (
-            <p className="text-red-500 dark:text-red-400 text-sm mb-6">
+            <p className="text-error dark:text-error text-sm mb-6">
               This invite link is invalid or has already been used.
             </p>
           )}
           <div className="space-y-3">
             <Link
               href="/auth/login"
-              className="block w-full py-3 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition text-center"
+              className="block w-full py-3 bg-warning hover:bg-warning text-black font-medium transition text-center"
             >
               Already have an account? Login
             </Link>
             <a
               href={buildPublicUrl('www')}
-              className="block w-full py-3 bg-white/10 hover:bg-white/20 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition text-center"
+              className="block w-full py-3 bg-white/10 hover:bg-white/20 dark:bg-surface-elevated dark:hover:bg-surface-elevated text-gray-700 dark:text-primary font-medium transition text-center"
             >
               Learn about Imajin
             </a>
@@ -269,20 +269,20 @@ function RegisterPage() {
 
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-900 dark:to-gray-800 p-4">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 w-full max-w-md">
+        <div className="bg-white dark:bg-surface-elevated p-8 w-full max-w-md">
           <div className="text-center mb-6">
             <div className="text-5xl mb-4">🔐</div>
-            <h1 className="text-2xl font-bold mb-2">Back Up Your Key</h1>
-            <p className="text-gray-500 dark:text-gray-400">
-              Welcome, <span className="font-medium text-orange-500">@{registeredKeypair.handle}</span>
+            <h1 className="text-2xl font-bold mb-2 font-mono">Back Up Your Key</h1>
+            <p className="text-secondary dark:text-secondary">
+              Welcome, <span className="font-medium text-imajin-orange">@{registeredKeypair.handle}</span>
             </p>
           </div>
 
-          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-4 mb-6">
-            <p className="text-red-800 dark:text-red-200 font-semibold text-sm mb-2">
+          <div className="bg-error/10 dark:bg-error/30 border border-red-200 dark:border-red-800 p-4 mb-6">
+            <p className="text-error dark:text-error font-semibold text-sm mb-2">
               ⚠️ This is your only chance to back up your key
             </p>
-            <p className="text-red-700 dark:text-red-300 text-sm">
+            <p className="text-error dark:text-error text-sm">
               Your identity is controlled by a cryptographic key stored in this browser. 
               <strong> If you lose it, your account is gone forever.</strong> There is no password reset. 
               There is no recovery. No one — not even us — can restore it.
@@ -291,7 +291,7 @@ function RegisterPage() {
 
           <button
             onClick={downloadKey}
-            className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition mb-3 flex items-center justify-center gap-2"
+            style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="w-full py-3 hover:brightness-110 text-primary font-semibold transition mb-3 flex items-center justify-center gap-2"
           >
             📥 Download Backup Key
           </button>
@@ -299,20 +299,20 @@ function RegisterPage() {
           {keyBackedUp ? (
             <button
               onClick={continueAfterBackup}
-              className="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition"
+              className="w-full py-3 bg-success hover:bg-success text-primary font-semibold transition"
             >
               ✓ Continue
             </button>
           ) : (
             <button
               onClick={continueAfterBackup}
-              className="w-full py-3 bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 font-medium rounded-lg transition text-sm"
+              className="w-full py-3 bg-gray-200 dark:bg-surface-elevated text-secondary dark:text-secondary font-medium transition text-sm"
             >
               Skip — I understand the risk
             </button>
           )}
 
-          <p className="mt-4 text-xs text-gray-400 text-center">
+          <p className="mt-4 text-xs text-secondary text-center">
             Store the key file somewhere safe — a password manager, USB drive, or secure cloud storage. 
             You can use it to sign in on any device.
           </p>
@@ -325,13 +325,13 @@ function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-900 dark:to-gray-800 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-2 text-center">Create Identity</h1>
-        <p className="text-gray-500 dark:text-gray-400 text-center mb-2">
-          You&apos;ve been invited by <span className="text-white font-medium">{inviterDisplay}</span>
+      <div className="bg-white dark:bg-surface-elevated p-8 w-full max-w-md">
+        <h1 className="text-2xl font-bold mb-2 text-center font-mono">Create Identity</h1>
+        <p className="text-secondary dark:text-secondary text-center mb-2">
+          You&apos;ve been invited by <span className="text-primary font-medium">{inviterDisplay}</span>
         </p>
         {inviteInfo?.note && (
-          <p className="text-gray-400 text-center text-sm mb-6 italic">
+          <p className="text-secondary text-center text-sm mb-6 italic">
             &ldquo;{inviteInfo.note}&rdquo;
           </p>
         )}
@@ -340,7 +340,7 @@ function RegisterPage() {
           <div>
             <label className="block text-sm font-medium mb-1">Handle</label>
             <div className="flex items-center">
-              <span className="text-gray-400 mr-1">@</span>
+              <span className="text-secondary mr-1">@</span>
               <input
                 type="text"
                 value={handle}
@@ -348,10 +348,10 @@ function RegisterPage() {
                 placeholder="yourname"
                 pattern="[a-z0-9_]{3,30}"
                 required
-                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated focus:ring-2 focus:ring-imajin-purple focus:border-transparent"
               />
             </div>
-            <p className="text-xs text-gray-400 mt-1">3-30 characters, lowercase letters, numbers, underscores</p>
+            <p className="text-xs text-secondary mt-1">3-30 characters, lowercase letters, numbers, underscores</p>
           </div>
           
           <div>
@@ -362,33 +362,33 @@ function RegisterPage() {
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Your Name"
               required
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated focus:ring-2 focus:ring-imajin-purple focus:border-transparent"
             />
           </div>
           
           <div>
             <label className="block text-sm font-medium mb-1">
-              Email <span className="text-gray-400 font-normal">(optional)</span>
+              Email <span className="text-secondary font-normal">(optional)</span>
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated focus:ring-2 focus:ring-imajin-purple focus:border-transparent"
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-1">
-              Phone <span className="text-gray-400 font-normal">(optional)</span>
+              Phone <span className="text-secondary font-normal">(optional)</span>
             </label>
             <input
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+1 (555) 000-0000"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated focus:ring-2 focus:ring-imajin-purple focus:border-transparent"
             />
           </div>
 
@@ -398,9 +398,9 @@ function RegisterPage() {
                 type="checkbox"
                 checked={optInUpdates}
                 onChange={(e) => setOptInUpdates(e.target.checked)}
-                className="mt-1 rounded border-gray-300 dark:border-gray-600 text-orange-500 focus:ring-orange-500"
+                className="mt-1 border-gray-300 dark:border-gray-600 text-imajin-orange focus:ring-imajin-purple"
               />
-              <span className="text-sm text-gray-500 dark:text-gray-400">
+              <span className="text-sm text-secondary dark:text-secondary">
                 Send me occasional system updates (new features, important changes). No spam, ever. You can opt out anytime.
               </span>
             </label>
@@ -410,7 +410,7 @@ function RegisterPage() {
             <label className="block text-sm font-medium mb-1">Account Type</label>
             <select
               value={subtype}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated focus:ring-2 focus:ring-imajin-purple focus:border-transparent"
               disabled
             >
               <option value="human">👤 Human</option>
@@ -418,7 +418,7 @@ function RegisterPage() {
           </div>
           
           {error && (
-            <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
+            <div className="p-3 bg-error/10 dark:bg-error/20 text-error dark:text-error text-sm">
               {error}
             </div>
           )}
@@ -426,24 +426,24 @@ function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-medium rounded-lg transition"
+            style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="w-full py-3 hover:brightness-110 disabled:bg-imajin-orange/50 text-primary font-medium transition"
           >
             {loading ? 'Creating...' : 'Create Identity & Connect'}
           </button>
         </form>
         
-        <p className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
+        <p className="mt-6 text-center text-sm text-secondary dark:text-secondary">
           Already have an identity?{' '}
           <Link
             href={`/login${inviteCode ? `?invite=${inviteCode}${redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : ''}` : ''}`}
-            className="text-orange-500 hover:underline"
+            className="text-imajin-orange hover:underline"
           >
             Sign in
           </Link>
         </p>
         
-        <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+        <div className="mt-6 p-4 bg-gray-50 dark:bg-surface-elevated/50">
+          <p className="text-xs text-secondary dark:text-secondary">
             <strong>Note:</strong> Your keypair will be stored in this browser.
             If you clear your browser data, you will lose access to this identity.
             Export your keys to back them up.

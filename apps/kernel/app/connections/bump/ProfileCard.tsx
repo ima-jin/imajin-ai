@@ -22,7 +22,7 @@ export default function ProfileCard({
   avatar,
   note,
   label,
-  labelColor = 'text-gray-400',
+  labelColor = 'text-secondary',
 }: ProfileCardProps) {
   const isImageUrl = avatar && (avatar.startsWith('http') || avatar.startsWith('/') || avatar.startsWith('blob:'));
 
@@ -34,7 +34,7 @@ export default function ProfileCard({
 
       {/* Avatar */}
       {isImageUrl ? (
-        <div className="w-20 h-20 rounded-full border-2 border-orange-500 overflow-hidden bg-black mb-4">
+        <div className="w-20 h-20 rounded-full border-2 border-imajin-orange overflow-hidden bg-surface-base mb-4">
           <img src={avatar} alt={name || handle || 'Avatar'} className="w-full h-full object-cover" />
         </div>
       ) : (
@@ -48,17 +48,17 @@ export default function ProfileCard({
 
       {/* Handle */}
       {handle && (
-        <p className="text-orange-400 text-xl font-semibold">@{handle}</p>
+        <p className="text-imajin-orange text-xl font-semibold">@{handle}</p>
       )}
 
       {/* Name */}
       {name && name !== handle && (
-        <p className="text-white text-lg mt-1">{name}</p>
+        <p className="text-primary text-lg mt-1">{name}</p>
       )}
 
       {/* Note */}
       {note && (
-        <p className="text-gray-500 text-sm mt-2">{note}</p>
+        <p className="text-secondary text-sm mt-2">{note}</p>
       )}
     </div>
   );

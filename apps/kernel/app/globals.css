@@ -1,3 +1,5 @@
+@import '@imajin/tokens/dist/variables.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -17,27 +19,30 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(249, 115, 22, 0.3);
-  border-radius: 3px;
+  background: rgba(139, 92, 246, 0.3);
   transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(249, 115, 22, 0.6);
+  background: rgba(139, 92, 246, 0.6);
 }
 
 /* Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(249, 115, 22, 0.3) transparent;
+  scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
 }
 
 @layer components {
   .ima-btn {
-    @apply rounded-full w-9 h-9 p-1.5 text-slate-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 transition-colors;
+    @apply w-9 h-9 p-1.5 text-secondary hover:bg-surface-elevated disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 transition-colors;
   }
   .ima-btn-primary {
-    @apply rounded-full w-9 h-9 p-1.5 text-white bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 transition-colors;
+    @apply w-9 h-9 p-1.5 text-primary disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 transition-colors;
+    background: linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316);
+  }
+  .ima-btn-primary:hover {
+    filter: brightness(1.1);
   }
 }
 
@@ -52,7 +57,7 @@
   opacity: .625;
 }
 
-.bg-orange-500 .message-bubble-time {
+.bg-imajin-orange .message-bubble-time {
   opacity: .8;
 }
 

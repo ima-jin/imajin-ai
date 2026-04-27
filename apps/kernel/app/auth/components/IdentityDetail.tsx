@@ -3,9 +3,9 @@ import { eq, or, and, isNull, count } from 'drizzle-orm';
 import Link from 'next/link';
 
 function tierBadge(tier: string): { label: string; classes: string } {
-  if (tier === 'established') return { label: 'established', classes: 'bg-green-900/30 text-green-400 border-green-800' };
+  if (tier === 'established') return { label: 'established', classes: 'bg-success/30 text-success border-green-800' };
   if (tier === 'preliminary') return { label: 'preliminary', classes: 'bg-blue-900/30 text-blue-400 border-blue-800' };
-  return { label: 'soft', classes: 'bg-zinc-800 text-zinc-400 border-zinc-700' };
+  return { label: 'soft', classes: 'bg-surface-elevated text-secondary border-white/10' };
 }
 
 interface Props {
@@ -78,24 +78,24 @@ export default async function IdentityDetail({ did, sessionDid }: Props) {
   }
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-3">
+    <div className="bg-surface-base border border-white/10 p-6 space-y-3">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-white">
+          <h2 className="text-xl font-bold text-primary font-mono">
             {displayName ?? did.slice(0, 32) + '…'}
           </h2>
           {identity.handle && (
-            <p className="text-zinc-400 text-sm mt-0.5">@{identity.handle}</p>
+            <p className="text-secondary text-sm mt-0.5">@{identity.handle}</p>
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className={`text-xs px-2 py-1 rounded-full border ${badge.classes}`}>
+          <span className={`text-xs px-2 py-1 border ${badge.classes}`}>
             {badge.label}
           </span>
           {editHref && (
             <Link
               href={editHref}
-              className="text-xs px-2 py-1 rounded-md border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors"
+              className="text-xs px-2 py-1 border border-white/10 text-secondary hover:text-primary hover:border-white/30 transition-colors"
             >
               Edit
             </Link>
@@ -103,22 +103,22 @@ export default async function IdentityDetail({ did, sessionDid }: Props) {
         </div>
       </div>
 
-      <div className="font-mono text-xs text-zinc-600 break-all">{did}</div>
+      <div className="font-mono text-xs text-muted break-all">{did}</div>
 
-      <div className="flex flex-wrap gap-4 text-sm text-zinc-400 pt-1">
+      <div className="flex flex-wrap gap-4 text-sm text-secondary pt-1">
         <span>
-          <span className="text-white font-medium">{connCount}</span>{' '}
+          <span className="text-primary font-medium">{connCount}</span>{' '}
           {connCount === 1 ? 'connection' : 'connections'}
         </span>
         <span>
-          <span className="text-white font-medium">{attCount}</span>{' '}
+          <span className="text-primary font-medium">{attCount}</span>{' '}
           {attCount === 1 ? 'attestation' : 'attestations'}
         </span>
-        <span className="text-zinc-600 capitalize">{identity.scope}{identity.subtype ? `/${identity.subtype}` : ''}</span>
+        <span className="text-muted capitalize">{identity.scope}{identity.subtype ? `/${identity.subtype}` : ''}</span>
       </div>
 
       {identity.createdAt && (
-        <div className="text-xs text-zinc-600">
+        <div className="text-xs text-muted">
           Created{' '}
           {identity.createdAt.toLocaleDateString(undefined, {
             month: 'short',

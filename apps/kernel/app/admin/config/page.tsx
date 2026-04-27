@@ -37,35 +37,35 @@ export default async function AdminConfigPage() {
   return (
     <div className="p-6 lg:p-8 max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Node Config</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-primary font-mono">Node Config</h1>
+        <p className="mt-1 text-sm text-secondary dark:text-secondary">
           Node identity, registration settings, and resource limits
         </p>
       </div>
 
       {/* Node Identity (read-only) */}
-      <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-6 mb-6">
-        <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">
+      <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 p-6 mb-6">
+        <h2 className="text-sm font-semibold text-secondary dark:text-secondary uppercase tracking-wide mb-4 font-mono">
           Node Identity
         </h2>
         <dl className="space-y-3">
           {profileRow?.display_name && (
             <div>
-              <dt className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Node Name</dt>
-              <dd className="text-sm text-gray-900 dark:text-white font-medium">
+              <dt className="text-xs text-secondary dark:text-secondary mb-0.5">Node Name</dt>
+              <dd className="text-sm text-gray-900 dark:text-primary font-medium">
                 {profileRow.display_name as string}
               </dd>
             </div>
           )}
           <div>
-            <dt className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Imajin DID</dt>
-            <dd className="font-mono text-xs text-gray-900 dark:text-white break-all">
+            <dt className="text-xs text-secondary dark:text-secondary mb-0.5">Imajin DID</dt>
+            <dd className="font-mono text-xs text-gray-900 dark:text-primary break-all">
               {relayConfig?.imajin_did ?? '—'}
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">DFOS DID</dt>
-            <dd className="font-mono text-xs text-gray-900 dark:text-white break-all">
+            <dt className="text-xs text-secondary dark:text-secondary mb-0.5">DFOS DID</dt>
+            <dd className="font-mono text-xs text-gray-900 dark:text-primary break-all">
               {relayConfig?.did ?? '—'}
             </dd>
           </div>
@@ -73,31 +73,31 @@ export default async function AdminConfigPage() {
       </div>
 
       {/* Fee Configuration (read-only) */}
-      <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-6 mb-6">
-        <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">
+      <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 p-6 mb-6">
+        <h2 className="text-sm font-semibold text-secondary dark:text-secondary uppercase tracking-wide mb-4 font-mono">
           Fee Configuration
         </h2>
         <dl className="grid grid-cols-2 gap-4">
           <div>
-            <dt className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Node Fee</dt>
-            <dd className="text-lg font-bold text-gray-900 dark:text-white">
+            <dt className="text-xs text-secondary dark:text-secondary mb-0.5">Node Fee</dt>
+            <dd className="text-lg font-bold text-gray-900 dark:text-primary">
               {formatBps(relayConfig?.node_fee_bps as number | null)}
             </dd>
-            <dd className="text-xs text-gray-400 dark:text-gray-500">
+            <dd className="text-xs text-secondary dark:text-secondary">
               {relayConfig?.node_fee_bps ?? 0} bps
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Buyer Credit</dt>
-            <dd className="text-lg font-bold text-gray-900 dark:text-white">
+            <dt className="text-xs text-secondary dark:text-secondary mb-0.5">Buyer Credit</dt>
+            <dd className="text-lg font-bold text-gray-900 dark:text-primary">
               {formatBps(relayConfig?.buyer_credit_bps as number | null)}
             </dd>
-            <dd className="text-xs text-gray-400 dark:text-gray-500">
+            <dd className="text-xs text-secondary dark:text-secondary">
               {relayConfig?.buyer_credit_bps ?? 0} bps
             </dd>
           </div>
         </dl>
-        <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+        <p className="mt-3 text-xs text-secondary dark:text-secondary">
           Fee settings are configured at the relay level and cannot be changed here.
         </p>
       </div>

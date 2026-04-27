@@ -1,0 +1,25 @@
+{
+  "name": "@imajin/tokens",
+  "version": "0.1.0",
+  "description": "Imajin design tokens — DTCG format, built with Style Dictionary v4",
+  "main": "./dist/tailwind.js",
+  "exports": {
+    ".": "./dist/tailwind.js",
+    "./tailwind": "./dist/tailwind.js",
+    "./dist/tailwind.js": "./dist/tailwind.js",
+    "./css": "./dist/variables.css",
+    "./variables.css": "./dist/variables.css",
+    "./dist/variables.css": "./dist/variables.css"
+  },
+  "files": [
+    "dist/",
+    "tokens.json",
+    "build.mjs"
+  ],
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "style-dictionary": "^4.4.0"
+  }
+}

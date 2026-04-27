@@ -47,7 +47,7 @@ export default async function CreatorCoursesPage({ params }: PageProps) {
   const { identity, courses } = data;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black">
+    <div className="min-h-screen bg-surface-base">
       <div className="container mx-auto px-4 py-12 max-w-4xl">
         {/* Creator info */}
         <div className="text-center mb-12">
@@ -55,13 +55,13 @@ export default async function CreatorCoursesPage({ params }: PageProps) {
             <img src={identity.avatar} alt={identity.name} className="w-20 h-20 rounded-full mx-auto mb-4 object-cover" />
           )}
           <h1 className="text-2xl font-bold">{identity.name || params.handle}</h1>
-          <p className="text-gray-500">@{params.handle}</p>
-          {identity.bio && <p className="text-gray-600 dark:text-gray-400 mt-2 max-w-lg mx-auto">{identity.bio}</p>}
+          <p className="text-secondary">@{params.handle}</p>
+          {identity.bio && <p className="text-muted dark:text-secondary mt-2 max-w-lg mx-auto">{identity.bio}</p>}
         </div>
 
         {/* Courses */}
         {courses.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-secondary">
             <p>No published courses yet.</p>
           </div>
         ) : (
@@ -70,23 +70,23 @@ export default async function CreatorCoursesPage({ params }: PageProps) {
               <Link
                 key={course.id}
                 href={`/course/${course.slug}`}
-                className="block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-shadow"
+                className="block bg-white dark:bg-surface-elevated border border-white/10 dark:border-white/10 overflow-hidden transition-"
               >
                 {course.imageUrl && (
-                  <div className="aspect-video bg-gray-100 dark:bg-gray-700">
+                  <div className="aspect-video bg-surface-elevated dark:bg-surface-elevated">
                     <img src={course.imageUrl} alt={course.title} className="w-full h-full object-cover" />
                   </div>
                 )}
                 <div className="p-5">
                   <h3 className="font-semibold text-lg mb-2">{course.title}</h3>
                   {course.description && (
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">{course.description}</p>
+                    <p className="text-sm text-muted dark:text-secondary mb-3 line-clamp-2">{course.description}</p>
                   )}
-                  <div className="flex items-center justify-between text-sm text-gray-500">
+                  <div className="flex items-center justify-between text-sm text-secondary">
                     <span>{course.moduleCount} modules · {course.lessonCount} lessons</span>
                     <span className="font-medium">
                       {course.price === 0 ? (
-                        <span className="text-green-600 dark:text-green-400">Free</span>
+                        <span className="text-success dark:text-success">Free</span>
                       ) : (
                         `$${(course.price / 100).toFixed(2)}`
                       )}

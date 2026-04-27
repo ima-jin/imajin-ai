@@ -115,23 +115,23 @@ export default async function HistoryPage({
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Link href="/pay" className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors">
+        <Link href="/pay" className="text-muted hover:text-zinc-300 text-sm transition-colors">
           ← Dashboard
         </Link>
-        <h1 className="text-3xl font-bold text-white">Transaction History</h1>
+        <h1 className="text-3xl font-bold text-primary font-mono">Transaction History</h1>
       </div>
 
       {/* Filters */}
       <form
         method="GET"
-        className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-wrap gap-3 items-end"
+        className="bg-surface-base border border-white/10 p-4 flex flex-wrap gap-3 items-end"
       >
         <div className="flex-1 min-w-[150px]">
-          <label className="block text-xs text-zinc-500 mb-1.5">Service</label>
+          <label className="block text-xs text-muted mb-1.5">Service</label>
           <select
             name="service"
             defaultValue={service || ''}
-            className="w-full bg-black border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+            className="w-full bg-surface-base border border-white/10 px-3 py-2 text-sm text-primary focus:border-imajin-orange focus:outline-none"
           >
             <option value="">All services</option>
             {services.map((s) => (
@@ -143,11 +143,11 @@ export default async function HistoryPage({
         </div>
 
         <div className="flex-1 min-w-[120px]">
-          <label className="block text-xs text-zinc-500 mb-1.5">Currency</label>
+          <label className="block text-xs text-muted mb-1.5">Currency</label>
           <select
             name="currency"
             defaultValue={currency || ''}
-            className="w-full bg-black border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+            className="w-full bg-surface-base border border-white/10 px-3 py-2 text-sm text-primary focus:border-imajin-orange focus:outline-none"
           >
             <option value="">All</option>
             <option value="Fiat">Fiat</option>
@@ -156,36 +156,36 @@ export default async function HistoryPage({
         </div>
 
         <div className="flex-1 min-w-[140px]">
-          <label className="block text-xs text-zinc-500 mb-1.5">From</label>
+          <label className="block text-xs text-muted mb-1.5">From</label>
           <input
             type="date"
             name="from"
             defaultValue={from || ''}
-            className="w-full bg-black border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+            className="w-full bg-surface-base border border-white/10 px-3 py-2 text-sm text-primary focus:border-imajin-orange focus:outline-none"
           />
         </div>
 
         <div className="flex-1 min-w-[140px]">
-          <label className="block text-xs text-zinc-500 mb-1.5">To</label>
+          <label className="block text-xs text-muted mb-1.5">To</label>
           <input
             type="date"
             name="to"
             defaultValue={to || ''}
-            className="w-full bg-black border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+            className="w-full bg-surface-base border border-white/10 px-3 py-2 text-sm text-primary focus:border-imajin-orange focus:outline-none"
           />
         </div>
 
         <div className="flex gap-2">
           <button
             type="submit"
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
+            style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="px-4 py-2 hover:brightness-110 text-primary text-sm font-medium transition-colors"
           >
             Filter
           </button>
           {hasFilters && (
             <Link
               href="/history"
-              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
+              className="px-4 py-2 bg-surface-elevated hover:bg-surface-elevated text-zinc-300 text-sm font-medium transition-colors"
             >
               Clear
             </Link>
@@ -195,11 +195,11 @@ export default async function HistoryPage({
 
       {/* Transaction list */}
       {displayEntries.length === 0 ? (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-12 text-center text-zinc-500">
+        <div className="bg-surface-base border border-white/10 p-12 text-center text-muted">
           No transactions found
           {hasFilters && (
             <div className="mt-2">
-              <Link href="/history" className="text-orange-500 hover:text-orange-400 text-sm">
+              <Link href="/history" className="text-imajin-orange hover:text-imajin-orange text-sm">
                 Clear filters
               </Link>
             </div>
@@ -215,7 +215,7 @@ export default async function HistoryPage({
           {page > 1 ? (
             <Link
               href={`/history?${new URLSearchParams({ ...filterParams, page: String(page - 1) })}`}
-              className="px-4 py-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors"
+              className="px-4 py-2 bg-surface-base border border-white/10 hover:border-white/10 text-zinc-300 text-sm transition-colors"
             >
               ← Previous
             </Link>
@@ -225,7 +225,7 @@ export default async function HistoryPage({
           {hasMore && (
             <Link
               href={`/history?${new URLSearchParams({ ...filterParams, page: String(page + 1) })}`}
-              className="px-4 py-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors"
+              className="px-4 py-2 bg-surface-base border border-white/10 hover:border-white/10 text-zinc-300 text-sm transition-colors"
             >
               Next →
             </Link>

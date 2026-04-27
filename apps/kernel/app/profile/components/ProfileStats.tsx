@@ -12,12 +12,12 @@ interface ProfileStatsProps {
 export function ProfileStats({ counts, viewerDid, isSelf, targetDid, isFollowing }: ProfileStatsProps) {
   return (
     <div className="mb-6 flex flex-col items-center gap-3">
-      <p className="text-sm text-gray-400">
-        <span className="text-white font-medium">{counts.followers}</span> followers
+      <p className="text-sm text-secondary">
+        <span className="text-primary font-medium">{counts.followers}</span> followers
         {' · '}
-        <span className="text-white font-medium">{counts.following}</span> following
+        <span className="text-primary font-medium">{counts.following}</span> following
         {' · '}
-        <span className="text-white font-medium">{counts.connections}</span> connections
+        <span className="text-primary font-medium">{counts.connections}</span> connections
       </p>
       {viewerDid && !isSelf && (
         <FollowButton targetDid={targetDid} initialFollowing={isFollowing} />

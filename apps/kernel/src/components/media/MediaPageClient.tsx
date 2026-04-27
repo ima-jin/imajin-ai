@@ -19,7 +19,7 @@ export function MediaPageClient({ session }: Props) {
           placeholder="Search files…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-52 bg-[#252525] border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500 transition-colors"
+          className="w-52 bg-[#252525] border border-white/10 px-3 py-1.5 text-sm text-primary placeholder-muted focus:outline-none focus:border-imajin-orange transition-colors"
         />
       </div>
       <MediaManager session={session} search={search} />

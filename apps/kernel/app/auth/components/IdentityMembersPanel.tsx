@@ -10,10 +10,10 @@ interface Controller {
 }
 
 const ROLE_STYLES: Record<string, string> = {
-  owner: 'border-amber-600 text-amber-400 bg-amber-900/20',
+  owner: 'border-amber-600 text-warning bg-warning/20',
   admin: 'border-blue-700 text-blue-400 bg-blue-900/20',
   maintainer: 'border-sky-700 text-sky-400 bg-sky-900/20',
-  member: 'border-gray-700 text-gray-400 bg-gray-900/20',
+  member: 'border-white/10 text-secondary bg-surface-surface/20',
 };
 
 const ADD_ROLES = ['admin', 'maintainer', 'member'];
@@ -110,36 +110,36 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
   }
 
   if (loading) {
-    return <div className="text-gray-400 py-8">Loading members…</div>;
+    return <div className="text-secondary py-8">Loading members…</div>;
   }
 
   return (
     <div className="space-y-6">
       {status && (
         <div
-          className={`p-4 rounded-lg border ${
+          className={`p-4 border ${
             status.type === 'success'
-              ? 'bg-green-900/20 border-green-800 text-green-400'
-              : 'bg-red-900/20 border-red-800 text-red-400'
+              ? 'bg-success/20 border-green-800 text-success'
+              : 'bg-error/20 border-red-800 text-error'
           }`}
         >
           {status.text}
         </div>
       )}
 
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6">
+      <div className="bg-[#0a0a0a] border border-white/10 p-6">
         <div className="flex items-center gap-3 mb-1">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500">Members</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-secondary font-mono">Members</h2>
           {controllers.length > 0 && (
-            <span className="px-1.5 py-0.5 text-xs rounded bg-gray-800 text-gray-400 font-mono">
+            <span className="px-1.5 py-0.5 text-xs bg-surface-elevated text-secondary font-mono">
               {controllers.length}
             </span>
           )}
         </div>
-        <p className="text-sm text-gray-400 mb-6">People who can manage this identity.</p>
+        <p className="text-sm text-secondary mb-6">People who can manage this identity.</p>
 
         {controllers.length === 0 ? (
-          <p className="text-sm text-gray-500 mb-6">No members found.</p>
+          <p className="text-sm text-secondary mb-6">No members found.</p>
         ) : (
           <div className="space-y-2 mb-6">
             {controllers.map((ctrl) => {
@@ -149,30 +149,30 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
               return (
                 <div
                   key={ctrl.controllerDid}
-                  className="flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-800"
+                  className="flex items-center justify-between p-3 bg-surface-surface border border-white/10"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="text-xl flex-shrink-0">👤</span>
                     <div className="min-w-0">
-                      <p className="text-sm text-white font-medium font-mono truncate">
+                      <p className="text-sm text-primary font-medium font-mono truncate">
                         {ctrl.controllerDid.length > 32
                           ? ctrl.controllerDid.slice(0, 28) + '…'
                           : ctrl.controllerDid}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-secondary">
                         Added {new Date(ctrl.addedAt).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                    <span className={`px-2 py-0.5 text-xs rounded border capitalize ${roleStyle}`}>
+                    <span className={`px-2 py-0.5 text-xs  border capitalize ${roleStyle}`}>
                       {ctrl.role}
                     </span>
                     {!isOwner && (
                       <button
                         onClick={() => handleRemoveMember(ctrl.controllerDid)}
                         disabled={isRemoving}
-                        className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-red-400 hover:bg-red-900/20 transition disabled:opacity-40"
+                        className="w-6 h-6 flex items-center justify-center text-muted hover:text-error hover:bg-error/20 transition disabled:opacity-40"
                         title="Remove member"
                       >
                         {isRemoving ? '…' : '×'}
@@ -192,12 +192,12 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
             value={addDid}
             onChange={(e) => setAddDid(e.target.value)}
             placeholder="DID or handle"
-            className="flex-1 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
+            className="flex-1 px-3 py-2 bg-surface-surface border border-white/10 text-sm text-primary placeholder-muted focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
           />
           <select
             value={addRole}
             onChange={(e) => setAddRole(e.target.value)}
-            className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
+            className="px-3 py-2 bg-surface-surface border border-white/10 text-sm text-primary focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
           >
             {ADD_ROLES.map((r) => (
               <option key={r} value={r}>
@@ -208,7 +208,7 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
           <button
             type="submit"
             disabled={addingMember || !addDid.trim()}
-            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition disabled:opacity-40 whitespace-nowrap"
+            className="px-4 py-2 bg-surface-elevated hover:bg-surface-elevated border border-white/10 text-sm text-primary transition disabled:opacity-40 whitespace-nowrap"
           >
             {addingMember ? 'Adding…' : 'Add'}
           </button>

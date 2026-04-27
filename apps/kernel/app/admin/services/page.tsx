@@ -39,8 +39,8 @@ export default async function AdminServicesPage() {
     <div className="p-6 lg:p-8 max-w-6xl">
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Services</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-primary font-mono">Services</h1>
+          <p className="mt-1 text-sm text-secondary dark:text-secondary">
             {data
               ? `Last checked ${new Date(data.checkedAt).toLocaleTimeString()}`
               : 'Health check unavailable'}
@@ -50,8 +50,8 @@ export default async function AdminServicesPage() {
       </div>
 
       {!data ? (
-        <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-8 text-center">
-          <p className="text-gray-500 dark:text-gray-400 text-sm">
+        <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 p-8 text-center">
+          <p className="text-secondary dark:text-secondary text-sm">
             Could not fetch service health. Check admin authentication.
           </p>
         </div>
@@ -80,10 +80,10 @@ function ServiceSection({
   return (
     <div className="mb-8">
       <div className="flex items-center gap-3 mb-3">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-primary uppercase tracking-wide font-mono">
           {title}
         </h2>
-        <span className="text-xs text-gray-500 dark:text-gray-400">
+        <span className="text-xs text-secondary dark:text-secondary">
           {healthyCount}/{total} healthy
         </span>
       </div>
@@ -101,34 +101,34 @@ function ServiceCard({ service }: { service: ServiceHealth }) {
     healthy: {
       indicator: '🟢',
       label: 'Healthy',
-      textClass: 'text-green-700 dark:text-green-400',
-      bgClass: 'bg-green-50 dark:bg-green-900/20',
+      textClass: 'text-success dark:text-success',
+      bgClass: 'bg-success/10 dark:bg-success/20',
     },
     degraded: {
       indicator: '🟡',
       label: 'Degraded',
-      textClass: 'text-yellow-700 dark:text-yellow-400',
-      bgClass: 'bg-yellow-50 dark:bg-yellow-900/20',
+      textClass: 'text-warning dark:text-warning',
+      bgClass: 'bg-yellow-50 dark:bg-warning/20/20',
     },
     down: {
       indicator: '🔴',
       label: 'Down',
-      textClass: 'text-red-700 dark:text-red-400',
-      bgClass: 'bg-red-50 dark:bg-red-900/20',
+      textClass: 'text-error dark:text-error',
+      bgClass: 'bg-error/10 dark:bg-error/20',
     },
   };
 
   const config = statusConfig[service.status];
 
   return (
-    <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-4">
+    <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 p-4">
       <div className="flex items-start justify-between mb-2">
         <div>
-          <h3 className="font-semibold text-gray-900 dark:text-white text-sm">{service.label}</h3>
-          <span className="text-xs text-gray-500 dark:text-gray-400 capitalize">{service.name}</span>
+          <h3 className="font-semibold text-gray-900 dark:text-primary text-sm font-mono">{service.label}</h3>
+          <span className="text-xs text-secondary dark:text-secondary capitalize">{service.name}</span>
         </div>
         <span
-          className={`text-xs px-2 py-0.5 rounded-full font-medium ${config.bgClass} ${config.textClass}`}
+          className={`text-xs px-2 py-0.5 font-medium ${config.bgClass} ${config.textClass}`}
         >
           {service.group === 'kernel' ? 'Kernel' : 'Userspace'}
         </span>
@@ -138,14 +138,14 @@ function ServiceCard({ service }: { service: ServiceHealth }) {
         <span className="text-base leading-none">{config.indicator}</span>
         <span className={`text-sm font-medium ${config.textClass}`}>{config.label}</span>
         {service.responseTime !== null && (
-          <span className="ml-auto text-xs text-gray-500 dark:text-gray-400">
+          <span className="ml-auto text-xs text-secondary dark:text-secondary">
             {service.responseTime}ms
           </span>
         )}
       </div>
 
       {service.version && (
-        <p className="mt-2 text-xs text-gray-400 dark:text-gray-500 font-mono">
+        <p className="mt-2 text-xs text-secondary dark:text-secondary font-mono">
           v{service.version}
           {service.build && service.build !== 'dev' ? ` (${service.build.slice(0, 7)})` : ''}
         </p>

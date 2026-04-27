@@ -51,21 +51,21 @@ export default async function AdminLayout({
   const nodeDidShort = `${nodeDid.slice(0, 16)}…${nodeDid.slice(-6)}`;
 
   return (
-    <div className="flex min-h-screen bg-white dark:bg-gray-900">
+    <div className="flex min-h-screen bg-white dark:bg-surface-surface">
       {/* Sidebar */}
-      <div className="hidden md:flex md:flex-col md:w-64 md:fixed md:inset-y-0 bg-gray-100 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
+      <div className="hidden md:flex md:flex-col md:w-64 md:fixed md:inset-y-0 bg-gray-100 dark:bg-surface-elevated border-r border-gray-200 dark:border-white/10">
         {/* Node identity header */}
-        <div className="px-4 py-5 border-b border-gray-200 dark:border-gray-700">
+        <div className="px-4 py-5 border-b border-gray-200 dark:border-white/10">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-lg">🖥️</span>
-            <span className="font-semibold text-gray-900 dark:text-white truncate text-sm">
+            <span className="font-semibold text-gray-900 dark:text-primary truncate text-sm">
               {nodeName}
             </span>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
+          <p className="text-xs text-secondary dark:text-secondary font-mono truncate">
             {nodeDidShort}
           </p>
-          <span className="mt-2 inline-block text-xs bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded-full font-medium">
+          <span className="mt-2 inline-block text-xs bg-imajin-orange/10 dark:bg-imajin-orange/20 text-imajin-orange dark:text-imajin-orange px-2 py-0.5 font-medium">
             Admin Console
           </span>
         </div>
@@ -76,10 +76,10 @@ export default async function AdminLayout({
         </nav>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+        <div className="px-4 py-3 border-t border-gray-200 dark:border-white/10">
           <Link
             href="/"
-            className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            className="flex items-center gap-2 text-xs text-secondary dark:text-secondary hover:text-gray-700 dark:hover:text-primary"
           >
             <span>←</span>
             <span>Back to site</span>
@@ -88,7 +88,7 @@ export default async function AdminLayout({
       </div>
 
       {/* Mobile header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-20 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-20 bg-gray-100 dark:bg-surface-elevated border-b border-gray-200 dark:border-white/10 px-4 py-3">
         <AdminNav navItems={NAV_ITEMS} mobile nodeName={nodeName} />
       </div>
 

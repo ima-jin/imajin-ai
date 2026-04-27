@@ -38,17 +38,17 @@ export default function SubscriberActions({ id, email, isVerified }: Props) {
   if (showConfirm) {
     return (
       <div className="flex items-center gap-1 whitespace-nowrap">
-        <span className="text-xs text-gray-500 dark:text-gray-400">Delete {email}?</span>
+        <span className="text-xs text-secondary dark:text-secondary">Delete {email}?</span>
         <button
           onClick={handleDelete}
           disabled={deleting}
-          className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
+          className="text-xs text-error dark:text-error hover:underline disabled:opacity-50"
         >
           {deleting ? 'Deleting…' : 'Confirm'}
         </button>
         <button
           onClick={() => setShowConfirm(false)}
-          className="text-xs text-gray-500 dark:text-gray-400 hover:underline"
+          className="text-xs text-secondary dark:text-secondary hover:underline"
         >
           Cancel
         </button>
@@ -69,7 +69,7 @@ export default function SubscriberActions({ id, email, isVerified }: Props) {
       )}
       <button
         onClick={() => setShowConfirm(true)}
-        className="text-xs text-red-600 dark:text-red-400 hover:underline"
+        className="text-xs text-error dark:text-error hover:underline"
       >
         Delete
       </button>

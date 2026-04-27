@@ -75,30 +75,30 @@ export function NotificationBell() {
     <div className="relative" ref={panelRef}>
       <button
         onClick={handleOpen}
-        className={`relative p-2 rounded-lg transition ${
-          open ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+        className={`relative p-2 transition ${
+          open ? 'bg-surface-elevated' : 'hover:bg-surface-elevated'
         }`}
         title="Notifications"
         aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
         aria-expanded={open}
       >
-        <BellIcon className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+        <BellIcon className="w-5 h-5 text-secondary" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[1.1rem] h-[1.1rem] flex items-center justify-center px-1 leading-none pointer-events-none">
+          <span className="absolute -top-0.5 -right-0.5 bg-imajin-red text-primary text-[10px] font-bold rounded-full min-w-[1.1rem] h-[1.1rem] flex items-center justify-center px-1 leading-none pointer-events-none">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-gray-900 border border-gray-700 rounded-lg shadow-lg z-50 flex flex-col max-h-[24rem]">
+        <div className="absolute right-0 mt-2 w-80 bg-surface-surface border border-white/[0.1] z-50 flex flex-col max-h-[24rem]">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 shrink-0">
-            <span className="text-sm font-semibold text-white">Notifications</span>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.1] shrink-0">
+            <span className="text-sm font-mono font-semibold text-primary">Notifications</span>
             {hasUnread && (
               <button
                 onClick={() => markAllAsRead()}
-                className="text-xs text-blue-400 hover:text-blue-300 transition"
+                className="text-xs text-imajin-blue hover:text-imajin-purple transition"
               >
                 Mark all as read
               </button>
@@ -108,30 +108,30 @@ export function NotificationBell() {
           {/* Body */}
           <div className="overflow-y-auto flex-1">
             {loading ? (
-              <div className="px-4 py-6 text-center text-sm text-gray-400">Loading…</div>
+              <div className="px-4 py-6 text-center text-sm text-muted">Loading…</div>
             ) : notifications.length === 0 ? (
-              <div className="px-4 py-6 text-center text-sm text-gray-400">No notifications yet</div>
+              <div className="px-4 py-6 text-center text-sm text-muted">No notifications yet</div>
             ) : (
               notifications.map(notification => (
                 <button
                   key={notification.id}
                   onClick={() => markAsRead(notification.id)}
-                  className={`w-full text-left px-4 py-3 border-b border-gray-800 last:border-0 hover:bg-gray-800 transition flex items-start gap-3 ${
-                    !notification.read ? 'bg-gray-800/50' : ''
+                  className={`w-full text-left px-4 py-3 border-b border-white/[0.1] last:border-0 hover:bg-surface-elevated transition flex items-start gap-3 ${
+                    !notification.read ? 'bg-surface-elevated/50' : ''
                   }`}
                 >
                   {/* Unread dot — space always reserved so text aligns */}
                   <span className="shrink-0 w-2 h-2 rounded-full mt-1.5 flex items-center justify-center">
                     {!notification.read && (
-                      <span className="block w-2 h-2 rounded-full bg-blue-500" aria-hidden="true" />
+                      <span className="block w-2 h-2 rounded-full bg-imajin-blue" aria-hidden="true" />
                     )}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{notification.title}</p>
+                    <p className="text-sm font-medium text-primary truncate">{notification.title}</p>
                     {notification.body && (
-                      <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{notification.body}</p>
+                      <p className="text-xs text-secondary mt-0.5 line-clamp-2">{notification.body}</p>
                     )}
-                    <p className="text-xs text-gray-500 mt-1">{relativeTime(notification.createdAt)}</p>
+                    <p className="text-xs text-muted mt-1">{relativeTime(notification.createdAt)}</p>
                   </div>
                 </button>
               ))

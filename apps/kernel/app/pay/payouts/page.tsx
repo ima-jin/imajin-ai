@@ -57,20 +57,20 @@ export default async function PayoutsPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Link href="/pay" className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors">
+        <Link href="/pay" className="text-muted hover:text-zinc-300 text-sm transition-colors">
           ← Dashboard
         </Link>
-        <h1 className="text-3xl font-bold text-white">Payouts</h1>
+        <h1 className="text-3xl font-bold text-primary font-mono">Payouts</h1>
       </div>
 
       {/* Payout Status Card */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+      <div className="bg-surface-base border border-white/10 p-6">
         {!status ? (
           // State A - Not connected
           <div className="text-center space-y-4">
             <div>
-              <h2 className="text-xl font-semibold text-white mb-2">Set up payouts</h2>
-              <p className="text-zinc-400 max-w-2xl mx-auto">
+              <h2 className="text-xl font-semibold text-primary mb-2 font-mono">Set up payouts</h2>
+              <p className="text-secondary max-w-2xl mx-auto">
                 Connect your bank account to receive payouts from events, tips, and sales.
               </p>
             </div>
@@ -83,8 +83,8 @@ export default async function PayoutsPage() {
           // State B - Onboarding incomplete
           <div className="space-y-6">
             <div>
-              <h2 className="text-xl font-semibold text-white mb-2">Complete your setup</h2>
-              <p className="text-zinc-400">
+              <h2 className="text-xl font-semibold text-primary mb-2 font-mono">Complete your setup</h2>
+              <p className="text-secondary">
                 Your payout account needs more information to start receiving funds.
               </p>
             </div>
@@ -92,7 +92,7 @@ export default async function PayoutsPage() {
             {/* Capabilities Status */}
             <div className="grid gap-3">
               <div className="flex items-center gap-3">
-                <span className={`text-lg ${status.chargesEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                <span className={`text-lg ${status.chargesEnabled ? 'text-success' : 'text-error'}`}>
                   {status.chargesEnabled ? '✅' : '❌'}
                 </span>
                 <span className="text-sm text-zinc-300">
@@ -100,7 +100,7 @@ export default async function PayoutsPage() {
                 </span>
               </div>
               <div className="flex items-center gap-3">
-                <span className={`text-lg ${status.payoutsEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                <span className={`text-lg ${status.payoutsEnabled ? 'text-success' : 'text-error'}`}>
                   {status.payoutsEnabled ? '✅' : '❌'}
                 </span>
                 <span className="text-sm text-zinc-300">
@@ -108,7 +108,7 @@ export default async function PayoutsPage() {
                 </span>
               </div>
               <div className="flex items-center gap-3">
-                <span className={`text-lg ${status.detailsSubmitted ? 'text-green-400' : 'text-red-400'}`}>
+                <span className={`text-lg ${status.detailsSubmitted ? 'text-success' : 'text-error'}`}>
                   {status.detailsSubmitted ? '✅' : '❌'}
                 </span>
                 <span className="text-sm text-zinc-300">
@@ -126,9 +126,9 @@ export default async function PayoutsPage() {
           // State C - Connected
           <div className="space-y-6">
             <div className="text-center">
-              <div className="text-green-400 text-4xl mb-3">✅</div>
-              <h2 className="text-xl font-semibold text-white mb-2">Payouts enabled</h2>
-              <p className="text-zinc-400">
+              <div className="text-success text-4xl mb-3">✅</div>
+              <h2 className="text-xl font-semibold text-primary mb-2 font-mono">Payouts enabled</h2>
+              <p className="text-secondary">
                 Default currency: {status.defaultCurrency}
               </p>
             </div>
@@ -138,7 +138,7 @@ export default async function PayoutsPage() {
                 status="connected"
                 did={did}
               />
-              <p className="text-xs text-zinc-500 mt-3">
+              <p className="text-xs text-muted mt-3">
                 View payout schedule, bank details, and transaction history in the Stripe Dashboard
               </p>
             </div>

@@ -55,7 +55,7 @@ interface Theme {
   textColor?: string;
   buttonColor?: string;
   buttonTextColor?: string;
-  buttonStyle?: 'rounded' | 'square' | 'pill';
+  buttonStyle?: '' | 'square' | 'pill';
 }
 
 export default async function LinksPage({ params }: PageProps) {
@@ -91,7 +91,7 @@ export default async function LinksPage({ params }: PageProps) {
   const buttonStyle = theme.buttonStyle || 'pill';
 
   const borderRadius = {
-    rounded: '0.75rem',
+    : '0.75rem',
     square: '0.25rem',
     pill: '9999px',
   }[buttonStyle];

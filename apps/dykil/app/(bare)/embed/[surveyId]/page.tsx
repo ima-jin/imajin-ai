@@ -283,7 +283,7 @@ export default function SurveyEmbedPage() {
   if (loading) {
     return (
       <div ref={containerRef} className="p-8 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-orange-500"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-imajin-purple"></div>
       </div>
     );
   }
@@ -291,7 +291,7 @@ export default function SurveyEmbedPage() {
   if (!surveyData) {
     return (
       <div ref={containerRef} className="p-8 text-center">
-        <p className="text-gray-600 dark:text-gray-400">Survey not found</p>
+        <p className="text-muted dark:text-secondary">Survey not found</p>
       </div>
     );
   }
@@ -302,13 +302,13 @@ export default function SurveyEmbedPage() {
       return (
         <div ref={containerRef} className="p-6">
           <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-orange-500">
+            <div className="flex items-center gap-2 text-imajin-orange">
               <span className="text-xl">✏️</span>
               <span className="font-semibold">Editing your response</span>
             </div>
             <button
               onClick={() => setEditing(false)}
-              className="text-sm text-gray-500 hover:text-gray-300 transition"
+              className="text-sm text-secondary:text-primary transition"
             >
               Cancel
             </button>
@@ -330,12 +330,12 @@ export default function SurveyEmbedPage() {
       <div ref={containerRef} className="p-6 text-center">
         <div className="text-5xl mb-3">✓</div>
         <h2 className="text-xl font-bold mb-1">Response submitted</h2>
-        <p className="text-gray-600 dark:text-gray-400 mb-4">
+        <p className="text-muted dark:text-secondary mb-4">
           Your response has been recorded.
         </p>
         <button
           onClick={() => setEditing(true)}
-          className="px-4 py-2 text-sm rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 transition"
+          className="px-4 py-2 text-sm bg-surface-elevated text-primary:bg-surface-elevated transition"
         >
           Edit answers
         </button>
@@ -346,7 +346,7 @@ export default function SurveyEmbedPage() {
   if (surveyData.status !== 'published') {
     return (
       <div ref={containerRef} className="p-8 text-center">
-        <p className="text-gray-600 dark:text-gray-400">
+        <p className="text-muted dark:text-secondary">
           This survey is currently {surveyData.status}.
         </p>
       </div>
@@ -358,7 +358,7 @@ export default function SurveyEmbedPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-2">{surveyData.title}</h1>
         {surveyData.description && (
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-muted dark:text-secondary">
             {surveyData.description}
           </p>
         )}
@@ -368,7 +368,7 @@ export default function SurveyEmbedPage() {
         <Survey model={surveyModel} />
       ) : (
         <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-orange-500"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-imajin-purple"></div>
         </div>
       )}
     </div>

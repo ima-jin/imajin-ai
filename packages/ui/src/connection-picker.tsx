@@ -59,42 +59,42 @@ export function ConnectionPicker({
         onChange={e => setSearch(e.target.value)}
         placeholder={placeholder}
         disabled={disabled || loading}
-        className="w-full px-3 py-2 text-sm border border-gray-600 rounded-lg bg-gray-900 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50"
+        className="w-full px-3 py-2 text-sm border border-white/[0.12] bg-surface-input text-primary placeholder-muted focus:outline-none focus:ring-2 focus:ring-imajin-purple disabled:opacity-50"
       />
       {loading ? (
-        <p className="text-sm text-gray-500 px-1">Loading connections...</p>
+        <p className="text-sm text-muted px-1">Loading connections...</p>
       ) : error ? (
-        <p className="text-sm text-red-400 px-1">{error}</p>
+        <p className="text-sm text-error px-1">{error}</p>
       ) : filtered.length === 0 ? (
-        <p className="text-sm text-gray-500 px-1">
+        <p className="text-sm text-muted px-1">
           {available.length === 0 ? 'No connections available.' : 'No matching connections.'}
         </p>
       ) : (
-        <div className="space-y-0 max-h-48 overflow-y-auto rounded-lg border border-gray-700 bg-gray-900">
+        <div className="space-y-0 max-h-48 overflow-y-auto border border-white/[0.1] bg-surface-surface">
           {filtered.map(conn => (
             <button
               key={conn.did}
               onClick={() => { onSelect(conn); setSearch(''); }}
               disabled={disabled}
-              className="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-800 transition text-left disabled:opacity-50"
+              className="w-full flex items-center gap-3 px-3 py-2 hover:bg-surface-elevated transition text-left disabled:opacity-50"
             >
               {conn.avatar ? (
                 <img
                   src={conn.avatar}
                   alt={conn.name || conn.handle || conn.did}
-                  className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                  className="w-8 h-8 object-cover flex-shrink-0"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-gray-400 text-sm font-semibold flex-shrink-0">
+                <div className="w-8 h-8 bg-surface-elevated flex items-center justify-center text-secondary text-sm font-semibold flex-shrink-0">
                   {(conn.name || conn.handle || conn.did).charAt(0).toUpperCase()}
                 </div>
               )}
               <div className="min-w-0">
-                <div className="text-sm font-medium text-white truncate">
+                <div className="text-sm font-medium text-primary truncate">
                   {conn.name || (conn.handle ? `@${conn.handle}` : conn.did.slice(0, 20) + '...')}
                 </div>
                 {conn.handle && conn.name && (
-                  <div className="text-xs text-gray-400 truncate">@{conn.handle}</div>
+                  <div className="text-xs text-secondary truncate">@{conn.handle}</div>
                 )}
               </div>
             </button>

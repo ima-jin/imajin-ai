@@ -7,19 +7,19 @@ export function ContactCard({ contactEmail, phone }: ContactCardProps) {
   if (!contactEmail && !phone) return null;
 
   return (
-    <div className="mb-6 bg-gray-900/50 border border-gray-800 rounded-lg p-4 text-left">
-      <p className="text-xs text-gray-500 mb-2 text-center">📇 Contact</p>
+    <div className="mb-6 bg-surface-surface/50 border border-white/10 p-4 text-left">
+      <p className="text-xs text-secondary mb-2 text-center">📇 Contact</p>
       {contactEmail && (
-        <p className="text-sm text-gray-300 mb-1">
-          <span className="text-gray-500">✉️</span>{' '}
+        <p className="text-sm text-primary mb-1">
+          <span className="text-secondary">✉️</span>{' '}
           <a href={`mailto:${contactEmail}`} className="text-[#F59E0B] hover:underline">
             {contactEmail}
           </a>
         </p>
       )}
       {phone && (
-        <p className="text-sm text-gray-300">
-          <span className="text-gray-500">📱</span>{' '}
+        <p className="text-sm text-primary">
+          <span className="text-secondary">📱</span>{' '}
           <a href={`tel:${phone}`} className="text-[#F59E0B] hover:underline">
             {phone}
           </a>

@@ -120,10 +120,10 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4">
+      <main className="min-h-screen bg-surface-base py-8 px-4">
         <div className="max-w-5xl mx-auto text-center">
           <div className="text-4xl mb-4">☕</div>
-          <p className="text-gray-600 dark:text-gray-400">Loading dashboard...</p>
+          <p className="text-muted dark:text-secondary">Loading dashboard...</p>
         </div>
       </main>
     );
@@ -131,14 +131,14 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4">
+      <main className="min-h-screen bg-surface-base py-8 px-4">
         <div className="max-w-5xl mx-auto">
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-6 text-center">
-            <p className="text-red-800 dark:text-red-200 mb-4">{error}</p>
+          <div className="bg-error/10 dark:bg-error/10 border border-error/20 dark:border-error/20 p-6 text-center">
+            <p className="text-error dark:text-error mb-4">{error}</p>
             {error.includes('create one') && (
               <Link
                 href="/edit"
-                className="inline-block px-6 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-semibold transition"
+                className="inline-block px-6 py-3 bg-imajin-orange hover:brightness-110 text-primary font-semibold transition"
               >
                 Create Coffee Page
               </Link>
@@ -153,7 +153,7 @@ export default function DashboardPage() {
   const thisMonthTotal = getThisMonthTotal();
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4">
+    <main className="min-h-screen bg-surface-base py-8 px-4">
       <div className="max-w-5xl mx-auto">
         {userPage?.did && (
           <PayoutSetupBanner
@@ -168,7 +168,7 @@ export default function DashboardPage() {
             <h1 className="text-3xl font-bold mb-1">{userPage?.title || 'Coffee Page'}</h1>
             <a
               href={`/${userPage?.handle}`}
-              className="text-orange-500 hover:underline text-sm"
+              className="text-imajin-orange:underline text-sm"
             >
               coffee.imajin.ai/{userPage?.handle}
             </a>
@@ -176,19 +176,19 @@ export default function DashboardPage() {
           <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => navigator.clipboard.writeText(`${window.location.origin}/${userPage?.handle}`)}
-              className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition font-medium text-sm"
+              className="px-4 py-2 bg-surface-elevated dark:bg-surface-elevated:bg-surface-elevated dark:hover:bg-surface-elevated transition font-medium text-sm"
             >
               Copy Link
             </button>
             <Link
               href="/edit"
-              className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition font-medium text-sm"
+              className="px-4 py-2 bg-surface-elevated dark:bg-surface-elevated:bg-surface-elevated dark:hover:bg-surface-elevated transition font-medium text-sm"
             >
               Edit Settings
             </Link>
             <Link
               href={`/${userPage?.handle}`}
-              className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white transition font-medium text-sm"
+              className="px-4 py-2 bg-imajin-orange hover:brightness-110 text-primary transition font-medium text-sm"
             >
               View Page
             </Link>
@@ -198,50 +198,50 @@ export default function DashboardPage() {
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {/* Total Tips */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+          <div className="bg-white dark:bg-surface-elevated p-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-500 dark:text-gray-400">Total Tips</span>
+              <span className="text-sm text-secondary dark:text-secondary">Total Tips</span>
               <span className="text-2xl">☕</span>
             </div>
-            <div className="text-3xl font-bold text-orange-500">
+            <div className="text-3xl font-bold text-imajin-orange">
               {stats?.totals?.USD?.count || 0}
             </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <div className="text-xs text-secondary dark:text-secondary mt-1">
               All time
             </div>
           </div>
 
           {/* Total Received */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+          <div className="bg-white dark:bg-surface-elevated p-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-500 dark:text-gray-400">Total Received</span>
+              <span className="text-sm text-secondary dark:text-secondary">Total Received</span>
               <span className="text-2xl">💰</span>
             </div>
-            <div className="text-3xl font-bold text-orange-500">
+            <div className="text-3xl font-bold text-imajin-orange">
               {formatAmount(usdTotal, 'USD')}
             </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <div className="text-xs text-secondary dark:text-secondary mt-1">
               All time
             </div>
           </div>
 
           {/* This Month */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+          <div className="bg-white dark:bg-surface-elevated p-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-500 dark:text-gray-400">This Month</span>
+              <span className="text-sm text-secondary dark:text-secondary">This Month</span>
               <span className="text-2xl">📈</span>
             </div>
-            <div className="text-3xl font-bold text-orange-500">
+            <div className="text-3xl font-bold text-imajin-orange">
               {formatAmount(thisMonthTotal, 'USD')}
             </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <div className="text-xs text-secondary dark:text-secondary mt-1">
               {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </div>
           </div>
         </div>
 
         {/* Recent Tips */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+        <div className="bg-white dark:bg-surface-elevated p-6">
           <h2 className="text-xl font-bold mb-4">Recent Tips</h2>
 
           {stats && stats.tips.length > 0 ? (
@@ -249,36 +249,36 @@ export default function DashboardPage() {
               {stats.tips.map((tip) => (
                 <div
                   key={tip.id}
-                  className="flex items-start justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-xl"
+                  className="flex items-start justify-between p-4 bg-surface-elevated dark:bg-surface-elevated"
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-semibold">
                         {tip.fromName || 'Anonymous'}
                       </span>
-                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                      <span className="text-sm text-secondary dark:text-secondary">
                         {formatDate(tip.createdAt)}
                       </span>
                     </div>
                     {tip.message && (
-                      <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                      <p className="text-sm text-muted dark:text-primary mt-1">
                         "{tip.message}"
                       </p>
                     )}
                   </div>
-                  <div className="text-lg font-bold text-orange-500 ml-4">
+                  <div className="text-lg font-bold text-imajin-orange ml-4">
                     {formatAmount(tip.amount, tip.currency)}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+            <div className="text-center py-12 text-secondary dark:text-secondary">
               <div className="text-4xl mb-3">☕</div>
               <p>No tips received yet</p>
               <p className="text-sm mt-2">Share your page to start receiving support!</p>
               {userPage && (
-                <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg inline-block">
+                <div className="mt-4 p-3 bg-surface-elevated dark:bg-surface-elevated inline-block">
                   <code className="text-sm">
                     coffee.imajin.ai/{userPage.handle}
                   </code>

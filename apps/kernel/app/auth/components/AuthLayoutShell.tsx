@@ -22,8 +22,8 @@ export default function AuthLayoutShell({ leftRail, identityDetail, tabBar, chil
     <div className="flex flex-col lg:flex-row gap-6 min-h-[calc(100vh-4rem)]">
       {/* Left rail (desktop) / Top section (mobile) */}
       <div className="lg:w-72 lg:shrink-0">
-        <div className="sticky top-6 bg-[#0a0a0a] border border-gray-800 rounded-2xl p-4">
-          <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3 px-1">
+        <div className="sticky top-6 bg-[#0a0a0a] border border-white/10 p-4">
+          <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3 px-1 font-mono">
             Identities
           </h2>
           {leftRail}

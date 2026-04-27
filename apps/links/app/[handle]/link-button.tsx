@@ -39,7 +39,7 @@ export default function LinkButton({
       target="_blank"
       rel="noopener noreferrer"
       onClick={handleClick}
-      className="block w-full py-4 px-6 text-center font-semibold transition-all hover:scale-[1.02] hover:shadow-lg"
+      className="block w-full py-4 px-6 text-center font-semibold transition-all:scale-[1.02] hover:"
       style={{
         backgroundColor: buttonColor,
         color: buttonTextColor,
@@ -53,7 +53,7 @@ export default function LinkButton({
               <img
                 src={link.thumbnail}
                 alt=""
-                className="w-6 h-6 rounded object-cover"
+                className="w-6 h-6 object-cover"
               />
             )}
             {!link.thumbnail && link.icon && <span>{link.icon}</span>}

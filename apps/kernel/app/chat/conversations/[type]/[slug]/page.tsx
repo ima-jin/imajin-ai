@@ -61,15 +61,15 @@ function AddMemberPicker({
   return (
     <div className="mt-2">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-gray-500">Add a member:</span>
-        <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600">
+        <span className="text-xs font-medium text-secondary">Add a member:</span>
+        <button onClick={onCancel} className="text-xs text-secondary hover:text-muted">
           Cancel
         </button>
       </div>
       {loadingConnections ? (
-        <p className="text-xs text-gray-400">Loading connections…</p>
+        <p className="text-xs text-secondary">Loading connections…</p>
       ) : connections.length === 0 ? (
-        <p className="text-xs text-gray-400">No connections available to add.</p>
+        <p className="text-xs text-secondary">No connections available to add.</p>
       ) : (
         <div className="flex flex-wrap gap-1">
           {connections.map((conn) => {
@@ -79,7 +79,7 @@ function AddMemberPicker({
                 key={conn.did}
                 onClick={() => onAdd(conn.did)}
                 disabled={addingDid === conn.did}
-                className="px-2 py-1 text-xs bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-full hover:border-orange-400 hover:text-orange-500 transition disabled:opacity-50"
+                className="px-2 py-1 text-xs bg-white dark:bg-surface-elevated border border-gray-200 dark:border-white/10 hover:border-imajin-orange hover:text-imajin-orange transition disabled:opacity-50"
               >
                 {addingDid === conn.did ? '…' : label}
               </button>
@@ -299,7 +299,7 @@ function DIDConversationView({ did }: { did: string }) {
       : 'Conversation');
 
   if (authLoading) {
-    return <div className="max-w-2xl mx-auto mt-20 text-center text-gray-500">Loading...</div>;
+    return <div className="max-w-2xl mx-auto mt-20 text-center text-secondary">Loading...</div>;
   }
 
   if (!identity) return <LoginPrompt />;
@@ -308,10 +308,10 @@ function DIDConversationView({ did }: { did: string }) {
     <ChatProvider chatUrl={chatUrl} authUrl={authUrl} mediaUrl={mediaUrl} connectionsUrl={connectionsUrl}>
     <div className="mx-auto flex flex-col h-[calc(100dvh-88px)]">
       {/* Header */}
-      <div className="flex items-center gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex items-center gap-4 pb-4 border-b border-gray-200 dark:border-white/10">
         <Link
           href="/chat/conversations"
-          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition"
+          className="p-2 hover:bg-gray-100 dark:hover:bg-surface-elevated transition"
         >
           ← Back
         </Link>
@@ -326,12 +326,12 @@ function DIDConversationView({ did }: { did: string }) {
                 if (e.key === 'Enter') { e.preventDefault(); handleNameSave(); }
                 if (e.key === 'Escape') setEditingName(false);
               }}
-              className="font-semibold bg-transparent border-b border-orange-500 outline-none w-full text-base"
+              className="font-semibold bg-transparent border-b border-imajin-orange outline-none w-full text-base"
               placeholder="Untitled Group"
             />
           ) : (
             <h1
-              className={`font-semibold truncate ${parsed.type === 'group' ? 'cursor-pointer hover:text-orange-500 transition-colors' : ''}`}
+              className={`font-semibold truncate ${parsed.type === 'group' ? 'cursor-pointer hover:text-imajin-orange transition-colors' : ''} font-mono`}
               onClick={() => {
                 if (parsed.type === 'group') {
                   setNameInput(convName || nameParam || '');
@@ -341,37 +341,37 @@ function DIDConversationView({ did }: { did: string }) {
               title={parsed.type === 'group' ? 'Click to rename' : undefined}
             >
               {parsed.type === 'group' && !(convName || nameParam)
-                ? <span className="text-gray-400 italic font-normal">Untitled Group</span>
+                ? <span className="text-secondary italic font-normal">Untitled Group</span>
                 : displayName}
             </h1>
           )}
           {parsed.type === 'group' && (
             <button
               onClick={() => setShowMembers(!showMembers)}
-              className="text-xs text-gray-500 mt-0.5 hover:text-orange-500 transition-colors text-left"
+              className="text-xs text-secondary mt-0.5 hover:text-imajin-orange transition-colors text-left"
             >
               {memberCount ? `${memberCount} member${memberCount !== 1 ? 's' : ''}` : 'Group conversation'}
             </button>
           )}
           {parsed.type === 'event' && (
-            <p className="text-xs text-gray-500 mt-0.5">Event chat</p>
+            <p className="text-xs text-secondary mt-0.5">Event chat</p>
           )}
         </div>
         {/* Leave group button */}
         {parsed.type === 'group' && (
           leaveConfirm ? (
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs text-gray-500">Leave group?</span>
+              <span className="text-xs text-secondary">Leave group?</span>
               <button
                 onClick={handleLeave}
                 disabled={leaving}
-                className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition disabled:opacity-50"
+                className="px-2 py-1 text-xs bg-error text-primary hover:bg-error transition disabled:opacity-50"
               >
                 {leaving ? '…' : 'Yes, leave'}
               </button>
               <button
                 onClick={() => setLeaveConfirm(false)}
-                className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+                className="px-2 py-1 text-xs bg-gray-100 dark:bg-surface-elevated hover:bg-gray-200 dark:hover:bg-surface-elevated transition"
               >
                 Cancel
               </button>
@@ -379,7 +379,7 @@ function DIDConversationView({ did }: { did: string }) {
           ) : (
             <button
               onClick={() => setLeaveConfirm(true)}
-              className="shrink-0 px-3 py-1.5 text-xs text-red-500 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+              className="shrink-0 px-3 py-1.5 text-xs text-error border border-red-200 dark:border-red-800 hover:bg-error/10 dark:hover:bg-error/20 transition"
             >
               Leave
             </button>
@@ -389,14 +389,14 @@ function DIDConversationView({ did }: { did: string }) {
 
       {/* Member list panel */}
       {showMembers && (
-        <div className="border-b border-gray-200 dark:border-gray-700 py-3 px-4 bg-gray-50 dark:bg-zinc-800/50">
+        <div className="border-b border-gray-200 dark:border-white/10 py-3 px-4 bg-gray-50 dark:bg-surface-elevated/50">
           <div className="flex flex-wrap gap-2 mb-2">
             {members.map((m) => (
               <span
                 key={m.did}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white dark:bg-zinc-700 text-xs text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-zinc-600"
+                className="inline-flex items-center gap-1 px-2 py-1 bg-white dark:bg-surface-elevated text-xs text-gray-700 dark:text-primary border border-gray-200 dark:border-white/10"
               >
-                {m.role === 'owner' && <span className="text-orange-500">★</span>}
+                {m.role === 'owner' && <span className="text-imajin-orange">★</span>}
                 <MemberName did={m.did} fallbackName={m.name} fallbackHandle={m.handle} />
                 {/* Remove button: owners can remove anyone (except self); admins can remove regular members only */}
                 {isOwnerOrAdmin && m.did !== identity?.did &&
@@ -404,7 +404,7 @@ function DIDConversationView({ did }: { did: string }) {
                   <button
                     onClick={() => handleRemoveMember(m.did)}
                     disabled={removingDid === m.did}
-                    className="ml-1 text-gray-400 hover:text-red-500 transition disabled:opacity-50"
+                    className="ml-1 text-secondary hover:text-error transition disabled:opacity-50"
                     title="Remove member"
                   >
                     {removingDid === m.did ? '…' : '×'}
@@ -426,7 +426,7 @@ function DIDConversationView({ did }: { did: string }) {
             ) : (
               <button
                 onClick={() => { setShowAddMember(true); loadConnections(); }}
-                className="text-xs text-orange-500 hover:text-orange-600 transition"
+                className="text-xs text-imajin-orange hover:text-imajin-orange transition"
               >
                 + Add member
               </button>

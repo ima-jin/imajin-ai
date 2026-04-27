@@ -105,7 +105,7 @@ export const UploadZone = forwardRef<UploadZoneHandle, UploadZoneProps>(
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white text-xs font-medium rounded-lg transition-colors"
+            style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="flex items-center gap-1.5 px-3 py-1.5 hover:brightness-110 disabled:opacity-60 text-primary text-xs font-medium transition-colors"
           >
             {uploading ? (
               <>
@@ -125,16 +125,16 @@ export const UploadZone = forwardRef<UploadZoneHandle, UploadZoneProps>(
         {input}
         {/* Progress + suggestion bar */}
         {uploading && (
-          <div className="px-4 py-2 bg-[#1a1a1a] border-b border-gray-800 shrink-0">
+          <div className="px-4 py-2 bg-[#1a1a1a] border-b border-white/10 shrink-0">
             <div className="flex items-center gap-3">
-              <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              <div className="flex-1 h-1.5 bg-surface-elevated overflow-hidden">
                 <div
-                  className="h-full bg-orange-500 rounded-full transition-all duration-500"
+                  className="h-full bg-imajin-orange transition-all duration-500"
                   style={{ width: `${progress}%` }}
                 />
               </div>
               {suggestion && (
-                <span className="text-xs text-orange-400 whitespace-nowrap">
+                <span className="text-xs text-imajin-orange whitespace-nowrap">
                   Suggested: 📁 {suggestion}
                 </span>
               )}
@@ -142,9 +142,9 @@ export const UploadZone = forwardRef<UploadZoneHandle, UploadZoneProps>(
           </div>
         )}
         {error && (
-          <div className="px-4 py-1.5 bg-red-500/10 border-b border-red-500/20 text-xs text-red-400 shrink-0 flex items-center justify-between">
+          <div className="px-4 py-1.5 bg-error/10 border-b border-red-500/20 text-xs text-error shrink-0 flex items-center justify-between">
             <span>{error}</span>
-            <button onClick={() => setError(null)} className="hover:text-red-200">✕</button>
+            <button onClick={() => setError(null)} className="hover:text-error">✕</button>
           </div>
         )}
       </>
