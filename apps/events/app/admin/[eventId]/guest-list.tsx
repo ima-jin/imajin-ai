@@ -391,12 +391,20 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
       <div className="px-6 pt-6 pb-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xl font-semibold">Guest List</h2>
-          <button
-            onClick={() => setScannerOpen(v => !v)}
-            className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
-          >
-            {scannerOpen ? '✕ Close Scanner' : '📷 Scan Tickets'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { window.location.href = `/api/events/${eventId}/guests/export.csv`; }}
+              className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
+            >
+              ⬇ Download CSV
+            </button>
+            <button
+              onClick={() => setScannerOpen(v => !v)}
+              className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
+            >
+              {scannerOpen ? '✕ Close Scanner' : '📷 Scan Tickets'}
+            </button>
+          </div>
         </div>
 
         {scannerOpen && (
