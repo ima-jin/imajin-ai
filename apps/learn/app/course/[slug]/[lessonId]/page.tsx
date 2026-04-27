@@ -112,16 +112,16 @@ export default function LessonViewerPage() {
     }
   }
 
-  if (loading) return <div className="container mx-auto px-4 py-16 text-center text-gray-500">Loading...</div>;
-  if (!lesson) return <div className="container mx-auto px-4 py-16 text-center text-gray-500">Lesson not found</div>;
+  if (loading) return <div className="container mx-auto px-4 py-16 text-center text-secondary">Loading...</div>;
+  if (!lesson) return <div className="container mx-auto px-4 py-16 text-center text-secondary">Lesson not found</div>;
 
   if (lesson.locked) {
     return (
       <div className="container mx-auto px-4 py-16 text-center">
         <div className="text-6xl mb-4">🔒</div>
         <h1 className="text-2xl font-bold mb-4">{lesson.title}</h1>
-        <p className="text-gray-500 mb-6">This lesson requires enrollment to access.</p>
-        <Link href={`/course/${slug}`} className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600">
+        <p className="text-secondary mb-6">This lesson requires enrollment to access.</p>
+        <Link href={`/course/${slug}`} className="px-6 py-3 bg-imajin-orange text-primary bg-imajin-orange">
           View Course
         </Link>
       </div>
@@ -129,26 +129,22 @@ export default function LessonViewerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950">
+    <div className="min-h-screen bg-white dark:bg-surface-base">
       <div className="flex">
         {/* Sidebar — module navigation */}
-        <aside className="hidden lg:block w-72 border-r border-gray-200 dark:border-gray-800 min-h-screen p-4 overflow-y-auto">
-          <Link href={`/course/${slug}`} className="text-sm text-amber-500 hover:underline mb-4 block">
+        <aside className="hidden lg:block w-72 border-r border-white/10 dark:border-white/10 min-h-screen p-4 overflow-y-auto">
+          <Link href={`/course/${slug}`} className="text-sm text-imajin-orange:underline mb-4 block">
             ← Back to course
           </Link>
           {progress?.modules.map((mod) => (
             <div key={mod.id} className="mb-4">
-              <h4 className="font-medium text-sm text-gray-500 mb-2">{mod.title}</h4>
+              <h4 className="font-medium text-sm text-secondary mb-2">{mod.title}</h4>
               <ul className="space-y-1">
                 {mod.lessons.map((l) => (
                   <li key={l.id}>
                     <Link
                       href={`/course/${slug}/${l.id}`}
-                      className={`block px-3 py-1.5 rounded text-sm ${
-                        l.id === lessonId
-                          ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium'
-                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                      }`}
+                      className={`block px-3 py-1.5 text-sm ${ l.id === lessonId ? 'bg-imajin-orange/10 dark:bg-imajin-orange/10 text-imajin-orange dark:text-imajin-orange font-medium' : 'text-muted dark:text-secondary dark:hover:bg-surface-elevated dark:hover:bg-surface-elevated' }`}
                     >
                       {l.status === 'completed' && <span className="mr-1">✓</span>}
                       {l.title}
@@ -162,7 +158,7 @@ export default function LessonViewerPage() {
 
         {/* Main content */}
         <main className="flex-1 max-w-3xl mx-auto px-6 py-8">
-          <div className="mb-2 text-sm text-gray-400">
+          <div className="mb-2 text-sm text-secondary">
             {lesson.contentType === 'exercise' && '🛠️ Exercise'}
             {lesson.contentType === 'slide' && '📊 Slide'}
             {lesson.contentType === 'video' && '🎬 Video'}
@@ -175,32 +171,32 @@ export default function LessonViewerPage() {
           {/* Slide content — card-style preview with present button */}
           {lesson.contentType === 'slide' && (
             <div className="mb-8">
-              <div className="bg-[#0a0a0a] text-white rounded-xl p-8 md:p-10 border border-gray-800">
+              <div className="bg-[#0a0a0a] text-primary p-8 md:p-10 border border-white/10">
                 {lesson.metadata?.subtitle && (
-                  <p className="text-white/40 text-sm mb-4">{lesson.metadata.subtitle}</p>
+                  <p className="text-primary/40 text-sm mb-4">{lesson.metadata.subtitle}</p>
                 )}
                 {lesson.content && (
                   <div
-                    className="text-white/70 leading-relaxed text-base"
+                    className="text-primary/70 leading-relaxed text-base"
                     dangerouslySetInnerHTML={{ __html: simpleMarkdown(lesson.content) }}
                   />
                 )}
                 {lesson.metadata?.items && (
                   <div className="mt-4 space-y-3">
                     {lesson.metadata.items.map((item: string, i: number) => (
-                      <div key={i} className="flex gap-3 text-white/70">
-                        <span className="text-white/30 font-mono shrink-0">{i + 1}</span>
+                      <div key={i} className="flex gap-3 text-primary/70">
+                        <span className="text-primary/30 font-mono shrink-0">{i + 1}</span>
                         <span>{item}</span>
                       </div>
                     ))}
                   </div>
                 )}
                 {lesson.metadata?.stats && (
-                  <div className="mt-4 border border-white/10 rounded-lg p-4">
+                  <div className="mt-4 border border-white/10 p-4">
                     {lesson.metadata.stats.map((s: { label: string; value: string }, i: number) => (
                       <div key={i} className="flex justify-between border-b border-white/10 py-2 last:border-0 text-sm">
-                        <span className="text-white/40">{s.label}</span>
-                        <span className="text-white/80">{s.value}</span>
+                        <span className="text-primary/40">{s.label}</span>
+                        <span className="text-primary/80">{s.value}</span>
                       </div>
                     ))}
                   </div>
@@ -209,7 +205,7 @@ export default function LessonViewerPage() {
               <div className="mt-4 flex justify-end">
                 <a
                   href={`/course/${slug}/present#${slideIndex}`}
-                  className="px-4 py-2 bg-gray-900 text-white/70 hover:text-white border border-gray-700 rounded-lg text-sm transition-colors"
+                  className="px-4 py-2 bg-surface-surface text-primary/70:text-primary border border-white/10 text-sm transition-colors"
                 >
                   ▶ Present from here
                 </a>
@@ -219,7 +215,7 @@ export default function LessonViewerPage() {
 
           {/* Video content */}
           {lesson.contentType === 'video' && lesson.metadata?.videoUrl && (
-            <div className="aspect-video mb-6 bg-black rounded-lg overflow-hidden">
+            <div className="aspect-video mb-6 bg-surface-base overflow-hidden">
               <iframe
                 src={lesson.metadata.videoUrl}
                 className="w-full h-full"
@@ -238,7 +234,7 @@ export default function LessonViewerPage() {
 
           {/* Exercise metadata */}
           {lesson.contentType === 'exercise' && lesson.metadata?.instructions && (
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-6 mb-8">
+            <div className="bg-imajin-orange/5 dark:bg-imajin-orange/5 border border-imajin-orange/20 dark:border-imajin-orange/20 p-6 mb-8">
               <h3 className="font-semibold mb-2">📋 Instructions</h3>
               <div
                 className="prose dark:prose-invert"
@@ -248,12 +244,12 @@ export default function LessonViewerPage() {
           )}
 
           {/* Navigation + Complete */}
-          <div className="flex items-center justify-between border-t border-gray-200 dark:border-gray-800 pt-6 mt-8">
+          <div className="flex items-center justify-between border-t border-white/10 dark:border-white/10 pt-6 mt-8">
             <div>
               {prevLesson && (
                 <Link
                   href={`/course/${slug}/${prevLesson.id}`}
-                  className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  className="text-sm text-secondary:text-muted dark:hover:text-primary"
                 >
                   ← {prevLesson.title}
                 </Link>
@@ -264,7 +260,7 @@ export default function LessonViewerPage() {
                 <button
                   onClick={markComplete}
                   disabled={completing}
-                  className="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium disabled:opacity-50"
+                  className="px-5 py-2 bg-success text-primary:bg-success/80 text-sm font-medium disabled:opacity-50"
                 >
                   {completing ? 'Saving...' : '✓ Mark Complete'}
                 </button>
@@ -272,7 +268,7 @@ export default function LessonViewerPage() {
               {nextLesson && (
                 <Link
                   href={`/course/${slug}/${nextLesson.id}`}
-                  className="px-5 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm font-medium"
+                  className="px-5 py-2 bg-imajin-orange text-primary bg-imajin-orange text-sm font-medium"
                 >
                   Next →
                 </Link>

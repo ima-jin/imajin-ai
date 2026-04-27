@@ -170,7 +170,7 @@ export default function ResultsPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-orange-500"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-imajin-purple"></div>
       </div>
     );
   }
@@ -185,7 +185,7 @@ export default function ResultsPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold">{survey.title}</h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-muted dark:text-secondary mt-1">
               {responses.length} response{responses.length !== 1 ? 's' : ''}
             </p>
           </div>
@@ -193,13 +193,13 @@ export default function ResultsPage() {
             <button
               onClick={exportToCSV}
               disabled={responses.length === 0}
-              className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition disabled:opacity-50"
+              className="px-4 py-2 border border-white/10 dark:border-white/10 font-medium:bg-surface-elevated dark:hover:bg-surface-elevated transition disabled:opacity-50"
             >
               Export CSV
             </button>
             <button
               onClick={() => router.push('/dashboard')}
-              className="px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition"
+              className="px-4 py-2 bg-imajin-orange text-primary font-medium hover:brightness-110 transition"
             >
               Back to Dashboard
             </button>
@@ -207,10 +207,10 @@ export default function ResultsPage() {
         </div>
 
         {responses.length === 0 ? (
-          <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="text-center py-16 bg-white dark:bg-surface-elevated border border-white/10 dark:border-white/10">
             <div className="text-6xl mb-4">📭</div>
             <h2 className="text-2xl font-bold mb-2">No responses yet</h2>
-            <p className="text-gray-600 dark:text-gray-400">
+            <p className="text-muted dark:text-secondary">
               Share your survey to start collecting responses
             </p>
           </div>
@@ -223,10 +223,10 @@ export default function ResultsPage() {
               return (
                 <div
                   key={field.name}
-                  className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6"
+                  className="bg-white dark:bg-surface-elevated border border-white/10 dark:border-white/10 p-6"
                 >
                   <h3 className="text-xl font-semibold mb-4">{field.title}</h3>
-                  <div className="text-sm text-gray-500 dark:text-gray-500 mb-4">
+                  <div className="text-sm text-secondary dark:text-secondary mb-4">
                     {agg.total} response{agg.total !== 1 ? 's' : ''}
                   </div>
 
@@ -241,13 +241,13 @@ export default function ResultsPage() {
                             <div key={key}>
                               <div className="flex items-center justify-between mb-1">
                                 <span className="font-medium">{key}</span>
-                                <span className="text-sm text-gray-500">
+                                <span className="text-sm text-secondary">
                                   {count} ({percentage.toFixed(1)}%)
                                 </span>
                               </div>
-                              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                              <div className="w-full bg-surface-elevated dark:bg-surface-elevated rounded-full h-3">
                                 <div
-                                  className="bg-orange-500 h-3 rounded-full transition-all"
+                                  className="bg-imajin-orange h-3 rounded-full transition-all"
                                   style={{ width: `${percentage}%` }}
                                 />
                               </div>
@@ -267,13 +267,13 @@ export default function ResultsPage() {
                           <div key={key}>
                             <div className="flex items-center justify-between mb-1">
                               <span className="font-medium">{key === 'true' ? 'Yes' : 'No'}</span>
-                              <span className="text-sm text-gray-500">
+                              <span className="text-sm text-secondary">
                                 {count} ({percentage.toFixed(1)}%)
                               </span>
                             </div>
-                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                            <div className="w-full bg-surface-elevated dark:bg-surface-elevated rounded-full h-3">
                               <div
-                                className="bg-orange-500 h-3 rounded-full transition-all"
+                                className="bg-imajin-orange h-3 rounded-full transition-all"
                                 style={{ width: `${percentage}%` }}
                               />
                             </div>
@@ -286,11 +286,11 @@ export default function ResultsPage() {
                   {/* Rating fields */}
                   {field.type === 'rating' && (
                     <div>
-                      <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
-                        <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                      <div className="mb-4 p-4 bg-orange-50 dark:bg-imajin-orange/10/20">
+                        <div className="text-sm text-muted dark:text-secondary mb-1">
                           Average Rating
                         </div>
-                        <div className="text-3xl font-bold text-orange-500">
+                        <div className="text-3xl font-bold text-imajin-orange">
                           {agg.average?.toFixed(2)} / {field.rateMax || 5}
                         </div>
                       </div>
@@ -303,13 +303,13 @@ export default function ResultsPage() {
                               <div key={key}>
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="font-medium">{key}</span>
-                                  <span className="text-sm text-gray-500">
+                                  <span className="text-sm text-secondary">
                                     {count} ({percentage.toFixed(1)}%)
                                   </span>
                                 </div>
-                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                                <div className="w-full bg-surface-elevated dark:bg-surface-elevated rounded-full h-3">
                                   <div
-                                    className="bg-orange-500 h-3 rounded-full transition-all"
+                                    className="bg-imajin-orange h-3 rounded-full transition-all"
                                     style={{ width: `${percentage}%` }}
                                   />
                                 </div>
@@ -324,12 +324,12 @@ export default function ResultsPage() {
                   {(field.type === 'text' || field.type === 'comment') && (
                     <div className="space-y-3">
                       {(agg.textResponses || []).length === 0 ? (
-                        <div className="text-gray-500 text-sm">No responses</div>
+                        <div className="text-secondary text-sm">No responses</div>
                       ) : (
                         (agg.textResponses || []).map((response, i) => (
                           <div
                             key={i}
-                            className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700"
+                            className="p-4 bg-surface-elevated border border-white/10 dark:border-white/10"
                           >
                             <p className="text-sm whitespace-pre-wrap">{response}</p>
                           </div>
@@ -344,13 +344,13 @@ export default function ResultsPage() {
         )}
 
         {responses.length > 0 && (
-          <div className="mt-8 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+          <div className="mt-8 bg-white dark:bg-surface-elevated border border-white/10 dark:border-white/10 p-6">
             <h2 className="text-xl font-semibold mb-4">Individual Responses</h2>
             <div className="space-y-4">
               {responses.map((response, index) => (
                 <details
                   key={response.id}
-                  className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700"
+                  className="p-4 bg-surface-elevated border border-white/10 dark:border-white/10"
                 >
                   <summary className="cursor-pointer font-medium">
                     Response #{responses.length - index} - {new Date(response.createdAt).toLocaleString()}
@@ -360,12 +360,12 @@ export default function ResultsPage() {
                       const answer = response.answers[field.name];
                       return (
                         <div key={field.name}>
-                          <div className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                          <div className="text-sm font-medium text-muted dark:text-secondary">
                             {field.title}
                           </div>
                           <div className="mt-1">
                             {answer === undefined || answer === null || answer === '' ? (
-                              <span className="text-gray-400 text-sm italic">No answer</span>
+                              <span className="text-secondary text-sm italic">No answer</span>
                             ) : field.type === 'boolean' ? (
                               <span>{answer ? 'Yes' : 'No'}</span>
                             ) : Array.isArray(answer) ? (

@@ -24,25 +24,25 @@ export default async function SuccessPage({ searchParams }: Props) {
   const hasCustomContent = creatorPage?.thankYouContent?.trim();
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 flex items-center justify-center p-4">
+    <main className="min-h-screen bg-surface-base flex items-center justify-center p-4">
       <div className="max-w-md w-full text-center">
-        <div className="bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-700">
+        <div className="bg-surface-elevated p-8 border border-white/10">
           <div className="text-6xl mb-4">🧡</div>
 
-          <h1 className="text-3xl font-bold text-white mb-4">Thank you!</h1>
+          <h1 className="text-3xl font-bold text-primary mb-4">Thank you!</h1>
 
           {hasCustomContent ? (
             <div className="text-left mb-6">
               <MarkdownContent content={creatorPage.thankYouContent} />
             </div>
           ) : (
-            <p className="text-gray-400 mb-6">
+            <p className="text-secondary mb-6">
               {isSubscription ? (
                 <>
                   Your monthly support means the world. You&apos;re directly funding the
                   development of sovereign infrastructure — no VC strings attached.
                   <br /><br />
-                  <span className="text-sm text-gray-500">
+                  <span className="text-sm text-secondary">
                     You can manage or cancel your subscription anytime from your Stripe receipt.
                   </span>
                 </>
@@ -58,28 +58,28 @@ export default async function SuccessPage({ searchParams }: Props) {
           <div className="space-y-3">
             <Link
               href="https://imajin.ai"
-              className="block w-full py-3 px-6 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition"
+              className="block w-full py-3 px-6 bg-imajin-orange hover:brightness-110 text-primary font-semibold transition"
             >
               Learn more about Imajin
             </Link>
 
             <Link
               href="https://app.dfos.com/j/c3rff6e96e4ca9hncc43en"
-              className="block w-full py-3 px-6 bg-gray-700 hover:bg-gray-600 text-gray-200 font-semibold rounded-xl transition"
+              className="block w-full py-3 px-6 bg-surface-elevated:bg-surface-elevated text-primary font-semibold transition"
             >
               Join the Discord
             </Link>
 
             <Link
               href="https://imajin.ai/articles/the-internet-we-lost"
-              className="block w-full py-3 px-6 text-gray-400 hover:text-white font-medium transition"
+              className="block w-full py-3 px-6 text-secondary:text-primary font-medium transition"
             >
               Read: The Internet We Lost →
             </Link>
           </div>
         </div>
 
-        <p className="text-sm text-gray-500 mt-6">
+        <p className="text-sm text-secondary mt-6">
           — Ryan (bobby) 🟠
         </p>
       </div>

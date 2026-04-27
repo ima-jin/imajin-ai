@@ -63,55 +63,55 @@ export default function StudentsPage() {
     load();
   }, [slug]);
 
-  if (loading) return <div className="container mx-auto px-4 py-16 text-center text-gray-500">Loading...</div>;
+  if (loading) return <div className="container mx-auto px-4 py-16 text-center text-secondary">Loading...</div>;
   if (error) return <div className="container mx-auto px-4 py-16 text-center text-red-400">{error}</div>;
   if (!data) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black">
+    <div className="min-h-screen bg-surface-base">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="mb-6 text-sm">
-          <Link href="/dashboard" className="text-amber-500 hover:underline">← My Courses</Link>
-          <span className="mx-2 text-gray-400">/</span>
-          <Link href={`/dashboard/${slug}`} className="text-amber-500 hover:underline">{data.courseTitle}</Link>
-          <span className="mx-2 text-gray-400">/</span>
-          <span className="text-gray-500">Students</span>
+          <Link href="/dashboard" className="text-imajin-orange:underline">← My Courses</Link>
+          <span className="mx-2 text-secondary">/</span>
+          <Link href={`/dashboard/${slug}`} className="text-imajin-orange:underline">{data.courseTitle}</Link>
+          <span className="mx-2 text-secondary">/</span>
+          <span className="text-secondary">Students</span>
         </div>
 
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">Enrolled Students</h1>
-          <div className="flex gap-4 text-sm text-gray-500">
+          <div className="flex gap-4 text-sm text-secondary">
             <span>{data.totalStudents} student{data.totalStudents !== 1 ? 's' : ''}</span>
             <span>{data.totalLessons} lesson{data.totalLessons !== 1 ? 's' : ''}</span>
           </div>
         </div>
 
         {data.students.length === 0 ? (
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-500">
+          <div className="bg-white dark:bg-surface-elevated border border-white/10 dark:border-white/10 p-8 text-center text-secondary">
             <div className="text-4xl mb-4">👥</div>
             <p>No students enrolled yet.</p>
           </div>
         ) : (
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="bg-white dark:bg-surface-elevated border border-white/10 dark:border-white/10 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700 text-left">
-                  <th className="px-5 py-3 font-medium text-gray-500">Student</th>
-                  <th className="px-5 py-3 font-medium text-gray-500">Enrolled</th>
-                  <th className="px-5 py-3 font-medium text-gray-500">Progress</th>
-                  <th className="px-5 py-3 font-medium text-gray-500 text-right">Status</th>
+                <tr className="border-b border-white/10 dark:border-white/10 text-left">
+                  <th className="px-5 py-3 font-medium text-secondary">Student</th>
+                  <th className="px-5 py-3 font-medium text-secondary">Enrolled</th>
+                  <th className="px-5 py-3 font-medium text-secondary">Progress</th>
+                  <th className="px-5 py-3 font-medium text-secondary text-right">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
+              <tbody className="divide-y divide-white/10 dark:divide-white/10/50">
                 {data.students.map((student, i) => (
-                  <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <tr key={i} className="hover:bg-surface-elevated dark:hover:bg-surface-elevated/50">
                     <td className="px-5 py-3">
                       <div>
                         {student.displayName && (
                           <div className="font-medium text-sm">{student.displayName}</div>
                         )}
                         {student.email && (
-                          <div className="text-xs text-gray-500">{student.email}</div>
+                          <div className="text-xs text-secondary">{student.email}</div>
                         )}
                         {!student.displayName && !student.email && (
                           <span className="font-mono text-xs" title={student.studentDid}>
@@ -119,37 +119,37 @@ export default function StudentsPage() {
                           </span>
                         )}
                         {(student.displayName || student.email) && (
-                          <span className="font-mono text-[10px] text-gray-400" title={student.studentDid}>
+                          <span className="font-mono text-[10px] text-secondary" title={student.studentDid}>
                             {shortDid(student.studentDid)}
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-gray-500" title={new Date(student.enrolledAt).toLocaleString()}>
+                    <td className="px-5 py-3 text-secondary" title={new Date(student.enrolledAt).toLocaleString()}>
                       {timeAgo(student.enrolledAt)}
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden max-w-[120px]">
+                        <div className="flex-1 h-2 bg-surface-elevated dark:bg-surface-elevated rounded-full overflow-hidden max-w-[120px]">
                           <div
-                            className="h-full bg-amber-500 rounded-full transition-all"
+                            className="h-full bg-imajin-orange rounded-full transition-all"
                             style={{ width: `${student.progress.percentage}%` }}
                           />
                         </div>
-                        <span className="text-gray-500 text-xs">
+                        <span className="text-secondary text-xs">
                           {student.progress.completed}/{student.progress.total}
                         </span>
                       </div>
                     </td>
                     <td className="px-5 py-3 text-right">
                       {student.completedAt ? (
-                        <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium">
+                        <span className="inline-flex items-center gap-1 text-success text-xs font-medium">
                           ✓ Complete
                         </span>
                       ) : student.progress.completed > 0 ? (
-                        <span className="text-amber-500 text-xs font-medium">In progress</span>
+                        <span className="text-imajin-orange text-xs font-medium">In progress</span>
                       ) : (
-                        <span className="text-gray-400 text-xs">Enrolled</span>
+                        <span className="text-secondary text-xs">Enrolled</span>
                       )}
                     </td>
                   </tr>

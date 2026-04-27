@@ -70,7 +70,7 @@ export function AssetCard({ asset, selected, checked, compact, onSelect, onCheck
     <div
       className={`group relative bg-[#252525] overflow-hidden cursor-pointer border-2 transition-all duration-150 ${
         selected || checked
-          ? "border-imajin-orange-orange-500/20"
+          ? "border-imajin-orange/20"
           : "border-transparent hover:border-gray-600"
       }`}
       onClick={onSelect}

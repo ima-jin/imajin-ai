@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+const tokenTheme = require('@imajin/tokens/dist/tailwind.js');
+
 module.exports = {
   content: [
     './app/**/*.{js,ts,jsx,tsx,mdx}',
@@ -7,7 +9,9 @@ module.exports = {
   ],
   darkMode: "class",
   theme: {
-    extend: {},
+    extend: {
+      ...tokenTheme,
+    },
   },
   plugins: [require("@tailwindcss/typography")],
 };

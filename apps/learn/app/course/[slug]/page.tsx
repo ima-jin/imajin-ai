@@ -174,8 +174,8 @@ export default function CourseDetailPage() {
     }
   }
 
-  if (loading) return <div className="container mx-auto px-4 py-16 text-center text-gray-500">Loading...</div>;
-  if (!course) return <div className="container mx-auto px-4 py-16 text-center text-gray-500">Course not found</div>;
+  if (loading) return <div className="container mx-auto px-4 py-16 text-center text-secondary">Loading...</div>;
+  if (!course) return <div className="container mx-auto px-4 py-16 text-center text-secondary">Course not found</div>;
 
   const totalDuration = course.modules.reduce(
     (sum, m) => sum + m.lessons.reduce((s, l) => s + (l.durationMinutes || 0), 0), 0
@@ -183,22 +183,22 @@ export default function CourseDetailPage() {
   const totalLessons = course.modules.reduce((sum, m) => sum + m.lessons.length, 0);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black">
+    <div className="min-h-screen bg-surface-base">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         {/* Header */}
         <div className="mb-8">
           {course.imageUrl && (
-            <div className="aspect-video rounded-xl overflow-hidden mb-6 bg-gray-100 dark:bg-gray-800">
+            <div className="aspect-video overflow-hidden mb-6 bg-surface-elevated dark:bg-surface-elevated">
               <img src={course.imageUrl} alt={course.title} className="w-full h-full object-cover" />
             </div>
           )}
 
           <h1 className="text-3xl font-bold mb-3">{course.title}</h1>
           {course.description && (
-            <p className="text-lg text-gray-600 dark:text-gray-400 mb-4">{course.description}</p>
+            <p className="text-lg text-muted dark:text-secondary mb-4">{course.description}</p>
           )}
 
-          <div className="flex flex-wrap gap-4 text-sm text-gray-500 mb-6">
+          <div className="flex flex-wrap gap-4 text-sm text-secondary mb-6">
             <span>{course.modules.length} modules</span>
             <span>·</span>
             <span>{totalLessons} lessons</span>
@@ -213,7 +213,7 @@ export default function CourseDetailPage() {
           {course.tags?.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-6">
               {course.tags.map((tag: string) => (
-                <span key={tag} className="px-3 py-1 text-sm rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                <span key={tag} className="px-3 py-1 text-sm rounded-full bg-surface-elevated dark:bg-surface-elevated text-muted dark:text-primary">
                   {tag}
                 </span>
               ))}
@@ -228,7 +228,7 @@ export default function CourseDetailPage() {
             ) && (
               <Link
                 href={`/course/${course.slug}/present`}
-                className="px-6 py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-700 font-medium border border-gray-700"
+                className="px-6 py-3 bg-surface-elevated text-primary:bg-surface-elevated font-medium border border-white/10"
               >
                 ▶ Present
               </Link>
@@ -236,14 +236,14 @@ export default function CourseDetailPage() {
             {course.isCreator ? (
               <Link
                 href={`/dashboard/${course.slug}`}
-                className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium"
+                className="px-6 py-3 bg-imajin-orange text-primary bg-imajin-orange font-medium"
               >
                 Edit Course
               </Link>
             ) : course.enrollment ? (
               <Link
                 href={isDeck ? `/course/${course.slug}/present` : `/course/${course.slug}/${course.modules[0]?.lessons[0]?.id || ''}`}
-                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+                className="px-6 py-3 bg-success text-primary:bg-success/80 font-medium"
               >
                 {isDeck ? '▶ View Presentation' : (
                   <>
@@ -257,14 +257,14 @@ export default function CourseDetailPage() {
                 )}
               </Link>
             ) : course.price > 0 && !sellerConnected ? (
-              <p className="text-sm text-gray-500 italic px-1">
+              <p className="text-sm text-secondary italic px-1">
                 Payments not yet available
               </p>
             ) : course.isAuthenticated ? (
               <button
                 onClick={handleEnroll}
                 disabled={enrolling}
-                className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium disabled:opacity-50"
+                className="px-6 py-3 bg-imajin-orange text-primary bg-imajin-orange font-medium disabled:opacity-50"
               >
                 {enrolling ? 'Loading...' : course.price === 0
                   ? (isDeck ? '▶ View Presentation' : 'Start Learning — Free')
@@ -279,7 +279,7 @@ export default function CourseDetailPage() {
               >
                 <button
                   disabled={enrolling}
-                  className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium disabled:opacity-50"
+                  className="px-6 py-3 bg-imajin-orange text-primary bg-imajin-orange font-medium disabled:opacity-50"
                 >
                   {enrolling ? 'Loading...' : course.price === 0
                     ? (isDeck ? '▶ View Presentation' : 'Start Learning — Free')
@@ -292,16 +292,16 @@ export default function CourseDetailPage() {
 
         {/* Upcoming event banner — dynamically fetched from events service */}
         {upcomingEvent && (
-          <div className="mb-8 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-5 flex items-center justify-between gap-4">
+          <div className="mb-8 bg-imajin-orange/5 dark:bg-imajin-orange/5 border border-imajin-orange/20 dark:border-imajin-orange/20 p-5 flex items-center justify-between gap-4">
             <div>
-              <p className="font-medium text-amber-900 dark:text-amber-200">🎓 Next session: {upcomingEvent.title}</p>
-              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+              <p className="font-medium text-amber-900 dark:text-imajin-orange">🎓 Next session: {upcomingEvent.title}</p>
+              <p className="text-sm text-imajin-orange dark:text-imajin-orange mt-1">
                 {new Date(upcomingEvent.startsAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
               </p>
             </div>
             <a
               href={`${process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai'}/${upcomingEvent.id}`}
-              className="shrink-0 px-5 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium text-sm no-underline"
+              className="shrink-0 px-5 py-2.5 bg-imajin-orange text-primary bg-imajin-orange font-medium text-sm no-underline"
             >
               Get tickets →
             </a>
@@ -312,15 +312,15 @@ export default function CourseDetailPage() {
         <div className="space-y-4">
           <h2 className="text-xl font-semibold">Course Outline</h2>
           {course.modules.map((mod, i) => (
-            <div key={mod.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+            <div key={mod.id} className="bg-white dark:bg-surface-elevated border border-white/10 dark:border-white/10 overflow-hidden">
+              <div className="px-5 py-4 border-b border-white/10 dark:border-white/10">
                 <h3 className="font-medium">
-                  <span className="text-gray-400 mr-2">Module {i + 1}</span>
+                  <span className="text-secondary mr-2">Module {i + 1}</span>
                   {mod.title}
                 </h3>
-                {mod.description && <p className="text-sm text-gray-500 mt-1">{mod.description}</p>}
+                {mod.description && <p className="text-sm text-secondary mt-1">{mod.description}</p>}
               </div>
-              <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+              <ul className="divide-y divide-white/10 dark:divide-white/10">
                 {mod.lessons.map((lesson) => (
                   <li key={lesson.id} className="px-5 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -328,7 +328,7 @@ export default function CourseDetailPage() {
                       {course.enrollment ? (
                         <Link
                           href={`/course/${course.slug}/${lesson.id}`}
-                          className="hover:text-amber-500"
+                          className="hover:text-imajin-orange"
                         >
                           {lesson.title}
                         </Link>
@@ -337,7 +337,7 @@ export default function CourseDetailPage() {
                       )}
                     </div>
                     {lesson.durationMinutes && (
-                      <span className="text-xs text-gray-400">{lesson.durationMinutes} min</span>
+                      <span className="text-xs text-secondary">{lesson.durationMinutes} min</span>
                     )}
                   </li>
                 ))}

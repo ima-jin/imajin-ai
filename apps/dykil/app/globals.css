@@ -1,21 +1,8 @@
+@import '@imajin/tokens/dist/variables.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground: #171717;
-  --background: #ffffff;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground: #ededed;
-    --background: #0a0a0a;
-  }
-}
-
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: system-ui, -apple-system, sans-serif;
-}
+/* Note: dark mode colors handled by Tailwind classes on <body> in layout.tsx
+   Do not hardcode body background/color here — it conflicts with dark: variants */

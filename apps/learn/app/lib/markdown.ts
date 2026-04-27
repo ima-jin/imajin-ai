@@ -81,7 +81,7 @@ export function simpleMarkdown(text: string): string {
       }
       i++; // skip closing ```
       blocks.push(
-        `<pre class="bg-current/5 border border-current/10 rounded-lg p-4 text-sm font-mono opacity-70 overflow-x-auto my-4"><code>${codeLines.join('\n')}</code></pre>`
+        `<pre class="bg-current/5 border border-current/10 p-4 text-sm font-mono opacity-70 overflow-x-auto my-4"><code>${codeLines.join('\n')}</code></pre>`
       );
       continue;
     }

@@ -245,7 +245,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
                       type="checkbox"
                       checked={selectedDids.has(conn.did)}
                       onChange={() => toggleMember(conn.did)}
-                      className="w-4 h-4 accent-orange-500"
+                      className="w-4 h-4 accent-imajin-purple"
                     />
                     <div className="min-w-0">
                       <p className="font-medium truncate">{displayName(conn)}</p>

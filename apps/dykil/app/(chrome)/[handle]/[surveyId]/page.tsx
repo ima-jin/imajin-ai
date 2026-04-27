@@ -96,7 +96,7 @@ export default function SurveyResponsePage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-orange-500"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-imajin-purple"></div>
       </div>
     );
   }
@@ -108,7 +108,7 @@ export default function SurveyResponsePage() {
           <h1 className="text-2xl font-bold mb-4">Survey not found</h1>
           <button
             onClick={() => router.push('/')}
-            className="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
+            className="px-6 py-3 bg-imajin-orange text-primary hover:brightness-110 transition"
           >
             Go Home
           </button>
@@ -123,12 +123,12 @@ export default function SurveyResponsePage() {
         <div className="max-w-2xl w-full text-center">
           <div className="text-6xl mb-6">✓</div>
           <h1 className="text-3xl font-bold mb-4">Thank you!</h1>
-          <p className="text-xl text-gray-600 dark:text-gray-400 mb-8">
+          <p className="text-xl text-muted dark:text-secondary mb-8">
             Your response has been recorded.
           </p>
           <button
             onClick={() => router.push('/')}
-            className="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
+            className="px-6 py-3 bg-imajin-orange text-primary hover:brightness-110 transition"
           >
             Back to Home
           </button>
@@ -142,12 +142,12 @@ export default function SurveyResponsePage() {
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="max-w-2xl w-full text-center">
           <h1 className="text-2xl font-bold mb-4">Survey not available</h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-8">
+          <p className="text-muted dark:text-secondary mb-8">
             This survey is currently {surveyData.status}.
           </p>
           <button
             onClick={() => router.push('/')}
-            className="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
+            className="px-6 py-3 bg-imajin-orange text-primary hover:brightness-110 transition"
           >
             Back to Home
           </button>
@@ -159,11 +159,11 @@ export default function SurveyResponsePage() {
   return (
     <div className="min-h-screen py-12 px-4">
       <div className="max-w-3xl mx-auto">
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-8">
+        <div className="bg-white dark:bg-surface-elevated border border-white/10 dark:border-white/10 p-8">
           <div className="mb-8">
             <h1 className="text-3xl font-bold mb-3">{surveyData.title}</h1>
             {surveyData.description && (
-              <p className="text-lg text-gray-600 dark:text-gray-400">
+              <p className="text-lg text-muted dark:text-secondary">
                 {surveyData.description}
               </p>
             )}
@@ -173,7 +173,7 @@ export default function SurveyResponsePage() {
             <Survey model={surveyModel} />
           ) : (
             <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-orange-500"></div>
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-imajin-purple"></div>
             </div>
           )}
         </div>

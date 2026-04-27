@@ -22,7 +22,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black">
+    <div className="min-h-screen bg-surface-base">
       <div className="container mx-auto px-4 py-16">
         <div className="max-w-2xl mx-auto text-center">
           <div className="text-6xl mb-4">🔗</div>
@@ -31,7 +31,7 @@ export default function Home() {
             links.imajin.ai
           </h1>
 
-          <p className="text-xl text-gray-600 dark:text-gray-400 mb-8">
+          <p className="text-xl text-muted dark:text-secondary mb-8">
             Sovereign link-in-bio pages.
             <br />
             Your links. Your data. No tracking.
@@ -41,18 +41,18 @@ export default function Home() {
           <div className="flex justify-center mb-12">
             {!checkingAuth && (
               isLoggedIn ? (
-                <Link href="/edit" className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
+                <Link href="/edit" className="inline-block px-8 py-4 bg-imajin-orange text-primary font-semibold text-lg hover:brightness-110">
                   Go to Dashboard →
                 </Link>
               ) : (
-                <a href={`${AUTH_URL}/login?next=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin + '/edit' : '/edit')}`} className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
+                <a href={`${AUTH_URL}/login?next=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin + '/edit' : '/edit')}`} className="inline-block px-8 py-4 bg-imajin-orange text-primary font-semibold text-lg hover:brightness-110">
                   Sign In to Get Started
                 </a>
               )
             )}
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 mb-8 text-left">
+          <div className="bg-white dark:bg-surface-elevated p-8 mb-8 text-left">
             <h2 className="text-2xl font-semibold mb-4 text-center">Why Links?</h2>
 
             <div className="space-y-4">
@@ -60,7 +60,7 @@ export default function Home() {
                 <div className="text-2xl">🚫</div>
                 <div>
                   <h3 className="font-semibold">No invasive tracking</h3>
-                  <p className="text-gray-500 text-sm">We count clicks, not people. No fingerprinting, no cookies, no profiles.</p>
+                  <p className="text-secondary text-sm">We count clicks, not people. No fingerprinting, no cookies, no profiles.</p>
                 </div>
               </div>
 
@@ -68,7 +68,7 @@ export default function Home() {
                 <div className="text-2xl">🎨</div>
                 <div>
                   <h3 className="font-semibold">Custom themes</h3>
-                  <p className="text-gray-500 text-sm">Built-in presets or customize your own colors and style.</p>
+                  <p className="text-secondary text-sm">Built-in presets or customize your own colors and style.</p>
                 </div>
               </div>
 
@@ -76,7 +76,7 @@ export default function Home() {
                 <div className="text-2xl">⚡</div>
                 <div>
                   <h3 className="font-semibold">Fast & simple</h3>
-                  <p className="text-gray-500 text-sm">No bloat. Just your links, loading instantly.</p>
+                  <p className="text-secondary text-sm">No bloat. Just your links, loading instantly.</p>
                 </div>
               </div>
 
@@ -84,7 +84,7 @@ export default function Home() {
                 <div className="text-2xl">🔗</div>
                 <div>
                   <h3 className="font-semibold">Integrates with Imajin</h3>
-                  <p className="text-gray-500 text-sm">Connect your profile, coffee page, and more.</p>
+                  <p className="text-secondary text-sm">Connect your profile, coffee page, and more.</p>
                 </div>
               </div>
             </div>

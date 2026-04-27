@@ -1,3 +1,8 @@
+@import '@imajin/tokens/dist/variables.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Note: dark mode colors handled by Tailwind classes on <body> in layout.tsx
+   Do not hardcode body background/color here — it conflicts with dark: variants */

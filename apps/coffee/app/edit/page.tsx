@@ -172,52 +172,52 @@ export default function EditPage() {
 
   if (isLoading) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4">
+      <main className="min-h-screen bg-surface-base py-8 px-4">
         <div className="max-w-2xl mx-auto text-center">
           <div className="text-4xl mb-4">☕</div>
-          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+          <p className="text-muted dark:text-secondary">Loading...</p>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4">
+    <main className="min-h-screen bg-surface-base py-8 px-4">
       <div className="max-w-2xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">
             {existingPage ? 'Edit Your Coffee Page' : 'Create Your Coffee Page'}
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-muted dark:text-secondary">
             Set up your sovereign support page and start receiving tips
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Handle */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+          <div className="bg-white dark:bg-surface-elevated p-6">
             <label className="block text-sm font-medium mb-2">
               Handle *
             </label>
             <div className="flex items-center gap-2">
-              <span className="text-gray-500">coffee.imajin.ai/</span>
+              <span className="text-secondary">coffee.imajin.ai/</span>
               <input
                 type="text"
                 value={handle}
                 onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                 disabled={!!existingPage}
                 required
-                className="flex-1 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2 border border-white/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-imajin-purple bg-white dark:bg-surface-elevated disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="yourname"
               />
             </div>
             {existingPage && (
-              <p className="text-xs text-gray-500 mt-1">Handle cannot be changed</p>
+              <p className="text-xs text-secondary mt-1">Handle cannot be changed</p>
             )}
           </div>
 
           {/* Title & Bio */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 space-y-4">
+          <div className="bg-white dark:bg-surface-elevated p-6 space-y-4">
             <div>
               <label className="block text-sm font-medium mb-2">
                 Title *
@@ -227,7 +227,7 @@ export default function EditPage() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 required
-                className="w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700"
+                className="w-full px-4 py-2 border border-white/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-imajin-purple bg-white dark:bg-surface-elevated"
                 placeholder="Buy me a coffee"
               />
             </div>
@@ -240,14 +240,14 @@ export default function EditPage() {
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 rows={3}
-                className="w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700"
+                className="w-full px-4 py-2 border border-white/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-imajin-purple bg-white dark:bg-surface-elevated"
                 placeholder="Tell supporters about yourself..."
               />
             </div>
           </div>
 
           {/* Avatar */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+          <div className="bg-white dark:bg-surface-elevated p-6">
             <label className="block text-sm font-medium mb-2">
               Avatar
             </label>
@@ -257,12 +257,12 @@ export default function EditPage() {
                 <button
                   type="button"
                   onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  className="px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+                  className="px-4 py-2 bg-surface-elevated dark:bg-surface-elevated:bg-surface-elevated dark:hover:bg-surface-elevated transition"
                 >
                   Pick Emoji
                 </button>
                 {showEmojiPicker && (
-                  <div className="mt-2 grid grid-cols-8 gap-2 p-3 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                  <div className="mt-2 grid grid-cols-8 gap-2 p-3 bg-surface-elevated dark:bg-surface-elevated">
                     {commonEmojis.map((emoji) => (
                       <button
                         key={emoji}
@@ -271,7 +271,7 @@ export default function EditPage() {
                           setAvatar(emoji);
                           setShowEmojiPicker(false);
                         }}
-                        className="text-3xl hover:scale-125 transition"
+                        className="text-3xl:scale-125 transition"
                       >
                         {emoji}
                       </button>
@@ -283,7 +283,7 @@ export default function EditPage() {
           </div>
 
           {/* Theme Colors */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 space-y-4">
+          <div className="bg-white dark:bg-surface-elevated p-6 space-y-4">
             <h3 className="font-medium">Theme</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -292,7 +292,7 @@ export default function EditPage() {
                   type="color"
                   value={primaryColor}
                   onChange={(e) => setPrimaryColor(e.target.value)}
-                  className="w-full h-12 rounded-xl border border-gray-200 dark:border-gray-600 cursor-pointer"
+                  className="w-full h-12 border border-white/10 dark:border-white/10 cursor-pointer"
                 />
               </div>
               <div>
@@ -301,14 +301,14 @@ export default function EditPage() {
                   type="color"
                   value={backgroundColor}
                   onChange={(e) => setBackgroundColor(e.target.value)}
-                  className="w-full h-12 rounded-xl border border-gray-200 dark:border-gray-600 cursor-pointer"
+                  className="w-full h-12 border border-white/10 dark:border-white/10 cursor-pointer"
                 />
               </div>
             </div>
           </div>
 
           {/* Presets */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+          <div className="bg-white dark:bg-surface-elevated p-6">
             <label className="block text-sm font-medium mb-2">
               Preset Amounts (cents, comma-separated) *
             </label>
@@ -317,38 +317,38 @@ export default function EditPage() {
               value={presets}
               onChange={(e) => setPresets(e.target.value)}
               required
-              className="w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700"
+              className="w-full px-4 py-2 border border-white/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-imajin-purple bg-white dark:bg-surface-elevated"
               placeholder="500,1000,2000"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-secondary mt-1">
               Example: 500,1000,2000 = $5, $10, $20
             </p>
           </div>
 
           {/* Fund Directions */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 space-y-4">
+          <div className="bg-white dark:bg-surface-elevated p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-medium">Fund Directions</h3>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-secondary mt-1">
                   Let supporters choose where their money goes. Trust graph verifiable.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setFundDirections([...fundDirections, { id: `fd_${Date.now()}`, label: '', description: '' }])}
-                className="px-3 py-1.5 rounded-lg bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-sm font-medium hover:bg-orange-200 dark:hover:bg-orange-900/50 transition"
+                className="px-3 py-1.5 bg-imajin-orange/10 dark:bg-imajin-orange/10 text-imajin-orange dark:text-imajin-orange text-sm font-medium:bg-orange-200 dark:hover:bg-imajin-orange/10 transition"
               >
                 + Add Direction
               </button>
             </div>
             {fundDirections.length === 0 && (
-              <p className="text-sm text-gray-400 italic">
+              <p className="text-sm text-secondary italic">
                 No fund directions yet. Add some to let supporters choose — e.g. "Living expenses", "Platform development", "Medical costs"
               </p>
             )}
             {fundDirections.map((fd, idx) => (
-              <div key={fd.id} className="flex gap-3 items-start bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
+              <div key={fd.id} className="flex gap-3 items-start bg-surface-elevated dark:bg-surface-elevated/50 p-3">
                 <div className="flex-1 space-y-2">
                   <input
                     type="text"
@@ -358,7 +358,7 @@ export default function EditPage() {
                       updated[idx] = { ...fd, label: e.target.value };
                       setFundDirections(updated);
                     }}
-                    className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-sm"
+                    className="w-full px-3 py-1.5 border border-white/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-imajin-purple bg-white dark:bg-surface-elevated text-sm"
                     placeholder="Label — e.g. Living expenses"
                   />
                   <input
@@ -369,14 +369,14 @@ export default function EditPage() {
                       updated[idx] = { ...fd, description: e.target.value };
                       setFundDirections(updated);
                     }}
-                    className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-sm"
+                    className="w-full px-3 py-1.5 border border-white/10 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-imajin-purple bg-white dark:bg-surface-elevated text-sm"
                     placeholder="Description — e.g. Help me keep the lights on"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={() => setFundDirections(fundDirections.filter((_, i) => i !== idx))}
-                  className="text-red-500 hover:text-red-700 text-sm p-1"
+                  className="text-error:text-error text-sm p-1"
                 >
                   ✕
                 </button>
@@ -385,11 +385,11 @@ export default function EditPage() {
           </div>
 
           {/* Thank You Page */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 space-y-4">
+          <div className="bg-white dark:bg-surface-elevated p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-medium">Thank You Page</h3>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-secondary mt-1">
                   Custom message shown after someone tips you. Supports markdown.
                 </p>
               </div>
@@ -397,33 +397,25 @@ export default function EditPage() {
                 <button
                   type="button"
                   onClick={() => setShowThankYouPreview(false)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                    !showThankYouPreview
-                      ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
-                      : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                  }`}
+                  className={`px-3 py-1.5 text-sm font-medium transition ${ !showThankYouPreview ? 'bg-imajin-orange/10 dark:bg-imajin-orange/10 text-imajin-orange dark:text-imajin-orange' : 'text-secondary:text-muted dark:hover:text-primary' }`}
                 >
                   Edit
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowThankYouPreview(true)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                    showThankYouPreview
-                      ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
-                      : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                  }`}
+                  className={`px-3 py-1.5 text-sm font-medium transition ${ showThankYouPreview ? 'bg-imajin-orange/10 dark:bg-imajin-orange/10 text-imajin-orange dark:text-imajin-orange' : 'text-secondary:text-muted dark:hover:text-primary' }`}
                 >
                   Preview
                 </button>
               </div>
             </div>
             {showThankYouPreview ? (
-              <div className="min-h-[120px] p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
+              <div className="min-h-[120px] p-4 bg-surface-elevated dark:bg-surface-elevated/50">
                 {thankYouContent ? (
                   <MarkdownContent content={thankYouContent} />
                 ) : (
-                  <p className="text-gray-400 italic text-sm">
+                  <p className="text-secondary italic text-sm">
                     No custom content — the default thank-you message will be shown.
                   </p>
                 )}
@@ -438,7 +430,7 @@ export default function EditPage() {
           </div>
 
           {/* Options */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 space-y-3">
+          <div className="bg-white dark:bg-surface-elevated p-6 space-y-3">
             <h3 className="font-medium mb-4">Options</h3>
 
             <label className="flex items-center gap-3 cursor-pointer">
@@ -446,7 +438,7 @@ export default function EditPage() {
                 type="checkbox"
                 checked={allowCustomAmount}
                 onChange={(e) => setAllowCustomAmount(e.target.checked)}
-                className="w-5 h-5 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                className="w-5 h-5 border-white/10 text-imajin-orange focus:ring-imajin-purple"
               />
               <span className="text-sm">Allow custom amounts</span>
             </label>
@@ -456,7 +448,7 @@ export default function EditPage() {
                 type="checkbox"
                 checked={allowMessages}
                 onChange={(e) => setAllowMessages(e.target.checked)}
-                className="w-5 h-5 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                className="w-5 h-5 border-white/10 text-imajin-orange focus:ring-imajin-purple"
               />
               <span className="text-sm">Allow supporter messages</span>
             </label>
@@ -466,7 +458,7 @@ export default function EditPage() {
                 type="checkbox"
                 checked={isPublic}
                 onChange={(e) => setIsPublic(e.target.checked)}
-                className="w-5 h-5 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                className="w-5 h-5 border-white/10 text-imajin-orange focus:ring-imajin-purple"
               />
               <span className="text-sm">Make page public</span>
             </label>
@@ -474,7 +466,7 @@ export default function EditPage() {
 
           {/* Error */}
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 text-red-800 dark:text-red-200">
+            <div className="bg-error/10 dark:bg-error/10 border border-error/20 dark:border-error/20 p-4 text-error dark:text-error">
               {error}
             </div>
           )}
@@ -484,7 +476,7 @@ export default function EditPage() {
             <button
               type="submit"
               disabled={isSaving}
-              className="flex-1 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 py-3 bg-imajin-orange hover:brightness-110 text-primary font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSaving ? 'Saving...' : existingPage ? 'Update Page' : 'Create Page'}
             </button>
@@ -492,7 +484,7 @@ export default function EditPage() {
               <button
                 type="button"
                 onClick={() => router.push(`/${existingPage.handle}`)}
-                className="px-6 py-3 rounded-xl bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold transition"
+                className="px-6 py-3 bg-surface-elevated dark:bg-surface-elevated:bg-surface-elevated dark:hover:bg-surface-elevated text-gray-800 dark:text-primary font-semibold transition"
               >
                 Cancel
               </button>

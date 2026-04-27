@@ -257,7 +257,7 @@ export default function DashboardPage() {
             </Link>
             <Link
               href="/listings/new"
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-imajin-orange hover:bg-imajin-orange/80 text-primary font-semibold transition text-sm shadow-orange-500/20"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-imajin-orange hover:bg-imajin-orange/80 text-primary font-semibold transition text-sm "
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -481,7 +481,7 @@ export default function DashboardPage() {
       <div className="fixed bottom-6 right-6 md:hidden z-10">
         <Link
           href="/listings/new"
-          className="flex items-center gap-2 px-4 py-3 bg-imajin-orange hover:bg-imajin-orange/80 text-primary font-semibold rounded-full shadow-orange-500/30 transition"
+          className="flex items-center gap-2 px-4 py-3 bg-imajin-orange hover:bg-imajin-orange/80 text-primary font-semibold rounded-full  transition"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />

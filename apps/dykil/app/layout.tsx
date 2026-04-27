@@ -25,7 +25,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+      <body className="min-h-screen bg-white dark:bg-surface-base text-primary dark:text-primary">
         <Providers>{children}</Providers>
       </body>
     </html>

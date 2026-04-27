@@ -116,12 +116,12 @@ export default async function CoffeePage({ params }: PageProps) {
 
         {/* Bio */}
         {page.bio && (
-          <p className="text-gray-600 mb-6">{page.bio}</p>
+          <p className="text-muted mb-6">{page.bio}</p>
         )}
 
         {/* A thought */}
-        <div className="mb-6 bg-orange-100 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 rounded-2xl p-6 text-left">
-          <h2 className="text-lg font-bold mb-3 text-orange-800 dark:text-orange-200">A thought on where your money goes</h2>
+        <div className="mb-6 bg-imajin-orange/10 dark:bg-imajin-orange/10 border border-imajin-orange/20 dark:border-imajin-orange/20 p-6 text-left">
+          <h2 className="text-lg font-bold mb-3 text-orange-800 dark:text-imajin-orange">A thought on where your money goes</h2>
           <div className="text-orange-900 dark:text-orange-100 space-y-3 text-sm">
             <p>
               You probably spend $20/month on subscriptions you barely touch — feeding platforms
@@ -150,7 +150,7 @@ export default async function CoffeePage({ params }: PageProps) {
         />
 
         {/* Footer */}
-        <p className="text-center text-xs text-gray-400 mt-4">
+        <p className="text-center text-xs text-secondary mt-4">
           Powered by <a href="https://imajin.ai" className="hover:underline">Imajin</a>
           {' · '}
           No platform fees
