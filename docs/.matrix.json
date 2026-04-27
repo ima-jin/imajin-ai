@@ -1,0 +1,3114 @@
+{
+  "artifacts": [
+    {
+      "slug": "BOOK",
+      "title": "How to Save the World by Partying",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/articles/BOOK.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "DOCUSERIES",
+      "title": "imajin.ai — The Docuseries",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/articles/DOCUSERIES.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "appendix-1-attribution-not-protection",
+      "title": "Attribution, Not Protection",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": "2026-XX-XX",
+      "author": "Ryan Veteze",
+      "path": "docs/articles/appendix-1-attribution-not-protection.md",
+      "topics": [
+        "fair",
+        "agents",
+        "settlement"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "appendix-2-the-reputation-problem",
+      "title": "Appendix 2: The Reputation Problem",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": "2026-XX-XX",
+      "author": "Ryan Veteze",
+      "path": "docs/articles/appendix-2-the-reputation-problem.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "appendix-3-the-new-rules",
+      "title": "Appendix 3: The New Rules",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": "2026-XX-XX",
+      "author": "Ryan Veteze",
+      "path": "docs/articles/appendix-3-the-new-rules.md",
+      "topics": [
+        "fair",
+        "agents",
+        "settlement",
+        "governance",
+        "events"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "appendix-4-how-we-fix-voting",
+      "title": "Appendix 4: How We Fix Voting",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": "2026-XX-XX",
+      "author": "Ryan Veteze",
+      "path": "docs/articles/appendix-4-how-we-fix-voting.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "appendix-5-ai-governs-itself",
+      "title": "Appendix 5: AI Governs Itself",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": "2026-XX-XX",
+      "author": "Ryan Veteze",
+      "path": "docs/articles/appendix-5-ai-governs-itself.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "agents",
+        "governance",
+        "events"
+      ],
+      "refs": {
+        "rfcs": [
+          3
+        ]
+      }
+    },
+    {
+      "slug": "bounty-01-syndication-service",
+      "title": "Bounty: imajin Syndication Service",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/articles/bounty-01-syndication-service.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "agents",
+        "dfos",
+        "settlement",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "build-timeline-summary",
+      "title": "Build Timeline Summary & Pressure Test",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/articles/build-timeline-summary.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "issues": [
+          113,
+          114,
+          115,
+          116,
+          117
+        ]
+      }
+    },
+    {
+      "slug": "build-timeline",
+      "title": "Build Timeline: The Architecture of Trust",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/articles/build-timeline.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          16,
+          14
+        ],
+        "issues": [
+          119,
+          120,
+          268,
+          269,
+          154,
+          278,
+          316,
+          371,
+          374,
+          372,
+          392,
+          396,
+          407,
+          412,
+          398,
+          413,
+          403,
+          426,
+          401,
+          400,
+          402,
+          415,
+          425,
+          417,
+          420,
+          416,
+          418,
+          419,
+          421,
+          453,
+          451,
+          408
+        ],
+        "prs": [
+          407,
+          412,
+          413,
+          426,
+          453,
+          451
+        ],
+        "packages": [
+          "@imajin/db",
+          "@imajin/fair",
+          "@imajin/llm",
+          "@imajin/graph",
+          "@imajin/dfos",
+          "@imajin/cid",
+          "@imajin/auth"
+        ]
+      }
+    },
+    {
+      "slug": "captains-log-2026-03-19--46-days",
+      "title": "Day 46",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/articles/captains-log-2026-03-19--46-days.md",
+      "topics": [
+        "fair",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-00-prologue",
+      "title": "Prologue",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-00-prologue.md",
+      "topics": [
+        "identity",
+        "agents",
+        "settlement",
+        "federation"
+      ],
+      "refs": {
+        "essays": [
+          "essay-01-the-internet-we-lost"
+        ]
+      }
+    },
+    {
+      "slug": "essay-01-the-internet-we-lost",
+      "title": "The Pain of Knowing",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-01-the-internet-we-lost.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "the-internet-we-lost"
+        ]
+      }
+    },
+    {
+      "slug": "essay-02-the-artificial-developer",
+      "title": "I've Been an AI Since 1988",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-02-the-artificial-developer.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "the-artificial-developer"
+        ]
+      }
+    },
+    {
+      "slug": "essay-03-the-mask-we-all-wear",
+      "title": "The Mask We All Wear",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-03-the-mask-we-all-wear.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "the-mask-we-all-wear"
+        ]
+      }
+    },
+    {
+      "slug": "essay-04-the-internet-that-pays-you-back",
+      "title": "The Internet That Pays You Back",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-04-the-internet-that-pays-you-back.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "the-internet-that-pays-you-back"
+        ]
+      }
+    },
+    {
+      "slug": "essay-05-you-dont-need-ads",
+      "title": "You Don't Need Ads. You Need a Better Business Model.",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-05-you-dont-need-ads.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "you-dont-need-ads"
+        ]
+      }
+    },
+    {
+      "slug": "essay-06-the-guild",
+      "title": "The Guild",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-06-the-guild.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-07-utility",
+      "title": "The Utility",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-07-utility.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "issues": [
+          11
+        ],
+        "essays": [
+          "the-utility"
+        ]
+      }
+    },
+    {
+      "slug": "essay-08-ticketing",
+      "title": "The Ticket Is the Trust",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-08-ticketing.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "settlement",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "the-ticket-is-the-trust"
+        ]
+      }
+    },
+    {
+      "slug": "essay-09-nodes-types-and-practice",
+      "title": "The Practice",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-09-nodes-types-and-practice.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "the-practice"
+        ]
+      }
+    },
+    {
+      "slug": "essay-10-memory",
+      "title": "Memory",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-10-memory.md",
+      "topics": [
+        "legibility",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "memory"
+        ]
+      }
+    },
+    {
+      "slug": "essay-11-interstitial-01-cult-of-vetteses",
+      "title": "The Cult of Family",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-11-interstitial-01-cult-of-vetteses.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "settlement",
+        "governance",
+        "events"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-12-you-already-know-something",
+      "title": "You Already Know Something",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-12-you-already-know-something.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "you-already-know-something"
+        ]
+      }
+    },
+    {
+      "slug": "essay-13-how-to-use-ai-properly",
+      "title": "You Don't Need to Post About Your Emergent AI Discoveries.",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-13-how-to-use-ai-properly.md",
+      "topics": [
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "how-to-use-ai-properly"
+        ]
+      }
+    },
+    {
+      "slug": "essay-14-honor-the-chain",
+      "title": "Honor the Chain",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-14-honor-the-chain.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "honor-the-chain"
+        ]
+      }
+    },
+    {
+      "slug": "essay-15-interstitial-02-cult-of-good-times",
+      "title": "The Cult of Good Times",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-15-interstitial-02-cult-of-good-times.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-16-how-to-save-education",
+      "title": "How to Save Education",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-16-how-to-save-education.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "how-to-save-education"
+        ]
+      }
+    },
+    {
+      "slug": "essay-17-how-to-save-journalism",
+      "title": "The Press Isn't Free. It's Owned.",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-17-how-to-save-journalism.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "how-to-save-journalism"
+        ]
+      }
+    },
+    {
+      "slug": "essay-18-how-to-save-the-music-industry",
+      "title": "You Don't Need Streams. You Need the Relationship Back.",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-18-how-to-save-the-music-industry.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "essay-42-the-catalog",
+          "how-to-save-media-streaming"
+        ]
+      }
+    },
+    {
+      "slug": "essay-19-how-to-save-the-ad-industry",
+      "title": "How to Save the Ad Industry",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-19-how-to-save-the-ad-industry.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "how-to-save-the-ad-industry"
+        ]
+      }
+    },
+    {
+      "slug": "essay-20-how-to-save-the-platforms",
+      "title": "The Headless Economy",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-20-how-to-save-the-platforms.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "how-to-save-the-platforms"
+        ]
+      }
+    },
+    {
+      "slug": "essay-21-how-to-save-media-streaming",
+      "title": "How to Save Media Streaming",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-21-how-to-save-media-streaming.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "essay-42-the-catalog",
+          "how-to-save-the-music-industry"
+        ]
+      }
+    },
+    {
+      "slug": "essay-22-interstitial-03-cult-of-community",
+      "title": "The Cult of Community",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-22-interstitial-03-cult-of-community.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-23-imajin-business-case",
+      "title": "The Business Case for Building on Human Trust",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-23-imajin-business-case.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "the-business-case"
+        ]
+      }
+    },
+    {
+      "slug": "essay-24-revenue-from-day-one",
+      "title": "Revenue from Day One",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-24-revenue-from-day-one.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "revenue-from-day-one"
+        ]
+      }
+    },
+    {
+      "slug": "essay-25-the-connector",
+      "title": "The Connector",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-25-the-connector.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "the-connector"
+        ]
+      }
+    },
+    {
+      "slug": "essay-26-part-1-the-blueprint",
+      "title": "The Blueprint",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-26-part-1-the-blueprint.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-26-part-2-need-help",
+      "title": "I Need Help",
+      "type": "essay",
+      "status": "shipped",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-26-part-2-need-help.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "i-need-help"
+        ]
+      }
+    },
+    {
+      "slug": "essay-27-around-not-up",
+      "title": "Around, Not Up",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-27-around-not-up.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-28-how-ai-saved-me",
+      "title": "How AI Saved Me",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-28-how-ai-saved-me.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-29-how-partying-can-save-us",
+      "title": "How Partying Can Save Us",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-29-how-partying-can-save-us.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-30-epilogue",
+      "title": "Epilogue: And Now We Can Be Human Beings Again",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/articles/essay-30-epilogue.md",
+      "topics": [
+        "fair",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-31-the-receipt",
+      "title": "The Receipt",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-31-the-receipt.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-32-how-to-save-compute",
+      "title": "Essay 32: How to Save Compute From Eating Itself",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/articles/essay-32-how-to-save-compute.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-33-this-is-how-you-fix-bitcoin-STUB",
+      "title": "This Is How You Fix Bitcoin",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": "TBD — publishes after DFOS chains are running at scale",
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-33-this-is-how-you-fix-bitcoin-STUB.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-34-how-to-save-the-app-store-STUB",
+      "title": "How to Save the App Store",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": "TBD",
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-34-how-to-save-the-app-store-STUB.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-35-the-architect-scorecard",
+      "title": "The Architect Scorecard",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-35-the-architect-scorecard.md",
+      "topics": [
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-36-come-peer-with-us",
+      "title": "Come Peer With Us",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-36-come-peer-with-us.md",
+      "topics": [
+        "identity",
+        "agents",
+        "settlement",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-37-how-to-fix-the-commons",
+      "title": "How to Fix the Commons",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-37-how-to-fix-the-commons.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-38-the-inherited-pathology",
+      "title": "The Inherited Pathology",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-38-the-inherited-pathology.md",
+      "topics": [
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-39-interstitial-04-cult-of-work",
+      "title": "Interstitial 04: The Cult of Work",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-39-interstitial-04-cult-of-work.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "governance"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-40-interstitial-05-the-verification-racket",
+      "title": "Interstitial 05 — The Verification Racket",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/articles/essay-40-interstitial-05-the-verification-racket.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "essay-41-what-imajin-is-building",
+      "title": "What Imajin Is Building",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-41-what-imajin-is-building.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "the-guild"
+        ]
+      }
+    },
+    {
+      "slug": "essay-42-the-catalog",
+      "title": "The answer to everything",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-42-the-catalog.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "how-to-save-the-music-industry",
+          "how-to-save-media-streaming"
+        ]
+      }
+    },
+    {
+      "slug": "essay-43-show-us-the-receipts",
+      "title": "Show Us the Receipts",
+      "type": "essay",
+      "status": "draft",
+      "rev": 5,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/articles/essay-43-show-us-the-receipts.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "essays": [
+          "essay-31-the-receipt",
+          "honor-the-chain",
+          "the-internet-that-pays-you-back",
+          "you-dont-need-ads"
+        ]
+      }
+    },
+    {
+      "slug": "grounding-00-master-timeline",
+      "title": "Master Timeline: Ryan VETEZE aka b0b",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/articles/grounding-00-master-timeline.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "grounding-01-sequence",
+      "title": "imajin.ai Essay Series — Master Sequence",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/articles/grounding-01-sequence.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "grounding-02-THESIS",
+      "title": "The Imajin Thesis",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/articles/grounding-02-THESIS.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "grounding-03-ARCHITECTURE",
+      "title": "The Imajin Architecture",
+      "type": "essay",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/articles/grounding-03-ARCHITECTURE.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          1,
+          2
+        ],
+        "issues": [
+          253,
+          252,
+          189,
+          250,
+          258,
+          256,
+          177,
+          227,
+          254,
+          260,
+          259,
+          109,
+          255,
+          257,
+          156,
+          114
+        ],
+        "packages": [
+          "@imajin/auth",
+          "@imajin/fair",
+          "@imajin/pay",
+          "@imajin/ui",
+          "@imajin/db"
+        ]
+      }
+    },
+    {
+      "slug": "RFC-01-fair-attribution",
+      "title": ".fair Attribution from Commit History",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "TBD",
+      "author": "TBD",
+      "path": "docs/rfcs/RFC-01-fair-attribution.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "issues": [
+          42
+        ]
+      }
+    },
+    {
+      "slug": "RFC-02-distribution-contracts",
+      "title": "Programmable Distribution Contracts",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "TBD",
+      "author": "TBD",
+      "path": "docs/rfcs/RFC-02-distribution-contracts.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          1
+        ]
+      }
+    },
+    {
+      "slug": "RFC-03-memory-attribution",
+      "title": "Memory Attribution (HRPOS)",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "TBD",
+      "author": "TBD",
+      "path": "docs/rfcs/RFC-03-memory-attribution.md",
+      "topics": [
+        "fair",
+        "agents",
+        "dfos"
+      ],
+      "refs": {
+        "rfcs": [
+          5,
+          1
+        ],
+        "issues": [
+          139,
+          153
+        ]
+      }
+    },
+    {
+      "slug": "RFC-04-settlement-protocol",
+      "title": "Settlement Protocol",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "TBD",
+      "author": "TBD",
+      "path": "docs/rfcs/RFC-04-settlement-protocol.md",
+      "topics": [
+        "fair",
+        "agents",
+        "settlement"
+      ],
+      "refs": {
+        "rfcs": [
+          5,
+          2
+        ],
+        "issues": [
+          111,
+          143
+        ]
+      }
+    },
+    {
+      "slug": "RFC-05-intent-bearing-transactions",
+      "title": "Intent-Bearing Transactions and Contribution Pools",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze, Jin",
+      "path": "docs/rfcs/RFC-05-intent-bearing-transactions.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          1,
+          2,
+          4,
+          3
+        ],
+        "issues": [
+          141,
+          143,
+          110,
+          111,
+          117
+        ]
+      }
+    },
+    {
+      "slug": "RFC-06-identity-portability",
+      "title": "Identity Portability & Backup Nodes",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze, Jin",
+      "path": "docs/rfcs/RFC-06-identity-portability.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "RFC-07-cultural-did",
+      "title": "Cultural DID — Identity Primitive for Collectives, Scenes, and Communities of Practice",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Greg ([@anonymous_observer](https://github.com/anonymous_observer))",
+      "path": "docs/rfcs/RFC-07-cultural-did.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "issues": [
+          247,
+          114,
+          246
+        ]
+      }
+    },
+    {
+      "slug": "RFC-08-org-did",
+      "title": "Org DID — Businesses and Legal Entities",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "TBD",
+      "author": "TBD",
+      "path": "docs/rfcs/RFC-08-org-did.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events"
+      ],
+      "refs": {
+        "issues": [
+          248,
+          247,
+          246,
+          114,
+          117,
+          112
+        ]
+      }
+    },
+    {
+      "slug": "RFC-09-application-plugin-architecture",
+      "title": "Application Plugin Architecture — Third-Party Apps, Launcher Dock, and Dev Bounties",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "TBD",
+      "author": "TBD",
+      "path": "docs/rfcs/RFC-09-application-plugin-architecture.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "issues": [
+          249,
+          244,
+          248,
+          247,
+          246,
+          114
+        ]
+      }
+    },
+    {
+      "slug": "RFC-10-sovereign-user-data",
+      "title": "Sovereign User Data — Portable Identity Bundles and Federated User Operations",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "TBD",
+      "author": "TBD",
+      "path": "docs/rfcs/RFC-10-sovereign-user-data.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "issues": [
+          251,
+          227,
+          249,
+          24,
+          155,
+          156,
+          244,
+          250
+        ]
+      }
+    },
+    {
+      "slug": "RFC-11-embedded-wallet",
+      "title": "Embedded Wallet — DID keypair as MJN-scoped Solana wallet with hierarchical key derivation",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/rfcs/RFC-11-embedded-wallet.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "issues": [
+          256,
+          257,
+          252,
+          253,
+          255
+        ],
+        "packages": [
+          "@imajin/auth",
+          "@imajin/fair"
+        ]
+      }
+    },
+    {
+      "slug": "RFC-12-mjn-token-economics",
+      "title": "MJN Token Economics — reserve-backed utility token with fiat bridge",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/rfcs/RFC-12-mjn-token-economics.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "agents",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "issues": [
+          114,
+          268,
+          253,
+          252,
+          256
+        ]
+      }
+    },
+    {
+      "slug": "RFC-13-progressive-trust-model",
+      "title": "Progressive Trust Model — graduated permissions on hard DIDs",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/rfcs/RFC-13-progressive-trust-model.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation"
+      ],
+      "refs": {
+        "issues": [
+          247,
+          248,
+          244
+        ]
+      }
+    },
+    {
+      "slug": "RFC-14-community-issuance-network",
+      "title": "Community Issuance Network — trusted institutions as identity entry points",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/rfcs/RFC-14-community-issuance-network.md",
+      "topics": [
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation"
+      ],
+      "refs": {
+        "issues": [
+          271,
+          247,
+          249,
+          269
+        ]
+      }
+    },
+    {
+      "slug": "RFC-15-trust-accountability-framework",
+      "title": "Trust Accountability Framework — bad actor detection, consequences, and vouch chain responsibility",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/rfcs/RFC-15-trust-accountability-framework.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "issues": [
+          271,
+          247,
+          248
+        ]
+      }
+    },
+    {
+      "slug": "RFC-16-jin-workspace-agent",
+      "title": "Jin Workspace Agent Architecture",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "March 15, 2026",
+      "author": "Ryan Veteze + Jin",
+      "path": "docs/rfcs/RFC-16-jin-workspace-agent.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          9
+        ],
+        "issues": [
+          256,
+          344,
+          139,
+          153,
+          250,
+          336,
+          43,
+          44,
+          111,
+          338,
+          260,
+          45,
+          347,
+          110,
+          113,
+          115,
+          117,
+          244,
+          351,
+          321,
+          346,
+          163,
+          155
+        ],
+        "packages": [
+          "@imajin/llm"
+        ]
+      }
+    },
+    {
+      "slug": "RFC-17-governance-primitive",
+      "title": "Governance Primitive",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze, Jin",
+      "path": "docs/rfcs/RFC-17-governance-primitive.md",
+      "topics": [
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          13,
+          14,
+          15,
+          7,
+          8
+        ],
+        "issues": [
+          500
+        ]
+      }
+    },
+    {
+      "slug": "RFC-18-media-revocation-and-attribution",
+      "title": "Media Revocation & Cross-Graph Attribution",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "March 22, 2026",
+      "author": "Jin + Ryan",
+      "path": "docs/rfcs/RFC-18-media-revocation-and-attribution.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          1
+        ],
+        "issues": [
+          418
+        ]
+      }
+    },
+    {
+      "slug": "RFC-19-kernel-userspace-architecture",
+      "title": "Kernel/Userspace Architecture — Sovereign App Federation",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze, Jin",
+      "path": "docs/rfcs/RFC-19-kernel-userspace-architecture.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          9,
+          22
+        ],
+        "issues": [
+          274,
+          244,
+          555,
+          34,
+          232,
+          465
+        ],
+        "prs": [
+          34
+        ],
+        "packages": [
+          "@imajin/auth",
+          "@imajin/ui"
+        ]
+      }
+    },
+    {
+      "slug": "RFC-20-application-conformance-suite",
+      "title": "Application Conformance Suite",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/rfcs/RFC-20-application-conformance-suite.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation"
+      ],
+      "refs": {
+        "rfcs": [
+          19
+        ]
+      }
+    },
+    {
+      "slug": "RFC-21-imajin-conformance-suite",
+      "title": "Imajin Conformance Suite",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/rfcs/RFC-21-imajin-conformance-suite.md",
+      "topics": [
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events"
+      ],
+      "refs": {
+        "rfcs": [
+          20,
+          19
+        ]
+      }
+    },
+    {
+      "slug": "RFC-22-federated-authentication",
+      "title": "Federated Authentication",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/rfcs/RFC-22-federated-authentication.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          21,
+          19
+        ]
+      }
+    },
+    {
+      "slug": "RFC-23-multi-chain-settlement",
+      "title": "Multi-Chain Settlement — Chain-Agnostic Payment Rails with Privacy Selection",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "April 1, 2026",
+      "author": "Ryan Veteze, Jin",
+      "path": "docs/rfcs/RFC-23-multi-chain-settlement.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          4,
+          11,
+          12,
+          19,
+          22
+        ],
+        "packages": [
+          "@imajin/pay"
+        ]
+      }
+    },
+    {
+      "slug": "RFC-24-knowledge-surfaces",
+      "title": "Knowledge Surfaces — Learn, MCP, and the Queryable Profile",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze",
+      "path": "docs/rfcs/RFC-24-knowledge-surfaces.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation"
+      ],
+      "refs": {}
+    },
+    {
+      "slug": "RFC-25-app-runtime",
+      "title": "App Runtime — Sandboxed Execution for Third-Party Applications",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze, Jin",
+      "path": "docs/rfcs/RFC-25-app-runtime.md",
+      "topics": [
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          19
+        ],
+        "issues": [
+          465,
+          685
+        ]
+      }
+    },
+    {
+      "slug": "RFC-26-federated-handle-resolution",
+      "title": "Federated Handle Resolution",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": "Ryan Veteze, Jin",
+      "path": "docs/rfcs/RFC-26-federated-handle-resolution.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          19,
+          20,
+          22
+        ]
+      }
+    },
+    {
+      "slug": "RFC-27-multi-agent-coordination",
+      "title": "MCC — Multi-Coordinator Coordination",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "April 20, 2026",
+      "author": "Ryan Veteze, Jin (@veteze_openclaw_jin)",
+      "path": "docs/rfcs/RFC-27-multi-agent-coordination.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          19
+        ],
+        "issues": [
+          244,
+          738,
+          465,
+          750
+        ],
+        "prs": [
+          750
+        ]
+      }
+    },
+    {
+      "slug": "RFC-28-universal-real-world-registry",
+      "title": "Universal Real-World Registry — DIDs for Everything",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "April 21, 2026",
+      "author": "Ryan Veteze",
+      "path": "docs/rfcs/RFC-28-universal-real-world-registry.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          27,
+          19
+        ],
+        "issues": [
+          653,
+          581,
+          737,
+          749
+        ]
+      }
+    },
+    {
+      "slug": "RFC-29-biometric-trust-escalation",
+      "title": "Biometric Trust Escalation — Verifiable Credentials for Identity Binding",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "April 23, 2026",
+      "author": "Ryan Veteze",
+      "path": "docs/rfcs/RFC-29-biometric-trust-escalation.md",
+      "topics": [
+        "legibility",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          13,
+          22,
+          27,
+          6,
+          28,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "slug": "emissions-model",
+      "title": "Emissions Model — .fair-Driven MJN Emissions",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": "April 7, 2026",
+      "author": null,
+      "path": "docs/rfcs/drafts/emissions-model.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation"
+      ],
+      "refs": {
+        "rfcs": [
+          1
+        ],
+        "issues": [
+          433,
+          461,
+          641
+        ]
+      }
+    },
+    {
+      "slug": "fee-model",
+      "title": "Fee Model — Settlement Fee Structure",
+      "type": "rfc",
+      "status": "draft",
+      "rev": null,
+      "date": null,
+      "author": null,
+      "path": "docs/rfcs/drafts/fee-model.md",
+      "topics": [
+        "legibility",
+        "fair",
+        "identity",
+        "agents",
+        "dfos",
+        "settlement",
+        "governance",
+        "events",
+        "federation",
+        "sovereignty"
+      ],
+      "refs": {
+        "rfcs": [
+          12,
+          23
+        ],
+        "issues": [
+          575
+        ]
+      }
+    }
+  ],
+  "topics": {
+    "legibility": [
+      "BOOK",
+      "DOCUSERIES",
+      "appendix-5-ai-governs-itself",
+      "bounty-01-syndication-service",
+      "build-timeline-summary",
+      "build-timeline",
+      "essay-02-the-artificial-developer",
+      "essay-03-the-mask-we-all-wear",
+      "essay-04-the-internet-that-pays-you-back",
+      "essay-06-the-guild",
+      "essay-07-utility",
+      "essay-08-ticketing",
+      "essay-09-nodes-types-and-practice",
+      "essay-10-memory",
+      "essay-11-interstitial-01-cult-of-vetteses",
+      "essay-12-you-already-know-something",
+      "essay-14-honor-the-chain",
+      "essay-15-interstitial-02-cult-of-good-times",
+      "essay-16-how-to-save-education",
+      "essay-17-how-to-save-journalism",
+      "essay-19-how-to-save-the-ad-industry",
+      "essay-20-how-to-save-the-platforms",
+      "essay-21-how-to-save-media-streaming",
+      "essay-22-interstitial-03-cult-of-community",
+      "essay-23-imajin-business-case",
+      "essay-24-revenue-from-day-one",
+      "essay-25-the-connector",
+      "essay-26-part-1-the-blueprint",
+      "essay-26-part-2-need-help",
+      "essay-27-around-not-up",
+      "essay-28-how-ai-saved-me",
+      "essay-29-how-partying-can-save-us",
+      "essay-31-the-receipt",
+      "essay-32-how-to-save-compute",
+      "essay-33-this-is-how-you-fix-bitcoin-STUB",
+      "essay-34-how-to-save-the-app-store-STUB",
+      "essay-37-how-to-fix-the-commons",
+      "essay-39-interstitial-04-cult-of-work",
+      "essay-41-what-imajin-is-building",
+      "essay-43-show-us-the-receipts",
+      "grounding-00-master-timeline",
+      "grounding-01-sequence",
+      "grounding-02-THESIS",
+      "grounding-03-ARCHITECTURE",
+      "RFC-02-distribution-contracts",
+      "RFC-07-cultural-did",
+      "RFC-08-org-did",
+      "RFC-09-application-plugin-architecture",
+      "RFC-10-sovereign-user-data",
+      "RFC-12-mjn-token-economics",
+      "RFC-13-progressive-trust-model",
+      "RFC-15-trust-accountability-framework",
+      "RFC-18-media-revocation-and-attribution",
+      "RFC-22-federated-authentication",
+      "RFC-23-multi-chain-settlement",
+      "RFC-26-federated-handle-resolution",
+      "RFC-27-multi-agent-coordination",
+      "RFC-28-universal-real-world-registry",
+      "RFC-29-biometric-trust-escalation",
+      "emissions-model",
+      "fee-model"
+    ],
+    "fair": [
+      "BOOK",
+      "DOCUSERIES",
+      "appendix-1-attribution-not-protection",
+      "appendix-2-the-reputation-problem",
+      "appendix-3-the-new-rules",
+      "appendix-4-how-we-fix-voting",
+      "appendix-5-ai-governs-itself",
+      "bounty-01-syndication-service",
+      "build-timeline-summary",
+      "build-timeline",
+      "captains-log-2026-03-19--46-days",
+      "essay-01-the-internet-we-lost",
+      "essay-02-the-artificial-developer",
+      "essay-05-you-dont-need-ads",
+      "essay-06-the-guild",
+      "essay-09-nodes-types-and-practice",
+      "essay-12-you-already-know-something",
+      "essay-14-honor-the-chain",
+      "essay-15-interstitial-02-cult-of-good-times",
+      "essay-16-how-to-save-education",
+      "essay-18-how-to-save-the-music-industry",
+      "essay-19-how-to-save-the-ad-industry",
+      "essay-20-how-to-save-the-platforms",
+      "essay-21-how-to-save-media-streaming",
+      "essay-23-imajin-business-case",
+      "essay-24-revenue-from-day-one",
+      "essay-25-the-connector",
+      "essay-26-part-1-the-blueprint",
+      "essay-26-part-2-need-help",
+      "essay-27-around-not-up",
+      "essay-28-how-ai-saved-me",
+      "essay-29-how-partying-can-save-us",
+      "essay-30-epilogue",
+      "essay-39-interstitial-04-cult-of-work",
+      "essay-40-interstitial-05-the-verification-racket",
+      "essay-41-what-imajin-is-building",
+      "essay-42-the-catalog",
+      "essay-43-show-us-the-receipts",
+      "grounding-00-master-timeline",
+      "grounding-01-sequence",
+      "grounding-02-THESIS",
+      "grounding-03-ARCHITECTURE",
+      "RFC-01-fair-attribution",
+      "RFC-02-distribution-contracts",
+      "RFC-03-memory-attribution",
+      "RFC-04-settlement-protocol",
+      "RFC-05-intent-bearing-transactions",
+      "RFC-06-identity-portability",
+      "RFC-07-cultural-did",
+      "RFC-08-org-did",
+      "RFC-09-application-plugin-architecture",
+      "RFC-10-sovereign-user-data",
+      "RFC-11-embedded-wallet",
+      "RFC-12-mjn-token-economics",
+      "RFC-16-jin-workspace-agent",
+      "RFC-18-media-revocation-and-attribution",
+      "RFC-19-kernel-userspace-architecture",
+      "RFC-20-application-conformance-suite",
+      "RFC-23-multi-chain-settlement",
+      "RFC-24-knowledge-surfaces",
+      "RFC-25-app-runtime",
+      "RFC-27-multi-agent-coordination",
+      "RFC-28-universal-real-world-registry",
+      "emissions-model",
+      "fee-model"
+    ],
+    "agents": [
+      "BOOK",
+      "DOCUSERIES",
+      "appendix-1-attribution-not-protection",
+      "appendix-2-the-reputation-problem",
+      "appendix-3-the-new-rules",
+      "appendix-4-how-we-fix-voting",
+      "appendix-5-ai-governs-itself",
+      "bounty-01-syndication-service",
+      "build-timeline-summary",
+      "build-timeline",
+      "captains-log-2026-03-19--46-days",
+      "essay-00-prologue",
+      "essay-01-the-internet-we-lost",
+      "essay-02-the-artificial-developer",
+      "essay-03-the-mask-we-all-wear",
+      "essay-04-the-internet-that-pays-you-back",
+      "essay-05-you-dont-need-ads",
+      "essay-06-the-guild",
+      "essay-07-utility",
+      "essay-08-ticketing",
+      "essay-09-nodes-types-and-practice",
+      "essay-10-memory",
+      "essay-12-you-already-know-something",
+      "essay-13-how-to-use-ai-properly",
+      "essay-14-honor-the-chain",
+      "essay-15-interstitial-02-cult-of-good-times",
+      "essay-16-how-to-save-education",
+      "essay-17-how-to-save-journalism",
+      "essay-18-how-to-save-the-music-industry",
+      "essay-19-how-to-save-the-ad-industry",
+      "essay-20-how-to-save-the-platforms",
+      "essay-21-how-to-save-media-streaming",
+      "essay-22-interstitial-03-cult-of-community",
+      "essay-23-imajin-business-case",
+      "essay-24-revenue-from-day-one",
+      "essay-25-the-connector",
+      "essay-26-part-1-the-blueprint",
+      "essay-26-part-2-need-help",
+      "essay-27-around-not-up",
+      "essay-28-how-ai-saved-me",
+      "essay-29-how-partying-can-save-us",
+      "essay-30-epilogue",
+      "essay-31-the-receipt",
+      "essay-32-how-to-save-compute",
+      "essay-33-this-is-how-you-fix-bitcoin-STUB",
+      "essay-34-how-to-save-the-app-store-STUB",
+      "essay-35-the-architect-scorecard",
+      "essay-36-come-peer-with-us",
+      "essay-37-how-to-fix-the-commons",
+      "essay-38-the-inherited-pathology",
+      "essay-39-interstitial-04-cult-of-work",
+      "essay-40-interstitial-05-the-verification-racket",
+      "essay-41-what-imajin-is-building",
+      "essay-42-the-catalog",
+      "essay-43-show-us-the-receipts",
+      "grounding-00-master-timeline",
+      "grounding-01-sequence",
+      "grounding-02-THESIS",
+      "grounding-03-ARCHITECTURE",
+      "RFC-01-fair-attribution",
+      "RFC-02-distribution-contracts",
+      "RFC-03-memory-attribution",
+      "RFC-04-settlement-protocol",
+      "RFC-05-intent-bearing-transactions",
+      "RFC-06-identity-portability",
+      "RFC-07-cultural-did",
+      "RFC-08-org-did",
+      "RFC-09-application-plugin-architecture",
+      "RFC-10-sovereign-user-data",
+      "RFC-11-embedded-wallet",
+      "RFC-12-mjn-token-economics",
+      "RFC-13-progressive-trust-model",
+      "RFC-14-community-issuance-network",
+      "RFC-15-trust-accountability-framework",
+      "RFC-16-jin-workspace-agent",
+      "RFC-17-governance-primitive",
+      "RFC-18-media-revocation-and-attribution",
+      "RFC-19-kernel-userspace-architecture",
+      "RFC-20-application-conformance-suite",
+      "RFC-21-imajin-conformance-suite",
+      "RFC-22-federated-authentication",
+      "RFC-23-multi-chain-settlement",
+      "RFC-24-knowledge-surfaces",
+      "RFC-25-app-runtime",
+      "RFC-26-federated-handle-resolution",
+      "RFC-27-multi-agent-coordination",
+      "RFC-28-universal-real-world-registry",
+      "RFC-29-biometric-trust-escalation",
+      "fee-model"
+    ],
+    "settlement": [
+      "BOOK",
+      "DOCUSERIES",
+      "appendix-1-attribution-not-protection",
+      "appendix-2-the-reputation-problem",
+      "appendix-3-the-new-rules",
+      "appendix-4-how-we-fix-voting",
+      "bounty-01-syndication-service",
+      "build-timeline-summary",
+      "build-timeline",
+      "captains-log-2026-03-19--46-days",
+      "essay-00-prologue",
+      "essay-01-the-internet-we-lost",
+      "essay-02-the-artificial-developer",
+      "essay-03-the-mask-we-all-wear",
+      "essay-04-the-internet-that-pays-you-back",
+      "essay-05-you-dont-need-ads",
+      "essay-06-the-guild",
+      "essay-07-utility",
+      "essay-08-ticketing",
+      "essay-09-nodes-types-and-practice",
+      "essay-10-memory",
+      "essay-11-interstitial-01-cult-of-vetteses",
+      "essay-12-you-already-know-something",
+      "essay-13-how-to-use-ai-properly",
+      "essay-14-honor-the-chain",
+      "essay-15-interstitial-02-cult-of-good-times",
+      "essay-16-how-to-save-education",
+      "essay-17-how-to-save-journalism",
+      "essay-18-how-to-save-the-music-industry",
+      "essay-19-how-to-save-the-ad-industry",
+      "essay-20-how-to-save-the-platforms",
+      "essay-21-how-to-save-media-streaming",
+      "essay-22-interstitial-03-cult-of-community",
+      "essay-23-imajin-business-case",
+      "essay-24-revenue-from-day-one",
+      "essay-25-the-connector",
+      "essay-26-part-1-the-blueprint",
+      "essay-26-part-2-need-help",
+      "essay-27-around-not-up",
+      "essay-28-how-ai-saved-me",
+      "essay-29-how-partying-can-save-us",
+      "essay-30-epilogue",
+      "essay-31-the-receipt",
+      "essay-32-how-to-save-compute",
+      "essay-33-this-is-how-you-fix-bitcoin-STUB",
+      "essay-34-how-to-save-the-app-store-STUB",
+      "essay-35-the-architect-scorecard",
+      "essay-36-come-peer-with-us",
+      "essay-37-how-to-fix-the-commons",
+      "essay-38-the-inherited-pathology",
+      "essay-40-interstitial-05-the-verification-racket",
+      "essay-41-what-imajin-is-building",
+      "essay-42-the-catalog",
+      "essay-43-show-us-the-receipts",
+      "grounding-00-master-timeline",
+      "grounding-01-sequence",
+      "grounding-02-THESIS",
+      "grounding-03-ARCHITECTURE",
+      "RFC-01-fair-attribution",
+      "RFC-02-distribution-contracts",
+      "RFC-04-settlement-protocol",
+      "RFC-05-intent-bearing-transactions",
+      "RFC-06-identity-portability",
+      "RFC-07-cultural-did",
+      "RFC-08-org-did",
+      "RFC-09-application-plugin-architecture",
+      "RFC-11-embedded-wallet",
+      "RFC-12-mjn-token-economics",
+      "RFC-13-progressive-trust-model",
+      "RFC-14-community-issuance-network",
+      "RFC-15-trust-accountability-framework",
+      "RFC-16-jin-workspace-agent",
+      "RFC-17-governance-primitive",
+      "RFC-19-kernel-userspace-architecture",
+      "RFC-20-application-conformance-suite",
+      "RFC-21-imajin-conformance-suite",
+      "RFC-22-federated-authentication",
+      "RFC-23-multi-chain-settlement",
+      "RFC-24-knowledge-surfaces",
+      "RFC-25-app-runtime",
+      "RFC-26-federated-handle-resolution",
+      "RFC-27-multi-agent-coordination",
+      "RFC-28-universal-real-world-registry",
+      "RFC-29-biometric-trust-escalation",
+      "emissions-model",
+      "fee-model"
+    ],
+    "governance": [
+      "BOOK",
+      "DOCUSERIES",
+      "appendix-2-the-reputation-problem",
+      "appendix-3-the-new-rules",
+      "appendix-4-how-we-fix-voting",
+      "appendix-5-ai-governs-itself",
+      "build-timeline-summary",
+      "build-timeline",
+      "captains-log-2026-03-19--46-days",
+      "essay-03-the-mask-we-all-wear",
+      "essay-04-the-internet-that-pays-you-back",
+      "essay-05-you-dont-need-ads",
+      "essay-06-the-guild",
+      "essay-07-utility",
+      "essay-09-nodes-types-and-practice",
+      "essay-10-memory",
+      "essay-11-interstitial-01-cult-of-vetteses",
+      "essay-12-you-already-know-something",
+      "essay-13-how-to-use-ai-properly",
+      "essay-15-interstitial-02-cult-of-good-times",
+      "essay-16-how-to-save-education",
+      "essay-17-how-to-save-journalism",
+      "essay-18-how-to-save-the-music-industry",
+      "essay-19-how-to-save-the-ad-industry",
+      "essay-20-how-to-save-the-platforms",
+      "essay-21-how-to-save-media-streaming",
+      "essay-22-interstitial-03-cult-of-community",
+      "essay-23-imajin-business-case",
+      "essay-24-revenue-from-day-one",
+      "essay-25-the-connector",
+      "essay-26-part-1-the-blueprint",
+      "essay-26-part-2-need-help",
+      "essay-27-around-not-up",
+      "essay-28-how-ai-saved-me",
+      "essay-29-how-partying-can-save-us",
+      "essay-30-epilogue",
+      "essay-31-the-receipt",
+      "essay-32-how-to-save-compute",
+      "essay-34-how-to-save-the-app-store-STUB",
+      "essay-35-the-architect-scorecard",
+      "essay-37-how-to-fix-the-commons",
+      "essay-38-the-inherited-pathology",
+      "essay-39-interstitial-04-cult-of-work",
+      "essay-41-what-imajin-is-building",
+      "essay-43-show-us-the-receipts",
+      "grounding-00-master-timeline",
+      "grounding-01-sequence",
+      "grounding-02-THESIS",
+      "grounding-03-ARCHITECTURE",
+      "RFC-01-fair-attribution",
+      "RFC-02-distribution-contracts",
+      "RFC-05-intent-bearing-transactions",
+      "RFC-06-identity-portability",
+      "RFC-07-cultural-did",
+      "RFC-08-org-did",
+      "RFC-09-application-plugin-architecture",
+      "RFC-11-embedded-wallet",
+      "RFC-12-mjn-token-economics",
+      "RFC-13-progressive-trust-model",
+      "RFC-14-community-issuance-network",
+      "RFC-15-trust-accountability-framework",
+      "RFC-16-jin-workspace-agent",
+      "RFC-17-governance-primitive",
+      "RFC-19-kernel-userspace-architecture",
+      "RFC-20-application-conformance-suite",
+      "RFC-21-imajin-conformance-suite",
+      "RFC-22-federated-authentication",
+      "RFC-23-multi-chain-settlement",
+      "RFC-24-knowledge-surfaces",
+      "RFC-25-app-runtime",
+      "RFC-26-federated-handle-resolution",
+      "RFC-27-multi-agent-coordination",
+      "RFC-28-universal-real-world-registry",
+      "RFC-29-biometric-trust-escalation",
+      "emissions-model",
+      "fee-model"
+    ],
+    "events": [
+      "BOOK",
+      "DOCUSERIES",
+      "appendix-2-the-reputation-problem",
+      "appendix-3-the-new-rules",
+      "appendix-4-how-we-fix-voting",
+      "appendix-5-ai-governs-itself",
+      "bounty-01-syndication-service",
+      "build-timeline-summary",
+      "build-timeline",
+      "captains-log-2026-03-19--46-days",
+      "essay-01-the-internet-we-lost",
+      "essay-02-the-artificial-developer",
+      "essay-03-the-mask-we-all-wear",
+      "essay-04-the-internet-that-pays-you-back",
+      "essay-05-you-dont-need-ads",
+      "essay-06-the-guild",
+      "essay-07-utility",
+      "essay-08-ticketing",
+      "essay-09-nodes-types-and-practice",
+      "essay-10-memory",
+      "essay-11-interstitial-01-cult-of-vetteses",
+      "essay-12-you-already-know-something",
+      "essay-13-how-to-use-ai-properly",
+      "essay-14-honor-the-chain",
+      "essay-15-interstitial-02-cult-of-good-times",
+      "essay-16-how-to-save-education",
+      "essay-17-how-to-save-journalism",
+      "essay-18-how-to-save-the-music-industry",
+      "essay-19-how-to-save-the-ad-industry",
+      "essay-20-how-to-save-the-platforms",
+      "essay-21-how-to-save-media-streaming",
+      "essay-22-interstitial-03-cult-of-community",
+      "essay-23-imajin-business-case",
+      "essay-24-revenue-from-day-one",
+      "essay-25-the-connector",
+      "essay-26-part-1-the-blueprint",
+      "essay-26-part-2-need-help",
+      "essay-27-around-not-up",
+      "essay-28-how-ai-saved-me",
+      "essay-29-how-partying-can-save-us",
+      "essay-30-epilogue",
+      "essay-31-the-receipt",
+      "essay-32-how-to-save-compute",
+      "essay-33-this-is-how-you-fix-bitcoin-STUB",
+      "essay-34-how-to-save-the-app-store-STUB",
+      "essay-35-the-architect-scorecard",
+      "essay-36-come-peer-with-us",
+      "essay-37-how-to-fix-the-commons",
+      "essay-38-the-inherited-pathology",
+      "essay-40-interstitial-05-the-verification-racket",
+      "essay-41-what-imajin-is-building",
+      "essay-42-the-catalog",
+      "essay-43-show-us-the-receipts",
+      "grounding-00-master-timeline",
+      "grounding-01-sequence",
+      "grounding-02-THESIS",
+      "grounding-03-ARCHITECTURE",
+      "RFC-01-fair-attribution",
+      "RFC-02-distribution-contracts",
+      "RFC-05-intent-bearing-transactions",
+      "RFC-06-identity-portability",
+      "RFC-07-cultural-did",
+      "RFC-08-org-did",
+      "RFC-09-application-plugin-architecture",
+      "RFC-10-sovereign-user-data",
+      "RFC-11-embedded-wallet",
+      "RFC-12-mjn-token-economics",
+      "RFC-13-progressive-trust-model",
+      "RFC-14-community-issuance-network",
+      "RFC-15-trust-accountability-framework",
+      "RFC-16-jin-workspace-agent",
+      "RFC-17-governance-primitive",
+      "RFC-18-media-revocation-and-attribution",
+      "RFC-19-kernel-userspace-architecture",
+      "RFC-20-application-conformance-suite",
+      "RFC-21-imajin-conformance-suite",
+      "RFC-22-federated-authentication",
+      "RFC-23-multi-chain-settlement",
+      "RFC-24-knowledge-surfaces",
+      "RFC-25-app-runtime",
+      "RFC-26-federated-handle-resolution",
+      "RFC-27-multi-agent-coordination",
+      "RFC-28-universal-real-world-registry",
+      "RFC-29-biometric-trust-escalation",
+      "emissions-model",
+      "fee-model"
+    ],
+    "sovereignty": [
+      "BOOK",
+      "DOCUSERIES",
+      "appendix-2-the-reputation-problem",
+      "appendix-4-how-we-fix-voting",
+      "bounty-01-syndication-service",
+      "build-timeline-summary",
+      "build-timeline",
+      "essay-01-the-internet-we-lost",
+      "essay-02-the-artificial-developer",
+      "essay-03-the-mask-we-all-wear",
+      "essay-04-the-internet-that-pays-you-back",
+      "essay-05-you-dont-need-ads",
+      "essay-06-the-guild",
+      "essay-07-utility",
+      "essay-08-ticketing",
+      "essay-09-nodes-types-and-practice",
+      "essay-10-memory",
+      "essay-12-you-already-know-something",
+      "essay-13-how-to-use-ai-properly",
+      "essay-14-honor-the-chain",
+      "essay-16-how-to-save-education",
+      "essay-17-how-to-save-journalism",
+      "essay-18-how-to-save-the-music-industry",
+      "essay-19-how-to-save-the-ad-industry",
+      "essay-20-how-to-save-the-platforms",
+      "essay-21-how-to-save-media-streaming",
+      "essay-22-interstitial-03-cult-of-community",
+      "essay-23-imajin-business-case",
+      "essay-24-revenue-from-day-one",
+      "essay-25-the-connector",
+      "essay-26-part-1-the-blueprint",
+      "essay-26-part-2-need-help",
+      "essay-27-around-not-up",
+      "essay-28-how-ai-saved-me",
+      "essay-29-how-partying-can-save-us",
+      "essay-31-the-receipt",
+      "essay-32-how-to-save-compute",
+      "essay-33-this-is-how-you-fix-bitcoin-STUB",
+      "essay-34-how-to-save-the-app-store-STUB",
+      "essay-36-come-peer-with-us",
+      "essay-37-how-to-fix-the-commons",
+      "essay-40-interstitial-05-the-verification-racket",
+      "essay-41-what-imajin-is-building",
+      "essay-42-the-catalog",
+      "essay-43-show-us-the-receipts",
+      "grounding-00-master-timeline",
+      "grounding-01-sequence",
+      "grounding-02-THESIS",
+      "grounding-03-ARCHITECTURE",
+      "RFC-01-fair-attribution",
+      "RFC-02-distribution-contracts",
+      "RFC-05-intent-bearing-transactions",
+      "RFC-06-identity-portability",
+      "RFC-07-cultural-did",
+      "RFC-09-application-plugin-architecture",
+      "RFC-10-sovereign-user-data",
+      "RFC-11-embedded-wallet",
+      "RFC-12-mjn-token-economics",
+      "RFC-15-trust-accountability-framework",
+      "RFC-16-jin-workspace-agent",
+      "RFC-17-governance-primitive",
+      "RFC-18-media-revocation-and-attribution",
+      "RFC-19-kernel-userspace-architecture",
+      "RFC-22-federated-authentication",
+      "RFC-23-multi-chain-settlement",
+      "RFC-25-app-runtime",
+      "RFC-26-federated-handle-resolution",
+      "RFC-27-multi-agent-coordination",
+      "RFC-28-universal-real-world-registry",
+      "RFC-29-biometric-trust-escalation",
+      "fee-model"
+    ],
+    "identity": [
+      "DOCUSERIES",
+      "appendix-2-the-reputation-problem",
+      "appendix-4-how-we-fix-voting",
+      "build-timeline-summary",
+      "build-timeline",
+      "essay-00-prologue",
+      "essay-01-the-internet-we-lost",
+      "essay-02-the-artificial-developer",
+      "essay-03-the-mask-we-all-wear",
+      "essay-04-the-internet-that-pays-you-back",
+      "essay-05-you-dont-need-ads",
+      "essay-06-the-guild",
+      "essay-07-utility",
+      "essay-08-ticketing",
+      "essay-09-nodes-types-and-practice",
+      "essay-11-interstitial-01-cult-of-vetteses",
+      "essay-13-how-to-use-ai-properly",
+      "essay-14-honor-the-chain",
+      "essay-15-interstitial-02-cult-of-good-times",
+      "essay-16-how-to-save-education",
+      "essay-17-how-to-save-journalism",
+      "essay-18-how-to-save-the-music-industry",
+      "essay-19-how-to-save-the-ad-industry",
+      "essay-20-how-to-save-the-platforms",
+      "essay-21-how-to-save-media-streaming",
+      "essay-22-interstitial-03-cult-of-community",
+      "essay-23-imajin-business-case",
+      "essay-24-revenue-from-day-one",
+      "essay-25-the-connector",
+      "essay-26-part-1-the-blueprint",
+      "essay-26-part-2-need-help",
+      "essay-28-how-ai-saved-me",
+      "essay-29-how-partying-can-save-us",
+      "essay-31-the-receipt",
+      "essay-32-how-to-save-compute",
+      "essay-33-this-is-how-you-fix-bitcoin-STUB",
+      "essay-34-how-to-save-the-app-store-STUB",
+      "essay-35-the-architect-scorecard",
+      "essay-36-come-peer-with-us",
+      "essay-37-how-to-fix-the-commons",
+      "essay-38-the-inherited-pathology",
+      "essay-39-interstitial-04-cult-of-work",
+      "essay-40-interstitial-05-the-verification-racket",
+      "essay-41-what-imajin-is-building",
+      "essay-42-the-catalog",
+      "essay-43-show-us-the-receipts",
+      "grounding-00-master-timeline",
+      "grounding-01-sequence",
+      "grounding-02-THESIS",
+      "grounding-03-ARCHITECTURE",
+      "RFC-01-fair-attribution",
+      "RFC-02-distribution-contracts",
+      "RFC-05-intent-bearing-transactions",
+      "RFC-06-identity-portability",
+      "RFC-07-cultural-did",
+      "RFC-08-org-did",
+      "RFC-10-sovereign-user-data",
+      "RFC-11-embedded-wallet",
+      "RFC-13-progressive-trust-model",
+      "RFC-14-community-issuance-network",
+      "RFC-15-trust-accountability-framework",
+      "RFC-16-jin-workspace-agent",
+      "RFC-17-governance-primitive",
+      "RFC-18-media-revocation-and-attribution",
+      "RFC-19-kernel-userspace-architecture",
+      "RFC-20-application-conformance-suite",
+      "RFC-21-imajin-conformance-suite",
+      "RFC-22-federated-authentication",
+      "RFC-23-multi-chain-settlement",
+      "RFC-24-knowledge-surfaces",
+      "RFC-25-app-runtime",
+      "RFC-26-federated-handle-resolution",
+      "RFC-27-multi-agent-coordination",
+      "RFC-28-universal-real-world-registry",
+      "RFC-29-biometric-trust-escalation",
+      "emissions-model",
+      "fee-model"
+    ],
+    "dfos": [
+      "appendix-2-the-reputation-problem",
+      "bounty-01-syndication-service",
+      "build-timeline-summary",
+      "build-timeline",
+      "captains-log-2026-03-19--46-days",
+      "essay-01-the-internet-we-lost",
+      "essay-06-the-guild",
+      "essay-09-nodes-types-and-practice",
+      "essay-12-you-already-know-something",
+      "essay-16-how-to-save-education",
+      "essay-19-how-to-save-the-ad-industry",
+      "essay-23-imajin-business-case",
+      "essay-26-part-1-the-blueprint",
+      "essay-26-part-2-need-help",
+      "essay-31-the-receipt",
+      "essay-32-how-to-save-compute",
+      "essay-33-this-is-how-you-fix-bitcoin-STUB",
+      "essay-34-how-to-save-the-app-store-STUB",
+      "essay-37-how-to-fix-the-commons",
+      "essay-40-interstitial-05-the-verification-racket",
+      "essay-41-what-imajin-is-building",
+      "essay-42-the-catalog",
+      "essay-43-show-us-the-receipts",
+      "grounding-03-ARCHITECTURE",
+      "RFC-03-memory-attribution",
+      "RFC-05-intent-bearing-transactions",
+      "RFC-07-cultural-did",
+      "RFC-08-org-did",
+      "RFC-10-sovereign-user-data",
+      "RFC-11-embedded-wallet",
+      "RFC-13-progressive-trust-model",
+      "RFC-14-community-issuance-network",
+      "RFC-15-trust-accountability-framework",
+      "RFC-16-jin-workspace-agent",
+      "RFC-17-governance-primitive",
+      "RFC-18-media-revocation-and-attribution",
+      "RFC-19-kernel-userspace-architecture",
+      "RFC-20-application-conformance-suite",
+      "RFC-21-imajin-conformance-suite",
+      "RFC-22-federated-authentication",
+      "RFC-23-multi-chain-settlement",
+      "RFC-24-knowledge-surfaces",
+      "RFC-25-app-runtime",
+      "RFC-26-federated-handle-resolution",
+      "RFC-27-multi-agent-coordination",
+      "RFC-28-universal-real-world-registry",
+      "RFC-29-biometric-trust-escalation",
+      "emissions-model",
+      "fee-model"
+    ],
+    "federation": [
+      "bounty-01-syndication-service",
+      "build-timeline-summary",
+      "build-timeline",
+      "essay-00-prologue",
+      "essay-01-the-internet-we-lost",
+      "essay-02-the-artificial-developer",
+      "essay-03-the-mask-we-all-wear",
+      "essay-04-the-internet-that-pays-you-back",
+      "essay-05-you-dont-need-ads",
+      "essay-06-the-guild",
+      "essay-07-utility",
+      "essay-09-nodes-types-and-practice",
+      "essay-13-how-to-use-ai-properly",
+      "essay-18-how-to-save-the-music-industry",
+      "essay-20-how-to-save-the-platforms",
+      "essay-21-how-to-save-media-streaming",
+      "essay-24-revenue-from-day-one",
+      "essay-26-part-1-the-blueprint",
+      "essay-26-part-2-need-help",
+      "essay-30-epilogue",
+      "essay-32-how-to-save-compute",
+      "essay-35-the-architect-scorecard",
+      "essay-37-how-to-fix-the-commons",
+      "essay-40-interstitial-05-the-verification-racket",
+      "essay-41-what-imajin-is-building",
+      "essay-42-the-catalog",
+      "essay-43-show-us-the-receipts",
+      "grounding-00-master-timeline",
+      "grounding-02-THESIS",
+      "grounding-03-ARCHITECTURE",
+      "RFC-01-fair-attribution",
+      "RFC-02-distribution-contracts",
+      "RFC-06-identity-portability",
+      "RFC-10-sovereign-user-data",
+      "RFC-13-progressive-trust-model",
+      "RFC-14-community-issuance-network",
+      "RFC-16-jin-workspace-agent",
+      "RFC-18-media-revocation-and-attribution",
+      "RFC-19-kernel-userspace-architecture",
+      "RFC-20-application-conformance-suite",
+      "RFC-22-federated-authentication",
+      "RFC-23-multi-chain-settlement",
+      "RFC-24-knowledge-surfaces",
+      "RFC-25-app-runtime",
+      "RFC-26-federated-handle-resolution",
+      "RFC-27-multi-agent-coordination",
+      "RFC-28-universal-real-world-registry",
+      "RFC-29-biometric-trust-escalation",
+      "emissions-model",
+      "fee-model"
+    ]
+  }
+}

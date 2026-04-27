@@ -1,12 +1,19 @@
 ---
-title: "The Architect Scorecard"
-subtitle: "Measuring what matters when humans stop writing code"
+title: The Architect Scorecard
+type: essay
+status: draft
+author: Ryan Veteze
+slug: essay-35-the-architect-scorecard
+topics:
+  - identity
+  - agents
+  - settlement
+  - governance
+  - events
+  - federation
+subtitle: Measuring what matters when humans stop writing code
 description: "COCOMO measured person-months per thousand lines. That metric is dead. The new question: how good are you at directing machines? The answer is measurable, and almost nobody is measuring it."
-date: "2026-04-05"
-author: "Ryan Veteze"
-status: "DRAFT"
 ---
-
 ## The Old Metric Is Dead
 
 COCOMO — Constructive Cost Model — was published in 1981. It estimates how many person-months a software project will take based on lines of code. Forty-five years of the industry running on one basic question: how many humans, for how many months, to produce how much code?

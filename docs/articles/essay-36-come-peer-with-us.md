@@ -1,12 +1,18 @@
 ---
-title: "Come Peer With Us"
-subtitle: "How lemonade stands, ravers, and farmers build an economy without permission"
+title: Come Peer With Us
+type: essay
+status: draft
+author: Ryan Veteze
+slug: essay-36-come-peer-with-us
+topics:
+  - identity
+  - agents
+  - settlement
+  - events
+  - sovereignty
+subtitle: How lemonade stands, ravers, and farmers build an economy without permission
 description: "The network doesn't grow from the center. It grows from the edges — from the weird overlaps between communities that have nothing in common except one person who's in both. That overlap is a peering point. And peering is how sovereign economies become a mesh."
-date: "2026-04-05"
-author: "Ryan Veteze"
-status: "DRAFT"
 ---
-
 ## The Lemonade Stand
 
 A kid sets up a lemonade stand. Charges a dollar a cup. The protocol takes a penny. The node — dad's laptop running in the garage — takes half a penny. The kid accrues a quarter penny in network equity. The neighborhood association takes whatever cut it wants on top.

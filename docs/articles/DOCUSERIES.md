@@ -1,3 +1,18 @@
+---
+title: imajin.ai — The Docuseries
+type: essay
+status: draft
+slug: DOCUSERIES
+topics:
+  - legibility
+  - fair
+  - identity
+  - agents
+  - settlement
+  - governance
+  - events
+  - sovereignty
+---
 # imajin.ai — The Docuseries
 
 *Production Bible v0.1 — February 28, 2026*

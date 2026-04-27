@@ -1,12 +1,25 @@
 ---
-title: "Revenue from Day One"
+title: Revenue from Day One
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-24-revenue-from-day-one
+topics:
+  - legibility
+  - fair
+  - identity
+  - agents
+  - settlement
+  - governance
+  - events
+  - federation
+  - sovereignty
+refs:
+  essays:
+  - revenue-from-day-one
 subtitle: "You don't need critical mass. You need one transaction."
 description: "Every platform pitch in history has been: get big, then monetize. This is different. The settlement layer generates revenue from the first dollar that moves through it."
-date: "2026-03-29"
-author: "Ryan Veteze"
-status: "POSTED"
 ---
-
 *This is a follow-on to [The Business Case for Building on Human Trust](/articles/imajin-business-case), which covers the consumer side of the extraction economy and what changes when commerce is a relationship again. This essay covers the part that follows: why the economics work before anyone else shows up.*
 
 ---

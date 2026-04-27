@@ -1,3 +1,19 @@
+---
+title: "Master Timeline: Ryan VETEZE aka b0b"
+type: essay
+status: draft
+slug: grounding-00-master-timeline
+topics:
+  - legibility
+  - fair
+  - identity
+  - agents
+  - settlement
+  - governance
+  - events
+  - federation
+  - sovereignty
+---
 # Master Timeline: Ryan VETEZE aka b0b
 *Reference document for narrative consistency across all essays, the book, and imajin.ai*
 *Last updated with full biographical detail — this is the source of truth*

@@ -1,12 +1,18 @@
 ---
-title: "The Cult of Family"
-subtitle: "What I learned before I had language for any of it"
+title: The Cult of Family
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-11-interstitial-01-cult-of-vetteses
+topics:
+  - legibility
+  - identity
+  - settlement
+  - governance
+  - events
+subtitle: What I learned before I had language for any of it
 description: "A personal interstitial. The Rexdale house. Lou's concrete. A village that crossed an ocean and forgot what it was for."
-date: "2026-03-11"
-author: "Ryan Veteze"
-status: "POSTED"
 ---
-
 The CN Tower is concrete.
 
 Not just the foundation in the ground — the entire shaft, from the earth up to the revolving restaurant, is poured reinforced concrete. The thing you're looking at when you look at it. The landmark. The icon on every postcard and every skyline photo ever taken from the lake.

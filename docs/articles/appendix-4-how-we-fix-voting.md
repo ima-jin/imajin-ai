@@ -1,11 +1,21 @@
 ---
 title: "Appendix 4: How We Fix Voting"
-subtitle: "The most contentious piece"
+type: essay
+status: draft
+date: 2026-XX-XX
+author: Ryan Veteze
+slug: appendix-4-how-we-fix-voting
+topics:
+  - fair
+  - identity
+  - agents
+  - settlement
+  - governance
+  - events
+  - sovereignty
+subtitle: The most contentious piece
 description: "Voting is a query against the trust graph with a specific output: a decision. The secret ballot solved coercion and enabled unaccountability. The trust graph solves both."
-date: "2026-XX-XX"
-author: "Ryan Veteze"
 ---
-
 ## The Thing Nobody Wants to Touch
 
 Every other system in this series — payments, music, journalism, education, advertising — people nod along. Yes, the extraction is obvious. Yes, the trust graph fixes the incentives. Yes, the attribution chain makes it fair.

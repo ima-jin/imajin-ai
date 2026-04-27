@@ -1,3 +1,21 @@
+---
+title: Imajin Conformance Suite
+type: rfc
+status: draft
+author: Ryan Veteze
+slug: RFC-21-imajin-conformance-suite
+topics:
+  - identity
+  - agents
+  - dfos
+  - settlement
+  - governance
+  - events
+refs:
+  rfcs:
+  - 20
+  - 19
+---
 # RFC-21: Imajin Conformance Suite
 
 **Status:** Draft
@@ -265,7 +283,7 @@ TestEconomic_ChainReplayConsistency
 ## Suite Architecture
 
 ```
-@imajin/node-conformance
+@imajin/node-conformance"
 ├── tests/
 │   ├── settlement/
 │   │   ├── default-rates.test.ts

@@ -1,13 +1,20 @@
 ---
-title: "The Cult of Community"
-subtitle: "What it feels like before you systematize it"
-description: "The burn model follows you home. The cynicism is earned. The isolation is exactly what the extraction model needs. We build anyway."
-date: "2026-03-26"
-author: "Ryan Veteze"
-status: "POSTED"
-type: "interstitial"
+title: The Cult of Community
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-22-interstitial-03-cult-of-community
+topics:
+  - legibility
+  - identity
+  - agents
+  - settlement
+  - governance
+  - events
+  - sovereignty
+subtitle: What it feels like before you systematize it
+description: The burn model follows you home. The cynicism is earned. The isolation is exactly what the extraction model needs. We build anyway.
 ---
-
 The repo has 99 commits. Three weeks. Fourteen to sixteen hours a day.
 
 That's what the burn looks like from the outside — clean commits, a working system emerging from nothing, the CLI tool I had wanted to build now actually being built. My own code. My own time. No VP to route around, no standup to perform for, no director positioned between me and the information I needed. Just the work, in the pure uninterrupted form I'd spent a decade fantasizing about — a command line interface for... everything. I mean that literally.

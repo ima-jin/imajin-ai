@@ -1,11 +1,22 @@
 ---
 title: "Appendix 2: The Reputation Problem"
+type: essay
+status: draft
+date: 2026-XX-XX
+author: Ryan Veteze
+slug: appendix-2-the-reputation-problem
+topics:
+  - fair
+  - identity
+  - agents
+  - dfos
+  - settlement
+  - governance
+  - events
+  - sovereignty
 subtitle: "Everyone's building pieces. Nobody's building the stack."
 description: "The tools for transaction-linked reputation exist in papers, in protocols, in fragments across dozens of projects. But nobody has stitched the settlement layer to the attribution layer to the credential layer to the trust graph. Here's the landscape, and here's how we close the gap."
-date: "2026-XX-XX"
-author: "Ryan Veteze"
 ---
-
 ## The Landscape
 
 The problem of digital reputation is well understood. Academics have written about it. Engineers have prototyped pieces of it. The W3C published an entire specification for Verifiable Credentials. The building blocks exist.

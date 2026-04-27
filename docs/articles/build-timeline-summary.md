@@ -1,3 +1,27 @@
+---
+title: Build Timeline Summary & Pressure Test
+type: essay
+status: draft
+slug: build-timeline-summary
+topics:
+  - legibility
+  - fair
+  - identity
+  - agents
+  - dfos
+  - settlement
+  - governance
+  - events
+  - federation
+  - sovereignty
+refs:
+  issues:
+  - 113
+  - 114
+  - 115
+  - 116
+  - 117
+---
 # Build Timeline Summary & Pressure Test
 
 *Compiled March 8, 2026. Updated March 22, 2026 — from the full [Build Timeline](./BUILD_TIMELINE.md), external analysis, and founder responses.*

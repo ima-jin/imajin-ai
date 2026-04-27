@@ -1,3 +1,47 @@
+---
+title: The Imajin Architecture
+type: essay
+status: draft
+slug: grounding-03-ARCHITECTURE
+topics:
+  - legibility
+  - fair
+  - identity
+  - agents
+  - dfos
+  - settlement
+  - governance
+  - events
+  - federation
+  - sovereignty
+refs:
+  rfcs:
+  - 1
+  - 2
+  issues:
+  - 253
+  - 252
+  - 189
+  - 250
+  - 258
+  - 256
+  - 177
+  - 227
+  - 254
+  - 260
+  - 259
+  - 109
+  - 255
+  - 257
+  - 156
+  - 114
+  packages:
+  - "@imajin/auth"
+  - "@imajin/fair"
+  - "@imajin/pay"
+  - "@imajin/ui"
+  - "@imajin/db"
+---
 # The Imajin Architecture
 
 *How the pieces connect. When the whitepaper and this document disagree on implementation, this document is current.*
@@ -459,7 +503,7 @@ Reserved on Solana mainnet. Not active yet.
 - **Learning:** Courses, modules, lessons, enrollment, progress, slide presentations
 - **Infrastructure:** Registry (node discovery, API specs), full deploy pipeline
 - **Apps:** Coffee (tipping), Links (curation), Dykil (surveys)
-- **Shared:** @imajin/ui (NavBar, AppLauncher), @imajin/fair, @imajin/onboard, @imajin/db, @imajin/config
+- **Shared:** @imajin/ui (NavBar, AppLauncher), @imajin/fair, @imajin/onboard, @imajin/db, @imajin/config"
 - **Security:** Rate limiting, webhook idempotency, CORS, error sanitization, health endpoints
 
 ### 🔨 In Progress

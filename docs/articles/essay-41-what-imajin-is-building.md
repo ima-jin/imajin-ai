@@ -1,13 +1,26 @@
 ---
-title: "What Imajin Is Building"
-subtitle: "A social governance layer on the DFOS substrate"
+title: What Imajin Is Building
+type: essay
+status: draft
+author: Ryan Veteze
+slug: essay-41-what-imajin-is-building
+topics:
+  - legibility
+  - fair
+  - identity
+  - agents
+  - dfos
+  - settlement
+  - governance
+  - events
+  - federation
+  - sovereignty
+refs:
+  essays:
+  - the-guild
+subtitle: A social governance layer on the DFOS substrate
 description: "DFOS gives you the keys. Imajin gives you the room. What we're building on the protocol, why it needs to exist, and an invitation to build with us."
-date: "2026-04-25"
-author: "Ryan Veteze"
-status: "DRAFT"
-type: "essay"
 ---
-
 ## The Substrate
 
 DFOS is a protocol. It gives you self-certifying identity, content-addressed commitments, verifiable proofs, and a relay network that distributes them without trust. Ed25519 keys. Signed chains. Offline verification. The proof surface is public; the content surface is private. Five language implementations running against the same deterministic test vectors.

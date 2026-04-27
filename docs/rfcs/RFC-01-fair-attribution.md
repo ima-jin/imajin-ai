@@ -1,3 +1,23 @@
+---
+title: .fair Attribution from Commit History
+type: rfc
+status: draft
+date: TBD
+author: TBD
+slug: RFC-01-fair-attribution
+topics:
+  - fair
+  - identity
+  - agents
+  - settlement
+  - governance
+  - events
+  - federation
+  - sovereignty
+refs:
+  issues:
+  - 42
+---
 # RFC-01: .fair Attribution from Commit History
 
 **Status:** Open for discussion

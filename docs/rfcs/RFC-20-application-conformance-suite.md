@@ -1,3 +1,22 @@
+---
+title: Application Conformance Suite
+type: rfc
+status: draft
+author: Ryan Veteze
+slug: RFC-20-application-conformance-suite
+topics:
+  - fair
+  - identity
+  - agents
+  - dfos
+  - settlement
+  - governance
+  - events
+  - federation
+refs:
+  rfcs:
+  - 19
+---
 # RFC-20: Application Conformance Suite
 
 **Status:** Draft
@@ -99,7 +118,7 @@ Settings, preferences, feature flags. Sequential by nature. Only the canonical h
 ## Test Suite Architecture
 
 ```
-@imajin/chain-conformance
+@imajin/chain-conformance"
 ├── projectors/
 │   ├── identity.test.ts
 │   ├── membership.test.ts

@@ -1,3 +1,17 @@
+---
+title: How to Save the World by Partying
+type: essay
+status: draft
+slug: BOOK
+topics:
+  - legibility
+  - fair
+  - agents
+  - settlement
+  - governance
+  - events
+  - sovereignty
+---
 # How to Save the World by Partying
 
 ### *The Cult of Community, or How We Can All Be a Good Times Gang*

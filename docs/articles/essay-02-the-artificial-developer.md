@@ -1,12 +1,24 @@
 ---
 title: "I've Been an AI Since 1988"
-subtitle: "The autobiography of how my brain works"
-description: "Pattern recognition without formal comprehension. The bottleneck dissolved."
-date: "2026-02-21"
-author: "Ryan Veteze"
-status: "POSTED"
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-02-the-artificial-developer
+topics:
+  - legibility
+  - fair
+  - identity
+  - agents
+  - settlement
+  - events
+  - federation
+  - sovereignty
+refs:
+  essays:
+  - the-artificial-developer
+subtitle: The autobiography of how my brain works
+description: Pattern recognition without formal comprehension. The bottleneck dissolved.
 ---
-
 ## Copying Programs From Magazines
 
 I learned to code by copying programs out of magazines.

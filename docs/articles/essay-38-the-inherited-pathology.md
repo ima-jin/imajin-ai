@@ -1,12 +1,18 @@
 ---
-title: "The Inherited Pathology"
-subtitle: "The training data is an ungoverned commons. Your AI tools inherited the worst of it."
+title: The Inherited Pathology
+type: essay
+status: draft
+author: Ryan Veteze
+slug: essay-38-the-inherited-pathology
+topics:
+  - identity
+  - agents
+  - settlement
+  - governance
+  - events
+subtitle: The training data is an ungoverned commons. Your AI tools inherited the worst of it.
 description: "LLMs reproduce the dominant patterns of the systems that trained them — including the pathologies. The fix is the same one Ostrom described for any commons: not better rules, better infrastructure."
-date: "2026-04-09"
-author: "Ryan Veteze"
-status: "DRAFT"
 ---
-
 ## The Wrong Lesson
 
 In 1968, Garrett Hardin argued that shared resources inevitably get destroyed by rational self-interest. The solution: privatization or government control. No third option.

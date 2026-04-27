@@ -1,3 +1,24 @@
+---
+title: Programmable Distribution Contracts
+type: rfc
+status: draft
+date: TBD
+author: TBD
+slug: RFC-02-distribution-contracts
+topics:
+  - legibility
+  - fair
+  - identity
+  - agents
+  - settlement
+  - governance
+  - events
+  - federation
+  - sovereignty
+refs:
+  rfcs:
+  - 1
+---
 # RFC-02: Programmable Distribution Contracts
 
 **Status:** Open for discussion

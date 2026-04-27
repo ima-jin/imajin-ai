@@ -1,11 +1,17 @@
 ---
-title: "Attribution, Not Protection"
+title: Attribution, Not Protection
+type: essay
+status: draft
+date: 2026-XX-XX
+author: Ryan Veteze
+slug: appendix-1-attribution-not-protection
+topics:
+  - fair
+  - agents
+  - settlement
 subtitle: "We don't need to prevent copying. We need to stop laundering attribution."
-description: "Everything is derivative of something else. The problem was never copying — it was collapsing the chain of who contributed what. .fair preserves the chain. The cultural shift from extraction to attribution repairs a huge wrong."
-date: "2026-XX-XX"
-author: "Ryan Veteze"
+description: Everything is derivative of something else. The problem was never copying — it was collapsing the chain of who contributed what. .fair preserves the chain. The cultural shift from extraction to attribution repairs a huge wrong.
 ---
-
 <!-- STUB — Essay 24
 
 The arc:

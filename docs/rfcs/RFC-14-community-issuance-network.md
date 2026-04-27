@@ -1,3 +1,23 @@
+---
+title: Community Issuance Network — trusted institutions as identity entry points
+type: rfc
+status: draft
+slug: RFC-14-community-issuance-network
+topics:
+  - identity
+  - agents
+  - dfos
+  - settlement
+  - governance
+  - events
+  - federation
+refs:
+  issues:
+  - 271
+  - 247
+  - 249
+  - 269
+---
 # RFC-14: RFC: Community Issuance Network — trusted institutions as identity entry points
 
 **Status:** Draft

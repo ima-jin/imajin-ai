@@ -1,3 +1,26 @@
+---
+title: Fee Model — Settlement Fee Structure
+type: rfc
+status: draft
+slug: fee-model
+topics:
+  - legibility
+  - fair
+  - identity
+  - agents
+  - dfos
+  - settlement
+  - governance
+  - events
+  - federation
+  - sovereignty
+refs:
+  rfcs:
+  - 12
+  - 23
+  issues:
+  - 575
+---
 # Fee Model — Settlement Fee Structure
 
 **Version:** 3

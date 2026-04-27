@@ -1,3 +1,25 @@
+---
+title: Cultural DID — Identity Primitive for Collectives, Scenes, and Communities of Practice
+type: rfc
+status: draft
+author: "Greg ([@anonymous_observer](https://github.com/anonymous_observer))"
+slug: RFC-07-cultural-did
+topics:
+  - legibility
+  - fair
+  - identity
+  - agents
+  - dfos
+  - settlement
+  - governance
+  - events
+  - sovereignty
+refs:
+  issues:
+  - 247
+  - 114
+  - 246
+---
 # RFC-07: Cultural DID — Identity Primitive for Collectives, Scenes, and Communities of Practice
 
 **Status:** Discussion

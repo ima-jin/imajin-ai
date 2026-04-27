@@ -1,12 +1,23 @@
 ---
 title: "You Don't Need to Post About Your Emergent AI Discoveries."
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-13-how-to-use-ai-properly
+topics:
+  - identity
+  - agents
+  - settlement
+  - governance
+  - events
+  - federation
+  - sovereignty
+refs:
+  essays:
+  - how-to-use-ai-properly
 subtitle: "The LLM is not a product. It's a unit of compute. We need to start treating it like one."
 description: "AI replaces the commodity layer and amplifies the domain knowledge layer. Here's the difference, why it costs people when nobody explains it, and how to be on the right side of it."
-date: "2026-03-13"
-author: "Ryan Veteze"
-status: "POSTED"
 ---
-
 ## The Confessional
 
 You've seen the posts.

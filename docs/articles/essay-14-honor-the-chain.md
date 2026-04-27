@@ -1,12 +1,23 @@
 ---
-title: "Honor the Chain"
-subtitle: "The attribution layer the internet never built"
-description: "The .fair protocol as attribution infrastructure. A cryptographically signed document embedded in the work itself, carrying the complete chain of human creative labor."
-date: "2026-03-27"
-author: "Ryan Veteze"
-status: "POSTED"
+title: Honor the Chain
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-14-honor-the-chain
+topics:
+  - legibility
+  - fair
+  - identity
+  - agents
+  - settlement
+  - events
+  - sovereignty
+refs:
+  essays:
+  - honor-the-chain
+subtitle: The attribution layer the internet never built
+description: The .fair protocol as attribution infrastructure. A cryptographically signed document embedded in the work itself, carrying the complete chain of human creative labor.
 ---
-
 *The .fair protocol and the oldest unsolved problem in human creative culture.*
 
 ---

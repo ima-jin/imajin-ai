@@ -1,12 +1,25 @@
 ---
-title: "The Business Case for Building on Human Trust"
+title: The Business Case for Building on Human Trust
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-23-imajin-business-case
+topics:
+  - legibility
+  - fair
+  - identity
+  - agents
+  - dfos
+  - settlement
+  - governance
+  - events
+  - sovereignty
+refs:
+  essays:
+  - the-business-case
 subtitle: "You didn't break it. But you're the only one who can fix it."
-description: "The economic argument — and the one group nobody wanted to implicate."
-date: "2026-03-27"
-author: "Ryan Veteze"
-status: "POSTED"
+description: The economic argument — and the one group nobody wanted to implicate.
 ---
-
 ## Everything Is Fine
 
 You're on the couch. The song just plays. You didn't choose it exactly — the algorithm did, based on the last hundred songs you didn't skip — but it's good. It's the right kind of good. Dinner is forty minutes away, which used to mean cooking but now means a notification and a door. The news is a scroll. The show is already queued. Nothing requires you to do anything except stay where you are and let the next thing come.

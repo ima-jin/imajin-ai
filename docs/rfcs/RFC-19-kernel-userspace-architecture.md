@@ -1,3 +1,36 @@
+---
+title: Kernel/Userspace Architecture — Sovereign App Federation
+type: rfc
+status: draft
+author: Ryan Veteze, Jin
+slug: RFC-19-kernel-userspace-architecture
+topics:
+  - fair
+  - identity
+  - agents
+  - dfos
+  - settlement
+  - governance
+  - events
+  - federation
+  - sovereignty
+refs:
+  rfcs:
+  - 9
+  - 22
+  issues:
+  - 274
+  - 244
+  - 555
+  - 34
+  - 232
+  - 465
+  prs:
+  - 34
+  packages:
+  - "@imajin/auth"
+  - "@imajin/ui"
+---
 # RFC-19: Kernel/Userspace Architecture — Sovereign App Federation
 
 **Status:** Draft

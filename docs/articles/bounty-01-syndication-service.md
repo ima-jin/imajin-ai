@@ -1,3 +1,18 @@
+---
+title: "Bounty: imajin Syndication Service"
+type: essay
+status: draft
+slug: bounty-01-syndication-service
+topics:
+  - legibility
+  - fair
+  - agents
+  - dfos
+  - settlement
+  - events
+  - federation
+  - sovereignty
+---
 # Bounty: imajin Syndication Service
 
 **Labels:** `bounty` `good-first-contribution` `infrastructure` `attribution`  

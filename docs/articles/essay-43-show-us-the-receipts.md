@@ -1,13 +1,30 @@
 ---
-title: "Show Us the Receipts"
-subtitle: "Legibility is the layer that makes the fix possible"
-description: "Inequality is an accounting trick performed at scale, made possible by the fact that receipts are private by default. Make the receipts visible, build the architecture that lets them propagate, and the math changes — for everyone in the chain."
-date: "2026-04-26"
-author: "Ryan Veteze"
-status: "DRAFT — REV 5"
-type: "essay"
+title: Show Us the Receipts
+type: essay
+status: draft
+rev: 5
+author: Ryan Veteze
+slug: essay-43-show-us-the-receipts
+topics:
+  - legibility
+  - fair
+  - identity
+  - agents
+  - dfos
+  - settlement
+  - governance
+  - events
+  - federation
+  - sovereignty
+refs:
+  essays:
+  - essay-31-the-receipt
+  - honor-the-chain
+  - the-internet-that-pays-you-back
+  - you-dont-need-ads
+subtitle: Legibility is the layer that makes the fix possible
+description: Inequality is an accounting trick performed at scale, made possible by the fact that receipts are private by default. Make the receipts visible, build the architecture that lets them propagate, and the math changes — for everyone in the chain.
 ---
-
 ## The Receipt You Never Get
 
 You buy a coffee. $5.50. The receipt says: one flat white, $5.50. Thank you, come again.

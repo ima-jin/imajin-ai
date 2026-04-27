@@ -1,13 +1,24 @@
 ---
-title: "The Pain of Knowing"
+title: The Pain of Knowing
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-01-the-internet-we-lost
+topics:
+  - fair
+  - identity
+  - agents
+  - dfos
+  - settlement
+  - events
+  - federation
+  - sovereignty
+refs:
+  essays:
+  - the-internet-we-lost
 subtitle: "Why I'm still fighting for the internet we lost"
 description: "The origin story. b0bby's World. What real connection looked like. The extraction model and how every step since 1994 was wrong."
-date: "2026-02-20"
-update: "2026-04-04"
-author: "Ryan Veteze"
-status: "POSTED"
 ---
-
 ## b0bby's World (1991-1994)
 
 For a brief moment in time, I had the perfect social media platform in the palm of my hand.
