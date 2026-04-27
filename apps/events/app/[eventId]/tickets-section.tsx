@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { TicketType } from '@/src/db/schema';
 import { apiFetch } from '@imajin/config';
 import { TicketPurchase } from './ticket-purchase';
 import { OnboardGate } from '@imajin/onboard';
 import { SurveyAccordion } from './survey-accordion';
+import { useToast } from '@imajin/ui';
 
 function timeAgo(dateStr: string): string {
   const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -242,9 +244,15 @@ function TicketQRCell({ ticket }: { ticket: OrderTicket; eventId: string }) {
 
 function TicketRegistrationSurvey({ ticket, eventId }: { ticket: OrderTicket; eventId: string }) {
   const [regStatus, setRegStatus] = useState(ticket.registrationStatus);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
   const isPending = regStatus === 'pending';
+  const router = useRouter();
+  const { toast } = useToast();
 
   async function handleRegistrationComplete() {
+    setIsRetrying(true);
+    setLastError(null);
     try {
       const res = await apiFetch(`/api/register/${ticket.id}`, {
         method: 'POST',
@@ -253,24 +261,51 @@ function TicketRegistrationSurvey({ ticket, eventId }: { ticket: OrderTicket; ev
       });
       if (res.ok) {
         setRegStatus('complete');
+        toast.success('Registration completed successfully');
+        // Refresh server data so QR code appears
+        router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        const msg = data.error || `Registration failed (${res.status})`;
+        setLastError(msg);
+        toast.error(msg);
       }
-    } catch {
-      // Non-fatal — survey is saved in Dykil
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Registration failed';
+      setLastError(msg);
+      toast.error(msg);
+    } finally {
+      setIsRetrying(false);
     }
   }
 
   if (!ticket.ticketType?.registrationFormId) return null;
 
   return (
-    <SurveyAccordion
-      eventId={eventId}
-      surveyId={ticket.ticketType.registrationFormId}
-      surveyTitle={isPending ? 'Complete Registration' : 'Registration'}
-      surveyType="form"
-      defaultExpanded={isPending}
-      ticketId={ticket.id}
-      onComplete={handleRegistrationComplete}
-    />
+    <div>
+      <SurveyAccordion
+        eventId={eventId}
+        surveyId={ticket.ticketType.registrationFormId}
+        surveyTitle={isPending ? 'Complete Registration' : 'Registration'}
+        surveyType="form"
+        defaultExpanded={isPending}
+        ticketId={ticket.id}
+        initialCompleted={!isPending}
+        onComplete={handleRegistrationComplete}
+      />
+      {lastError && (
+        <div className="mt-2 flex items-center gap-3">
+          <span className="text-sm text-red-500">{lastError}</span>
+          <button
+            onClick={handleRegistrationComplete}
+            disabled={isRetrying}
+            className="px-3 py-1 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 transition"
+          >
+            {isRetrying ? 'Retrying...' : 'Retry'}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
