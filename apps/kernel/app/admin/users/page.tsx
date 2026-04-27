@@ -94,8 +94,8 @@ export default async function AdminUsersPage({
   return (
     <div className="p-6 lg:p-8 max-w-6xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Users</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-primary font-mono">Users</h1>
+        <p className="mt-1 text-sm text-secondary dark:text-secondary">
           {total.toLocaleString()} total identities
         </p>
       </div>
@@ -107,12 +107,12 @@ export default async function AdminUsersPage({
           name="q"
           defaultValue={q}
           placeholder="Search handle or name…"
-          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-52"
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated text-gray-900 dark:text-primary px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-imajin-purple w-52"
         />
         <select
           name="tier"
           defaultValue={tier}
-          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated text-gray-900 dark:text-primary px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-imajin-purple"
         >
           <option value="">All tiers</option>
           <option value="soft">Soft</option>
@@ -124,7 +124,7 @@ export default async function AdminUsersPage({
         <select
           name="type"
           defaultValue={type}
-          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated text-gray-900 dark:text-primary px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-imajin-purple"
         >
           <option value="">All scopes</option>
           <option value="actor">Actor</option>
@@ -134,14 +134,14 @@ export default async function AdminUsersPage({
         </select>
         <button
           type="submit"
-          className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 text-sm font-medium"
+          style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className=" hover:brightness-110 text-primary px-3 py-1.5 text-sm font-medium"
         >
           Filter
         </button>
         {(q || tier || type) && (
           <Link
             href="/admin/users"
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            className="text-sm text-secondary dark:text-secondary hover:text-gray-700 dark:hover:text-primary"
           >
             Clear
           </Link>
@@ -149,25 +149,25 @@ export default async function AdminUsersPage({
       </form>
 
       {/* Table */}
-      <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 overflow-hidden">
         {rows.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">
+          <p className="px-6 py-8 text-sm text-secondary dark:text-secondary text-center">
             No users found
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Handle</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Name</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Email</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Scope</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Tier</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Created</th>
+                <tr className="bg-gray-50 dark:bg-surface-elevated/50 border-b border-gray-100 dark:border-white/10">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Handle</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Name</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Email</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Scope</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Tier</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Created</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              <tbody className="divide-y divide-gray-100 dark:divide-white/10">
                 {rows.map((row) => {
                   const did = row.id as string;
                   const handle = row.handle as string | null;
@@ -181,33 +181,33 @@ export default async function AdminUsersPage({
                   return (
                     <tr
                       key={did}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+                      className="hover:bg-gray-50 dark:hover:bg-surface-elevated/40 transition-colors"
                     >
                       <td className="px-4 py-3">
                         <Link
                           href={`/admin/users/${encodeURIComponent(did)}`}
-                          className="font-mono text-orange-600 dark:text-orange-400 hover:underline text-xs"
+                          className="font-mono text-imajin-orange dark:text-imajin-orange hover:underline text-xs"
                         >
                           {handle ? `@${handle}` : did.slice(0, 20) + '…'}
                         </Link>
                         {isSuspended && (
-                          <span className="ml-2 text-xs bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 px-1.5 py-0.5 rounded">
+                          <span className="ml-2 text-xs bg-error/10 dark:bg-error/40 text-error dark:text-error px-1.5 py-0.5 ">
                             suspended
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                        {name ?? <span className="text-gray-400 dark:text-gray-600">—</span>}
+                      <td className="px-4 py-3 text-gray-700 dark:text-primary">
+                        {name ?? <span className="text-secondary dark:text-muted">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 truncate max-w-[180px]" title={(row.profile_email || row.contact_email) as string || ''}>
-                        {(row.profile_email || row.contact_email) as string || <span className="text-gray-400 dark:text-gray-600">—</span>}
+                      <td className="px-4 py-3 text-xs text-secondary dark:text-secondary truncate max-w-[180px]" title={(row.profile_email || row.contact_email) as string || ''}>
+                        {(row.profile_email || row.contact_email) as string || <span className="text-secondary dark:text-muted">—</span>}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
+                        <span className="text-xs bg-gray-100 dark:bg-surface-elevated text-muted dark:text-secondary px-2 py-0.5 ">
                           {row.scope as string}
                         </span>
                         {row.subtype && (
-                          <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">
+                          <span className="ml-1 text-xs text-secondary dark:text-secondary">
                             {row.subtype as string}
                           </span>
                         )}
@@ -215,7 +215,7 @@ export default async function AdminUsersPage({
                       <td className="px-4 py-3">
                         <TierBadge tier={row.tier as string} />
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      <td className="px-4 py-3 text-xs text-secondary dark:text-secondary whitespace-nowrap">
                         {relTime}
                       </td>
                     </tr>
@@ -232,27 +232,27 @@ export default async function AdminUsersPage({
         {hasPrev ? (
           <Link
             href={buildUrl({ page: String(page - 1) })}
-            className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+            className="border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-primary hover:bg-gray-50 dark:hover:bg-surface-elevated"
           >
             ← Previous
           </Link>
         ) : (
-          <span className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-400 dark:text-gray-600 cursor-not-allowed">
+          <span className="border border-gray-200 dark:border-white/10 px-3 py-1.5 text-sm text-secondary dark:text-muted cursor-not-allowed">
             ← Previous
           </span>
         )}
-        <span className="text-sm text-gray-500 dark:text-gray-400">
+        <span className="text-sm text-secondary dark:text-secondary">
           Page {page}
         </span>
         {hasNext ? (
           <Link
             href={buildUrl({ page: String(page + 1) })}
-            className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+            className="border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-primary hover:bg-gray-50 dark:hover:bg-surface-elevated"
           >
             Next →
           </Link>
         ) : (
-          <span className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-400 dark:text-gray-600 cursor-not-allowed">
+          <span className="border border-gray-200 dark:border-white/10 px-3 py-1.5 text-sm text-secondary dark:text-muted cursor-not-allowed">
             Next →
           </span>
         )}
@@ -263,14 +263,14 @@ export default async function AdminUsersPage({
 
 function TierBadge({ tier }: { tier: string }) {
   const styles: Record<string, string> = {
-    soft: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
+    soft: 'bg-gray-100 dark:bg-surface-elevated text-muted dark:text-secondary',
     preliminary: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400',
-    established: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400',
+    established: 'bg-success/10 dark:bg-success/40 text-success dark:text-success',
     steward: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400',
-    operator: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400',
+    operator: 'bg-imajin-orange/10 dark:bg-imajin-orange/20 text-imajin-orange dark:text-imajin-orange',
   };
   return (
-    <span className={`text-xs px-2 py-0.5 rounded ${styles[tier] ?? styles.soft}`}>
+    <span className={`text-xs px-2 py-0.5  ${styles[tier] ?? styles.soft}`}>
       {tier}
     </span>
   );

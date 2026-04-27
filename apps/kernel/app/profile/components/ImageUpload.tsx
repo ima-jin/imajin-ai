@@ -192,13 +192,13 @@ export function ImageUpload({
 
   return (
     <div className="space-y-3">
-      <label className="block text-sm font-medium text-gray-300">{label}</label>
+      <label className="block text-sm font-medium text-primary">{label}</label>
 
       {/* Preview */}
       {previewMode === 'banner' ? (
         displayAvatar ? (
           <div
-            className="w-full h-24 rounded bg-cover bg-center mb-2"
+            className="w-full h-24 bg-cover bg-center mb-2"
             style={{ backgroundImage: `url(${displayAvatar})` }}
           />
         ) : null
@@ -206,7 +206,7 @@ export function ImageUpload({
         <div className="flex items-center gap-4">
           <Avatar avatar={displayAvatar} size="xl" />
           <div className="flex-1">
-            <p className="text-sm text-gray-400 mb-2">
+            <p className="text-sm text-secondary mb-2">
               {displayAvatar ? 'Current avatar' : 'No avatar set'}
             </p>
           </div>
@@ -220,11 +220,11 @@ export function ImageUpload({
         onDragLeave={onDragLeave}
         onClick={openFilePicker}
         className={`
-          border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition
+          border-2 border-dashed p-6 text-center cursor-pointer transition
           ${
             isDragging
               ? 'border-[#F59E0B] bg-[#F59E0B]/10'
-              : 'border-gray-700 hover:border-[#F59E0B]/50 hover:bg-[#F59E0B]/5'
+              : 'border-white/10 hover:border-[#F59E0B]/50 hover:bg-[#F59E0B]/5'
           }
           ${isUploading ? 'opacity-50 pointer-events-none' : ''}
         `}
@@ -240,15 +240,15 @@ export function ImageUpload({
         {isUploading ? (
           <div className="flex flex-col items-center gap-2">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#F59E0B]"></div>
-            <p className="text-sm text-gray-400">Uploading...</p>
+            <p className="text-sm text-secondary">Uploading...</p>
           </div>
         ) : (
           <>
             <div className="text-4xl mb-2">📸</div>
-            <p className="text-sm text-gray-300 mb-1">
+            <p className="text-sm text-primary mb-1">
               Drag & drop an image here, or click to browse
             </p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-secondary">
               JPG, PNG, GIF, or WebP (max 5MB)
             </p>
           </>
@@ -257,8 +257,8 @@ export function ImageUpload({
 
       {/* Error Message */}
       {error && (
-        <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg">
-          <p className="text-sm text-red-400">{error}</p>
+        <div className="p-3 bg-error/20 border border-red-800">
+          <p className="text-sm text-error">{error}</p>
         </div>
       )}
 

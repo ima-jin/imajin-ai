@@ -58,27 +58,27 @@ export default function IdentitySwitcher({
       {/* Personal identity */}
       <button
         onClick={() => switchTo(null)}
-        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${
+        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
           isPersonal
-            ? 'border-l-2 border-amber-500 bg-amber-500/10 pl-2.5'
-            : 'hover:bg-zinc-800/60'
+            ? 'border-l-2 border-amber-500 bg-warning/10 pl-2.5'
+            : 'hover:bg-surface-elevated/60'
         }`}
       >
         <span className="text-lg leading-none">👤</span>
         <div className="flex-1 min-w-0">
-          <div className={`text-sm font-medium truncate ${isPersonal ? 'text-amber-400' : 'text-white'}`}>
+          <div className={`text-sm font-medium truncate ${isPersonal ? 'text-warning' : 'text-primary'}`}>
             {personalLabel}
           </div>
           {personalHandle && (
-            <div className="text-xs text-zinc-500 truncate">@{personalHandle}</div>
+            <div className="text-xs text-muted truncate">@{personalHandle}</div>
           )}
         </div>
-        {isPersonal && <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />}
+        {isPersonal && <div className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" />}
       </button>
 
       {/* Group identities */}
       {loading && (
-        <div className="px-3 py-2 text-xs text-zinc-600">Loading…</div>
+        <div className="px-3 py-2 text-xs text-muted">Loading…</div>
       )}
       {identities.map((identity) => {
         const isActive = activeIdentity === identity.groupDid;
@@ -87,43 +87,43 @@ export default function IdentitySwitcher({
           <button
             key={identity.groupDid}
             onClick={() => switchTo(identity.groupDid)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${
+            className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
               isActive
-                ? 'border-l-2 border-amber-500 bg-amber-500/10 pl-2.5'
-                : 'hover:bg-zinc-800/60'
+                ? 'border-l-2 border-amber-500 bg-warning/10 pl-2.5'
+                : 'hover:bg-surface-elevated/60'
             }`}
           >
             <span className="text-lg leading-none">{scopeIcon(identity.scope)}</span>
             <div className="flex-1 min-w-0">
-              <div className={`text-sm font-medium truncate ${isActive ? 'text-amber-400' : 'text-white'}`}>
+              <div className={`text-sm font-medium truncate ${isActive ? 'text-warning' : 'text-primary'}`}>
                 {label}
               </div>
               {identity.handle && (
-                <div className="text-xs text-zinc-500 truncate">@{identity.handle}</div>
+                <div className="text-xs text-muted truncate">@{identity.handle}</div>
               )}
             </div>
-            {isActive && <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />}
+            {isActive && <div className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" />}
           </button>
         );
       })}
 
       {/* Divider */}
-      <div className="border-t border-gray-800 my-2 pt-1">
+      <div className="border-t border-white/10 my-2 pt-1">
         <a
           href="/auth/groups/new?scope=family"
-          className="flex items-center gap-2 px-3 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors rounded-lg no-underline"
+          className="flex items-center gap-2 px-3 py-2 text-xs text-muted hover:text-zinc-300 transition-colors no-underline"
         >
           <span className="text-base leading-none">+</span> Create Family Identity
         </a>
         <a
           href="/auth/groups/new?scope=community"
-          className="flex items-center gap-2 px-3 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors rounded-lg no-underline"
+          className="flex items-center gap-2 px-3 py-2 text-xs text-muted hover:text-zinc-300 transition-colors no-underline"
         >
           <span className="text-base leading-none">+</span> Create Community Identity
         </a>
         <a
           href="/auth/groups/new?scope=business"
-          className="flex items-center gap-2 px-3 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors rounded-lg no-underline"
+          className="flex items-center gap-2 px-3 py-2 text-xs text-muted hover:text-zinc-300 transition-colors no-underline"
         >
           <span className="text-base leading-none">+</span> Create Business Identity
         </a>

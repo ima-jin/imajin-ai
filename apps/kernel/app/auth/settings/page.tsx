@@ -32,7 +32,7 @@ export default async function SettingsPage() {
   // Actor scope: security is now accessible via the Security tab
   if (!identity || identity.scope === 'actor') {
     return (
-      <div className="text-zinc-500 text-sm py-8">
+      <div className="text-muted text-sm py-8">
         Account settings are available via the tabs above.
       </div>
     );
@@ -53,7 +53,7 @@ export default async function SettingsPage() {
 
   if (membership?.role !== 'owner' && membership?.role !== 'admin') {
     return (
-      <div className="text-zinc-500 text-sm py-8">
+      <div className="text-muted text-sm py-8">
         You need owner or admin access to manage settings for this identity.
       </div>
     );

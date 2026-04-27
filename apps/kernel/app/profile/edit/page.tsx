@@ -207,9 +207,9 @@ function EditProfileContent() {
   if (loading) {
     return (
       <div className="max-w-md mx-auto text-center">
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+        <div className="bg-[#0a0a0a] border border-white/10 p-8">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#F59E0B] mb-4"></div>
-          <p className="text-gray-400">Loading profile...</p>
+          <p className="text-secondary">Loading profile...</p>
         </div>
       </div>
     );
@@ -217,9 +217,9 @@ function EditProfileContent() {
 
   return (
     <div className="max-w-md mx-auto">
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-        <h1 className="text-2xl font-bold mb-2 text-center text-white">Edit Profile</h1>
-        <p className="text-gray-400 text-center mb-6">
+      <div className="bg-[#0a0a0a] border border-white/10 p-8">
+        <h1 className="text-2xl font-bold mb-2 text-center text-primary font-mono">Edit Profile</h1>
+        <p className="text-secondary text-center mb-6">
           Update your public profile information
         </p>
 
@@ -227,77 +227,77 @@ function EditProfileContent() {
           {/* Handle (read-only) */}
           {handle && (
             <div>
-              <label className="block text-sm font-medium mb-1 text-gray-300">Handle</label>
-              <div className="flex items-center px-4 py-2 border border-gray-700 rounded-lg bg-gray-900/50 text-gray-500">
+              <label className="block text-sm font-medium mb-1 text-primary">Handle</label>
+              <div className="flex items-center px-4 py-2 border border-white/10 bg-surface-surface/50 text-secondary">
                 <span className="mr-1">@</span>
                 <span>{handle}</span>
               </div>
-              <p className="text-xs text-gray-500 mt-1">Handle cannot be changed after registration</p>
+              <p className="text-xs text-secondary mt-1">Handle cannot be changed after registration</p>
             </div>
           )}
 
           {/* Display Name */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Display Name *</label>
+            <label className="block text-sm font-medium mb-1 text-primary">Display Name *</label>
             <input
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Your name"
               required
-              className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+              className="w-full px-4 py-2 border border-white/10 bg-surface-base text-primary focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
             />
           </div>
 
           {/* Bio */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Bio</label>
+            <label className="block text-sm font-medium mb-1 text-primary">Bio</label>
             <textarea
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               placeholder="Tell us about yourself..."
               rows={3}
               maxLength={500}
-              className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
+              className="w-full px-4 py-2 border border-white/10 bg-surface-base text-primary focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
             />
-            <p className="text-xs text-gray-500 mt-1">{bio.length}/500 characters</p>
+            <p className="text-xs text-secondary mt-1">{bio.length}/500 characters</p>
           </div>
 
           {/* Contact Info */}
-          <div className="pt-2 border-t border-gray-800">
-            <p className="text-xs text-gray-500 mb-3">🔒 Contact info is only visible to your connections</p>
+          <div className="pt-2 border-t border-white/10">
+            <p className="text-xs text-secondary mb-3">🔒 Contact info is only visible to your connections</p>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-300">Email</label>
+                <label className="block text-sm font-medium mb-1 text-primary">Email</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-white/10 bg-surface-base text-primary focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-300">Phone</label>
+                <label className="block text-sm font-medium mb-1 text-primary">Phone</label>
                 <input
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+1 (555) 123-4567"
-                  className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-white/10 bg-surface-base text-primary focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
                 />
               </div>
             </div>
           </div>
 
           {/* Visibility */}
-          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+          <div className="bg-surface-surface p-6 border border-white/10">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-medium text-white flex items-center gap-2">
+                <h3 className="font-medium text-primary flex items-center gap-2 font-mono">
                   👻 Incognito Mode
                 </h3>
-                <p className="text-sm text-gray-400 mt-1">
+                <p className="text-sm text-secondary mt-1">
                   Only visible to your direct connections. Further down the trust tree, 
                   you appear as an anonymous ghost — or just a number.
                 </p>
@@ -305,8 +305,8 @@ function EditProfileContent() {
               <button
                 type="button"
                 onClick={() => setVisibility(visibility === 'public' ? 'incognito' : 'public')}
-                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
-                  visibility === 'incognito' ? 'bg-orange-500' : 'bg-gray-600'
+                className={`relative inline-flex h-7 w-12 items-center transition-colors ${
+                  visibility === 'incognito' ? 'bg-imajin-orange' : 'bg-gray-600'
                 }`}
               >
                 <span
@@ -317,8 +317,8 @@ function EditProfileContent() {
               </button>
             </div>
             {visibility === 'incognito' && (
-              <div className="mt-3 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
-                <p className="text-xs text-orange-300">
+              <div className="mt-3 p-3 bg-imajin-orange/10 border border-imajin-orange/20">
+                <p className="text-xs text-imajin-orange/70">
                   🔒 Your profile is hidden from public listings and search. 
                   People who aren&apos;t directly connected to you will see &quot;👻 1 ghost&quot; instead of your name.
                 </p>
@@ -341,13 +341,13 @@ function EditProfileContent() {
               />
             ) : (
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-300">Avatar (emoji)</label>
+                <label className="block text-sm font-medium mb-1 text-primary">Avatar (emoji)</label>
                 <input
                   type="text"
                   value={avatar}
                   onChange={(e) => setAvatar(e.target.value)}
                   placeholder="👤"
-                  className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-white/10 bg-surface-base text-primary focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
                 />
                 <button
                   type="button"
@@ -361,21 +361,21 @@ function EditProfileContent() {
           </div>
 
           {/* Apps / Service toggles */}
-          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-            <h3 className="font-medium text-white mb-1">Apps</h3>
-            <p className="text-sm text-gray-400 mb-4">Choose which Imajin apps appear on your profile.</p>
+          <div className="bg-surface-surface p-6 border border-white/10">
+            <h3 className="font-medium text-primary mb-1 font-mono">Apps</h3>
+            <p className="text-sm text-secondary mb-4">Choose which Imajin apps appear on your profile.</p>
             <div className="space-y-3">
               {SERVICES.map((svc) => (
                 <div key={svc.key} className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-white font-medium">{svc.label}</p>
-                    <p className="text-xs text-gray-500">{svc.description}</p>
+                    <p className="text-sm text-primary font-medium">{svc.label}</p>
+                    <p className="text-xs text-secondary">{svc.description}</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setServiceToggles((prev) => ({ ...prev, [svc.key]: !prev[svc.key] }))}
-                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
-                      serviceToggles[svc.key] ? 'bg-orange-500' : 'bg-gray-600'
+                    className={`relative inline-flex h-7 w-12 items-center transition-colors ${
+                      serviceToggles[svc.key] ? 'bg-imajin-orange' : 'bg-gray-600'
                     }`}
                   >
                     <span
@@ -389,14 +389,14 @@ function EditProfileContent() {
               {/* Market toggle */}
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-white font-medium">Market</p>
-                  <p className="text-xs text-gray-500">Show your active listings on your profile</p>
+                  <p className="text-sm text-primary font-medium">Market</p>
+                  <p className="text-xs text-secondary">Show your active listings on your profile</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowMarketItems((prev) => !prev)}
-                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
-                    showMarketItems ? 'bg-orange-500' : 'bg-gray-600'
+                  className={`relative inline-flex h-7 w-12 items-center transition-colors ${
+                    showMarketItems ? 'bg-imajin-orange' : 'bg-gray-600'
                   }`}
                 >
                   <span
@@ -409,14 +409,14 @@ function EditProfileContent() {
               {/* Events toggle */}
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-white font-medium">Events</p>
-                  <p className="text-xs text-gray-500">Show upcoming events on your profile</p>
+                  <p className="text-sm text-primary font-medium">Events</p>
+                  <p className="text-xs text-secondary">Show upcoming events on your profile</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowEvents((prev) => !prev)}
-                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
-                    showEvents ? 'bg-orange-500' : 'bg-gray-600'
+                  className={`relative inline-flex h-7 w-12 items-center transition-colors ${
+                    showEvents ? 'bg-imajin-orange' : 'bg-gray-600'
                   }`}
                 >
                   <span
@@ -431,14 +431,14 @@ function EditProfileContent() {
 
           {/* Error/Success messages */}
           {error && (
-            <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg">
-              <p className="text-sm text-red-400">{error}</p>
+            <div className="p-3 bg-error/20 border border-red-800">
+              <p className="text-sm text-error">{error}</p>
             </div>
           )}
 
           {success && (
-            <div className="p-3 bg-green-900/20 border border-green-800 rounded-lg">
-              <p className="text-sm text-green-400">Profile updated successfully! Redirecting...</p>
+            <div className="p-3 bg-success/20 border border-green-800">
+              <p className="text-sm text-success">Profile updated successfully! Redirecting...</p>
             </div>
           )}
 
@@ -447,14 +447,14 @@ function EditProfileContent() {
             <button
               type="button"
               onClick={() => router.push(`/profile/${handle || did}`)}
-              className="flex-1 px-6 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition font-semibold"
+              className="flex-1 px-6 py-3 bg-surface-surface text-primary hover:bg-surface-elevated transition font-semibold"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving || !displayName.trim()}
-              className="flex-1 px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-6 py-3 bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
@@ -462,12 +462,12 @@ function EditProfileContent() {
         </form>
 
         {/* Key Backup */}
-        <div className="mt-6 pt-4 border-t border-gray-800">
-          <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg p-4">
+        <div className="mt-6 pt-4 border-t border-white/10">
+          <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 p-4">
             <p className="text-sm font-semibold text-[#F59E0B] mb-2">
               🔐 Identity Backup
             </p>
-            <p className="text-xs text-gray-300 mb-3">
+            <p className="text-xs text-primary mb-3">
               Your private key is only stored in this browser. Download a backup to log in from other devices or recover your account.
             </p>
             <button
@@ -493,7 +493,7 @@ function EditProfileContent() {
                 a.click();
                 URL.revokeObjectURL(url);
               }}
-              className="w-full px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition text-sm font-medium"
+              className="w-full px-4 py-2 bg-[#F59E0B] text-black hover:bg-[#D97706] transition text-sm font-medium"
             >
               ⬇️ Download Backup Keys
             </button>
@@ -501,8 +501,8 @@ function EditProfileContent() {
         </div>
 
         {/* DID display */}
-        <div className="mt-4 pt-4 border-t border-gray-800">
-          <p className="text-xs text-gray-500 text-center font-mono break-all">
+        <div className="mt-4 pt-4 border-t border-white/10">
+          <p className="text-xs text-secondary text-center font-mono break-all">
             {did}
           </p>
         </div>
@@ -513,7 +513,7 @@ function EditProfileContent() {
 
 export default function EditProfilePage() {
   return (
-    <Suspense fallback={<div className="text-gray-500 text-sm py-8">Loading…</div>}>
+    <Suspense fallback={<div className="text-secondary text-sm py-8">Loading…</div>}>
       <EditProfileContent />
     </Suspense>
   );

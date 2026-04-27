@@ -22,7 +22,7 @@ export function StubActions({
   const encodedDid = encodeURIComponent(identityDid);
 
   return (
-    <div className="mb-6 bg-sky-950/30 border border-sky-800/40 rounded-xl px-4 py-3 text-sm text-sky-300">
+    <div className="mb-6 bg-sky-950/30 border border-sky-800/40 px-4 py-3 text-sm text-sky-300">
       {isMaintainer ? (
         <div>
           <p className="text-xs text-sky-500 text-center">
@@ -50,7 +50,7 @@ export function StubActions({
               >
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-sky-700 hover:bg-sky-600 text-white rounded-lg text-xs font-medium transition-colors"
+                  className="px-4 py-1.5 bg-sky-700 hover:bg-sky-600 text-primary text-xs font-medium transition-colors"
                 >
                   Help maintain this place
                 </button>
@@ -72,7 +72,7 @@ export function StubActions({
         <button
           type="button"
           disabled
-          className="text-xs text-gray-600 cursor-not-allowed"
+          className="text-xs text-muted cursor-not-allowed"
           title="Coming soon"
         >
           ✏️ Suggest an edit

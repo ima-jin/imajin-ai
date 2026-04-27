@@ -17,7 +17,7 @@ export function BugReporterOpenButton() {
   return (
     <button
       onClick={handleClick}
-      className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
+      style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="px-4 py-2 hover:brightness-110 text-primary text-sm font-medium transition-colors"
     >
       🐛 Report a Bug
     </button>

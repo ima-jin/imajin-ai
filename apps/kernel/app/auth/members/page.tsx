@@ -31,7 +31,7 @@ export default async function MembersPage() {
 
   if (!identity || identity.scope === 'actor') {
     return (
-      <div className="text-zinc-500 text-sm py-8">
+      <div className="text-muted text-sm py-8">
         Members are only available for group identities.
       </div>
     );
@@ -51,7 +51,7 @@ export default async function MembersPage() {
 
   if (membership?.role !== 'owner' && membership?.role !== 'admin') {
     return (
-      <div className="text-zinc-500 text-sm py-8">
+      <div className="text-muted text-sm py-8">
         You need owner or admin access to manage members for this identity.
       </div>
     );

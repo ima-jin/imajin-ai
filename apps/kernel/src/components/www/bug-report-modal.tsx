@@ -114,15 +114,15 @@ export function BugReportModal({ onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-surface-base/70 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-lg rounded-xl bg-[#111] border border-gray-800 shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
-          <h2 className="text-lg font-semibold text-gray-100">Submit Feedback</h2>
+      <div className="w-full max-w-lg bg-[#111] border border-white/10">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+          <h2 className="text-lg font-semibold text-primary font-mono">Submit Feedback</h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-300 transition-colors text-xl leading-none"
+            className="text-secondary hover:text-primary transition-colors text-xl leading-none"
             aria-label="Close"
           >
             ×
@@ -132,10 +132,10 @@ export function BugReportModal({ onClose }: Props) {
         {status === 'success' ? (
           <div className="px-6 py-10 text-center">
             <p className="text-2xl mb-3">✓</p>
-            <p className="text-gray-300 font-medium">Report submitted. Thanks!</p>
+            <p className="text-primary font-medium">Report submitted. Thanks!</p>
             <button
               onClick={() => { router.refresh(); onClose(); }}
-              className="mt-6 px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-sm transition-colors"
+              style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="mt-6 px-4 py-2 hover:brightness-110 text-primary text-sm transition-colors"
             >
               Close
             </button>
@@ -144,7 +144,7 @@ export function BugReportModal({ onClose }: Props) {
           <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
             {/* Report Type */}
             <div>
-              <label className="block text-sm text-gray-400 mb-1" htmlFor="bug-type">
+              <label className="block text-sm text-secondary mb-1" htmlFor="bug-type">
                 Type
               </label>
               <select
@@ -152,7 +152,7 @@ export function BugReportModal({ onClose }: Props) {
                 value={type}
                 onChange={(e) => setType(e.target.value)}
                 disabled={busy}
-                className="w-full rounded-lg bg-[#1a1a1a] border border-gray-700 text-gray-100 px-3 py-2 text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
+                className="w-full bg-[#1a1a1a] border border-white/10 text-primary px-3 py-2 text-sm focus:outline-none focus:border-imajin-orange disabled:opacity-50"
               >
                 {REPORT_TYPES.map((t) => (
                   <option key={t.value} value={t.value}>{t.label}</option>
@@ -162,8 +162,8 @@ export function BugReportModal({ onClose }: Props) {
 
             {/* Description */}
             <div>
-              <label className="block text-sm text-gray-400 mb-1" htmlFor="bug-description">
-                Description <span className="text-orange-500">*</span>
+              <label className="block text-sm text-secondary mb-1" htmlFor="bug-description">
+                Description <span className="text-imajin-orange">*</span>
               </label>
               <textarea
                 id="bug-description"
@@ -173,35 +173,35 @@ export function BugReportModal({ onClose }: Props) {
                 rows={5}
                 required
                 disabled={busy}
-                className="w-full rounded-lg bg-[#1a1a1a] border border-gray-700 text-gray-100 placeholder-gray-600 px-3 py-2 text-sm focus:outline-none focus:border-orange-500 resize-none disabled:opacity-50"
+                className="w-full bg-[#1a1a1a] border border-white/10 text-primary placeholder-muted px-3 py-2 text-sm focus:outline-none focus:border-imajin-orange resize-none disabled:opacity-50"
               />
             </div>
 
             {/* Screenshot drop zone */}
             <div>
-              <label className="block text-sm text-gray-400 mb-1">
-                Screenshot <span className="text-gray-600">(optional)</span>
+              <label className="block text-sm text-secondary mb-1">
+                Screenshot <span className="text-muted">(optional)</span>
               </label>
               <div
                 onDrop={onDrop}
                 onDragOver={onDragOver}
                 onDragLeave={onDragLeave}
                 onClick={() => !busy && fileInputRef.current?.click()}
-                className={`relative flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors ${
+                className={`relative flex cursor-pointer flex-col items-center justify-center border-2 border-dashed px-4 py-5 text-center transition-colors ${
                   dragging
-                    ? 'border-orange-500 bg-orange-500/10'
-                    : 'border-gray-700 bg-[#1a1a1a] hover:border-gray-500'
+                    ? 'border-imajin-orange bg-imajin-orange/10'
+                    : 'border-white/10 bg-[#1a1a1a] hover:border-gray-500'
                 } ${busy ? 'pointer-events-none opacity-50' : ''}`}
               >
                 {previewUrl ? (
                   <img
                     src={previewUrl}
                     alt="Screenshot preview"
-                    className="max-h-32 max-w-full rounded object-contain"
+                    className="max-h-32 max-w-full object-contain"
                   />
                 ) : (
-                  <p className="text-sm text-gray-500">
-                    Drag & drop, paste (Ctrl+V), or <span className="text-orange-400">click to browse</span>
+                  <p className="text-sm text-secondary">
+                    Drag & drop, paste (Ctrl+V), or <span className="text-imajin-orange">click to browse</span>
                   </p>
                 )}
                 <input
@@ -214,12 +214,12 @@ export function BugReportModal({ onClose }: Props) {
                 />
               </div>
               {screenshotFile && (
-                <p className="mt-1 text-xs text-gray-500">{screenshotFile.name}</p>
+                <p className="mt-1 text-xs text-secondary">{screenshotFile.name}</p>
               )}
             </div>
 
             {errorMsg && (
-              <p className="text-sm text-red-400">{errorMsg}</p>
+              <p className="text-sm text-error">{errorMsg}</p>
             )}
 
             <div className="flex items-center justify-end gap-3 pt-1">
@@ -227,14 +227,14 @@ export function BugReportModal({ onClose }: Props) {
                 type="button"
                 onClick={onClose}
                 disabled={busy}
-                className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-gray-200 transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-sm text-secondary hover:text-primary transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={busy || !description.trim()}
-                className="px-5 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="px-5 py-2 hover:brightness-110 text-primary text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {status === 'uploading'
                   ? 'Uploading...'

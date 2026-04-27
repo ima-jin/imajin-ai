@@ -53,19 +53,19 @@ function fmtDate(iso: string | null) {
 function StatusBadge({ status }: { status: string }) {
   const cls =
     status === 'completed'
-      ? 'bg-green-900/30 text-green-400 border-green-800'
+      ? 'bg-success/30 text-success border-green-800'
       : status === 'failed'
-        ? 'bg-red-900/30 text-red-400 border-red-800'
-        : 'bg-zinc-800 text-zinc-400 border-zinc-700';
+        ? 'bg-error/30 text-error border-red-800'
+        : 'bg-surface-elevated text-secondary border-white/10';
   return (
-    <span className={`text-xs px-2 py-0.5 rounded-full border ${cls}`}>{status}</span>
+    <span className={`text-xs px-2 py-0.5 border ${cls}`}>{status}</span>
   );
 }
 
 function ChevronIcon() {
   return (
     <svg
-      className="w-4 h-4 text-zinc-600 transition-transform group-open:rotate-180"
+      className="w-4 h-4 text-muted transition-transform group-open:rotate-180"
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"
@@ -87,19 +87,19 @@ function StandaloneRow({ tx, sessionId }: { tx: SerializedTx; sessionId: string 
 
   return (
     <details className="group">
-      <summary className="px-5 py-4 flex items-center gap-4 cursor-pointer hover:bg-zinc-800/40 transition-colors [list-style:none] [&::-webkit-details-marker]:hidden">
+      <summary className="px-5 py-4 flex items-center gap-4 cursor-pointer hover:bg-surface-elevated/40 transition-colors [list-style:none] [&::-webkit-details-marker]:hidden">
         <span className="text-xl w-7 text-center shrink-0">{icon}</span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-white capitalize">
+            <span className="text-sm font-medium text-primary capitalize">
               {tx.type.replace(/_/g, ' ')}
             </span>
-            <span className="text-xs px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-zinc-400">
+            <span className="text-xs px-2 py-0.5 bg-surface-elevated border border-white/10 text-secondary">
               {tx.service}
             </span>
             <StatusBadge status={tx.status} />
           </div>
-          <div className="text-xs text-zinc-500 mt-0.5">
+          <div className="text-xs text-muted mt-0.5">
             {fmtDate(tx.createdAt)}
             {tx.batchId && (
               <span className="ml-2 font-mono text-zinc-700">{tx.batchId.slice(0, 16)}</span>
@@ -111,48 +111,48 @@ function StandaloneRow({ tx, sessionId }: { tx: SerializedTx; sessionId: string 
             <div
               className={`text-base font-semibold ${
                 tx.currency === 'MJN'
-                  ? 'text-amber-400'
-                  : isIncoming ? 'text-green-400' : 'text-red-400'
+                  ? 'text-warning'
+                  : isIncoming ? 'text-success' : 'text-error'
               }`}
             >
               {isIncoming ? '+' : '-'}
               {fmt(amount, tx.currency)}
             </div>
-            <div className="text-xs text-zinc-600">{tx.source}</div>
+            <div className="text-xs text-muted">{tx.source}</div>
           </div>
           {(hasChain || !!tx.metadata) && <ChevronIcon />}
         </div>
       </summary>
 
-      <div className="px-5 pb-5 pl-16 space-y-3 border-t border-zinc-800/60">
+      <div className="px-5 pb-5 pl-16 space-y-3 border-t border-white/10/60">
         <div className="pt-3 space-y-1.5">
-          <div className="text-xs text-zinc-500">
-            <span className="text-zinc-600 w-10 inline-block">From</span>
-            <span className="font-mono text-zinc-400 break-all">{tx.fromDid || 'external'}</span>
+          <div className="text-xs text-muted">
+            <span className="text-muted w-10 inline-block">From</span>
+            <span className="font-mono text-secondary break-all">{tx.fromDid || 'external'}</span>
           </div>
-          <div className="text-xs text-zinc-500">
-            <span className="text-zinc-600 w-10 inline-block">To</span>
-            <span className="font-mono text-zinc-400 break-all">{tx.toDid}</span>
+          <div className="text-xs text-muted">
+            <span className="text-muted w-10 inline-block">To</span>
+            <span className="font-mono text-secondary break-all">{tx.toDid}</span>
           </div>
         </div>
 
         {hasChain && (
           <div>
-            <div className="text-xs font-medium text-zinc-400 mb-2">.fair attribution chain</div>
+            <div className="text-xs font-medium text-secondary mb-2">.fair attribution chain</div>
             <div className="space-y-1">
               {manifest!.chain!.map((entry, i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-3 text-xs bg-black/40 border border-zinc-800 rounded-lg px-3 py-2"
+                  className="flex items-center gap-3 text-xs bg-surface-base/40 border border-white/10 px-3 py-2"
                 >
-                  <span className="text-zinc-600 w-20 shrink-0">{entry.role}</span>
+                  <span className="text-muted w-20 shrink-0">{entry.role}</span>
                   <span
-                    className={`font-mono flex-1 truncate ${entry.did === sessionId ? 'text-orange-400' : 'text-zinc-400'}`}
+                    className={`font-mono flex-1 truncate ${entry.did === sessionId ? 'text-imajin-orange' : 'text-secondary'}`}
                   >
                     {entry.did}
                   </span>
                   <span
-                    className={`font-medium shrink-0 ${entry.did === sessionId ? 'text-orange-400' : 'text-zinc-300'}`}
+                    className={`font-medium shrink-0 ${entry.did === sessionId ? 'text-imajin-orange' : 'text-zinc-300'}`}
                   >
                     {fmt(entry.amount, tx.currency)}
                   </span>
@@ -164,8 +164,8 @@ function StandaloneRow({ tx, sessionId }: { tx: SerializedTx; sessionId: string 
 
         {!!tx.metadata && Object.keys(tx.metadata as object).length > 0 && (
           <div>
-            <div className="text-xs font-medium text-zinc-400 mb-2">Metadata</div>
-            <pre className="text-xs font-mono bg-black/40 border border-zinc-800 rounded-lg p-3 text-zinc-500 overflow-auto whitespace-pre-wrap">
+            <div className="text-xs font-medium text-secondary mb-2">Metadata</div>
+            <pre className="text-xs font-mono bg-surface-base/40 border border-white/10 p-3 text-muted overflow-auto whitespace-pre-wrap">
               {JSON.stringify(tx.metadata, null, 2)}
             </pre>
           </div>
@@ -215,24 +215,24 @@ function BatchGroupRow({
 
   return (
     <details className="group">
-      <summary className="px-5 py-4 flex items-center gap-4 cursor-pointer hover:bg-zinc-800/40 transition-colors [list-style:none] [&::-webkit-details-marker]:hidden">
+      <summary className="px-5 py-4 flex items-center gap-4 cursor-pointer hover:bg-surface-elevated/40 transition-colors [list-style:none] [&::-webkit-details-marker]:hidden">
         <span className="text-xl w-7 text-center shrink-0">{icon}</span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-white capitalize">
+            <span className="text-sm font-medium text-primary capitalize">
               {userEntry.type.replace(/_/g, ' ')}
             </span>
-            <span className="text-xs px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-zinc-400">
+            <span className="text-xs px-2 py-0.5 bg-surface-elevated border border-white/10 text-secondary">
               {userEntry.service}
             </span>
             <StatusBadge status={overallStatus} />
             {!showGross && grossAmount !== netAmount && (
-              <span className="text-xs text-zinc-600">
+              <span className="text-xs text-muted">
                 of {fmt(grossAmount, userEntry.currency)} gross
               </span>
             )}
           </div>
-          <div className="text-xs text-zinc-500 mt-0.5">
+          <div className="text-xs text-muted mt-0.5">
             {fmtDate(earliestDate)}
             <span className="ml-2 font-mono text-zinc-700">{userEntry.batchId?.slice(0, 16)}</span>
           </div>
@@ -242,41 +242,41 @@ function BatchGroupRow({
             <div
               className={`text-base font-semibold ${
                 userEntry.currency === 'MJN'
-                  ? 'text-amber-400'
-                  : isIncoming ? 'text-green-400' : 'text-red-400'
+                  ? 'text-warning'
+                  : isIncoming ? 'text-success' : 'text-error'
               }`}
             >
               {isIncoming ? '+' : '-'}
               {fmt(displayAmount, userEntry.currency)}
             </div>
-            <div className="text-xs text-zinc-600">{userEntry.source}</div>
+            <div className="text-xs text-muted">{userEntry.source}</div>
           </div>
           <ChevronIcon />
         </div>
       </summary>
 
-      <div className="px-5 pb-5 pl-16 space-y-3 border-t border-zinc-800/60">
+      <div className="px-5 pb-5 pl-16 space-y-3 border-t border-white/10/60">
         {/* Settlement breakdown */}
         <div className="pt-3">
-          <div className="text-xs font-medium text-zinc-400 mb-2">Settlement breakdown</div>
+          <div className="text-xs font-medium text-secondary mb-2">Settlement breakdown</div>
           <div className="space-y-1">
             {entries.map((e) => {
               const isUser = e.toDid === sessionId;
               return (
                 <div
                   key={e.id}
-                  className="flex items-center gap-3 text-xs bg-black/40 border border-zinc-800 rounded-lg px-3 py-2"
+                  className="flex items-center gap-3 text-xs bg-surface-base/40 border border-white/10 px-3 py-2"
                 >
-                  <span className="text-zinc-600 w-24 shrink-0 capitalize">
+                  <span className="text-muted w-24 shrink-0 capitalize">
                     {e.type.replace(/_/g, ' ')}
                   </span>
                   <span
-                    className={`font-mono flex-1 truncate ${isUser ? 'text-orange-400' : 'text-zinc-400'}`}
+                    className={`font-mono flex-1 truncate ${isUser ? 'text-imajin-orange' : 'text-secondary'}`}
                   >
                     {e.toDid}
                   </span>
                   <span
-                    className={`font-medium shrink-0 ${isUser ? 'text-orange-400' : 'text-zinc-300'}`}
+                    className={`font-medium shrink-0 ${isUser ? 'text-imajin-orange' : 'text-zinc-300'}`}
                   >
                     {fmt(parseFloat(e.amount), e.currency)}
                   </span>
@@ -285,15 +285,15 @@ function BatchGroupRow({
             })}
           </div>
           <div className="mt-2 flex justify-between text-xs px-3">
-            <span className="text-zinc-500">Total</span>
+            <span className="text-muted">Total</span>
             <span className="text-zinc-300 font-medium">{fmt(grossAmount, userEntry.currency)}</span>
           </div>
         </div>
 
         {!!userEntry.metadata && Object.keys(userEntry.metadata as object).length > 0 && (
           <div>
-            <div className="text-xs font-medium text-zinc-400 mb-2">Metadata</div>
-            <pre className="text-xs font-mono bg-black/40 border border-zinc-800 rounded-lg p-3 text-zinc-500 overflow-auto whitespace-pre-wrap">
+            <div className="text-xs font-medium text-secondary mb-2">Metadata</div>
+            <pre className="text-xs font-mono bg-surface-base/40 border border-white/10 p-3 text-muted overflow-auto whitespace-pre-wrap">
               {JSON.stringify(userEntry.metadata, null, 2)}
             </pre>
           </div>
@@ -312,19 +312,19 @@ export default function TransactionList({ displayEntries, sessionId }: Transacti
     <div className="space-y-3">
       {hasBatched && (
         <div className="flex justify-end">
-          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+          <div className="flex items-center gap-1 bg-surface-base border border-white/10 p-1">
             <button
               onClick={() => setShowGross(false)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                !showGross ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:text-zinc-300'
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                !showGross ? 'bg-imajin-orange text-primary' : 'text-secondary hover:text-zinc-300'
               }`}
             >
               Net
             </button>
             <button
               onClick={() => setShowGross(true)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                showGross ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:text-zinc-300'
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                showGross ? 'bg-imajin-orange text-primary' : 'text-secondary hover:text-zinc-300'
               }`}
             >
               Gross
@@ -333,7 +333,7 @@ export default function TransactionList({ displayEntries, sessionId }: Transacti
         </div>
       )}
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800">
+      <div className="bg-surface-base border border-white/10 divide-y divide-white/10">
         {displayEntries.map((entry) =>
           entry.kind === 'standalone' ? (
             <StandaloneRow key={entry.tx.id} tx={entry.tx} sessionId={sessionId} />

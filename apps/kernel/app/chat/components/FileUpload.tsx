@@ -76,7 +76,7 @@ export function FileUpload({
       <button
         onClick={() => fileInputRef.current?.click()}
         disabled={uploading}
-        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition disabled:opacity-50"
+        className="p-2 hover:bg-gray-100 dark:hover:bg-surface-elevated transition disabled:opacity-50"
         title="Upload file or image"
       >
         {uploading ? '...' : '📎'}

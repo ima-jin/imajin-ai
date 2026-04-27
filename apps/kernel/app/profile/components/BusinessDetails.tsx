@@ -13,31 +13,31 @@ export function BusinessDetails({ metadata }: BusinessDetailsProps) {
   if (!location && !phone && !website && !category) return null;
 
   return (
-    <div className="mb-6 bg-gray-900/50 border border-gray-800 rounded-lg p-4 text-left">
-      <p className="text-xs text-gray-500 mb-2 text-center">🏢 Business Info</p>
+    <div className="mb-6 bg-surface-surface/50 border border-white/10 p-4 text-left">
+      <p className="text-xs text-secondary mb-2 text-center">🏢 Business Info</p>
       {category && (
-        <p className="text-sm text-gray-300 mb-1">
-          <span className="text-gray-500">🏷️</span>{' '}
+        <p className="text-sm text-primary mb-1">
+          <span className="text-secondary">🏷️</span>{' '}
           <span>{category}</span>
         </p>
       )}
       {location && (
-        <p className="text-sm text-gray-300 mb-1">
-          <span className="text-gray-500">📍</span>{' '}
+        <p className="text-sm text-primary mb-1">
+          <span className="text-secondary">📍</span>{' '}
           <span>{location}</span>
         </p>
       )}
       {phone && (
-        <p className="text-sm text-gray-300 mb-1">
-          <span className="text-gray-500">📞</span>{' '}
+        <p className="text-sm text-primary mb-1">
+          <span className="text-secondary">📞</span>{' '}
           <a href={`tel:${phone}`} className="text-[#F59E0B] hover:underline">
             {phone}
           </a>
         </p>
       )}
       {website && (
-        <p className="text-sm text-gray-300">
-          <span className="text-gray-500">🌐</span>{' '}
+        <p className="text-sm text-primary">
+          <span className="text-secondary">🌐</span>{' '}
           <a
             href={website.startsWith('http') ? website : `https://${website}`}
             target="_blank"

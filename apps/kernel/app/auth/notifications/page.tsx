@@ -92,18 +92,18 @@ export default function NotificationsPage() {
   if (loading) {
     return (
       <div className="py-8">
-        <p className="text-zinc-400">Loading preferences...</p>
+        <p className="text-secondary">Loading preferences...</p>
       </div>
     );
   }
 
   return (
     <div className="py-8">
-      <h2 className="text-lg font-semibold text-white mb-1">Notification Preferences</h2>
-      <p className="text-zinc-400 text-sm mb-6">Choose how you want to be notified for each event type.</p>
+      <h2 className="text-lg font-semibold text-primary mb-1 font-mono">Notification Preferences</h2>
+      <p className="text-secondary text-sm mb-6">Choose how you want to be notified for each event type.</p>
 
       {error && (
-        <div className="mb-6 p-3 bg-red-950 border border-red-800 rounded-md text-red-300 text-sm">
+        <div className="mb-6 p-3 bg-red-950 border border-red-800 text-error text-sm">
           {error}
         </div>
       )}
@@ -111,43 +111,43 @@ export default function NotificationsPage() {
       <div className="space-y-6">
         {SCOPE_GROUPS.map((group) => (
           <div key={group.label}>
-            <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+            <h3 className="text-xs font-semibold text-secondary uppercase tracking-wider mb-2 font-mono">
               {group.label}
             </h3>
-            <div className="bg-zinc-900 border border-zinc-800 rounded-lg divide-y divide-zinc-800">
+            <div className="bg-surface-base border border-white/10 divide-y divide-white/10">
               {group.scopes.map(({ scope, label }) => {
                 const pref = getPref(scope);
                 return (
                   <div key={scope} className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-zinc-200">{label}</span>
+                    <span className="text-sm text-primary">{label}</span>
                     <div className="flex items-center gap-6">
                       <label className="flex items-center gap-2 cursor-pointer">
-                        <span className="text-xs text-zinc-500">In-app</span>
+                        <span className="text-xs text-muted">In-app</span>
                         <button
                           onClick={() => toggle(scope, 'inapp', !pref.inapp)}
                           disabled={saving === `${scope}:inapp`}
-                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
-                            pref.inapp ? 'bg-amber-500' : 'bg-zinc-700'
+                          className={`relative inline-flex h-5 w-9 items-center transition-colors focus:outline-none ${
+                            pref.inapp ? 'bg-warning' : 'bg-surface-elevated'
                           }`}
                         >
                           <span
-                            className={`inline-block h-3 w-3 transform rounded-full bg-zinc-900 transition-transform ${
+                            className={`inline-block h-3 w-3 transform rounded-full bg-surface-base transition-transform ${
                               pref.inapp ? 'translate-x-5' : 'translate-x-1'
                             }`}
                           />
                         </button>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer">
-                        <span className="text-xs text-zinc-500">Email</span>
+                        <span className="text-xs text-muted">Email</span>
                         <button
                           onClick={() => toggle(scope, 'email', !pref.email)}
                           disabled={saving === `${scope}:email`}
-                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
-                            pref.email ? 'bg-amber-500' : 'bg-zinc-700'
+                          className={`relative inline-flex h-5 w-9 items-center transition-colors focus:outline-none ${
+                            pref.email ? 'bg-warning' : 'bg-surface-elevated'
                           }`}
                         >
                           <span
-                            className={`inline-block h-3 w-3 transform rounded-full bg-zinc-900 transition-transform ${
+                            className={`inline-block h-3 w-3 transform rounded-full bg-surface-base transition-transform ${
                               pref.email ? 'translate-x-5' : 'translate-x-1'
                             }`}
                           />

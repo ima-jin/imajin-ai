@@ -208,20 +208,20 @@ function OnboardContent() {
         {/* Scope header */}
         <div className="text-center space-y-3">
           {scopeLoading ? (
-            <div className="w-16 h-16 rounded-full bg-gray-800 mx-auto animate-pulse" />
+            <div className="w-16 h-16 rounded-full bg-surface-elevated mx-auto animate-pulse" />
           ) : scopeProfile?.avatarUrl ? (
-            <img src={scopeProfile.avatarUrl} alt="" className="w-16 h-16 rounded-full mx-auto object-cover border border-gray-700" />
+            <img src={scopeProfile.avatarUrl} alt="" className="w-16 h-16 rounded-full mx-auto object-cover border border-white/10" />
           ) : (
-            <div className="w-16 h-16 rounded-full bg-gray-800 mx-auto flex items-center justify-center text-2xl">
+            <div className="w-16 h-16 rounded-full bg-surface-elevated mx-auto flex items-center justify-center text-2xl">
               {scopeProfile?.scope === 'business' ? '🏢' : scopeProfile?.scope === 'family' ? '👨‍👩‍👦' : '🏛️'}
             </div>
           )}
           <div>
-            <h1 className="text-xl font-bold text-white">
+            <h1 className="text-xl font-bold text-primary font-mono">
               {scopeName ? `Join ${scopeName}` : 'Get started'}
             </h1>
             {scopeProfile?.scope && (
-              <span className="inline-block mt-1 px-2 py-0.5 text-xs rounded-full border border-gray-700 text-gray-400 capitalize">
+              <span className="inline-block mt-1 px-2 py-0.5 text-xs border border-white/10 text-secondary capitalize">
                 {scopeProfile.scope}
               </span>
             )}
@@ -231,27 +231,27 @@ function OnboardContent() {
         {/* Flows */}
         {!sessionChecked && scope && (
           <div className="text-center py-6">
-            <div className="text-gray-600 text-sm">Loading…</div>
+            <div className="text-muted text-sm">Loading…</div>
           </div>
         )}
 
         {flow === 'join' && sessionInfo && (
           <div className="space-y-3">
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center space-y-2">
-              <p className="text-sm text-gray-400">
-                Signed in as <span className="text-white font-medium">{sessionInfo.name || sessionInfo.handle || sessionInfo.did.slice(0, 20)}</span>
+            <div className="bg-surface-surface border border-white/10 p-5 text-center space-y-2">
+              <p className="text-sm text-secondary">
+                Signed in as <span className="text-primary font-medium">{sessionInfo.name || sessionInfo.handle || sessionInfo.did.slice(0, 20)}</span>
               </p>
             </div>
-            {joinError && <p className="text-red-400 text-sm text-center">{joinError}</p>}
+            {joinError && <p className="text-error text-sm text-center">{joinError}</p>}
             <button
               onClick={handleJoin}
-              className="w-full py-3 bg-amber-500 hover:bg-amber-400 rounded-xl text-gray-950 font-semibold transition"
+              className="w-full py-3 bg-warning hover:bg-warning text-gray-950 font-semibold transition"
             >
               Join {scopeName || 'this group'}
             </button>
             <button
               onClick={() => setFlow('choose')}
-              className="w-full py-2 text-sm text-gray-500 hover:text-gray-300 transition"
+              className="w-full py-2 text-sm text-secondary hover:text-primary transition"
             >
               Use a different account
             </button>
@@ -261,20 +261,20 @@ function OnboardContent() {
         {flow === 'join-loading' && (
           <div className="text-center space-y-3 py-6">
             <div className="text-3xl animate-pulse">🤝</div>
-            <p className="text-gray-400 text-sm">Joining…</p>
+            <p className="text-secondary text-sm">Joining…</p>
           </div>
         )}
 
         {flow === 'join-done' && (
-          <div className="text-center space-y-4 bg-gray-900 border border-gray-800 rounded-2xl p-6">
+          <div className="text-center space-y-4 bg-surface-surface border border-white/10 p-6">
             <div className="text-4xl">✅</div>
-            <h2 className="text-white font-semibold">You&apos;re in!</h2>
-            <p className="text-gray-400 text-sm">
+            <h2 className="text-primary font-semibold font-mono">You&apos;re in!</h2>
+            <p className="text-secondary text-sm">
               You&apos;ve joined {scopeName || 'this group'}.
             </p>
             <a
               href={redirect || '/'}
-              className="inline-block px-6 py-2.5 bg-amber-500 hover:bg-amber-400 rounded-xl text-gray-950 font-semibold transition no-underline"
+              className="inline-block px-6 py-2.5 bg-warning hover:bg-warning text-gray-950 font-semibold transition no-underline"
             >
               Continue
             </a>
@@ -285,21 +285,21 @@ function OnboardContent() {
           <div className="space-y-3">
             <button
               onClick={() => setFlow('email')}
-              className="w-full flex items-center gap-3 px-4 py-3 bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-gray-600 rounded-xl text-white transition text-left"
+              className="w-full flex items-center gap-3 px-4 py-3 bg-surface-surface hover:bg-surface-elevated border border-white/10 hover:border-gray-600 text-primary transition text-left"
             >
               <span className="text-lg">📧</span>
               <span className="font-medium">Continue with email</span>
             </button>
             <button
               onClick={handleGenerateKeypair}
-              className="w-full flex items-center gap-3 px-4 py-3 bg-amber-500 hover:bg-amber-400 rounded-xl text-gray-950 transition text-left font-semibold"
+              className="w-full flex items-center gap-3 px-4 py-3 bg-warning hover:bg-warning text-gray-950 transition text-left font-semibold"
             >
               <span className="text-lg">🔑</span>
               <span>Create identity</span>
             </button>
             <a
               href={loginUrl}
-              className="w-full flex items-center justify-center px-4 py-3 bg-transparent border border-gray-800 hover:border-gray-600 rounded-xl text-gray-400 hover:text-gray-200 transition text-sm no-underline"
+              className="w-full flex items-center justify-center px-4 py-3 bg-transparent border border-white/10 hover:border-gray-600 text-secondary hover:text-primary transition text-sm no-underline"
             >
               Already have an account? Log in
             </a>
@@ -313,7 +313,7 @@ function OnboardContent() {
               placeholder="Your name (optional)"
               value={name}
               onChange={e => setName(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-900 border border-gray-700 focus:border-amber-500 rounded-xl text-white placeholder-gray-600 outline-none transition"
+              className="w-full px-4 py-3 bg-surface-surface border border-white/10 focus:border-imajin-purple text-primary placeholder-muted outline-none transition"
             />
             <input
               type="email"
@@ -322,20 +322,20 @@ function OnboardContent() {
               onChange={e => setEmail(e.target.value)}
               required
               autoFocus
-              className="w-full px-4 py-3 bg-gray-900 border border-gray-700 focus:border-amber-500 rounded-xl text-white placeholder-gray-600 outline-none transition"
+              className="w-full px-4 py-3 bg-surface-surface border border-white/10 focus:border-imajin-purple text-primary placeholder-muted outline-none transition"
             />
-            {emailError && <p className="text-red-400 text-sm">{emailError}</p>}
+            {emailError && <p className="text-error text-sm">{emailError}</p>}
             <button
               type="submit"
               disabled={emailLoading}
-              className="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 rounded-xl text-gray-950 font-semibold transition"
+              className="w-full py-3 bg-warning hover:bg-warning disabled:opacity-50 text-gray-950 font-semibold transition"
             >
               {emailLoading ? 'Sending…' : 'Send verification email'}
             </button>
             <button
               type="button"
               onClick={() => setFlow('choose')}
-              className="w-full py-2 text-sm text-gray-500 hover:text-gray-300 transition"
+              className="w-full py-2 text-sm text-secondary hover:text-primary transition"
             >
               ← Back
             </button>
@@ -343,32 +343,32 @@ function OnboardContent() {
         )}
 
         {flow === 'email-sent' && (
-          <div className="text-center space-y-4 bg-gray-900 border border-gray-800 rounded-2xl p-6">
+          <div className="text-center space-y-4 bg-surface-surface border border-white/10 p-6">
             <div className="text-4xl">📬</div>
-            <h2 className="text-white font-semibold">Check your email</h2>
-            <p className="text-gray-400 text-sm">
-              We sent a verification link to <strong className="text-white">{email}</strong>.
+            <h2 className="text-primary font-semibold font-mono">Check your email</h2>
+            <p className="text-secondary text-sm">
+              We sent a verification link to <strong className="text-primary">{email}</strong>.
               Click it to continue.
             </p>
-            <p className="text-gray-600 text-xs">Link expires in 15 minutes.</p>
+            <p className="text-muted text-xs">Link expires in 15 minutes.</p>
           </div>
         )}
 
         {flow === 'keypair-confirm' && keypair && (
           <div className="space-y-4">
-            <div className="bg-gray-900 border border-amber-600/40 rounded-2xl p-5 space-y-4">
+            <div className="bg-surface-surface border border-amber-600/40 p-5 space-y-4">
               <div className="flex items-start gap-3">
                 <span className="text-xl mt-0.5">⚠️</span>
                 <div>
-                  <p className="text-white font-semibold text-sm">Save your recovery key</p>
-                  <p className="text-gray-400 text-sm mt-1">
+                  <p className="text-primary font-semibold text-sm">Save your recovery key</p>
+                  <p className="text-secondary text-sm mt-1">
                     This is your only way to recover your identity. If you lose it, your account cannot be recovered.
                   </p>
                 </div>
               </div>
               <button
                 onClick={downloadKeypair}
-                className="w-full flex items-center justify-center gap-2 py-2.5 border border-gray-700 hover:border-amber-500 rounded-xl text-gray-300 hover:text-amber-400 transition text-sm"
+                className="w-full flex items-center justify-center gap-2 py-2.5 border border-white/10 hover:border-amber-500 text-primary hover:text-warning transition text-sm"
               >
                 ⬇ Download imajin-identity.json
               </button>
@@ -379,21 +379,21 @@ function OnboardContent() {
                   onChange={e => setKeypairAck(e.target.checked)}
                   className="mt-1 accent-amber-500"
                 />
-                <span className="text-gray-400 text-sm">I have saved my recovery key and understand it cannot be recovered if lost.</span>
+                <span className="text-secondary text-sm">I have saved my recovery key and understand it cannot be recovered if lost.</span>
               </label>
             </div>
-            {keypairError && <p className="text-red-400 text-sm">{keypairError}</p>}
+            {keypairError && <p className="text-error text-sm">{keypairError}</p>}
             <button
               onClick={handleKeypairContinue}
               disabled={!keypairAck}
-              className="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 rounded-xl text-gray-950 font-semibold transition"
+              className="w-full py-3 bg-warning hover:bg-warning disabled:opacity-40 text-gray-950 font-semibold transition"
             >
               Continue →
             </button>
             <button
               type="button"
               onClick={() => setFlow('choose')}
-              className="w-full py-2 text-sm text-gray-500 hover:text-gray-300 transition"
+              className="w-full py-2 text-sm text-secondary hover:text-primary transition"
             >
               ← Back
             </button>
@@ -403,12 +403,12 @@ function OnboardContent() {
         {flow === 'keypair-loading' && (
           <div className="text-center space-y-3 py-6">
             <div className="text-3xl animate-pulse">🔑</div>
-            <p className="text-gray-400 text-sm">Creating your identity…</p>
+            <p className="text-secondary text-sm">Creating your identity…</p>
           </div>
         )}
 
         {/* Footer */}
-        <p className="text-center text-xs text-gray-600">Powered by Imajin</p>
+        <p className="text-center text-xs text-muted">Powered by Imajin</p>
       </div>
     </div>
   );
@@ -418,7 +418,7 @@ export default function OnboardPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-        <div className="text-gray-600 text-sm">Loading…</div>
+        <div className="text-muted text-sm">Loading…</div>
       </div>
     }>
       <OnboardContent />

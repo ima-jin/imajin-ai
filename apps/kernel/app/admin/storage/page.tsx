@@ -60,63 +60,63 @@ export default async function AdminStoragePage() {
   return (
     <div className="p-6 lg:p-8 max-w-6xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Storage</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-primary font-mono">Storage</h1>
+        <p className="mt-1 text-sm text-secondary dark:text-secondary">
           Media assets and storage usage
         </p>
       </div>
 
       {/* Overview stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-5">
-          <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Total Assets</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalAssets.toLocaleString()}</p>
+        <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 p-5">
+          <p className="text-xs text-secondary dark:text-secondary uppercase tracking-wide mb-1">Total Assets</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-primary">{totalAssets.toLocaleString()}</p>
         </div>
-        <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-5">
-          <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Total Size</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatBytes(totalSize)}</p>
+        <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 p-5">
+          <p className="text-xs text-secondary dark:text-secondary uppercase tracking-wide mb-1">Total Size</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-primary">{formatBytes(totalSize)}</p>
         </div>
-        <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-5">
-          <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Unique Uploaders</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{uniqueUploaders.toLocaleString()}</p>
+        <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 p-5">
+          <p className="text-xs text-secondary dark:text-secondary uppercase tracking-wide mb-1">Unique Uploaders</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-primary">{uniqueUploaders.toLocaleString()}</p>
         </div>
       </div>
 
       {/* Top Uploaders */}
-      <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 overflow-hidden mb-6">
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Top Uploaders</h2>
+      <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 overflow-hidden mb-6">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-white/10">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-primary font-mono">Top Uploaders</h2>
         </div>
         {topUploaders.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">No assets yet</p>
+          <p className="px-6 py-8 text-sm text-secondary dark:text-secondary text-center">No assets yet</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Owner</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Assets</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total Size</th>
+                <tr className="bg-gray-50 dark:bg-surface-elevated/50 border-b border-gray-100 dark:border-white/10">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Owner</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Assets</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Total Size</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              <tbody className="divide-y divide-gray-100 dark:divide-white/10">
                 {topUploaders.map((row) => {
                   const ownerDid = row.owner_did as string;
                   const displayName = row.display_name as string | null;
                   return (
-                    <tr key={ownerDid} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                    <tr key={ownerDid} className="hover:bg-gray-50 dark:hover:bg-surface-elevated/40">
                       <td className="px-4 py-3">
                         {displayName && (
-                          <p className="text-sm text-gray-900 dark:text-white">{displayName}</p>
+                          <p className="text-sm text-gray-900 dark:text-primary">{displayName}</p>
                         )}
-                        <p className="font-mono text-xs text-gray-500 dark:text-gray-400">
+                        <p className="font-mono text-xs text-secondary dark:text-secondary">
                           {ownerDid.slice(0, 32)}…
                         </p>
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <td className="px-4 py-3 text-gray-700 dark:text-primary">
                         {Number(row.asset_count).toLocaleString()}
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <td className="px-4 py-3 text-gray-700 dark:text-primary">
                         {formatBytes(Number(row.total_size ?? 0))}
                       </td>
                     </tr>
@@ -129,45 +129,45 @@ export default async function AdminStoragePage() {
       </div>
 
       {/* Recent Assets */}
-      <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 overflow-hidden mb-6">
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Recent Assets</h2>
+      <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 overflow-hidden mb-6">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-white/10">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-primary font-mono">Recent Assets</h2>
         </div>
         {recentAssets.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">No assets yet</p>
+          <p className="px-6 py-8 text-sm text-secondary dark:text-secondary text-center">No assets yet</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Filename</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Type</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Size</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Owner</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Uploaded</th>
+                <tr className="bg-gray-50 dark:bg-surface-elevated/50 border-b border-gray-100 dark:border-white/10">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Filename</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Type</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Size</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Owner</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Uploaded</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              <tbody className="divide-y divide-gray-100 dark:divide-white/10">
                 {recentAssets.map((asset) => {
                   const id = asset.id as string;
                   const createdAt = asset.created_at as Date;
                   return (
-                    <tr key={id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                      <td className="px-4 py-3 font-mono text-xs text-gray-900 dark:text-white">
+                    <tr key={id} className="hover:bg-gray-50 dark:hover:bg-surface-elevated/40">
+                      <td className="px-4 py-3 font-mono text-xs text-gray-900 dark:text-primary">
                         {asset.filename ? String(asset.filename) : id.slice(0, 16) + '…'}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
+                        <span className="text-xs bg-gray-100 dark:bg-surface-elevated text-muted dark:text-secondary px-2 py-0.5 ">
                           {asset.mime_type as string}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-300">
+                      <td className="px-4 py-3 text-xs text-gray-700 dark:text-primary">
                         {formatBytes(Number(asset.size ?? 0))}
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
+                      <td className="px-4 py-3 font-mono text-xs text-secondary dark:text-secondary">
                         {String(asset.owner_did).slice(0, 20)}…
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      <td className="px-4 py-3 text-xs text-secondary dark:text-secondary whitespace-nowrap">
                         {createdAt
                           ? formatDistanceToNow(new Date(createdAt), { addSuffix: true })
                           : '—'}
@@ -182,46 +182,46 @@ export default async function AdminStoragePage() {
       </div>
 
       {/* Orphan Detection */}
-      <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Orphaned Assets</h2>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
+      <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-white/10 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-primary font-mono">Orphaned Assets</h2>
+          <span className="text-xs text-secondary dark:text-secondary">
             {orphans.length} found (showing first 20)
           </span>
         </div>
         {orphans.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">
+          <p className="px-6 py-8 text-sm text-secondary dark:text-secondary text-center">
             No orphaned assets found
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Filename</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Type</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Size</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Uploaded</th>
+                <tr className="bg-gray-50 dark:bg-surface-elevated/50 border-b border-gray-100 dark:border-white/10">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Filename</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Type</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Size</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Uploaded</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              <tbody className="divide-y divide-gray-100 dark:divide-white/10">
                 {orphans.map((asset) => {
                   const id = asset.id as string;
                   const createdAt = asset.created_at as Date;
                   return (
-                    <tr key={id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                      <td className="px-4 py-3 font-mono text-xs text-gray-900 dark:text-white">
+                    <tr key={id} className="hover:bg-gray-50 dark:hover:bg-surface-elevated/40">
+                      <td className="px-4 py-3 font-mono text-xs text-gray-900 dark:text-primary">
                         {asset.filename ? String(asset.filename) : id.slice(0, 16) + '…'}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400 px-2 py-0.5 rounded">
+                        <span className="text-xs bg-yellow-100 dark:bg-warning/20/40 text-warning dark:text-warning px-2 py-0.5 ">
                           {asset.mime_type as string}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-300">
+                      <td className="px-4 py-3 text-xs text-gray-700 dark:text-primary">
                         {formatBytes(Number(asset.size ?? 0))}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      <td className="px-4 py-3 text-xs text-secondary dark:text-secondary whitespace-nowrap">
                         {createdAt
                           ? formatDistanceToNow(new Date(createdAt), { addSuffix: true })
                           : '—'}

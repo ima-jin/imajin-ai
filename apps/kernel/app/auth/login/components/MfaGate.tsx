@@ -99,9 +99,9 @@ export default function MfaGate({ methods, challengeToken, did, nextUrl, onSucce
 
   return (
     <div className="max-w-md mx-auto">
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-        <h1 className="text-2xl font-bold mb-2 text-center text-white">Verify your identity</h1>
-        <p className="text-gray-400 text-center mb-6 text-sm">Complete one verification method to continue</p>
+      <div className="bg-[#0a0a0a] border border-white/10 p-8">
+        <h1 className="text-2xl font-bold mb-2 text-center text-primary font-mono">Verify your identity</h1>
+        <p className="text-secondary text-center mb-6 text-sm">Complete one verification method to continue</p>
 
         {/* Method selector (only if multiple methods) */}
         {methods.length > 1 && (
@@ -110,7 +110,7 @@ export default function MfaGate({ methods, challengeToken, did, nextUrl, onSucce
               <button
                 key={m}
                 onClick={() => { setSelectedMethod(m); setCode(''); setError(''); setEmailSent(false); }}
-                className={`flex-1 px-3 py-2 rounded-lg text-sm transition ${selectedMethod === m ? 'bg-[#F59E0B] text-black font-medium' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`}
+                className={`flex-1 px-3 py-2 text-sm transition ${selectedMethod === m ? 'bg-[#F59E0B] text-black font-medium' : 'bg-surface-surface text-secondary hover:bg-surface-elevated'}`}
               >
                 {methodLabel(m)}
               </button>
@@ -121,13 +121,13 @@ export default function MfaGate({ methods, challengeToken, did, nextUrl, onSucce
         {/* Email: send code first */}
         {selectedMethod === 'email' && !emailSent && (
           <div className="mb-6">
-            <p className="text-sm text-gray-400 mb-4">
+            <p className="text-sm text-secondary mb-4">
               We&apos;ll send a 6-digit code to your registered email address.
             </p>
             <button
               onClick={handleSendEmailCode}
               disabled={emailSending}
-              className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-6 py-3 bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {emailSending ? 'Sending…' : 'Send code to email'}
             </button>
@@ -138,13 +138,13 @@ export default function MfaGate({ methods, challengeToken, did, nextUrl, onSucce
         {(selectedMethod === 'totp' || (selectedMethod === 'email' && emailSent)) && (
           <form onSubmit={handleSubmit} className="space-y-4">
             {selectedMethod === 'email' && emailSent && (
-              <div className="p-3 bg-green-900/20 border border-green-800 rounded-lg mb-4">
-                <p className="text-sm text-green-400">Code sent! Check your email.</p>
+              <div className="p-3 bg-success/20 border border-green-800 mb-4">
+                <p className="text-sm text-success">Code sent! Check your email.</p>
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium mb-2 text-gray-300">
+              <label className="block text-sm font-medium mb-2 text-primary">
                 {selectedMethod === 'totp' ? 'Enter 6-digit code from your authenticator app' : 'Enter the 6-digit code from your email'}
               </label>
               <input
@@ -157,13 +157,13 @@ export default function MfaGate({ methods, challengeToken, did, nextUrl, onSucce
                 placeholder="000000"
                 maxLength={6}
                 required
-                className="w-full px-4 py-3 border border-gray-700 rounded-lg bg-black text-white text-center text-2xl font-mono tracking-widest focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                className="w-full px-4 py-3 border border-white/10 bg-surface-base text-primary text-center text-2xl font-mono tracking-widest focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
               />
             </div>
 
             {error && (
-              <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg">
-                <p className="text-sm text-red-400">{error}</p>
+              <div className="p-3 bg-error/20 border border-red-800">
+                <p className="text-sm text-error">{error}</p>
               </div>
             )}
 
@@ -174,14 +174,14 @@ export default function MfaGate({ methods, challengeToken, did, nextUrl, onSucce
                 onChange={e => setTrustDevice(e.target.checked)}
                 className="w-4 h-4 accent-[#F59E0B]"
               />
-              <span className="text-sm text-gray-400">Trust this device for 30 days</span>
+              <span className="text-sm text-secondary">Trust this device for 30 days</span>
             </label>
 
             <button
               id="mfa-submit-btn"
               type="submit"
               disabled={loading || code.length !== 6}
-              className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-6 py-3 bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Verifying…' : 'Verify'}
             </button>
@@ -189,14 +189,14 @@ export default function MfaGate({ methods, challengeToken, did, nextUrl, onSucce
         )}
 
         {error && selectedMethod === 'email' && !emailSent && (
-          <div className="mt-4 p-3 bg-red-900/20 border border-red-800 rounded-lg">
-            <p className="text-sm text-red-400">{error}</p>
+          <div className="mt-4 p-3 bg-error/20 border border-red-800">
+            <p className="text-sm text-error">{error}</p>
           </div>
         )}
 
         <button
           onClick={onCancel}
-          className="mt-4 w-full text-sm text-gray-500 hover:text-gray-300 transition"
+          className="mt-4 w-full text-sm text-secondary hover:text-primary transition"
         >
           ← Back to sign in
         </button>

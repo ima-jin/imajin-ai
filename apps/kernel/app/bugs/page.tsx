@@ -8,11 +8,11 @@ import { BugReporterOpenButton } from '@/src/components/www/BugReporterOpenButto
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
 const STATUS_STYLES: Record<string, string> = {
-  new: 'bg-gray-700 text-gray-300',
+  new: 'bg-surface-elevated text-primary',
   reviewed: 'bg-blue-900 text-blue-300',
-  imported: 'bg-green-900 text-green-300',
-  ignored: 'bg-red-900 text-red-300',
-  duplicate: 'bg-yellow-900 text-yellow-300',
+  imported: 'bg-success text-success',
+  ignored: 'bg-error text-error',
+  duplicate: 'bg-warning/20 text-warning',
   resolved: 'bg-emerald-900 text-emerald-300',
 };
 
@@ -27,7 +27,7 @@ const TYPE_EMOJI: Record<string, string> = {
 
 function StatusBadge({ status }: { status: string }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLES[status] ?? 'bg-gray-700 text-gray-300'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5  text-xs font-medium ${STATUS_STYLES[status] ?? 'bg-surface-elevated text-primary'}`}>
       {status}
     </span>
   );
@@ -46,7 +46,7 @@ interface ReporterInfo {
 
 function ReportCard({ r, reporter }: { r: BugReport; reporter?: ReporterInfo }) {
   return (
-    <li className="rounded-xl border border-gray-800 bg-[#111] p-5">
+    <li className="border border-white/10 bg-[#111] p-5">
       <div className="flex items-start gap-4">
         {r.screenshotUrl && (
           <a href={r.screenshotUrl} target="_blank" rel="noreferrer" className="shrink-0">
@@ -54,25 +54,25 @@ function ReportCard({ r, reporter }: { r: BugReport; reporter?: ReporterInfo }) 
             <img
               src={r.screenshotUrl}
               alt="Screenshot"
-              className="h-16 w-16 rounded object-cover border border-gray-700"
+              className="h-16 w-16 object-cover border border-white/10"
             />
           </a>
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-gray-200 line-clamp-3 mb-2">{r.description}</p>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          <p className="text-sm text-primary line-clamp-3 mb-2">{r.description}</p>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-secondary">
             {reporter && (
               <span className="inline-flex items-center gap-1.5">
                 {reporter.avatar && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={reporter.avatar} alt="" className="w-4 h-4 rounded-full object-cover" />
                 )}
-                <span className="text-gray-400">
+                <span className="text-secondary">
                   {reporter.handle ? `@${reporter.handle}` : reporter.displayName ?? 'Anonymous'}
                 </span>
               </span>
             )}
-            <span className="inline-flex items-center px-2 py-0.5 rounded font-medium bg-gray-700 text-gray-300">
+            <span className="inline-flex items-center px-2 py-0.5 font-medium bg-surface-elevated text-primary">
               {TYPE_EMOJI[r.type] ?? '🐛'}
             </span>
             <StatusBadge status={r.status} />
@@ -82,13 +82,13 @@ function ReportCard({ r, reporter }: { r: BugReport; reporter?: ReporterInfo }) 
                 href={r.githubIssueUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-orange-400 hover:text-orange-300 transition-colors"
+                className="text-imajin-orange hover:text-imajin-orange/70 transition-colors"
               >
                 #{r.githubIssueNumber} on GitHub →
               </a>
             )}
             {r.status === 'duplicate' && r.duplicateOf && (
-              <span className="text-yellow-500">Duplicate of {r.duplicateOf}</span>
+              <span className="text-warning">Duplicate of {r.duplicateOf}</span>
             )}
             {r.pageUrl && (
               <span className="truncate max-w-[200px]" title={r.pageUrl}>
@@ -152,8 +152,8 @@ export default async function BugsPage({ searchParams }: PageProps) {
       {/* Header with report button */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-100 mb-1">Bug Reports</h1>
-          <p className="text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-primary mb-1 font-mono">Bug Reports</h1>
+          <p className="text-sm text-secondary">
             {allReports.length} report{allReports.length !== 1 ? 's' : ''}{filter !== 'all' ? ` (${filter})` : ''}
           </p>
         </div>
@@ -166,10 +166,10 @@ export default async function BugsPage({ searchParams }: PageProps) {
           <Link
             key={f}
             href={f === 'open' ? '/bugs' : `/bugs?filter=${f}`}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-3 py-1.5 text-sm font-medium transition-colors ${
               filter === f
-                ? 'bg-orange-500 text-white'
-                : 'bg-[#1a1a1a] text-gray-400 hover:text-gray-200 border border-gray-700'
+                ? 'bg-imajin-orange text-primary'
+                : 'bg-[#1a1a1a] text-secondary hover:text-primary border border-white/10'
             }`}
           >
             {f === 'open' ? '🔴 Open' : f === 'closed' ? '✅ Closed' : '📋 All'}
@@ -179,14 +179,14 @@ export default async function BugsPage({ searchParams }: PageProps) {
 
       {/* My Reports */}
       <section className="mb-10">
-        <h2 className="text-lg font-semibold text-gray-200 mb-4">My Reports</h2>
+        <h2 className="text-lg font-semibold text-primary mb-4 font-mono">My Reports</h2>
         {myReports.length === 0 ? (
-          <div className="rounded-xl border border-gray-800 bg-[#111] px-6 py-8 text-center">
-            <p className="text-gray-500">
+          <div className="border border-white/10 bg-[#111] px-6 py-8 text-center">
+            <p className="text-secondary">
               {filter === 'open' ? "You don't have any open reports." : filter === 'closed' ? "No closed reports." : "You haven't reported anything yet."}
             </p>
             {filter === 'open' && (
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-muted mt-1">
                 Found something off? Hit the button above or use the 🐛 in the bottom-right corner.
               </p>
             )}
@@ -200,10 +200,10 @@ export default async function BugsPage({ searchParams }: PageProps) {
 
       {/* All Reported Issues */}
       <section>
-        <h2 className="text-lg font-semibold text-gray-200 mb-4">All Reported Issues</h2>
+        <h2 className="text-lg font-semibold text-primary mb-4 font-mono">All Reported Issues</h2>
         {otherReports.length === 0 ? (
-          <div className="rounded-xl border border-gray-800 bg-[#111] px-6 py-8 text-center">
-            <p className="text-gray-500">No {filter !== 'all' ? filter : 'other'} reports from others.</p>
+          <div className="border border-white/10 bg-[#111] px-6 py-8 text-center">
+            <p className="text-secondary">No {filter !== 'all' ? filter : 'other'} reports from others.</p>
           </div>
         ) : (
           <ul className="space-y-4">
@@ -213,7 +213,7 @@ export default async function BugsPage({ searchParams }: PageProps) {
       </section>
 
       <div className="mt-8">
-        <Link href="/" className="text-orange-400 hover:text-orange-300 text-sm transition-colors">
+        <Link href="/" className="text-imajin-orange hover:text-imajin-orange/70 text-sm transition-colors">
           ← Back to home
         </Link>
       </div>

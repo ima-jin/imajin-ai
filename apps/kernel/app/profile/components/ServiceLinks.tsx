@@ -20,7 +20,7 @@ export function ServiceLinks({ profile, viewerDid }: ServiceLinksProps) {
       {profile.featureToggles?.links && (
         <a
           href={`${buildPublicUrl('links')}/${profile.featureToggles.links}`}
-          className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-white text-sm font-medium"
+          className="px-4 py-2 bg-surface-surface border border-white/10 hover:bg-surface-elevated transition text-primary text-sm font-medium"
         >
           🔗 Links
         </a>
@@ -28,7 +28,7 @@ export function ServiceLinks({ profile, viewerDid }: ServiceLinksProps) {
       {profile.featureToggles?.coffee && (
         <a
           href={`${buildPublicUrl('coffee')}/${profile.featureToggles.coffee}`}
-          className="px-4 py-2 bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B] rounded-lg hover:bg-[#F59E0B]/20 transition border text-sm font-medium"
+          className="px-4 py-2 bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B] hover:bg-[#F59E0B]/20 transition border text-sm font-medium"
         >
           ☕ Tip Me
         </a>

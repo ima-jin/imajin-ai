@@ -76,10 +76,10 @@ function FolderRow({
   return (
     <>
       <div
-        className={`group flex items-center gap-1 px-2 py-1.5 rounded-md cursor-pointer select-none transition-colors ${
+        className={`group flex items-center gap-1 px-2 py-1.5 cursor-pointer select-none transition-colors ${
           isSelected
-            ? "bg-orange-500 text-white"
-            : "text-gray-300 hover:bg-white/10"
+            ? "bg-imajin-orange text-primary"
+            : "text-primary hover:bg-white/10"
         }`}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
         onClick={() => onSelect(node.id)}
@@ -99,16 +99,16 @@ function FolderRow({
         <span className="text-sm truncate flex-1">{node.name}</span>
         {count !== undefined && count > 0 && (
           <span
-            className={`text-xs px-1.5 py-0.5 rounded-full shrink-0 ${
-              isSelected ? "bg-white/20 text-white" : "bg-white/10 text-gray-400"
+            className={`text-xs px-1.5 py-0.5 shrink-0 ${
+              isSelected ? "bg-white/20 text-primary" : "bg-white/10 text-secondary"
             }`}
           >
             {count}
           </span>
         )}
         <button
-          className={`opacity-0 group-hover:opacity-100 p-0.5 rounded text-xs transition-opacity ${
-            isSelected ? "text-white hover:bg-white/20" : "text-gray-400 hover:bg-white/10"
+          className={`opacity-0 group-hover:opacity-100 p-0.5  text-xs transition-opacity ${
+            isSelected ? "text-primary hover:bg-white/20" : "text-secondary hover:bg-white/10"
           }`}
           onClick={(e) => {
             e.stopPropagation();
@@ -220,10 +220,10 @@ export function FolderTree({
       <div className="flex-1 overflow-y-auto py-1 space-y-0.5">
         {/* All Files */}
         <div
-          className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer select-none transition-colors ${
+          className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer select-none transition-colors ${
             selectedFolderId === null
-              ? "bg-orange-500 text-white"
-              : "text-gray-300 hover:bg-white/10"
+              ? "bg-imajin-orange text-primary"
+              : "text-primary hover:bg-white/10"
           }`}
           onClick={() => onSelect(null)}
         >
@@ -232,10 +232,10 @@ export function FolderTree({
           <span className="text-sm flex-1">All Files</span>
           {totalCount > 0 && (
             <span
-              className={`text-xs px-1.5 py-0.5 rounded-full ${
+              className={`text-xs px-1.5 py-0.5 ${
                 selectedFolderId === null
-                  ? "bg-white/20 text-white"
-                  : "bg-white/10 text-gray-400"
+                  ? "bg-white/20 text-primary"
+                  : "bg-white/10 text-secondary"
               }`}
             >
               {totalCount}
@@ -263,7 +263,7 @@ export function FolderTree({
       {onCreateFolder && (
         <div className="pt-2 border-t border-white/10">
           <button
-            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors"
+            className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-secondary hover:text-primary hover:bg-white/10 transition-colors"
             onClick={() => onCreateFolder(selectedFolderId)}
           >
             <span>＋</span>
@@ -276,12 +276,12 @@ export function FolderTree({
       {contextMenu && (
         <div
           ref={menuRef}
-          className="fixed z-50 min-w-36 bg-[#2a2a2a] border border-white/10 rounded-lg shadow-xl py-1"
+          className="fixed z-50 min-w-36 bg-[#2a2a2a] border border-white/10 py-1"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           {onCreateFolder && (
             <button
-              className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
+              className="w-full text-left px-3 py-1.5 text-sm text-primary hover:bg-white/10 transition-colors"
               onClick={() => { onCreateFolder(contextMenu.folderId); closeMenu(); }}
             >
               New Subfolder
@@ -289,7 +289,7 @@ export function FolderTree({
           )}
           {!contextMenu.isSystem && onRenameFolder && (
             <button
-              className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
+              className="w-full text-left px-3 py-1.5 text-sm text-primary hover:bg-white/10 transition-colors"
               onClick={() => startRename(contextMenu.folderId)}
             >
               Rename
@@ -297,7 +297,7 @@ export function FolderTree({
           )}
           {!contextMenu.isSystem && onDeleteFolder && (
             <button
-              className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-white/10 transition-colors"
+              className="w-full text-left px-3 py-1.5 text-sm text-error hover:bg-white/10 transition-colors"
               onClick={() => handleDelete(contextMenu.folderId)}
             >
               Delete
@@ -309,17 +309,17 @@ export function FolderTree({
       {/* Rename overlay */}
       {renamingId && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-surface-base/60"
           onClick={() => setRenamingId(null)}
         >
           <div
-            className="bg-[#2a2a2a] border border-white/10 rounded-lg shadow-xl p-4 w-72"
+            className="bg-[#2a2a2a] border border-white/10 p-4 w-72"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="text-sm text-gray-300 mb-2">Rename folder</p>
+            <p className="text-sm text-primary mb-2">Rename folder</p>
             <input
               ref={renameInputRef}
-              className="w-full bg-[#1a1a1a] border border-white/10 rounded-md px-3 py-1.5 text-sm text-gray-100 outline-none focus:border-orange-500 transition-colors"
+              className="w-full bg-[#1a1a1a] border border-white/10 px-3 py-1.5 text-sm text-primary outline-none focus:border-imajin-orange transition-colors"
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
               onKeyDown={(e) => {
@@ -329,13 +329,13 @@ export function FolderTree({
             />
             <div className="flex gap-2 mt-3 justify-end">
               <button
-                className="px-3 py-1 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+                className="px-3 py-1 text-sm text-secondary hover:text-primary transition-colors"
                 onClick={() => setRenamingId(null)}
               >
                 Cancel
               </button>
               <button
-                className="px-3 py-1 text-sm bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-colors"
+                style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="px-3 py-1 text-sm text-primary hover:brightness-110 transition-colors"
                 onClick={commitRename}
               >
                 Rename
@@ -352,7 +352,7 @@ export function FolderTree({
     return (
       <>
         <button
-          className="fixed top-4 left-4 z-40 p-2 rounded-md bg-[#2a2a2a] border border-white/10 text-gray-300 hover:text-white transition-colors md:hidden"
+          className="fixed top-4 left-4 z-40 p-2 bg-[#2a2a2a] border border-white/10 text-primary hover:text-primary transition-colors md:hidden"
           onClick={() => setMobileOpen(true)}
           aria-label="Open folder tree"
         >
@@ -360,7 +360,7 @@ export function FolderTree({
         </button>
         {mobileOpen && (
           <div className="fixed inset-0 z-40 flex">
-            <div role="button" tabIndex={0} aria-label="Close menu" className="fixed inset-0 bg-black/60" onClick={() => setMobileOpen(false)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') setMobileOpen(false); }} />
+            <div role="button" tabIndex={0} aria-label="Close menu" className="fixed inset-0 bg-surface-base/60" onClick={() => setMobileOpen(false)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') setMobileOpen(false); }} />
             <div className="relative z-50 w-64 h-full bg-[#1a1a1a] border-r border-white/10 p-3">
               {treeContent}
             </div>

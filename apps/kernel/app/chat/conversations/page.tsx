@@ -203,7 +203,7 @@ export default function ConversationsPage() {
 
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto mt-20 text-center text-gray-500">Loading...</div>
+      <div className="max-w-2xl mx-auto mt-20 text-center text-secondary">Loading...</div>
     );
   }
 
@@ -212,10 +212,10 @@ export default function ConversationsPage() {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Messages</h1>
+        <h1 className="text-2xl font-bold font-mono">Messages</h1>
         <button
           onClick={() => setShowNewChat(true)}
-          className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition text-sm font-medium"
+          style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="px-4 py-2 text-primary hover:brightness-110 transition text-sm font-medium"
         >
           New Chat
         </button>
@@ -228,21 +228,21 @@ export default function ConversationsPage() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search conversations…"
-          className="w-full px-4 py-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 text-sm outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500"
+          className="w-full px-4 py-2 bg-white dark:bg-surface-elevated border border-gray-200 dark:border-white/10 text-sm outline-none focus:ring-2 focus:ring-imajin-purple/40 focus:border-imajin-orange"
         />
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
+        <div className="mb-4 p-3 bg-error/10 dark:bg-error/20 text-error dark:text-error text-sm">
           {error}
         </div>
       )}
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+      <div className="bg-white dark:bg-surface-elevated overflow-hidden">
         {loadingConvs ? (
-          <div className="p-8 text-center text-gray-500">Loading conversations...</div>
+          <div className="p-8 text-center text-secondary">Loading conversations...</div>
         ) : filteredConversations.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
+          <div className="p-8 text-center text-secondary">
             {debouncedSearch ? (
               <p>No conversations match &ldquo;{debouncedSearch}&rdquo;.</p>
             ) : (
@@ -250,7 +250,7 @@ export default function ConversationsPage() {
                 <p className="mb-4">No conversations yet.</p>
                 <button
                   onClick={() => setShowNewChat(true)}
-                  className="text-orange-500 hover:underline"
+                  className="text-imajin-orange hover:underline"
                 >
                   Start a new chat
                 </button>
@@ -258,7 +258,7 @@ export default function ConversationsPage() {
             )}
           </div>
         ) : (
-          <div className="divide-y divide-gray-100 dark:divide-gray-700">
+          <div className="divide-y divide-gray-100 dark:divide-white/10">
             {filteredConversations.map((conv) => (
               <ConversationRow
                 key={conv.key}
@@ -270,7 +270,7 @@ export default function ConversationsPage() {
         )}
       </div>
 
-      <p className="text-center text-sm text-gray-500 mt-6">
+      <p className="text-center text-sm text-secondary mt-6">
         🔒 All messages are end-to-end encrypted
       </p>
 
@@ -291,10 +291,10 @@ function ConversationRow({
   const isDm = conv.type === 'dm';
 
   const iconBg = isGroup
-    ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600'
+    ? 'bg-imajin-orange/10 dark:bg-imajin-orange/20 text-imajin-orange'
     : isEvent
     ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600'
-    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300';
+    : 'bg-gray-100 dark:bg-surface-elevated text-muted dark:text-primary';
 
   const icon = isGroup ? '👥' : isEvent ? '📅' : '💬';
   const isOnline = isDm && conv.otherParticipantDid
@@ -304,7 +304,7 @@ function ConversationRow({
   return (
     <Link
       href={conv.href}
-      className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+      className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-surface-elevated transition"
     >
       <div className="relative flex-shrink-0">
         <div
@@ -313,7 +313,7 @@ function ConversationRow({
           {icon}
         </div>
         {isOnline && (
-          <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800" />
+          <div className="absolute bottom-0 right-0 w-3 h-3 bg-success rounded-full border-2 border-white dark:border-white/10" />
         )}
       </div>
 
@@ -321,23 +321,23 @@ function ConversationRow({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
             <span
-              className={`truncate text-gray-900 dark:text-white ${
+              className={`truncate text-gray-900 dark:text-primary ${
                 conv.unread ? 'font-bold' : 'font-medium'
               }`}
             >
               {conv.name}
             </span>
             {conv.unread > 0 && (
-              <span className="flex-shrink-0 bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
+              <span className="flex-shrink-0 bg-imajin-orange text-primary text-xs font-bold px-2 py-0.5 min-w-[1.25rem] text-center">
                 {conv.unread}
               </span>
             )}
           </div>
-          <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
+          <span className="text-xs text-secondary ml-2 flex-shrink-0">
             {formatTime(conv.lastMessageAt || conv.createdAt)}
           </span>
         </div>
-        <p className="text-sm text-gray-500 truncate mt-1">{conv.subtitle}</p>
+        <p className="text-sm text-secondary truncate mt-1">{conv.subtitle}</p>
       </div>
     </Link>
   );

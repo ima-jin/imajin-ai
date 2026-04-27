@@ -12,15 +12,15 @@ interface StatCard {
 
 function StatCardUI({ label, value, subtitle, icon }: StatCard) {
   return (
-    <div className="rounded-xl bg-white dark:bg-gray-800 p-6 shadow border border-gray-100 dark:border-gray-700">
+    <div className="bg-white dark:bg-surface-elevated p-6 border border-gray-100 dark:border-white/10">
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
-          <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white truncate">
+          <p className="text-sm font-medium text-secondary dark:text-secondary">{label}</p>
+          <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-primary truncate">
             {value}
           </p>
           {subtitle && (
-            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500 truncate">{subtitle}</p>
+            <p className="mt-1 text-xs text-secondary dark:text-secondary truncate">{subtitle}</p>
           )}
         </div>
         <span className="text-2xl ml-3">{icon}</span>
@@ -104,8 +104,8 @@ export default async function AdminOverviewPage() {
   return (
     <div className="p-6 lg:p-8 max-w-6xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Overview</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-primary font-mono">Overview</h1>
+        <p className="mt-1 text-sm text-secondary dark:text-secondary">
           Node health and activity at a glance
         </p>
       </div>
@@ -119,16 +119,16 @@ export default async function AdminOverviewPage() {
 
       {/* Recent attestations */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-primary mb-4 font-mono">
           Recent Attestations
         </h2>
-        <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 overflow-hidden">
           {recentAttestations.length === 0 ? (
-            <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">
+            <p className="px-6 py-8 text-sm text-secondary dark:text-secondary text-center">
               No attestations yet
             </p>
           ) : (
-            <div className="divide-y divide-gray-100 dark:divide-gray-700">
+            <div className="divide-y divide-gray-100 dark:divide-white/10">
               {recentAttestations.map((att) => {
                 const subjectDid = att.subject_did as string;
                 const shortDid = `${subjectDid.slice(0, 18)}…${subjectDid.slice(-6)}`;
@@ -140,17 +140,17 @@ export default async function AdminOverviewPage() {
                 return (
                   <div
                     key={att.id as string}
-                    className="flex items-center justify-between px-6 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                    className="flex items-center justify-between px-6 py-3 hover:bg-gray-50 dark:hover:bg-surface-elevated/50 transition-colors"
                   >
                     <div className="min-w-0 flex-1">
-                      <span className="inline-block text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded font-mono mr-3">
+                      <span className="inline-block text-xs bg-gray-100 dark:bg-surface-elevated text-gray-700 dark:text-primary px-2 py-0.5 font-mono mr-3">
                         {att.type as string}
                       </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                      <span className="text-xs text-secondary dark:text-secondary font-mono">
                         {shortDid}
                       </span>
                     </div>
-                    <span className="text-xs text-gray-400 dark:text-gray-500 ml-4 whitespace-nowrap">
+                    <span className="text-xs text-secondary dark:text-secondary ml-4 whitespace-nowrap">
                       {relativeTime}
                     </span>
                   </div>

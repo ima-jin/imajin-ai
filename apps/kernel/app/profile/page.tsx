@@ -24,7 +24,7 @@ export default function Home() {
     return (
       <div className="max-w-md mx-auto text-center py-12">
         <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#F59E0B] mb-4"></div>
-        <p className="text-gray-400">Loading...</p>
+        <p className="text-secondary">Loading...</p>
       </div>
     );
   }
@@ -32,27 +32,27 @@ export default function Home() {
   return (
     <div className="max-w-lg mx-auto text-center py-12">
       <div className="text-6xl mb-4">🟠</div>
-      <h1 className="text-4xl font-bold mb-4 text-white">
+      <h1 className="text-4xl font-bold mb-4 text-primary font-mono">
         Imajin Profiles
       </h1>
 
-      <p className="text-lg text-gray-400 mb-2">
+      <p className="text-lg text-secondary mb-2">
         Sovereign identity on the open network.
       </p>
-      <p className="text-sm text-gray-500 mb-8">
+      <p className="text-sm text-secondary mb-8">
         No passwords. No email. You own your keys, you own your identity.
       </p>
 
       <div className="flex flex-col gap-3 max-w-xs mx-auto">
         <a
           href="/auth/login"
-          className="px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold text-center"
+          className="px-6 py-3 bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-semibold text-center"
         >
           Login with Key File
         </a>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-secondary">
           Have an invite?{' '}
-          <span className="text-gray-400">
+          <span className="text-secondary">
             Use the invite link to create your identity.
           </span>
         </p>

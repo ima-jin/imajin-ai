@@ -48,16 +48,16 @@ function NewsletterSignup() {
         onChange={e => setEmail(e.target.value)}
         placeholder="Email for updates"
         required
-        className="flex-1 px-3 py-1.5 text-sm border border-gray-700 rounded-lg bg-black text-white focus:ring-1 focus:ring-[#F59E0B] focus:border-transparent"
+        className="flex-1 px-3 py-1.5 text-sm border border-white/10 bg-surface-base text-primary focus:ring-1 focus:ring-[#F59E0B] focus:border-transparent"
       />
       <button
         type="submit"
         disabled={status === 'loading'}
-        className="px-3 py-1.5 text-sm bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium disabled:opacity-50"
+        className="px-3 py-1.5 text-sm bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-medium disabled:opacity-50"
       >
         {status === 'loading' ? '...' : 'Subscribe'}
       </button>
-      {status === 'error' && <p className="text-xs text-red-400 mt-1">{message}</p>}
+      {status === 'error' && <p className="text-xs text-error mt-1">{message}</p>}
     </form>
   );
 }
@@ -114,21 +114,21 @@ function LoginForm() {
 
   return (
     <div className="max-w-md mx-auto">
-      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-        <h1 className="text-2xl font-bold mb-2 text-center text-white">Sign in</h1>
-        <p className="text-gray-400 text-center mb-6">Your key is your identity</p>
+      <div className="bg-[#0a0a0a] border border-white/10 p-8">
+        <h1 className="text-2xl font-bold mb-2 text-center text-primary font-mono">Sign in</h1>
+        <p className="text-secondary text-center mb-6">Your key is your identity</p>
 
         {/* Tab selector */}
         <div className="flex gap-2 mb-6">
           <button
             onClick={() => setActiveTab('key')}
-            className={`flex-1 px-4 py-2 rounded-lg transition ${activeTab === 'key' ? 'bg-[#F59E0B] text-black font-medium' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`}
+            className={`flex-1 px-4 py-2 transition ${activeTab === 'key' ? 'bg-[#F59E0B] text-black font-medium' : 'bg-surface-surface text-secondary hover:bg-surface-elevated'}`}
           >
             Import / Paste Key
           </button>
           <button
             onClick={() => setActiveTab('password')}
-            className={`flex-1 px-4 py-2 rounded-lg transition ${activeTab === 'password' ? 'bg-[#F59E0B] text-black font-medium' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`}
+            className={`flex-1 px-4 py-2 transition ${activeTab === 'password' ? 'bg-[#F59E0B] text-black font-medium' : 'bg-surface-surface text-secondary hover:bg-surface-elevated'}`}
           >
             Password
           </button>
@@ -150,9 +150,9 @@ function LoginForm() {
         )}
 
         {/* Onboarding info + newsletter */}
-        <div className="mt-6 p-4 bg-gray-900 border border-gray-800 rounded-lg">
-          <p className="text-sm text-gray-400">
-            <strong className="text-white">New here?</strong>
+        <div className="mt-6 p-4 bg-surface-surface border border-white/10">
+          <p className="text-sm text-secondary">
+            <strong className="text-primary">New here?</strong>
             <br />
             <span className="mt-1 inline-block">
               Imajin identities are created through communities, events, and businesses. Ask your organizer or host for an invitation.
@@ -161,7 +161,7 @@ function LoginForm() {
           <NewsletterSignup />
         </div>
 
-        <div className="mt-4 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
+        <div className="mt-4 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30">
           <p className="text-xs text-[#F59E0B]">Your private key never leaves your device.</p>
         </div>
       </div>
@@ -172,7 +172,7 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
-      <Suspense fallback={<div className="text-center text-gray-400">Loading...</div>}>
+      <Suspense fallback={<div className="text-center text-secondary">Loading...</div>}>
         <LoginForm />
       </Suspense>
     </div>

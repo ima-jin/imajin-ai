@@ -30,7 +30,7 @@ export function MessageMedia({ mediaType, mediaPath, mediaMeta }: MessageMediaPr
           <img
             src={thumbUrl}
             alt={mediaMeta.originalName || 'Image'}
-            className="rounded-lg max-w-[300px] hover:opacity-90 transition"
+            className="max-w-[300px] hover:opacity-90 transition"
             loading="lazy"
           />
         </div>
@@ -40,7 +40,7 @@ export function MessageMedia({ mediaType, mediaPath, mediaMeta }: MessageMediaPr
           <div
             role="button"
             tabIndex={0}
-            className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-surface-base/80 z-50 flex items-center justify-center p-4"
             onClick={() => setLightboxOpen(false)}
             onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') setLightboxOpen(false); }}
           >
@@ -51,7 +51,7 @@ export function MessageMedia({ mediaType, mediaPath, mediaMeta }: MessageMediaPr
               onClick={(e) => e.stopPropagation()}
             />
             <button
-              className="absolute top-4 right-4 text-white text-3xl hover:text-gray-300"
+              className="absolute top-4 right-4 text-primary text-3xl hover:text-primary"
               onClick={() => setLightboxOpen(false)}
             >
               ×
@@ -81,14 +81,14 @@ export function MessageMedia({ mediaType, mediaPath, mediaMeta }: MessageMediaPr
     <a
       href={fileUrl}
       download={mediaMeta.originalName}
-      className="mt-2 flex items-center gap-3 p-3 bg-white/50 dark:bg-gray-900/50 rounded-lg hover:bg-white/70 dark:hover:bg-gray-900/70 transition max-w-[300px]"
+      className="mt-2 flex items-center gap-3 p-3 bg-white/50 dark:bg-surface-surface/50 hover:bg-white/70 dark:hover:bg-surface-surface/70 transition max-w-[300px]"
     >
       <span className="text-3xl">{getFileIcon()}</span>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{mediaMeta.originalName || 'File'}</p>
-        <p className="text-xs text-gray-500">{sizeDisplay}</p>
+        <p className="text-xs text-secondary">{sizeDisplay}</p>
       </div>
-      <span className="text-gray-400">↓</span>
+      <span className="text-secondary">↓</span>
     </a>
   );
 }

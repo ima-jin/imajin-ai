@@ -55,10 +55,10 @@ export function AcceptSection({ loginUrl, code, connectionsUrl }: Props) {
     return (
       <div className="space-y-3">
         <div className="text-4xl mb-3">🤝</div>
-        <p className="text-green-400 font-semibold text-lg">Connected!</p>
+        <p className="text-success font-semibold text-lg">Connected!</p>
         <a
           href={connectionsUrl}
-          className="inline-block px-6 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg transition"
+          className="inline-block px-6 py-3 bg-warning hover:bg-warning text-black font-semibold transition"
         >
           View Your Connections
         </a>
@@ -68,21 +68,21 @@ export function AcceptSection({ loginUrl, code, connectionsUrl }: Props) {
 
   if (loading) {
     return (
-      <div className="py-4 text-gray-500 text-sm">Checking session…</div>
+      <div className="py-4 text-secondary text-sm">Checking session…</div>
     );
   }
 
   if (session) {
     return (
       <div className="space-y-3">
-        <p className="text-gray-400 text-sm">
-          Signed in as <span className="text-white font-medium">{session.handle ? `@${session.handle}` : session.did.slice(0, 20) + '...'}</span>
+        <p className="text-secondary text-sm">
+          Signed in as <span className="text-primary font-medium">{session.handle ? `@${session.handle}` : session.did.slice(0, 20) + '...'}</span>
         </p>
-        {error && <p className="text-red-400 text-sm">{error}</p>}
+        {error && <p className="text-error text-sm">{error}</p>}
         <button
           onClick={handleAccept}
           disabled={accepting}
-          className="w-full px-6 py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-500/50 text-black font-semibold rounded-lg transition"
+          className="w-full px-6 py-3 bg-warning hover:bg-warning disabled:bg-warning/50 text-black font-semibold transition"
         >
           {accepting ? 'Accepting…' : 'Accept Invite'}
         </button>
@@ -96,17 +96,17 @@ export function AcceptSection({ loginUrl, code, connectionsUrl }: Props) {
     <div className="space-y-3">
       <a
         href={registerUrl}
-        className="block w-full px-6 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg transition text-center"
+        className="block w-full px-6 py-3 bg-warning hover:bg-warning text-black font-semibold transition text-center"
       >
         Create Account &amp; Connect
       </a>
       <a
         href={loginUrl}
-        className="block w-full px-6 py-3 bg-white/10 hover:bg-white/15 text-white font-medium rounded-lg transition text-center"
+        className="block w-full px-6 py-3 bg-white/10 hover:bg-white/15 text-primary font-medium transition text-center"
       >
         Already have an account? Login
       </a>
-      <p className="text-gray-500 text-xs">
+      <p className="text-secondary text-xs">
         Imajin is invite-only. This invite is your gateway in.
       </p>
     </div>

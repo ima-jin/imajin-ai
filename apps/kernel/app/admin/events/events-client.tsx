@@ -33,33 +33,33 @@ interface Filters {
 
 const SERVICE_COLORS: Record<string, string> = {
   auth: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400',
-  kernel: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400',
-  pay: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400',
+  kernel: 'bg-imajin-orange/10 dark:bg-imajin-orange/20 text-imajin-orange dark:text-imajin-orange',
+  pay: 'bg-success/10 dark:bg-success/40 text-success dark:text-success',
   events: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400',
   connections: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-400',
   chat: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400',
   profile: 'bg-pink-100 dark:bg-pink-900/40 text-pink-700 dark:text-pink-400',
-  registry: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400',
+  registry: 'bg-yellow-100 dark:bg-warning/20/40 text-warning dark:text-warning',
   market: 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-400',
   notify: 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400',
 };
 
 function serviceBadgeClass(service: string): string {
-  return SERVICE_COLORS[service] ?? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400';
+  return SERVICE_COLORS[service] ?? 'bg-gray-100 dark:bg-surface-elevated text-muted dark:text-secondary';
 }
 
 function StatusBadge({ status }: { status: string }) {
   if (status === 'success') {
     return (
-      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400">
-        <span className="w-1.5 h-1.5 rounded-full bg-green-500 dark:bg-green-400 inline-block" />
+      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-success/10 dark:bg-success/40 text-success dark:text-success">
+        <span className="w-1.5 h-1.5 rounded-full bg-success dark:bg-success inline-block" />
         ok
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400">
-      <span className="w-1.5 h-1.5 rounded-full bg-red-500 dark:bg-red-400 inline-block" />
+    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-error/10 dark:bg-error/40 text-error dark:text-error">
+      <span className="w-1.5 h-1.5 rounded-full bg-error dark:bg-error inline-block" />
       {status}
     </span>
   );
@@ -189,14 +189,14 @@ export default function EventsClient() {
       {/* Header */}
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Events</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-primary font-mono">Events</h1>
+          <p className="mt-1 text-sm text-secondary dark:text-secondary">
             System event stream — last 24h: {stats?.total.toLocaleString() ?? '…'} events
           </p>
         </div>
         <button
           onClick={refresh}
-          className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-1.5"
+          className="border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-primary hover:bg-gray-50 dark:hover:bg-surface-elevated flex items-center gap-1.5"
         >
           ↻ Refresh
         </button>
@@ -215,7 +215,7 @@ export default function EventsClient() {
                 setOffset(0);
                 fetchEvents(f, 0);
               }}
-              className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ${serviceBadgeClass(s.service)} hover:opacity-80 transition-opacity cursor-pointer`}
+              className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 font-medium ${serviceBadgeClass(s.service)} hover:opacity-80 transition-opacity cursor-pointer`}
             >
               {s.service}
               <span className="opacity-70">{s.count.toLocaleString()}</span>
@@ -227,11 +227,11 @@ export default function EventsClient() {
       {/* Filters */}
       <div className="mb-4 flex flex-wrap gap-2 items-end">
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">Service</label>
+          <label className="text-xs text-secondary dark:text-secondary">Service</label>
           <select
             value={pendingFilters.service}
             onChange={(e) => setPendingFilters({ ...pendingFilters, service: e.target.value })}
-            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated text-gray-900 dark:text-primary px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-imajin-purple"
           >
             <option value="">All services</option>
             {(stats?.byService ?? []).map((s) => (
@@ -240,53 +240,53 @@ export default function EventsClient() {
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">Action</label>
+          <label className="text-xs text-secondary dark:text-secondary">Action</label>
           <input
             type="text"
             value={pendingFilters.action}
             onChange={(e) => setPendingFilters({ ...pendingFilters, action: e.target.value })}
             placeholder="e.g. ticket.purchase"
-            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-44"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated text-gray-900 dark:text-primary px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-imajin-purple w-44"
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">DID</label>
+          <label className="text-xs text-secondary dark:text-secondary">DID</label>
           <input
             type="text"
             value={pendingFilters.did}
             onChange={(e) => setPendingFilters({ ...pendingFilters, did: e.target.value })}
             placeholder="did:key:…"
-            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-48"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated text-gray-900 dark:text-primary px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-imajin-purple w-48"
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">From</label>
+          <label className="text-xs text-secondary dark:text-secondary">From</label>
           <input
             type="datetime-local"
             value={pendingFilters.from}
             onChange={(e) => setPendingFilters({ ...pendingFilters, from: e.target.value })}
-            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated text-gray-900 dark:text-primary px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-imajin-purple"
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">To</label>
+          <label className="text-xs text-secondary dark:text-secondary">To</label>
           <input
             type="datetime-local"
             value={pendingFilters.to}
             onChange={(e) => setPendingFilters({ ...pendingFilters, to: e.target.value })}
-            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated text-gray-900 dark:text-primary px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-imajin-purple"
           />
         </div>
         <button
           onClick={applyFilters}
-          className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 text-sm font-medium self-end"
+          style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className=" hover:brightness-110 text-primary px-3 py-1.5 text-sm font-medium self-end"
         >
           Filter
         </button>
         {hasFilters || hasActiveFilters ? (
           <button
             onClick={clearFilters}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 self-end py-1.5"
+            className="text-sm text-secondary dark:text-secondary hover:text-gray-700 dark:hover:text-primary self-end py-1.5"
           >
             Clear
           </button>
@@ -294,31 +294,31 @@ export default function EventsClient() {
       </div>
 
       {/* Total count */}
-      <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+      <p className="mb-2 text-xs text-secondary dark:text-secondary">
         {loading ? 'Loading…' : `${total.toLocaleString()} events`}
       </p>
 
       {/* Table */}
-      <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 overflow-hidden">
         {!loading && rows.length === 0 ? (
-          <p className="px-6 py-10 text-sm text-gray-400 dark:text-gray-500 text-center">
+          <p className="px-6 py-10 text-sm text-secondary dark:text-secondary text-center">
             No events found
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Time</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Service</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Action</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">DID</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">ms</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Trace</th>
+                <tr className="bg-gray-50 dark:bg-surface-elevated/50 border-b border-gray-100 dark:border-white/10">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Time</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Service</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Action</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">DID</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Status</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">ms</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-secondary dark:text-secondary uppercase tracking-wide">Trace</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              <tbody className="divide-y divide-gray-100 dark:divide-white/10">
                 {rows.map((row) => {
                   const isExpanded = expandedRows.has(row.id);
                   const hasPayload = row.payload && Object.keys(row.payload).length > 0;
@@ -327,47 +327,47 @@ export default function EventsClient() {
                       <tr
                         key={row.id}
                         onClick={() => hasPayload && toggleRow(row.id)}
-                        className={`hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors ${hasPayload ? 'cursor-pointer' : ''} ${row.status !== 'success' ? 'bg-red-50/40 dark:bg-red-900/10' : ''}`}
+                        className={`hover:bg-gray-50 dark:hover:bg-surface-elevated/40 transition-colors ${hasPayload ? 'cursor-pointer' : ''} ${row.status !== 'success' ? 'bg-error/10/40 dark:bg-error/10' : ''}`}
                       >
-                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap font-mono">
+                        <td className="px-4 py-3 text-xs text-secondary dark:text-secondary whitespace-nowrap font-mono">
                           {formatTs(row.created_at)}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded font-medium ${serviceBadgeClass(row.service)}`}>
+                          <span className={`text-xs px-2 py-0.5  font-medium ${serviceBadgeClass(row.service)}`}>
                             {row.service}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-xs font-mono text-gray-700 dark:text-gray-300">
+                        <td className="px-4 py-3 text-xs font-mono text-gray-700 dark:text-primary">
                           {row.action}
                         </td>
-                        <td className="px-4 py-3 text-xs font-mono text-gray-500 dark:text-gray-400">
+                        <td className="px-4 py-3 text-xs font-mono text-secondary dark:text-secondary">
                           <span title={row.did ?? undefined}>{truncateDid(row.did)}</span>
                         </td>
                         <td className="px-4 py-3">
                           <StatusBadge status={row.status} />
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                        <td className="px-4 py-3 text-xs text-secondary dark:text-secondary">
                           {row.duration_ms != null ? `${row.duration_ms}` : '—'}
                         </td>
                         <td className="px-4 py-3">
                           {row.correlation_id ? (
                             <Link
                               href={`/admin/events/trace/${encodeURIComponent(row.correlation_id)}`}
-                              className="text-xs font-mono text-orange-600 dark:text-orange-400 hover:underline"
+                              className="text-xs font-mono text-imajin-orange dark:text-imajin-orange hover:underline"
                               onClick={(e) => e.stopPropagation()}
                               title={row.correlation_id}
                             >
                               {row.correlation_id.slice(0, 12)}…
                             </Link>
                           ) : (
-                            <span className="text-xs text-gray-400">—</span>
+                            <span className="text-xs text-secondary">—</span>
                           )}
                         </td>
                       </tr>
                       {isExpanded && hasPayload && (
-                        <tr key={`${row.id}-payload`} className="bg-gray-50 dark:bg-gray-900/40">
+                        <tr key={`${row.id}-payload`} className="bg-gray-50 dark:bg-surface-surface/40">
                           <td colSpan={7} className="px-6 py-3">
-                            <pre className="text-xs font-mono text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-all">
+                            <pre className="text-xs font-mono text-gray-700 dark:text-primary whitespace-pre-wrap break-all">
                               {JSON.stringify(row.payload, null, 2)}
                             </pre>
                           </td>
@@ -387,15 +387,15 @@ export default function EventsClient() {
         <button
           onClick={prevPage}
           disabled={!hasPrev}
-          className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-primary hover:bg-gray-50 dark:hover:bg-surface-elevated disabled:opacity-40 disabled:cursor-not-allowed"
         >
           ← Previous
         </button>
-        <span className="text-sm text-gray-500 dark:text-gray-400">Page {page}</span>
+        <span className="text-sm text-secondary dark:text-secondary">Page {page}</span>
         <button
           onClick={nextPage}
           disabled={!hasNext}
-          className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-primary hover:bg-gray-50 dark:hover:bg-surface-elevated disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Next →
         </button>

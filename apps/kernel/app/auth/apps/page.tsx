@@ -29,17 +29,17 @@ function AppCard({
   const initial = app.appName.charAt(0).toUpperCase();
 
   return (
-    <div className={`rounded-lg border bg-zinc-900 p-5 flex gap-4 ${isRevoked ? 'border-zinc-800 opacity-60' : 'border-zinc-800'}`}>
+    <div className={`border bg-surface-base p-5 flex gap-4 ${isRevoked ? 'border-white/10 opacity-60' : 'border-white/10'}`}>
       {/* Icon */}
       <div className="flex-shrink-0">
         {app.appLogoUrl ? (
           <img
             src={app.appLogoUrl}
             alt={app.appName}
-            className="w-12 h-12 rounded-lg object-cover"
+            className="w-12 h-12 object-cover"
           />
         ) : (
-          <div className="w-12 h-12 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-lg font-semibold text-zinc-300">
+          <div className="w-12 h-12 bg-surface-elevated border border-white/10 flex items-center justify-center text-lg font-semibold text-zinc-300">
             {initial}
           </div>
         )}
@@ -50,22 +50,22 @@ function AppCard({
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-medium text-white">{app.appName}</span>
+              <span className="font-medium text-primary">{app.appName}</span>
               {isRevoked && (
-                <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">
+                <span className="text-xs px-1.5 py-0.5 bg-surface-elevated text-muted border border-white/10">
                   Revoked
                 </span>
               )}
             </div>
             {app.appDescription && (
-              <p className="text-sm text-zinc-400 mt-0.5">{app.appDescription}</p>
+              <p className="text-sm text-secondary mt-0.5">{app.appDescription}</p>
             )}
             {app.appHomepageUrl && (
               <a
                 href={app.appHomepageUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-zinc-500 hover:text-zinc-400 mt-0.5 block truncate"
+                className="text-xs text-muted hover:text-secondary mt-0.5 block truncate"
               >
                 {app.appHomepageUrl}
               </a>
@@ -75,7 +75,7 @@ function AppCard({
           {!isRevoked && (
             <button
               onClick={() => onRevoke(app)}
-              className="flex-shrink-0 text-sm px-3 py-1.5 rounded border border-red-800 text-red-400 hover:bg-red-900/30 transition-colors"
+              className="flex-shrink-0 text-sm px-3 py-1.5 border border-red-800 text-error hover:bg-error/30 transition-colors"
             >
               Revoke
             </button>
@@ -88,7 +88,7 @@ function AppCard({
             {app.scopes.map((scope) => (
               <span
                 key={scope}
-                className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700"
+                className="text-xs px-2 py-0.5 bg-surface-elevated text-secondary border border-white/10"
               >
                 {SCOPES[scope as Scope] ?? scope}
               </span>
@@ -97,7 +97,7 @@ function AppCard({
         )}
 
         {/* Date */}
-        <p className="text-xs text-zinc-600 mt-2">
+        <p className="text-xs text-muted mt-2">
           {isRevoked
             ? `Revoked ${new Date(app.revokedAt!).toLocaleDateString()}`
             : `Authorized ${new Date(app.authorizedAt).toLocaleDateString()}`}
@@ -120,25 +120,25 @@ function ConfirmRevokeDialog({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70" onClick={onCancel} />
-      <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl p-6 max-w-sm w-full shadow-xl">
-        <h2 className="text-base font-semibold text-white mb-2">Revoke access?</h2>
-        <p className="text-sm text-zinc-400 mb-5">
-          <span className="text-white font-medium">{app.appName}</span> will no longer be able to
+      <div className="absolute inset-0 bg-surface-base/70" onClick={onCancel} />
+      <div className="relative bg-surface-base border border-white/10 p-6 max-w-sm w-full">
+        <h2 className="text-base font-semibold text-primary mb-2 font-mono">Revoke access?</h2>
+        <p className="text-sm text-secondary mb-5">
+          <span className="text-primary font-medium">{app.appName}</span> will no longer be able to
           access your data.
         </p>
         <div className="flex gap-3 justify-end">
           <button
             onClick={onCancel}
             disabled={revoking}
-            className="px-4 py-2 text-sm rounded border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm border border-white/10 text-zinc-300 hover:bg-surface-elevated transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
             disabled={revoking}
-            className="px-4 py-2 text-sm rounded border border-red-800 text-red-400 hover:bg-red-900/30 transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm border border-red-800 text-error hover:bg-error/30 transition-colors disabled:opacity-50"
           >
             {revoking ? 'Revoking…' : 'Revoke access'}
           </button>
@@ -209,22 +209,22 @@ export default function ConnectedAppsPage() {
 
   return (
     <div className="p-6 max-w-2xl">
-      <h1 className="text-lg font-semibold text-white mb-1">Connected Apps</h1>
-      <p className="text-sm text-zinc-500 mb-6">Apps you've authorized to access your account.</p>
+      <h1 className="text-lg font-semibold text-primary mb-1 font-mono">Connected Apps</h1>
+      <p className="text-sm text-muted mb-6">Apps you've authorized to access your account.</p>
 
       {loading && (
-        <div className="text-sm text-zinc-500">Loading…</div>
+        <div className="text-sm text-muted">Loading…</div>
       )}
 
       {error && (
-        <div className="text-sm text-red-400">{error}</div>
+        <div className="text-sm text-error">{error}</div>
       )}
 
       {!loading && !error && apps.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <span className="text-4xl mb-3">🔌</span>
-          <p className="text-zinc-400 text-sm">No apps connected.</p>
-          <p className="text-zinc-600 text-sm">Apps you authorize will appear here.</p>
+          <p className="text-secondary text-sm">No apps connected.</p>
+          <p className="text-muted text-sm">Apps you authorize will appear here.</p>
         </div>
       )}
 
@@ -238,7 +238,7 @@ export default function ConnectedAppsPage() {
 
       {!loading && !error && revokedApps.length > 0 && (
         <div className="mt-8">
-          <h2 className="text-xs font-medium text-zinc-600 uppercase tracking-wider mb-3">
+          <h2 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-mono">
             Previously authorized
           </h2>
           <div className="flex flex-col gap-3">
@@ -259,7 +259,7 @@ export default function ConnectedAppsPage() {
       )}
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-sm text-white shadow-lg">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-surface-elevated border border-white/10 text-sm text-primary">
           {toast}
         </div>
       )}

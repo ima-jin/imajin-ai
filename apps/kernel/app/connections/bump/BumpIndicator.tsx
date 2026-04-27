@@ -12,7 +12,7 @@ export default function BumpIndicator({ timeRemaining, onPress }: Props) {
   return (
     <button
       onClick={onPress}
-      className="flex items-center gap-2 px-3 py-1.5 rounded-full transition hover:opacity-80"
+      className="flex items-center gap-2 px-3 py-1.5 transition hover:opacity-80"
       style={{
         backgroundColor: 'rgba(249,115,22,0.15)',
         border: '1px solid rgba(249,115,22,0.3)',
@@ -20,10 +20,10 @@ export default function BumpIndicator({ timeRemaining, onPress }: Props) {
       title="Bump Connect active"
     >
       <span
-        className="w-2 h-2 rounded-full bg-orange-500 shrink-0"
+        className="w-2 h-2 rounded-full bg-imajin-orange shrink-0"
         style={{ animation: 'bump-breathe 1.5s ease-in-out infinite' }}
       />
-      <span className="text-orange-400 text-xs font-medium whitespace-nowrap">
+      <span className="text-imajin-orange text-xs font-medium whitespace-nowrap">
         Bumping · {minutes}:{seconds}
       </span>
 

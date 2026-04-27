@@ -77,20 +77,20 @@ export function LoginPrompt() {
 
   return (
     <div className="max-w-md mx-auto mt-20 text-center">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
-        <h2 className="text-2xl font-bold mb-2">Sign in to Chat</h2>
-        <p className="text-gray-500 dark:text-gray-400 mb-6">
+      <div className="bg-white dark:bg-surface-elevated p-8">
+        <h2 className="text-2xl font-bold mb-2 font-mono">Sign in to Chat</h2>
+        <p className="text-secondary dark:text-secondary mb-6">
           You need an Imajin identity to use encrypted messaging.
         </p>
         <a
           href={`${authUrl}/login?next=${encodeURIComponent(chatUrl + '/conversations')}`}
-          className="inline-block px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-medium"
+          style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="inline-block px-6 py-3 text-primary hover:brightness-110 transition font-medium"
         >
           Sign In
         </a>
-        <p className="mt-4 text-sm text-gray-400">
+        <p className="mt-4 text-sm text-secondary">
           Don&apos;t have an identity?{' '}
-          <a href={`${authUrl}/register`} className="text-orange-500 hover:underline">
+          <a href={`${authUrl}/register`} className="text-imajin-orange hover:underline">
             Create one
           </a>
         </p>

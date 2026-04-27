@@ -128,7 +128,7 @@ export function FileEditor({ asset, isOwner }: FileEditorProps) {
     if (lang === "markdown" && ReactMarkdown) {
       return (
         <div className="flex-1 overflow-auto p-6">
-          <div className="prose prose-invert prose-sm max-w-none text-gray-200 [&_h1]:text-orange-400 [&_h2]:text-orange-300 [&_h3]:text-gray-100 [&_code]:bg-zinc-800 [&_code]:px-1 [&_code]:rounded [&_pre]:bg-zinc-900 [&_pre]:border [&_pre]:border-zinc-700 [&_blockquote]:border-l-orange-500 [&_a]:text-orange-400">
+          <div className="prose prose-invert prose-sm max-w-none text-primary [&_h1]:text-imajin-orange [&_h2]:text-imajin-orange/70 [&_h3]:text-primary [&_code]:bg-surface-elevated [&_code]:px-1 [&_code]: [&_pre]:bg-surface-base [&_pre]:border [&_pre]:border-white/10 [&_blockquote]:border-l-imajin-orange [&_a]:text-imajin-orange">
             <ReactMarkdown>{content}</ReactMarkdown>
           </div>
         </div>
@@ -143,14 +143,14 @@ export function FileEditor({ asset, isOwner }: FileEditorProps) {
       }
       return (
         <div className="flex-1 overflow-auto p-4">
-          <pre className="font-mono text-sm text-green-400 whitespace-pre-wrap break-words">{pretty}</pre>
+          <pre className="font-mono text-sm text-success whitespace-pre-wrap break-words">{pretty}</pre>
         </div>
       );
     }
     // Plain text preview
     return (
       <div className="flex-1 overflow-auto p-4">
-        <pre className="font-mono text-sm text-gray-200 whitespace-pre-wrap break-words">{content}</pre>
+        <pre className="font-mono text-sm text-primary whitespace-pre-wrap break-words">{content}</pre>
       </div>
     );
   };
@@ -165,24 +165,24 @@ export function FileEditor({ asset, isOwner }: FileEditorProps) {
 
   if (loading || !EditorComponent) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-zinc-900">
-        <div className="text-gray-500 text-sm animate-pulse">Loading…</div>
+      <div className="flex-1 flex items-center justify-center bg-surface-base">
+        <div className="text-secondary text-sm animate-pulse">Loading…</div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden bg-zinc-900">
+    <div className="flex flex-col flex-1 overflow-hidden bg-surface-base">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800 bg-zinc-900 shrink-0">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10 bg-surface-base shrink-0">
         {/* Mode toggle */}
-        <div className="flex rounded-md overflow-hidden border border-zinc-700 text-xs">
+        <div className="flex overflow-hidden border border-white/10 text-xs">
           <button
             onClick={() => setMode("edit")}
             className={`px-3 py-1 transition-colors ${
               mode === "edit"
-                ? "bg-orange-500 text-white"
-                : "bg-zinc-800 text-gray-400 hover:text-gray-200"
+                ? "bg-imajin-orange text-primary"
+                : "bg-surface-elevated text-secondary hover:text-primary"
             } ${!isOwner ? "hidden" : ""}`}
           >
             Edit
@@ -191,24 +191,24 @@ export function FileEditor({ asset, isOwner }: FileEditorProps) {
             onClick={() => setMode("preview")}
             className={`px-3 py-1 transition-colors ${
               mode === "preview"
-                ? "bg-orange-500 text-white"
-                : "bg-zinc-800 text-gray-400 hover:text-gray-200"
+                ? "bg-imajin-orange text-primary"
+                : "bg-surface-elevated text-secondary hover:text-primary"
             }`}
           >
             Preview
           </button>
         </div>
 
-        <span className="text-xs text-zinc-600 font-mono">{asset.filename}</span>
+        <span className="text-xs text-muted font-mono">{asset.filename}</span>
 
         <div className="flex-1" />
 
         {/* Save status */}
         {saveStatus === "saved" && (
-          <span className="text-xs text-green-400">Saved</span>
+          <span className="text-xs text-success">Saved</span>
         )}
         {saveStatus === "error" && (
-          <span className="text-xs text-red-400">Save failed</span>
+          <span className="text-xs text-error">Save failed</span>
         )}
 
         {/* Save button — owner only, edit mode only */}
@@ -216,7 +216,7 @@ export function FileEditor({ asset, isOwner }: FileEditorProps) {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-3 py-1 text-xs bg-orange-500 hover:bg-orange-600 text-white rounded transition-colors disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="px-3 py-1 text-xs hover:brightness-110 text-primary transition-colors disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -224,7 +224,7 @@ export function FileEditor({ asset, isOwner }: FileEditorProps) {
 
         {/* Read-only badge */}
         {!isOwner && (
-          <span className="text-xs text-zinc-500 border border-zinc-700 rounded px-2 py-0.5">
+          <span className="text-xs text-muted border border-white/10 px-2 py-0.5">
             Read-only
           </span>
         )}

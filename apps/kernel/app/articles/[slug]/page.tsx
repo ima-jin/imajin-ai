@@ -56,18 +56,18 @@ export default async function ArticlePage({ params }: Props) {
       <div className="max-w-3xl mx-auto mb-12">
         <Link
           href="/articles"
-          className="text-gray-500 hover:text-gray-300 transition-colors"
+          className="text-secondary hover:text-primary transition-colors"
         >
           ← Articles
         </Link>
       </div>
 
       <article className="max-w-3xl mx-auto prose prose-invert prose-lg prose-orange">
-        <h1 className="text-4xl md:text-5xl font-light tracking-tight mb-4 !text-white">
+        <h1 className="text-4xl md:text-5xl font-light tracking-tight mb-4 !text-primary font-mono">
           {article.title}
         </h1>
         {article.subtitle && (
-          <p className="text-xl text-gray-400 mb-12 !mt-0">
+          <p className="text-xl text-secondary mb-12 !mt-0">
             {article.subtitle}
           </p>
         )}
@@ -77,7 +77,7 @@ export default async function ArticlePage({ params }: Props) {
         />
 
         {/* Footer */}
-        <div className="mt-16 pt-8 border-t border-gray-800 not-prose">
+        <div className="mt-16 pt-8 border-t border-white/10 not-prose">
           <ImajinFooter />
         </div>
       </article>

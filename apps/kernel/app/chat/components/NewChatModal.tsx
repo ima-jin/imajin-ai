@@ -149,26 +149,26 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 max-h-[80vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-base/50 backdrop-blur-sm">
+      <div className="bg-white dark:bg-surface-elevated p-6 w-full max-w-md mx-4 max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold">New Chat</h2>
+          <h2 className="text-xl font-bold font-mono">New Chat</h2>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition text-xl"
+            className="p-1 hover:bg-gray-100 dark:hover:bg-surface-elevated transition text-xl"
           >
             ✕
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-4 mb-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex gap-4 mb-4 border-b border-gray-200 dark:border-white/10">
           <button
             onClick={() => setTab('dm')}
             className={`pb-2 text-sm font-medium border-b-2 transition ${
               tab === 'dm'
-                ? 'border-orange-500 text-orange-500'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                ? 'border-imajin-orange text-imajin-orange'
+                : 'border-transparent text-secondary hover:text-gray-700 dark:hover:text-primary'
             }`}
           >
             Direct Message
@@ -177,8 +177,8 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
             onClick={() => setTab('group')}
             className={`pb-2 text-sm font-medium border-b-2 transition ${
               tab === 'group'
-                ? 'border-orange-500 text-orange-500'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                ? 'border-imajin-orange text-imajin-orange'
+                : 'border-transparent text-secondary hover:text-gray-700 dark:hover:text-primary'
             }`}
           >
             Create Group
@@ -186,18 +186,18 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
+          <div className="mb-4 p-3 bg-error/10 dark:bg-error/20 text-error dark:text-error text-sm">
             Failed to load connections
           </div>
         )}
 
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="py-8 text-center text-gray-500 text-sm">Loading connections…</div>
+            <div className="py-8 text-center text-secondary text-sm">Loading connections…</div>
           ) : connections.length === 0 ? (
             <div className="py-8 text-center">
-              <p className="text-gray-500 text-sm mb-3">No connections yet.</p>
-              <a href={CONNECTIONS_URL} className="text-orange-500 hover:underline text-sm">
+              <p className="text-secondary text-sm mb-3">No connections yet.</p>
+              <a href={CONNECTIONS_URL} className="text-imajin-orange hover:underline text-sm">
                 Send an invite →
               </a>
             </div>
@@ -208,15 +208,15 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
                   key={`dm-${conn.did}`}
                   onClick={() => startDm(conn)}
                   disabled={creatingDm !== null}
-                  className="w-full flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition text-left"
+                  className="w-full flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-surface-elevated transition text-left"
                 >
                   <div className="min-w-0">
                     <p className="font-medium truncate">{displayName(conn)}</p>
                     {conn.handle && conn.name && (
-                      <p className="text-sm text-gray-500 dark:text-gray-400">@{conn.handle}</p>
+                      <p className="text-sm text-secondary dark:text-secondary">@{conn.handle}</p>
                     )}
                   </div>
-                  <span className="text-sm text-orange-500 font-medium ml-3 shrink-0">
+                  <span className="text-sm text-imajin-orange font-medium ml-3 shrink-0">
                     {creatingDm === conn.did ? '…' : 'Chat'}
                   </span>
                 </button>
@@ -231,36 +231,36 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
                   placeholder="Group name (optional)"
-                  className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500/40"
+                  className="w-full px-3 py-2 bg-gray-100 dark:bg-surface-elevated text-sm outline-none focus:ring-2 focus:ring-imajin-purple/40"
                 />
               </div>
-              <p className="text-xs text-gray-500 mb-2 font-medium">Select members:</p>
+              <p className="text-xs text-secondary mb-2 font-medium">Select members:</p>
               <div className="space-y-1">
                 {connections.map((conn: Connection) => (
                   <label
                     key={`grp-${conn.did}`}
-                    className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg cursor-pointer"
+                    className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-surface-elevated cursor-pointer"
                   >
                     <input
                       type="checkbox"
                       checked={selectedDids.has(conn.did)}
                       onChange={() => toggleMember(conn.did)}
-                      className="w-4 h-4 rounded accent-orange-500"
+                      className="w-4 h-4 accent-orange-500"
                     />
                     <div className="min-w-0">
                       <p className="font-medium truncate">{displayName(conn)}</p>
                       {conn.handle && conn.name && (
-                        <p className="text-sm text-gray-500">@{conn.handle}</p>
+                        <p className="text-sm text-secondary">@{conn.handle}</p>
                       )}
                     </div>
                   </label>
                 ))}
               </div>
-              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-white/10">
                 <button
                   onClick={createGroup}
                   disabled={selectedDids.size === 0}
-                  className="w-full py-2.5 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="w-full py-2.5 hover:brightness-110 text-primary font-medium hover:bg-imajin-orange transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {selectedDids.size > 0
                     ? `Create Group (${selectedDids.size + 1} members)`

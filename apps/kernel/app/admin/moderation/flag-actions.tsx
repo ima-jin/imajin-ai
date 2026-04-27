@@ -63,27 +63,27 @@ export function FlagActions({ flagId, targetDid }: FlagActionsProps) {
         value={resolution}
         onChange={(e) => setResolution(e.target.value)}
         placeholder="Resolution note (optional)"
-        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500"
+        className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-surface-elevated text-gray-900 dark:text-primary px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-imajin-purple"
       />
       <div className="flex flex-wrap gap-2">
         <button
           onClick={dismiss}
           disabled={!!loading}
-          className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+          className="border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-xs text-gray-700 dark:text-primary hover:bg-gray-50 dark:hover:bg-surface-elevated disabled:opacity-50"
         >
           {loading === 'dismiss' ? 'Dismissing…' : 'Dismiss'}
         </button>
         <button
           onClick={suspendTarget}
           disabled={!!loading}
-          className="rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-3 py-1.5 text-xs font-medium"
+          style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className=" hover:brightness-110 disabled:opacity-50 text-primary px-3 py-1.5 text-xs font-medium"
         >
           {loading === 'suspend' ? 'Suspending…' : 'Suspend Target'}
         </button>
         <button
           onClick={removeContent}
           disabled={!!loading}
-          className="rounded-lg bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white px-3 py-1.5 text-xs font-medium"
+          className="bg-error hover:bg-error disabled:opacity-50 text-primary px-3 py-1.5 text-xs font-medium"
         >
           {loading === 'remove' ? 'Logging…' : 'Remove Content'}
         </button>

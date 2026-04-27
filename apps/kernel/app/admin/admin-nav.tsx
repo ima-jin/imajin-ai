@@ -26,10 +26,10 @@ export default function AdminNav({ navItems, mobile = false, nodeName }: AdminNa
   };
 
   const linkClass = (href: string) =>
-    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+    `flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors ${
       isActive(href)
-        ? 'bg-orange-500 text-white'
-        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
+        ? 'bg-imajin-orange text-primary'
+        : 'text-gray-700 dark:text-primary hover:bg-gray-200 dark:hover:bg-surface-elevated hover:text-gray-900 dark:hover:text-primary'
     }`;
 
   if (mobile) {
@@ -38,13 +38,13 @@ export default function AdminNav({ navItems, mobile = false, nodeName }: AdminNa
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-base">🖥️</span>
-            <span className="font-semibold text-gray-900 dark:text-white text-sm truncate max-w-[160px]">
+            <span className="font-semibold text-gray-900 dark:text-primary text-sm truncate max-w-[160px]">
               {nodeName || 'Admin Console'}
             </span>
           </div>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+            className="p-2 text-muted dark:text-primary hover:bg-gray-200 dark:hover:bg-surface-elevated"
             aria-label="Toggle menu"
           >
             {menuOpen ? '✕' : '☰'}
@@ -52,7 +52,7 @@ export default function AdminNav({ navItems, mobile = false, nodeName }: AdminNa
         </div>
 
         {menuOpen && (
-          <div className="mt-3 pb-2 border-t border-gray-200 dark:border-gray-700 pt-3 space-y-1">
+          <div className="mt-3 pb-2 border-t border-gray-200 dark:border-white/10 pt-3 space-y-1">
             {navItems.map((item) => (
               <Link
                 key={item.href}

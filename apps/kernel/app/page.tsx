@@ -52,14 +52,14 @@ export default async function Home() {
   const daysSinceLaunch = Math.floor((Date.now() - new Date('2026-02-01').getTime()) / (1000 * 60 * 60 * 24));
 
   return (
-    <main className="min-h-screen flex flex-col items-center px-6 py-16 bg-gray-950">
+    <main className="min-h-screen flex flex-col items-center px-6 py-16 bg-surface-base">
 
       {/* LOGO + TAGLINE */}
       <section className="flex flex-col items-center text-center mb-12">
-        <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-2">
-          <span className="text-3xl font-bold text-amber-500">人</span>
+        <div className="w-12 h-12 bg-warning/10 flex items-center justify-center mb-2">
+          <span className="text-3xl font-bold text-warning">人</span>
         </div>
-        <p className="text-base text-gray-500">The sovereign browser.</p>
+        <p className="text-base text-secondary">The sovereign browser.</p>
       </section>
 
       {/* PROMO VIDEO */}

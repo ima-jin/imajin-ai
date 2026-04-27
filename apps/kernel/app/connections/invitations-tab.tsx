@@ -48,14 +48,14 @@ function formatDate(iso: string | null) {
 
 function statusBadge(status: string) {
   const styles: Record<string, string> = {
-    pending: 'bg-yellow-500/20 text-yellow-300',
-    accepted: 'bg-green-500/20 text-green-300',
-    expired: 'bg-gray-500/20 text-gray-400',
-    revoked: 'bg-red-500/20 text-red-400',
-    used: 'bg-green-500/20 text-green-300',
+    pending: 'bg-warning/20 text-warning',
+    accepted: 'bg-success/20 text-success',
+    expired: 'bg-gray-500/20 text-secondary',
+    revoked: 'bg-error/20 text-error',
+    used: 'bg-success/20 text-success',
   };
   return (
-    <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium shrink-0 ${styles[status] || 'bg-white/10 text-gray-400'}`}>
+    <span className={`px-1.5 py-0.5 text-xs font-medium shrink-0 ${styles[status] || 'bg-white/10 text-secondary'}`}>
       {status}
     </span>
   );
@@ -226,49 +226,49 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
 
       {/* ─── Section A: Invited by ─── */}
       {invitedBy !== 'loading' && invitedBy !== null && (
-        <div className="p-4 bg-white/5 border border-white/10 rounded-lg flex items-center gap-3">
+        <div className="p-4 bg-white/5 border border-white/10 flex items-center gap-3">
           <span className="text-xl">🌱</span>
-          <div className="text-sm text-gray-300">
+          <div className="text-sm text-primary">
             Invited by{' '}
             {invitedBy.handle ? (
               <a
                 href={`${PROFILE_URL}/${invitedBy.handle}`}
-                className="text-amber-400 hover:text-amber-300 font-medium transition"
+                className="text-warning hover:text-warning/70 font-medium transition"
               >
                 @{invitedBy.handle}
               </a>
             ) : (
               <a
                 href={`${PROFILE_URL}/${invitedBy.did}`}
-                className="text-amber-400 hover:text-amber-300 font-medium transition"
+                className="text-warning hover:text-warning/70 font-medium transition"
               >
                 {invitedBy.name || invitedBy.did.slice(0, 20) + '…'}
               </a>
             )}
             {invitedBy.date && (
-              <span className="text-gray-500"> · {formatDate(invitedBy.date)}</span>
+              <span className="text-secondary"> · {formatDate(invitedBy.date)}</span>
             )}
           </div>
         </div>
       )}
 
       {invitedBy !== 'loading' && invitedBy === null && (
-        <div className="p-4 bg-white/5 border border-white/10 rounded-lg flex items-center gap-3">
+        <div className="p-4 bg-white/5 border border-white/10 flex items-center gap-3">
           <span className="text-xl">🌱</span>
-          <span className="text-sm text-gray-300">Founding member</span>
+          <span className="text-sm text-primary">Founding member</span>
         </div>
       )}
 
       {/* ─── Section B: Create Invite ─── */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Create Invite</h2>
+          <h2 className="text-lg font-semibold font-mono">Create Invite</h2>
           {quota && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-secondary">
               {quota.remaining === null
                 ? `${quota.pending} pending · unlimited`
                 : `${quota.remaining} remaining · ${quota.pending} pending`}
-              <span className="ml-1 text-gray-600">({quota.tier})</span>
+              <span className="ml-1 text-muted">({quota.tier})</span>
             </span>
           )}
         </div>
@@ -279,58 +279,58 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
               setActiveCreate(activeCreate === 'link' ? null : 'link');
               setGeneratedInvite(null);
             }}
-            className={`p-4 rounded-lg border text-left transition ${
+            className={`p-4 border text-left transition ${
               activeCreate === 'link'
-                ? 'border-amber-500/50 bg-amber-500/10 text-white'
-                : 'border-white/10 bg-white/5 text-gray-300 hover:bg-white/10'
+                ? 'border-amber-500/50 bg-warning/10 text-primary'
+                : 'border-white/10 bg-white/5 text-primary hover:bg-white/10'
             }`}
           >
             <div className="text-xl mb-1">🔗</div>
             <div className="text-sm font-medium">Generate Link</div>
-            <div className="text-xs text-gray-500 mt-0.5">Share a one-time invite URL</div>
+            <div className="text-xs text-secondary mt-0.5">Share a one-time invite URL</div>
           </button>
           <button
             onClick={() => {
               setActiveCreate(activeCreate === 'email' ? null : 'email');
               setEmailResult(null);
             }}
-            className={`p-4 rounded-lg border text-left transition ${
+            className={`p-4 border text-left transition ${
               activeCreate === 'email'
-                ? 'border-amber-500/50 bg-amber-500/10 text-white'
-                : 'border-white/10 bg-white/5 text-gray-300 hover:bg-white/10'
+                ? 'border-amber-500/50 bg-warning/10 text-primary'
+                : 'border-white/10 bg-white/5 text-primary hover:bg-white/10'
             }`}
           >
             <div className="text-xl mb-1">📧</div>
             <div className="text-sm font-medium">Email Invite</div>
-            <div className="text-xs text-gray-500 mt-0.5">Send directly via email</div>
+            <div className="text-xs text-secondary mt-0.5">Send directly via email</div>
           </button>
         </div>
 
         {/* Generate Link panel */}
         {activeCreate === 'link' && (
-          <div className="p-5 bg-white/5 border border-amber-500/20 rounded-lg">
+          <div className="p-5 bg-white/5 border border-amber-500/20">
             {generatedInvite ? (
               <div>
-                <p className="text-sm text-gray-400 mb-3">Share this link with someone you trust:</p>
-                <div className="flex items-center gap-2 bg-black/30 border border-white/10 rounded-lg px-3 py-2 mb-3">
-                  <code className="text-xs text-amber-300 flex-1 truncate">{generatedInvite.url}</code>
+                <p className="text-sm text-secondary mb-3">Share this link with someone you trust:</p>
+                <div className="flex items-center gap-2 bg-surface-base/30 border border-white/10 px-3 py-2 mb-3">
+                  <code className="text-xs text-warning/70 flex-1 truncate">{generatedInvite.url}</code>
                   <button
                     onClick={() => setQrUrl(generatedInvite.url)}
-                    className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/20 text-white font-medium rounded transition shrink-0"
+                    className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/20 text-primary font-medium transition shrink-0"
                     title="Show QR code"
                   >
                     QR
                   </button>
                   <button
                     onClick={() => copyLink(generatedInvite.url, generatedInvite.code)}
-                    className="px-2.5 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-black font-medium rounded transition shrink-0"
+                    className="px-2.5 py-1 text-xs bg-warning hover:bg-warning text-black font-medium transition shrink-0"
                   >
                     {copiedCode === generatedInvite.code ? '✓ Copied' : 'Copy'}
                   </button>
                 </div>
                 <button
                   onClick={() => { setGeneratedInvite(null); setInviteNote(''); }}
-                  className="text-xs text-gray-500 hover:text-gray-300 transition"
+                  className="text-xs text-secondary hover:text-primary transition"
                 >
                   Generate another
                 </button>
@@ -341,20 +341,20 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
                   value={inviteNote}
                   onChange={(e) => setInviteNote(e.target.value)}
                   placeholder="Add a personal note (optional)"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white placeholder-gray-500 text-sm resize-none mb-3"
+                  className="w-full bg-white/5 border border-white/10 p-3 text-primary placeholder-gray-500 text-sm resize-none mb-3"
                   rows={2}
                 />
                 <div className="flex gap-2">
                   <button
                     onClick={generateLink}
                     disabled={generating}
-                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-medium rounded-lg transition text-sm"
+                    className="px-4 py-2 bg-warning hover:bg-warning disabled:opacity-50 text-black font-medium transition text-sm"
                   >
                     {generating ? 'Generating…' : 'Generate Link'}
                   </button>
                   <button
                     onClick={() => setActiveCreate(null)}
-                    className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
+                    className="px-4 py-2 bg-white/10 hover:bg-white/15 text-primary transition text-sm"
                   >
                     Cancel
                   </button>
@@ -366,19 +366,19 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
 
         {/* Email Invite panel */}
         {activeCreate === 'email' && (
-          <div className="p-5 bg-white/5 border border-amber-500/20 rounded-lg">
+          <div className="p-5 bg-white/5 border border-amber-500/20">
             {quota && quota.remaining !== null && quota.remaining <= 0 &&
               sentInvites.some(i => i.delivery === 'email' && i.status === 'pending') && (
-              <div className="mb-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-xs text-yellow-300">
+              <div className="mb-3 p-3 bg-warning/10 border border-yellow-500/20 text-xs text-warning">
                 ⚠️ Invite limit reached. Pending email invites must be accepted, expired, or revoked before you can send more.
               </div>
             )}
             {emailResult === 'success' ? (
               <div>
-                <p className="text-sm text-green-400 mb-3">✓ Invite sent successfully!</p>
+                <p className="text-sm text-success mb-3">✓ Invite sent successfully!</p>
                 <button
                   onClick={() => { setEmailResult(null); }}
-                  className="text-xs text-gray-500 hover:text-gray-300 transition"
+                  className="text-xs text-secondary hover:text-primary transition"
                 >
                   Send another
                 </button>
@@ -390,30 +390,30 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="Email address"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white placeholder-gray-500 text-sm mb-3"
+                  className="w-full bg-white/5 border border-white/10 px-3 py-2 text-primary placeholder-gray-500 text-sm mb-3"
                   onKeyDown={(e) => e.key === 'Enter' && sendEmailInvite()}
                 />
                 <textarea
                   value={emailNote}
                   onChange={(e) => setEmailNote(e.target.value)}
                   placeholder="Add a personal message (optional)"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white placeholder-gray-500 text-sm resize-none mb-3"
+                  className="w-full bg-white/5 border border-white/10 p-3 text-primary placeholder-gray-500 text-sm resize-none mb-3"
                   rows={2}
                 />
                 {emailResult && emailResult !== 'success' && (
-                  <p className="text-xs text-red-400 mb-3">{emailResult}</p>
+                  <p className="text-xs text-error mb-3">{emailResult}</p>
                 )}
                 <div className="flex gap-2">
                   <button
                     onClick={sendEmailInvite}
                     disabled={sendingEmail || !inviteEmail.trim()}
-                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-medium rounded-lg transition text-sm"
+                    className="px-4 py-2 bg-warning hover:bg-warning disabled:opacity-50 text-black font-medium transition text-sm"
                   >
                     {sendingEmail ? 'Sending…' : 'Send Invite'}
                   </button>
                   <button
                     onClick={() => setActiveCreate(null)}
-                    className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
+                    className="px-4 py-2 bg-white/10 hover:bg-white/15 text-primary transition text-sm"
                   >
                     Cancel
                   </button>
@@ -427,35 +427,35 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
       {/* ─── Section C: Sent Invites ─── */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Sent Invites</h2>
+          <h2 className="text-lg font-semibold font-mono">Sent Invites</h2>
           {allSentRows.some(r => r.status === 'accepted') && (
             <button
               onClick={() => setShowAccepted(!showAccepted)}
-              className="text-xs text-gray-500 hover:text-gray-300 transition"
+              className="text-xs text-secondary hover:text-primary transition"
             >
               {showAccepted ? 'Hide accepted' : 'Show accepted'}
             </button>
           )}
         </div>
         {allSentRows.length === 0 ? (
-          <div className="text-center py-10 bg-white/5 border border-white/10 rounded-lg">
+          <div className="text-center py-10 bg-white/5 border border-white/10">
             <div className="text-3xl mb-2">📨</div>
-            <p className="text-gray-400 text-sm">No invites sent yet.</p>
+            <p className="text-secondary text-sm">No invites sent yet.</p>
           </div>
         ) : (
           <div className="space-y-2">
             {allSentRows.filter(r => showAccepted || r.status !== "accepted").map((row) => (
               <div
                 key={row.key}
-                className="flex items-center gap-3 p-3.5 bg-white/5 border border-white/10 rounded-lg"
+                className="flex items-center gap-3 p-3.5 bg-white/5 border border-white/10"
               >
                 <span className="text-base shrink-0">{row.type === 'link' ? '🔗' : '📧'}</span>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-gray-200 truncate">
+                  <div className="text-sm text-primary truncate">
                     {row.status === 'accepted' && row.acceptedHandle ? (
                       <a
                         href={`${PROFILE_URL}/${row.acceptedHandle}`}
-                        className="text-amber-400 hover:text-amber-300 transition"
+                        className="text-warning hover:text-warning/70 transition"
                       >
                         @{row.acceptedHandle}
                       </a>
@@ -463,7 +463,7 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
                       row.acceptedDid ? (
                         <a
                           href={`${PROFILE_URL}/${row.acceptedDid}`}
-                          className="text-amber-400 hover:text-amber-300 transition"
+                          className="text-warning hover:text-warning/70 transition"
                         >
                           {row.acceptedBy}
                         </a>
@@ -474,14 +474,14 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
                       row.recipient
                     )}
                   </div>
-                  <div className="text-xs text-gray-500 mt-0.5">
+                  <div className="text-xs text-secondary mt-0.5">
                     {formatDate(row.date)}
                     {row.acceptedDate && (
-                      <span className="text-green-500"> · accepted {formatDate(row.acceptedDate)}</span>
+                      <span className="text-success"> · accepted {formatDate(row.acceptedDate)}</span>
                     )}
                   </div>
                   {row.note && (
-                    <div className="text-xs text-gray-500 mt-1 italic">&ldquo;{row.note}&rdquo;</div>
+                    <div className="text-xs text-secondary mt-1 italic">&ldquo;{row.note}&rdquo;</div>
                   )}
                 </div>
                 {statusBadge(row.status)}
@@ -491,14 +491,14 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
                       <>
                         <button
                           onClick={() => setQrUrl(row.url!)}
-                          className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/15 text-white rounded transition shrink-0"
+                          className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/15 text-primary transition shrink-0"
                           title="Show QR code"
                         >
                           QR
                         </button>
                         <button
                           onClick={() => copyLink(row.url!, row.code!)}
-                          className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/15 text-white rounded transition shrink-0"
+                          className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/15 text-primary transition shrink-0"
                         >
                           {copiedCode === row.code ? '✓' : 'Copy'}
                         </button>
@@ -506,7 +506,7 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
                     )}
                     <button
                       onClick={() => deleteInvite(row.code!)}
-                      className="px-2.5 py-1 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded transition shrink-0"
+                      className="px-2.5 py-1 text-xs bg-error/10 hover:bg-error/20 text-error transition shrink-0"
                     >
                       {row.type === 'email' ? 'Revoke' : 'Delete'}
                     </button>

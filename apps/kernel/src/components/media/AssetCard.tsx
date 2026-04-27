@@ -43,20 +43,20 @@ export function getFairAccess(fairManifest: unknown): string | null {
 export function FairBadge({ access }: { access: string }) {
   if (access === "public") {
     return (
-      <span className="text-xs font-medium bg-green-500/15 text-green-400 px-1.5 py-0.5 rounded">
+      <span className="text-xs font-medium bg-success/15 text-success px-1.5 py-0.5 ">
         .fair
       </span>
     );
   }
   if (access === "trust-graph") {
     return (
-      <span className="text-xs font-medium bg-orange-500/15 text-orange-400 px-1.5 py-0.5 rounded">
+      <span className="text-xs font-medium bg-imajin-orange/15 text-imajin-orange px-1.5 py-0.5 ">
         .fair
       </span>
     );
   }
   return (
-    <span className="text-xs font-medium bg-red-500/15 text-red-400 px-1.5 py-0.5 rounded">
+    <span className="text-xs font-medium bg-error/15 text-error px-1.5 py-0.5 ">
       .fair
     </span>
   );
@@ -68,9 +68,9 @@ export function AssetCard({ asset, selected, checked, compact, onSelect, onCheck
 
   return (
     <div
-      className={`group relative bg-[#252525] rounded-xl overflow-hidden cursor-pointer border-2 transition-all duration-150 ${
+      className={`group relative bg-[#252525] overflow-hidden cursor-pointer border-2 transition-all duration-150 ${
         selected || checked
-          ? "border-orange-500 shadow-lg shadow-orange-500/20"
+          ? "border-imajin-orange-orange-500/20"
           : "border-transparent hover:border-gray-600"
       }`}
       onClick={onSelect}
@@ -83,10 +83,10 @@ export function AssetCard({ asset, selected, checked, compact, onSelect, onCheck
         onClick={onCheck}
       >
         <div
-          className={`w-5 h-5 rounded border-2 flex items-center justify-center text-[10px] font-bold transition-colors ${
+          className={`w-5 h-5  border-2 flex items-center justify-center text-[10px] font-bold transition-colors ${
             checked
-              ? "bg-orange-500 border-orange-500 text-white"
-              : "bg-black/60 border-gray-400 text-transparent"
+              ? "bg-imajin-orange border-imajin-orange text-primary"
+              : "bg-surface-base/60 border-gray-400 text-transparent"
           }`}
         >
           ✓
@@ -111,7 +111,7 @@ export function AssetCard({ asset, selected, checked, compact, onSelect, onCheck
       {/* Info */}
       <div className={compact ? "p-1" : "p-2"}>
         <p
-          className={`${compact ? "text-[10px]" : "text-xs"} text-gray-200 truncate font-medium`}
+          className={`${compact ? "text-[10px]" : "text-xs"} text-primary truncate font-medium`}
           title={asset.filename}
         >
           {asset.filename}
@@ -124,7 +124,7 @@ export function AssetCard({ asset, selected, checked, compact, onSelect, onCheck
           )
         ) : (
           <div className="flex items-center justify-between mt-0.5">
-            <span className="text-xs text-gray-500">{formatSize(asset.size)}</span>
+            <span className="text-xs text-secondary">{formatSize(asset.size)}</span>
             {fairAccess !== null && <FairBadge access={fairAccess} />}
           </div>
         )}

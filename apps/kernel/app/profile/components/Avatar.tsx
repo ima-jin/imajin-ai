@@ -30,7 +30,7 @@ export function Avatar({ avatar, displayName, size = 'md', className = '' }: Ava
 
   if (isImageUrl) {
     return (
-      <div className={`${sizeClasses} rounded-full border-2 border-[#F59E0B] overflow-hidden bg-black ${className}`}>
+      <div className={`${sizeClasses} rounded-full border-2 border-[#F59E0B] overflow-hidden bg-surface-base ${className}`}>
         <img
           src={avatar}
           alt={displayName || 'Avatar'}

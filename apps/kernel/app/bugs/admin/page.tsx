@@ -9,17 +9,17 @@ const STATUSES = ['all', 'new', 'reviewed', 'imported', 'resolved', 'ignored', '
 type StatusFilter = typeof STATUSES[number];
 
 const STATUS_STYLES: Record<string, string> = {
-  new: 'bg-gray-700 text-gray-300',
+  new: 'bg-surface-elevated text-primary',
   reviewed: 'bg-blue-900 text-blue-300',
-  imported: 'bg-green-900 text-green-300',
+  imported: 'bg-success text-success',
   resolved: 'bg-emerald-900 text-emerald-300',
-  ignored: 'bg-red-900 text-red-300',
-  duplicate: 'bg-yellow-900 text-yellow-300',
+  ignored: 'bg-error text-error',
+  duplicate: 'bg-warning/20 text-warning',
 };
 
 function StatusBadge({ status }: { status: string }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLES[status] ?? 'bg-gray-700 text-gray-300'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5  text-xs font-medium ${STATUS_STYLES[status] ?? 'bg-surface-elevated text-primary'}`}>
       {status}
     </span>
   );
@@ -112,8 +112,8 @@ export default function AdminBugsPage() {
   return (
     <main className="min-h-screen px-6 py-12 max-w-5xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-100 mb-1">Bug Reports — Admin</h1>
-        <Link href="/bugs" className="text-sm text-orange-400 hover:text-orange-300 transition-colors">
+        <h1 className="text-2xl font-bold text-primary mb-1 font-mono">Bug Reports — Admin</h1>
+        <Link href="/bugs" className="text-sm text-imajin-orange hover:text-imajin-orange/70 transition-colors">
           ← My reports
         </Link>
       </div>
@@ -124,10 +124,10 @@ export default function AdminBugsPage() {
           <button
             key={s}
             onClick={() => setFilter(s)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-3 py-1.5 text-sm font-medium transition-colors ${
               filter === s
-                ? 'bg-orange-500 text-white'
-                : 'bg-[#1a1a1a] text-gray-400 hover:text-gray-200 border border-gray-700'
+                ? 'bg-imajin-orange text-primary'
+                : 'bg-[#1a1a1a] text-secondary hover:text-primary border border-white/10'
             }`}
           >
             {s}
@@ -136,44 +136,44 @@ export default function AdminBugsPage() {
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-900 bg-red-950/40 px-5 py-4 text-sm text-red-400 mb-6">
+        <div className="border border-red-900 bg-red-950/40 px-5 py-4 text-sm text-error mb-6">
           {error}
         </div>
       )}
 
       {loading ? (
-        <p className="text-gray-500 text-sm">Loading...</p>
+        <p className="text-secondary text-sm">Loading...</p>
       ) : reports.length === 0 ? (
-        <div className="rounded-xl border border-gray-800 bg-[#111] px-6 py-12 text-center">
-          <p className="text-gray-500">No reports{filter !== 'all' ? ` with status "${filter}"` : ''}.</p>
+        <div className="border border-white/10 bg-[#111] px-6 py-12 text-center">
+          <p className="text-secondary">No reports{filter !== 'all' ? ` with status "${filter}"` : ''}.</p>
         </div>
       ) : (
         <ul className="space-y-5">
           {reports.map((r) => {
             const busy = actionLoading === r.id;
             return (
-              <li key={r.id} className="rounded-xl border border-gray-800 bg-[#111] p-5">
+              <li key={r.id} className="border border-white/10 bg-[#111] p-5">
                 {/* Header */}
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                   <StatusBadge status={r.status} />
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-300">
+                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-surface-elevated text-primary">
                     {r.type === 'suggestion' ? '💡 Suggestion' : r.type === 'question' ? '❓ Question' : r.type === 'other' ? '💬 Other' : '🐛 Bug'}
                   </span>
-                  <span className="text-xs text-gray-500">{r.id}</span>
-                  <span className="text-xs text-gray-600">{formatDate(r.createdAt)}</span>
+                  <span className="text-xs text-secondary">{r.id}</span>
+                  <span className="text-xs text-muted">{formatDate(r.createdAt)}</span>
                 </div>
 
                 {/* Reporter info */}
-                <div className="text-xs text-gray-500 mb-2 space-y-0.5">
-                  {r.reporterName && <p><span className="text-gray-400">Name:</span> {r.reporterName}</p>}
-                  <p><span className="text-gray-400">DID:</span> <span className="font-mono">{r.reporterDid}</span></p>
-                  {r.pageUrl && <p><span className="text-gray-400">Page:</span> {r.pageUrl}</p>}
-                  {r.viewport && <p><span className="text-gray-400">Viewport:</span> {r.viewport}</p>}
-                  {r.userAgent && <p className="truncate"><span className="text-gray-400">UA:</span> {r.userAgent}</p>}
+                <div className="text-xs text-secondary mb-2 space-y-0.5">
+                  {r.reporterName && <p><span className="text-secondary">Name:</span> {r.reporterName}</p>}
+                  <p><span className="text-secondary">DID:</span> <span className="font-mono">{r.reporterDid}</span></p>
+                  {r.pageUrl && <p><span className="text-secondary">Page:</span> {r.pageUrl}</p>}
+                  {r.viewport && <p><span className="text-secondary">Viewport:</span> {r.viewport}</p>}
+                  {r.userAgent && <p className="truncate"><span className="text-secondary">UA:</span> {r.userAgent}</p>}
                 </div>
 
                 {/* Description */}
-                <p className="text-sm text-gray-200 whitespace-pre-wrap mb-3">{r.description}</p>
+                <p className="text-sm text-primary whitespace-pre-wrap mb-3">{r.description}</p>
 
                 {/* Screenshot */}
                 {r.screenshotUrl && (
@@ -182,7 +182,7 @@ export default function AdminBugsPage() {
                     <img
                       src={r.screenshotUrl}
                       alt="Screenshot"
-                      className="max-h-40 rounded border border-gray-700 object-contain"
+                      className="max-h-40 border border-white/10 object-contain"
                     />
                   </a>
                 )}
@@ -190,7 +190,7 @@ export default function AdminBugsPage() {
                 {/* GitHub link */}
                 {r.githubIssueUrl && (
                   <p className="text-xs mb-3">
-                    <a href={r.githubIssueUrl} target="_blank" rel="noreferrer" className="text-orange-400 hover:text-orange-300">
+                    <a href={r.githubIssueUrl} target="_blank" rel="noreferrer" className="text-imajin-orange hover:text-imajin-orange/70">
                       GitHub #{r.githubIssueNumber} →
                     </a>
                   </p>
@@ -198,21 +198,21 @@ export default function AdminBugsPage() {
 
                 {/* Admin notes */}
                 {r.adminNotes && (
-                  <p className="text-xs text-gray-500 mb-3 italic">Notes: {r.adminNotes}</p>
+                  <p className="text-xs text-secondary mb-3 italic">Notes: {r.adminNotes}</p>
                 )}
 
                 {/* Duplicate of */}
                 {r.duplicateOf && (
-                  <p className="text-xs text-yellow-500 mb-3">Duplicate of: {r.duplicateOf}</p>
+                  <p className="text-xs text-warning mb-3">Duplicate of: {r.duplicateOf}</p>
                 )}
 
                 {/* Actions */}
-                <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-800">
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-white/10">
                   {r.status !== 'imported' && (
                     <button
                       onClick={() => importToGitHub(r.id)}
                       disabled={busy}
-                      className="px-3 py-1.5 rounded-lg text-xs bg-green-900 hover:bg-green-800 text-green-300 transition-colors disabled:opacity-50"
+                      className="px-3 py-1.5 text-xs bg-success hover:bg-success text-success transition-colors disabled:opacity-50"
                     >
                       Import to GitHub
                     </button>
@@ -226,18 +226,18 @@ export default function AdminBugsPage() {
                           value={ignoreState.notes}
                           onChange={(e) => setIgnoreState({ id: r.id, notes: e.target.value })}
                           placeholder="Reason (optional)"
-                          className="rounded bg-[#1a1a1a] border border-gray-700 text-gray-200 text-xs px-2 py-1 focus:outline-none focus:border-orange-500"
+                          className=" bg-[#1a1a1a] border border-white/10 text-primary text-xs px-2 py-1 focus:outline-none focus:border-imajin-orange"
                         />
                         <button
                           onClick={() => patchReport(r.id, { status: 'ignored', adminNotes: ignoreState.notes })}
                           disabled={busy}
-                          className="px-3 py-1.5 rounded-lg text-xs bg-red-900 hover:bg-red-800 text-red-300 transition-colors disabled:opacity-50"
+                          className="px-3 py-1.5 text-xs bg-error hover:bg-error text-error transition-colors disabled:opacity-50"
                         >
                           Confirm
                         </button>
                         <button
                           onClick={() => setIgnoreState(null)}
-                          className="text-xs text-gray-500 hover:text-gray-300"
+                          className="text-xs text-secondary hover:text-primary"
                         >
                           Cancel
                         </button>
@@ -246,7 +246,7 @@ export default function AdminBugsPage() {
                       <button
                         onClick={() => setIgnoreState({ id: r.id, notes: '' })}
                         disabled={busy}
-                        className="px-3 py-1.5 rounded-lg text-xs bg-[#1a1a1a] hover:bg-red-950 text-red-400 border border-gray-700 transition-colors disabled:opacity-50"
+                        className="px-3 py-1.5 text-xs bg-[#1a1a1a] hover:bg-red-950 text-error border border-white/10 transition-colors disabled:opacity-50"
                       >
                         Ignore
                       </button>
@@ -261,18 +261,18 @@ export default function AdminBugsPage() {
                           value={duplicateState.duplicateOf}
                           onChange={(e) => setDuplicateState({ id: r.id, duplicateOf: e.target.value })}
                           placeholder="Original bug ID"
-                          className="rounded bg-[#1a1a1a] border border-gray-700 text-gray-200 text-xs px-2 py-1 focus:outline-none focus:border-orange-500"
+                          className=" bg-[#1a1a1a] border border-white/10 text-primary text-xs px-2 py-1 focus:outline-none focus:border-imajin-orange"
                         />
                         <button
                           onClick={() => patchReport(r.id, { status: 'duplicate', duplicateOf: duplicateState.duplicateOf })}
                           disabled={busy || !duplicateState.duplicateOf.trim()}
-                          className="px-3 py-1.5 rounded-lg text-xs bg-yellow-900 hover:bg-yellow-800 text-yellow-300 transition-colors disabled:opacity-50"
+                          className="px-3 py-1.5 text-xs bg-warning/20 hover:bg-warning/30 text-warning transition-colors disabled:opacity-50"
                         >
                           Confirm
                         </button>
                         <button
                           onClick={() => setDuplicateState(null)}
-                          className="text-xs text-gray-500 hover:text-gray-300"
+                          className="text-xs text-secondary hover:text-primary"
                         >
                           Cancel
                         </button>
@@ -281,7 +281,7 @@ export default function AdminBugsPage() {
                       <button
                         onClick={() => setDuplicateState({ id: r.id, duplicateOf: '' })}
                         disabled={busy}
-                        className="px-3 py-1.5 rounded-lg text-xs bg-[#1a1a1a] hover:bg-yellow-950 text-yellow-400 border border-gray-700 transition-colors disabled:opacity-50"
+                        className="px-3 py-1.5 text-xs bg-[#1a1a1a] hover:bg-warning/30 text-warning border border-white/10 transition-colors disabled:opacity-50"
                       >
                         Mark Duplicate
                       </button>
@@ -292,7 +292,7 @@ export default function AdminBugsPage() {
                     <button
                       onClick={() => patchReport(r.id, { status: 'reviewed' })}
                       disabled={busy}
-                      className="px-3 py-1.5 rounded-lg text-xs bg-[#1a1a1a] hover:bg-blue-950 text-blue-400 border border-gray-700 transition-colors disabled:opacity-50"
+                      className="px-3 py-1.5 text-xs bg-[#1a1a1a] hover:bg-blue-950 text-blue-400 border border-white/10 transition-colors disabled:opacity-50"
                     >
                       Mark Reviewed
                     </button>

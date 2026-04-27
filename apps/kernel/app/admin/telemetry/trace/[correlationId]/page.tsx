@@ -52,56 +52,56 @@ export default async function TracePage({
       <div className="mb-6">
         <Link
           href="/admin/telemetry"
-          className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-3 inline-block"
+          className="text-sm text-secondary dark:text-secondary hover:text-gray-700 dark:hover:text-primary mb-3 inline-block"
         >
           ← Telemetry
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Trace</h1>
-        <p className="mt-1 font-mono text-xs text-gray-500 dark:text-gray-400 break-all">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-primary font-mono">Trace</h1>
+        <p className="mt-1 font-mono text-xs text-secondary dark:text-secondary break-all">
           {correlationId}
         </p>
       </div>
 
       {!data || data.steps.length === 0 ? (
-        <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-8 text-center">
-          <p className="text-gray-500 dark:text-gray-400 text-sm">
+        <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10 p-8 text-center">
+          <p className="text-secondary dark:text-secondary text-sm">
             No requests found for this correlation ID.
           </p>
         </div>
       ) : (
-        <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700">
-          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+        <div className="bg-white dark:bg-surface-elevated border border-gray-100 dark:border-white/10">
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-white/10 flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-700 dark:text-primary">
               {data.steps.length} request{data.steps.length !== 1 ? 's' : ''}
             </span>
             {totalDuration !== null && (
-              <span className="text-xs text-gray-500 dark:text-gray-400">
+              <span className="text-xs text-secondary dark:text-secondary">
                 Total span: {totalDuration}ms
               </span>
             )}
           </div>
 
-          <div className="divide-y divide-gray-50 dark:divide-gray-700/50">
+          <div className="divide-y divide-gray-50 dark:divide-white/10/50">
             {data.steps.map((step, i) => {
               const isError = step.status >= 400;
               return (
                 <div key={step.id} className="px-5 py-4">
                   <div className="flex items-start gap-4">
                     {/* Step number */}
-                    <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-xs font-medium text-gray-600 dark:text-gray-400">
+                    <div className="flex-shrink-0 w-6 h-6 bg-gray-100 dark:bg-surface-elevated flex items-center justify-center text-xs font-medium text-muted dark:text-secondary">
                       {i + 1}
                     </div>
 
                     <div className="flex-1 min-w-0">
                       {/* Main row */}
                       <div className="flex items-center gap-3 flex-wrap">
-                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                        <span className="text-xs font-medium text-secondary dark:text-secondary uppercase tracking-wide">
                           {step.service}
                         </span>
-                        <span className="font-mono text-xs text-gray-400 dark:text-gray-500">
+                        <span className="font-mono text-xs text-secondary dark:text-secondary">
                           {step.method}
                         </span>
-                        <span className="font-mono text-sm text-gray-900 dark:text-gray-100 truncate">
+                        <span className="font-mono text-sm text-gray-900 dark:text-primary truncate">
                           {step.path}
                         </span>
                         <StatusBadge status={step.status} />
@@ -109,10 +109,10 @@ export default async function TracePage({
                           <span
                             className={`text-xs font-medium tabular-nums ml-auto ${
                               step.duration_ms >= 1000
-                                ? 'text-red-600 dark:text-red-400'
+                                ? 'text-error dark:text-error'
                                 : step.duration_ms >= 500
-                                ? 'text-amber-600 dark:text-amber-400'
-                                : 'text-gray-500 dark:text-gray-400'
+                                ? 'text-warning dark:text-warning'
+                                : 'text-secondary dark:text-secondary'
                             }`}
                           >
                             {step.duration_ms}ms
@@ -122,23 +122,23 @@ export default async function TracePage({
 
                       {/* Meta row */}
                       <div className="mt-1 flex items-center gap-3 flex-wrap">
-                        <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+                        <span className="text-xs text-secondary dark:text-secondary tabular-nums">
                           {new Date(step.created_at).toISOString().replace('T', ' ').slice(0, 23)}
                         </span>
                         {step.did && (
-                          <span className="font-mono text-xs text-gray-400 dark:text-gray-500 truncate max-w-[160px]">
+                          <span className="font-mono text-xs text-secondary dark:text-secondary truncate max-w-[160px]">
                             {step.did.slice(0, 20)}…
                           </span>
                         )}
                         {step.ip && step.ip !== 'unknown' && (
-                          <span className="text-xs text-gray-400 dark:text-gray-500">{step.ip}</span>
+                          <span className="text-xs text-secondary dark:text-secondary">{step.ip}</span>
                         )}
                       </div>
 
                       {/* Error message */}
                       {isError && step.error_message && (
-                        <div className="mt-2 rounded bg-red-50 dark:bg-red-900/20 px-3 py-2">
-                          <p className="text-xs font-mono text-red-700 dark:text-red-400 break-all">
+                        <div className="mt-2 bg-error/10 dark:bg-error/20 px-3 py-2">
+                          <p className="text-xs font-mono text-error dark:text-error break-all">
                             {step.error_message}
                           </p>
                         </div>
@@ -159,12 +159,12 @@ function StatusBadge({ status }: { status: number }) {
   const isError = status >= 500;
   const isClientError = status >= 400 && status < 500;
   const cls = isError
-    ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+    ? 'bg-error/10 dark:bg-error/30 text-error dark:text-error'
     : isClientError
-    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-    : 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400';
+    ? 'bg-warning/10 dark:bg-warning/20 text-warning dark:text-warning'
+    : 'bg-success/10 dark:bg-success/20 text-success dark:text-success';
   return (
-    <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-mono font-medium ${cls}`}>
+    <span className={`inline-block px-1.5 py-0.5  text-xs font-mono font-medium ${cls}`}>
       {status}
     </span>
   );

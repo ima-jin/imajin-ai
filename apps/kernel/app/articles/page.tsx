@@ -10,20 +10,20 @@ export const metadata: Metadata = {
 function StatusBadge({ status }: { status: ArticleStatus }) {
   if (status === 'POSTED') {
     return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">
+      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-success/20 text-success">
         Published
       </span>
     );
   }
   if (status === 'REVIEW') {
     return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-500/20 text-orange-400">
+      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-imajin-orange/20 text-imajin-orange">
         In Review
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-500/20 text-gray-400">
+    <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-gray-500/20 text-secondary">
       Draft
     </span>
   );
@@ -39,14 +39,14 @@ export default function ArticlesPage() {
         <div className="mb-12">
           <Link
             href="/"
-            className="text-gray-500 hover:text-gray-300 transition-colors"
+            className="text-secondary hover:text-primary transition-colors"
           >
             ← Home
           </Link>
         </div>
 
-        <h1 className="text-4xl md:text-5xl font-light tracking-tight mb-4">Articles</h1>
-        <p className="text-xl text-gray-400 mb-12">
+        <h1 className="text-4xl md:text-5xl font-light tracking-tight mb-4 font-mono">Articles</h1>
+        <p className="text-xl text-secondary mb-12">
           Twenty essays on sovereignty, technology, and the future of the internet.
         </p>
 
@@ -55,16 +55,16 @@ export default function ArticlesPage() {
             <Link
               key={article.slug}
               href={`/articles/${article.slug}`}
-              className="block p-6 -mx-6 rounded-xl hover:bg-white/5 transition-colors group"
+              className="block p-6 -mx-6 hover:bg-white/5 transition-colors group"
             >
               <div className="flex items-start justify-between gap-4 mb-2">
                 <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-600 font-mono">{String(index + 1).padStart(2, '0')}</span>
-                  <h2 className="text-xl font-medium text-white group-hover:text-orange-400 transition-colors">{article.title}</h2>
+                  <span className="text-sm text-muted font-mono">{String(index + 1).padStart(2, '0')}</span>
+                  <h2 className="text-xl font-medium text-primary group-hover:text-imajin-orange transition-colors font-mono">{article.title}</h2>
                 </div>
                 <StatusBadge status={article.status} />
               </div>
-              <p className="text-gray-400 ml-9">{article.description}</p>
+              <p className="text-secondary ml-9">{article.description}</p>
             </Link>
           ))}
         </div>

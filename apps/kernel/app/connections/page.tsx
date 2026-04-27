@@ -88,12 +88,12 @@ function NicknameEditor({
           }}
           onBlur={save}
           placeholder="Set nickname…"
-          className="bg-white/10 border border-white/20 rounded px-2 py-0.5 text-sm text-white placeholder-gray-500 w-32 focus:outline-none focus:border-amber-500/50"
+          className="bg-white/10 border border-white/20 px-2 py-0.5 text-sm text-primary placeholder-gray-500 w-32 focus:outline-none focus:border-imajin-purple/50"
         />
         {value.trim() && (
           <button
             onMouseDown={(e) => { e.preventDefault(); clear(); }}
-            className="text-gray-500 hover:text-red-400 transition text-xs"
+            className="text-secondary hover:text-error transition text-xs"
             title="Clear nickname"
           >
             ×
@@ -106,11 +106,11 @@ function NicknameEditor({
   return (
     <div className="flex items-center gap-1 min-w-0">
       {conn.nickname ? (
-        <span className="font-medium text-white truncate">{conn.nickname}</span>
+        <span className="font-medium text-primary truncate">{conn.nickname}</span>
       ) : null}
       <button
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
-        className="text-gray-600 hover:text-amber-400 transition shrink-0"
+        className="text-muted hover:text-warning transition shrink-0"
         title="Edit nickname"
       >
         ✏️
@@ -195,7 +195,7 @@ export default function ConnectionsPage() {
   if (loading) {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-secondary">Loading...</div>
       </div>
     );
   }
@@ -204,11 +204,11 @@ export default function ConnectionsPage() {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
         <div className="text-6xl mb-6">🟠</div>
-        <h1 className="text-3xl font-bold mb-3">Imajin Connections</h1>
-        <p className="text-gray-400 mb-8">Sign in to manage your trusted connections.</p>
+        <h1 className="text-3xl font-bold mb-3 font-mono">Imajin Connections</h1>
+        <p className="text-secondary mb-8">Sign in to manage your trusted connections.</p>
         <a
           href={`${PROFILE_URL}/login?next=${encodeURIComponent(`${AUTH_URL}`)}`}
-          className="inline-block px-8 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg transition"
+          className="inline-block px-8 py-3 bg-warning hover:bg-warning text-black font-semibold transition"
         >
           Sign In
         </a>
@@ -240,7 +240,7 @@ export default function ConnectionsPage() {
       <div className="flex justify-end mb-4">
         <a
           href="/bump"
-          className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-orange-500/10 border border-white/10 hover:border-orange-500/30 text-gray-400 hover:text-orange-400 rounded-lg transition text-sm min-h-[48px] no-underline"
+          className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-imajin-orange/10 border border-white/10 hover:border-imajin-orange/30 text-secondary hover:text-imajin-orange transition text-sm min-h-[48px] no-underline"
         >
           <span>🤜🤛</span>
           <span>Bump</span>
@@ -253,39 +253,39 @@ export default function ConnectionsPage() {
           onClick={() => setActiveTab('connections')}
           className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
             activeTab === 'connections'
-              ? 'border-amber-500 text-amber-400'
-              : 'border-transparent text-gray-400 hover:text-white'
+              ? 'border-amber-500 text-warning'
+              : 'border-transparent text-secondary hover:text-primary'
           }`}
         >
           Connections
           {connections.length > 0 && (
-            <span className="ml-2 px-1.5 py-0.5 text-xs bg-white/10 rounded-full">{connections.length}</span>
+            <span className="ml-2 px-1.5 py-0.5 text-xs bg-white/10">{connections.length}</span>
           )}
         </button>
         <button
           onClick={() => setActiveTab('groups')}
           className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
             activeTab === 'groups'
-              ? 'border-amber-500 text-amber-400'
-              : 'border-transparent text-gray-400 hover:text-white'
+              ? 'border-amber-500 text-warning'
+              : 'border-transparent text-secondary hover:text-primary'
           }`}
         >
           Groups
           {pods.length > 0 && (
-            <span className="ml-2 px-1.5 py-0.5 text-xs bg-white/10 rounded-full">{pods.length}</span>
+            <span className="ml-2 px-1.5 py-0.5 text-xs bg-white/10">{pods.length}</span>
           )}
         </button>
         <button
           onClick={() => setActiveTab('invitations')}
           className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
             activeTab === 'invitations'
-              ? 'border-amber-500 text-amber-400'
-              : 'border-transparent text-gray-400 hover:text-white'
+              ? 'border-amber-500 text-warning'
+              : 'border-transparent text-secondary hover:text-primary'
           }`}
         >
           Invitations
-            {invitePending > 0 && <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-yellow-500/20 text-yellow-300">{invitePending}</span>}
-            {inviteRemaining !== null && inviteRemaining > 0 && <span className="ml-1 text-xs text-gray-500">{inviteRemaining} left</span>}
+            {invitePending > 0 && <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-warning/20 text-warning">{invitePending}</span>}
+            {inviteRemaining !== null && inviteRemaining > 0 && <span className="ml-1 text-xs text-secondary">{inviteRemaining} left</span>}
         </button>
       </div>
 
@@ -293,15 +293,15 @@ export default function ConnectionsPage() {
       {activeTab === 'connections' && (
         <>
           <div className="flex items-center justify-between mb-8">
-            <p className="text-gray-400 text-sm">
+            <p className="text-secondary text-sm">
               {connections.length} connection{connections.length !== 1 ? 's' : ''}
             </p>
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-0.5">
+              <div className="flex items-center gap-1 bg-white/5 border border-white/10 p-0.5">
                 <button
                   onClick={() => { if (sortMode === 'date') setSortAsc(!sortAsc); else { setSortMode('date'); setSortAsc(false); } }}
-                  className={`px-2 py-1 text-xs rounded transition ${
-                    sortMode === 'date' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+                  className={`px-2 py-1 text-xs  transition ${
+                    sortMode === 'date' ? 'bg-white/10 text-primary' : 'text-secondary hover:text-primary'
                   }`}
                   title={sortMode === 'date' ? (sortAsc ? 'Oldest first' : 'Newest first') : 'Sort by date'}
                 >
@@ -309,8 +309,8 @@ export default function ConnectionsPage() {
                 </button>
                 <button
                   onClick={() => { if (sortMode === 'alpha') setSortAsc(!sortAsc); else { setSortMode('alpha'); setSortAsc(true); } }}
-                  className={`px-2 py-1 text-xs rounded transition ${
-                    sortMode === 'alpha' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+                  className={`px-2 py-1 text-xs  transition ${
+                    sortMode === 'alpha' ? 'bg-white/10 text-primary' : 'text-secondary hover:text-primary'
                   }`}
                   title={sortMode === 'alpha' ? (sortAsc ? 'A → Z' : 'Z → A') : 'Sort by name'}
                 >
@@ -319,7 +319,7 @@ export default function ConnectionsPage() {
               </div>
               <button
                 onClick={() => setActiveTab('invitations')}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition text-sm"
+                className="px-4 py-2 bg-warning hover:bg-warning text-black font-medium transition text-sm"
               >
                 + Invite Someone
               </button>
@@ -333,9 +333,9 @@ export default function ConnectionsPage() {
                 <div
                   key={conn.did}
                   onClick={() => window.location.href = `${PROFILE_URL}/${conn.handle || conn.did}`}
-                  className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition"
+                  className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 cursor-pointer hover:bg-white/10 transition"
                 >
-                  <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-lg">
+                  <div className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center text-warning text-lg">
                     👤
                   </div>
                   <div className="flex-1 min-w-0 group">
@@ -344,28 +344,28 @@ export default function ConnectionsPage() {
                         <div className="flex items-center gap-1">
                           <NicknameEditor conn={conn} onSave={updateNickname} />
                         </div>
-                        <div className="text-gray-400 text-sm truncate">
+                        <div className="text-secondary text-sm truncate">
                           {conn.name || (conn.handle ? `@${conn.handle}` : conn.did.slice(0, 24) + '...')}
                         </div>
                       </>
                     ) : (
                       <>
                         <div className="flex items-center gap-1">
-                          <span className="font-medium text-white truncate">
+                          <span className="font-medium text-primary truncate">
                             {conn.name || (conn.handle ? `@${conn.handle}` : conn.did.slice(0, 24) + '...')}
                           </span>
                           <NicknameEditor conn={conn} onSave={updateNickname} />
                         </div>
                         {conn.handle && conn.name && (
-                          <div className="text-gray-400 text-sm">@{conn.handle}</div>
+                          <div className="text-secondary text-sm">@{conn.handle}</div>
                         )}
                       </>
                     )}
-                    <div className="text-gray-500 text-xs">
+                    <div className="text-secondary text-xs">
                       <span className="group-hover:hidden">
                         Connected {new Date(conn.connectedAt).toLocaleDateString()}
                       </span>
-                      <span className="hidden group-hover:inline text-gray-600 font-mono text-[10px]">
+                      <span className="hidden group-hover:inline text-muted font-mono text-[10px]">
                         {conn.did}
                       </span>
                     </div>
@@ -373,7 +373,7 @@ export default function ConnectionsPage() {
                   <div className="flex items-center gap-2">
                     <a
                       href={`${buildPublicUrl('chat')}/start?did=${encodeURIComponent(conn.did)}`}
-                      className="px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 text-white rounded-lg transition"
+                      className="px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 text-primary transition"
                       onClick={(e) => e.stopPropagation()}
                     >
                       Message
@@ -385,7 +385,7 @@ export default function ConnectionsPage() {
                           disconnectFrom(conn.did);
                         }
                       }}
-                      className="px-3 py-1.5 text-sm bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded-lg transition"
+                      className="px-3 py-1.5 text-sm bg-white/5 hover:bg-error/20 text-secondary hover:text-error transition"
                       title="Disconnect"
                     >
                       ⛓️‍💥
@@ -395,9 +395,9 @@ export default function ConnectionsPage() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-12 mb-10 bg-white/5 border border-white/10 rounded-lg">
+            <div className="text-center py-12 mb-10 bg-white/5 border border-white/10">
               <div className="text-4xl mb-3">🤝</div>
-              <p className="text-gray-400">No connections yet. Invite someone to get started!</p>
+              <p className="text-secondary">No connections yet. Invite someone to get started!</p>
             </div>
           )}
 
@@ -417,10 +417,10 @@ export default function ConnectionsPage() {
                 <button
                   key={f}
                   onClick={() => setGroupFilter(f)}
-                  className={`px-3 py-1 text-xs font-medium rounded-full transition ${
+                  className={`px-3 py-1 text-xs font-medium transition ${
                     groupFilter === f
-                      ? 'bg-amber-500 text-black'
-                      : 'bg-white/10 text-gray-400 hover:text-white'
+                      ? 'bg-warning text-black'
+                      : 'bg-white/10 text-secondary hover:text-primary'
                   }`}
                 >
                   {f === 'all' ? 'All' : f === 'mine' ? 'My Groups' : 'Event Groups'}
@@ -429,7 +429,7 @@ export default function ConnectionsPage() {
             </div>
             <button
               onClick={() => setShowCreateGroup(!showCreateGroup)}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition text-sm"
+              className="px-4 py-2 bg-warning hover:bg-warning text-black font-medium transition text-sm"
             >
               + Create Group
             </button>
@@ -437,32 +437,32 @@ export default function ConnectionsPage() {
 
           {/* Create group form */}
           {showCreateGroup && (
-            <div className="mb-6 p-5 bg-white/5 border border-amber-500/30 rounded-lg">
-              <h3 className="text-base font-semibold mb-3">New Group</h3>
+            <div className="mb-6 p-5 bg-white/5 border border-amber-500/30">
+              <h3 className="text-base font-semibold mb-3 font-mono">New Group</h3>
               <input
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
                 placeholder="Group name (required)"
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white placeholder-gray-500 text-sm mb-2"
+                className="w-full bg-white/5 border border-white/10 px-3 py-2 text-primary placeholder-gray-500 text-sm mb-2"
               />
               <textarea
                 value={newGroupDesc}
                 onChange={(e) => setNewGroupDesc(e.target.value)}
                 placeholder="Description (optional)"
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white placeholder-gray-500 text-sm resize-none mb-3"
+                className="w-full bg-white/5 border border-white/10 px-3 py-2 text-primary placeholder-gray-500 text-sm resize-none mb-3"
                 rows={2}
               />
               <div className="flex gap-2">
                 <button
                   onClick={createGroup}
                   disabled={creatingGroup || !newGroupName.trim()}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-medium rounded-lg transition text-sm"
+                  className="px-4 py-2 bg-warning hover:bg-warning disabled:opacity-50 text-black font-medium transition text-sm"
                 >
                   {creatingGroup ? 'Creating...' : 'Create Group'}
                 </button>
                 <button
                   onClick={() => { setShowCreateGroup(false); setNewGroupName(''); setNewGroupDesc(''); }}
-                  className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
+                  className="px-4 py-2 bg-white/10 hover:bg-white/15 text-primary transition text-sm"
                 >
                   Cancel
                 </button>
@@ -477,37 +477,37 @@ export default function ConnectionsPage() {
                 <a
                   key={pod.id}
                   href={`/connections/pods/${pod.id}`}
-                  className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition"
+                  className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 hover:bg-white/10 transition"
                 >
-                  <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-lg shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center text-warning text-lg shrink-0">
                     {pod.type === 'event' ? '🎟️' : '👥'}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="font-medium text-white truncate">{pod.name}</span>
-                      <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium shrink-0 ${
+                      <span className="font-medium text-primary truncate">{pod.name}</span>
+                      <span className={`px-1.5 py-0.5 text-xs font-medium shrink-0 ${
                         pod.type === 'event'
                           ? 'bg-purple-500/20 text-purple-300'
-                          : 'bg-amber-500/20 text-amber-300'
+                          : 'bg-warning/20 text-warning/70'
                       }`}>
                         {pod.type === 'event' ? 'Event' : 'Group'}
                       </span>
                     </div>
                     {pod.description && (
-                      <div className="text-gray-400 text-xs truncate mb-0.5">{pod.description}</div>
+                      <div className="text-secondary text-xs truncate mb-0.5">{pod.description}</div>
                     )}
-                    <div className="text-gray-500 text-xs">
+                    <div className="text-secondary text-xs">
                       {pod.memberCount} member{pod.memberCount !== 1 ? 's' : ''} · {new Date(pod.createdAt).toLocaleDateString()}
                     </div>
                   </div>
-                  <div className="text-gray-600 shrink-0">›</div>
+                  <div className="text-muted shrink-0">›</div>
                 </a>
               ))}
             </div>
           ) : (
-            <div className="text-center py-12 bg-white/5 border border-white/10 rounded-lg">
+            <div className="text-center py-12 bg-white/5 border border-white/10">
               <div className="text-4xl mb-3">👥</div>
-              <p className="text-gray-400">
+              <p className="text-secondary">
                 {groupFilter === 'all'
                   ? 'No groups yet. Create one to get started!'
                   : groupFilter === 'mine'

@@ -14,26 +14,26 @@ export function BalanceCard({ cashAmount, creditAmount, currency = 'USD', update
     }).format(n);
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-      <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">Your Balance</h2>
+    <div className="bg-surface-base border border-white/10 p-6">
+      <h2 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-mono">Your Balance</h2>
 
-      <div className="text-4xl font-bold text-white mb-6">{fmtCash(cashAmount)}</div>
+      <div className="text-4xl font-bold text-primary mb-6">{fmtCash(cashAmount)}</div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-black/40 border border-zinc-800 rounded-lg p-4">
-          <div className="text-xs text-zinc-500 mb-1">Cash</div>
-          <div className="text-xl font-semibold text-white">{fmtCash(cashAmount)}</div>
-          <div className="text-xs text-zinc-600 mt-1">Withdrawable</div>
+        <div className="bg-surface-base/40 border border-white/10 p-4">
+          <div className="text-xs text-muted mb-1">Cash</div>
+          <div className="text-xl font-semibold text-primary">{fmtCash(cashAmount)}</div>
+          <div className="text-xs text-muted mt-1">Withdrawable</div>
         </div>
-        <div className="bg-black/40 border border-amber-900/40 rounded-lg p-4">
-          <div className="text-xs text-amber-600 mb-1">MJN</div>
-          <div className="text-xl font-semibold text-amber-400">人{Math.round(creditAmount)}</div>
-          <div className="text-xs text-zinc-600 mt-1">Earned through participation</div>
+        <div className="bg-surface-base/40 border border-warning/40 p-4">
+          <div className="text-xs text-warning mb-1">MJN</div>
+          <div className="text-xl font-semibold text-warning">人{Math.round(creditAmount)}</div>
+          <div className="text-xs text-muted mt-1">Earned through participation</div>
         </div>
       </div>
 
       {updatedAt && (
-        <div className="text-xs text-zinc-600 mt-4">
+        <div className="text-xs text-muted mt-4">
           Updated {new Date(updatedAt).toLocaleString()}
         </div>
       )}

@@ -34,8 +34,8 @@ export async function MemberList({
 
   if (members.length === 0) {
     return (
-      <div className="mb-6 bg-gray-900/50 border border-gray-800 rounded-lg p-4 text-center">
-        <p className="text-xs text-gray-500">No members yet</p>
+      <div className="mb-6 bg-surface-surface/50 border border-white/10 p-4 text-center">
+        <p className="text-xs text-secondary">No members yet</p>
       </div>
     );
   }
@@ -55,11 +55,11 @@ export async function MemberList({
     return (
       <div className="mb-6 space-y-4">
         {sortedRoles.map((role) => (
-          <div key={role} className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-500 mb-3 text-center">
+          <div key={role} className="bg-surface-surface/50 border border-white/10 p-4">
+            <p className="text-xs text-secondary mb-3 text-center">
               {ROLE_HEADERS[role] ?? role}
               {showCount && (
-                <span className="ml-1 text-gray-600">({byRole[role].length})</span>
+                <span className="ml-1 text-muted">({byRole[role].length})</span>
               )}
             </p>
             <div className="space-y-2">
@@ -74,11 +74,11 @@ export async function MemberList({
   }
 
   return (
-    <div className="mb-6 bg-gray-900/50 border border-gray-800 rounded-lg p-4">
-      <p className="text-xs text-gray-500 mb-3 text-center">
+    <div className="mb-6 bg-surface-surface/50 border border-white/10 p-4">
+      <p className="text-xs text-secondary mb-3 text-center">
         {sectionTitle}
         {showCount && (
-          <span className="ml-1 text-gray-600">({members.length})</span>
+          <span className="ml-1 text-muted">({members.length})</span>
         )}
       </p>
       <div className="space-y-2">
@@ -104,15 +104,15 @@ function MemberRow({ member }: { member: { did: string; displayName: string; han
         {member.avatar ? (
           <Avatar avatar={member.avatar} displayName={member.displayName} size="sm" />
         ) : (
-          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-800 border border-gray-700 text-xs font-medium text-gray-400">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-surface-elevated border border-white/10 text-xs font-medium text-secondary">
             {initials || '?'}
           </div>
         )}
       </div>
       <div className="min-w-0">
-        <p className="text-sm text-white font-medium truncate">{member.displayName}</p>
+        <p className="text-sm text-primary font-medium truncate">{member.displayName}</p>
         {member.handle && (
-          <p className="text-xs text-gray-500 truncate">@{member.handle}</p>
+          <p className="text-xs text-secondary truncate">@{member.handle}</p>
         )}
       </div>
     </div>

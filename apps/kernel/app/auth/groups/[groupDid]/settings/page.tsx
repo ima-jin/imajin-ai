@@ -34,10 +34,10 @@ const SELECTABLE_SERVICES = SERVICES.filter(
 );
 
 const ROLE_STYLES: Record<string, string> = {
-  owner: 'border-amber-600 text-amber-400 bg-amber-900/20',
+  owner: 'border-amber-600 text-warning bg-warning/20',
   admin: 'border-blue-700 text-blue-400 bg-blue-900/20',
   maintainer: 'border-sky-700 text-sky-400 bg-sky-900/20',
-  member: 'border-gray-700 text-gray-400 bg-gray-900/20',
+  member: 'border-white/10 text-secondary bg-surface-surface/20',
 };
 
 const ADD_ROLES = ['admin', 'maintainer', 'member'];
@@ -191,7 +191,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-        <div className="text-gray-400">Loading settings…</div>
+        <div className="text-secondary">Loading settings…</div>
       </div>
     );
   }
@@ -206,7 +206,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
         {/* Back link */}
         <a
           href={`${authUrl}/groups`}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-300 transition no-underline"
+          className="inline-flex items-center gap-1 text-sm text-secondary hover:text-primary transition no-underline"
         >
           ← Back to identities
         </a>
@@ -214,37 +214,37 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
         {/* Header */}
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-white">
+            <h1 className="text-2xl font-bold text-primary font-mono">
               {group ? (group.name || group.handle || groupDid.slice(0, 16)) : groupDid.slice(0, 16)}
             </h1>
             {group && (
-              <span className="px-2 py-0.5 text-xs rounded-full border border-gray-700 text-gray-400 capitalize">
+              <span className="px-2 py-0.5 text-xs border border-white/10 text-secondary capitalize">
                 {scopeIcon(group.scope)} {group.scope}
               </span>
             )}
           </div>
           {group?.handle && (
-            <p className="text-gray-500 text-sm mt-1">@{group.handle}</p>
+            <p className="text-secondary text-sm mt-1">@{group.handle}</p>
           )}
         </div>
 
         {/* Status message */}
         {status && (
-          <div className={`p-4 rounded-lg border ${status.type === 'success' ? 'bg-green-900/20 border-green-800 text-green-400' : 'bg-red-900/20 border-red-800 text-red-400'}`}>
+          <div className={`p-4 border ${status.type === 'success' ? 'bg-success/20 border-green-800 text-success' : 'bg-error/20 border-red-800 text-error'}`}>
             {status.text}
           </div>
         )}
 
         {/* Included (kernel) services — non-interactive */}
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Included with every identity</h2>
-          <p className="text-sm text-gray-400 mb-6">These core services are always available and cannot be disabled.</p>
+        <div className="bg-[#0a0a0a] border border-white/10 p-8">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-secondary mb-1 font-mono">Included with every identity</h2>
+          <p className="text-sm text-secondary mb-6">These core services are always available and cannot be disabled.</p>
 
           <div className="flex flex-wrap gap-2">
             {KERNEL_SERVICES.map(svc => (
               <span
                 key={svc.name}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-800 bg-gray-900/50 text-gray-500 text-sm"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-white/10 bg-surface-surface/50 text-secondary text-sm"
               >
                 <span>{svc.icon}</span>
                 <span>{svc.label}</span>
@@ -254,9 +254,9 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
         </div>
 
         {/* Selectable services */}
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Available Apps</h2>
-          <p className="text-sm text-gray-400 mb-6">Toggle which apps are available for this identity.</p>
+        <div className="bg-[#0a0a0a] border border-white/10 p-8">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-secondary mb-1 font-mono">Available Apps</h2>
+          <p className="text-sm text-secondary mb-6">Toggle which apps are available for this identity.</p>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {SELECTABLE_SERVICES.map(svc => {
@@ -265,15 +265,15 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
                 <button
                   key={svc.name}
                   onClick={() => toggleService(svc.name)}
-                  className={`flex flex-col items-start gap-1 p-3 rounded-xl border transition text-left ${
+                  className={`flex flex-col items-start gap-1 p-3 border transition text-left ${
                     isEnabled
-                      ? 'border-amber-500/60 bg-amber-500/10 text-white'
-                      : 'border-gray-800 bg-gray-900/30 text-gray-500 hover:border-gray-700 hover:text-gray-400'
+                      ? 'border-amber-500/60 bg-warning/10 text-primary'
+                      : 'border-white/10 bg-surface-surface/30 text-secondary hover:border-white/10 hover:text-secondary'
                   }`}
                 >
                   <span className="text-xl">{svc.icon}</span>
                   <span className="text-sm font-medium leading-tight">{svc.label}</span>
-                  <span className={`text-xs leading-tight ${isEnabled ? 'text-amber-400/70' : 'text-gray-600'}`}>
+                  <span className={`text-xs leading-tight ${isEnabled ? 'text-warning/70' : 'text-muted'}`}>
                     {isEnabled ? 'Enabled' : 'Disabled'}
                   </span>
                 </button>
@@ -283,14 +283,14 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
         </div>
 
         {/* Landing page section */}
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Landing Page</h2>
-          <p className="text-sm text-gray-400 mb-6">Choose which app loads first for this identity.</p>
+        <div className="bg-[#0a0a0a] border border-white/10 p-8">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-secondary mb-1 font-mono">Landing Page</h2>
+          <p className="text-sm text-secondary mb-6">Choose which app loads first for this identity.</p>
 
           <select
             value={landingService ?? ''}
             onChange={e => setLandingService(e.target.value || null)}
-            className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-white/10 bg-surface-base text-primary focus:ring-2 focus:ring-amber-500 focus:border-transparent"
           >
             <option value="">— Default (no preference) —</option>
             {enabledServiceOptions.map(svc => (
@@ -300,17 +300,17 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
             ))}
           </select>
           {enabledServiceOptions.length === 0 && (
-            <p className="text-xs text-gray-600 mt-2">Enable at least one app to set a landing page.</p>
+            <p className="text-xs text-muted mt-2">Enable at least one app to set a landing page.</p>
           )}
         </div>
 
         {/* Onboarding section */}
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Onboarding</h2>
-          <p className="text-sm text-gray-400 mb-6">Share this link to invite people to this identity.</p>
+        <div className="bg-[#0a0a0a] border border-white/10 p-8">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-secondary mb-1 font-mono">Onboarding</h2>
+          <p className="text-sm text-secondary mb-6">Share this link to invite people to this identity.</p>
 
           <div className="flex items-center gap-2">
-            <code className="flex-1 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-300 font-mono overflow-x-auto whitespace-nowrap">
+            <code className="flex-1 px-3 py-2 bg-surface-surface border border-white/10 text-sm text-primary font-mono overflow-x-auto whitespace-nowrap">
               {onboardUrl}
             </code>
             <button
@@ -320,7 +320,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
                   setTimeout(() => setCopyLabel('Copy'), 2000);
                 });
               }}
-              className="px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition whitespace-nowrap"
+              className="px-3 py-2 bg-surface-elevated hover:bg-surface-elevated border border-white/10 text-sm text-primary transition whitespace-nowrap"
             >
               {copyLabel}
             </button>
@@ -328,19 +328,19 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
         </div>
 
         {/* Members section */}
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+        <div className="bg-[#0a0a0a] border border-white/10 p-8">
           <div className="flex items-center gap-3 mb-1">
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500">Members</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-secondary font-mono">Members</h2>
             {group?.controllers?.length ? (
-              <span className="px-1.5 py-0.5 text-xs rounded bg-gray-800 text-gray-400 font-mono">
+              <span className="px-1.5 py-0.5 text-xs bg-surface-elevated text-secondary font-mono">
                 {group.controllers.length}
               </span>
             ) : null}
           </div>
-          <p className="text-sm text-gray-400 mb-6">People who can manage this identity.</p>
+          <p className="text-sm text-secondary mb-6">People who can manage this identity.</p>
 
           {!group?.controllers?.length ? (
-            <p className="text-sm text-gray-500 mb-6">No members found.</p>
+            <p className="text-sm text-secondary mb-6">No members found.</p>
           ) : (
             <div className="space-y-2 mb-6">
               {group.controllers.map(ctrl => {
@@ -348,29 +348,29 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
                 const roleStyle = ROLE_STYLES[ctrl.role] ?? ROLE_STYLES.member;
                 const isRemoving = removingDid === ctrl.controllerDid;
                 return (
-                  <div key={ctrl.controllerDid} className="flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-800">
+                  <div key={ctrl.controllerDid} className="flex items-center justify-between p-3 bg-surface-surface border border-white/10">
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="text-xl flex-shrink-0">👤</span>
                       <div className="min-w-0">
-                        <p className="text-sm text-white font-medium font-mono truncate">
+                        <p className="text-sm text-primary font-medium font-mono truncate">
                           {ctrl.controllerDid.length > 32
                             ? ctrl.controllerDid.slice(0, 28) + '…'
                             : ctrl.controllerDid}
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-secondary">
                           Added {new Date(ctrl.addedAt).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                      <span className={`px-2 py-0.5 text-xs rounded border capitalize ${roleStyle}`}>
+                      <span className={`px-2 py-0.5 text-xs  border capitalize ${roleStyle}`}>
                         {ctrl.role}
                       </span>
                       {!isOwner && (
                         <button
                           onClick={() => handleRemoveMember(ctrl.controllerDid)}
                           disabled={isRemoving}
-                          className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-red-400 hover:bg-red-900/20 transition disabled:opacity-40"
+                          className="w-6 h-6 flex items-center justify-center text-muted hover:text-error hover:bg-error/20 transition disabled:opacity-40"
                           title="Remove member"
                         >
                           {isRemoving ? '…' : '×'}
@@ -390,12 +390,12 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
               value={addDid}
               onChange={e => setAddDid(e.target.value)}
               placeholder="DID or handle"
-              className="flex-1 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
+              className="flex-1 px-3 py-2 bg-surface-surface border border-white/10 text-sm text-primary placeholder-muted focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
             />
             <select
               value={addRole}
               onChange={e => setAddRole(e.target.value)}
-              className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
+              className="px-3 py-2 bg-surface-surface border border-white/10 text-sm text-primary focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
             >
               {ADD_ROLES.map(r => (
                 <option key={r} value={r}>{r}</option>
@@ -404,7 +404,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
             <button
               type="submit"
               disabled={addingMember || !addDid.trim()}
-              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition disabled:opacity-40 whitespace-nowrap"
+              className="px-4 py-2 bg-surface-elevated hover:bg-surface-elevated border border-white/10 text-sm text-primary transition disabled:opacity-40 whitespace-nowrap"
             >
               {addingMember ? 'Adding…' : 'Add'}
             </button>
@@ -416,7 +416,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold rounded-lg transition disabled:opacity-50"
+            className="px-6 py-2.5 bg-warning hover:bg-warning text-gray-950 font-semibold transition disabled:opacity-50"
           >
             {saving ? 'Saving…' : 'Save Changes'}
           </button>

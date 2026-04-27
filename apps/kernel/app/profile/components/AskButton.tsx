@@ -24,9 +24,9 @@ export function AskButton({
     return (
       <button
         disabled
-        className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg text-gray-500 text-sm cursor-not-allowed"
+        className="px-4 py-2 bg-surface-surface border border-white/10 text-secondary text-sm cursor-not-allowed"
       >
-        Ask {targetName} <span className="text-gray-600">(coming soon)</span>
+        Ask {targetName} <span className="text-muted">(coming soon)</span>
       </button>
     );
   }
@@ -35,7 +35,7 @@ export function AskButton({
     <>
       <button
         onClick={() => setShowChat(true)}
-        className="px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-200 text-sm hover:bg-gray-800 hover:border-gray-600 transition"
+        className="px-4 py-2 bg-surface-surface border border-white/10 text-primary text-sm hover:bg-surface-elevated hover:border-gray-600 transition"
       >
         Ask {targetName}
       </button>

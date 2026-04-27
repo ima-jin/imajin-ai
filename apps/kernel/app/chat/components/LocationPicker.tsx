@@ -67,24 +67,24 @@ export function LocationPicker({ onLocationSelected, disabled }: LocationPickerP
 
   if (state === 'confirming' && location) {
     return (
-      <div className="absolute bottom-full left-0 mb-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-4 z-10">
-        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">Share your location?</p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+      <div className="absolute bottom-full left-0 mb-2 w-72 bg-white dark:bg-surface-surface border border-gray-200 dark:border-white/10 p-4 z-10">
+        <p className="text-sm font-medium text-gray-800 dark:text-primary mb-2">Share your location?</p>
+        <p className="text-xs text-secondary dark:text-secondary mb-1">
           Lat: {location.lat.toFixed(5)}, Lng: {location.lng.toFixed(5)}
         </p>
         {location.accuracy !== undefined && (
-          <p className="text-xs text-gray-400 mb-3">Accuracy: ~{location.accuracy}m</p>
+          <p className="text-xs text-secondary mb-3">Accuracy: ~{location.accuracy}m</p>
         )}
         <div className="flex gap-2">
           <button
             onClick={handleConfirm}
-            className="flex-1 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg transition"
+            style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="flex-1 py-1.5 hover:brightness-110 text-primary text-sm transition"
           >
             Share
           </button>
           <button
             onClick={handleCancel}
-            className="flex-1 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-lg transition"
+            className="flex-1 py-1.5 bg-gray-100 dark:bg-surface-elevated hover:bg-gray-200 dark:hover:bg-surface-elevated text-gray-700 dark:text-primary text-sm transition"
           >
             Cancel
           </button>
@@ -95,11 +95,11 @@ export function LocationPicker({ onLocationSelected, disabled }: LocationPickerP
 
   if (state === 'denied') {
     return (
-      <div className="absolute bottom-full left-0 mb-2 w-72 bg-white dark:bg-gray-900 border border-red-200 dark:border-red-800 rounded-xl shadow-lg p-4 z-10">
-        <p className="text-sm text-red-600 dark:text-red-400 mb-3">{error}</p>
+      <div className="absolute bottom-full left-0 mb-2 w-72 bg-white dark:bg-surface-surface border border-red-200 dark:border-red-800 p-4 z-10">
+        <p className="text-sm text-error dark:text-error mb-3">{error}</p>
         <button
           onClick={handleCancel}
-          className="w-full py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-lg transition"
+          className="w-full py-1.5 bg-gray-100 dark:bg-surface-elevated hover:bg-gray-200 dark:hover:bg-surface-elevated text-gray-700 dark:text-primary text-sm transition"
         >
           Dismiss
         </button>
@@ -110,19 +110,19 @@ export function LocationPicker({ onLocationSelected, disabled }: LocationPickerP
   return (
     <div className="relative">
       {error && state === 'idle' && (
-        <div className="absolute bottom-full left-0 mb-2 w-64 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-2 z-10">
-          <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-          <button onClick={() => setError(null)} className="text-xs underline text-red-500 mt-1">Dismiss</button>
+        <div className="absolute bottom-full left-0 mb-2 w-64 bg-error/10 dark:bg-error/30 border border-red-200 dark:border-red-800 p-2 z-10">
+          <p className="text-xs text-error dark:text-error">{error}</p>
+          <button onClick={() => setError(null)} className="text-xs underline text-error mt-1">Dismiss</button>
         </div>
       )}
       <button
         onClick={requestLocation}
         disabled={disabled || state === 'requesting'}
-        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition disabled:opacity-50"
+        className="p-2 hover:bg-gray-100 dark:hover:bg-surface-elevated transition disabled:opacity-50"
         title="Share location"
       >
         {state === 'requesting' ? (
-          <span className="text-gray-400 text-sm animate-pulse">{'\uD83D\uDCCD'}</span>
+          <span className="text-secondary text-sm animate-pulse">{'\uD83D\uDCCD'}</span>
         ) : (
           '\uD83D\uDCCD'
         )}

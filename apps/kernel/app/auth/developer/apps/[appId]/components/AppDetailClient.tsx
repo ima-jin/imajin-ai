@@ -33,7 +33,7 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
   return (
     <button
       onClick={copy}
-      className="text-xs px-2 py-0.5 rounded border border-zinc-700 text-zinc-500 hover:text-amber-400 hover:border-amber-500/50 transition-colors"
+      className="text-xs px-2 py-0.5 border border-white/10 text-muted hover:text-warning hover:border-amber-500/50 transition-colors"
     >
       {copied ? 'Copied!' : (label ?? 'Copy')}
     </button>
@@ -43,7 +43,7 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">{label}</p>
+      <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">{label}</p>
       {children}
     </div>
   );
@@ -144,12 +144,12 @@ export default function AppDetailClient({ app: initialApp }: Props) {
   if (editing) {
     return (
       <div className="space-y-4">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-4">
+        <div className="bg-surface-base border border-white/10 p-6 space-y-4">
           <div className="flex items-center justify-between mb-1">
-            <h2 className="text-sm font-semibold text-white">Edit App</h2>
+            <h2 className="text-sm font-semibold text-primary font-mono">Edit App</h2>
             <button
               onClick={() => setEditing(false)}
-              className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
+              className="text-muted hover:text-zinc-300 text-sm transition-colors"
             >
               Cancel
             </button>
@@ -157,8 +157,8 @@ export default function AppDetailClient({ app: initialApp }: Props) {
 
           {/* Name */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-              Name <span className="text-red-400">*</span>
+            <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-1.5">
+              Name <span className="text-error">*</span>
             </label>
             <input
               type="text"
@@ -166,13 +166,13 @@ export default function AppDetailClient({ app: initialApp }: Props) {
               onChange={e => setEditName(e.target.value)}
               required
               maxLength={100}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors text-sm"
+              className="w-full bg-surface-elevated border border-white/10 px-3 py-2.5 text-primary placeholder-muted focus:outline-none focus:border-imajin-purple transition-colors text-sm"
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-1.5">
               Description
             </label>
             <textarea
@@ -180,53 +180,53 @@ export default function AppDetailClient({ app: initialApp }: Props) {
               onChange={e => setEditDescription(e.target.value)}
               rows={2}
               maxLength={500}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors resize-none text-sm"
+              className="w-full bg-surface-elevated border border-white/10 px-3 py-2.5 text-primary placeholder-muted focus:outline-none focus:border-imajin-purple transition-colors resize-none text-sm"
             />
           </div>
 
           {/* Callback URL */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-              Callback URL <span className="text-red-400">*</span>
+            <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-1.5">
+              Callback URL <span className="text-error">*</span>
             </label>
             <input
               type="url"
               value={editCallbackUrl}
               onChange={e => setEditCallbackUrl(e.target.value)}
               required
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors text-sm"
+              className="w-full bg-surface-elevated border border-white/10 px-3 py-2.5 text-primary placeholder-muted focus:outline-none focus:border-imajin-purple transition-colors text-sm"
             />
           </div>
 
           {/* Homepage URL */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-1.5">
               Homepage URL
             </label>
             <input
               type="url"
               value={editHomepageUrl}
               onChange={e => setEditHomepageUrl(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors text-sm"
+              className="w-full bg-surface-elevated border border-white/10 px-3 py-2.5 text-primary placeholder-muted focus:outline-none focus:border-imajin-purple transition-colors text-sm"
             />
           </div>
 
           {/* Logo URL */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-1.5">
               Logo URL
             </label>
             <input
               type="url"
               value={editLogoUrl}
               onChange={e => setEditLogoUrl(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors text-sm"
+              className="w-full bg-surface-elevated border border-white/10 px-3 py-2.5 text-primary placeholder-muted focus:outline-none focus:border-imajin-purple transition-colors text-sm"
             />
           </div>
 
           {/* Scopes */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+            <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-2">
               Requested Scopes
             </label>
             <div className="space-y-1.5">
@@ -236,11 +236,11 @@ export default function AppDetailClient({ app: initialApp }: Props) {
                     type="checkbox"
                     checked={editScopes.includes(scope)}
                     onChange={() => toggleEditScope(scope)}
-                    className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-zinc-900"
+                    className="w-4 h-4 border-white/10 bg-surface-elevated text-warning focus:ring-amber-500 focus:ring-offset-zinc-900"
                   />
                   <span className="text-sm">
-                    <span className="font-mono text-xs text-amber-400/80 mr-2">{scope}</span>
-                    <span className="text-zinc-400">{label}</span>
+                    <span className="font-mono text-xs text-warning/80 mr-2">{scope}</span>
+                    <span className="text-secondary">{label}</span>
                   </span>
                 </label>
               ))}
@@ -248,7 +248,7 @@ export default function AppDetailClient({ app: initialApp }: Props) {
           </div>
 
           {saveError && (
-            <p className="text-sm text-red-400 bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2.5">
+            <p className="text-sm text-error bg-error/20 border border-red-800/40 px-3 py-2.5">
               {saveError}
             </p>
           )}
@@ -257,7 +257,7 @@ export default function AppDetailClient({ app: initialApp }: Props) {
             <button
               type="button"
               onClick={() => setEditing(false)}
-              className="flex-1 px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-400 hover:text-white transition-colors text-sm font-medium"
+              className="flex-1 px-4 py-2.5 bg-surface-elevated border border-white/10 text-secondary hover:text-primary transition-colors text-sm font-medium"
             >
               Cancel
             </button>
@@ -265,7 +265,7 @@ export default function AppDetailClient({ app: initialApp }: Props) {
               type="button"
               onClick={handleSave}
               disabled={saving || !editName.trim() || !editCallbackUrl.trim()}
-              className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-900/40 disabled:text-amber-700 text-black font-semibold rounded-lg transition-colors text-sm"
+              className="flex-1 px-4 py-2.5 bg-warning hover:bg-warning disabled:bg-warning/20 disabled:text-warning text-black font-semibold transition-colors text-sm"
             >
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
@@ -278,34 +278,34 @@ export default function AppDetailClient({ app: initialApp }: Props) {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-4">
+      <div className="bg-surface-base border border-white/10 p-6 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-base font-semibold text-white">{app.name}</h1>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+              <h1 className="text-base font-semibold text-primary font-mono">{app.name}</h1>
+              <span className={`text-[10px] px-1.5 py-0.5 border ${
                 app.status === 'active'
-                  ? 'bg-green-900/30 border-green-800/50 text-green-400'
-                  : 'bg-red-900/30 border-red-800/50 text-red-400'
+                  ? 'bg-success/30 border-green-800/50 text-success'
+                  : 'bg-error/30 border-red-800/50 text-error'
               }`}>
                 {app.status}
               </span>
             </div>
             {app.description && (
-              <p className="text-sm text-zinc-400">{app.description}</p>
+              <p className="text-sm text-secondary">{app.description}</p>
             )}
           </div>
           {app.status === 'active' && (
             <button
               onClick={startEdit}
-              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors shrink-0"
+              className="px-3 py-1.5 bg-surface-elevated hover:bg-surface-elevated border border-white/10 text-zinc-300 text-sm transition-colors shrink-0"
             >
               Edit
             </button>
           )}
         </div>
 
-        <div className="grid gap-3 pt-2 border-t border-zinc-800">
+        <div className="grid gap-3 pt-2 border-t border-white/10">
           <Field label="App ID">
             <div className="flex items-center gap-2">
               <span className="text-sm font-mono text-zinc-300">{app.id}</span>
@@ -322,7 +322,7 @@ export default function AppDetailClient({ app: initialApp }: Props) {
 
           <Field label="Public Key">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-zinc-400 break-all">{app.publicKey}</span>
+              <span className="text-xs font-mono text-secondary break-all">{app.publicKey}</span>
               <CopyButton text={app.publicKey} />
             </div>
           </Field>
@@ -347,7 +347,7 @@ export default function AppDetailClient({ app: initialApp }: Props) {
             <Field label="Requested Scopes">
               <div className="flex flex-wrap gap-1.5 mt-1">
                 {scopes.map(scope => (
-                  <span key={scope} className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 font-mono">
+                  <span key={scope} className="text-xs px-2 py-0.5 bg-surface-elevated border border-white/10 text-zinc-300 font-mono">
                     {scope}
                   </span>
                 ))}
@@ -355,12 +355,12 @@ export default function AppDetailClient({ app: initialApp }: Props) {
             </Field>
           )}
 
-          <div className="grid grid-cols-2 gap-3 pt-1 border-t border-zinc-800">
+          <div className="grid grid-cols-2 gap-3 pt-1 border-t border-white/10">
             <Field label="Created">
-              <span className="text-xs text-zinc-400">{createdAt}</span>
+              <span className="text-xs text-secondary">{createdAt}</span>
             </Field>
             <Field label="Updated">
-              <span className="text-xs text-zinc-400">{updatedAt}</span>
+              <span className="text-xs text-secondary">{updatedAt}</span>
             </Field>
           </div>
         </div>
@@ -368,40 +368,40 @@ export default function AppDetailClient({ app: initialApp }: Props) {
 
       {/* Danger zone */}
       {app.status === 'active' && (
-        <div className="bg-zinc-900 border border-red-900/40 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-red-400 mb-1">Danger Zone</h3>
-          <p className="text-xs text-zinc-500 mb-3">
+        <div className="bg-surface-base border border-red-900/40 p-5">
+          <h3 className="text-sm font-semibold text-error mb-1 font-mono">Danger Zone</h3>
+          <p className="text-xs text-muted mb-3">
             Revoking this app will immediately invalidate all active sessions and prevent any new authorizations.
           </p>
 
           {!showRevoke ? (
             <button
               onClick={() => setShowRevoke(true)}
-              className="px-4 py-2 border border-red-900/60 text-red-400 hover:bg-red-900/20 rounded-lg text-sm transition-colors"
+              className="px-4 py-2 border border-red-900/60 text-error hover:bg-error/20 text-sm transition-colors"
             >
               Revoke App
             </button>
           ) : (
             <div className="space-y-3">
-              <p className="text-sm text-red-300">
+              <p className="text-sm text-error">
                 Are you sure you want to revoke <strong>{app.name}</strong>? This cannot be undone.
               </p>
               {revokeError && (
-                <p className="text-sm text-red-400 bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">
+                <p className="text-sm text-error bg-error/20 border border-red-800/40 px-3 py-2">
                   {revokeError}
                 </p>
               )}
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowRevoke(false)}
-                  className="px-4 py-2 bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white rounded-lg text-sm transition-colors"
+                  className="px-4 py-2 bg-surface-elevated border border-white/10 text-secondary hover:text-primary text-sm transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleRevoke}
                   disabled={revoking}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg text-sm transition-colors"
+                  className="px-4 py-2 bg-error hover:bg-error disabled:opacity-50 text-primary font-semibold text-sm transition-colors"
                 >
                   {revoking ? 'Revoking…' : 'Yes, Revoke App'}
                 </button>

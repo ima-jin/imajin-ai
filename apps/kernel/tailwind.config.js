@@ -1,4 +1,6 @@
 /** @type {import("tailwindcss").Config} */
+const tokenTheme = require('@imajin/tokens/dist/tailwind.js');
+
 module.exports = {
   darkMode: "class",
   content: [
@@ -8,7 +10,9 @@ module.exports = {
     "../../packages/chat/src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      ...tokenTheme,
+    },
   },
   plugins: [require("@tailwindcss/typography")],
 };

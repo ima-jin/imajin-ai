@@ -100,7 +100,7 @@ function AuthorizeForm() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
+        <p className="text-secondary">Loading...</p>
       </div>
     );
   }
@@ -108,8 +108,8 @@ function AuthorizeForm() {
   if (error || !app) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-[#0a0a0a] border border-red-800 rounded-2xl p-8 text-center">
-          <p className="text-red-400">{error ?? 'App not found'}</p>
+        <div className="max-w-md w-full bg-[#0a0a0a] border border-red-800 p-8 text-center">
+          <p className="text-error">{error ?? 'App not found'}</p>
         </div>
       </div>
     );
@@ -120,40 +120,40 @@ function AuthorizeForm() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
       <div className="max-w-md w-full">
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+        <div className="bg-[#0a0a0a] border border-white/10 p-8">
           {/* App header */}
           <div className="flex items-center gap-3 mb-6">
             {app.logoUrl ? (
-              <img src={app.logoUrl} alt={app.name} className="w-12 h-12 rounded-xl object-cover" />
+              <img src={app.logoUrl} alt={app.name} className="w-12 h-12 object-cover" />
             ) : (
-              <div className="w-12 h-12 rounded-xl bg-gray-800 flex items-center justify-center text-xl font-bold text-gray-400">
+              <div className="w-12 h-12 bg-surface-elevated flex items-center justify-center text-xl font-bold text-secondary">
                 {app.name[0].toUpperCase()}
               </div>
             )}
             <div>
-              <h1 className="text-xl font-bold text-white">{app.name}</h1>
+              <h1 className="text-xl font-bold text-primary font-mono">{app.name}</h1>
               {app.homepageUrl && (
-                <p className="text-xs text-gray-500 truncate max-w-xs">{app.homepageUrl}</p>
+                <p className="text-xs text-secondary truncate max-w-xs">{app.homepageUrl}</p>
               )}
             </div>
           </div>
 
-          <p className="text-gray-400 text-sm mb-6">
+          <p className="text-secondary text-sm mb-6">
             {app.description ?? `${app.name} is requesting access to your Imajin account.`}
           </p>
 
           {/* Scope toggles */}
           {scopeEntries.length > 0 ? (
             <div className="space-y-2 mb-6">
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-3">Permissions requested</p>
+              <p className="text-xs text-secondary uppercase tracking-wide mb-3">Permissions requested</p>
               {scopeEntries.map(([scope, enabled]) => (
                 <label
                   key={scope}
-                  className="flex items-center justify-between p-3 rounded-lg bg-gray-900 border border-gray-800 cursor-pointer hover:border-gray-700 transition"
+                  className="flex items-center justify-between p-3 bg-surface-surface border border-white/10 cursor-pointer hover:border-white/10 transition"
                 >
                   <div>
-                    <p className="text-sm font-medium text-white">{scope}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
+                    <p className="text-sm font-medium text-primary">{scope}</p>
+                    <p className="text-xs text-secondary mt-0.5">
                       {SCOPES[scope as Scope] ?? scope}
                     </p>
                   </div>
@@ -167,13 +167,13 @@ function AuthorizeForm() {
               ))}
             </div>
           ) : (
-            <div className="mb-6 p-3 bg-gray-900 border border-gray-800 rounded-lg">
-              <p className="text-sm text-gray-400">This app requests basic access (no specific permissions).</p>
+            <div className="mb-6 p-3 bg-surface-surface border border-white/10">
+              <p className="text-sm text-secondary">This app requests basic access (no specific permissions).</p>
             </div>
           )}
 
           {/* Trust notice */}
-          <div className="mb-6 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
+          <div className="mb-6 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30">
             <p className="text-xs text-[#F59E0B]">
               Only authorize apps you trust. You can revoke access at any time from your settings.
             </p>
@@ -183,14 +183,14 @@ function AuthorizeForm() {
           <div className="flex gap-3">
             <button
               onClick={handleDeny}
-              className="flex-1 px-4 py-2.5 rounded-lg bg-gray-900 text-gray-300 hover:bg-gray-800 transition font-medium text-sm"
+              className="flex-1 px-4 py-2.5 bg-surface-surface text-primary hover:bg-surface-elevated transition font-medium text-sm"
             >
               Deny
             </button>
             <button
               onClick={handleAuthorize}
               disabled={submitting}
-              className="flex-1 px-4 py-2.5 rounded-lg bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-medium text-sm disabled:opacity-50"
+              className="flex-1 px-4 py-2.5 bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-medium text-sm disabled:opacity-50"
             >
               {submitting ? 'Authorizing...' : 'Authorize'}
             </button>
@@ -205,7 +205,7 @@ export default function AuthorizePage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
+        <p className="text-secondary">Loading...</p>
       </div>
     }>
       <AuthorizeForm />

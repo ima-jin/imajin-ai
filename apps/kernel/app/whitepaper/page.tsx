@@ -58,27 +58,27 @@ export default async function WhitepaperPage() {
       <div className="max-w-3xl mx-auto mb-12">
         <Link
           href="/"
-          className="text-gray-500 hover:text-gray-300 transition-colors"
+          className="text-secondary hover:text-primary transition-colors"
         >
           ← Home
         </Link>
       </div>
 
       <article className="max-w-3xl mx-auto prose prose-invert prose-lg prose-orange">
-        <h1 className="text-4xl md:text-5xl font-light tracking-tight mb-4 !text-white">
+        <h1 className="text-4xl md:text-5xl font-light tracking-tight mb-4 !text-primary font-mono">
           MJN Protocol
         </h1>
-        <p className="text-xl text-gray-400 mb-12 !mt-0">
+        <p className="text-xl text-secondary mb-12 !mt-0">
           The iMaJiN Network Protocol — Identity · Attribution · Settlement · Presence
         </p>
 
         <div dangerouslySetInnerHTML={{ __html: contentHtml }} />
 
-        <div className="mt-16 pt-8 border-t border-gray-800 not-prose">
+        <div className="mt-16 pt-8 border-t border-white/10 not-prose">
           <div className="flex flex-col sm:flex-row gap-4">
             <Link
               href="/articles"
-              className="inline-block px-8 py-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors text-center"
+              style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316)' }} className="inline-block px-8 py-3 hover:brightness-110 text-primary font-medium transition-colors text-center"
             >
               Read the Essays
             </Link>
@@ -86,7 +86,7 @@ export default async function WhitepaperPage() {
               href="https://github.com/ima-jin/imajin-ai"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-block px-8 py-3 border border-gray-700 hover:border-gray-500 text-gray-300 font-medium rounded-lg transition-colors text-center"
+              className="inline-block px-8 py-3 border border-white/10 hover:border-gray-500 text-primary font-medium transition-colors text-center"
             >
               View Source
             </a>
