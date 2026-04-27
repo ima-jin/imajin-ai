@@ -7,7 +7,7 @@ module.exports = {
   ],
   darkMode: "class",
   theme: {
-    extend: {},
+    extend: require("@imajin/tokens/dist/tailwind.js"),
   },
   plugins: [],
 };

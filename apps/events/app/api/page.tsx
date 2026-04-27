@@ -80,7 +80,7 @@ export default function APIPage() {
       </div>
 
       <div className="grid gap-6 mb-12">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+        <div className="bg-white dark:bg-surface-elevated   p-6">
           <h2 className="text-xl font-semibold mb-4">Features</h2>
           <ul className="space-y-2 text-gray-600 dark:text-gray-400">
             <li>✓ Events with DID + keypair (cryptographic identity)</li>
@@ -96,26 +96,26 @@ export default function APIPage() {
 
         <Link 
           href="/"
-          className="bg-orange-500 hover:bg-orange-600 text-white rounded-xl shadow-lg p-6 text-center transition"
+          className="bg-imajin-orange hover:bg-imajin-orange/80 text-primary   p-6 text-center transition"
         >
           <span className="text-xl font-semibold">Browse Events →</span>
         </Link>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+      <div className="bg-white dark:bg-surface-elevated   overflow-hidden">
         <div className="p-6 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-xl font-semibold">API Endpoints</h2>
         </div>
         <div className="divide-y divide-gray-200 dark:divide-gray-700">
           {endpoints.map((endpoint) => (
             <div key={endpoint.path} className="p-6">
-              <code className="text-sm font-mono bg-gray-100 dark:bg-gray-900 px-3 py-1 rounded">
+              <code className="text-sm font-mono bg-gray-100 dark:bg-surface-surface px-3 py-1 rounded">
                 {endpoint.path}
               </code>
               <div className="mt-4 space-y-2">
                 {endpoint.methods.map((m) => (
                   <div key={`${endpoint.path}-${m.method}`} className="flex items-center gap-3">
-                    <span className={`px-2 py-1 text-xs font-semibold rounded ${methodColors[m.method]}`}>
+                    <span className={`px-2 py-1 text-xs font-semibold${methodColors[m.method]}`}>
                       {m.method}
                     </span>
                     <span className="text-gray-600 dark:text-gray-400">{m.description}</span>

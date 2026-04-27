@@ -58,17 +58,17 @@ function relativeTime(dateStr: string): string {
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    active: 'bg-green-900/50 text-green-400 border-green-700/50',
-    paused: 'bg-yellow-900/50 text-yellow-400 border-yellow-700/50',
+    active: 'bg-success/50 text-success border-green-700/50',
+    paused: 'bg-yellow-900/50 text-warning border-yellow-700/50',
     sold: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
     rented: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
-    unavailable: 'bg-gray-700 text-gray-300 border-gray-600',
-    removed: 'bg-gray-800 text-gray-400 border-gray-700',
+    unavailable: 'bg-gray-700 text-primary border-gray-600',
+    removed: 'bg-surface-elevated text-secondary border-white/10',
   };
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
-        styles[status] ?? 'bg-gray-800 text-gray-400 border-gray-700'
+      className={`inline-flex items-center px-2 py-0.5text-xs font-medium border ${
+        styles[status] ?? 'bg-surface-elevated text-secondary border-white/10'
       }`}
     >
       {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -78,9 +78,9 @@ function StatusBadge({ status }: { status: string }) {
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="bg-gray-800 rounded-xl p-4 flex flex-col gap-1">
-      <span className="text-xs text-gray-400 uppercase tracking-wide">{label}</span>
-      <span className="text-3xl font-bold text-white">{value}</span>
+    <div className="bg-surface-elevated p-4 flex flex-col gap-1">
+      <span className="text-xs text-secondary uppercase tracking-wide">{label}</span>
+      <span className="text-3xl font-bold text-primary">{value}</span>
     </div>
   );
 }
@@ -235,19 +235,19 @@ export default function DashboardPage() {
   const totalPages = Math.ceil(total / LIMIT);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen bg-surface-base text-primary">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
 
         {/* Header */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold">My Listings</h1>
-            <p className="text-gray-400 text-sm mt-0.5">Manage your marketplace listings</p>
+            <p className="text-secondary text-sm mt-0.5">Manage your marketplace listings</p>
           </div>
           <div className="flex items-center gap-2">
             <Link
               href="/settings"
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-medium rounded-xl transition text-sm border border-gray-700"
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-surface-elevated hover:bg-gray-700 text-primary hover:text-primary font-medium transition text-sm border border-white/10"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -257,7 +257,7 @@ export default function DashboardPage() {
             </Link>
             <Link
               href="/listings/new"
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition text-sm shadow-lg shadow-orange-500/20"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-imajin-orange hover:bg-imajin-orange/80 text-primary font-semibold transition text-sm shadow-orange-500/20"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -281,9 +281,9 @@ export default function DashboardPage() {
         {!statsLoaded && (
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-6">
             {[0, 1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="bg-gray-800 rounded-xl p-4 animate-pulse">
-                <div className="h-3 bg-gray-700 rounded w-1/2 mb-2" />
-                <div className="h-8 bg-gray-700 rounded w-1/3" />
+              <div key={i} className="bg-surface-elevated p-4 animate-pulse">
+                <div className="h-3 bg-gray-700w-1/2 mb-2" />
+                <div className="h-8 bg-gray-700w-1/3" />
               </div>
             ))}
           </div>
@@ -300,22 +300,22 @@ export default function DashboardPage() {
 
         {/* Action error */}
         {actionError && (
-          <div className="mb-4 px-4 py-3 bg-red-900/30 border border-red-800 rounded-xl text-sm text-red-400 flex items-center justify-between gap-2">
+          <div className="mb-4 px-4 py-3 bg-error/30 border border-red-800 text-sm text-error flex items-center justify-between gap-2">
             <span>{actionError}</span>
-            <button onClick={() => setActionError('')} className="text-red-500 hover:text-red-300 transition">×</button>
+            <button onClick={() => setActionError('')} className="text-error hover:text-error transition">×</button>
           </div>
         )}
 
         {/* Status Filter Tabs */}
-        <div className="flex gap-1 border-b border-gray-800 mb-6 overflow-x-auto">
+        <div className="flex gap-1 border-b border-white/10 mb-6 overflow-x-auto">
           {STATUS_TABS.map((tab) => (
             <button
               key={tab.value}
               onClick={() => handleTabChange(tab.value)}
               className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap transition border-b-2 -mb-px ${
                 statusFilter === tab.value
-                  ? 'border-orange-500 text-orange-400'
-                  : 'border-transparent text-gray-400 hover:text-gray-200'
+                  ? 'border-imajin-orange text-imajin-orange'
+                  : 'border-transparent text-secondary hover:text-primary'
               }`}
             >
               {tab.label}
@@ -327,21 +327,21 @@ export default function DashboardPage() {
         {loading ? (
           <div className="space-y-2">
             {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-4 animate-pulse flex gap-4">
-                <div className="w-16 h-16 bg-gray-800 rounded-lg shrink-0" />
+              <div key={i} className="bg-surface-surface border border-white/10 p-4 animate-pulse flex gap-4">
+                <div className="w-16 h-16 bg-surface-elevated shrink-0" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-4 bg-gray-800 rounded w-1/2" />
-                  <div className="h-3 bg-gray-800 rounded w-1/4" />
+                  <div className="h-4 bg-surface-elevatedw-1/2" />
+                  <div className="h-3 bg-surface-elevatedw-1/4" />
                 </div>
               </div>
             ))}
           </div>
         ) : error ? (
           <div className="text-center py-16">
-            <p className="text-red-400 mb-4">{error}</p>
+            <p className="text-error mb-4">{error}</p>
             <button
               onClick={() => fetchListings(page, statusFilter)}
-              className="px-4 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition text-sm font-medium"
+              className="px-4 py-2 bg-imajin-orange text-primary hover:bg-imajin-orange/80 transition text-sm font-medium"
             >
               Retry
             </button>
@@ -349,7 +349,7 @@ export default function DashboardPage() {
         ) : listings.length === 0 ? (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">🏪</div>
-            <p className="text-lg font-medium text-gray-200 mb-2">
+            <p className="text-lg font-medium text-primary mb-2">
               {statusFilter === 'all'
                 ? "You haven't listed anything yet."
                 : `No ${statusFilter} listings.`}
@@ -357,7 +357,7 @@ export default function DashboardPage() {
             {statusFilter === 'all' && (
               <Link
                 href="/listings/new"
-                className="inline-block mt-4 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition"
+                className="inline-block mt-4 px-6 py-3 bg-imajin-orange hover:bg-imajin-orange/80 text-primary font-semibold transition"
               >
                 Create Your First Listing
               </Link>
@@ -366,20 +366,20 @@ export default function DashboardPage() {
         ) : (
           <>
             {/* Desktop table */}
-            <div className="hidden md:block bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+            <div className="hidden md:block bg-surface-surface border border-white/10 overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-800 bg-gray-800/50">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide w-14">Image</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Title</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Price</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Category</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Created</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Actions</th>
+                  <tr className="border-b border-white/10 bg-surface-elevated/50">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wide w-14">Image</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wide">Title</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wide">Price</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wide">Category</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wide">Status</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wide">Created</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wide">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800">
+                <tbody className="divide-y divide-white/10">
                   {listings.map((listing) => (
                     <ListingRow
                       key={listing.id}
@@ -426,7 +426,7 @@ export default function DashboardPage() {
                 <button
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
-                  className="px-4 py-2 rounded-lg bg-gray-900 border border-gray-800 text-sm font-medium disabled:opacity-40 hover:border-orange-500 hover:text-orange-500 transition"
+                  className="px-4 py-2 bg-surface-surface border border-white/10 text-sm font-medium disabled:opacity-40 hover:border-imajin-orange hover:text-imajin-orange transition"
                 >
                   ← Previous
                 </button>
@@ -437,10 +437,10 @@ export default function DashboardPage() {
                       <button
                         key={p}
                         onClick={() => setPage(p)}
-                        className={`w-9 h-9 rounded-lg text-sm font-medium transition ${
+                        className={`w-9 h-9 text-sm font-medium transition ${
                           p === page
-                            ? 'bg-orange-500 text-white'
-                            : 'bg-gray-900 border border-gray-800 hover:border-orange-500 hover:text-orange-500'
+                            ? 'bg-imajin-orange text-primary'
+                            : 'bg-surface-surface border border-white/10 hover:border-imajin-orange hover:text-imajin-orange'
                         }`}
                       >
                         {p}
@@ -451,7 +451,7 @@ export default function DashboardPage() {
                 <button
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
-                  className="px-4 py-2 rounded-lg bg-gray-900 border border-gray-800 text-sm font-medium disabled:opacity-40 hover:border-orange-500 hover:text-orange-500 transition"
+                  className="px-4 py-2 bg-surface-surface border border-white/10 text-sm font-medium disabled:opacity-40 hover:border-imajin-orange hover:text-imajin-orange transition"
                 >
                   Next →
                 </button>
@@ -481,7 +481,7 @@ export default function DashboardPage() {
       <div className="fixed bottom-6 right-6 md:hidden z-10">
         <Link
           href="/listings/new"
-          className="flex items-center gap-2 px-4 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full shadow-xl shadow-orange-500/30 transition"
+          className="flex items-center gap-2 px-4 py-3 bg-imajin-orange hover:bg-imajin-orange/80 text-primary font-semibold rounded-full shadow-orange-500/30 transition"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -512,11 +512,11 @@ function ListingThumbnail({ images }: { images: string[] | null }) {
   if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={src} alt="" className="w-12 h-12 object-cover rounded-lg" />
+      <img src={src} alt="" className="w-12 h-12 object-cover" />
     );
   }
   return (
-    <div className="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center text-gray-600">
+    <div className="w-12 h-12 bg-surface-elevated flex items-center justify-center text-secondary">
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
       </svg>
@@ -536,7 +536,7 @@ function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMark
     <div className="flex items-center gap-1 flex-wrap justify-end">
       <Link
         href={`/listings/${listing.id}/edit`}
-        className="px-2.5 py-1 rounded-lg text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition"
+        className="px-2.5 py-1 text-xs font-medium text-primary hover:text-primary hover:bg-gray-700 transition"
       >
         Edit
       </Link>
@@ -545,7 +545,7 @@ function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMark
         <button
           disabled={pending}
           onClick={isPaused ? onResume : onPause}
-          className="px-2.5 py-1 rounded-lg text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition disabled:opacity-40"
+          className="px-2.5 py-1 text-xs font-medium text-primary hover:text-primary hover:bg-gray-700 transition disabled:opacity-40"
         >
           {isPaused ? 'Resume' : 'Pause'}
         </button>
@@ -555,7 +555,7 @@ function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMark
         <button
           disabled={pending}
           onClick={onMarkSold}
-          className="px-2.5 py-1 rounded-lg text-xs font-medium text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 transition disabled:opacity-40"
+          className="px-2.5 py-1 text-xs font-medium text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 transition disabled:opacity-40"
         >
           Mark Sold
         </button>
@@ -565,7 +565,7 @@ function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMark
         <button
           disabled={pending}
           onClick={onMarkUnavailable}
-          className="px-2.5 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-gray-200 hover:bg-gray-700 transition disabled:opacity-40"
+          className="px-2.5 py-1 text-xs font-medium text-secondary hover:text-primary hover:bg-gray-700 transition disabled:opacity-40"
         >
           Unavailable
         </button>
@@ -575,7 +575,7 @@ function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMark
         <button
           disabled={pending}
           onClick={onRemove}
-          className="px-2.5 py-1 rounded-lg text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-900/30 transition disabled:opacity-40"
+          className="px-2.5 py-1 text-xs font-medium text-error hover:text-error hover:bg-error/30 transition disabled:opacity-40"
         >
           Remove
         </button>
@@ -583,7 +583,7 @@ function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMark
 
       <Link
         href="/listings/new"
-        className="px-2.5 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-gray-200 hover:bg-gray-700 transition"
+        className="px-2.5 py-1 text-xs font-medium text-secondary hover:text-primary hover:bg-gray-700 transition"
       >
         Duplicate
       </Link>
@@ -594,14 +594,14 @@ function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMark
 function ListingRow(props: ListingActionProps) {
   const { listing } = props;
   return (
-    <tr className="hover:bg-gray-800/30 transition-colors">
+    <tr className="hover:bg-surface-elevated/30 transition-colors">
       <td className="px-4 py-3">
         <ListingThumbnail images={listing.images} />
       </td>
       <td className="px-4 py-3">
         <Link
           href={`/listings/${listing.id}`}
-          className="font-medium text-gray-100 hover:text-orange-400 transition line-clamp-2 max-w-xs"
+          className="font-medium text-primary hover:text-imajin-orange transition line-clamp-2 max-w-xs"
         >
           {listing.title}
         </Link>
@@ -615,17 +615,17 @@ function ListingRow(props: ListingActionProps) {
       </td>
       <td className="px-4 py-3">
         {listing.category ? (
-          <span className="px-2 py-0.5 text-xs bg-gray-800 text-gray-400 rounded-full border border-gray-700">
+          <span className="px-2 py-0.5 text-xs bg-surface-elevated text-secondary rounded-full border border-white/10">
             {listing.category}
           </span>
         ) : (
-          <span className="text-gray-600">—</span>
+          <span className="text-secondary">—</span>
         )}
       </td>
       <td className="px-4 py-3">
         <StatusBadge status={listing.status} />
       </td>
-      <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+      <td className="px-4 py-3 text-xs text-secondary whitespace-nowrap">
         {relativeTime(listing.createdAt)}
       </td>
       <td className="px-4 py-3">
@@ -638,13 +638,13 @@ function ListingRow(props: ListingActionProps) {
 function MobileListingCard(props: ListingActionProps) {
   const { listing } = props;
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <div className="bg-surface-surface border border-white/10 p-4">
       <div className="flex gap-3 mb-3">
         <ListingThumbnail images={listing.images} />
         <div className="flex-1 min-w-0">
           <Link
             href={`/listings/${listing.id}`}
-            className="font-medium text-gray-100 hover:text-orange-400 transition line-clamp-2 text-sm"
+            className="font-medium text-primary hover:text-imajin-orange transition line-clamp-2 text-sm"
           >
             {listing.title}
           </Link>
@@ -657,14 +657,14 @@ function MobileListingCard(props: ListingActionProps) {
             <StatusBadge status={listing.status} />
           </div>
           {listing.category && (
-            <span className="inline-block mt-1 px-2 py-0.5 text-xs bg-gray-800 text-gray-400 rounded-full border border-gray-700">
+            <span className="inline-block mt-1 px-2 py-0.5 text-xs bg-surface-elevated text-secondary rounded-full border border-white/10">
               {listing.category}
             </span>
           )}
         </div>
       </div>
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500">{relativeTime(listing.createdAt)}</span>
+        <span className="text-xs text-secondary">{relativeTime(listing.createdAt)}</span>
         <ActionButtons {...props} />
       </div>
     </div>
@@ -682,12 +682,12 @@ function ConfirmModal({
 }) {
   const isSold = action.type === 'sold';
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-        <h3 className="text-lg font-semibold text-white mb-2">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface-base/60 backdrop-blur-sm">
+      <div className="bg-surface-surface border border-white/10 p-6 max-w-sm w-full">
+        <h3 className="text-lg font-semibold text-primary mb-2">
           {isSold ? 'Mark as Sold?' : 'Remove Listing?'}
         </h3>
-        <p className="text-sm text-gray-400 mb-6">
+        <p className="text-sm text-secondary mb-6">
           {isSold
             ? `Mark "${action.title}" as sold? Buyers will no longer see it as available.`
             : `Are you sure you want to remove "${action.title}"? This can't be undone.`}
@@ -695,16 +695,16 @@ function ConfirmModal({
         <div className="flex gap-3 justify-end">
           <button
             onClick={onCancel}
-            className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm font-medium transition"
+            className="px-4 py-2 bg-surface-elevated hover:bg-gray-700 text-primary text-sm font-medium transition"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
-            className={`px-4 py-2 rounded-xl text-white text-sm font-medium transition ${
+            className={`px-4 py-2 text-primary text-sm font-medium transition ${
               isSold
                 ? 'bg-blue-600 hover:bg-blue-700'
-                : 'bg-red-600 hover:bg-red-700'
+                : 'bg-error hover:bg-error'
             }`}
           >
             {isSold ? 'Mark as Sold' : 'Remove'}

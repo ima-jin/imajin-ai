@@ -9,7 +9,7 @@ const config: Config = {
     "../../packages/chat/src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    extend: {},
+    extend: require("@imajin/tokens/dist/tailwind.js"),
   },
   plugins: [require("@tailwindcss/typography")],
 };

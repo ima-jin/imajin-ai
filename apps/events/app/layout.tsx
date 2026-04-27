@@ -3,58 +3,11 @@ import './globals.css';
 import { NavBar } from './components/NavBar';
 import { Providers } from './providers';
 import { buildPublicUrl } from '@imajin/config';
-import { themeInitScript } from '@imajin/ui';
-
-const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
+import { themeInitScript } from '@imajin/ui'; const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const isDev = prefix.includes('dev-');
-const envLabel = isDev ? ' [DEV]' : '';
-
-export const metadata: Metadata = {
-  title: {
-    default: `Imajin Events${envLabel}`,
-    template: `%s | Imajin Events${envLabel}`,
-  },
-  description: 'Create and discover events on the sovereign network. No platform lock-in. You own your identity.',
-  keywords: ['events', 'tickets', 'sovereign', 'decentralized', 'imajin'],
-  authors: [{ name: 'Imajin', url: buildPublicUrl('www', prefix, domain) }],
-  openGraph: {
-    type: 'website',
-    locale: 'en_US',
-    url: buildPublicUrl('events', prefix, domain),
-    siteName: `Imajin Events${envLabel}`,
-    title: `Imajin Events${envLabel}`,
-    description: 'Create and discover events on the sovereign network',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: `Imajin Events${envLabel}`,
-    description: 'Create and discover events on the sovereign network',
-  },
-  robots: {
-    index: !isDev,
-    follow: !isDev,
-  },
-};
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <html lang="en">
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
-      </head>
-      <body className="min-h-screen bg-white dark:bg-[#0a0a0a] text-gray-900 dark:text-white">
-        <NavBar currentService="Events" />
-        <Providers>
-          <main className="container mx-auto px-4 py-8">
-            {children}
-          </main>
-        </Providers>
-      </body>
-    </html>
-  );
+const envLabel = isDev ? ' [DEV]' : ''; export const metadata: Metadata = { title: { default: `Imajin Events${envLabel}`, template: `%s | Imajin Events${envLabel}`, }, description: 'Create and discover events on the sovereign network. No platform lock-in. You own your identity.', keywords: ['events', 'tickets', 'sovereign', 'decentralized', 'imajin'], authors: [{ name: 'Imajin', url: buildPublicUrl('www', prefix, domain) }], openGraph: { type: 'website', locale: 'en_US', url: buildPublicUrl('events', prefix, domain), siteName: `Imajin Events${envLabel}`, title: `Imajin Events${envLabel}`, description: 'Create and discover events on the sovereign network', }, twitter: { card: 'summary_large_image', title: `Imajin Events${envLabel}`, description: 'Create and discover events on the sovereign network', }, robots: { index: !isDev, follow: !isDev, },
+}; export default function RootLayout({ children,
+}: { children: React.ReactNode;
+}) { return ( <html lang="en"> <head> <script dangerouslySetInnerHTML={{ __html: themeInitScript }} /> </head> <body className="min-h-screen bg-surface-surface bg-surface-base text-primary text-primary"> <NavBar currentService="Events" /> <Providers> <main className="container mx-auto px-4 py-8"> {children} </main> </Providers> </body> </html> );
 }
