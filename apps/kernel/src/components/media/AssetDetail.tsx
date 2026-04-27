@@ -260,7 +260,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
         </div>
 
         {/* Preview */}
-        <div className={`flex-1 overflow-hidden ${showFileEditor ? "flex" : "flex items-center justify-center bg-[#111]"}`}>
+        <div className={`flex-1 min-h-0 overflow-auto ${showFileEditor ? "flex" : "flex items-center justify-center bg-[#111]"}`}>
           {isImage && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
