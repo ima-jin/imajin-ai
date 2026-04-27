@@ -4,7 +4,7 @@ subtitle: "Legibility is the layer that makes the fix possible"
 description: "Inequality isn't a mystery. It's an accounting trick performed at scale, made possible by the fact that receipts are private by default. Make the receipts visible — and build the architecture that makes the alternative reachable — and the math changes."
 date: "2026-04-26"
 author: "Ryan Veteze"
-status: "DRAFT — REV 3"
+status: "DRAFT — REV 4"
 type: "essay"
 ---
 
@@ -95,6 +95,34 @@ Signed. On-chain. Verifiable. You scan the QR code on your receipt and you see w
 The farmer can see they got $1.65 — and that the café down the street only passes through $0.40 for the same beans. The barista can see what percentage of each sale is their labor. The customer can see that this café pays its people.
 
 This isn't surveillance. Nobody's watching anyone. It's legibility. The transaction tells its own story, and anyone in the chain can read it.
+
+---
+
+## What Gets Named Stays Named
+
+That's the picture between participants. Now zoom out.
+
+When the café signs the receipt, it names every party in the chain. The farmer. The dairy co-op. The barista. And the holding company in Delaware that owns the building — which is *not* in the network, never signed up for anything, has no DID of its own.
+
+It gets named anyway.
+
+The receipt references it. It appears in the chain as a black box — a string identifying who received the rent payment, attached to a transaction that's now permanent and public. The shell didn't consent. It didn't have to. The participant who *did* consent named it, because that's what showing your work means.
+
+This works because imajin is permissionless at the identity layer. Anyone can mint a DID — for themselves, their business, a project, a pseudonym, a counterparty they're trying to disambiguate. The chain doesn't decide who's real. The trust graph does. Cheap identities exist. Trusted identities are the ones that have signed enough things, earned enough attestations, accumulated enough reciprocal connections that the graph treats them as known. Anyone can be named. Whether the naming carries weight depends on who signed it and what the graph thinks of them.
+
+Now do that across the network. The same Delaware shell appears in fourteen receipts. Then a hundred. Then a thousand. The black box accumulates a graph of references it never agreed to. And because the chain is public and append-only, anyone can build on top of those references — attaching the matching state registry filing, the beneficial-ownership disclosure, the court record, the leaked document, the investigative report, the simple inference correlating this shell with three others sharing an address. Each attachment is itself a signed claim. Disputable. Not removable.
+
+Yes, this is accumulated knowledge about parties who never opted in. So is every public records database. So is every news archive. The difference is which way the visibility cuts. The bank's view of you is private to the bank. The chain's view of the holding company is public to everyone. Surveillance of the powerless by the powerful is what this essay has been describing. Surveillance of the powerful by the people they extract from is the inversion.
+
+The black box becomes a node. The node accumulates observations. The opacity that protected it for forty years now requires every observation to be wrong, simultaneously, forever. That isn't a position that survives.
+
+The pressure direction reverses.
+
+Nobody is forcing the holding company onto the chain. No regulator. No subpoena. No journalist. The pressure comes from underneath — from every café, every musician, every tenant, every contractor who joined a trust network and signed a receipt naming who they paid. Receipts climb upward through the supply chain. Opacity at the top has always depended on counterparties at the bottom staying invisible. The moment the bottom is visible by choice, the top is visible by consequence.
+
+The extractive entities don't have to participate. That's the elegance of it. They never agreed to anything. They're named by the people they extract from, indexed by the public chain, annotated by anyone with a public source and the willingness to sign their work to the inference.
+
+You don't have to drag them onto the network. You just have to make their counterparties legible to themselves. The graph does the rest.
 
 ---
 
