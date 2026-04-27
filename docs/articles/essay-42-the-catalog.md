@@ -153,7 +153,7 @@ Free. Open. Sovereign.
 
 ---
 
-**Origin:** This essay exists because of Skyland — Geordie and Debbie's event in South Africa. Being there in 2024 broke my brain. WeR1 was fingerprinting 60 tracks in a live DJ set in real time, but the money had nowhere to go. The attribution was solved. The identity wasn't. 84 days of building later, this is the answer.
+**Origin:** This essay exists because of Skyland — Geordie and Debbie's event in South Africa. Being there in 2025 broke my brain. WeR1 was fingerprinting 60 tracks in a live DJ set in real time, but the money had nowhere to go. The attribution was solved. The identity wasn't. 84 days of building later, this is the answer.
 
 **The music trilogy:**
 - **[Essay 18 — How to Save the Music Industry](https://www.imajin.ai/articles/how-to-save-the-music-industry)** — Why music needs the relationship back

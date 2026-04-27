@@ -1,10 +1,10 @@
 ---
 title: "Show Us the Receipts"
-subtitle: "Legibility is how you fix inequality"
-description: "Inequality isn't a mystery. It's an accounting trick. Every transaction that hides its structure is a transaction that concentrates power. Make the receipts visible and the math changes."
+subtitle: "Legibility is the layer that makes the fix possible"
+description: "Inequality isn't a mystery. It's an accounting trick performed at scale, made possible by the fact that receipts are private by default. Make the receipts visible — and build the architecture that makes the alternative reachable — and the math changes."
 date: "2026-04-26"
 author: "Ryan Veteze"
-status: "DRAFT"
+status: "DRAFT — REV 3"
 type: "essay"
 ---
 
@@ -56,13 +56,15 @@ Ticketmaster's fees. Spotify's per-stream economics. The app store's 30%. The pr
 
 ## The Legibility Thesis
 
-Here's the claim: **if every transaction carried a visible, verifiable record of where the money went, inequality would decrease — not because of regulation, not because of redistribution, but because of math.**
+Here's the claim, sharpened: **legibility doesn't fix inequality on its own. It's the layer that makes the fix possible.**
 
-When you can see that the farmer gets $0.03, you have a choice. You might still buy the coffee. But now you know. And the café down the street that pays $0.40 to the farmer and shows you the receipt? They just got a competitive advantage they never had before, because the information asymmetry that protected the cheaper supply chain just evaporated.
+When you can see that the farmer gets $0.03, you have a choice. You might still buy the coffee. People know about fast fashion and buy it anyway. People know about Amazon's warehouses and keep their Prime memberships. Information alone doesn't move people. What information does is make the alternative *legible* — and that's the precondition for anything else to work.
 
-Markets are supposed to be efficient. Economists have been saying it for 200 years. But efficient markets require *information* — and transaction opacity is the single largest information failure in the global economy. You can't make an informed choice about a transaction you can't see the structure of.
+The café down the street that pays $0.40 to the farmer only beats the cheaper one if you can find them, switching is easy, and the price gap isn't punishing. Legibility plus a real alternative plus a low switching cost — that's the whole equation. Take any one out and you get awareness without movement, which is the world we already live in.
 
-Legibility doesn't require anyone to be altruistic. It doesn't require regulation. It doesn't require redistribution. It requires receipts.
+So the receipt is necessary. It is not, by itself, sufficient. What makes it sufficient is the architecture underneath it: a network where the alternative actually exists, where finding it is one query, where transacting on it doesn't cost more than the extractive version because the chain that pays the farmer fairly is *structurally cheaper to run*, not more expensive. No 30% platform tax. No four layers of intermediaries. No holding company in Delaware. The honest supply chain wins on price the moment the dishonest one stops being subsidized by your inability to see it.
+
+That's the work. The receipt is the visible part. The plumbing underneath is what makes the receipt change anything.
 
 ---
 
@@ -108,7 +110,7 @@ Every systemic inequality you can name has an opacity layer protecting it.
 
 **Creative inequality:** Spotify pays $0.004 per stream. The label takes 80%. The songwriter gets a fraction of a fraction through a collection society that takes 18 months. The listener has no idea. The artist has no leverage. The receipt is hidden at every layer.
 
-In every case, the fix isn't redistribution. It's *disclosure*. The moment the receipt is visible, the negotiation changes. Not because anyone forced a different outcome — because the information asymmetry that allowed the old outcome just disappeared.
+In every case, the fix isn't redistribution. It's *disclosure* — paired with somewhere else to go. The moment the receipt is visible *and* the alternative is reachable, the negotiation changes. Not because anyone forced a different outcome — because the information asymmetry that allowed the old outcome just disappeared, and there's no longer a captive audience to extract from.
 
 ---
 
@@ -118,36 +120,45 @@ The objection writes itself: "If every transaction is legible, what about privac
 
 Fair question. Wrong frame.
 
-Legibility doesn't mean your personal spending is public. It means the *structure* of transactions is visible to the participants. The .fair manifest shows you where your money went — not where everyone else's went. The farmer sees their share of every transaction they're part of. The barista sees their labor's value. The buyer sees the split on their purchase. Nobody sees transactions they're not party to.
+Imajin is a trust network. That's what it is. It exists to make things legible between people who chose to be in a trust relationship — buyer and seller, contributor and beneficiary, operator and the people they serve. The whole architecture is built around that choice. If you're in the network, you signed up to be readable to your counterparties. That's the deal.
 
-This is how it already works in the one domain where we demanded transparency: public companies. Quarterly reports. Audited financials. Material disclosures. We decided that when you take money from the public, the public gets to see the receipts. The result wasn't the end of privacy — it was the end of the worst abuses.
+So the chain is radically legible — by design, not as a side effect. Anyone with the public key and the protocol spec can verify it. There is no privileged reader. There is no gatekeeper who can quietly redact. That property is the whole point. A chain the operator can edit isn't a chain. It's a database with marketing.
 
-The .fair manifest extends that principle from corporations to transactions. Not all transactions. The ones that move through the protocol. Voluntarily. By participants who chose a system that shows its work over one that hides it.
+Privacy on a network like this is a matter of *which identity signs what*. The same way you keep a work email and a personal email. The same way a journalist keeps a public account and a Signal number that doesn't link to it. You bring as many DIDs as you have contexts. Your stigmatized donation goes through one identity. Your professional reputation lives on another. The chain doesn't link them unless you do. Identity hygiene is the user's responsibility, the same as it is everywhere else.
+
+What the chain refuses to do — what makes this architecture different from every database that came before it — is invisible revisionism. You can change your mind. You can revoke. You can withdraw an attestation. You can disavow a chain you used to sign. But the revocation is itself a signed event that references what it undoes. The chain doesn't rewrite history. It records the moment you decided to stand somewhere else.
+
+That is the cost of being in a trust network. Trust costs something or it isn't trust. What it costs is the ability to pretend you didn't do the thing you did. People who realign realign. The disavowal is public. The disavowal is the act. People who change cluster with the changed. The network doesn't enforce; it sorts.
+
+If what you want is *true* unobservability — not "private from the public" but "no record exists at all" — then a trust network is the wrong tool. Use cash. Use Monero. Use Signal. Those serve a real function. They are not what we're building, and they don't need to be.
+
+We're building the trust layer. The thing you opt into when the value of being known to your counterparties exceeds the cost of being known. For most economic activity between people who want to keep doing economic activity together, it does.
 
 Privacy is for people. Opacity is for extraction. They're not the same thing.
 
 ---
 
-## Demand the Receipt
+## What the Receipt Says
 
-This is not a technical argument. The technology exists. Signed manifests. Cryptographic identity. Append-only chains. Content-addressed records. We have the infrastructure to make every transaction legible. That's not the hard part.
+Back to the coffee. $5.50.
 
-The hard part is the demand.
+This time the receipt shows you that the farmer at Finca Las Nubes got $1.65 — fifty-five times what the other supply chain paid. The barista's $1.10 means her hour just went up by another flat white. The dairy co-op down the road got $0.45. The café paid its rent and its overhead out of the $1.30 left, which is enough because there's no holding company in Delaware extracting forty percent of revenue out the back door. Stripe took its 2.9% plus thirty cents because that's what the rails actually cost. The protocol got six cents. The node operator got three.
 
-The hard part is saying: I won't transact with a system that won't show me the receipt. I won't stream on a platform that hides the split. I won't buy from a supply chain that buries the margin. I won't rent from a landlord who won't disclose the costs.
+You paid the same $5.50.
 
-Not because it's required. Because it's right. And because every time you accept an opaque transaction, you're funding the machine that depends on you not asking.
+The work is now legible. The chain is now signed. The math is now arguable on its merits, by anyone, in public.
 
-Show us the receipts. For everything. All of them.
+That's the whole thing. Not regulation. Not redistribution. Not anyone forcing anyone to be better. Just receipts that show their work, in a system that doesn't know how to lie about them — running on infrastructure where the honest chain is the cheapest one to operate.
 
-The systems that are fair have nothing to hide.
+The systems that are fair have nothing to hide. Show the receipts. All of them.
 
 *— Ryan VETEZE aka b0b*
 
 ---
 
 **See also:**
-- **[Essay 42 — The Answer to Everything](https://github.com/ima-jin/imajin-ai/blob/main/docs/articles/essay-42-the-catalog.md)** — DID every track, .fair every credit
+- **[Essay 31 — The Receipt](https://github.com/ima-jin/imajin-ai/blob/main/docs/articles/essay-31-the-receipt.md)** — The same architecture viewed from the token side: receipts as the mint condition
+- **[Essay 14 — Honor the Chain](https://www.imajin.ai/articles/honor-the-chain)** — The .fair protocol as attribution infrastructure
 - **[Essay 4 — The Internet That Pays You Back](https://www.imajin.ai/articles/the-internet-that-pays-you-back)** — The economics of sovereign infrastructure
 - **[Essay 5 — You Don't Need Ads](https://www.imajin.ai/articles/you-dont-need-ads)** — Why the attention economy is a choice, not a necessity
 
