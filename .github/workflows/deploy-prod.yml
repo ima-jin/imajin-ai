@@ -22,8 +22,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Build all apps
-        run: pnpm build
+      - name: Build changed apps
+        # build-changed.sh walks the pnpm graph and only rebuilds apps affected
+        # by the diff since the last successful build (tracked via .last-build-sha).
+        # Falls back to full rebuild if .last-build-sha doesn't exist.
+        run: ./scripts/build-changed.sh
 
       - name: Run migrations
         run: node scripts/migrate.mjs

@@ -25,13 +25,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Build all apps
-        run: pnpm build
+      - name: Build changed apps
+        run: ./scripts/build-changed.sh
 
       - name: Run migrations
         run: node scripts/migrate.mjs
 
       - name: Restart dev services
         run: |
-          pm2 restart dev-www dev-auth dev-pay dev-profile dev-events dev-chat dev-registry dev-connections 2>/dev/null || true
-          echo "Dev services restarted"
+          DEV_PROCS=$(pm2 jlist | node -e "const procs = JSON.parse(require('fs').readFileSync(0)); console.log(procs.filter(p => p.name && p.name.startsWith('dev-')).map(p => p.name).join(' '));")
+          if [ -z "$DEV_PROCS" ]; then
+            echo "⚠️  No dev-* pm2 processes found to restart"
+            exit 0
+          fi
+          echo "Restarting: $DEV_PROCS"
+          pm2 restart $DEV_PROCS
+          echo "✅ Dev services restarted"
