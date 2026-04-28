@@ -34,13 +34,15 @@ function writeRequestLog(entry: {
     .then(({ getClient }) => {
       const sql = getClient();
       const id = `req_${nanoid(16)}`;
+      const level = entry.status >= 500 ? 'error' : entry.status >= 400 ? 'warn' : 'info';
+      const message = entry.errorMessage || `${entry.method} ${entry.path} → ${entry.status}`;
       return sql`
-        INSERT INTO registry.request_log
-          (id, service, method, path, status, duration_ms, correlation_id, ip, error_message)
+        INSERT INTO registry.logs
+          (id, source, service, level, message, method, path, status, duration_ms, correlation_id, ip, error_message, created_at)
         VALUES
-          (${id}, ${entry.service}, ${entry.method}, ${entry.path}, ${entry.status},
+          (${id}, 'request', ${entry.service}, ${level}, ${message}, ${entry.method}, ${entry.path}, ${entry.status},
            ${entry.durationMs}, ${entry.correlationId}, ${entry.ip},
-           ${entry.errorMessage ?? null})
+           ${entry.errorMessage ?? null}, now())
       `;
     })
     .catch(() => {
