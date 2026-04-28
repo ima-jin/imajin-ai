@@ -30,5 +30,13 @@ jobs:
 
       - name: Restart prod services
         run: |
-          pm2 restart www auth pay profile events chat registry connections 2>/dev/null || true
-          echo "Prod services restarted"
+          # Restart all pm2 processes whose name starts with prod-
+          # (covers prod-jin/kernel, prod-events, prod-dykil, prod-coffee, prod-market, prod-learn, prod-links, etc.)
+          PROD_PROCS=$(pm2 jlist | node -e "const procs = JSON.parse(require('fs').readFileSync(0)); console.log(procs.filter(p => p.name && p.name.startsWith('prod-')).map(p => p.name).join(' '));")
+          if [ -z "$PROD_PROCS" ]; then
+            echo "⚠️  No prod-* pm2 processes found to restart"
+            exit 0
+          fi
+          echo "Restarting: $PROD_PROCS"
+          pm2 restart $PROD_PROCS
+          echo "✅ Prod services restarted"
