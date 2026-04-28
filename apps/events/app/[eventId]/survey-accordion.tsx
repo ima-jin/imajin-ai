@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 interface SurveyAccordionProps {
   eventId: string;
@@ -11,6 +11,7 @@ interface SurveyAccordionProps {
   defaultExpanded?: boolean;
   onComplete?: () => void;
   ticketId?: string;
+  initialCompleted?: boolean;
 }
 
 export function SurveyAccordion({
@@ -22,25 +23,50 @@ export function SurveyAccordion({
   defaultExpanded = false,
   onComplete,
   ticketId,
+  initialCompleted = false,
 }: SurveyAccordionProps) {
   const storageKey = ticketId ? `survey_completed_${surveyId}_${ticketId}` : `survey_completed_${surveyId}`;
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [iframeHeight, setIframeHeight] = useState(600);
-  const [isCompleted, setIsCompleted] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(initialCompleted);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
   const embedUrl = `${DYKIL_URL}/embed/${surveyId}${ticketId ? `?ticketId=${ticketId}` : ''}`;
 
-  // Restore completion state from localStorage on mount
+  // Fetch authoritative registration status from DB
+  const fetchStatus = useCallback(async () => {
+    if (!ticketId) return;
+    try {
+      const res = await fetch(`/api/events/${eventId}/tickets/${ticketId}/registration-status`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'complete') {
+          setIsCompleted(true);
+        }
+      }
+    } catch {
+      // Non-fatal — keep current state
+    }
+  }, [eventId, ticketId]);
+
+  // On mount / ticketId change: reconcile from server
+  useEffect(() => {
+    setIsCompleted(initialCompleted);
+    if (ticketId) {
+      fetchStatus();
+    }
+  }, [ticketId, initialCompleted, fetchStatus]);
+
+  // localStorage is only an optimistic hint — triggers a refetch, doesn't set state directly
   useEffect(() => {
     try {
-      if (localStorage.getItem(storageKey) === 'true') {
-        setIsCompleted(true);
+      if (localStorage.getItem(storageKey) === 'true' && !isCompleted && ticketId) {
+        fetchStatus();
       }
     } catch {}
-  }, [storageKey]);
+  }, [storageKey, isCompleted, ticketId, fetchStatus]);
 
   // Listen for postMessage from iframe
   useEffect(() => {
@@ -51,15 +77,21 @@ export function SurveyAccordion({
       if (event.data.type === 'survey-height') {
         setIframeHeight(event.data.height + 40); // Add some padding
       } else if (event.data.type === 'survey-completed') {
-        setIsCompleted(true);
+        // Store hint for optimistic UI on other components
         try { localStorage.setItem(storageKey, 'true'); } catch {}
-        onComplete?.();
+        // Refetch authoritative state instead of trusting localStorage
+        if (ticketId) {
+          fetchStatus().then(() => onComplete?.());
+        } else {
+          setIsCompleted(true);
+          onComplete?.();
+        }
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [storageKey]);
+  }, [storageKey, ticketId, eventId, fetchStatus, onComplete]);
 
   const icon = '📋';
 

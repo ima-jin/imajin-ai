@@ -316,7 +316,49 @@ export default async function EventPage({ params, searchParams }: Props) {
   }
 
   // Fetch user's orders (+ legacy tickets) if logged in
-  const userOrders = session?.id ? await getUserOrders(event.id, session.id) : [];
+  let userOrders = session?.id ? await getUserOrders(event.id, session.id) : [];
+
+  // Auto-sync orphan tickets: DB pending, but Dykil has a response
+  if (session?.id && userOrders.length > 0) {
+    const pendingTickets = userOrders.flatMap(o => o.tickets).filter(t => t.registrationStatus === 'pending' && t.ticketType?.registrationFormId);
+    if (pendingTickets.length > 0) {
+      const syncedTicketIds = new Set<string>();
+      await Promise.all(
+        pendingTickets.map(async (ticket) => {
+          const formId = ticket.ticketType?.registrationFormId;
+          if (!formId) return;
+          try {
+            const rows = await sql`
+              SELECT id, answers
+              FROM dykil.survey_responses
+              WHERE survey_id = ${formId} AND ticket_id = ${ticket.id}
+              LIMIT 1
+            `;
+            if (rows.length > 0) {
+              const response = rows[0];
+              const currentMeta = (await sql`
+                SELECT metadata FROM events.tickets WHERE id = ${ticket.id}
+              `)[0]?.metadata || {};
+              await sql`
+                UPDATE events.tickets
+                SET registration_status = 'complete',
+                    metadata = ${sql.json({ ...currentMeta, surveyAnswers: response.answers, surveyResponseId: response.id, syncedAt: new Date().toISOString() })}
+                WHERE id = ${ticket.id}
+              `;
+              syncedTicketIds.add(ticket.id);
+            }
+          } catch (err) {
+            console.error('Auto-sync failed for ticket', ticket.id, err);
+          }
+        })
+      );
+      // Regenerate userOrders so QR codes are produced for newly-synced tickets
+      if (syncedTicketIds.size > 0) {
+        userOrders = await getUserOrders(event.id, session.id);
+      }
+    }
+  }
+
   const hasTicket = userOrders.length > 0;
 
   // Whether we should show the ticket purchase section
