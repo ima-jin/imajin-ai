@@ -13,13 +13,120 @@ const sql = getClient();
 const NOTIFY_URL = process.env.NOTIFY_SERVICE_URL || process.env.NOTIFY_URL || 'http://localhost:3008';
 const NOTIFY_WEBHOOK_SECRET = process.env.NOTIFY_WEBHOOK_SECRET;
 
+interface MessageFilter {
+  type: 'everyone' | 'ticket_type' | 'registration_complete' | 'registration_incomplete';
+  ticketTypeIds?: string[];
+}
+
+async function checkAuth(request: NextRequest, eventId: string) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
+    return { error: authResult.error, status: authResult.status };
+  }
+  const did = authResult.identity.actingAs || authResult.identity.id;
+  const orgCheck = await isEventOrganizer(eventId, did);
+  if (!orgCheck.authorized) {
+    return { error: 'Forbidden', status: 403 };
+  }
+  return { identity: authResult.identity };
+}
+
+async function queryRecipients(eventId: string, filter?: MessageFilter) {
+  const baseWhere = sql`event_id = ${eventId} AND status IN ('valid', 'used') AND owner_did IS NOT NULL`;
+
+  if (filter) {
+    switch (filter.type) {
+      case 'ticket_type':
+        if (filter.ticketTypeIds && filter.ticketTypeIds.length > 0) {
+          const rows = await sql`
+            SELECT DISTINCT owner_did
+            FROM events.tickets
+            WHERE event_id = ${eventId}
+              AND status IN ('valid', 'used')
+              AND owner_did IS NOT NULL
+              AND ticket_type_id = ANY(${filter.ticketTypeIds})
+          `;
+          return rows.map((r: any) => r.owner_did as string);
+        }
+        break;
+      case 'registration_complete': {
+        const rows = await sql`
+          SELECT DISTINCT owner_did
+          FROM events.tickets
+          WHERE event_id = ${eventId}
+            AND status IN ('valid', 'used')
+            AND owner_did IS NOT NULL
+            AND registration_status = 'complete'
+        `;
+        return rows.map((r: any) => r.owner_did as string);
+      }
+      case 'registration_incomplete': {
+        const rows = await sql`
+          SELECT DISTINCT owner_did
+          FROM events.tickets
+          WHERE event_id = ${eventId}
+            AND status IN ('valid', 'used')
+            AND owner_did IS NOT NULL
+            AND (registration_status IS NULL OR registration_status != 'complete')
+        `;
+        return rows.map((r: any) => r.owner_did as string);
+      }
+      case 'everyone':
+      default:
+        break;
+    }
+  }
+
+  const rows = await sql`
+    SELECT DISTINCT owner_did
+    FROM events.tickets
+    WHERE event_id = ${eventId}
+      AND status IN ('valid', 'used')
+      AND owner_did IS NOT NULL
+  `;
+  return rows.map((r: any) => r.owner_did as string);
+}
+
+/**
+ * GET /api/events/[id]/message?filterType=...&ticketTypeId=...
+ *
+ * Get recipient count for a given filter. Used by the message composer
+ * to update the displayed count when filters change.
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const auth = await checkAuth(request, id);
+  if ('error' in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const filterType = searchParams.get('filterType') as MessageFilter['type'] | null;
+  const ticketTypeIds = searchParams.getAll('ticketTypeId');
+
+  const filter: MessageFilter | undefined = filterType && filterType !== 'everyone'
+    ? { type: filterType, ticketTypeIds: ticketTypeIds.length > 0 ? ticketTypeIds : undefined }
+    : undefined;
+
+  try {
+    const dids = await queryRecipients(id, filter);
+    return NextResponse.json({ count: dids.length });
+  } catch (err) {
+    log.error({ err: String(err) }, '[message] Failed to count recipients');
+    return NextResponse.json({ error: 'Failed to count recipients' }, { status: 500 });
+  }
+}
+
 /**
  * POST /api/events/[id]/message
  *
- * Send a broadcast message to all confirmed ticket holders for an event.
+ * Send a broadcast message to filtered confirmed ticket holders for an event.
  * Caller must be event organizer (creator or cohost).
  *
- * Body: { subject: string; markdown: string }
+ * Body: { subject: string; markdown: string; filter?: MessageFilter }
  */
 export async function POST(
   request: NextRequest,
@@ -39,14 +146,14 @@ export async function POST(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  let body: { subject: string; markdown: string };
+  let body: { subject: string; markdown: string; filter?: MessageFilter };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { subject, markdown } = body;
+  const { subject, markdown, filter } = body;
   if (!subject || !markdown) {
     return NextResponse.json({ error: 'Missing required fields: subject, markdown' }, { status: 400 });
   }
@@ -65,16 +172,8 @@ export async function POST(
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
 
-  // Fetch distinct attendee DIDs for confirmed (paid) tickets
-  const ticketRows = await sql`
-    SELECT DISTINCT owner_did
-    FROM events.tickets
-    WHERE event_id = ${id}
-      AND status IN ('valid', 'used')
-      AND owner_did IS NOT NULL
-  `;
-
-  const dids = ticketRows.map((r: any) => r.owner_did as string);
+  // Fetch distinct attendee DIDs with optional filter
+  const dids = await queryRecipients(id, filter);
   const total = dids.length;
 
   if (total === 0) {

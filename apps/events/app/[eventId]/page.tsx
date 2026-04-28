@@ -143,6 +143,11 @@ async function getTicketTypes(eventId: string) {
     .orderBy(ticketTypes.sortOrder);
 }
 
+function filterPublicTiers(allTiers: Awaited<ReturnType<typeof getTicketTypes>>, isOrganizer: boolean) {
+  if (isOrganizer) return allTiers;
+  return allTiers.filter(t => !t.accessCode);
+}
+
 async function getUserOrders(eventId: string, userDid: string) {
   const rows = await db
     .select({
@@ -294,7 +299,9 @@ export default async function EventPage({ params, searchParams }: Props) {
     notFound();
   }
 
-  const ticketTypesList = await getTicketTypes(event.id);
+  const allTicketTypes = await getTicketTypes(event.id);
+  const ticketTypesList = filterPublicTiers(allTicketTypes, isOrganizer);
+  const hasHiddenTiers = allTicketTypes.some(t => !!t.accessCode);
   const canPurchaseTickets = status === 'published';
 
   // Invite-only access check
@@ -792,6 +799,7 @@ export default async function EventPage({ params, searchParams }: Props) {
                 isAuthenticated={!!session}
                 sessionEmail={session?.email ?? undefined}
                 sellerConnected={sellerConnected}
+                hasHiddenTiers={hasHiddenTiers}
               />
             </TicketsGate>
           ) : (

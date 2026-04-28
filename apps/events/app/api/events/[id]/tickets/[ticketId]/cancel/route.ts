@@ -7,29 +7,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { db, tickets, events } from '@/src/db';
-import { getSession } from '@imajin/auth';
-import { withLogger } from '@imajin/logger';
+import { requireAuth } from '@imajin/auth';
+import { isEventOrganizer } from '@/src/lib/organizer';
+import { createLogger } from '@imajin/logger';
 
-export const POST = withLogger('events', async (
-  _request: NextRequest,
-  { log, params }: { log: any; params: Promise<{ id: string; ticketId: string }> }
-) => {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+const log = createLogger('events');
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string; ticketId: string }> }
+) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
 
+  const { identity } = authResult;
+  const actingDid = identity.actingAs || identity.id;
   const { id: eventId, ticketId } = await params;
-  const actingDid = session.actingAs || session.id;
 
-  // Verify event ownership
-  const [event] = await db
-    .select({ creatorDid: events.creatorDid })
-    .from(events)
-    .where(eq(events.id, eventId))
-    .limit(1);
-
-  if (!event || event.creatorDid !== actingDid) {
+  // Verify event ownership (creator or cohost)
+  const orgCheck = await isEventOrganizer(eventId, actingDid);
+  if (!orgCheck.authorized) {
     return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
   }
 
@@ -65,4 +64,4 @@ export const POST = withLogger('events', async (
   log.info({ ticketId, eventId }, 'Held ticket cancelled');
 
   return NextResponse.json({ ticket: updated });
-});
+}
