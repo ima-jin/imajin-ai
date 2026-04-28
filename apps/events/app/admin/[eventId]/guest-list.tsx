@@ -393,7 +393,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
           <h2 className="text-xl font-semibold">Guest List</h2>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => { window.location.href = `/api/events/${eventId}/guests/export.csv`; }}
+              onClick={() => { window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/api/events/${eventId}/guests/export.csv`; }}
               className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
             >
               ⬇ Download CSV
