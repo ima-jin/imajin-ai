@@ -25,7 +25,7 @@ export default async function AdminEventsPage() {
           </p>
         </div>
         <a
-          href="/api/admin/events/export.csv"
+          href={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/api/admin/events/export.csv`}
           className="inline-flex items-center px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition"
         >
           ⬇ Export Events

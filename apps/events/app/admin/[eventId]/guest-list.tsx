@@ -53,6 +53,11 @@ interface Guest {
 interface GuestListProps {
   eventId: string;
   isOwner: boolean;
+  summary?: {
+    totalTickets: number;
+    confirmedRevenue: number;
+    checkedIn: number;
+  };
 }
 
 function formatCurrency(cents: number | null, currency: string | null): string {
@@ -141,10 +146,11 @@ function ProfileCell({ ownerDid, profile, paymentMethod, paymentId }: {
 
 type FilterKey = 'type' | 'status' | null;
 
-export function GuestList({ eventId, isOwner }: GuestListProps) {
+export function GuestList({ eventId, isOwner, summary }: GuestListProps) {
   const { toast } = useToast();
+  const [expanded, setExpanded] = useState(false);
   const [guests, setGuests] = useState<Guest[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterKey, setFilterKey] = useState<FilterKey>(null);
   const [filterValue, setFilterValue] = useState<string | null>(null);
@@ -176,7 +182,11 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
       });
   }, [eventId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (expanded) {
+      load();
+    }
+  }, [expanded, load]);
 
   const handleCheckIn = async (ticketId: string) => {
     setActionLoading(ticketId);
@@ -368,20 +378,56 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   const uniqueTypes = Object.keys(typeCounts);
   const uniqueStatuses = Object.keys(statusCounts);
 
+  // Collapsed header with summary
+  const summaryContent = (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3 flex-wrap">
+        <h2 className="text-xl font-semibold">Guest List</h2>
+        {summary && (
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            {summary.totalTickets} tickets · {formatCurrency(summary.confirmedRevenue, 'CAD')} · {summary.checkedIn} checked in
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
+        >
+          {expanded ? 'Hide Attendees' : 'Show Attendees'}
+        </button>
+        <button
+          onClick={() => { window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/api/events/${eventId}/guests/export.csv`; }}
+          className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
+        >
+          ⬇ Download CSV
+        </button>
+      </div>
+    </div>
+  );
+
+  if (!expanded) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        {summaryContent}
+      </div>
+    );
+  }
+
   if (loading) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
-        <h2 className="text-xl font-semibold mb-2">Guest List</h2>
-        <p className="text-gray-500 text-sm">Loading...</p>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        {summaryContent}
+        <p className="text-gray-500 text-sm mt-4">Loading attendees...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
-        <h2 className="text-xl font-semibold mb-2">Guest List</h2>
-        <p className="text-red-500 text-sm">{error}</p>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        {summaryContent}
+        <p className="text-red-500 text-sm mt-4">{error}</p>
       </div>
     );
   }
@@ -389,26 +435,10 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
       <div className="px-6 pt-6 pb-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xl font-semibold">Guest List</h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { window.location.href = `/api/events/${eventId}/guests/export.csv`; }}
-              className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
-            >
-              ⬇ Download CSV
-            </button>
-            <button
-              onClick={() => setScannerOpen(v => !v)}
-              className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
-            >
-              {scannerOpen ? '✕ Close Scanner' : '📷 Scan Tickets'}
-            </button>
-          </div>
-        </div>
+        {summaryContent}
 
         {scannerOpen && (
-          <div className="mb-4">
+          <div className="mt-4 mb-4">
             <TicketScanner
               eventId={eventId}
               onCheckIn={handleScannerCheckIn}
@@ -422,7 +452,7 @@ export function GuestList({ eventId, isOwner }: GuestListProps) {
 
         {/* Summary badge */}
         {guests.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-4">
+          <div className="flex flex-wrap gap-2 mt-4 mb-4">
             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
               {guests.length} ticket{guests.length !== 1 ? 's' : ''}
             </span>

@@ -6,23 +6,23 @@ const log = createLogger('events');
 import { db, events, ticketTypes } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, isNull } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 
 /**
- * GET /api/events/[id]/tiers - List ticket tiers
+ * GET /api/events/[id]/tiers - List public ticket tiers (excludes access-code-protected)
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  
+
   try {
     const tiers = await db
       .select()
       .from(ticketTypes)
-      .where(eq(ticketTypes.eventId, id))
+      .where(and(eq(ticketTypes.eventId, id), isNull(ticketTypes.accessCode)))
       .orderBy(asc(ticketTypes.sortOrder));
 
     return NextResponse.json({
@@ -61,7 +61,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { name, description, price, currency = 'USD', quantity, perks, sortOrder, requiresRegistration, registrationFormId } = body;
+    const { name, description, price, currency = 'USD', quantity, perks, sortOrder, requiresRegistration, registrationFormId, accessCode } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
@@ -84,6 +84,7 @@ export async function POST(
       sortOrder: sortOrder ?? 0,
       requiresRegistration: requiresRegistration ?? false,
       registrationFormId: registrationFormId || null,
+      accessCode: accessCode?.trim() || null,
     }).returning();
 
     revalidatePath(`/${id}`);
@@ -118,7 +119,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { tierId, name, description, price, quantity, perks, sortOrder, requiresRegistration, registrationFormId } = body;
+    const { tierId, name, description, price, quantity, perks, sortOrder, requiresRegistration, registrationFormId, accessCode } = body;
 
     if (!tierId) {
       return NextResponse.json({ error: 'tierId is required' }, { status: 400 });
@@ -147,6 +148,7 @@ export async function PUT(
     if (sortOrder !== undefined) updates.sortOrder = sortOrder;
     if (requiresRegistration !== undefined) updates.requiresRegistration = requiresRegistration;
     if (registrationFormId !== undefined) updates.registrationFormId = registrationFormId || null;
+    if (accessCode !== undefined) updates.accessCode = accessCode?.trim() || null;
 
     // Price - freely editable if no tickets sold, can only decrease after sales
     if (price !== undefined) {

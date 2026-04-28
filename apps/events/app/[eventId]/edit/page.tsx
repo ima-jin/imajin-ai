@@ -68,7 +68,7 @@ export default async function EditEventPage({ params }: Props) {
             You don't have permission to edit this event.
           </p>
           <a
-            href={`/${eventId}`}
+            href={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/${eventId}`}
             className="inline-block px-6 py-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition"
           >
             View Event
@@ -110,7 +110,7 @@ export default async function EditEventPage({ params }: Props) {
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-bold mb-2">Edit Event</h1>
             <a
-              href={`/${eventId}`}
+              href={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/${eventId}`}
               className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-1"
             >
               ← View Live Event
