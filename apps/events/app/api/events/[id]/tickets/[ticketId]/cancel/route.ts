@@ -1,8 +1,8 @@
 /**
  * POST /api/events/[id]/tickets/[ticketId]/cancel
  *
- * Cancels a held (unconfirmed) e-Transfer ticket.
- * Only works for tickets with status 'held' — confirmed tickets must use refund.
+ * Cancels a held or available (unconfirmed) ticket.
+ * Only works for tickets with status 'held' or 'available' — confirmed tickets must use refund.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
@@ -43,9 +43,9 @@ export async function POST(
     return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
   }
 
-  if (ticket.status !== 'held') {
+  if (ticket.status !== 'held' && ticket.status !== 'available') {
     return NextResponse.json(
-      { error: `Cannot cancel a ticket with status '${ticket.status}'. Only held tickets can be cancelled.` },
+      { error: `Cannot cancel a ticket with status '${ticket.status}'. Only held or available tickets can be cancelled.` },
       { status: 400 }
     );
   }
@@ -61,7 +61,7 @@ export async function POST(
     .where(eq(tickets.id, ticketId))
     .returning();
 
-  log.info({ ticketId, eventId }, 'Held ticket cancelled');
+  log.info({ ticketId, eventId, previousStatus: ticket.status }, 'Ticket cancelled');
 
   return NextResponse.json({ ticket: updated });
 }

@@ -1012,6 +1012,7 @@ function ResendEmailButton({ loading, resendState, lastEmailSentAt, onResendEmai
 function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onCancelRequest, onMarkSent, markSentLoading }: ActionsCellProps) {
   const isValid = guest.status === 'valid';
   const isHeld = guest.status === 'held';
+  const isAvailable = guest.status === 'available';
   const isCheckedIn = !!guest.usedAt;
   const isRefunded = guest.status === 'refunded';
   const isCancelled = guest.status === 'cancelled';
@@ -1054,7 +1055,7 @@ function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onCa
     );
   }
 
-  if (isHeld && isOwner) {
+  if ((isHeld || isAvailable) && isOwner) {
     return (
       <button
         onClick={onCancelRequest}
