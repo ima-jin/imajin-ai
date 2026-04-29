@@ -19,16 +19,18 @@ export const GET = withLogger('kernel', async (req: NextRequest, { log }) => {
     SELECT
       id, service, method, path, status, duration_ms, did, ip,
       correlation_id, error_message, created_at
-    FROM registry.request_log
-    WHERE duration_ms >= 1000
+    FROM registry.logs
+    WHERE source = 'request'
+      AND duration_ms >= 1000
     ORDER BY duration_ms DESC, created_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `;
 
   const [{ count }] = await sql`
     SELECT COUNT(*)::int AS count
-    FROM registry.request_log
-    WHERE duration_ms >= 1000
+    FROM registry.logs
+    WHERE source = 'request'
+      AND duration_ms >= 1000
   `;
 
   log.info({ count, limit, offset }, 'slow requests fetched');

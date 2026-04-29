@@ -1,6 +1,6 @@
 {
   "name": "imajin-ai",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "scripts": {
     "dev": "pnpm -r --parallel dev",

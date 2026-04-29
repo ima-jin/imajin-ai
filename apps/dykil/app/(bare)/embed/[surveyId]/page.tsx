@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
@@ -262,7 +263,7 @@ export default function SurveyEmbedPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ answers: data, ...(ticketId ? { forceNew: true } : {}) }),
+        body: JSON.stringify({ answers: data, ...(ticketId ? { forceNew: true, ticketId } : {}) }),
       });
 
       if (res.ok) {

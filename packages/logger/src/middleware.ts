@@ -14,7 +14,7 @@ export type LoggerHandler = (
 ) => Promise<NextResponse>;
 
 /**
- * Fire-and-forget insert into registry.request_log.
+ * Fire-and-forget insert into registry.logs (source='request').
  * Only runs when ENABLE_REQUEST_LOG=true.
  */
 function writeRequestLog(entry: {
@@ -34,13 +34,15 @@ function writeRequestLog(entry: {
     .then(({ getClient }) => {
       const sql = getClient();
       const id = `req_${nanoid(16)}`;
+      const level = entry.status >= 500 ? 'error' : entry.status >= 400 ? 'warn' : 'info';
+      const message = entry.errorMessage || `${entry.method} ${entry.path} → ${entry.status}`;
       return sql`
-        INSERT INTO registry.request_log
-          (id, service, method, path, status, duration_ms, correlation_id, ip, error_message)
+        INSERT INTO registry.logs
+          (id, source, service, level, message, method, path, status, duration_ms, correlation_id, ip, error_message, created_at)
         VALUES
-          (${id}, ${entry.service}, ${entry.method}, ${entry.path}, ${entry.status},
+          (${id}, 'request', ${entry.service}, ${level}, ${message}, ${entry.method}, ${entry.path}, ${entry.status},
            ${entry.durationMs}, ${entry.correlationId}, ${entry.ip},
-           ${entry.errorMessage ?? null})
+           ${entry.errorMessage ?? null}, now())
       `;
     })
     .catch(() => {
@@ -56,7 +58,7 @@ function writeRequestLog(entry: {
  * - Creates a child logger bound to { correlationId, method, path, ip }
  * - Auto-logs request completion with { status, durationMs }
  * - Sets X-Correlation-Id on the response
- * - Optionally writes to registry.request_log when ENABLE_REQUEST_LOG=true
+ * - Optionally writes to registry.logs when ENABLE_REQUEST_LOG=true
  *
  * Usage:
  *   export const GET = withLogger('kernel', async (req, { log, correlationId }) => {

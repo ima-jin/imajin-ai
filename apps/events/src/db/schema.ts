@@ -94,6 +94,7 @@ export const ticketTypes = eventsSchema.table('ticket_types', {
   requiresRegistration: boolean('requires_registration').notNull().default(false),
   registrationFormId: text('registration_form_id'),         // Dykil form ID
   maxPerOrder: integer('max_per_order'),                    // null = use event default (10)
+  accessCode: text('access_code'),                          // null = visible to everyone
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

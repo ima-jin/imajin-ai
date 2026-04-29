@@ -18,8 +18,26 @@ const MIN_PERSIST_LEVEL = process.env.APP_LOG_LEVEL || 'warn';
 const LEVEL_PRIORITY: Record<string, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 
 function shouldPersist(level: string): boolean {
-  if (process.env.ENABLE_APP_LOG !== 'true') return false;
+  const enabled = process.env.LOG_DB_TRANSPORT === 'true' || process.env.ENABLE_APP_LOG === 'true';
+  if (!enabled) return false;
   return (LEVEL_PRIORITY[level] ?? 0) >= (LEVEL_PRIORITY[MIN_PERSIST_LEVEL] ?? 30);
+}
+
+// Opportunistic cleanup — at most once per hour per process
+let lastCleanupAt = 0;
+
+function runLogCleanup(): void {
+  const now = Date.now();
+  if (now - lastCleanupAt < 60 * 60 * 1000) return;
+  lastCleanupAt = now;
+  import('@imajin/db')
+    .then(({ getClient }) => {
+      const sql = getClient();
+      return sql`SELECT registry.cleanup_old_logs()`;
+    })
+    .catch(() => {
+      // Never block or surface errors from the log sink
+    });
 }
 
 function writeAppLog(entry: {
@@ -30,6 +48,7 @@ function writeAppLog(entry: {
   did?: string;
   method?: string;
   path?: string;
+  errorMessage?: string;
   metadata?: Record<string, unknown>;
 }): void {
   if (!shouldPersist(entry.level)) return;
@@ -39,12 +58,19 @@ function writeAppLog(entry: {
       const sql = getClient();
       const id = `log_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
       return sql`
-        INSERT INTO registry.app_logs (id, service, level, message, correlation_id, did, method, path, metadata)
-        VALUES (${id}, ${entry.service}, ${entry.level}, ${entry.message},
-                ${entry.correlationId ?? null}, ${entry.did ?? null},
-                ${entry.method ?? null}, ${entry.path ?? null},
-                ${entry.metadata ? JSON.stringify(entry.metadata) : null}::jsonb)
+        INSERT INTO registry.logs
+          (id, source, service, level, message, correlation_id, did, method, path, error_message, metadata, created_at)
+        VALUES
+          (${id}, 'app', ${entry.service}, ${entry.level}, ${entry.message},
+           ${entry.correlationId ?? null}, ${entry.did ?? null},
+           ${entry.method ?? null}, ${entry.path ?? null},
+           ${entry.errorMessage ?? null},
+           ${entry.metadata ? JSON.stringify(entry.metadata) : null}::jsonb,
+           now())
       `;
+    })
+    .then(() => {
+      runLogCleanup();
     })
     .catch(() => {
       // Never block or surface errors from the log sink
@@ -53,7 +79,8 @@ function writeAppLog(entry: {
 
 function wrapPino(instance: pino.Logger): Logger {
   function persist(level: string, ctx: LogContext, message: string) {
-    const { service, correlationId, did, method, path, ...rest } = ctx;
+    const { service, correlationId, did, method, path, err, error, ...rest } = ctx;
+    const errorMessage = err ? String(err) : error ? String(error) : undefined;
     writeAppLog({
       service: service || 'unknown',
       level,
@@ -62,6 +89,7 @@ function wrapPino(instance: pino.Logger): Logger {
       did,
       method,
       path,
+      errorMessage,
       metadata: Object.keys(rest).length > 0 ? rest : undefined,
     });
   }

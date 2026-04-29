@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { TicketType } from '@/src/db/schema';
 import { apiFetch } from '@imajin/config';
 import { TicketPurchase } from './ticket-purchase';
 import { OnboardGate } from '@imajin/onboard';
 import { SurveyAccordion } from './survey-accordion';
+import { useToast } from '@imajin/ui';
 
 function timeAgo(dateStr: string): string {
   const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -76,9 +78,10 @@ interface Props {
   isAuthenticated?: boolean;
   sessionEmail?: string;
   sellerConnected?: boolean;
+  hasHiddenTiers?: boolean;
 }
 
-export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], hasTicket = false, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sellerConnected = true }: Props) {
+export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], hasTicket = false, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sellerConnected = true, hasHiddenTiers = false }: Props) {
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'buy-tickets'>(
     hasTicket ? 'my-tickets' : 'buy-tickets'
   );
@@ -95,7 +98,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
 
   // If user doesn't have tickets, show purchase UI only
   if (!hasTicket || userOrders.length === 0) {
-    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sellerConnected={sellerConnected} />;
+    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} />;
   }
 
   // User has tickets - show tabbed interface
@@ -129,7 +132,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
       {activeTab === 'my-tickets' ? (
         <MyTicketsTab userOrders={userOrders} eventId={eventId} />
       ) : (
-        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sellerConnected={sellerConnected} />
+        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} />
       )}
     </div>
   );
@@ -242,9 +245,15 @@ function TicketQRCell({ ticket }: { ticket: OrderTicket; eventId: string }) {
 
 function TicketRegistrationSurvey({ ticket, eventId }: { ticket: OrderTicket; eventId: string }) {
   const [regStatus, setRegStatus] = useState(ticket.registrationStatus);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
   const isPending = regStatus === 'pending';
+  const router = useRouter();
+  const { toast } = useToast();
 
   async function handleRegistrationComplete() {
+    setIsRetrying(true);
+    setLastError(null);
     try {
       const res = await apiFetch(`/api/register/${ticket.id}`, {
         method: 'POST',
@@ -253,24 +262,51 @@ function TicketRegistrationSurvey({ ticket, eventId }: { ticket: OrderTicket; ev
       });
       if (res.ok) {
         setRegStatus('complete');
+        toast.success('Registration completed successfully');
+        // Refresh server data so QR code appears
+        router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        const msg = data.error || `Registration failed (${res.status})`;
+        setLastError(msg);
+        toast.error(msg);
       }
-    } catch {
-      // Non-fatal — survey is saved in Dykil
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Registration failed';
+      setLastError(msg);
+      toast.error(msg);
+    } finally {
+      setIsRetrying(false);
     }
   }
 
   if (!ticket.ticketType?.registrationFormId) return null;
 
   return (
-    <SurveyAccordion
-      eventId={eventId}
-      surveyId={ticket.ticketType.registrationFormId}
-      surveyTitle={isPending ? 'Complete Registration' : 'Registration'}
-      surveyType="form"
-      defaultExpanded={isPending}
-      ticketId={ticket.id}
-      onComplete={handleRegistrationComplete}
-    />
+    <div>
+      <SurveyAccordion
+        eventId={eventId}
+        surveyId={ticket.ticketType.registrationFormId}
+        surveyTitle={isPending ? 'Complete Registration' : 'Registration'}
+        surveyType="form"
+        defaultExpanded={isPending}
+        ticketId={ticket.id}
+        initialCompleted={!isPending}
+        onComplete={handleRegistrationComplete}
+      />
+      {lastError && (
+        <div className="mt-2 flex items-center gap-3">
+          <span className="text-sm text-red-500">{lastError}</span>
+          <button
+            onClick={handleRegistrationComplete}
+            disabled={isRetrying}
+            className="px-3 py-1 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 transition"
+          >
+            {isRetrying ? 'Retrying...' : 'Retry'}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -370,25 +406,71 @@ function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
   );
 }
 
-function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sellerConnected = true }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sessionEmail?: string; sellerConnected?: boolean }) {
+function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sellerConnected = true, hasHiddenTiers = false }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sessionEmail?: string; sellerConnected?: boolean; hasHiddenTiers?: boolean }) {
+  const [unlockedTickets, setUnlockedTickets] = useState<TicketType[]>([]);
+  const [unlockCode, setUnlockCode] = useState('');
+  const [showUnlock, setShowUnlock] = useState(false);
+  const [unlockLoading, setUnlockLoading] = useState(false);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const allTickets = [...tickets, ...unlockedTickets];
+
+  async function handleUnlock() {
+    if (!unlockCode.trim()) return;
+    setUnlockLoading(true);
+    setUnlockError(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/tiers/unlock?code=${encodeURIComponent(unlockCode.trim())}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setUnlockError(data.error || 'Invalid code');
+        return;
+      }
+      const newTiers = (data.tiers || []).filter((t: TicketType) => !allTickets.some(existing => existing.id === t.id));
+      if (newTiers.length === 0) {
+        setUnlockError('No new ticket types found for this code');
+        return;
+      }
+      setUnlockedTickets(prev => [...prev, ...newTiers]);
+      setShowUnlock(false);
+      setUnlockCode('');
+      toast.success(`${newTiers.length} ticket type${newTiers.length > 1 ? 's' : ''} unlocked!`);
+    } catch {
+      setUnlockError('Failed to unlock. Please try again.');
+    } finally {
+      setUnlockLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-3 md:space-y-4">
-      {tickets.map((ticket) => {
+      {allTickets.map((ticket) => {
         const available = ticket.quantity === null
           ? null
           : ticket.quantity - (ticket.sold ?? 0);
         const soldOut = ticket.quantity !== null && (ticket.sold ?? 0) >= ticket.quantity;
         const lowStock = available !== null && available > 0 && available <= 10;
+        const isUnlocked = unlockedTickets.some(t => t.id === ticket.id);
 
         return (
           <div
             key={ticket.id}
-            className="group border-2 border-gray-200 dark:border-gray-700 rounded-xl p-4 md:p-6 hover:border-orange-500 dark:hover:border-orange-500 transition-all"
+            className={`group border-2 rounded-xl p-4 md:p-6 hover:border-orange-500 dark:hover:border-orange-500 transition-all ${
+              isUnlocked
+                ? 'border-amber-300 dark:border-amber-700 bg-amber-50/30 dark:bg-amber-900/10'
+                : 'border-gray-200 dark:border-gray-700'
+            }`}
           >
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex-1">
                 <div className="flex items-start gap-3 mb-2">
                   <h3 className="font-bold text-xl flex-1">{ticket.name}</h3>
+                  {isUnlocked && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-xs font-semibold rounded-full">
+                      🔓 Unlocked
+                    </span>
+                  )}
                   {soldOut && (
                     <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 text-xs font-semibold rounded-full">
                       SOLD OUT
@@ -476,6 +558,49 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
           </div>
         );
       })}
+
+      {/* Unlock hidden tiers */}
+      {hasHiddenTiers && (
+        <div className="pt-4">
+          {!showUnlock ? (
+            <button
+              onClick={() => setShowUnlock(true)}
+              className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-1"
+            >
+              🔑 Have an access code?
+            </button>
+          ) : (
+            <div className="flex items-start gap-2">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={unlockCode}
+                  onChange={(e) => setUnlockCode(e.target.value)}
+                  placeholder="Enter access code..."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
+                  onKeyDown={(e) => e.key === 'Enter' && handleUnlock()}
+                />
+                {unlockError && (
+                  <p className="text-xs text-red-500 mt-1">{unlockError}</p>
+                )}
+              </div>
+              <button
+                onClick={handleUnlock}
+                disabled={unlockLoading || !unlockCode.trim()}
+                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition"
+              >
+                {unlockLoading ? '…' : 'Unlock'}
+              </button>
+              <button
+                onClick={() => { setShowUnlock(false); setUnlockError(null); }}
+                className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

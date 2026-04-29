@@ -1,0 +1,78 @@
+/**
+ * Do not edit directly, this file was auto-generated.
+ */
+
+:root {
+  --color-background-base: #0a0a0f; /** Page background, app shell */
+  --color-background-surface: #12121a; /** Cards, panels, modals */
+  --color-background-elevated: #1a1a26; /** Hover states, raised elements */
+  --color-background-input: #15151f; /** Form fields, text inputs */
+  --color-sunset-purple: #8b5cf6; /** Gradient start — protocol, network, deep infrastructure */
+  --color-sunset-blue: #6366f1; /** Gradient mid-left — identity, trust, verification */
+  --color-sunset-red: #ef4444; /** Gradient mid-right — settlement, payments, action */
+  --color-sunset-orange: #f97316; /** Gradient end — community, presence, warmth */
+  --color-functional-text-primary: #f0f0f5; /** Primary text */
+  --color-functional-text-secondary: #9393a8; /** Secondary text, labels */
+  --color-functional-text-muted: #5a5a72; /** Placeholders, disabled */
+  --color-functional-success: #22c55e; /** Confirmations, positive states */
+  --color-functional-warning: #eab308; /** Warnings, caution */
+  --color-functional-error: #ef4444; /** Errors, destructive actions */
+  --color-functional-info: #6366f1; /** Informational */
+  --color-interactive-border-light: rgba(255, 255, 255, 0.1); /** Card borders */
+  --color-interactive-border-light-hover: rgba(255, 255, 255, 0.2); /** Card border hover */
+  --color-interactive-border-input: rgba(255, 255, 255, 0.12); /** Input borders */
+  --color-interactive-border-secondary: rgba(255, 255, 255, 0.15); /** Secondary button border */
+  --color-interactive-border-nav: rgba(255, 255, 255, 0.08); /** Navigation border */
+  --color-interactive-scrollbar-thumb: rgba(139, 92, 246, 0.3); /** Scrollbar thumb (purple) */
+  --color-gradient-sunset: linear-gradient(135deg, #8b5cf6, #6366f1, #ef4444, #f97316); /** The Imajin sunset gradient */
+  --space-1: 4px; /** Tight gaps (icon-to-text) */
+  --space-2: 8px; /** Inline spacing, small gaps */
+  --space-3: 12px; /** Input padding, list items */
+  --space-4: 16px; /** Card padding, section gaps */
+  --space-6: 24px; /** Between components */
+  --space-8: 32px; /** Section separators */
+  --space-12: 48px; /** Page sections */
+  --space-16: 64px; /** Hero spacing, major sections */
+  --radius-none: 0px; /** Everything */
+  --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.15); /** Accent glow on focus/active (purple base) */
+  --font-family-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; /** Headings, labels, navigation, data, code */
+  --font-family-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; /** Body text, long-form reading */
+  --font-weight-regular: 400; /** Body, data, code */
+  --font-weight-medium: 500; /** Labels, nav items */
+  --font-weight-bold: 700; /** Headings, hero/display */
+  --font-size-label: 0.6875rem; /** Labels (uppercase monospace) */
+  --font-size-nav: 0.8125rem; /** Nav items */
+  --font-size-body: 0.875rem; /** Body text */
+  --font-size-heading-sm: 1.5rem; /** Small headings */
+  --font-size-heading-md: 2rem; /** Medium headings */
+  --font-size-heading-lg: 2.5rem; /** Large headings */
+  --font-size-hero-sm: 2.5rem; /** Hero small */
+  --font-size-hero-md: 3rem; /** Hero medium */
+  --font-size-hero-lg: 4rem; /** Hero large */
+  --font-tracking-tight: -0.03em; /** Hero/display */
+  --font-tracking-heading: -0.02em; /** Headings */
+  --font-tracking-normal: 0px; /** Body, data, code */
+  --font-tracking-nav: 0.02em; /** Nav items */
+  --font-tracking-label: 0.05em; /** Labels (uppercase) */
+  --semantic-surface-1: var(--color-background-base); /** Page background, app shell */
+  --semantic-surface-2: var(--color-background-surface); /** Cards, panels, modals */
+  --semantic-surface-3: var(--color-background-elevated); /** Hover states, raised elements */
+  --semantic-surface-input: var(--color-background-input); /** Form fields */
+  --semantic-text-heading: var(--color-functional-text-primary); /** Headings, primary content */
+  --semantic-text-body: var(--color-functional-text-secondary); /** Body text, labels */
+  --semantic-text-quiet: var(--color-functional-text-muted); /** Placeholders, disabled, muted hints */
+  --semantic-text-on-accent: var(--color-functional-text-primary); /** Text on accent/CTA backgrounds */
+  --semantic-accent: var(--color-sunset-orange); /** The brand accent. Change this one token to rebrand. Currently warm/orange. */
+  --semantic-cta-primary: var(--color-gradient-sunset); /** Primary CTA — sunset gradient */
+  --semantic-cta-secondary: var(--color-background-elevated); /** Secondary CTA — quiet surface */
+  --semantic-border-subtle: var(--color-interactive-border-light); /** Card and panel borders */
+  --semantic-border-strong: var(--color-interactive-border-light-hover); /** Border on hover or emphasis */
+  --semantic-border-input: var(--color-interactive-border-input); /** Form field borders */
+  --semantic-border-nav: var(--color-interactive-border-nav); /** Navigation dividers */
+  --semantic-focus-ring: var(--color-sunset-purple); /** Focus ring color */
+  --semantic-focus-glow: var(--shadow-glow); /** Subtle purple glow on focus */
+  --semantic-status-success: var(--color-functional-success);
+  --semantic-status-warning: var(--color-functional-warning);
+  --semantic-status-error: var(--color-functional-error);
+  --semantic-status-info: var(--color-functional-info);
+}

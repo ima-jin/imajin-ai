@@ -6,13 +6,10 @@
 import { db, events, tickets, ticketTypes } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
-import { EventStatusControls } from './event-status-controls';
-import { CohostManager } from './cohost-manager';
 import { GuestList } from './guest-list';
-import { InviteManager } from './invite-manager';
-import { MessageComposer } from './message-composer';
 import { getSession } from '@imajin/auth';
 import { getClient } from '@imajin/db';
+import { AdminTabs } from './admin-tabs';
 
 const sql = getClient();
 
@@ -36,28 +33,32 @@ export default async function AdminPage({ params }: Props) {
 
   // Auth check: viewer must be owner or cohost
   const session = await getSession();
-  const isOwner = session?.id === event.creatorDid;
+  const actingDid = session ? (session.actingAs || session.id) : null;
+  const isCreator = session?.id === event.creatorDid || session?.actingAs === event.creatorDid;
 
-  if (!isOwner && event.podId) {
-    // Check if viewer is a cohost
+  // Auth gate: creator, acting-as creator, or cohost
+  let isOrganizer = isCreator;
+  if (!isCreator && event.podId && actingDid) {
     const podRows = await sql`
       SELECT role FROM connections.pod_members
-      WHERE pod_id = ${event.podId} AND did = ${session?.id ?? ''} AND role IN ('owner', 'cohost')
+      WHERE pod_id = ${event.podId} AND did = ${actingDid} AND role IN ('owner', 'cohost')
       LIMIT 1
     `;
-    if (!podRows.length) {
+    if (podRows.length) {
+      isOrganizer = true;
+    } else {
       notFound();
     }
-  } else if (!isOwner) {
+  } else if (!isCreator) {
     notFound();
   }
-  
+
   // Fetch ticket types with stats
   const tiers = await db
     .select()
     .from(ticketTypes)
     .where(eq(ticketTypes.eventId, eventId));
-  
+
   // Fetch all tickets
   const allTickets = await db
     .select({
@@ -68,7 +69,7 @@ export default async function AdminPage({ params }: Props) {
     .leftJoin(ticketTypes, eq(tickets.ticketTypeId, ticketTypes.id))
     .where(eq(tickets.eventId, eventId))
     .orderBy(desc(tickets.createdAt));
-  
+
   // Calculate stats — exclude cancelled/refunded from "sold" count
   const activeTickets = allTickets.filter(t => !['cancelled', 'refunded'].includes(t.ticket.status));
   const totalSold = activeTickets.length;
@@ -80,6 +81,23 @@ export default async function AdminPage({ params }: Props) {
     .reduce((sum, t) => sum + (t.ticket.pricePaid || 0), 0);
   const checkedIn = allTickets.filter(t => t.ticket.usedAt).length;
 
+  // Count cohosts
+  let cohostCount = 0;
+  if (event.podId) {
+    const cohostRows = await sql`
+      SELECT COUNT(*) as count FROM connections.pod_members
+      WHERE pod_id = ${event.podId} AND role = 'cohost' AND removed_at IS NULL
+    `;
+    cohostCount = Number(cohostRows[0]?.count ?? 0);
+  }
+
+  // Count invites
+  const inviteRows = await sql`
+    SELECT COUNT(*) as count FROM events.event_invites
+    WHERE event_id = ${eventId}
+  `;
+  const inviteCount = Number(inviteRows[0]?.count ?? 0);
+
   // Count distinct confirmed attendees for broadcast
   const confirmedAttendeeRows = await sql`
     SELECT COUNT(DISTINCT owner_did) AS count
@@ -89,128 +107,57 @@ export default async function AdminPage({ params }: Props) {
       AND owner_did IS NOT NULL
   `;
   const confirmedAttendeeCount = Number(confirmedAttendeeRows[0]?.count ?? 0);
-  
+
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8">
       {/* Header */}
-      <div className="mb-4 md:mb-8">
-        <h1 className="text-3xl font-bold">{event.title}</h1>
-        <p className="text-gray-600 dark:text-gray-400">Admin Dashboard</p>
-      </div>
-
-      {/* Status Controls */}
-      <EventStatusControls eventId={event.id} currentStatus={event.status || 'draft'} />
-
-      {/* Name Display Policy */}
-      <div className="mb-4 md:mb-6 flex items-center gap-3">
-        <span className="text-sm text-gray-500 dark:text-gray-400">Attendee name display:</span>
-        <NamePolicyBadge policy={(event as any).nameDisplayPolicy || 'attendee_choice'} />
+      <div className="mb-4 md:mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">{event.title}</h1>
+          <p className="text-gray-600 dark:text-gray-400">Admin Dashboard</p>
+        </div>
         <a
-          href={`/${event.id}/edit`}
-          className="text-xs text-orange-500 hover:text-orange-600 underline"
+          href={`${basePath}/${eventId}`}
+          className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-1"
         >
-          Change
+          ← View Live Event
         </a>
       </div>
 
-      {/* Co-host Management */}
-      <div className="mb-4 md:mb-8">
-        <CohostManager eventId={event.id} isOwner={isOwner} />
-      </div>
+      {/* Tabs + Tab Content */}
+      <AdminTabs
+        eventId={eventId}
+        eventTitle={event.title}
+        eventStatus={event.status || 'draft'}
+        isOwner={isOrganizer}
+        ownerDid={event.creatorDid}
+        accessMode={event.accessMode || 'public'}
+        cohostCount={cohostCount}
+        inviteCount={inviteCount}
+        confirmedAttendeeCount={confirmedAttendeeCount}
+        totalSold={totalSold}
+        confirmedRevenue={confirmedRevenue}
+        heldRevenue={heldRevenue}
+        checkedIn={checkedIn}
+        tiers={tiers}
+        eventDate={event.startsAt.toISOString()}
+        basePath={basePath}
+      />
 
-      {/* Invite Link Management */}
-      <InviteManager eventId={event.id} accessMode={event.accessMode || 'public'} />
-
-      {/* Message Attendees */}
-      <MessageComposer eventId={event.id} recipientCount={confirmedAttendeeCount} />
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4 md:mb-8">
-        <StatCard label="Tickets Sold" value={totalSold} />
-        <StatCard label="Revenue" value={formatRevenue(confirmedRevenue, heldRevenue, 'CAD')} />
-        <StatCard label="Checked In" value={`${checkedIn} / ${totalSold}`} />
-        <StatCard 
-          label="Event Date" 
-          value={new Date(event.startsAt).toLocaleDateString('en-US', { 
-            month: 'short', 
-            day: 'numeric' 
-          })} 
+      {/* Guest List — always visible below tabs, lazy loaded */}
+      <div className="mt-8">
+        <GuestList
+          eventId={eventId}
+          isOwner={isOrganizer}
+          summary={{
+            totalTickets: totalSold,
+            confirmedRevenue,
+            checkedIn,
+          }}
         />
       </div>
-      
-      {/* Ticket Tiers */}
-      <div className="mb-4 md:mb-8">
-        <h2 className="text-xl font-semibold mb-2 md:mb-4">Ticket Tiers</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-4">
-          {tiers.map(tier => (
-            <div 
-              key={tier.id} 
-              className="bg-white dark:bg-gray-800 rounded-lg p-3 md:p-4 shadow"
-            >
-              <h3 className="font-semibold">{tier.name}</h3>
-              <p className="text-2xl font-bold mt-2">
-                {tier.sold} <span className="text-sm text-gray-500">/ {tier.quantity ?? '∞'}</span>
-              </p>
-              <p className="text-sm text-gray-500">
-                {formatCurrency(tier.price, tier.currency)} each
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-      
-      {/* Guest List */}
-      <GuestList eventId={eventId} isOwner={isOwner} />
     </div>
   );
-}
-
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg p-3 md:p-4 shadow">
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="text-2xl font-bold">{value}</p>
-    </div>
-  );
-}
-
-
-const NAME_POLICY_LABELS: Record<string, { label: string; color: string }> = {
-  attendee_choice: { label: 'Attendee choice', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-  real_name:       { label: 'Real name',       color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
-  handle:          { label: 'Handle only',     color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
-  anonymous:       { label: 'Anonymous',       color: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
-};
-
-function NamePolicyBadge({ policy }: { policy: string }) {
-  const meta = NAME_POLICY_LABELS[policy] ?? NAME_POLICY_LABELS['attendee_choice'];
-  return (
-    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${meta.color}`}>
-      {meta.label}
-    </span>
-  );
-}
-
-function formatCurrency(cents: number, currency: string): string {
-  return new Intl.NumberFormat('en-CA', {
-    style: 'currency',
-    currency,
-  }).format(cents / 100);
-}
-
-function formatCurrencyRound(cents: number, currency: string): string {
-  return new Intl.NumberFormat('en-CA', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(cents / 100);
-}
-
-function formatRevenue(confirmedCents: number, heldCents: number, currency: string): string {
-  const confirmed = formatCurrencyRound(confirmedCents, currency);
-  if (heldCents > 0) {
-    return `${confirmed} (+${formatCurrencyRound(heldCents, currency)} pending)`;
-  }
-  return confirmed;
 }

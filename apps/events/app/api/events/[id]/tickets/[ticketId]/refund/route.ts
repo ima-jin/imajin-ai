@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { db, events, ticketTypes, ticketRegistrations } from '@/src/db';
+import { isEventOrganizer } from '@/src/lib/organizer';
 
 const log = createLogger('events');
 import { requireAuth, getEmailForDid } from '@imajin/auth';
@@ -40,9 +41,10 @@ export async function POST(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    // Refund is owner-only (not cohosts)
-    if (event.creatorDid !== did) {
-      return NextResponse.json({ error: 'Only the event owner can issue refunds' }, { status: 403 });
+    // Refund is organizer-only (creator or cohost)
+    const orgCheck = await isEventOrganizer(id, did);
+    if (!orgCheck.authorized) {
+      return NextResponse.json({ error: 'Only event organizers can issue refunds' }, { status: 403 });
     }
 
     const [ticket] = await sqlClient`

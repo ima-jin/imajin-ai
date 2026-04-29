@@ -48,7 +48,7 @@ export async function GET(
     if (!orgCheck.authorized) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    const isOwner = orgCheck.role === 'creator';
+    const isOwner = orgCheck.role === 'creator' || orgCheck.role === 'cohost';
 
     const ticketRows = await sql`
       SELECT t.id, t.status, t.owner_did, t.price_paid, t.currency, t.purchased_at, t.used_at,

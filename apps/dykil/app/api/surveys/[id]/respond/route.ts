@@ -39,7 +39,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { answers, forceNew } = body;
+    const { answers, forceNew, ticketId } = body;
 
     if (!answers || typeof answers !== 'object') {
       return errorResponse('answers object is required', 400, cors);
@@ -81,7 +81,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Check for existing response (upsert: update if exists, create if not)
     // Skip upsert when forceNew is set (ticket-scoped: each ticket gets its own response)
     let existing: any = null;
-    if (session?.id && !forceNew) {
+    if (ticketId) {
+      // Ticket-scoped lookup takes priority
+      existing = await db.query.surveyResponses.findFirst({
+        where: (r, { eq, and }) => and(eq(r.surveyId, survey.id), eq(r.ticketId, ticketId)),
+      });
+    } else if (session?.id && !forceNew) {
       existing = await db.query.surveyResponses.findFirst({
         where: (r, { eq, and }) => and(eq(r.surveyId, survey.id), eq(r.respondentDid, session.id)),
       });
@@ -96,11 +101,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return jsonResponse({ message: 'Response updated successfully', response }, 200, cors);
     }
 
+    // Validate ticketId format if provided
+    if (ticketId && !ticketId.startsWith('tkt_')) {
+      return errorResponse('Invalid ticketId format', 400, cors);
+    }
+
     // Create new response
     const [response] = await db.insert(surveyResponses).values({
       id: generateId('response'),
       surveyId: survey.id,
       respondentDid: session?.id || null,
+      ticketId: ticketId || null,
       answers,
     }).returning();
 
