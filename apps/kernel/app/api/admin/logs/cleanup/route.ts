@@ -14,12 +14,7 @@ export const POST = withLogger('kernel', async (req: NextRequest, { log }) => {
   const days = Math.max(1, parseInt(url.searchParams.get('days') || '14', 10));
 
   const [result] = await sql`
-    WITH deleted AS (
-      DELETE FROM registry.app_logs
-      WHERE created_at < now() - (${days} || ' days')::interval
-      RETURNING id
-    )
-    SELECT COUNT(*)::int AS deleted FROM deleted
+    SELECT registry.cleanup_old_logs(${days}) AS deleted
   `;
 
   const deleted = result?.deleted ?? 0;

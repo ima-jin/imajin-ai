@@ -20,8 +20,9 @@ export const GET = withLogger('kernel', async (req: NextRequest, { log }) => {
     SELECT
       id, service, method, path, status, duration_ms, did, ip,
       correlation_id, error_message, created_at
-    FROM registry.request_log
-    WHERE correlation_id = ${correlationId}
+    FROM registry.logs
+    WHERE source = 'request'
+      AND correlation_id = ${correlationId}
     ORDER BY created_at ASC
   `;
 
