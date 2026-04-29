@@ -19,16 +19,18 @@ export const GET = withLogger('kernel', async (req: NextRequest, { log }) => {
     SELECT
       id, service, method, path, status, duration_ms, did, ip,
       correlation_id, error_message, created_at
-    FROM registry.request_log
-    WHERE status >= 400
+    FROM registry.logs
+    WHERE source = 'request'
+      AND status >= 400
     ORDER BY created_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `;
 
   const [{ count }] = await sql`
     SELECT COUNT(*)::int AS count
-    FROM registry.request_log
-    WHERE status >= 400
+    FROM registry.logs
+    WHERE source = 'request'
+      AND status >= 400
   `;
 
   log.info({ count, limit, offset }, 'error requests fetched');

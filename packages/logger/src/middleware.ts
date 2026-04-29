@@ -14,7 +14,7 @@ export type LoggerHandler = (
 ) => Promise<NextResponse>;
 
 /**
- * Fire-and-forget insert into registry.request_log.
+ * Fire-and-forget insert into registry.logs (source='request').
  * Only runs when ENABLE_REQUEST_LOG=true.
  */
 function writeRequestLog(entry: {
@@ -58,7 +58,7 @@ function writeRequestLog(entry: {
  * - Creates a child logger bound to { correlationId, method, path, ip }
  * - Auto-logs request completion with { status, durationMs }
  * - Sets X-Correlation-Id on the response
- * - Optionally writes to registry.request_log when ENABLE_REQUEST_LOG=true
+ * - Optionally writes to registry.logs when ENABLE_REQUEST_LOG=true
  *
  * Usage:
  *   export const GET = withLogger('kernel', async (req, { log, correlationId }) => {
