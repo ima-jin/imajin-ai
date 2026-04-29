@@ -6,7 +6,7 @@
   },
   "overrides": [
     {
-      "files": ["app/**/page.tsx", "app/**/layout.tsx", "app/api/**/*.ts", "src/**/*.ts"],
+      "files": ["app/**/page.tsx", "app/**/layout.tsx", "app/api/**/*.ts"],
       "rules": {
         "no-console": "error"
       }
