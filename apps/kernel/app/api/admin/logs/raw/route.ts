@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
 import { requireAdmin } from '@imajin/auth';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
@@ -22,9 +22,10 @@ function getLogPath(service: string, type: 'out' | 'error'): string | null {
   return null;
 }
 
-function tailFile(path: string, lines: number): string {
+function tailFile(filePath: string, lines: number): string {
   try {
-    return execSync(`tail -n ${lines} ${path}`, { encoding: 'utf-8', timeout: 5000 });
+    // execFileSync bypasses the shell — no injection risk
+    return execFileSync('tail', ['-n', String(lines), filePath], { encoding: 'utf-8', timeout: 5000 });
   } catch {
     return '';
   }
