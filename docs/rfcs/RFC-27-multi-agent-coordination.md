@@ -168,20 +168,6 @@ Every action produces chain entries:
 
 **Human view:** expand any chain entry to see the full signed payload. Replay the entire coordination session end-to-end.
 
-### Relation to SHITSUJI
-
-This is the same architecture as the travel vertical's Traveler Agent:
-
-| SHITSUJI | Agent Coordination |
-|----------|-------------------|
-| Traveler sends request | Human sends message |
-| Agent routes to airline/hotel/tour APIs | Router routes to workspace agents |
-| Each API is scoped, authenticated | Each agent has DID, scoped access |
-| Trip is an identity, travelers are members | Agent group is a conversation, agents are members |
-| Agent chain records every booking decision | Router chain records every routing decision |
-
-Building agent coordination first means SHITSUJI gets the pattern for free.
-
 ## Implementation Phases
 
 ### Phase 1: Agent Identity (Day 80 — Done)

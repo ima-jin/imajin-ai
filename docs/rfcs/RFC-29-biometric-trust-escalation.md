@@ -331,7 +331,7 @@ Federated nodes can set their own policies. A node in a high-regulation jurisdic
 | **vLEI (GLEIF)** | Verifiable Legal Entity Identifiers — live production use of KERI for business identity. Natural integration for business scope verification. |
 | **eIDAS 2.0 / EUDIW** | EU digital identity wallet — biometric VCs are the compliance path |
 | **NIST SP 800-63-3** | Identity Assurance Levels (IAL2/IAL3 map to verified tier) |
-| **ICAO DTC** | Digital Travel Credentials — travel vertical alignment (SHITSUJI) |
+| **ICAO DTC** | Digital Travel Credentials — travel vertical alignment (Tripian) |
 | **ISO/IEC 30107** | Presentation attack detection (liveness) |
 | **CSA Agent IAM** | Canadian Standards Association recommends DIDs for agent identity management |
 
