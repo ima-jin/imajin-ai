@@ -346,16 +346,31 @@ export default async function EventPage({ params, searchParams }: Props) {
             `;
             if (rows.length > 0) {
               const response = rows[0];
+              const answers = response.answers as Record<string, unknown> || {};
               const currentMeta = (await sql`
                 SELECT metadata FROM events.tickets WHERE id = ${ticket.id}
               `)[0]?.metadata || {};
-              const updatedMeta = JSON.stringify({ ...currentMeta, surveyAnswers: response.answers, surveyResponseId: response.id, syncedAt: new Date().toISOString() });
+              const updatedMeta = JSON.stringify({ ...currentMeta, surveyAnswers: answers, surveyResponseId: response.id, syncedAt: new Date().toISOString() });
               await sql`
                 UPDATE events.tickets
                 SET registration_status = 'complete',
                     metadata = ${updatedMeta}::jsonb
                 WHERE id = ${ticket.id}
               `;
+              // Also create ticket_registrations row if missing (so CSV export + guest list work)
+              const [existingReg] = await sql`
+                SELECT id FROM events.ticket_registrations WHERE ticket_id = ${ticket.id} LIMIT 1
+              `;
+              if (!existingReg) {
+                const regId = `reg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+                const attendeeName = (answers.full_name || answers.name || '') as string;
+                const attendeeEmail = (answers.email || '') as string;
+                await sql`
+                  INSERT INTO events.ticket_registrations (id, ticket_id, event_id, name, email, form_id, response_id)
+                  VALUES (${regId}, ${ticket.id}, ${event.id}, ${attendeeName || null}, ${attendeeEmail || null}, ${formId}, ${response.id})
+                  ON CONFLICT DO NOTHING
+                `;
+              }
               syncedTicketIds.add(ticket.id);
             }
           } catch (err) {
