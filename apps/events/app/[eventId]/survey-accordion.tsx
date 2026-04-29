@@ -9,7 +9,7 @@ interface SurveyAccordionProps {
   surveyType?: 'pre-event' | 'post-event' | 'survey' | 'form';
   requiresTicket?: boolean;
   defaultExpanded?: boolean;
-  onComplete?: () => void;
+  onComplete?: () => void | Promise<void>;
   ticketId?: string;
   initialCompleted?: boolean;
 }
@@ -79,12 +79,18 @@ export function SurveyAccordion({
       } else if (event.data.type === 'survey-completed') {
         // Store hint for optimistic UI on other components
         try { localStorage.setItem(storageKey, 'true'); } catch {}
-        // Refetch authoritative state instead of trusting localStorage
-        if (ticketId) {
-          fetchStatus().then(() => onComplete?.());
-        } else {
+        // Call onComplete first (which registers the response in DB),
+        // then mark completed and collapse. Don't fetchStatus here —
+        // the DB update hasn't happened yet at this point.
+        const finish = () => {
           setIsCompleted(true);
-          onComplete?.();
+          setIsExpanded(false);
+        };
+        if (onComplete) {
+          // onComplete handles the DB write; mark done after it resolves
+          Promise.resolve(onComplete()).then(finish).catch(finish);
+        } else {
+          finish();
         }
       }
     };

@@ -346,10 +346,11 @@ export default async function EventPage({ params, searchParams }: Props) {
               const currentMeta = (await sql`
                 SELECT metadata FROM events.tickets WHERE id = ${ticket.id}
               `)[0]?.metadata || {};
+              const updatedMeta = JSON.stringify({ ...currentMeta, surveyAnswers: response.answers, surveyResponseId: response.id, syncedAt: new Date().toISOString() });
               await sql`
                 UPDATE events.tickets
                 SET registration_status = 'complete',
-                    metadata = ${sql.json({ ...currentMeta, surveyAnswers: response.answers, surveyResponseId: response.id, syncedAt: new Date().toISOString() })}
+                    metadata = ${updatedMeta}::jsonb
                 WHERE id = ${ticket.id}
               `;
               syncedTicketIds.add(ticket.id);

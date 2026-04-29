@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { TicketType } from '@/src/db/schema';
 import { apiFetch } from '@imajin/config';
 
@@ -28,6 +29,7 @@ interface ETransferInstructions {
 type Step = 'button' | 'selector' | 'loading-card' | 'etransfer-confirm' | 'loading-etransfer' | 'etransfer-done' | 'rsvp-form' | 'loading-rsvp' | 'rsvp-done';
 
 export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false, stripeDisabled = false, maxPerOrder, sessionEmail }: Props) {
+  const router = useRouter();
   const [step, setStep] = useState<Step>('button');
   const [error, setError] = useState<string | null>(null);
   const [etransfer, setEtransfer] = useState<ETransferInstructions | null>(null);
@@ -115,6 +117,8 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
         message: data.instructions.message,
       });
       setStep('etransfer-done');
+      // Refresh server data so 'My Tickets' tab appears
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setStep('selector');
@@ -155,6 +159,8 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
       }
 
       setStep('rsvp-done');
+      // Refresh server data so 'My Tickets' tab appears
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setStep(isFree ? 'rsvp-form' : 'button');
