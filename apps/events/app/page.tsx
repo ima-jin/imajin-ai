@@ -1,5 +1,8 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('events');
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { db, events } from '@/src/db';
 import { desc, eq, or, and, ne, isNull, inArray } from 'drizzle-orm';
@@ -87,7 +90,7 @@ async function getEvents(viewerDid: string | null) {
 
     return { events: results, cohostEventIds, ticketEventIds };
   } catch (err) {
-    console.error('Failed to fetch events:', err);
+    log.error({ err: String(err) }, 'Failed to fetch events');
     return { events: [], cohostEventIds: [], ticketEventIds: [] };
   }
 }

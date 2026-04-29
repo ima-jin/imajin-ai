@@ -1,5 +1,8 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('events');
 import { db, events, ticketTypes, tickets, orders, eventInvites } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { TicketsSection } from './tickets-section';
@@ -356,7 +359,7 @@ export default async function EventPage({ params, searchParams }: Props) {
               syncedTicketIds.add(ticket.id);
             }
           } catch (err) {
-            console.error('Auto-sync failed for ticket', ticket.id, err);
+            log.error({ err: String(err), ticketId: ticket.id }, 'Auto-sync failed for ticket');
           }
         })
       );
@@ -458,7 +461,7 @@ export default async function EventPage({ params, searchParams }: Props) {
       );
       surveysCompleted = checks.every(Boolean);
     } catch (err) {
-      console.error('Failed to check survey completion:', err);
+      log.error({ err: String(err) }, 'Failed to check survey completion');
     }
   }
 
