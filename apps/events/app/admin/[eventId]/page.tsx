@@ -33,19 +33,23 @@ export default async function AdminPage({ params }: Props) {
 
   // Auth check: viewer must be owner or cohost
   const session = await getSession();
-  const isOwner = session?.id === event.creatorDid;
   const actingDid = session ? (session.actingAs || session.id) : null;
+  const isCreator = session?.id === event.creatorDid || session?.actingAs === event.creatorDid;
 
-  if (!isOwner && event.podId && actingDid) {
+  // Auth gate: creator, acting-as creator, or cohost
+  let isOrganizer = isCreator;
+  if (!isCreator && event.podId && actingDid) {
     const podRows = await sql`
       SELECT role FROM connections.pod_members
       WHERE pod_id = ${event.podId} AND did = ${actingDid} AND role IN ('owner', 'cohost')
       LIMIT 1
     `;
-    if (!podRows.length) {
+    if (podRows.length) {
+      isOrganizer = true;
+    } else {
       notFound();
     }
-  } else if (!isOwner) {
+  } else if (!isCreator) {
     notFound();
   }
 
@@ -127,7 +131,7 @@ export default async function AdminPage({ params }: Props) {
         eventId={eventId}
         eventTitle={event.title}
         eventStatus={event.status || 'draft'}
-        isOwner={isOwner}
+        isOwner={isOrganizer}
         ownerDid={event.creatorDid}
         accessMode={event.accessMode || 'public'}
         cohostCount={cohostCount}
@@ -146,7 +150,7 @@ export default async function AdminPage({ params }: Props) {
       <div className="mt-8">
         <GuestList
           eventId={eventId}
-          isOwner={isOwner}
+          isOwner={isOrganizer}
           summary={{
             totalTickets: totalSold,
             confirmedRevenue,
