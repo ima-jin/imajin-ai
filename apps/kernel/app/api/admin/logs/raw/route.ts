@@ -25,7 +25,7 @@ function getLogPath(service: string, type: 'out' | 'error'): string | null {
 function tailFile(filePath: string, lines: number): string {
   try {
     // execFileSync bypasses the shell — no injection risk
-    return execFileSync('tail', ['-n', String(lines), filePath], { encoding: 'utf-8', timeout: 5000 });
+    return execFileSync('/usr/bin/tail', ['-n', String(lines), filePath], { encoding: 'utf-8', timeout: 5000 });
   } catch {
     return '';
   }
