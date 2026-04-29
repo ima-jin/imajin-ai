@@ -1,5 +1,8 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('learn');
 
 interface PageProps {
   params: { handle: string };
@@ -28,7 +31,7 @@ async function getCreatorCourses(handle: string) {
       courses: data.courses,
     };
   } catch (error) {
-    console.error('Failed to fetch creator courses:', error);
+    log.error({ err: String(error) }, 'Failed to fetch creator courses');
     return null;
   }
 }

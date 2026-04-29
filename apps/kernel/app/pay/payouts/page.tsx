@@ -2,7 +2,10 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@imajin/auth';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
+import { createLogger } from '@imajin/logger';
 import { PayoutActions } from './PayoutActions';
+
+const log = createLogger('kernel');
 
 interface ConnectStatus {
   did: string;
@@ -34,7 +37,7 @@ async function getConnectStatus(did: string, cookieHeader: string): Promise<Conn
 
     return await response.json();
   } catch (error) {
-    console.error('Error fetching connect status:', error);
+    log.error({ err: String(error) }, 'Error fetching connect status');
     return null;
   }
 }
