@@ -1,12 +1,21 @@
 ---
-title: "How to Save Education"
-subtitle: "The credential was always a receipt for time served. Here's what replaces it."
-description: "A $6 trillion industry built on selling proof you sat in a room. Domain knowledge is the last defensible asset on earth, and the people who have the most of it are getting paid the least for it."
-date: "2026-03-15"
-author: "Ryan Veteze"
-status: "POSTED"
+title: How to Save Education
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-16-how-to-save-education
+topics:
+  - identity
+  - governance
+refs:
+  essays:
+    - how-to-save-education
+subtitle: The credential was always a receipt for time served. Here's what replaces it.
+description: >-
+  A $6 trillion industry built on selling proof you sat in a room. Domain
+  knowledge is the last defensible asset on earth, and the people who have the
+  most of it are getting paid the least for it.
 ---
-
 An open letter to the teachers who know, the students drowning in debt, and the institutions selling the receipt.
 
 ---

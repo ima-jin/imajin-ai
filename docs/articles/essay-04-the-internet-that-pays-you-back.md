@@ -1,12 +1,20 @@
 ---
-title: "The Internet That Pays You Back"
-subtitle: "How trust becomes infrastructure and value flows back to people"
-description: "The vision. Trust graph model in full — sovereign presence, vouching relationships, inference fees circulating through human networks."
-date: "2026-02-26"
-author: "Ryan Veteze"
-status: "POSTED"
+title: The Internet That Pays You Back
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-04-the-internet-that-pays-you-back
+topics:
+  - settlement
+  - sovereignty
+refs:
+  essays:
+    - the-internet-that-pays-you-back
+subtitle: How trust becomes infrastructure and value flows back to people
+description: >-
+  The vision. Trust graph model in full — sovereign presence, vouching
+  relationships, inference fees circulating through human networks.
 ---
-
 We built the most connected network in human history and ended up lonelier — and more broke — than ever.
 
 That's not an accident. It's architecture.

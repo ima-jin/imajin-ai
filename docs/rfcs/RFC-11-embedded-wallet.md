@@ -1,3 +1,24 @@
+---
+title: >-
+  Embedded Wallet — DID keypair as MJN-scoped Solana wallet with hierarchical
+  key derivation
+type: rfc
+status: draft
+slug: RFC-11-embedded-wallet
+topics:
+  - identity
+  - settlement
+refs:
+  issues:
+    - 256
+    - 257
+    - 252
+    - 253
+    - 255
+  packages:
+    - '@imajin/auth'
+    - '@imajin/fair'
+---
 # RFC-11: RFC: Embedded Wallet — DID keypair as MJN-scoped Solana wallet with hierarchical key derivation
 
 **Status:** Draft
@@ -156,9 +177,9 @@ If a master key is compromised, the trust graph provides social recovery:
 
 - MJN token on Solana mainnet (exists: `12rXuUVzC71zoLrqVa3JYGRiXkKrezQLXB7gKkfq9AjK`)
 - Pay service pluggable backend architecture (exists)
-- Ed25519 keypair generation (exists: `@imajin/auth`)
+- Ed25519 keypair generation (exists: `@imajin/auth`)"
 - Trust graph for social recovery (exists: connections service)
-- .fair attribution manifests (exists: `@imajin/fair`)
+- .fair attribution manifests (exists: `@imajin/fair`)"
 
 ## References
 

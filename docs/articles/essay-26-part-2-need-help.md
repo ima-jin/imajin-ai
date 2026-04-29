@@ -1,12 +1,19 @@
 ---
-title: "I Need Help"
-subtitle: "The thing founders aren't supposed to say"
-description: "The thing founders aren't supposed to say. Twenty-five essays of proof, then the honest ask: financial backing, dev help, other brains, community."
-date: "2026-04-04"
-author: "Ryan Veteze"
-status: "POSTED"
+title: I Need Help
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-26-part-2-need-help
+topics:
+  - sovereignty
+refs:
+  essays:
+    - i-need-help
+subtitle: The thing founders aren't supposed to say
+description: >-
+  The thing founders aren't supposed to say. Twenty-five essays of proof, then
+  the honest ask: financial backing, dev help, other brains, community.
 ---
-
 I have spent these essays proving that I know what I’m talking about.
 
 Now I need to say the thing founders aren’t supposed to say.

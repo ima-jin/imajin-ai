@@ -1,12 +1,19 @@
 ---
-title: "Memory"
-subtitle: "Who owns the record of what happened"
-description: "What memory actually is vs. what platforms do with it. Infrastructure for records that belong to the people who made them, not to an algorithm."
-date: "2026-03-10"
-author: "Ryan Veteze"
-status: "POSTED"
+title: Memory
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-10-memory
+topics:
+  - agents
+refs:
+  essays:
+    - memory
+subtitle: Who owns the record of what happened
+description: >-
+  What memory actually is vs. what platforms do with it. Infrastructure for
+  records that belong to the people who made them, not to an algorithm.
 ---
-
 My sister met her husband on my BBS in 1993.
 
 They're still together. Two adult kids. Thirty-plus years from a late-night dial-in on a 386 with a 40mb hard drive. The platform is long gone. The marriage isn't.

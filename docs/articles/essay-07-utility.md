@@ -1,12 +1,21 @@
 ---
-title: "The Utility"
-subtitle: "What sovereignty looks like as infrastructure"
-description: "The architecture. What imajin actually is as a category of thing. Distributed utility infrastructure — like the electric grid, like water."
-date: "2026-03-01"
-author: "Ryan Veteze"
-status: "POSTED"
+title: The Utility
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-07-utility
+topics:
+  - settlement
+refs:
+  issues:
+    - 11
+  essays:
+    - the-utility
+subtitle: What sovereignty looks like as infrastructure
+description: >-
+  The architecture. What imajin actually is as a category of thing. Distributed
+  utility infrastructure — like the electric grid, like water.
 ---
-
 ## The Pattern Is Settled
 
 In 1844 the US government built the first telegraph line. Washington to Baltimore. Samuel Morse tapped out "What hath God wrought" and the age of instant long-distance communication began.

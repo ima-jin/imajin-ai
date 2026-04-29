@@ -1,3 +1,12 @@
+---
+title: Interstitial 05 — The Verification Racket
+type: essay
+status: draft
+slug: essay-40-interstitial-05-the-verification-racket
+topics:
+  - identity
+  - legibility
+---
 # Interstitial 05 — The Verification Racket
 
 *Status: SKETCH — needs Ryan's voice pass*

@@ -1,3 +1,21 @@
+---
+title: Org DID — Businesses and Legal Entities
+type: rfc
+status: draft
+date: TBD
+author: TBD
+slug: RFC-08-org-did
+topics:
+  - identity
+refs:
+  issues:
+    - 248
+    - 247
+    - 246
+    - 114
+    - 117
+    - 112
+---
 # RFC-08: Org DID — Businesses and Legal Entities
 
 **Status:** Discussion

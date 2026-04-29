@@ -1,3 +1,18 @@
+---
+title: MJN Token Economics — reserve-backed utility token with fiat bridge
+type: rfc
+status: draft
+slug: RFC-12-mjn-token-economics
+topics:
+  - settlement
+refs:
+  issues:
+    - 114
+    - 268
+    - 253
+    - 252
+    - 256
+---
 # RFC-12: RFC: MJN Token Economics — reserve-backed utility token with fiat bridge
 
 **Status:** Draft

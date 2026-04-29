@@ -12,7 +12,8 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:reset": "tsx scripts/reset-db.ts",
     "db:migrate": "tsx scripts/migrate-to-schemas.ts",
-    "generate:api-specs": "tsx scripts/generate-api-specs.ts"
+    "generate:api-specs": "tsx scripts/generate-api-specs.ts",
+    "docs:matrix": "node scripts/build-matrix.mjs"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7",
@@ -22,7 +23,8 @@
     "next": "^14.2.0",
     "postgres": "^3.4.5",
     "tsx": "^4.21.0",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "gray-matter": "^4.0.3"
   },
   "packageManager": "pnpm@9.15.0",
   "dependencies": {

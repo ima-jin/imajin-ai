@@ -1,3 +1,11 @@
+---
+title: Day 46
+type: essay
+status: draft
+slug: captains-log-2026-03-19--46-days
+topics:
+  - sovereignty
+---
 # Day 46
 
 Hey everyone — stepping out of the essay format because the feedback I keep getting is: *I have no idea what you're building, what it's for, or how I fit into it.* Fair. Let me just tell you directly.

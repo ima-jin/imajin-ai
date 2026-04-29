@@ -1,12 +1,19 @@
 ---
-title: "Prologue"
-subtitle: "It's Not as Dark as Everyone Thinks"
-description: "I've been online since 1991. I watched all of it happen. Here's what comes after."
-date: "2026-02-24"
-author: "Ryan Veteze"
-status: "POSTED"
+title: Prologue
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-00-prologue
+topics:
+  - sovereignty
+refs:
+  essays:
+    - essay-01-the-internet-we-lost
+subtitle: It's Not as Dark as Everyone Thinks
+description: >-
+  I've been online since 1991. I watched all of it happen. Here's what comes
+  after.
 ---
-
 My name is Ryan. I've been computing since 1988, online since 1991. I've watched the internet happen in real time — the wonder, the promise, the slow capture, the extraction, the exhaustion.
 
 ---

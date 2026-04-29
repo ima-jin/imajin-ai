@@ -1,13 +1,17 @@
 ---
-title: "Interstitial 04: The Cult of Work"
-subtitle: "All you had to do was pay us enough to live"
-description: "A warehouse burned down. A CEO got a Molotov cocktail. I've met the boss who made both inevitable."
-date: "2026-04-17"
-author: "Ryan Veteze"
-status: "DRAFT"
-type: "interstitial"
+title: 'Interstitial 04: The Cult of Work'
+type: essay
+status: draft
+author: Ryan Veteze
+slug: essay-39-interstitial-04-cult-of-work
+topics:
+  - legibility
+  - fair
+subtitle: All you had to do was pay us enough to live
+description: >-
+  A warehouse burned down. A CEO got a Molotov cocktail. I've met the boss who
+  made both inevitable.
 ---
-
 A man burned down a 1.2 million square foot warehouse last week.
 
 Kimberly-Clark distribution center in Ontario, California. Pallets of toilet paper. Six alarms. 175 firefighters. $600 million in damages. Before the building was fully consumed, he posted a video of himself lighting the pallets.

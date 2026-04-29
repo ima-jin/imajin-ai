@@ -1,3 +1,11 @@
+---
+title: imajin.ai — The Docuseries
+type: essay
+status: draft
+slug: DOCUSERIES
+topics:
+  - sovereignty
+---
 # imajin.ai — The Docuseries
 
 *Production Bible v0.1 — February 28, 2026*

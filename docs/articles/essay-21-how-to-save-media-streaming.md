@@ -1,12 +1,24 @@
 ---
-title: "How to Save Media Streaming"
-subtitle: "Every play should find the artist. Every artist should find the listener. The pipe between them is broken."
-description: "Spotify, Apple Music, YouTube, Twitch — the streaming platforms solved access and broke everything else. Inspired by WeR1, here's what the pipe looks like when it actually works."
-date: "2026-03-24"
-author: "Ryan Veteze"
-status: "POSTED"
+title: How to Save Media Streaming
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-21-how-to-save-media-streaming
+topics:
+  - fair
+  - settlement
+refs:
+  essays:
+    - essay-42-the-catalog
+    - how-to-save-the-music-industry
+subtitle: >-
+  Every play should find the artist. Every artist should find the listener. The
+  pipe between them is broken.
+description: >-
+  Spotify, Apple Music, YouTube, Twitch — the streaming platforms solved access
+  and broke everything else. Inspired by WeR1, here's what the pipe looks like
+  when it actually works.
 ---
-
 An open letter to every artist who's been told a million streams is success, and every listener who thinks their subscription supports the people they love.
 
 ---

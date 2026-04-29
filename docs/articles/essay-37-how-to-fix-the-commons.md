@@ -1,12 +1,19 @@
 ---
-title: "How to Fix the Commons"
-subtitle: "Hardin was wrong. Ostrom was right. Now there's an implementation."
-description: "The tragedy of the commons was never a tragedy of human nature — it was a tragedy of missing infrastructure. Elinor Ostrom proved communities can govern shared resources. The internet proved they can't do it on platforms owned by someone else. The fix isn't policy. It's architecture."
-date: "2026-04-07"
-author: "Ryan Veteze"
-status: "DRAFT"
+title: How to Fix the Commons
+type: essay
+status: draft
+author: Ryan Veteze
+slug: essay-37-how-to-fix-the-commons
+topics:
+  - governance
+  - legibility
+subtitle: Hardin was wrong. Ostrom was right. Now there's an implementation.
+description: >-
+  The tragedy of the commons was never a tragedy of human nature — it was a
+  tragedy of missing infrastructure. Elinor Ostrom proved communities can govern
+  shared resources. The internet proved they can't do it on platforms owned by
+  someone else. The fix isn't policy. It's architecture.
 ---
-
 ## The Wrong Lesson
 
 In 1968, Garrett Hardin published "The Tragedy of the Commons." His argument: shared resources inevitably get destroyed because individuals acting in rational self-interest will consume more than their share. The solution, he claimed, was either privatization or government control. There was no third option.

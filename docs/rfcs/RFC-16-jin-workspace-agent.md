@@ -1,3 +1,42 @@
+---
+title: Jin Workspace Agent Architecture
+type: rfc
+status: draft
+date: 'March 15, 2026'
+author: Ryan Veteze + Jin
+slug: RFC-16-jin-workspace-agent
+topics:
+  - agents
+refs:
+  rfcs:
+    - 9
+  issues:
+    - 256
+    - 344
+    - 139
+    - 153
+    - 250
+    - 336
+    - 43
+    - 44
+    - 111
+    - 338
+    - 260
+    - 45
+    - 347
+    - 110
+    - 113
+    - 115
+    - 117
+    - 244
+    - 351
+    - 321
+    - 346
+    - 163
+    - 155
+  packages:
+    - '@imajin/llm'
+---
 # RFC-16: Jin Workspace Agent Architecture
 
 **Author:** Ryan Veteze + Jin

@@ -1,12 +1,16 @@
 ---
-title: "The Blueprint"
-subtitle: "Twenty-five essays. Here's what we built."
-description: "The architecture of imajin.ai — what it is, what each piece does, and what we have to show for 57 days of sovereign infrastructure."
-date: "2026-03-31"
-author: "Ryan Veteze"
-status: "POSTED"
+title: The Blueprint
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-26-part-1-the-blueprint
+topics:
+  - sovereignty
+subtitle: Twenty-five essays. Here's what we built.
+description: >-
+  The architecture of imajin.ai — what it is, what each piece does, and what we
+  have to show for 57 days of sovereign infrastructure.
 ---
-
 There was a gallery show in January. Cry Baby — a bar on Dundas with a small front room. I had six cubes. 512 LEDs each. Made by hand, one at a time, through the fall while the code was off the table and the autodev tools weren't where I needed them.
 
 My community didn't show up. Not because they didn't care. Because there was no surface to tell them what was happening. The platforms gave me two options: broadcast it to practically everyone or say it to practically no one. Neither was right. So I said it to no one.

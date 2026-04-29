@@ -1,12 +1,21 @@
 ---
-title: "The Headless Economy"
-subtitle: "The engineering was always good. The business model was the disease."
-description: "Every platform is a bundle of services wrapped in an extraction layer. Every SaaS is a capability wrapped in a moat. Go headless. Enter the chain. The middleman isn't replaced — it disappears."
-date: "2026-03-23"
-author: "Ryan Veteze"
-status: "POSTED"
+title: The Headless Economy
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-20-how-to-save-the-platforms
+topics:
+  - sovereignty
+  - federation
+refs:
+  essays:
+    - how-to-save-the-platforms
+subtitle: The engineering was always good. The business model was the disease.
+description: >-
+  Every platform is a bundle of services wrapped in an extraction layer. Every
+  SaaS is a capability wrapped in a moat. Go headless. Enter the chain. The
+  middleman isn't replaced — it disappears.
 ---
-
 ## The Engineering Was Always Good
 
 I need to say something that my side of this argument usually won't say.

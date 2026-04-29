@@ -1,3 +1,11 @@
+---
+title: The Imajin Thesis
+type: essay
+status: draft
+slug: grounding-02-THESIS
+topics:
+  - sovereignty
+---
 # The Imajin Thesis
 
 *Canonical definitions. When an essay and this document disagree, this document is current.*

@@ -1,11 +1,23 @@
 ---
-title: "Appendix 5: AI Governs Itself"
-subtitle: "The same graph. The same rules. The same accountability."
-description: "AI doesn't need a separate governance framework. It needs to be inside the same one humans use. Same trust graph, same attribution, same accountability. The graph doesn't care what you're made of. It cares whether you're accountable."
-date: "2026-XX-XX"
-author: "Ryan Veteze"
+title: 'Appendix 5: AI Governs Itself'
+type: essay
+status: draft
+date: 2026-XX-XX
+author: Ryan Veteze
+slug: appendix-5-ai-governs-itself
+topics:
+  - agents
+  - governance
+refs:
+  rfcs:
+    - 3
+subtitle: The same graph. The same rules. The same accountability.
+description: >-
+  AI doesn't need a separate governance framework. It needs to be inside the
+  same one humans use. Same trust graph, same attribution, same accountability.
+  The graph doesn't care what you're made of. It cares whether you're
+  accountable.
 ---
-
 <!-- STUB — Appendix 5
 
 The final implication of the substrate argument:

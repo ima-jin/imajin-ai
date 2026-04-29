@@ -1,12 +1,19 @@
 ---
-title: "The Receipt"
-subtitle: "What a token launch looks like when nobody's speculating"
-description: "Every token in history launched on a promise. This one launches on a receipt. The DFOS identity chain records every interaction before the token exists. When the token arrives, it doesn't create value — it recognizes value that's already there."
-date: "2026-03-22"
-author: "Ryan Veteze"
-status: "DRAFT"
+title: The Receipt
+type: essay
+status: draft
+author: Ryan Veteze
+slug: essay-31-the-receipt
+topics:
+  - fair
+  - settlement
+subtitle: What a token launch looks like when nobody's speculating
+description: >-
+  Every token in history launched on a promise. This one launches on a receipt.
+  The DFOS identity chain records every interaction before the token exists.
+  When the token arrives, it doesn't create value — it recognizes value that's
+  already there.
 ---
-
 ## How Every Token Has Launched
 
 A group of people write a whitepaper. The whitepaper describes a future. The future is compelling enough that speculators buy in. The token launches. The speculators trade. The price moves based on sentiment, not utility. The builders scramble to create the utility they promised. Sometimes they do. Usually they don't. Either way, the price already happened. The market decided what the token was worth before anyone used it for anything.

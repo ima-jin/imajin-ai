@@ -1,3 +1,20 @@
+---
+title: Settlement Protocol
+type: rfc
+status: draft
+date: TBD
+author: TBD
+slug: RFC-04-settlement-protocol
+topics:
+  - settlement
+refs:
+  rfcs:
+    - 5
+    - 2
+  issues:
+    - 111
+    - 143
+---
 # RFC-04: Settlement Protocol
 
 **Status:** Stub — referenced in RFC-05 but not yet written

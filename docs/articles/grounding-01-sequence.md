@@ -1,3 +1,11 @@
+---
+title: imajin.ai Essay Series — Master Sequence
+type: essay
+status: draft
+slug: grounding-01-sequence
+topics:
+  - sovereignty
+---
 # imajin.ai Essay Series — Master Sequence
 
 *Last updated: February 28, 2026*

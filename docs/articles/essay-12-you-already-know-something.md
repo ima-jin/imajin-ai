@@ -1,12 +1,19 @@
 ---
-title: "You Already Know Something"
-subtitle: "Where you fit in the thing I've been building"
-description: "You don't need to be a creator, a teacher, or a developer. You just need to be a person who knows something. Here's where you fit."
-date: "2026-03-12"
-author: "Ryan Veteze"
-status: "POSTED"
+title: You Already Know Something
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-12-you-already-know-something
+topics:
+  - legibility
+refs:
+  essays:
+    - you-already-know-something
+subtitle: Where you fit in the thing I've been building
+description: >-
+  You don't need to be a creator, a teacher, or a developer. You just need to be
+  a person who knows something. Here's where you fit.
 ---
-
 ## Stop Watching
 
 For ten essays, you've been watching me describe something broken and draw a map of how to fix it. My story. The architecture. What the internet was supposed to be and what it became instead. The technical shape of the thing I'm building and why it works.

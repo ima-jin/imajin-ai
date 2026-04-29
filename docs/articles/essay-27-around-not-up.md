@@ -1,12 +1,17 @@
 ---
-title: "Around, Not Up"
-subtitle: "The firehose is still running. Here's how to step out of it."
-description: "The system is live. The party happened. Now here's what it looks like to stop broadcasting and start connecting. How content moves, how queries move, and how you attach to a trust graph that's already working."
-date: "2026-04-02"
-author: "Ryan Veteze"
-status: "DRAFT"
+title: 'Around, Not Up'
+type: essay
+status: draft
+author: Ryan Veteze
+slug: essay-27-around-not-up
+topics:
+  - governance
+subtitle: The firehose is still running. Here's how to step out of it.
+description: >-
+  The system is live. The party happened. Now here's what it looks like to stop
+  broadcasting and start connecting. How content moves, how queries move, and
+  how you attach to a trust graph that's already working.
 ---
-
 The party happened last night. The infrastructure works. The transactions are real and the network held and Jin is still running on sovereign rails this morning.
 
 Twenty essays got us here. The epilogue was for the people who already knew.

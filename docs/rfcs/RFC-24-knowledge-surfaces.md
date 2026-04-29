@@ -1,3 +1,12 @@
+---
+title: 'Knowledge Surfaces — Learn, MCP, and the Queryable Profile'
+type: rfc
+status: draft
+author: Ryan Veteze
+slug: RFC-24-knowledge-surfaces
+topics:
+  - legibility
+---
 # RFC-24: Knowledge Surfaces — Learn, MCP, and the Queryable Profile
 
 **Status:** Draft  

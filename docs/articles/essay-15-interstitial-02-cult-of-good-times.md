@@ -1,12 +1,16 @@
 ---
-title: "The Cult of Good Times"
-subtitle: "Everyone is the Good Times Gang"
-description: "A personal interstitial. The crew, the platforms, and the specific way communities fail to honor what people make."
-date: "2026-03-14"
-author: "Ryan Veteze"
-status: "POSTED"
+title: The Cult of Good Times
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-15-interstitial-02-cult-of-good-times
+topics:
+  - events
+subtitle: Everyone is the Good Times Gang
+description: >-
+  A personal interstitial. The crew, the platforms, and the specific way
+  communities fail to honor what people make.
 ---
-
 You know the group I'm talking about.
 
 Maybe it's a crew you've had since your twenties. Maybe it's the people from that job, that city, that scene. Maybe it's the family group chat that quietly went toxic and nobody will name it. Maybe it's the community you used to feel held by that somehow just... dissolved.

@@ -1,13 +1,21 @@
 ---
-title: "The answer to everything"
-subtitle: "How to give every piece of music its own identity"
-description: "The pirates already indexed everything. The streaming platforms captured the catalog. The attribution layer was never built. Until now."
-date: "2026-04-26"
-author: "Ryan Veteze"
-status: "DRAFT"
-type: "essay"
+title: The answer to everything
+type: essay
+status: draft
+author: Ryan Veteze
+slug: essay-42-the-catalog
+topics:
+  - fair
+  - agents
+refs:
+  essays:
+    - how-to-save-the-music-industry
+    - how-to-save-media-streaming
+subtitle: How to give every piece of music its own identity
+description: >-
+  The pirates already indexed everything. The streaming platforms captured the
+  catalog. The attribution layer was never built. Until now.
 ---
-
 ## The Problem Nobody Fixed
 
 Every piece of recorded music exists in at least three places: a streaming platform, a torrent index, and a metadata database. Spotify has 100 million tracks. MusicBrainz has metadata for 30+ million releases. The torrent ecosystem has content hashes for nearly every album ever pressed.

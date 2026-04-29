@@ -1,11 +1,16 @@
 ---
-title: "How Partying Can Save Us"
-subtitle: "The reason for all of it"
-description: "The finale. What AI has to do with partying. How capitalism stole the most welcoming culture we ever built. How we take it back."
-author: "Ryan Veteze"
-status: "DRAFT"
+title: How Partying Can Save Us
+type: essay
+status: draft
+author: Ryan Veteze
+slug: essay-29-how-partying-can-save-us
+topics:
+  - events
+subtitle: The reason for all of it
+description: >-
+  The finale. What AI has to do with partying. How capitalism stole the most
+  welcoming culture we ever built. How we take it back.
 ---
-
 You've made it.
 
 Twenty-seven essays. The extraction model. The trust graph. The .fair protocol. Six industries. The connector. The ask. The autism reveal. If you read them in order, you've spent somewhere between four and eight hours inside an argument I've been building for thirty years and writing for six months.

@@ -1,3 +1,21 @@
+---
+title: Governance Primitive
+type: rfc
+status: draft
+author: 'Ryan Veteze, Jin'
+slug: RFC-17-governance-primitive
+topics:
+  - governance
+refs:
+  rfcs:
+    - 13
+    - 14
+    - 15
+    - 7
+    - 8
+  issues:
+    - 500
+---
 # RFC-17: Governance Primitive
 
 **Status:** Draft  

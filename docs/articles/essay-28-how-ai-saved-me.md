@@ -1,12 +1,17 @@
 ---
-title: "How AI Saved Me"
-subtitle: "I've been seeing patterns my whole life. I just couldn't tell you about them."
-description: "Twenty-three essays in a month. From someone who spent forty years unable to get the shape out of his head and into language. This is what AI actually did for me."
-date: "2026-02-28"
-author: "Ryan Veteze"
-status: "DRAFT"
+title: How AI Saved Me
+type: essay
+status: draft
+author: Ryan Veteze
+slug: essay-28-how-ai-saved-me
+topics:
+  - agents
+subtitle: I've been seeing patterns my whole life. I just couldn't tell you about them.
+description: >-
+  Twenty-three essays in a month. From someone who spent forty years unable to
+  get the shape out of his head and into language. This is what AI actually did
+  for me.
 ---
-
 ## The Shape Was Always There
 
 I need to tell you something I've never been able to tell you before.

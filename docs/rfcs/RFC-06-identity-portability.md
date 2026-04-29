@@ -1,3 +1,12 @@
+---
+title: Identity Portability & Backup Nodes
+type: rfc
+status: draft
+author: 'Ryan Veteze, Jin'
+slug: RFC-06-identity-portability
+topics:
+  - identity
+---
 # RFC-06: Identity Portability & Backup Nodes
 
 **Status:** Draft

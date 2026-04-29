@@ -1,12 +1,19 @@
 ---
-title: "The Mask We All Wear"
-subtitle: "On exhaustion, performance, and the gap we found when the world stopped"
-description: "The psychological and emotional core. The office and the feed as one system. Exhaustion as the product. The most personal essay in the series."
-date: "2026-02-22"
-author: "Ryan Veteze"
-status: "POSTED"
+title: The Mask We All Wear
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-03-the-mask-we-all-wear
+topics:
+  - identity
+refs:
+  essays:
+    - the-mask-we-all-wear
+subtitle: 'On exhaustion, performance, and the gap we found when the world stopped'
+description: >-
+  The psychological and emotional core. The office and the feed as one system.
+  Exhaustion as the product. The most personal essay in the series.
 ---
-
 I have felt it my entire adult life and I could never name it.
 
 The moment I walked into a corporate building — any corporate building, startup loft, sales pitch room, open-plan office with the exposed ductwork and the cold brew on tap — something in my body would go wrong. A low-frequency revulsion. Not at the people. Not exactly. Something more like watching a nature documentary where the behavior on screen is technically human but the thing behind the eyes isn't quite there.

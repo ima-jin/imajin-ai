@@ -1,3 +1,18 @@
+---
+title: Federated Handle Resolution
+type: rfc
+status: draft
+author: 'Ryan Veteze, Jin'
+slug: RFC-26-federated-handle-resolution
+topics:
+  - identity
+  - dfos
+refs:
+  rfcs:
+    - 19
+    - 20
+    - 22
+---
 # RFC-26: Federated Handle Resolution
 
 **Status:** Draft  

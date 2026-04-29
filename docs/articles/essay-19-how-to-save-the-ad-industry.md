@@ -1,12 +1,20 @@
 ---
-title: "How to Save the Ad Industry"
-subtitle: "The consent was stolen. Here's how to give it back."
-description: "The ad industry isn't dying because ads are bad — it's dying because the consent was stolen. Verified humans selling access on their own terms."
-date: "2026-03-18"
-author: "Ryan Veteze"
-status: "POSTED"
+title: How to Save the Ad Industry
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-19-how-to-save-the-ad-industry
+topics:
+  - settlement
+  - fair
+refs:
+  essays:
+    - how-to-save-the-ad-industry
+subtitle: The consent was stolen. Here's how to give it back.
+description: >-
+  The ad industry isn't dying because ads are bad — it's dying because the
+  consent was stolen. Verified humans selling access on their own terms.
 ---
-
 ## Verified Humans Sell Access to Themselves
 
 The ad industry isn't dying because ads are bad.

@@ -1,3 +1,18 @@
+---
+title: Media Revocation & Cross-Graph Attribution
+type: rfc
+status: draft
+date: 'March 22, 2026'
+author: Jin + Ryan
+slug: RFC-18-media-revocation-and-attribution
+topics:
+  - fair
+refs:
+  rfcs:
+    - 1
+  issues:
+    - 418
+---
 # RFC-18: Media Revocation & Cross-Graph Attribution
 
 **Author:** Jin + Ryan  

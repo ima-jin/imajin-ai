@@ -1,12 +1,20 @@
 ---
-title: "The Practice"
-subtitle: "You exist. Then you host a room. The arc from profile to practice."
-description: "The ground-level operator manual. Before you run a room, you exist on the network. Before you build a community, you host a birthday party. Each stage produces the skills the next one requires."
-date: "2026-03-09"
-author: "Ryan Veteze"
-status: "POSTED"
+title: The Practice
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-09-nodes-types-and-practice
+topics:
+  - identity
+refs:
+  essays:
+    - the-practice
+subtitle: You exist. Then you host a room. The arc from profile to practice.
+description: >-
+  The ground-level operator manual. Before you run a room, you exist on the
+  network. Before you build a community, you host a birthday party. Each stage
+  produces the skills the next one requires.
 ---
-
 ## You, First
 
 Before any room exists, you exist.

@@ -1,12 +1,19 @@
 ---
-title: "This Is How You Fix Bitcoin"
-subtitle: "Proof of work was always the right idea. The implementation was the problem."
-description: "Bitcoin named the principle correctly. Then built the wrong machine to prove it. Proof of stake replaced proof of work with proof of wealth. Nobody shipped the obvious answer — until the DFOS chain existed. Human proof of work: did you create value in a real economy? Yes → here's your coin."
-date: "TBD — publishes after DFOS chains are running at scale"
-author: "Ryan Veteze"
-status: "STUB"
+title: This Is How You Fix Bitcoin
+type: essay
+status: draft
+date: TBD — publishes after DFOS chains are running at scale
+author: Ryan Veteze
+slug: essay-33-this-is-how-you-fix-bitcoin-STUB
+topics:
+  - settlement
+subtitle: Proof of work was always the right idea. The implementation was the problem.
+description: >-
+  Bitcoin named the principle correctly. Then built the wrong machine to prove
+  it. Proof of stake replaced proof of work with proof of wealth. Nobody shipped
+  the obvious answer — until the DFOS chain existed. Human proof of work: did
+  you create value in a real economy? Yes → here's your coin.
 ---
-
 *Do not publish before: April 1st party has run, DFOS chains have meaningful participation history, The Receipt (essay 31) has been live long enough to demonstrate the mechanism.*
 
 ---

@@ -1,3 +1,19 @@
+---
+title: >-
+  Trust Accountability Framework — bad actor detection, consequences, and vouch
+  chain responsibility
+type: rfc
+status: draft
+slug: RFC-15-trust-accountability-framework
+topics:
+  - governance
+  - identity
+refs:
+  issues:
+    - 271
+    - 247
+    - 248
+---
 # RFC-15: RFC: Trust Accountability Framework — bad actor detection, consequences, and vouch chain responsibility
 
 **Status:** Draft

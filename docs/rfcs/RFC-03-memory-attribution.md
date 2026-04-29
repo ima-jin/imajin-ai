@@ -1,3 +1,21 @@
+---
+title: Memory Attribution (HRPOS)
+type: rfc
+status: draft
+date: TBD
+author: TBD
+slug: RFC-03-memory-attribution
+topics:
+  - fair
+  - agents
+refs:
+  rfcs:
+    - 5
+    - 1
+  issues:
+    - 139
+    - 153
+---
 # RFC-03: Memory Attribution (HRPOS)
 
 **Status:** Stub — referenced in RFC-05 but not yet written

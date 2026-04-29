@@ -1,3 +1,22 @@
+---
+title: Universal Real-World Registry — DIDs for Everything
+type: rfc
+status: draft
+date: 'April 21, 2026'
+author: Ryan Veteze
+slug: RFC-28-universal-real-world-registry
+topics:
+  - identity
+refs:
+  rfcs:
+    - 27
+    - 19
+  issues:
+    - 653
+    - 581
+    - 737
+    - 749
+---
 # RFC-28: Universal Real-World Registry — DIDs for Everything
 
 **Author:** Ryan Veteze

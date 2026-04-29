@@ -1,3 +1,63 @@
+---
+title: 'Build Timeline: The Architecture of Trust'
+type: essay
+status: draft
+slug: build-timeline
+topics:
+  - sovereignty
+refs:
+  rfcs:
+    - 16
+    - 14
+  issues:
+    - 119
+    - 120
+    - 268
+    - 269
+    - 154
+    - 278
+    - 316
+    - 371
+    - 374
+    - 372
+    - 392
+    - 396
+    - 407
+    - 412
+    - 398
+    - 413
+    - 403
+    - 426
+    - 401
+    - 400
+    - 402
+    - 415
+    - 425
+    - 417
+    - 420
+    - 416
+    - 418
+    - 419
+    - 421
+    - 453
+    - 451
+    - 408
+  prs:
+    - 407
+    - 412
+    - 413
+    - 426
+    - 453
+    - 451
+  packages:
+    - '@imajin/db'
+    - '@imajin/fair'
+    - '@imajin/llm'
+    - '@imajin/graph'
+    - '@imajin/dfos'
+    - '@imajin/cid'
+    - '@imajin/auth'
+---
 # Build Timeline: The Architecture of Trust
 
 *How Imajin went from a glowing cube to a sovereign protocol — and when the builder realized what he was actually building.*
@@ -490,7 +550,7 @@ Pay settlement UI shipped: transaction history, two-bucket balance display (cash
 
 ### March 15 — RFC Consolidation and Agent Convergence
 
-Media browser UX refined: multi-select, view modes, color-coded .fair badges (green=public, orange=trust-graph, red=private). Media inference tools shipped in `@imajin/llm`.
+Media browser UX refined: multi-select, view modes, color-coded .fair badges (green=public, orange=trust-graph, red=private). Media inference tools shipped in `@imajin/llm`."
 
 **RFC consolidation:** 16 RFCs scattered across three locations (articles/, docs/rfcs/, GitHub Discussions) pulled into canonical `docs/rfcs/` with INDEX.md and consistent numbering. Nine discussion-only RFCs given repo files. Old copies removed.
 

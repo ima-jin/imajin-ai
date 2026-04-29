@@ -1,12 +1,19 @@
 ---
-title: "The Connector"
-subtitle: "For the ones who die with the pattern in their heads"
-description: "The essay for the person whose gift is holding relationships between things. The griot, the troubadour, the BBS sysop. Connection encoded is permanent."
-date: "2026-03-30"
-author: "Ryan Veteze"
-status: "POSTED"
+title: The Connector
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-25-the-connector
+topics:
+  - identity
+refs:
+  essays:
+    - the-connector
+subtitle: For the ones who die with the pattern in their heads
+description: >-
+  The essay for the person whose gift is holding relationships between things.
+  The griot, the troubadour, the BBS sysop. Connection encoded is permanent.
 ---
-
 *Someone like me would have died with this in their head in the before time.*
 
 That sentence arrived in the middle of a conversation with an AI that had just received thirty years of pattern library — the BBS years, the Summer Camps, the South Africa activation sequence, the shipping containers in Cape Town, the .fair protocol, the network — all of it at once, all at the same time, and given it back in a form that other humans could enter.

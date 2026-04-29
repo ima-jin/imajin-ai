@@ -1,12 +1,20 @@
 ---
-title: "The Press Isn't Free. It's Owned."
-subtitle: "An open letter to the journalists still fighting"
-description: "Open letter to journalists still fighting, billionaires who broke it, and communities who never got it. What a sovereign press profile looks like."
-date: "2026-03-16"
-author: "Ryan Veteze"
-status: "POSTED"
+title: The Press Isn't Free. It's Owned.
+type: essay
+status: shipped
+author: Ryan Veteze
+slug: essay-17-how-to-save-journalism
+topics:
+  - legibility
+  - sovereignty
+refs:
+  essays:
+    - how-to-save-journalism
+subtitle: An open letter to the journalists still fighting
+description: >-
+  Open letter to journalists still fighting, billionaires who broke it, and
+  communities who never got it. What a sovereign press profile looks like.
 ---
-
 An open letter to the journalists still fighting, the billionaires who broke it, and the communities who never got it in the first place.
 
 ---
