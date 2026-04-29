@@ -3,5 +3,13 @@
   "rules": {
     "react/no-unescaped-entities": "off",
     "@next/next/no-img-element": "off"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["app/**/page.tsx", "app/**/layout.tsx", "app/api/**/*.ts", "src/**/*.ts"],
+      "rules": {
+        "no-console": "error"
+      }
+    }
+  ]
 }
