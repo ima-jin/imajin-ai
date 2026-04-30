@@ -94,12 +94,13 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { enabledServices, landingService, theme, joinVisibility, joinNetworkDepth } = body as {
+  const { enabledServices, landingService, theme, joinVisibility, joinNetworkDepth, scopeFeeBps } = body as {
     enabledServices?: string[];
     landingService?: string | null;
     theme?: Record<string, unknown>;
     joinVisibility?: 'open' | 'network' | 'invite';
     joinNetworkDepth?: number;
+    scopeFeeBps?: number;
   };
 
   if (enabledServices !== undefined) {
@@ -127,6 +128,12 @@ export async function PATCH(
     }
   }
 
+  if (scopeFeeBps !== undefined) {
+    if (typeof scopeFeeBps !== 'number' || scopeFeeBps < 0 || scopeFeeBps > 500) {
+      return NextResponse.json({ error: 'scopeFeeBps must be 0-500 (0-5%)' }, { status: 400 });
+    }
+  }
+
   const now = new Date();
   const updateSet: Record<string, unknown> = { updatedAt: now };
   if (enabledServices !== undefined) updateSet.enabledServices = enabledServices;
@@ -134,6 +141,7 @@ export async function PATCH(
   if (theme !== undefined) updateSet.theme = theme;
   if (joinVisibility !== undefined) updateSet.joinVisibility = joinVisibility;
   if (joinNetworkDepth !== undefined) updateSet.joinNetworkDepth = joinNetworkDepth;
+  if (scopeFeeBps !== undefined) updateSet.scopeFeeBps = scopeFeeBps;
 
   await db
     .insert(forestConfig)

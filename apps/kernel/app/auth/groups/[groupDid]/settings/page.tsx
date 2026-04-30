@@ -23,6 +23,7 @@ interface IdentityConfig {
   landingService: string | null;
   joinVisibility: 'open' | 'network' | 'invite';
   joinNetworkDepth: number;
+  scopeFeeBps: number;
   theme: Record<string, unknown>;
 }
 
@@ -63,6 +64,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
   const [landingService, setLandingService] = useState<string | null>(null);
   const [joinVisibility, setJoinVisibility] = useState<'open' | 'network' | 'invite'>('open');
   const [joinNetworkDepth, setJoinNetworkDepth] = useState<number>(2);
+  const [scopeFeeBps, setScopeFeeBps] = useState<number>(25);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -102,6 +104,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
         setLandingService(cfg.landingService ?? null);
         setJoinVisibility(cfg.joinVisibility ?? 'open');
         setJoinNetworkDepth(cfg.joinNetworkDepth ?? 2);
+        setScopeFeeBps(cfg.scopeFeeBps ?? 25);
       }
     } catch (err) {
       console.error('Failed to load identity settings:', err);
@@ -132,7 +135,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ enabledServices, landingService, joinVisibility, joinNetworkDepth }),
+        body: JSON.stringify({ enabledServices, landingService, joinVisibility, joinNetworkDepth, scopeFeeBps }),
       });
       if (res.ok) {
         showStatus('success', 'Settings saved.');
@@ -341,6 +344,35 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
                 </select>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Scope Fee */}
+        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Scope Fee</h2>
+          <p className="text-sm text-gray-400 mb-6">Fee taken from transactions within this community. Added to the .fair attribution chain.</p>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-4">
+              <input
+                type="range"
+                min={0}
+                max={500}
+                step={5}
+                value={scopeFeeBps}
+                onChange={e => setScopeFeeBps(Number(e.target.value))}
+                className="flex-1 accent-amber-500"
+              />
+              <span className="text-white font-mono text-sm w-16 text-right">{(scopeFeeBps / 100).toFixed(2)}%</span>
+            </div>
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>0%</span>
+              <span>Default: 0.25%</span>
+              <span>5%</span>
+            </div>
+            <p className="text-xs text-gray-500">
+              {scopeFeeBps} basis points · Collected on every transaction within this scope
+            </p>
           </div>
         </div>
 
