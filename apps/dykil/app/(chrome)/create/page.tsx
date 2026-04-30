@@ -492,9 +492,9 @@ function CreateSurveyContent() {
                           isEditing={true}
                         />
                       ) : (
-                        <div className="p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="font-medium text-sm">
+                        <div className="p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm break-words">
                               {field.title}
                               {field.isRequired && <span className="text-red-500 ml-1">*</span>}
                             </div>
@@ -505,7 +505,7 @@ function CreateSurveyContent() {
                               {field.type === 'rating' && ` (${field.rateMin || 1}-${field.rateMax || 5})`}
                             </div>
                           </div>
-                          <div className="flex gap-1">
+                          <div className="flex gap-1 shrink-0">
                             <button
                               onClick={() => moveField(index, 'up')}
                               disabled={index === 0}
