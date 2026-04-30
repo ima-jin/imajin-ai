@@ -24,7 +24,7 @@ describe('buildFairManifest', () => {
       contentType: 'event',
     });
 
-    expect(manifest.version).toBe('0.3.0');
+    expect(manifest.version).toBe('0.4.0');
 
     const protocol = manifest.chain.find((e) => e.role === 'protocol');
     const node = manifest.chain.find((e) => e.role === 'node');
