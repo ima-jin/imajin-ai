@@ -177,9 +177,11 @@ function EditProfileContent() {
       });
 
       // Sign the request body with the user's Ed25519 private key
+      // Only sign when editing own profile — act-as profiles use session auth
       const signedHeaders: Record<string, string> = {};
+      const isOwnProfile = did === sessionDid;
       const keypairJson = localStorage.getItem('imajin_keypair');
-      if (keypairJson) {
+      if (keypairJson && isOwnProfile) {
         const keypair = JSON.parse(keypairJson);
         const timestamp = Date.now().toString();
         const signable = `${timestamp}:${payload}`;
@@ -189,7 +191,7 @@ function EditProfileContent() {
         const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
         signedHeaders['X-Signature'] = signature;
         signedHeaders['X-Timestamp'] = timestamp;
-        signedHeaders['X-DID'] = did!;
+        signedHeaders['X-DID'] = sessionDid!;
       }
 
       const response = await fetch(`/profile/api/profile/${did}`, {
@@ -485,8 +487,8 @@ function EditProfileContent() {
           </div>
         </form>
 
-        {/* Key Backup */}
-        <div className="mt-6 pt-4 border-t border-gray-800">
+        {/* Key Backup — only show for own profile */}
+        {did === sessionDid && <div className="mt-6 pt-4 border-t border-gray-800">
           <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg p-4">
             <p className="text-sm font-semibold text-[#F59E0B] mb-2">
               🔐 Identity Backup
@@ -522,7 +524,7 @@ function EditProfileContent() {
               ⬇️ Download Backup Keys
             </button>
           </div>
-        </div>
+        </div>}
 
         {/* DID display */}
         <div className="mt-4 pt-4 border-t border-gray-800">
