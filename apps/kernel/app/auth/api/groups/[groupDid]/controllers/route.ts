@@ -7,7 +7,7 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-const VALID_ROLES = ['owner', 'admin', 'member'];
+const VALID_ROLES = ['owner', 'admin', 'maintainer', 'member'];
 
 /**
  * POST /api/groups/[groupDid]/controllers

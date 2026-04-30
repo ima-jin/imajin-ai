@@ -51,10 +51,10 @@ export default async function SettingsPage() {
     )
     .limit(1);
 
-  if (membership?.role !== 'owner' && membership?.role !== 'admin') {
+  if (membership?.role !== 'owner') {
     return (
       <div className="text-zinc-500 text-sm py-8">
-        You need owner or admin access to manage settings for this identity.
+        You need owner access to manage settings for this identity.
       </div>
     );
   }

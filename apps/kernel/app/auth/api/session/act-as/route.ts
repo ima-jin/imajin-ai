@@ -9,7 +9,7 @@ export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-const ACT_AS_ROLES = ['owner', 'admin'];
+const ACT_AS_ROLES = ['owner', 'admin', 'maintainer'];
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);

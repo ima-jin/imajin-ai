@@ -68,6 +68,7 @@ export async function GET(
         role: identityMembers.role,
         addedBy: identityMembers.addedBy,
         addedAt: identityMembers.addedAt,
+        allowedServices: identityMembers.allowedServices,
       })
       .from(identityMembers)
       .where(

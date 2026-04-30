@@ -35,7 +35,7 @@ async function validateActingAsCookie(
     );
     if (!res.ok) return { valid: false };
     const data = await res.json();
-    if (data.valid !== true || (data.role !== "owner" && data.role !== "admin")) {
+    if (data.valid !== true || !["owner", "admin", "maintainer"].includes(data.role)) {
       return { valid: false };
     }
 
