@@ -82,19 +82,45 @@ function LoginForm() {
     if (storedDid) {
       fetch('/auth/api/session', { credentials: 'include' })
         .then(res => {
-          if (res.ok) {
-            window.location.href = nextUrl || '/';
+          if (res.ok) return res.json();
+          localStorage.removeItem('imajin_did');
+          localStorage.removeItem('imajin_keypair');
+          return null;
+        })
+        .then(session => {
+          if (!session) return;
+          if (nextUrl) {
+            window.location.href = nextUrl;
+          } else if (!session.handle && !session.name) {
+            window.location.href = `/profile/edit?did=${encodeURIComponent(session.did)}`;
           } else {
-            localStorage.removeItem('imajin_did');
-            localStorage.removeItem('imajin_keypair');
+            window.location.href = '/';
           }
         })
         .catch(() => {});
     }
   }, [nextUrl]);
 
-  function handleSuccess(_did: string) {
-    window.location.href = nextUrl || '/';
+  async function handleSuccess(did: string) {
+    if (nextUrl) {
+      window.location.href = nextUrl;
+      return;
+    }
+    // No explicit redirect — check if identity has a profile set up
+    try {
+      const res = await fetch('/auth/api/session', { credentials: 'include' });
+      if (res.ok) {
+        const session = await res.json();
+        if (session?.did && !session.handle && !session.name) {
+          // Bare identity with no profile — send to profile setup
+          window.location.href = `/profile/edit?did=${encodeURIComponent(session.did)}`;
+          return;
+        }
+      }
+    } catch {
+      // Non-fatal — fall through to homepage
+    }
+    window.location.href = '/';
   }
 
   function handleMfaRequired(data: MfaState) {

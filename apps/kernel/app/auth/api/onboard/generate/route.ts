@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
           subtype: 'human',
           publicKey,
           name: name?.trim().slice(0, 100) || null,
-          tier: 'soft',
+          tier: 'preliminary',
           metadata: { source: 'keypair_onboard' },
         })
         .returning();

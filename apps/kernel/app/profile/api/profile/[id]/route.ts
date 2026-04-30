@@ -225,13 +225,23 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         or(eq(profiles.did, id), eq(profiles.handle, id)),
     });
 
-    if (!existing) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404, headers: cors });
-    }
-
     // Check ownership — allow personal DID or acting-as DID
     const effectiveDid = identity.actingAs || identity.id;
-    if (existing.did !== identity.id && existing.did !== effectiveDid) {
+
+    if (!existing) {
+      // No profile yet — only the identity owner can create it, and the DID must exist in auth.identities
+      if (id !== identity.id && id !== effectiveDid) {
+        return NextResponse.json({ error: 'Profile not found' }, { status: 404, headers: cors });
+      }
+      // Verify the DID actually exists as a registered identity
+      const { getClient } = await import('@imajin/db');
+      const sql = getClient();
+      const [identityRow] = await sql`SELECT id FROM auth.identities WHERE id = ${id} LIMIT 1`;
+      if (!identityRow) {
+        return NextResponse.json({ error: 'Identity not found' }, { status: 404, headers: cors });
+      }
+      // Will create below after parsing body
+    } else if (existing.did !== identity.id && existing.did !== effectiveDid) {
       return NextResponse.json({ error: 'Not authorized to update this profile' }, { status: 403, headers: cors });
     }
 
@@ -267,7 +277,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (phone !== undefined) updates.phone = phone || null;
     if (feature_toggles !== undefined) {
       // Merge incoming feature_toggles over existing ones
-      updates.featureToggles = { ...(existing.featureToggles ?? {}), ...feature_toggles };
+      updates.featureToggles = { ...(existing?.featureToggles ?? {}), ...feature_toggles };
     }
     if (visibility !== undefined) {
       if (!['public', 'incognito'].includes(visibility)) {
@@ -276,14 +286,34 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       updates.visibility = visibility;
     }
 
-    // Update profile
-    const [updated] = await db
-      .update(profiles)
-      .set(updates)
-      .where(eq(profiles.did, existing.did))
-      .returning();
+    let updated;
+    if (!existing) {
+      // Create new profile for bare identity
+      [updated] = await db
+        .insert(profiles)
+        .values({
+          did: id,
+          displayName: displayName || 'New User',
+          avatar: avatar || null,
+          bio: bio || null,
+          handle: null,
+          contactEmail: email || null,
+          phone: phone || null,
+          visibility: visibility || 'public',
+          featureToggles: feature_toggles || {},
+        })
+        .returning();
+    } else {
+      // Update existing profile
+      [updated] = await db
+        .update(profiles)
+        .set(updates)
+        .where(eq(profiles.did, existing.did))
+        .returning();
+    }
 
-    publish('profile.update', { issuer: identity.id, subject: identity.id, scope: 'profile', payload: { profileDid: existing.did } }).catch(() => {});
+    const profileDid = existing?.did || id;
+    publish('profile.update', { issuer: identity.id, subject: identity.id, scope: 'profile', payload: { profileDid } }).catch(() => {});
 
     return NextResponse.json(updated, { headers: cors });
   } catch (error) {

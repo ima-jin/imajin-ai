@@ -6,12 +6,42 @@ interface JoinButtonProps {
   identityDid: string;
   viewerDid: string | null;
   initialMemberRole: string | null;
+  isStub?: boolean;
+  canJoin?: boolean;
+  joinVisibility?: 'open' | 'network' | 'invite';
 }
 
-export function JoinButton({ identityDid, viewerDid, initialMemberRole }: JoinButtonProps) {
+export function JoinButton({
+  identityDid,
+  viewerDid,
+  initialMemberRole,
+  isStub = false,
+  canJoin = true,
+  joinVisibility = 'open',
+}: JoinButtonProps) {
   const [memberRole, setMemberRole] = useState(initialMemberRole);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  if (memberRole) {
+    return (
+      <div className="mb-6">
+        <div className="px-6 py-2 bg-gray-900/50 border border-gray-800 rounded-lg text-gray-400 text-sm inline-block">
+          ✓ You&apos;re a {memberRole}
+        </div>
+      </div>
+    );
+  }
+
+  if (joinVisibility === 'invite' || canJoin === false) {
+    return (
+      <div className="mb-6">
+        <div className="px-6 py-2 bg-gray-900/50 border border-gray-800 rounded-lg text-gray-500 text-sm inline-block">
+          🔒 Invite only
+        </div>
+      </div>
+    );
+  }
 
   if (!viewerDid) {
     return (
@@ -26,25 +56,25 @@ export function JoinButton({ identityDid, viewerDid, initialMemberRole }: JoinBu
     );
   }
 
-  if (memberRole) {
-    return (
-      <div className="mb-6">
-        <div className="px-6 py-2 bg-gray-900/50 border border-gray-800 rounded-lg text-gray-400 text-sm inline-block">
-          ✓ You&apos;re a {memberRole}
-        </div>
-      </div>
-    );
-  }
-
   async function handleJoin() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/profile/api/stubs/${encodeURIComponent(identityDid)}/join`, {
-        method: 'POST',
-      });
+      const res = isStub
+        ? await fetch(`/profile/api/stubs/${encodeURIComponent(identityDid)}/join`, { method: 'POST' })
+        : await fetch('/auth/api/onboard/join', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ scopeDid: identityDid }),
+          });
       if (res.ok) {
-        setMemberRole('member');
+        const data = await res.json();
+        if (data.already) {
+          setMemberRole('member');
+        } else {
+          setMemberRole(isStub ? 'maintainer' : 'member');
+        }
       } else {
         const data = await res.json().catch(() => ({}));
         setError(data.error || 'Failed to join');

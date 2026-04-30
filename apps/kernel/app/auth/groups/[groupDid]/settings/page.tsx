@@ -15,12 +15,16 @@ interface GroupDetails {
     role: string;
     addedBy: string;
     addedAt: string;
+    allowedServices: string[] | null;
   }>;
 }
 
 interface IdentityConfig {
   enabledServices: string[];
   landingService: string | null;
+  joinVisibility: 'open' | 'network' | 'invite';
+  joinNetworkDepth: number;
+  scopeFeeBps: number;
   theme: Record<string, unknown>;
 }
 
@@ -59,12 +63,17 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
   const [group, setGroup] = useState<GroupDetails | null>(null);
   const [enabledServices, setEnabledServices] = useState<string[]>([]);
   const [landingService, setLandingService] = useState<string | null>(null);
+  const [joinVisibility, setJoinVisibility] = useState<'open' | 'network' | 'invite'>('open');
+  const [joinNetworkDepth, setJoinNetworkDepth] = useState<number>(2);
+  const [scopeFeeBps, setScopeFeeBps] = useState<number>(25);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Add member form state
   const [addDid, setAddDid] = useState('');
   const [addRole, setAddRole] = useState('member');
+  const [addServiceRestricted, setAddServiceRestricted] = useState(false);
+  const [addAllowedServices, setAddAllowedServices] = useState<string[]>([]);
   const [addingMember, setAddingMember] = useState(false);
   const [removingDid, setRemovingDid] = useState<string | null>(null);
 
@@ -96,6 +105,9 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
         const cfg: IdentityConfig = await configRes.json();
         setEnabledServices(cfg.enabledServices ?? []);
         setLandingService(cfg.landingService ?? null);
+        setJoinVisibility(cfg.joinVisibility ?? 'open');
+        setJoinNetworkDepth(cfg.joinNetworkDepth ?? 2);
+        setScopeFeeBps(cfg.scopeFeeBps ?? 25);
       }
     } catch (err) {
       console.error('Failed to load identity settings:', err);
@@ -126,7 +138,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ enabledServices, landingService }),
+        body: JSON.stringify({ enabledServices, landingService, joinVisibility, joinNetworkDepth, scopeFeeBps }),
       });
       if (res.ok) {
         showStatus('success', 'Settings saved.');
@@ -150,11 +162,17 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ did: addDid.trim(), role: addRole }),
+        body: JSON.stringify({
+          did: addDid.trim(),
+          role: addRole,
+          allowedServices: addServiceRestricted && addAllowedServices.length > 0 ? addAllowedServices : null,
+        }),
       });
       if (res.ok) {
         setAddDid('');
         setAddRole('member');
+        setAddServiceRestricted(false);
+        setAddAllowedServices([]);
         showStatus('success', 'Member added.');
         await loadData();
       } else {
@@ -305,6 +323,68 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
           )}
         </div>
 
+        {/* Join Visibility */}
+        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Join Visibility</h2>
+          <p className="text-sm text-gray-400 mb-6">Control who can see the join button on your community profile.</p>
+
+          <div className="space-y-4">
+            <select
+              value={joinVisibility}
+              onChange={e => setJoinVisibility(e.target.value as 'open' | 'network' | 'invite')}
+              className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+            >
+              <option value="open">🌐 Open — Anyone can join</option>
+              <option value="network">🔗 Network — Connections of members</option>
+              <option value="invite">🔒 Invite Only — Onboard link only</option>
+            </select>
+
+            {joinVisibility === 'network' && (
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Network depth</label>
+                <select
+                  value={joinNetworkDepth}
+                  onChange={e => setJoinNetworkDepth(Number(e.target.value))}
+                  className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                >
+                  <option value={1}>1 — Direct connections only</option>
+                  <option value={2}>2 — Friends of friends</option>
+                  <option value={3}>3 — Three degrees</option>
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Scope Fee */}
+        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Scope Fee</h2>
+          <p className="text-sm text-gray-400 mb-6">Fee taken from transactions within this community. Added to the .fair attribution chain.</p>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-4">
+              <input
+                type="range"
+                min={0}
+                max={500}
+                step={5}
+                value={scopeFeeBps}
+                onChange={e => setScopeFeeBps(Number(e.target.value))}
+                className="flex-1 accent-amber-500"
+              />
+              <span className="text-white font-mono text-sm w-16 text-right">{(scopeFeeBps / 100).toFixed(2)}%</span>
+            </div>
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>0%</span>
+              <span>Default: 0.25%</span>
+              <span>5%</span>
+            </div>
+            <p className="text-xs text-gray-500">
+              {scopeFeeBps} basis points · Collected on every transaction within this scope
+            </p>
+          </div>
+        </div>
+
         {/* Onboarding section */}
         <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Onboarding</h2>
@@ -367,6 +447,11 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
                       <span className={`px-2 py-0.5 text-xs rounded border capitalize ${roleStyle}`}>
                         {ctrl.role}
                       </span>
+                      {ctrl.allowedServices && ctrl.allowedServices.length > 0 && (
+                        <span className="px-2 py-0.5 text-xs rounded border border-gray-700 text-gray-400" title={ctrl.allowedServices.join(', ')}>
+                          {ctrl.allowedServices.length === 1 ? ctrl.allowedServices[0] : `${ctrl.allowedServices.length} services`}
+                        </span>
+                      )}
                       {!isOwner && (
                         <button
                           onClick={() => handleRemoveMember(ctrl.controllerDid)}
@@ -385,30 +470,69 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
           )}
 
           {/* Add member form */}
-          <form onSubmit={handleAddMember} className="flex gap-2">
-            <input
-              type="text"
-              value={addDid}
-              onChange={e => setAddDid(e.target.value)}
-              placeholder="DID or handle"
-              className="flex-1 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
-            />
-            <select
-              value={addRole}
-              onChange={e => setAddRole(e.target.value)}
-              className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
-            >
-              {ADD_ROLES.map(r => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              disabled={addingMember || !addDid.trim()}
-              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition disabled:opacity-40 whitespace-nowrap"
-            >
-              {addingMember ? 'Adding…' : 'Add'}
-            </button>
+          <form onSubmit={handleAddMember} className="space-y-3">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={addDid}
+                onChange={e => setAddDid(e.target.value)}
+                placeholder="DID or handle"
+                className="flex-1 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
+              />
+              <select
+                value={addRole}
+                onChange={e => setAddRole(e.target.value)}
+                className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
+              >
+                {ADD_ROLES.map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                disabled={addingMember || !addDid.trim()}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition disabled:opacity-40 whitespace-nowrap"
+              >
+                {addingMember ? 'Adding…' : 'Add'}
+              </button>
+            </div>
+
+            {/* Service restrictions */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={addServiceRestricted}
+                  onChange={e => setAddServiceRestricted(e.target.checked)}
+                  className="accent-amber-500"
+                />
+                <span className="text-sm text-gray-400">Restrict to specific services</span>
+              </label>
+              {addServiceRestricted && (
+                <div className="flex flex-wrap gap-2 pl-6">
+                  {(enabledServices.length > 0 ? enabledServices : SELECTABLE_SERVICES.map(s => s.name)).map(svc => {
+                    const svcInfo = SELECTABLE_SERVICES.find(s => s.name === svc) || KERNEL_SERVICES.find(s => s.name === svc);
+                    const label = svcInfo?.label || svc;
+                    const checked = addAllowedServices.includes(svc);
+                    return (
+                      <label key={svc} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs cursor-pointer transition ${
+                        checked ? 'border-amber-600 bg-amber-900/20 text-amber-400' : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setAddAllowedServices(prev =>
+                            checked ? prev.filter(s => s !== svc) : [...prev, svc]
+                          )}
+                          className="sr-only"
+                        />
+                        {label}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </form>
         </div>
 
