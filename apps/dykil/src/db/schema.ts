@@ -67,7 +67,7 @@ export interface SurveyJSElement {
   type: SurveyJSElementType | string;
   name: string;              // Unique field identifier
   title: string;             // Display label
-  exportLabel?: string;      // Short label for CSV export headers
+  exportLabel?: string;       // Short name for CSV export
   isRequired?: boolean;
   choices?: Array<string | { value: string; text: string }>;  // For select types
   rateMin?: number;          // For rating type

@@ -52,12 +52,12 @@ function FieldFormPanel({
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-gray-500">Export Label <span className="text-xs font-normal">(optional)</span></label>
+          <label className="block text-sm font-medium mb-1">Export Label (optional)</label>
           <input
             type="text"
             value={fieldForm.exportLabel || ''}
             onChange={(e) => setFieldForm({ ...fieldForm, exportLabel: e.target.value || undefined })}
-            placeholder="Short name for CSV export, e.g. 'T-shirt Size'"
+            placeholder="Short name for CSV export (optional)"
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
           />
         </div>
@@ -503,9 +503,9 @@ function CreateSurveyContent() {
                           isEditing={true}
                         />
                       ) : (
-                        <div className="p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm break-words">
+                        <div className="p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="font-medium text-sm">
                               {field.title}
                               {field.isRequired && <span className="text-red-500 ml-1">*</span>}
                             </div>
@@ -514,10 +514,14 @@ function CreateSurveyContent() {
                               {(field.type === 'radiogroup' || field.type === 'checkbox' || field.type === 'dropdown') &&
                                 ` (${field.choices?.length || 0} choices)`}
                               {field.type === 'rating' && ` (${field.rateMin || 1}-${field.rateMax || 5})`}
-                              {field.exportLabel && <span className="text-gray-400"> · CSV: &ldquo;{field.exportLabel}&rdquo;</span>}
                             </div>
+                            {field.exportLabel && (
+                              <div className="text-xs text-gray-400">
+                                CSV: "{field.exportLabel}"
+                              </div>
+                            )}
                           </div>
-                          <div className="flex gap-1 shrink-0">
+                          <div className="flex gap-1">
                             <button
                               onClick={() => moveField(index, 'up')}
                               disabled={index === 0}
