@@ -51,6 +51,17 @@ function FieldFormPanel({
           />
         </div>
 
+        <div>
+          <label className="block text-sm font-medium mb-1 text-gray-500">Export Label <span className="text-xs font-normal">(optional)</span></label>
+          <input
+            type="text"
+            value={fieldForm.exportLabel || ''}
+            onChange={(e) => setFieldForm({ ...fieldForm, exportLabel: e.target.value || undefined })}
+            placeholder="Short name for CSV export, e.g. 'T-shirt Size'"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+          />
+        </div>
+
         <div className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -503,6 +514,7 @@ function CreateSurveyContent() {
                               {(field.type === 'radiogroup' || field.type === 'checkbox' || field.type === 'dropdown') &&
                                 ` (${field.choices?.length || 0} choices)`}
                               {field.type === 'rating' && ` (${field.rateMin || 1}-${field.rateMax || 5})`}
+                              {field.exportLabel && <span className="text-gray-400"> · CSV: &ldquo;{field.exportLabel}&rdquo;</span>}
                             </div>
                           </div>
                           <div className="flex gap-1 shrink-0">
