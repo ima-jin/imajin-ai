@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { db, ticketTypes, events } from '@/src/db';
 import { eq } from 'drizzle-orm';
+import { AutoRedirect } from './auto-redirect';
 
 interface Props {
   searchParams: Promise<{ session_id?: string; event?: string }>;
@@ -71,24 +72,21 @@ export default async function SuccessPage({ searchParams }: Props) {
       </div>
 
       {hasRegistrationRequired && event && (
-        <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-2xl p-6 mb-8 text-left">
-          <div className="flex items-start gap-3">
-            <span className="text-2xl">📝</span>
-            <div>
-              <h3 className="font-semibold text-orange-800 dark:text-orange-300 mb-1">
-                Next step: Register your tickets
-              </h3>
-              <p className="text-sm text-orange-700 dark:text-orange-400 mb-3">
-                One or more of your ticket types require registration. Complete registration to confirm your spot.
-              </p>
-              <Link
-                href={`/${event.id}`}
-                className="inline-block px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-lg transition"
-              >
-                Register My Tickets →
-              </Link>
-            </div>
-          </div>
+        <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-400 dark:border-red-600 rounded-2xl p-6 mb-8 text-center animate-pulse">
+          <div className="text-3xl mb-3">⚠️</div>
+          <h3 className="text-xl font-bold text-red-600 dark:text-red-400 mb-2">
+            Registration Required!
+          </h3>
+          <p className="text-red-600 dark:text-red-400 font-medium mb-4">
+            You must complete the registration form before your tickets are confirmed.
+          </p>
+          <Link
+            href={`/${event.id}`}
+            className="inline-block px-6 py-3 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-lg transition"
+          >
+            Complete Registration Now →
+          </Link>
+          <AutoRedirect href={`/${event.id}`} seconds={5} />
         </div>
       )}
 
