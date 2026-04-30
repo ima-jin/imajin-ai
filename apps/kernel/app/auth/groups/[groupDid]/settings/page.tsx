@@ -74,7 +74,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
   const profileUrl = buildPublicUrl('profile');
   const [copyLabel, setCopyLabel] = useState('Copy');
 
-  const onboardUrl = `${authUrl}/onboard?scope=${encodeURIComponent(groupDid)}`;
+  const onboardUrl = `${authUrl}/auth/onboard?scope=${encodeURIComponent(groupDid)}`;
 
   useEffect(() => {
     loadData();

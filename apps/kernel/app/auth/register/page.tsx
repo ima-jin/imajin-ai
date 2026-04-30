@@ -436,7 +436,7 @@ function RegisterPage() {
         <p className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
           Already have an identity?{' '}
           <Link
-            href={`/login${inviteCode ? `?invite=${inviteCode}${redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : ''}` : ''}`}
+            href={`/auth/login${inviteCode ? `?invite=${inviteCode}${redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : ''}` : ''}`}
             className="text-orange-500 hover:underline"
           >
             Sign in

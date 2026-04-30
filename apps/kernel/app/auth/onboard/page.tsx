@@ -199,7 +199,10 @@ function OnboardContent() {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
-  const loginUrl = `/login${redirect || scope ? `?next=${encodeURIComponent(redirect || '/')}${scope ? `&scope=${encodeURIComponent(scope)}` : ''}` : ''}`;
+  // Build a next URL that returns to this onboard page (with scope) after login
+  const onboardPath = `/auth/onboard${scope ? `?scope=${encodeURIComponent(scope)}${redirect ? `&redirect=${encodeURIComponent(redirect)}` : ''}` : redirect ? `?redirect=${encodeURIComponent(redirect)}` : ''}`;
+  const loginNext = redirect || scope ? onboardPath : '';
+  const loginUrl = `/auth/login${loginNext ? `?next=${encodeURIComponent(loginNext)}` : ''}`;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
