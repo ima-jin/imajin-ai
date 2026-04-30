@@ -78,6 +78,9 @@ function OnboardContent() {
 
   const scopeName = scopeProfile?.name || scopeProfile?.handle || (scope ? scope.slice(0, 20) : null);
 
+  // Default redirect: community profile page when joining via scope link
+  const effectiveRedirect = redirect || (scopeProfile?.handle ? `${buildPublicUrl('profile')}/${scopeProfile.handle}` : scope ? `${buildPublicUrl('profile')}/${encodeURIComponent(scope)}` : '');
+
   // ── Email flow ──────────────────────────────────────────────────────────
 
   async function handleEmailSubmit(e: React.FormEvent) {
@@ -96,7 +99,7 @@ function OnboardContent() {
           email,
           name: name.trim() || undefined,
           scopeDid: scope || undefined,
-          redirectUrl: redirect || undefined,
+          redirectUrl: effectiveRedirect || undefined,
           context: scopeName ? `Join ${scopeName}` : undefined,
         }),
       });
@@ -155,12 +158,12 @@ function OnboardContent() {
           publicKey: keypair.publicKey,
           name: name.trim() || undefined,
           scopeDid: scope || undefined,
-          redirectUrl: redirect || undefined,
+          redirectUrl: effectiveRedirect || undefined,
         }),
       });
       if (res.ok) {
         const data = await res.json();
-        window.location.href = data.redirectUrl || redirect || '/';
+        window.location.href = data.redirectUrl || effectiveRedirect || '/';
       } else {
         const body = await res.json().catch(() => ({}));
         setKeypairError(body.error || 'Something went wrong. Please try again.');
@@ -276,7 +279,7 @@ function OnboardContent() {
               You&apos;ve joined {scopeName || 'this group'}.
             </p>
             <a
-              href={redirect || '/'}
+              href={effectiveRedirect || '/'}
               className="inline-block px-6 py-2.5 bg-amber-500 hover:bg-amber-400 rounded-xl text-gray-950 font-semibold transition no-underline"
             >
               Continue
