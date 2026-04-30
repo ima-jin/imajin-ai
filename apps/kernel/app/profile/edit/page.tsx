@@ -65,6 +65,9 @@ function EditProfileContent() {
   const [serviceToggles, setServiceToggles] = useState<Record<string, boolean>>({});
   const [showMarketItems, setShowMarketItems] = useState(false);
   const [showEvents, setShowEvents] = useState(false);
+  const [tier, setTier] = useState<string>('soft');
+
+  const isSoftTier = tier === 'soft';
 
   useEffect(() => {
     // Don't redirect until the session check has completed
@@ -82,8 +85,28 @@ function EditProfileContent() {
   async function loadProfile() {
     if (!did) return;
 
+    // Fetch tier from session
+    try {
+      const sessionRes = await fetch('/auth/api/session', { credentials: 'include' });
+      if (sessionRes.ok) {
+        const session = await sessionRes.json();
+        if (session?.tier) setTier(session.tier);
+      }
+    } catch { /* non-fatal */ }
+
     try {
       const response = await fetch(`/profile/api/profile/${did}`);
+      if (response.status === 404) {
+        // No profile yet — start with empty form for new identity setup
+        setDisplayName('');
+        setBio('');
+        setAvatar('');
+        setHandle('');
+        setEmail('');
+        setPhone('');
+        setLoading(false);
+        return;
+      }
       if (!response.ok) {
         throw new Error('Failed to load profile');
       }
@@ -291,8 +314,8 @@ function EditProfileContent() {
             </div>
           </div>
 
-          {/* Visibility */}
-          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+          {/* Visibility — preliminary+ only */}
+          {!isSoftTier && <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-medium text-white flex items-center gap-2">
@@ -325,7 +348,7 @@ function EditProfileContent() {
                 </p>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Avatar */}
           <div>
@@ -361,8 +384,8 @@ function EditProfileContent() {
             )}
           </div>
 
-          {/* Apps / Service toggles */}
-          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+          {/* Apps / Service toggles — preliminary+ only */}
+          {!isSoftTier && <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
             <h3 className="font-medium text-white mb-1">Apps</h3>
             <p className="text-sm text-gray-400 mb-4">Choose which Imajin apps appear on your profile.</p>
             <div className="space-y-3">
@@ -428,7 +451,7 @@ function EditProfileContent() {
                 </button>
               </div>
             </div>
-          </div>
+          </div>}
 
           {/* Error/Success messages */}
           {error && (
