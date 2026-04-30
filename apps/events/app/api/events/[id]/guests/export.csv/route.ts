@@ -15,6 +15,11 @@ function csvEscape(v: unknown): string {
   return s;
 }
 
+/** Strip HTML tags and collapse whitespace for clean CSV headers */
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+}
+
 function csvRow(values: unknown[]): string {
   return values.map(csvEscape).join(',') + '\r\n';
 }
@@ -105,10 +110,15 @@ export async function GET(
         const fields: Array<{ name: string; title?: string }> =
           Array.isArray(rawFields) ? rawFields :
           Array.isArray(rawFields.elements) ? rawFields.elements : [];
-        const mappedFields = fields.map((f) => ({ name: f.name, title: f.title || f.name }));
+        const mappedFields = fields.map((f: any) => ({
+          name: f.name,
+          title: f.title || f.name,
+          exportLabel: f.exportLabel,
+        }));
         formFieldMap.set(row.id, mappedFields);
         for (const f of mappedFields) {
-          const colName = `Survey: ${f.title}`;
+          const label = f.exportLabel || stripHtml(f.title);
+          const colName = `Survey: ${label}`;
           if (!surveyColumns.includes(colName)) {
             surveyColumns.push(colName);
           }
@@ -173,7 +183,7 @@ export async function GET(
         const answers = responseMap.get(t.response_id) || {};
         for (const colName of surveyColumns) {
           const question = colName.replace('Survey: ', '');
-          const field = fields.find((f) => f.title === question);
+          const field = fields.find((f) => (f.exportLabel || stripHtml(f.title)) === question);
           if (field && field.name in answers) {
             const ans = answers[field.name];
             surveyValues.push(ans === null || ans === undefined ? '' : String(ans));
