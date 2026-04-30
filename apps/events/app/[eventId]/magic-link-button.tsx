@@ -16,13 +16,14 @@ export function MagicLinkButton({ eventId }: { eventId: string }) {
 
     setStatus('sending');
     try {
+      const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
       const eventsUrl = window.location.origin;
       const response = await fetch(`${AUTH_URL}/api/magic/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email.trim(),
-          redirectUrl: `${eventsUrl}/${eventId}`,
+          redirectUrl: `${eventsUrl}${basePath}/${eventId}`,
         }),
       });
 
