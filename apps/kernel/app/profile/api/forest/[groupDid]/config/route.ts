@@ -64,7 +64,7 @@ export async function GET(
     .where(eq(forestConfig.groupDid, groupDid))
     .limit(1);
 
-  return NextResponse.json(config ?? { enabledServices: [], landingService: null, theme: {} });
+  return NextResponse.json(config ?? { enabledServices: [], landingService: null, joinVisibility: 'open', joinNetworkDepth: 2, theme: {} });
 }
 
 /**
@@ -94,10 +94,12 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { enabledServices, landingService, theme } = body as {
+  const { enabledServices, landingService, theme, joinVisibility, joinNetworkDepth } = body as {
     enabledServices?: string[];
     landingService?: string | null;
     theme?: Record<string, unknown>;
+    joinVisibility?: 'open' | 'network' | 'invite';
+    joinNetworkDepth?: number;
   };
 
   if (enabledServices !== undefined) {
@@ -113,11 +115,25 @@ export async function PATCH(
     }
   }
 
+  if (joinVisibility !== undefined) {
+    if (!['open', 'network', 'invite'].includes(joinVisibility)) {
+      return NextResponse.json({ error: 'joinVisibility must be open, network, or invite' }, { status: 400 });
+    }
+  }
+
+  if (joinNetworkDepth !== undefined) {
+    if (typeof joinNetworkDepth !== 'number' || joinNetworkDepth < 1 || joinNetworkDepth > 3) {
+      return NextResponse.json({ error: 'joinNetworkDepth must be 1, 2, or 3' }, { status: 400 });
+    }
+  }
+
   const now = new Date();
   const updateSet: Record<string, unknown> = { updatedAt: now };
   if (enabledServices !== undefined) updateSet.enabledServices = enabledServices;
   if (landingService !== undefined) updateSet.landingService = landingService;
   if (theme !== undefined) updateSet.theme = theme;
+  if (joinVisibility !== undefined) updateSet.joinVisibility = joinVisibility;
+  if (joinNetworkDepth !== undefined) updateSet.joinNetworkDepth = joinNetworkDepth;
 
   await db
     .insert(forestConfig)
@@ -125,6 +141,8 @@ export async function PATCH(
       groupDid,
       enabledServices: enabledServices ?? [],
       landingService: landingService ?? null,
+      joinVisibility: joinVisibility ?? 'open',
+      joinNetworkDepth: joinNetworkDepth ?? 2,
       theme: theme ?? {},
       createdAt: now,
       updatedAt: now,

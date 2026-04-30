@@ -14,6 +14,35 @@ import { CopyDid } from '../CopyDid';
 import { MemberSection } from '../MemberSection';
 import type { ProfileViewProps } from '../../lib/types';
 
+async function resolveCanJoin(
+  profileDid: string,
+  viewer: ProfileViewProps['viewer'],
+  viewerMemberRole: string | null,
+  forestConfig: Awaited<ReturnType<typeof getForestConfig>>
+): Promise<{ canJoin: boolean; joinVisibility: 'open' | 'network' | 'invite' }> {
+  const joinVisibility = forestConfig?.joinVisibility ?? 'open';
+  const joinNetworkDepth = forestConfig?.joinNetworkDepth ?? 2;
+
+  if (viewerMemberRole) {
+    return { canJoin: true, joinVisibility };
+  }
+
+  if (joinVisibility === 'invite') {
+    return { canJoin: false, joinVisibility };
+  }
+
+  if (joinVisibility === 'network') {
+    if (!viewer.viewerDid) {
+      return { canJoin: false, joinVisibility };
+    }
+    const { isInMemberNetwork } = await import('../../lib/network-check');
+    const inNetwork = await isInMemberNetwork(profileDid, viewer.viewerDid, joinNetworkDepth);
+    return { canJoin: inNetwork, joinVisibility };
+  }
+
+  return { canJoin: true, joinVisibility };
+}
+
 export async function CommunityProfile({
   profile,
   identity,
@@ -26,6 +55,13 @@ export async function CommunityProfile({
       ? getViewerMembership(profile.did, viewer.viewerDid)
       : Promise.resolve(viewer.isSelf ? 'owner' : null),
   ]);
+
+  const { canJoin, joinVisibility } = await resolveCanJoin(
+    profile.did,
+    viewer,
+    viewerMemberRole,
+    forestConfig
+  );
 
   const isMaintainer =
     viewerMemberRole === 'owner' ||
@@ -72,6 +108,8 @@ export async function CommunityProfile({
               identityDid={profile.did}
               viewerDid={viewer.viewerDid}
               initialMemberRole={viewerMemberRole}
+              canJoin={canJoin}
+              joinVisibility={joinVisibility}
             />
             {viewer.viewerDid && !viewer.isSelf && (
               <FollowButton

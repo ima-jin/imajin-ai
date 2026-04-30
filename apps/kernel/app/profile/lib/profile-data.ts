@@ -130,6 +130,8 @@ export async function getMembersByRole(identityDid: string): Promise<MemberEntry
 export interface ForestConfigData {
   enabledServices: string[];
   landingService: string | null;
+  joinVisibility: 'open' | 'network' | 'invite';
+  joinNetworkDepth: number;
 }
 
 export async function getForestConfig(groupDid: string): Promise<ForestConfigData | null> {
@@ -138,11 +140,20 @@ export async function getForestConfig(groupDid: string): Promise<ForestConfigDat
       .select({
         enabledServices: forestConfig.enabledServices,
         landingService: forestConfig.landingService,
+        joinVisibility: forestConfig.joinVisibility,
+        joinNetworkDepth: forestConfig.joinNetworkDepth,
       })
       .from(forestConfig)
       .where(eq(forestConfig.groupDid, groupDid))
       .limit(1);
-    return config ?? null;
+    return config
+      ? {
+          enabledServices: config.enabledServices,
+          landingService: config.landingService,
+          joinVisibility: config.joinVisibility ?? 'open',
+          joinNetworkDepth: config.joinNetworkDepth ?? 2,
+        }
+      : null;
   } catch {
     return null;
   }

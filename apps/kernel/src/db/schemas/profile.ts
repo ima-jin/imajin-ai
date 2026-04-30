@@ -79,6 +79,8 @@ export const forestConfig = profileSchema.table('forest_config', {
   groupDid: text('group_did').primaryKey(),
   enabledServices: text('enabled_services').array().notNull().default([]),
   landingService: text('landing_service'),
+  joinVisibility: text('join_visibility').notNull().default('open'),
+  joinNetworkDepth: integer('join_network_depth').notNull().default(2),
   theme: jsonb('theme').default({}),
   scopeFeeBps: integer('scope_fee_bps').default(25),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),

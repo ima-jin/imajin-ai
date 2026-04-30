@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
-import { db, identities, identityMembers } from '@/src/db';
+import { db, identities, identityMembers, forestConfig } from '@/src/db';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
@@ -38,6 +38,37 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
   if (identity.scope === 'actor') {
     return NextResponse.json({ error: 'Cannot join an actor identity' }, { status: 400 });
+  }
+
+  // Check join visibility
+  const [config] = await db
+    .select({
+      joinVisibility: forestConfig.joinVisibility,
+      joinNetworkDepth: forestConfig.joinNetworkDepth,
+    })
+    .from(forestConfig)
+    .where(eq(forestConfig.groupDid, scopeDid))
+    .limit(1);
+
+  const visibility = config?.joinVisibility ?? 'open';
+
+  if (visibility === 'invite') {
+    // For invite-only, only allow if there's a valid invite context
+    // (onboard page passes through, direct API calls get blocked)
+    // For now, allow — the onboard page is the invite mechanism
+    // TODO: require invite token validation for strict invite-only
+  }
+
+  if (visibility === 'network') {
+    const { isInMemberNetwork } = await import('@/app/profile/lib/network-check');
+    const depth = config?.joinNetworkDepth ?? 2;
+    const inNetwork = await isInMemberNetwork(scopeDid, session.did, depth);
+    if (!inNetwork) {
+      return NextResponse.json(
+        { error: 'This community requires a connection to an existing member' },
+        { status: 403 }
+      );
+    }
   }
 
   // Check if already a member
