@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@imajin/auth';
 import { db, events, ticketTypes } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
+import { getClient } from '@imajin/db';
 import Link from 'next/link';
 import { PayoutSetupBanner } from '@imajin/ui';
 
@@ -29,6 +30,15 @@ export default async function DashboardPage() {
   }
 
   const did = session.actingAs || session.id;
+
+  // Resolve scope name for acting-as context
+  let scopeLabel: string | null = null;
+  if (session.actingAs) {
+    const sql = getClient();
+    const [profile] = await sql`SELECT display_name, handle FROM profile.profiles WHERE did = ${session.actingAs} LIMIT 1`.catch(() => []);
+    scopeLabel = profile?.display_name || (profile?.handle ? `@${profile.handle}` : null);
+  }
+
   const userEvents = await db.select().from(events).where(eq(events.creatorDid, did)).orderBy(desc(events.createdAt));
   const eventsWithStats = await Promise.all(userEvents.map(async (event) => {
     const types = await db.select().from(ticketTypes).where(eq(ticketTypes.eventId, event.id));
@@ -52,9 +62,9 @@ export default async function DashboardPage() {
       {/* Header */}
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold mb-2">My Events</h1>
+          <h1 className="text-3xl md:text-4xl font-bold mb-2">{scopeLabel ? `${scopeLabel}'s Events` : 'My Events'}</h1>
           <p className="text-gray-500 dark:text-gray-400">
-            Manage your events and track ticket sales
+            {scopeLabel ? `Manage events for ${scopeLabel}` : 'Manage your events and track ticket sales'}
           </p>
         </div>
         <Link

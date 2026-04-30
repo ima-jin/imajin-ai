@@ -132,7 +132,8 @@ export function LandingGrid() {
     : services.filter((s) => s.visibility === 'public' || s.visibility === 'authenticated' || s.visibility === 'creator');
 
   if (scopeEnabledServices && scopeEnabledServices.length > 0) {
-    visibleServices = visibleServices.filter((s) => scopeEnabledServices.includes(s.name));
+    // Kernel services are always visible — only filter userspace by forest config
+    visibleServices = visibleServices.filter((s) => s.category === 'kernel' || scopeEnabledServices.includes(s.name));
   }
 
   const { kernel, core, creator, developer, meta } = groupServices(visibleServices);

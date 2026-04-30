@@ -94,6 +94,7 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
   const [myDid, setMyDid] = useState<string | null>(null);
+  const [scopeLabel, setScopeLabel] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
     type: 'sold' | 'remove';
     id: string;
@@ -122,7 +123,10 @@ export default function DashboardPage() {
   useEffect(() => {
     apiFetch('/api/me', { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.did) setMyDid(data.did); })
+      .then(data => {
+        if (data?.did) setMyDid(data.did);
+        if (data?.scopeLabel) setScopeLabel(data.scopeLabel);
+      })
       .catch(() => {});
   }, []);
 
@@ -241,8 +245,8 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold">My Listings</h1>
-            <p className="text-gray-400 text-sm mt-0.5">Manage your marketplace listings</p>
+            <h1 className="text-2xl font-bold">{scopeLabel ? `${scopeLabel}'s Listings` : 'My Listings'}</h1>
+            <p className="text-gray-400 text-sm mt-0.5">{scopeLabel ? `Manage listings for ${scopeLabel}` : 'Manage your marketplace listings'}</p>
           </div>
           <div className="flex items-center gap-2">
             <Link
