@@ -6,8 +6,9 @@ import { EventStatusControls } from './event-status-controls';
 import { CohostManager } from './cohost-manager';
 import { InviteManager } from './invite-manager';
 import { MessageComposer } from './message-composer';
+import { SalesTab } from './sales-tab';
 
-type Tab = 'stats' | 'edit' | 'cohosts' | 'invites' | 'message';
+type Tab = 'stats' | 'sales' | 'edit' | 'cohosts' | 'invites' | 'message';
 
 interface AdminTabsProps {
   eventId: string;
@@ -50,6 +51,7 @@ export function AdminTabs({
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'stats', label: 'Stats' },
+    { key: 'sales', label: 'Sales' },
     { key: 'edit', label: 'Edit Event' },
     { key: 'cohosts', label: `Co-hosts (${cohostCount})` },
     { key: 'invites', label: `Invitations (${inviteCount})` },
@@ -92,6 +94,8 @@ export function AdminTabs({
             eventId={eventId}
           />
         )}
+
+        {activeTab === 'sales' && <SalesTab eventId={eventId} />}
 
         {activeTab === 'edit' && (
           <EditTab basePath={basePath} eventId={eventId} />
