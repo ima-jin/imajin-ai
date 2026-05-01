@@ -3,8 +3,8 @@ import { getAllArticles } from '@/src/lib/www/articles';
 
 const DOMAIN = 'https://imajin.ai';
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const articles = getAllArticles();
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const articles = await getAllArticles();
 
   const articleUrls = articles.map((article) => ({
     url: `${DOMAIN}/articles/${article.slug}`,

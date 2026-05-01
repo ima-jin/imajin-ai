@@ -1,15 +1,10 @@
 import fs from 'fs';
-import path from 'path';
 import matter from 'gray-matter';
 import { remark } from 'remark';
 import remarkGfm from 'remark-gfm';
 import html from 'remark-html';
-
-// Articles directory - lives in docs/articles at the monorepo root.
-// At build time, cwd may be monorepo root or apps/kernel. Handle both.
-const articlesDirectory = fs.existsSync(path.join(process.cwd(), 'docs/articles'))
-  ? path.join(process.cwd(), 'docs/articles')
-  : path.join(process.cwd(), '../../docs/articles');
+import { db, assets } from '@/src/db';
+import { sql } from 'drizzle-orm';
 
 export type ArticleStatus = 'POSTED' | 'REVIEW' | 'DRAFT';
 
@@ -29,134 +24,97 @@ export interface Article extends ArticleMeta {
   contentHtml: string;
 }
 
-// Map essay numbers to URL slugs
-const slugMap: Record<string, string> = {
-  'essay-00-prologue': 'prologue',
-  'essay-01-the-internet-we-lost': 'the-internet-we-lost',
-  'essay-02-the-artificial-developer': 'the-artificial-developer',
-  'essay-03-the-mask-we-all-wear': 'the-mask-we-all-wear',
-  'essay-04-the-internet-that-pays-you-back': 'the-internet-that-pays-you-back',
-  'essay-05-you-dont-need-ads': 'you-dont-need-ads',
-  'essay-06-the-guild': 'the-guild',
-  'essay-07-utility': 'the-utility',
-  'essay-11-interstitial-01-cult-of-vetteses': 'cult-of-family',
-  'essay-08-ticketing': 'the-ticket-is-the-trust',
-  'essay-09-nodes-types-and-practice': 'the-practice',
-  'essay-10-memory': 'memory',
-  'essay-12-you-already-know-something': 'you-already-know-something',
-  'essay-13-how-to-use-ai-properly': 'how-to-use-ai-properly',
-  'essay-15-interstitial-02-cult-of-good-times': 'cult-of-good-times',
-  'essay-16-how-to-save-education': 'how-to-save-education',
-  'essay-17-how-to-save-journalism': 'how-to-save-journalism',
-  'essay-18-how-to-save-the-music-industry': 'how-to-save-the-music-industry',
-  'essay-19-how-to-save-the-ad-industry': 'how-to-save-the-ad-industry',
-  'essay-20-how-to-save-the-platforms': 'how-to-save-the-platforms',
-  'essay-21-how-to-save-media-streaming': 'how-to-save-media-streaming',
-  'essay-14-honor-the-chain': 'honor-the-chain',
-  'essay-22-interstitial-03-cult-of-community': 'cult-of-community',
-  'essay-23-imajin-business-case': 'the-business-case',
-  'essay-24-revenue-from-day-one': 'revenue-from-day-one',
-  'essay-25-the-connector': 'the-connector',
-  'essay-26-part-1-the-blueprint': 'the-blueprint',
-  'essay-26-part-2-need-help': 'i-need-help',
-  'essay-27-around-not-up': 'around-not-up',
-  'essay-28-how-ai-saved-me': 'how-ai-saved-me',
-  'essay-29-how-partying-can-save-us': 'how-partying-can-save-us',
-  'essay-30-epilogue': 'epilogue',
-};
+// Parse article metadata from a DB asset row
+function parseArticleMeta(row: {
+  metadata: Record<string, unknown> | null;
+  storagePath: string | null;
+}): ArticleMeta | null {
+  const article = (row.metadata as Record<string, unknown> | null)?.article as
+    | Record<string, unknown>
+    | null;
+  if (!article || typeof article !== 'object') return null;
 
-// Reverse map: URL slug -> filename (without .md)
-const reverseSlugMap: Record<string, string> = Object.entries(slugMap).reduce(
-  (acc, [filename, slug]) => {
-    acc[slug] = filename;
-    return acc;
-  },
-  {} as Record<string, string>
-);
+  const slug = article.slug as string | undefined;
+  if (!slug) return null;
 
-// Order is determined by position in slugMap, not filename number.
-// This lets us reorder essays by rearranging slugMap entries.
-const slugMapKeys = Object.keys(slugMap);
-
-function getOrderFromSlugMap(filename: string): number {
-  const baseName = filename.replace('.md', '');
-  const idx = slugMapKeys.indexOf(baseName);
-  return idx >= 0 ? idx : 999;
+  return {
+    slug,
+    title: (article.title as string) || slug,
+    subtitle: (article.subtitle as string) || undefined,
+    description: (article.description as string) || '',
+    date: (article.date as string) || '2026-02-22',
+    author: (article.author as string) || 'Ryan Veteze',
+    status: (article.status as ArticleStatus) || 'DRAFT',
+    order: typeof article.order === 'number' ? article.order : 999,
+  };
 }
 
-export function getAllArticleSlugs(): string[] {
-  const filenames = fs.readdirSync(articlesDirectory);
-  return filenames
-    .filter((name) => name.startsWith('essay-') && name.endsWith('.md'))
-    .map((name) => {
-      const baseName = name.replace('.md', '');
-      return slugMap[baseName];
+export async function getAllArticles(): Promise<ArticleMeta[]> {
+  const rows = await db
+    .select({
+      metadata: assets.metadata,
+      storagePath: assets.storagePath,
     })
-    .filter(Boolean);
+    .from(assets)
+    .where(
+      sql`${assets.mimeType} = ${'text/markdown'}
+        AND ${assets.status} = ${'active'}
+        AND ${assets.metadata}->'article'->>'status' = ${'POSTED'}`
+    )
+    .orderBy(sql`(${assets.metadata}->'article'->>'order')::int`);
+
+  return rows
+    .map(parseArticleMeta)
+    .filter((meta): meta is ArticleMeta => meta !== null);
 }
 
-export function getAllArticles(): ArticleMeta[] {
-  const filenames = fs.readdirSync(articlesDirectory);
-  const articles = filenames
-    .filter((name) => name.startsWith('essay-') && name.endsWith('.md'))
-    .map((filename) => {
-      const baseName = filename.replace('.md', '');
-      const slug = slugMap[baseName] || baseName;
-      const fullPath = path.join(articlesDirectory, filename);
-      const fileContents = fs.readFileSync(fullPath, 'utf8');
-      const { data, content } = matter(fileContents);
+export async function getAllArticleSlugs(): Promise<string[]> {
+  const rows = await db
+    .select({ metadata: assets.metadata })
+    .from(assets)
+    .where(
+      sql`${assets.mimeType} = ${'text/markdown'}
+        AND ${assets.status} = ${'active'}
+        AND ${assets.metadata}->'article'->>'status' = ${'POSTED'}`
+    );
 
-      // Extract title from first H1 if not in frontmatter
-      let title = data.title;
-      let subtitle = data.subtitle;
-      if (!title) {
-        const h1Match = content.match(/^#\s+(.+)$/m);
-        title = h1Match ? h1Match[1] : baseName;
-      }
-
-      // Extract description from content if not in frontmatter
-      let description = data.description;
-      if (!description) {
-        // Get first paragraph that isn't a heading
-        const paragraphs = content.split('\n\n');
-        for (const p of paragraphs) {
-          const trimmed = p.trim();
-          if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('---')) {
-            description = trimmed.slice(0, 200) + (trimmed.length > 200 ? '...' : '');
-            break;
-          }
-        }
-      }
-
-      return {
-        slug,
-        title,
-        subtitle,
-        description: description || '',
-        date: data.date || '2026-02-22',
-        author: data.author || 'Ryan Veteze',
-        status: (data.status as ArticleStatus) || 'DRAFT',
-        order: getOrderFromSlugMap(filename),
-      };
+  return rows
+    .map((row) => {
+      const article = (row.metadata as Record<string, unknown> | null)?.article as
+        | Record<string, unknown>
+        | null;
+      return article?.slug as string | undefined;
     })
-    .filter((a) => a.status === 'POSTED')
-    .sort((a, b) => a.order - b.order);
-
-  return articles;
+    .filter((slug): slug is string => typeof slug === 'string' && slug.length > 0);
 }
 
 export async function getArticleBySlug(slug: string): Promise<Article | null> {
-  const baseName = reverseSlugMap[slug];
-  if (!baseName) {
+  const [row] = await db
+    .select({
+      id: assets.id,
+      metadata: assets.metadata,
+      storagePath: assets.storagePath,
+    })
+    .from(assets)
+    .where(
+      sql`${assets.mimeType} = ${'text/markdown'}
+        AND ${assets.status} = ${'active'}
+        AND ${assets.metadata}->'article'->>'slug' = ${slug}`
+    )
+    .limit(1);
+
+  if (!row || !row.storagePath) {
     return null;
   }
 
-  const fullPath = path.join(articlesDirectory, `${baseName}.md`);
-  if (!fs.existsSync(fullPath)) {
+  const meta = parseArticleMeta(row);
+  if (!meta) return null;
+
+  if (!fs.existsSync(row.storagePath)) {
     return null;
   }
 
-  const fileContents = fs.readFileSync(fullPath, 'utf8');
+  const fileContents = fs.readFileSync(row.storagePath, 'utf8');
   const { data, content } = matter(fileContents);
 
   // Extract title from first H1 if not in frontmatter
@@ -164,7 +122,7 @@ export async function getArticleBySlug(slug: string): Promise<Article | null> {
   let subtitle = data.subtitle;
   if (!title) {
     const h1Match = content.match(/^#\s+(.+)$/m);
-    title = h1Match ? h1Match[1] : baseName;
+    title = h1Match ? h1Match[1] : meta.slug;
   }
 
   // Extract description from content if not in frontmatter
@@ -182,7 +140,7 @@ export async function getArticleBySlug(slug: string): Promise<Article | null> {
 
   // Remove the first H1 from content to avoid duplicate title
   const contentWithoutTitle = content.replace(/^#\s+.+\n+/, '');
-  
+
   // Process markdown to HTML
   const processedContent = await remark()
     .use(remarkGfm)
@@ -191,14 +149,14 @@ export async function getArticleBySlug(slug: string): Promise<Article | null> {
   const contentHtml = processedContent.toString();
 
   return {
-    slug,
-    title,
-    subtitle,
-    description: description || '',
-    date: data.date || '2026-02-22',
-    author: data.author || 'Ryan Veteze',
-    status: (data.status as ArticleStatus) || 'DRAFT',
-    order: getOrderFromSlugMap(baseName),
+    slug: meta.slug,
+    title: title || meta.title,
+    subtitle: subtitle || meta.subtitle,
+    description: description || meta.description,
+    date: data.date || meta.date,
+    author: data.author || meta.author,
+    status: (data.status as ArticleStatus) || meta.status,
+    order: meta.order,
     content,
     contentHtml,
   };

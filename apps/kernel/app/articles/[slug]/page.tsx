@@ -9,7 +9,7 @@ interface Props {
 }
 
 export async function generateStaticParams() {
-  const slugs = getAllArticleSlugs();
+  const slugs = await getAllArticleSlugs();
   return slugs.map((slug) => ({ slug }));
 }
 

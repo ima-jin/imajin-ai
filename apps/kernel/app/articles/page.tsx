@@ -29,8 +29,8 @@ function StatusBadge({ status }: { status: ArticleStatus }) {
   );
 }
 
-export default function ArticlesPage() {
-  const articles = getAllArticles();
+export default async function ArticlesPage() {
+  const articles = await getAllArticles();
 
   return (
     <main className="min-h-screen py-16 px-6">
