@@ -1,26 +1,27 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { getAllArticleSlugs, getArticleBySlug } from '@/src/lib/www/articles';
+import { resolveHandle, getAllArticleSlugs, getArticleBySlug } from '@/src/lib/www/articles';
 import { ImajinFooter } from '@imajin/ui';
 
 interface Props {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ handle: string; slug: string }>;
 }
 
 export async function generateStaticParams() {
-  const slugs = await getAllArticleSlugs();
-  return slugs.map((slug) => ({ slug }));
+  const entries = await getAllArticleSlugs();
+  return entries.map(({ handle, slug }) => ({ handle, slug }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { slug } = await params;
-  const article = await getArticleBySlug(slug);
+  const { handle, slug } = await params;
+  const author = await resolveHandle(handle);
+  if (!author) return { title: 'Article Not Found' };
+
+  const article = await getArticleBySlug(author.did, slug);
 
   if (!article) {
-    return {
-      title: 'Article Not Found',
-    };
+    return { title: 'Article Not Found' };
   }
 
   return {
@@ -29,7 +30,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       title: article.title,
       description: article.description,
-      url: `https://imajin.ai/articles/${slug}`,
+      url: `https://imajin.ai/articles/${handle}/${slug}`,
       type: 'article',
       publishedTime: article.date,
       authors: [article.author],
@@ -43,8 +44,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function ArticlePage({ params }: Props) {
-  const { slug } = await params;
-  const article = await getArticleBySlug(slug);
+  const { handle, slug } = await params;
+  const author = await resolveHandle(handle);
+  if (!author) notFound();
+
+  const article = await getArticleBySlug(author.did, slug);
 
   if (!article) {
     notFound();
@@ -55,10 +59,10 @@ export default async function ArticlePage({ params }: Props) {
       {/* Back link */}
       <div className="max-w-3xl mx-auto mb-12">
         <Link
-          href="/articles"
+          href={`/articles/${handle}`}
           className="text-gray-500 hover:text-gray-300 transition-colors"
         >
-          ← Articles
+          ← {author.name || `@${handle}`}
         </Link>
       </div>
 

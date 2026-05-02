@@ -3,8 +3,8 @@ import matter from 'gray-matter';
 import { remark } from 'remark';
 import remarkGfm from 'remark-gfm';
 import html from 'remark-html';
-import { db, assets } from '@/src/db';
-import { sql } from 'drizzle-orm';
+import { db, assets, identities } from '@/src/db';
+import { sql, eq } from 'drizzle-orm';
 
 export type ArticleStatus = 'POSTED' | 'REVIEW' | 'DRAFT';
 
@@ -15,6 +15,7 @@ export interface ArticleMeta {
   description: string;
   date: string;
   author: string;
+  authorHandle: string | null;
   status: ArticleStatus;
   order: number;
 }
@@ -24,10 +25,43 @@ export interface Article extends ArticleMeta {
   contentHtml: string;
 }
 
+export interface AuthorInfo {
+  did: string;
+  handle: string;
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+/**
+ * Resolve a handle to a DID. Returns null if not found.
+ */
+export async function resolveHandle(handle: string): Promise<AuthorInfo | null> {
+  const [row] = await db
+    .select({
+      id: identities.id,
+      handle: identities.handle,
+      name: identities.name,
+      avatarUrl: identities.avatarUrl,
+    })
+    .from(identities)
+    .where(eq(identities.handle, handle))
+    .limit(1);
+
+  if (!row || !row.handle) return null;
+
+  return {
+    did: row.id,
+    handle: row.handle,
+    name: row.name,
+    avatarUrl: row.avatarUrl,
+  };
+}
+
 // Parse article metadata from a DB asset row
 function parseArticleMeta(row: {
   metadata: Record<string, unknown> | null;
-  storagePath: string | null;
+  ownerDid: string;
+  authorHandle?: string | null;
 }): ArticleMeta | null {
   const article = (row.metadata as Record<string, unknown> | null)?.article as
     | Record<string, unknown>
@@ -43,35 +77,73 @@ function parseArticleMeta(row: {
     subtitle: (article.subtitle as string) || undefined,
     description: (article.description as string) || '',
     date: (article.date as string) || '2026-02-22',
-    author: (article.author as string) || 'Ryan Veteze',
+    author: (article.author as string) || 'Unknown',
+    authorHandle: row.authorHandle ?? null,
     status: (article.status as ArticleStatus) || 'DRAFT',
     order: typeof article.order === 'number' ? article.order : 999,
   };
 }
 
+/**
+ * Get all POSTED articles across all authors, date descending.
+ */
 export async function getAllArticles(): Promise<ArticleMeta[]> {
   const rows = await db
     .select({
       metadata: assets.metadata,
-      storagePath: assets.storagePath,
+      ownerDid: assets.ownerDid,
+      authorHandle: identities.handle,
     })
     .from(assets)
+    .leftJoin(identities, eq(assets.ownerDid, identities.id))
     .where(
       sql`${assets.mimeType} = ${'text/markdown'}
         AND ${assets.status} = ${'active'}
         AND ${assets.metadata}->'article'->>'status' = ${'POSTED'}`
     )
-    .orderBy(sql`(${assets.metadata}->'article'->>'order')::int`);
+    .orderBy(sql`(${assets.metadata}->'article'->>'date')::date DESC`);
 
   return rows
     .map(parseArticleMeta)
     .filter((meta): meta is ArticleMeta => meta !== null);
 }
 
-export async function getAllArticleSlugs(): Promise<string[]> {
+/**
+ * Get all POSTED articles for a specific author (by DID), date descending.
+ */
+export async function getArticlesByAuthor(ownerDid: string): Promise<ArticleMeta[]> {
   const rows = await db
-    .select({ metadata: assets.metadata })
+    .select({
+      metadata: assets.metadata,
+      ownerDid: assets.ownerDid,
+      authorHandle: identities.handle,
+    })
     .from(assets)
+    .leftJoin(identities, eq(assets.ownerDid, identities.id))
+    .where(
+      sql`${assets.ownerDid} = ${ownerDid}
+        AND ${assets.mimeType} = ${'text/markdown'}
+        AND ${assets.status} = ${'active'}
+        AND ${assets.metadata}->'article'->>'status' = ${'POSTED'}`
+    )
+    .orderBy(sql`(${assets.metadata}->'article'->>'date')::date DESC`);
+
+  return rows
+    .map(parseArticleMeta)
+    .filter((meta): meta is ArticleMeta => meta !== null);
+}
+
+/**
+ * Get all POSTED article slugs (global).
+ */
+export async function getAllArticleSlugs(): Promise<{ handle: string; slug: string }[]> {
+  const rows = await db
+    .select({
+      metadata: assets.metadata,
+      authorHandle: identities.handle,
+    })
+    .from(assets)
+    .leftJoin(identities, eq(assets.ownerDid, identities.id))
     .where(
       sql`${assets.mimeType} = ${'text/markdown'}
         AND ${assets.status} = ${'active'}
@@ -83,21 +155,31 @@ export async function getAllArticleSlugs(): Promise<string[]> {
       const article = (row.metadata as Record<string, unknown> | null)?.article as
         | Record<string, unknown>
         | null;
-      return article?.slug as string | undefined;
+      const slug = article?.slug as string | undefined;
+      const handle = row.authorHandle;
+      if (!slug || !handle) return null;
+      return { handle, slug };
     })
-    .filter((slug): slug is string => typeof slug === 'string' && slug.length > 0);
+    .filter((item): item is { handle: string; slug: string } => item !== null);
 }
 
-export async function getArticleBySlug(slug: string): Promise<Article | null> {
+/**
+ * Get a single article by author DID + slug.
+ */
+export async function getArticleBySlug(ownerDid: string, slug: string): Promise<Article | null> {
   const [row] = await db
     .select({
       id: assets.id,
       metadata: assets.metadata,
       storagePath: assets.storagePath,
+      ownerDid: assets.ownerDid,
+      authorHandle: identities.handle,
     })
     .from(assets)
+    .leftJoin(identities, eq(assets.ownerDid, identities.id))
     .where(
-      sql`${assets.mimeType} = ${'text/markdown'}
+      sql`${assets.ownerDid} = ${ownerDid}
+        AND ${assets.mimeType} = ${'text/markdown'}
         AND ${assets.status} = ${'active'}
         AND ${assets.metadata}->'article'->>'slug' = ${slug}`
     )
@@ -155,6 +237,7 @@ export async function getArticleBySlug(slug: string): Promise<Article | null> {
     description: description || meta.description,
     date: data.date || meta.date,
     author: data.author || meta.author,
+    authorHandle: meta.authorHandle,
     status: (data.status as ArticleStatus) || meta.status,
     order: meta.order,
     content,

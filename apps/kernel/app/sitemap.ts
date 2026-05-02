@@ -6,12 +6,14 @@ const DOMAIN = 'https://imajin.ai';
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const articles = await getAllArticles();
 
-  const articleUrls = articles.map((article) => ({
-    url: `${DOMAIN}/articles/${article.slug}`,
-    lastModified: new Date(article.date),
-    changeFrequency: 'monthly' as const,
-    priority: 0.8,
-  }));
+  const articleUrls = articles
+    .filter((article) => article.authorHandle)
+    .map((article) => ({
+      url: `${DOMAIN}/articles/${article.authorHandle}/${article.slug}`,
+      lastModified: new Date(article.date),
+      changeFrequency: 'monthly' as const,
+      priority: 0.8,
+    }));
 
   return [
     {
