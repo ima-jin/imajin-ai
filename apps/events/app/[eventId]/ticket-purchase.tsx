@@ -14,6 +14,9 @@ interface Props {
   stripeDisabled?: boolean;
   maxPerOrder?: number;
   sessionEmail?: string;
+  quantity?: number;
+  onQuantityChange?: (qty: number) => void;
+  hideCheckoutButton?: boolean;
 }
 
 interface ETransferInstructions {
@@ -28,14 +31,21 @@ interface ETransferInstructions {
 
 type Step = 'button' | 'selector' | 'loading-card' | 'etransfer-confirm' | 'loading-etransfer' | 'etransfer-done' | 'rsvp-form' | 'loading-rsvp' | 'rsvp-done';
 
-export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false, stripeDisabled = false, maxPerOrder, sessionEmail }: Props) {
+export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false, stripeDisabled = false, maxPerOrder, sessionEmail, quantity: externalQty, onQuantityChange, hideCheckoutButton = false }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<Step>('button');
   const [error, setError] = useState<string | null>(null);
   const [etransfer, setEtransfer] = useState<ETransferInstructions | null>(null);
   const [email, setEmail] = useState(sessionEmail || '');
   const [name, setName] = useState('');
-  const [quantity, setQuantity] = useState(1);
+  const [internalQty, setInternalQty] = useState(0);
+
+  // Use external quantity if controlled by parent, otherwise internal
+  const quantity = externalQty ?? internalQty;
+  const setQuantity = (q: number) => {
+    if (onQuantityChange) onQuantityChange(q);
+    else setInternalQty(q);
+  };
 
   const isFree = ticket.price === 0;
 
@@ -52,7 +62,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
   // Effective max: per-type override > prop > default 10, capped at 20
   const resolvedMax = maxPerOrder ?? (ticket as any).maxPerOrder ?? 10;
   const effectiveMax = Math.min(resolvedMax, availableCount ?? 20, 20);
-  const showQuantity = !isFree && effectiveMax > 1;
+  const showQuantity = !isFree && effectiveMax >= 1;
 
   const handleCardPayment = async () => {
     setStep('loading-card');
@@ -432,25 +442,31 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
         <p className="text-red-500 text-xs mb-2">{error}</p>
       )}
       {showQuantity && <QuantityStepper quantity={quantity} setQuantity={setQuantity} max={effectiveMax} price={ticket.price} currency={ticket.currency} />}
-      <button
-        onClick={handleButtonClick}
-        disabled={(step as string) === 'loading-rsvp'}
-        className={`px-6 md:px-8 py-2.5 md:py-3 rounded-lg font-semibold transition whitespace-nowrap ${
-          (step as string) === 'loading-rsvp'
-            ? 'bg-orange-400 text-white cursor-wait'
-            : 'bg-orange-500 text-white hover:bg-orange-600'
-        }`}
-      >
-        {(step as string) === 'loading-rsvp'
-          ? 'Confirming...'
-          : isFree
-          ? 'RSVP'
-          : (stripeDisabled && etransferEnabled)
-          ? '🏦 Pay by e-Transfer'
-          : quantity > 1
-          ? `Get ${quantity} Tickets`
-          : 'Get Ticket'}
-      </button>
+      {!hideCheckoutButton && (
+        <button
+          onClick={handleButtonClick}
+          disabled={(step as string) === 'loading-rsvp' || (!isFree && quantity === 0)}
+          className={`px-6 md:px-8 py-2.5 md:py-3 rounded-lg font-semibold transition whitespace-nowrap ${
+            (step as string) === 'loading-rsvp'
+              ? 'bg-orange-400 text-white cursor-wait'
+              : (!isFree && quantity === 0)
+              ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+              : 'bg-orange-500 text-white hover:bg-orange-600'
+          }`}
+        >
+          {(step as string) === 'loading-rsvp'
+            ? 'Confirming...'
+            : isFree
+            ? 'RSVP'
+            : (stripeDisabled && etransferEnabled)
+            ? '🏦 Pay by e-Transfer'
+            : quantity > 1
+            ? `Get ${quantity} Tickets`
+            : quantity === 0
+            ? 'Select quantity'
+            : 'Get Ticket'}
+        </button>
+      )}
     </>
   );
 }
@@ -471,8 +487,8 @@ function QuantityStepper({ quantity, setQuantity, max, price, currency }: {
     <div className="flex items-center gap-3 mb-2">
       <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
         <button
-          onClick={() => setQuantity(Math.max(1, quantity - 1))}
-          disabled={quantity <= 1}
+          onClick={() => setQuantity(Math.max(0, quantity - 1))}
+          disabled={quantity <= 0}
           className="px-3 py-1.5 text-lg font-bold hover:bg-gray-100 dark:hover:bg-gray-800 transition disabled:opacity-30 disabled:cursor-not-allowed"
         >
           −
@@ -488,9 +504,9 @@ function QuantityStepper({ quantity, setQuantity, max, price, currency }: {
           +
         </button>
       </div>
-      {quantity > 1 && (
+      {quantity > 0 && (
         <span className="text-sm text-gray-500 dark:text-gray-400">
-          {total} total
+          {quantity > 1 ? `${total} total` : total}
         </span>
       )}
     </div>
