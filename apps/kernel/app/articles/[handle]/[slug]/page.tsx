@@ -4,13 +4,12 @@ import { notFound } from 'next/navigation';
 import { resolveHandle, getAllArticleSlugs, getArticleBySlug } from '@/src/lib/www/articles';
 import { ImajinFooter } from '@imajin/ui';
 
+// Articles now load from the database (media.assets), so static generation
+// requires a DB connection at build time. Force dynamic rendering instead.
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: Promise<{ handle: string; slug: string }>;
-}
-
-export async function generateStaticParams() {
-  const entries = await getAllArticleSlugs();
-  return entries.map(({ handle, slug }) => ({ handle, slug }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
