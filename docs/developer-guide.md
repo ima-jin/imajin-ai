@@ -2,7 +2,7 @@
 
 **What you need to know to build on the Imajin network.**
 
-This is the practical companion to the [MJN whitepaper](./mjn-whitepaper.md). The whitepaper explains *why*. This explains *how*.
+This is the practical companion to the MJN protocol RFCs. The RFCs explain *why*. This explains *how*.
 
 ---
 
@@ -405,13 +405,13 @@ Not yet. For now, it's direct HTTP calls. The OpenAPI specs at `/api/spec` can g
 ## Links
 
 - **Source code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
-- **Whitepaper:** [MJN Protocol Specification](./mjn-whitepaper.md)
+- **Protocol RFCs:** See `docs/rfcs/` for protocol specifications
 - **.fair spec:** [github.com/ima-jin/.fair](https://github.com/ima-jin/.fair)
 - **OpenAPI specs:** `https://<service>.imajin.ai/api/spec`
 - **First demonstration:** April 1, 2026
 
 ---
 
-*The whitepaper tells you why this matters. This guide tells you how it works. Start with `curl` and go from there.*
+*The RFCs tell you why this matters. This guide tells you how it works. Start with `curl` and go from there.*
 
 *Updated April 8, 2026. 1 kernel (9 domains) + 6 federated apps, ~135 identities, 1,722 commits.*
