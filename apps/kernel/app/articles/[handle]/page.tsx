@@ -3,6 +3,8 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { resolveHandle, getArticlesByAuthor } from '@/src/lib/www/articles';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: Promise<{ handle: string }>;
 }

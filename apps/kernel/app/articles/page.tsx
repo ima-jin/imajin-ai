@@ -2,6 +2,8 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { getAllArticles } from '@/src/lib/www/articles';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Articles — Imajin',
   description: 'Thoughts on sovereignty, technology, and the future of the internet.',
