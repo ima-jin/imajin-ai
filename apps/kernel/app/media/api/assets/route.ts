@@ -207,27 +207,21 @@ export async function POST(request: NextRequest) {
   const app = context?.app;
   const explicitAccess = context?.access;
   let accessLevel: string;
-  let includeTransfer: boolean;
   if (explicitAccess) {
     accessLevel = explicitAccess;
-    includeTransfer = explicitAccess === "private";
   } else if (app === "chat") {
     accessLevel = "conversation";
-    includeTransfer = false;
   } else if (app === "market") {
     accessLevel = "public";
-    includeTransfer = true;
   } else if (app === "profile" || app === "events" || app === "www") {
     accessLevel = "public";
-    includeTransfer = false;
   } else {
     accessLevel = "private";
-    includeTransfer = true;
   }
   const chainProof = identity.chainVerified
     ? { verified: true, verifiedAt: new Date().toISOString() }
     : undefined;
-  const fairManifest = {
+  const fairManifest: Record<string, unknown> = {
     fair: "1.0",
     id: assetId,
     type: mimeType,
@@ -236,7 +230,18 @@ export async function POST(request: NextRequest) {
     source: "upload",
     access: { type: accessLevel },
     attribution: [{ did: ownerDid, role: "creator", share: 1.0, ...(chainProof ? { chainProof } : {}) }],
-    ...(includeTransfer ? { transfer: { allowed: false } } : {}),
+    distribution: {
+      reproduction: "reserved",
+      derivative: "reserved",
+      syndication: "reserved",
+    },
+    transfer: { allowed: false },
+    fees: [
+      { role: "protocol", name: "MJN", rateBps: 100, fixedCents: 0 },
+      { role: "node", name: "Node", rateBps: 50, fixedCents: 0 },
+      { role: "buyer_credit", name: "Buyer Credit", rateBps: 25, fixedCents: 0 },
+      { role: "scope", name: "Scope", rateBps: 25, fixedCents: 0 },
+    ],
   };
 
   try {

@@ -201,6 +201,18 @@ async function main() {
       source: 'seed',
       access: { type: 'public' },
       attribution: [{ did: OWNER_DID, role: 'creator', share: 1.0 }],
+      distribution: {
+        reproduction: 'reserved',
+        derivative: 'reserved',
+        syndication: 'reserved',
+      },
+      transfer: { allowed: false },
+      fees: [
+        { role: 'protocol', name: 'MJN', rateBps: 100, fixedCents: 0 },
+        { role: 'node', name: 'Node', rateBps: 50, fixedCents: 0 },
+        { role: 'buyer_credit', name: 'Buyer Credit', rateBps: 25, fixedCents: 0 },
+        { role: 'scope', name: 'Scope', rateBps: 25, fixedCents: 0 },
+      ],
     };
 
     writeFileSync(storagePath, content);
