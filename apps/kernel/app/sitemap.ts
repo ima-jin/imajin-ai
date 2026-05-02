@@ -3,15 +3,23 @@ import { getAllArticles } from '@/src/lib/www/articles';
 
 const DOMAIN = 'https://imajin.ai';
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const articles = getAllArticles();
+export const dynamic = 'force-dynamic';
 
-  const articleUrls = articles.map((article) => ({
-    url: `${DOMAIN}/articles/${article.slug}`,
-    lastModified: new Date(article.date),
-    changeFrequency: 'monthly' as const,
-    priority: 0.8,
-  }));
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  let articleUrls: MetadataRoute.Sitemap = [];
+  try {
+    const articles = await getAllArticles();
+    articleUrls = articles
+      .filter((article) => article.authorHandle)
+      .map((article) => ({
+        url: `${DOMAIN}/articles/${article.authorHandle}/${article.slug}`,
+        lastModified: new Date(article.date),
+        changeFrequency: 'monthly' as const,
+        priority: 0.8,
+      }));
+  } catch {
+    // DB unavailable (e.g. CI build) — skip article URLs
+  }
 
   return [
     {

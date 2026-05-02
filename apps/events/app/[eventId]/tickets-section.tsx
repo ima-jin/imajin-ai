@@ -414,7 +414,21 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
   const [unlockError, setUnlockError] = useState<string | null>(null);
   const { toast } = useToast();
 
+  // Lifted quantity state for unified cart
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+
   const allTickets = [...tickets, ...unlockedTickets];
+
+  // Compute cart totals
+  const paidTickets = allTickets.filter(t => t.price > 0);
+  const hasPaidTickets = paidTickets.length > 0;
+  const cartItems = paidTickets
+    .filter(t => (quantities[t.id] || 0) > 0)
+    .map(t => ({ ticket: t, qty: quantities[t.id] || 0 }));
+  const totalQty = cartItems.reduce((sum, item) => sum + item.qty, 0);
+  const totalCents = cartItems.reduce((sum, item) => sum + item.ticket.price * item.qty, 0);
+  const cartCurrency = paidTickets[0]?.currency || 'CAD';
+  const formattedTotal = new Intl.NumberFormat('en-CA', { style: 'currency', currency: cartCurrency }).format(totalCents / 100);
 
   async function handleUnlock() {
     if (!unlockCode.trim()) return;
@@ -521,6 +535,9 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
                       etransferEnabled={etransferEnabled}
                       stripeDisabled={true}
                       sessionEmail={sessionEmail}
+                      quantity={quantities[ticket.id] || 0}
+                      onQuantityChange={(q) => setQuantities(prev => ({ ...prev, [ticket.id]: q }))}
+                      hideCheckoutButton={true}
                     />
                   ) : (
                     <p className="text-sm text-gray-500 dark:text-gray-400 italic">
@@ -535,6 +552,9 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
                     inviteToken={inviteToken}
                     etransferEnabled={etransferEnabled}
                     sessionEmail={sessionEmail}
+                    quantity={ticket.price > 0 ? (quantities[ticket.id] || 0) : undefined}
+                    onQuantityChange={ticket.price > 0 ? (q) => setQuantities(prev => ({ ...prev, [ticket.id]: q })) : undefined}
+                    hideCheckoutButton={ticket.price > 0}
                   />
                 ) : (
                   <OnboardGate
@@ -550,6 +570,9 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
                       inviteToken={inviteToken}
                       etransferEnabled={etransferEnabled}
                       sessionEmail={sessionEmail}
+                      quantity={ticket.price > 0 ? (quantities[ticket.id] || 0) : undefined}
+                      onQuantityChange={ticket.price > 0 ? (q) => setQuantities(prev => ({ ...prev, [ticket.id]: q })) : undefined}
+                      hideCheckoutButton={ticket.price > 0}
                     />
                   </OnboardGate>
                 )}
@@ -558,6 +581,63 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
           </div>
         );
       })}
+
+      {/* Unified checkout bar */}
+      {hasPaidTickets && (
+        <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl">
+          <div className="flex items-center justify-between gap-4">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              {totalQty === 0 ? (
+                'Select tickets above'
+              ) : (
+                <span className="text-base font-semibold text-white">
+                  {totalQty} ticket{totalQty !== 1 ? 's' : ''} · {formattedTotal}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                // Process first selected type via card checkout
+                if (cartItems.length === 0) return;
+                const first = cartItems[0];
+                // Navigate to checkout for the first type
+                // For multi-type, user will need to come back for additional types
+                apiFetch('/api/checkout', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    eventId,
+                    ticketTypeId: first.ticket.id,
+                    quantity: first.qty,
+                    ...(inviteToken && { invite: inviteToken }),
+                  }),
+                }).then(async (res) => {
+                  if (!res.ok) {
+                    const data = await res.json();
+                    toast.error(data.error || 'Checkout failed');
+                    return;
+                  }
+                  const { url } = await res.json();
+                  window.location.href = url;
+                }).catch(() => toast.error('Checkout failed'));
+              }}
+              disabled={totalQty === 0}
+              className={`px-6 py-3 rounded-lg font-semibold transition whitespace-nowrap ${
+                totalQty === 0
+                  ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                  : 'bg-orange-500 text-white hover:bg-orange-600'
+              }`}
+            >
+              {totalQty === 0 ? 'Checkout' : `Checkout — ${formattedTotal}`}
+            </button>
+          </div>
+          {cartItems.length > 1 && (
+            <p className="text-xs text-amber-500 mt-2">
+              ⚠️ Multi-type cart: you’ll check out {cartItems[0].ticket.name} first, then return for the rest.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Unlock hidden tiers */}
       {hasHiddenTiers && (
