@@ -89,4 +89,4 @@ jobs:
       - name: Build
         run: pnpm build
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING || 'postgresql://ci:ci@localhost:5432/ci_build' }}
