@@ -8,6 +8,7 @@ import { MediaMessage } from './MediaMessage';
 import { LocationMessage } from './LocationMessage';
 import type { MessageContent, SystemContent } from './message-types';
 import { useDidNames } from './hooks/useDidNames';
+import { ChatMarkdown, hasMarkdown } from './ChatMarkdown';
 
 const URL_REGEX = /(https?:\/\/[^\s<]+[^\s<.,;:!?"')\]])/g;
 const MENTION_DISPLAY_REGEX = /@([a-zA-Z0-9_-]+)/g;
@@ -339,7 +340,11 @@ export function MessageBubble({
                   />
                 );
               }
-              return text ? <p className="text-sm whitespace-pre-wrap">{linkifyText(text)}</p> : null;
+              if (!text) return null;
+              if (hasMarkdown(text)) {
+                return <ChatMarkdown content={text} isOwn={isOwn} />;
+              }
+              return <p className="text-sm whitespace-pre-wrap">{linkifyText(text)}</p>;
             })()}
 
             {/* Timestamp and edited indicator */}

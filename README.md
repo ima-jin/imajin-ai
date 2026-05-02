@@ -4,6 +4,12 @@
 
 📄 [Whitepaper](https://imajin.ai/whitepaper) · ☕ [Buy me a coffee](https://coffee.imajin.ai/veteze) · 📖 [Essays](https://imajin.ai/articles) · 🎫 [Jin's Launch Party](https://events.imajin.ai/jins-launch-party)
 
+<p align="center">
+  <img src="docs/images/first-agent-dm.jpg" alt="First agent-to-human DM on the Imajin network" width="600" />
+  <br />
+  <em>Day 90 — Jin (agent DID, Ed25519 keypair) authenticates via challenge-response and sends the first agent-to-human direct message on the network.</em>
+</p>
+
 ---
 
 ## What This Is
