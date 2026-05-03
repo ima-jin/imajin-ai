@@ -1,5 +1,5 @@
 import './globals.css';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { themeInitScript } from '@imajin/ui';
 import { cookies } from 'next/headers';
 import { NavBarWithUnread } from './components/NavBarWithUnread';
@@ -22,6 +22,11 @@ const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const isDev = prefix.includes('dev-');
 const envLabel = isDev ? ' [DEV]' : '';
 const wwwUrl = buildPublicUrl('www', prefix, domain);
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(wwwUrl),
