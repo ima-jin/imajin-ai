@@ -136,8 +136,8 @@ Agents interact with the platform exclusively through **tools** — typed, permi
 | `media.read` | `media:read` | Read asset content |
 | `media.upload` | `media:write` | Upload to principal's media (within quota) |
 | `media.move` | `media:write` | Reorganize assets (folders, tags) |
-| `workspace.read` | (implicit) | Read from agent's own workspace |
-| `workspace.write` | (implicit) | Write to agent's own workspace |
+| `workspace.read` | `media:read` | Read from agent's `.jin/` workspace (media operation) |
+| `workspace.write` | `media:write` | Write to agent's `.jin/` workspace (media operation) |
 
 #### Commerce
 | Tool | Permission | Description |
@@ -284,40 +284,55 @@ Agent sessions are strictly isolated:
 
 ## Workspace
 
-### Structure
+### No Separate Storage — It's the User's Media
 
-Each agent gets a workspace directory on the node:
+The agent doesn't get a separate allocation. It lives in the user's existing media folder. The same `media.assets` system that handles profile photos, event assets, and file uploads now also serves as the agent's workspace.
 
 ```
-/data/agents/{agent_did_short}/
-├── workspace/              # Agent's working files
-│   ├── notes/              # Agent-created notes, drafts
-│   ├── cache/              # Temporary processing data
-│   └── config.json         # Agent's self-configuration
-├── chain/                  # Local chain replica (synced via DFOS)
-└── metadata.json           # Quota usage, last session, etc.
+/mnt/media/{did_path}/
+├── assets/                 # User's existing media (photos, docs, etc.)
+├── folders/                # User's folder structure
+└── .jin/                   # Agent home
+    ├── config.json         # Agent preferences, egress allowlist, grants
+    ├── workspace/          # Agent's working files, drafts, temp data
+    ├── memory/             # Agent's persistent notes across sessions
+    └── {runtime}/          # Runtime-specific state
+        ├── openclaw/       # e.g., MEMORY.md, SOUL.md, skills/
+        ├── n8n/            # e.g., workflows, credentials
+        └── ...             # Any MCC-compatible runtime
 ```
 
-### Quotas
+### Why This Works
 
-| Resource | Default | Max (configurable by node operator) |
-|----------|---------|-------------------------------------|
-| Workspace storage | 100 MB | 1 GB |
-| Files per directory | 1,000 | 10,000 |
-| Max file size | 10 MB | 50 MB |
-| Chain entries per day | 10,000 | 100,000 |
+**Media already has the primitives:**
+- **Storage quotas** — `media.assets` already tracks per-identity storage usage and enforces limits. The agent's files count against the user's existing quota. No new metering system needed.
+- **Folder structure** — `media.folders` already provides organization. The agent can create folders, move files, tag assets — using the same system the user already has.
+- **.fair attribution** — every file the agent creates gets a `.fair` manifest. Attribution is automatic.
+- **Access control** — media already respects identity scoping. The agent sees what its delegation grants allow, nothing more.
 
-Quota exhaustion degrades gracefully — reads continue, writes return a clear error. The owner is notified.
+**The agent is a resident, not a tenant.** It doesn't need its own infrastructure — it uses the user's. Organizing files, managing drafts, caching data — it's all just media operations on the user's existing space.
+
+### Storage Limits
+
+Agent storage counts against the user's media quota. No separate agent quota needed.
+
+| Resource | Governed By |
+|----------|------------|
+| Total storage | User's media quota (existing) |
+| File size limits | Media service limits (existing) |
+| Chain entries per day | Gas budget (see Gas Metering) |
+
+If the user's media quota is full, the agent can't write — same as if the user tried to upload. The agent gets a clear error and can notify the owner.
 
 ### Owner Access
 
-The owner has full read access to their agent's workspace at all times. No hidden state. The workspace is the agent's "mind" — the owner can inspect it, understand it, and intervene.
+The owner has full read access to `.jin/` at all times — it's in their media folder. No hidden state. The workspace is the agent's "mind" — the owner can browse it in the media UI, inspect any file, and intervene.
 
 ```
 Agent Management UI
   └── Agent: @veteze-jin
        ├── Chain Viewer (all signed actions)
-       ├── Workspace Browser (all files)
+       ├── Workspace Browser (→ media UI for .jin/)
        ├── Session History (past sessions + context snapshots)
        ├── Grant Editor (add/remove permissions)
        └── Kill Switch (immediate revocation)
@@ -338,7 +353,7 @@ Agent tool calls consume gas, same model as RFC-25 app runtime.
 | Chat write | 2 |
 | Media read | 1 |
 | Media write | 5 |
-| Workspace read/write | 0 (free — it's their space) |
+| Workspace read/write (.jin/) | 0 (free — it's their space, uses existing media quota) |
 | Attestation read | 2 |
 | Attestation write | 5 |
 | Connection operations | 2 |
