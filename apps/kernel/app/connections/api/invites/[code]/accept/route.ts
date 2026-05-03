@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, invites, profiles, pods, podMembers, connections } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { publish } from '@imajin/bus';
