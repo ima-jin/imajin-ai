@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
-import { eq } from 'drizzle-orm';
-import { db, conversationsV2 } from '@/src/db';
+import { eq, ne, and, sql } from 'drizzle-orm';
+import { db, conversationsV2, profiles } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
@@ -40,7 +40,32 @@ export async function GET(
       return errorResponse('Conversation not found', 404);
     }
 
-    return jsonResponse({ conversation });
+    // For DMs, resolve the other participant
+    let otherParticipant: { did: string; handle: string | null; name: string | null } | null = null;
+    if (conversationDid.startsWith('did:imajin:dm:')) {
+      try {
+        const members = await db.execute<{ member_did: string }>(sql`
+          SELECT member_did FROM chat.conversation_members
+          WHERE conversation_did = ${conversationDid}
+            AND member_did != ${effectiveDid}
+          LIMIT 1
+        `);
+        const otherDid = members[0]?.member_did || (conversation.createdBy !== effectiveDid ? conversation.createdBy : null);
+        if (otherDid) {
+          const profile = await db.query.profiles.findFirst({
+            where: eq(profiles.did, otherDid),
+            columns: { did: true, handle: true, name: true },
+          });
+          if (profile) {
+            otherParticipant = { did: profile.did, handle: profile.handle, name: profile.name };
+          }
+        }
+      } catch {
+        // non-critical — fall back to generic header
+      }
+    }
+
+    return jsonResponse({ conversation, otherParticipant });
   } catch (error) {
     log.error({ err: String(error) }, 'Failed to get conversation');
     return errorResponse('Failed to get conversation', 500);

@@ -223,6 +223,13 @@ export function MessageBubble({
     }, 500);
   };
 
+  const handleTouchMove = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
   const handleTouchEnd = () => {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
   };
@@ -267,6 +274,7 @@ export function MessageBubble({
         <div
           onContextMenu={handleContextMenu}
           onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
           className="relative"
         >

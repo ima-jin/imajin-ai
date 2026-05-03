@@ -112,6 +112,7 @@ function DIDConversationView({ did }: { did: string }) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loadingConnections, setLoadingConnections] = useState(false);
   const [addingDid, setAddingDid] = useState<string | null>(null);
+  const [dmPartnerName, setDmPartnerName] = useState<string | null>(null);
   const parsed = parseConvDid(did);
 
   const callerRole = members.find((m) => m.did === identity?.did)?.role ?? null;
@@ -136,7 +137,7 @@ function DIDConversationView({ did }: { did: string }) {
   // Display name from URL param (e.g., when creating a group)
   const nameParam = searchParams.get('name');
 
-  // Fetch stored conversation name
+  // Fetch stored conversation name + DM partner
   useEffect(() => {
     if (!identity) return;
     fetch(`/chat/api/conversations/${encodeURIComponent(did)}`)
@@ -151,9 +152,14 @@ function DIDConversationView({ did }: { did: string }) {
           setConvName(conv.name);
           setNameSet(true);
         }
+        // For DMs, resolve the other participant's name
+        if (parsed.type === 'dm' && conv?.otherParticipant) {
+          const p = conv.otherParticipant;
+          setDmPartnerName(p.name || (p.handle ? `@${p.handle}` : null));
+        }
       })
       .catch(() => {});
-  }, [identity, did]);
+  }, [identity, did, parsed.type]);
 
   // Fetch members for group conversations
   const fetchMembers = useCallback(() => {
@@ -291,7 +297,7 @@ function DIDConversationView({ did }: { did: string }) {
     convName ||
     nameParam ||
     (parsed.type === 'dm'
-      ? 'Direct Message'
+      ? (dmPartnerName || 'Direct Message')
       : parsed.type === 'event'
       ? 'Event Chat'
       : parsed.type === 'group'

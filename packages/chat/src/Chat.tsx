@@ -335,8 +335,39 @@ export function Chat({
           const showSenderLabel = !prevMsg || prevMsg.senderDid !== msg.senderDid;
           const replyToMsg = msg.replyTo ? messageById.get(msg.replyTo) : undefined;
           const replyToSenderName = getReplyToName(replyToMsg);
+
+          // Date separator: show when the date changes between messages
+          const msgDate = new Date(msg.createdAt).toDateString();
+          const prevDate = prevMsg ? new Date(prevMsg.createdAt).toDateString() : null;
+          const showDateSeparator = !prevMsg || msgDate !== prevDate;
+
+          const formatDateSeparator = (dateStr: string) => {
+            const d = new Date(dateStr);
+            const now = new Date();
+            const yesterday = new Date(now);
+            yesterday.setDate(yesterday.getDate() - 1);
+            if (d.toDateString() === now.toDateString()) return 'Today';
+            if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+            const thisYear = d.getFullYear() === now.getFullYear();
+            return d.toLocaleDateString('en-US', {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+              ...(thisYear ? {} : { year: 'numeric' }),
+            });
+          };
+
           return (
             <div key={msg.id} id={`msg-${msg.id}`}>
+              {showDateSeparator && (
+                <div className="flex items-center gap-3 my-3">
+                  <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+                  <span className="text-xs text-gray-400 dark:text-gray-500 font-medium select-none">
+                    {formatDateSeparator(msg.createdAt)}
+                  </span>
+                  <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+                </div>
+              )}
               <MessageBubble
                 message={toMsgShape(msg)}
                 isOwn={msg.senderDid === currentUserDid}
