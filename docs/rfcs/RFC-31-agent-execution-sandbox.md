@@ -53,12 +53,23 @@ Every agent orchestration framework in 2026 punts on this. They give agents tool
 
 ### Execution Model
 
+### Agent Naming
+
+Agent handles follow the pattern `{username}-jin`:
+- `veteze-jin` — Ryan's agent
+- `baconjay-jin` — baconjay's agent
+- `mooi-jin` — the Mooi community's agent
+
+The `-jin` suffix (今人, "now-person") brands every agent on the network. It's personal — *your* jin — and it's recognizable. When you see `{anything}-jin` in a chat, you know it's an Imajin agent.
+
+For users with multiple agents, append a qualifier: `veteze-jin`, `veteze-jin-travel`, `veteze-jin-bookkeeping`.
+
 ```
 User ("@veteze")
   │
   │ delegates via identity_members (role: owner)
   │
-Agent DID ("@veteze_openclaw_jin")
+Agent DID ("@veteze-jin")
   │
   │ authenticates with agent credentials
   │
@@ -206,7 +217,7 @@ Every tool call includes a verifiable chain:
 
 ```
 Owner: did:imajin:6JSKE... (@veteze)
-  └─ delegates to: did:imajin:DUUi6... (@veteze_openclaw_jin)
+  └─ delegates to: did:imajin:DUUi6... (@veteze-jin)
        role: owner
        grants: [chat:read, chat:write, media:read, ...]
        issued: 2026-04-20T...
@@ -304,7 +315,7 @@ The owner has full read access to their agent's workspace at all times. No hidde
 
 ```
 Agent Management UI
-  └── Agent: @veteze_openclaw_jin
+  └── Agent: @veteze-jin
        ├── Chain Viewer (all signed actions)
        ├── Workspace Browser (all files)
        ├── Session History (past sessions + context snapshots)
@@ -412,7 +423,7 @@ Revocation is instant and irreversible. A revoked agent can be re-granted access
 
 Everything above describes what happens when the agent talks to the Imajin kernel — the **tool surface**. But the agent also needs somewhere to *live*: to run its LLM, store its memory, install plugins, connect external APIs. That's the **runtime layer**.
 
-Today, this is an OpenClaw instance with a WebSocket connection to the Imajin chat service. Jin (the first agent) runs on a full OpenClaw deployment with SSH access, filesystem access, email access, coding tools — everything. That's fine when the agent operator and the node operator are the same person. It's catastrophic when they're not.
+Today, this is an agent runtime (OpenClaw, n8n, custom code — anything) with a WebSocket connection to the Imajin chat service. Jin (the first agent) runs on a full deployment with SSH access, filesystem access, email access, coding tools — everything. That's fine when the agent operator and the node operator are the same person. It's catastrophic when they're not.
 
 ### The Two-Layer Model
 
@@ -435,10 +446,11 @@ Today, this is an OpenClaw instance with a WebSocket connection to the Imajin ch
 │                     │ WebSocket                  │
 │                     ▼                            │
 │   ┌──────────────────────────────────────────┐   │
-│   │ Imajin Plugin (channel)                  │   │
+│   │ Imajin Connector (protocol adapter)     │   │
 │   │   - Authenticates with agent DID         │   │
 │   │   - Routes tool calls to kernel          │   │
 │   │   - Receives messages from chat          │   │
+│   │   (OpenClaw plugin, n8n node, SDK, etc.) │   │
 │   └──────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────┘
                      │
@@ -472,13 +484,13 @@ The runtime layer is where the differentiation happens.
 | **Cost to user** | Their own compute costs | Included in agent subscription |
 | **Node operator liability** | None — user's machine | Full — operator hosts the VM |
 
-**Self-hosted** agents are OpenClaw instances (or any MCC-compatible runtime) running on user hardware. The user connects their agent to an Imajin node via WebSocket. The node enforces the tool surface; the user's machine enforces nothing else. This is the power-user path — full control, full responsibility.
+**Self-hosted** agents run on user hardware — could be OpenClaw, n8n, a Python script, anything that speaks the Imajin agent protocol (WebSocket + signed tool calls). The node enforces the tool surface; the user's machine enforces nothing else. This is the power-user path — full control, full responsibility.
 
 **Platform-hosted** agents run in constrained VMs on node operator infrastructure. This is the easy path — sign up, get an agent, it's running. But the node operator now hosts someone else's AI, so the VM must be sandboxed.
 
 ### Platform-Hosted VM Policy
 
-A platform-hosted agent VM is an OpenClaw instance with a restricted configuration:
+A platform-hosted agent VM is a runtime container with a restricted configuration. The runtime is agnostic — the node operator chooses what to offer (could be OpenClaw, n8n, a lightweight custom runtime, or multiple options):
 
 #### Compute
 | Resource | Default | Max |
@@ -501,13 +513,13 @@ A platform-hosted agent VM is an OpenClaw instance with a restricted configurati
 
 #### Filesystem
 - **Agent workspace:** Read/write, quota'd
-- **OpenClaw config:** Read-only (operator-managed base config)
+- **Runtime config:** Read-only (operator-managed base config)
 - **Host filesystem:** Inaccessible
 - **Other agent VMs:** Inaccessible
 
-#### What's Stripped vs. Full OpenClaw
+#### What's Stripped vs. Self-Hosted
 
-| Capability | Full OpenClaw (self-hosted) | Agent VM (platform-hosted) |
+| Capability | Self-Hosted (user's machine) | Agent VM (platform-hosted) |
 |-----------|---------------------------|---------------------------|
 | SSH to external hosts | ✅ | ❌ |
 | Arbitrary shell commands | ✅ | ❌ |
@@ -520,7 +532,7 @@ A platform-hosted agent VM is an OpenClaw instance with a restricted configurati
 | Plugin installation | ✅ (any) | Operator-approved list |
 | Imajin tool surface | Grant set | Grant set (identical) |
 
-The agent VM is OpenClaw with the dangerous bits removed. It can still think, remember, use tools, connect to external APIs the user configures — but it can't escape its container.
+The agent VM is a runtime with the dangerous bits removed. It can still think, remember, use tools, connect to external APIs the user configures — but it can't escape its container.
 
 ### External APIs: The Value Add
 
@@ -640,7 +652,7 @@ They compose: RFC-27's router dispatches tasks → RFC-31's sandbox executes the
 - [ ] Owner approval flow for new egress URLs
 
 ### Phase 5: Platform-Hosted VM Runtime
-- [ ] OpenClaw VM image with restricted base config
+- [ ] Agent VM image with restricted base config (runtime-agnostic spec)
 - [ ] Container orchestration (create, start, stop, destroy per agent)
 - [ ] Resource limits enforcement (CPU, RAM, storage quotas)
 - [ ] VM egress gateway (separate from kernel egress — handles external API proxying)
