@@ -294,46 +294,73 @@ export async function GET(
     }
 
     // JSON response — shape must match SalesTab component interface
-    const totalOrders = sales.length + orphans.length;
-    const totalSalesCount = sales.length;
-    const avgOrderValue = totalOrders > 0 ? Math.round(totalRevenue * 100 / totalOrders) : 0;
+    // Merge order-based sales and orphan tickets into one unified list
+    const orderSales = sales.map((s) => {
+      const ticketTypeCounts = s.tickets.reduce<Record<string, number>>((acc, t) => {
+        acc[t.type] = (acc[t.type] || 0) + 1;
+        return acc;
+      }, {});
+      const ticketTypeStr = Object.entries(ticketTypeCounts)
+        .map(([type, qty]) => qty > 1 ? `${type} (${qty})` : type)
+        .join(', ') || 'Unknown';
+
+      return {
+        orderId: s.orderId,
+        buyerDid: s.buyer.did,
+        buyerName: s.buyer.name,
+        buyerHandle: s.buyer.handle,
+        buyerAvatar: null,
+        ticketType: ticketTypeStr,
+        quantity: s.tickets.length,
+        amountTotal: Math.round(s.amount * 100),
+        currency: s.currency,
+        paymentMethod: s.paymentMethod,
+        stripeSessionId: s.stripeSessionId,
+        paymentId: s.transactionId,
+        purchasedAt: s.createdAt,
+        tickets: s.tickets.map((t) => ({ ticketId: t.id, status: t.status })),
+        status: s.status,
+      };
+    });
+
+    // Convert orphan tickets into the same Sale shape
+    const orphanSales = orphans.map((o: any) => ({
+      orderId: o.ticketId,
+      buyerDid: o.ownerDid,
+      buyerName: o.attendeeName,
+      buyerHandle: null,
+      buyerAvatar: null,
+      ticketType: o.ticketType,
+      quantity: 1,
+      amountTotal: o.pricePaid ?? 0,
+      currency: o.currency,
+      paymentMethod: o.paymentMethod,
+      stripeSessionId: o.paymentId?.startsWith('cs_') ? o.paymentId : null,
+      paymentId: o.paymentId,
+      purchasedAt: o.purchasedAt,
+      tickets: [{ ticketId: o.ticketId, status: o.status }],
+      status: o.status === 'valid' || o.status === 'used' ? 'completed' : o.status,
+    }));
+
+    const allSales = [...orderSales, ...orphanSales]
+      .sort((a, b) => {
+        const da = a.purchasedAt ? new Date(a.purchasedAt).getTime() : 0;
+        const db = b.purchasedAt ? new Date(b.purchasedAt).getTime() : 0;
+        return db - da;
+      });
+
+    const totalCount = allSales.length;
+    const avgOrderValue = totalCount > 0 ? Math.round(totalRevenue * 100 / totalCount) : 0;
 
     return NextResponse.json({
-      sales: sales.map((s) => {
-        // Group tickets by type for display
-        const ticketTypeCounts = s.tickets.reduce<Record<string, number>>((acc, t) => {
-          acc[t.type] = (acc[t.type] || 0) + 1;
-          return acc;
-        }, {});
-        const ticketTypeStr = Object.entries(ticketTypeCounts)
-          .map(([type, qty]) => qty > 1 ? `${type} (${qty})` : type)
-          .join(', ') || 'Unknown';
-
-        return {
-          orderId: s.orderId,
-          buyerDid: s.buyer.did,
-          buyerName: s.buyer.name,
-          buyerHandle: s.buyer.handle,
-          buyerAvatar: null,
-          ticketType: ticketTypeStr,
-          quantity: s.tickets.length,
-          amountTotal: Math.round(s.amount * 100),
-          currency: s.currency,
-          paymentMethod: s.paymentMethod,
-          stripeSessionId: s.stripeSessionId,
-          paymentId: s.transactionId,
-          purchasedAt: s.createdAt,
-          tickets: s.tickets.map((t) => ({ ticketId: t.id, status: t.status })),
-          status: s.status,
-        };
-      }),
-      orphans,
+      sales: allSales,
+      orphans: [],
       orphanOrders: [],
       summary: {
-        totalSales: totalSalesCount,
+        totalSales: totalCount,
         totalRevenue: Math.round(totalRevenue * 100),
         avgOrderValue,
-        totalOrders,
+        totalOrders: totalCount,
       },
     });
   } catch (error) {
