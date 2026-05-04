@@ -256,21 +256,47 @@ export async function GET(
       });
     }
 
-    // JSON response (matches task spec)
+    // JSON response — shape must match SalesTab component interface
+    const totalOrders = sales.length;
+    const avgOrderValue = totalOrders > 0 ? Math.round(totalRevenue * 100 / totalOrders) : 0;
+
     return NextResponse.json({
-      sales: sales.map((s) => ({
-        transactionId: s.transactionId ?? s.orderId,
-        buyer: s.buyer,
-        tickets: s.tickets,
-        amount: s.amount,
-        currency: s.currency,
-        status: s.status,
-        stripeSessionId: s.stripeSessionId,
-        createdAt: s.createdAt,
-      })),
+      sales: sales.map((s) => {
+        // Group tickets by type for display
+        const ticketTypeCounts = s.tickets.reduce<Record<string, number>>((acc, t) => {
+          acc[t.type] = (acc[t.type] || 0) + 1;
+          return acc;
+        }, {});
+        const ticketTypeStr = Object.entries(ticketTypeCounts)
+          .map(([type, qty]) => qty > 1 ? `${type} (${qty})` : type)
+          .join(', ') || 'Unknown';
+
+        return {
+          orderId: s.orderId,
+          buyerDid: s.buyer.did,
+          buyerName: s.buyer.name,
+          buyerHandle: s.buyer.handle,
+          buyerAvatar: null,
+          ticketType: ticketTypeStr,
+          quantity: s.tickets.length,
+          amountTotal: Math.round(s.amount * 100),
+          currency: s.currency,
+          paymentMethod: s.paymentMethod,
+          stripeSessionId: s.stripeSessionId,
+          paymentId: s.transactionId,
+          purchasedAt: s.createdAt,
+          tickets: s.tickets.map((t) => ({ ticketId: t.id, status: t.status })),
+          status: s.status,
+        };
+      }),
       orphans: [],
       orphanOrders: [],
-      summary,
+      summary: {
+        totalSales: totalOrders,
+        totalRevenue: Math.round(totalRevenue * 100),
+        avgOrderValue,
+        totalOrders,
+      },
     });
   } catch (error) {
     log.error({ err: String(error), eventId }, 'Failed to fetch sales');
