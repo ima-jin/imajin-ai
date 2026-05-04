@@ -179,8 +179,50 @@ export async function GET(
       status: computeOrderStatus(sale.tickets),
     }));
 
-    // Summary
-    const totalRevenue = sales.reduce((sum, s) => sum + s.amount, 0);
+    // Fetch orphan tickets (no order_id) — these predate the orders system
+    const orphanRows = await sql`
+      SELECT
+        t.id AS ticket_id,
+        t.status,
+        t.owner_did,
+        t.price_paid,
+        t.currency,
+        t.purchased_at,
+        t.payment_method,
+        t.payment_id,
+        tt.name AS ticket_type_name,
+        tr.name AS attendee_name,
+        tr.email AS attendee_email,
+        i.name AS owner_name,
+        i.handle AS owner_handle
+      FROM events.tickets t
+      LEFT JOIN events.ticket_types tt ON tt.id = t.ticket_type_id
+      LEFT JOIN events.ticket_registrations tr ON tr.ticket_id = t.id
+      LEFT JOIN auth.identities i ON i.id = t.owner_did
+      WHERE t.event_id = ${eventId}
+        AND t.order_id IS NULL
+      ORDER BY t.purchased_at DESC NULLS LAST, t.created_at DESC
+    `;
+
+    const orphans = orphanRows.map((r: any) => ({
+      ticketId: r.ticket_id,
+      status: r.status ?? 'unknown',
+      ownerDid: r.owner_did ?? null,
+      ownerName: r.owner_name ?? r.attendee_name ?? null,
+      ownerHandle: r.owner_handle ?? null,
+      pricePaid: r.price_paid ?? null,
+      currency: r.currency ?? eventRow.currency ?? 'CAD',
+      purchasedAt: r.purchased_at ? new Date(r.purchased_at).toISOString() : null,
+      ticketType: r.ticket_type_name ?? 'Unknown',
+      paymentMethod: r.payment_method ?? null,
+      paymentId: r.payment_id ?? null,
+      attendeeName: r.attendee_name ?? null,
+      attendeeEmail: r.attendee_email ?? null,
+    }));
+
+    // Summary — include orphan revenue
+    const orphanRevenue = orphans.reduce((sum: number, o: any) => sum + (o.pricePaid ?? 0), 0) / 100;
+    const totalRevenue = sales.reduce((sum, s) => sum + s.amount, 0) + orphanRevenue;
     const summary = {
       totalSales: sales.length,
       totalRevenue: parseFloat(totalRevenue.toFixed(2)),
@@ -256,19 +298,75 @@ export async function GET(
       });
     }
 
-    // JSON response (matches task spec)
-    return NextResponse.json({
-      sales: sales.map((s) => ({
-        transactionId: s.transactionId ?? s.orderId,
-        buyer: s.buyer,
-        tickets: s.tickets,
-        amount: s.amount,
+    // JSON response — shape must match SalesTab component interface
+    // Merge order-based sales and orphan tickets into one unified list
+    const orderSales = sales.map((s) => {
+      const ticketTypeCounts = s.tickets.reduce<Record<string, number>>((acc, t) => {
+        acc[t.type] = (acc[t.type] || 0) + 1;
+        return acc;
+      }, {});
+      const ticketTypeStr = Object.entries(ticketTypeCounts)
+        .map(([type, qty]) => qty > 1 ? `${type} (${qty})` : type)
+        .join(', ') || 'Unknown';
+
+      return {
+        orderId: s.orderId,
+        buyerDid: s.buyer.did,
+        buyerName: s.buyer.name,
+        buyerHandle: s.buyer.handle,
+        buyerAvatar: null,
+        ticketType: ticketTypeStr,
+        quantity: s.tickets.length,
+        amountTotal: Math.round(s.amount * 100),
         currency: s.currency,
-        status: s.status,
+        paymentMethod: s.paymentMethod,
         stripeSessionId: s.stripeSessionId,
-        createdAt: s.createdAt,
-      })),
-      summary,
+        paymentId: s.transactionId,
+        purchasedAt: s.createdAt,
+        tickets: s.tickets.map((t) => ({ ticketId: t.id, status: t.status })),
+        status: s.status,
+      };
+    });
+
+    // Convert orphan tickets into the same Sale shape
+    const orphanSales = orphans.map((o: any) => ({
+      orderId: o.ticketId,
+      buyerDid: o.ownerDid,
+      buyerName: o.ownerName ?? o.attendeeName,
+      buyerHandle: o.ownerHandle,
+      buyerAvatar: null,
+      ticketType: o.ticketType,
+      quantity: 1,
+      amountTotal: o.pricePaid ?? 0,
+      currency: o.currency,
+      paymentMethod: o.paymentMethod,
+      stripeSessionId: o.paymentId?.startsWith('cs_') ? o.paymentId : null,
+      paymentId: o.paymentId,
+      purchasedAt: o.purchasedAt,
+      tickets: [{ ticketId: o.ticketId, status: o.status }],
+      status: o.status === 'valid' || o.status === 'used' ? 'completed' : o.status,
+    }));
+
+    const allSales = [...orderSales, ...orphanSales]
+      .sort((a, b) => {
+        const da = a.purchasedAt ? new Date(a.purchasedAt).getTime() : 0;
+        const db = b.purchasedAt ? new Date(b.purchasedAt).getTime() : 0;
+        return db - da;
+      });
+
+    const totalCount = allSales.length;
+    const avgOrderValue = totalCount > 0 ? Math.round(totalRevenue * 100 / totalCount) : 0;
+
+    return NextResponse.json({
+      sales: allSales,
+      orphans: [],
+      orphanOrders: [],
+      summary: {
+        totalSales: totalCount,
+        totalRevenue: Math.round(totalRevenue * 100),
+        avgOrderValue,
+        totalOrders: totalCount,
+      },
     });
   } catch (error) {
     log.error({ err: String(error), eventId }, 'Failed to fetch sales');
