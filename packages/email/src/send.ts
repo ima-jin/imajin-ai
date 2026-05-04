@@ -1,34 +1,16 @@
 import { createLogger } from '@imajin/logger';
-const log = createLogger('email');
+import { getProvider } from './providers';
+import type { SendEmailOptions } from './types';
 
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-const SENDGRID_FROM = process.env.SENDGRID_FROM || 'Jin <jin@imajin.ai>';
+const log = createLogger('email');
 
 // CAN-SPAM required physical address
 const PHYSICAL_ADDRESS = 'Imajin Inc., 118 Sheridan Ave, Toronto, ON, Canada';
 
-export interface SendEmailOptions {
-  to: string;
-  subject: string;
-  html: string;
-  text?: string;
-  /** When set, adds List-Unsubscribe / List-Unsubscribe-Post headers and a footer link */
-  unsubscribeUrl?: string;
-  /** Reply-To address (e.g. event organizer email) */
-  replyTo?: string;
-}
+export type { SendEmailOptions } from './types';
 
 export async function sendEmail(options: SendEmailOptions): Promise<{ success: boolean; error?: any; messageId?: string }> {
-  if (!SENDGRID_API_KEY) {
-    log.warn({ to: options.to }, 'SENDGRID_API_KEY not set — skipping email');
-    return { success: false, error: 'No API key configured' };
-  }
-
-  const headers: Record<string, string> = {};
-  if (options.unsubscribeUrl) {
-    headers['List-Unsubscribe'] = `<${options.unsubscribeUrl}>`;
-    headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
-  }
+  const provider = getProvider();
 
   // Append unsubscribe footer to HTML when an unsubscribe URL is provided
   const htmlBody = options.unsubscribeUrl
@@ -39,38 +21,11 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
     ? (options.unsubscribeUrl ? `${options.text}\n\n---\nTo unsubscribe: ${options.unsubscribeUrl}\n${PHYSICAL_ADDRESS}` : options.text)
     : stripHtml(htmlBody);
 
-  try {
-    const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${SENDGRID_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        personalizations: [{ to: [{ email: options.to }] }],
-        from: parseSender(SENDGRID_FROM),
-        ...(options.replyTo && { reply_to: { email: options.replyTo } }),
-        subject: options.subject,
-        content: [
-          { type: 'text/plain', value: textBody },
-          { type: 'text/html', value: htmlBody },
-        ],
-        ...(Object.keys(headers).length > 0 && { headers }),
-      }),
-    });
-
-    if (res.status === 202) {
-      log.info({ to: options.to }, 'Email sent via SendGrid');
-      return { success: true, messageId: res.headers.get('x-message-id') ?? undefined };
-    } else {
-      const body = await res.text();
-      log.error({ status: res.status, body }, 'SendGrid error');
-      return { success: false, error: `SendGrid ${res.status}: ${body}` };
-    }
-  } catch (error) {
-    log.error({ err: String(error) }, 'Email send failed');
-    return { success: false, error };
-  }
+  return provider.send({
+    ...options,
+    html: htmlBody,
+    text: textBody,
+  });
 }
 
 function appendUnsubscribeFooter(html: string, unsubscribeUrl: string): string {
@@ -87,11 +42,8 @@ function appendUnsubscribeFooter(html: string, unsubscribeUrl: string): string {
   return html + footer;
 }
 
-export function parseSender(from: string): { email: string; name?: string } {
-  const match = from.match(/^(.+)\s*<(.+)>$/);
-  if (match) return { name: match[1].trim(), email: match[2].trim() };
-  return { email: from };
-}
+// Re-export parseSender from types for backward compatibility
+export { parseSender } from './types';
 
 export function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
