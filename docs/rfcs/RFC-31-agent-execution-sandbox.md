@@ -64,7 +64,7 @@ The `-jin` suffix (今人, "now-person") brands every agent on the network. It's
 
 For users with multiple agents, append a qualifier: `veteze-jin`, `veteze-jin-travel`, `veteze-jin-bookkeeping`.
 
-**Namespace reservation:** Agent handles follow the same claim model as identity handles (RFC-26). `{username}-jin` is auto-reserved for verified handle holders. Handles that reference known entities without a verified claim (`paypal-jin`, `irs-jin`) are subject to the same anti-squatting mechanisms as business stubs: activity thresholds, petition mechanism, reputation cost. A chain-visible `handle.verified` attestation (vs. `handle.claimed`) distinguishes verified agents from unverified ones. Counterparties and the trust graph weight interactions accordingly.
+**Namespace protection:** The `-jin` suffix is reserved for agent handles. Human and business identities cannot register handles ending in `-jin` — the registration endpoint rejects them. This makes `{anything}-jin` a reliable signal: if you see it, it's an agent. No squatting, no impersonation, no policy complexity.
 
 ```
 User ("@veteze")
