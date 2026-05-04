@@ -268,6 +268,8 @@ export async function GET(
         stripeSessionId: s.stripeSessionId,
         createdAt: s.createdAt,
       })),
+      orphans: [],
+      orphanOrders: [],
       summary,
     });
   } catch (error) {
