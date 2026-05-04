@@ -49,10 +49,6 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@22.19.17)
 
-  ../imajin-fixready: {}
-
-  ../imajin-karaoke: {}
-
   apps/coffee:
     dependencies:
       '@imajin/auth':
@@ -818,10 +814,16 @@ importers:
       marked:
         specifier: ^12.0.0
         version: 12.0.2
+      nodemailer:
+        specifier: ^6.9.15
+        version: 6.10.1
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
     devDependencies:
+      '@types/nodemailer':
+        specifier: ^6.4.16
+        version: 6.4.23
       '@types/qrcode':
         specifier: ^1.5.5
         version: 1.5.6
@@ -3108,6 +3110,9 @@ packages:
   '@types/node@22.19.17':
     resolution: {integrity: sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q==}
 
+  '@types/nodemailer@6.4.23':
+    resolution: {integrity: sha512-aFV3/NsYFLSx9mbb5gtirBSXJnAlrusoKNuPbxsASWc7vrKLmIrTQRpdcxNcSFL3VW2A2XpeLEavwb2qMi6nlQ==}
+
   '@types/prismjs@1.26.6':
     resolution: {integrity: sha512-vqlvI7qlMvcCBbVe0AKAb4f97//Hy0EBTaiW8AalRnG/xAN5zOiWWyrNqNXeq8+KAuvRewjCVY1+IPxk4RdNYw==}
 
@@ -5252,6 +5257,10 @@ packages:
 
   node-releases@2.0.37:
     resolution: {integrity: sha512-1h5gKZCF+pO/o3Iqt5Jp7wc9rH3eJJ0+nh/CIoiRwjRxde/hAHyLPXYN4V3CqKAbiZPSeJFSWHmJsbkicta0Eg==}
+
+  nodemailer@6.10.1:
+    resolution: {integrity: sha512-Z+iLaBGVaSjbIzQ4pX6XV41HrooLsQ10ZWPUehGmuantvzWoDVBnmsdUcOIDM1t+yPor5pDhVlDESgOMEGxhHA==}
+    engines: {node: '>=6.0.0'}
 
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
@@ -8724,6 +8733,10 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/nodemailer@6.4.23':
+    dependencies:
+      '@types/node': 22.19.17
+
   '@types/prismjs@1.26.6': {}
 
   '@types/prop-types@15.7.15': {}
@@ -11404,6 +11417,8 @@ snapshots:
     optional: true
 
   node-releases@2.0.37: {}
+
+  nodemailer@6.10.1: {}
 
   normalize-path@3.0.0: {}
 
