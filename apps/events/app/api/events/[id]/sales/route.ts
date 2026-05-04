@@ -179,8 +179,45 @@ export async function GET(
       status: computeOrderStatus(sale.tickets),
     }));
 
-    // Summary
-    const totalRevenue = sales.reduce((sum, s) => sum + s.amount, 0);
+    // Fetch orphan tickets (no order_id) — these predate the orders system
+    const orphanRows = await sql`
+      SELECT
+        t.id AS ticket_id,
+        t.status,
+        t.owner_did,
+        t.price_paid,
+        t.currency,
+        t.purchased_at,
+        t.payment_method,
+        t.payment_id,
+        tt.name AS ticket_type_name,
+        tr.name AS attendee_name,
+        tr.email AS attendee_email
+      FROM events.tickets t
+      LEFT JOIN events.ticket_types tt ON tt.id = t.ticket_type_id
+      LEFT JOIN events.ticket_registrations tr ON tr.ticket_id = t.id
+      WHERE t.event_id = ${eventId}
+        AND t.order_id IS NULL
+      ORDER BY t.purchased_at DESC NULLS LAST, t.created_at DESC
+    `;
+
+    const orphans = orphanRows.map((r: any) => ({
+      ticketId: r.ticket_id,
+      status: r.status ?? 'unknown',
+      ownerDid: r.owner_did ?? null,
+      pricePaid: r.price_paid ?? null,
+      currency: r.currency ?? eventRow.currency ?? 'CAD',
+      purchasedAt: r.purchased_at ? new Date(r.purchased_at).toISOString() : null,
+      ticketType: r.ticket_type_name ?? 'Unknown',
+      paymentMethod: r.payment_method ?? null,
+      paymentId: r.payment_id ?? null,
+      attendeeName: r.attendee_name ?? null,
+      attendeeEmail: r.attendee_email ?? null,
+    }));
+
+    // Summary — include orphan revenue
+    const orphanRevenue = orphans.reduce((sum: number, o: any) => sum + (o.pricePaid ?? 0), 0) / 100;
+    const totalRevenue = sales.reduce((sum, s) => sum + s.amount, 0) + orphanRevenue;
     const summary = {
       totalSales: sales.length,
       totalRevenue: parseFloat(totalRevenue.toFixed(2)),
@@ -257,7 +294,8 @@ export async function GET(
     }
 
     // JSON response — shape must match SalesTab component interface
-    const totalOrders = sales.length;
+    const totalOrders = sales.length + orphans.length;
+    const totalSalesCount = sales.length;
     const avgOrderValue = totalOrders > 0 ? Math.round(totalRevenue * 100 / totalOrders) : 0;
 
     return NextResponse.json({
@@ -289,10 +327,10 @@ export async function GET(
           status: s.status,
         };
       }),
-      orphans: [],
+      orphans,
       orphanOrders: [],
       summary: {
-        totalSales: totalOrders,
+        totalSales: totalSalesCount,
         totalRevenue: Math.round(totalRevenue * 100),
         avgOrderValue,
         totalOrders,
