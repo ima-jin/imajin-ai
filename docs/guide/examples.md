@@ -6,7 +6,7 @@ Real-world agent patterns built on Imajin. Each example shows the agent logic an
 
 ## Travel Agent with Credential Verification
 
-A travel agent that books hotels and verifies traveler credentials — the SHITSUJI pattern.
+A travel agent that books hotels and verifies traveler credentials — the tripian pattern.
 
 ### The Scenario
 
