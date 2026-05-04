@@ -192,10 +192,13 @@ export async function GET(
         t.payment_id,
         tt.name AS ticket_type_name,
         tr.name AS attendee_name,
-        tr.email AS attendee_email
+        tr.email AS attendee_email,
+        i.name AS owner_name,
+        i.handle AS owner_handle
       FROM events.tickets t
       LEFT JOIN events.ticket_types tt ON tt.id = t.ticket_type_id
       LEFT JOIN events.ticket_registrations tr ON tr.ticket_id = t.id
+      LEFT JOIN auth.identities i ON i.id = t.owner_did
       WHERE t.event_id = ${eventId}
         AND t.order_id IS NULL
       ORDER BY t.purchased_at DESC NULLS LAST, t.created_at DESC
@@ -205,6 +208,8 @@ export async function GET(
       ticketId: r.ticket_id,
       status: r.status ?? 'unknown',
       ownerDid: r.owner_did ?? null,
+      ownerName: r.owner_name ?? r.attendee_name ?? null,
+      ownerHandle: r.owner_handle ?? null,
       pricePaid: r.price_paid ?? null,
       currency: r.currency ?? eventRow.currency ?? 'CAD',
       purchasedAt: r.purchased_at ? new Date(r.purchased_at).toISOString() : null,
@@ -327,8 +332,8 @@ export async function GET(
     const orphanSales = orphans.map((o: any) => ({
       orderId: o.ticketId,
       buyerDid: o.ownerDid,
-      buyerName: o.attendeeName,
-      buyerHandle: null,
+      buyerName: o.ownerName ?? o.attendeeName,
+      buyerHandle: o.ownerHandle,
       buyerAvatar: null,
       ticketType: o.ticketType,
       quantity: 1,
