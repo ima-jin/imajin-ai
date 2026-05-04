@@ -64,6 +64,8 @@ The `-jin` suffix (今人, "now-person") brands every agent on the network. It's
 
 For users with multiple agents, append a qualifier: `veteze-jin`, `veteze-jin-travel`, `veteze-jin-bookkeeping`.
 
+**Namespace reservation:** Agent handles follow the same claim model as identity handles (RFC-26). `{username}-jin` is auto-reserved for verified handle holders. Handles that reference known entities without a verified claim (`paypal-jin`, `irs-jin`) are subject to the same anti-squatting mechanisms as business stubs: activity thresholds, petition mechanism, reputation cost. A chain-visible `handle.verified` attestation (vs. `handle.claimed`) distinguishes verified agents from unverified ones. Counterparties and the trust graph weight interactions accordingly.
+
 ```
 User ("@veteze")
   │
@@ -193,7 +195,11 @@ When a user creates an agent, they define a **grant set** — the tools the agen
   "constraints": {
     "max_gas_per_day": 10000,
     "allowed_scopes": ["actor"],
-    "network_egress": []
+    "network_egress": [],
+    "value_threshold": {
+      "pay:write": 100,
+      "attestations:write": null
+    }
   }
 }
 ```
@@ -210,6 +216,40 @@ Pre-built permission sets for common use cases:
 | **Transactor** | Operator + `pay:read`, `pay:write` | Commerce, settlement, financial operations |
 
 Users can customize beyond tiers. The UI shows exactly what each permission means and what data the agent can access.
+
+### Consent at the Moment of Effect
+
+Gas meters volume of tool calls, not consequence. An agent with Transactor grants could settle $50K in one `pay.settle` call that costs 10 gas. Gas is a rate limit, not a value boundary.
+
+High-consequence tools require **synchronous human confirmation** above a configurable threshold:
+
+```json
+{
+  "value_threshold": {
+    "pay:write": 100,       // Confirm settlements > $100
+    "attestations:write": null  // No threshold (all allowed)
+  }
+}
+```
+
+When a tool call exceeds its threshold:
+1. Gateway holds the call (does not execute)
+2. Owner receives a confirmation request via chat (push notification)
+3. Owner approves or rejects
+4. Approved: execute + record approval attestation on chain
+5. Rejected: fail + record rejection on chain
+6. Timeout (configurable, default 15 min): fail + record timeout
+
+The confirmation is itself a chain entry — proving the human was in the loop at the moment of effect, not just at the moment of delegation.
+
+### Tier Escalation Requires Owner Attestation
+
+Upgrading an agent's grant tier (e.g., Observer → Transactor) is not a billing event — it's a security boundary. Tier changes require a fresh DID-signed owner attestation confirming the new grant set. A subscription upgrade unlocks the *ability* to escalate; the owner must explicitly sign the delegation.
+
+This prevents:
+- Compromised billing accounts escalating agent permissions
+- Accidental tier changes (settings toggle vs. deliberate cryptographic act)
+- Audit gaps (the chain shows exactly when and why permissions expanded)
 
 ### Delegation Chain Verification
 
@@ -279,6 +319,8 @@ Agent sessions are strictly isolated:
 - **No cross-user context** — Agent serving User A cannot access User B's delegation
 - **No cross-session bleed** — Previous session's working memory is gone
 - **Workspace is private** — Each agent's workspace is only accessible to that agent and its owner
+
+**A note on inter-agent collusion:** Context isolation prevents *implicit* data sharing between agents. But agents communicate via signed chat messages, and chains are inspectable. Two agents *can* coordinate through these channels — that's by design (RFC-27's coordination model). The mitigation is **attribution, not prevention**: every message is signed, every action is on the chain. Collusion with receipts is detectable collusion.
 
 ---
 
@@ -431,6 +473,19 @@ Every agent has an immediate revocation path:
 7. Agent DID remains on the network (chain is historical record)
 
 Revocation is instant and irreversible. A revoked agent can be re-granted access, but it starts with a clean session — no context carryover from pre-revocation.
+
+#### Revocation and In-Flight Tool Calls
+
+Revocation takes effect on the next gateway validation. Tool calls already past the gateway complete — this is the **residual exposure window**.
+
+| Tool Category | Exposure Window | Mitigation |
+|---------------|----------------|------------|
+| `chat.send` | ~50ms | Negligible. Message is sent. |
+| `media.write` | ~200ms | File lands. Owner can delete from workspace. |
+| `pay.settle` | ~2-5s (Stripe + .fair) | **Highest risk.** Mitigated by value threshold gate above — settlements above threshold require confirmation, which is cancelled on revocation. |
+| `attestations.emit` | ~100ms | Attestation lands on chain. Cannot be un-emitted, but can be followed by a revocation attestation. |
+
+For high-consequence tools (`pay.settle`), the confirmation gate from "Consent at the Moment of Effect" is the primary mitigation — the gateway holds the call until the owner confirms, and revocation cancels any pending holds. This makes the effective exposure window for settlements: **zero for above-threshold, ~2-5s for below-threshold.**
 
 ---
 
@@ -598,6 +653,8 @@ This isn't perfect — a sufficiently motivated node operator with host access c
 
 For high-security use cases: self-host. The platform-hosted model is convenience with reasonable security, not a vault.
 
+**The implication we should be honest about:** if a node operator with host access *can* capture decrypted keys at runtime, then platform-hosted is structurally untrustworthy for credentials that materially matter — Shopify admin tokens, banking APIs, CRM with customer PII. This isn't a flaw to hide; it strengthens the self-hosted pitch and creates a natural roadmap slot for hardware-attested enclaves (TPM/SGX-based credential isolation where even the host OS can't access decrypted material). Platform-hosted is the convenience tier. Self-hosted is the sovereignty tier. Hardware-attested is the compliance tier.
+
 ---
 
 ## Relationship to RFC-25 (App Runtime)
@@ -699,7 +756,7 @@ They compose: RFC-27's router dispatches tasks → RFC-31's sandbox executes the
 
 7. **VM escape detection.** For platform-hosted VMs, how do we detect if an agent attempts to escape its container? Instrumentation overhead vs. security. Probably container-level monitoring (seccomp, AppArmor) rather than application-level.
 
-8. **Self-hosted agent verification.** A self-hosted agent can lie about its capabilities, skip safety checks, forge tool responses. The kernel validates tool *calls* but can't validate what happens *between* calls. Is this acceptable? Does the chain + tool-call audit provide enough accountability?
+8. **Self-hosted agent verification.** A self-hosted agent can lie about its capabilities, skip safety checks, forge tool responses. The kernel validates tool *calls* but can't validate what happens *between* calls. The honest answer: counterparties should weight chain entries from self-hosted agents lower than from operator-attested platform-hosted agents. This is a defensible reputation model — not a binary trust/distrust, but a signal. Platform-hosted entries carry implicit attestation that the execution environment was constrained. Self-hosted entries carry only the DID signature. The trust graph (RFC-27) should surface this distinction rather than pretending trust is uniform.
 
 9. **Migration between self-hosted and platform-hosted.** Can a user move their agent (workspace, chain, grants) from self-hosted to platform-hosted and back? Workspace portability is straightforward; VM config translation is harder.
 
