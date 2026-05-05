@@ -42,6 +42,7 @@ function toMsgShape(msg: ChatMessage) {
     id: msg.id,
     conversationId: msg.did,
     fromDid: msg.senderDid,
+    senderSubtype: msg.senderSubtype,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     content: msg.content as any,
     contentType: msg.content.type ?? 'text',

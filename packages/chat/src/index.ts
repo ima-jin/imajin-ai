@@ -5,7 +5,7 @@ export { MediaMessage } from './MediaMessage';
 export { LocationMessage } from './LocationMessage';
 export { ReactionPicker } from './ReactionPicker';
 export { LinkPreviewCard } from './LinkPreviewCard';
-export type { MessageContent, TextContent, VoiceContent, MediaContent, LocationContent } from './message-types';
+export type { MessageContent, TextContent, VoiceContent, MediaContent, LocationContent, MessageMeta } from './message-types';
 
 export { Chat } from './Chat';
 export { ChatProvider, useChatConfig } from './ChatProvider';
