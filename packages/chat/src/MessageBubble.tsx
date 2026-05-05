@@ -6,7 +6,7 @@ import { LinkPreviewCard } from './LinkPreviewCard';
 import { VoiceMessage } from './VoiceMessage';
 import { MediaMessage } from './MediaMessage';
 import { LocationMessage } from './LocationMessage';
-import type { MessageContent, SystemContent } from './message-types';
+import type { MessageContent, SystemContent, MessageMeta } from './message-types';
 import { useDidNames } from './hooks/useDidNames';
 import { ChatMarkdown, hasMarkdown } from './ChatMarkdown';
 
@@ -77,6 +77,7 @@ interface Message {
   id: string;
   conversationId: string;
   fromDid: string;
+  senderSubtype?: string;
   content: MessageContent | { type: string; text: string };
   contentType: string;
   replyTo: string | null;
@@ -127,6 +128,79 @@ function formatShortDate(iso: string): string {
   yesterday.setDate(yesterday.getDate() - 1);
   if (d.toDateString() === yesterday.toDateString()) return 'yesterday';
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function abbreviateModel(model: string): string {
+  let name = model.includes('/') ? model.split('/').pop()! : model;
+  if (name.startsWith('claude-')) name = name.slice(7);
+  return name;
+}
+
+function formatDuration(ms: number): string {
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${ms}ms`;
+}
+
+function contextBarColor(pct: number): string {
+  if (pct >= 90) return 'bg-red-500';
+  if (pct >= 70) return 'bg-amber-500';
+  return 'bg-emerald-500';
+}
+
+function AgentMetaFooter({ meta }: { meta: MessageMeta }) {
+  const [expanded, setExpanded] = useState(false);
+  const model = meta.model ? abbreviateModel(meta.model) : null;
+
+  return (
+    <button
+      onClick={() => setExpanded(v => !v)}
+      className="mt-1.5 flex flex-col gap-1 text-left w-full"
+      aria-label={expanded ? 'Collapse agent metadata' : 'Expand agent metadata'}
+    >
+      {/* Minimal row */}
+      <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+        {model && (
+          <span className="font-mono font-medium">{model}</span>
+        )}
+        {!expanded && meta.tokens && (
+          <span>{meta.tokens.out} tokens</span>
+        )}
+        {!expanded && meta.durationMs !== undefined && (
+          <span>{formatDuration(meta.durationMs)}</span>
+        )}
+        <span className="opacity-60">{expanded ? '▾' : '▸'}</span>
+      </div>
+
+      {/* Expanded details */}
+      {expanded && (
+        <div className="flex flex-col gap-1 text-[10px] text-gray-500 dark:text-gray-400">
+          {meta.tokens && (
+            <span>{meta.tokens.in} in → {meta.tokens.out} out</span>
+          )}
+          {meta.durationMs !== undefined && (
+            <span>{formatDuration(meta.durationMs)}</span>
+          )}
+          {meta.context && (
+            <div className="flex items-center gap-1.5">
+              <span className="tabular-nums">{meta.context.pct}%</span>
+              <div className="flex-1 h-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${contextBarColor(meta.context.pct)}`}
+                  style={{ width: `${Math.min(meta.context.pct, 100)}%` }}
+                />
+              </div>
+              <span className="tabular-nums opacity-70">
+                {meta.context.used.toLocaleString()} / {meta.context.max.toLocaleString()}
+              </span>
+            </div>
+          )}
+          {meta.cache !== undefined && meta.cache.hitPct !== undefined && (
+            <span>cache hit {meta.cache.hitPct}%</span>
+          )}
+        </div>
+      )}
+    </button>
+  );
 }
 
 function SystemMessageLine({ content, createdAt }: { content: SystemContent; createdAt?: string }) {
@@ -287,7 +361,12 @@ export function MessageBubble({
           >
             {/* Sender handle */}
             {!isOwn && showSenderLabel && (
-              <p className="text-xs text-amber-500 mb-1 font-medium">{senderLabel}</p>
+              <p className="text-xs text-amber-500 mb-1 font-medium flex items-center gap-1">
+                {message.senderSubtype === 'agent' && (
+                  <span title="Agent" className="opacity-80">🤖</span>
+                )}
+                {senderLabel}
+              </p>
             )}
 
             {/* Reply preview */}
@@ -360,6 +439,11 @@ export function MessageBubble({
               {formatMessageTime(message.createdAt)}
               {message.editedAt && <span className="italic">(edited)</span>}
             </p>
+
+            {/* Agent metadata footer */}
+            {message.senderSubtype === 'agent' && (message.content as any)?.meta && (
+              <AgentMetaFooter meta={(message.content as any).meta} />
+            )}
 
             {/* Link previews */}
             {message.linkPreviews && message.linkPreviews.length > 0 && (

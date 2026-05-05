@@ -4,7 +4,7 @@ import { publish } from '@imajin/bus';
 import { eq, and, desc, lt, ne, isNull, inArray, ilike, or } from 'drizzle-orm';
 
 const log = createLogger('kernel');
-import { db, conversationsV2, conversationMembers, messagesV2, messageReactionsV2, profiles } from '@/src/db';
+import { db, conversationsV2, conversationMembers, messagesV2, messageReactionsV2, profiles, identities } from '@/src/db';
 import { requireAuth, isVerifiedTier } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
@@ -144,8 +144,19 @@ export async function GET(
       return acc;
     }, {});
 
+    // Fetch sender identity subtypes
+    const senderDids = Array.from(new Set(result.map(m => m.fromDid)));
+    const senderIdentities = senderDids.length > 0
+      ? await db
+          .select({ id: identities.id, subtype: identities.subtype })
+          .from(identities)
+          .where(inArray(identities.id, senderDids))
+      : [];
+    const subtypeByDid = new Map(senderIdentities.map(i => [i.id, i.subtype]));
+
     const messagesWithReactions = result.reverse().map(m => ({
       ...m,
+      senderSubtype: subtypeByDid.get(m.fromDid) || null,
       reactions: reactionsByMessage[m.id] || [],
     }));
 
@@ -328,15 +339,27 @@ export async function POST(
       where: eq(messagesV2.id, messageId),
     });
 
+    // Enrich with sender identity subtype
+    let senderSubtype: string | null = null;
+    if (message) {
+      const [senderIdentity] = await db
+        .select({ subtype: identities.subtype })
+        .from(identities)
+        .where(eq(identities.id, effectiveDid))
+        .limit(1);
+      senderSubtype = senderIdentity?.subtype ?? null;
+    }
+    const enrichedMessage = message ? { ...message, senderSubtype } : null;
+
     publish('message.send', { issuer: effectiveDid, subject: effectiveDid, scope: 'chat', payload: { conversationDid: did, messageId } }).catch(() => {});
 
     // Broadcast via WebSocket
-    if (message) {
+    if (enrichedMessage) {
       const port = process.env.PORT || '3007';
       fetch(`http://localhost:${port}/__ws_broadcast`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversationId: did, message }),
+        body: JSON.stringify({ conversationId: did, message: enrichedMessage }),
       }).catch(() => {});
     }
 
@@ -391,7 +414,7 @@ export async function POST(
       }).catch(() => {});
     }
 
-    return jsonResponse({ message }, 201, cors);
+    return jsonResponse({ message: enrichedMessage ?? message }, 201, cors);
   } catch (error) {
     log.error({ err: String(error) }, 'Failed to send message');
     return errorResponse('Failed to send message', 500, cors);
