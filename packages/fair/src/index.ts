@@ -36,3 +36,14 @@ export {
 
 export { buildFairManifest } from './buildManifest';
 export type { FairFeeManifest } from './buildManifest';
+
+export {
+  calculateAgentInteractionCost,
+  validateAgentPricingManifest,
+  isValidAgentPricingManifest,
+  buildDefaultAgentPricingManifest,
+} from './agent-pricing';
+export type {
+  AgentPricingManifest,
+  AgentCostBreakdown,
+} from './agent-pricing';
