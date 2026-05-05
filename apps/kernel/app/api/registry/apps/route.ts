@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { db, registryApps } from '@/src/db';
 import { eq, desc, and } from 'drizzle-orm';
-import { requireAuth, isValidPublicKey } from '@imajin/auth';
-import { didFromPublicKey, publicKeyFromDid } from '@/src/lib/auth/crypto';
+import { requireAuth, generateKeypair, isValidPublicKey } from '@imajin/auth';
+import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { withLogger } from '@imajin/logger';
 
 // POST /api/registry/apps — register a new app (authenticated)
-// Developer generates their own keypair locally and submits publicKey.
-// The server never sees or generates the private key.
+// Two modes:
+//   1. Server-generated keypair (default): omit publicKey, server generates and returns keypair once
+//   2. Developer-supplied key: include publicKey, server never sees private key
 export const POST = withLogger('kernel', async (request: NextRequest) => {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
@@ -23,7 +24,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { name, description, callbackUrl, homepageUrl, logoUrl, requestedScopes, publicKey } = body as {
+  const { name, description, callbackUrl, homepageUrl, logoUrl, requestedScopes, publicKey: suppliedPublicKey } = body as {
     name?: string;
     description?: string;
     callbackUrl?: string;
@@ -39,14 +40,24 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   if (!callbackUrl || typeof callbackUrl !== 'string') {
     return NextResponse.json({ error: 'callbackUrl is required' }, { status: 400 });
   }
-  if (!publicKey || typeof publicKey !== 'string') {
-    return NextResponse.json({ error: 'publicKey is required — generate an Ed25519 keypair locally and submit the public key' }, { status: 400 });
-  }
-  if (!isValidPublicKey(publicKey)) {
-    return NextResponse.json({ error: 'Invalid Ed25519 public key' }, { status: 400 });
+
+  let publicKey: string;
+  let keypairResponse: { privateKey: string; publicKey: string } | undefined;
+
+  if (suppliedPublicKey && typeof suppliedPublicKey === 'string' && suppliedPublicKey.trim()) {
+    // Developer supplied their own key
+    if (!isValidPublicKey(suppliedPublicKey)) {
+      return NextResponse.json({ error: 'Invalid Ed25519 public key' }, { status: 400 });
+    }
+    publicKey = suppliedPublicKey.trim();
+  } else {
+    // Generate keypair server-side — return private key once
+    const generated = generateKeypair();
+    publicKey = generated.publicKey;
+    keypairResponse = generated;
   }
 
-  // Derive DID from the submitted public key — same as human identity creation
+  // Derive DID from public key
   const appDid = didFromPublicKey(publicKey);
 
   const [app] = await db.insert(registryApps).values({
@@ -62,7 +73,13 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     requestedScopes: Array.isArray(requestedScopes) ? requestedScopes : [],
   }).returning();
 
-  return NextResponse.json(app, { status: 201 });
+  // Include keypair in response only when server-generated (shown once, never stored)
+  const response: Record<string, unknown> = { ...app };
+  if (keypairResponse) {
+    response.keypair = keypairResponse;
+  }
+
+  return NextResponse.json(response, { status: 201 });
 });
 
 // GET /api/registry/apps — list active apps (public, paginated)
