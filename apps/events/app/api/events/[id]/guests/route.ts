@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth } from '@imajin/auth';
+import { corsHeaders } from '@imajin/config';
 
 const log = createLogger('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
@@ -34,13 +35,25 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+  const cors = corsHeaders(request);
+  let did: string;
+
+  // App auth path
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'events:read' });
+    if ('error' in appResult) {
+      return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
+    }
+    did = appResult.appAuth.userDid;
+  } else {
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+    const { identity } = authResult;
+    did = identity.actingAs || identity.id;
   }
 
-  const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
   const { id } = await params;
 
   try {

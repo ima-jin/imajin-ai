@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { db, events, ticketTypes } from '@/src/db';
-
-
-import { requireHardDID } from '@imajin/auth';
+import { requireHardDID, requireAppAuth } from '@imajin/auth';
+import { corsHeaders } from '@imajin/config';
 import { getClient } from '@imajin/db';
 import { buildFairManifest } from '@imajin/fair';
 import { and, asc, desc, eq, gt } from 'drizzle-orm';
@@ -17,14 +16,27 @@ const AUTH_URL = process.env.AUTH_SERVICE_URL!;
  * Requires hard DID (keypair-based identity)
  */
 export const POST = withLogger('events', async (request, { log, correlationId }) => {
-  // Require hard DID authentication
-  const authResult = await requireHardDID(request);
-  if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
-  }
+  const cors = corsHeaders(request);
+  let did: string;
+  let identity: { id: string; actingAs?: string | null };
 
-  const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  // App auth path
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'events:write' });
+    if ('error' in appResult) {
+      return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
+    }
+    did = appResult.appAuth.userDid;
+    identity = { id: did, actingAs: null };
+  } else {
+    // Require hard DID authentication
+    const authResult = await requireHardDID(request);
+    if ('error' in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+    identity = authResult.identity;
+    did = identity.actingAs || identity.id;
+  }
 
   try {
     const body = await request.json();
@@ -237,12 +249,44 @@ export const POST = withLogger('events', async (request, { log, correlationId })
  * GET /api/events - List events
  * Supports: ?courseSlug=intro-to-ai&upcoming=true&status=published&limit=20
  */
+/** Fields safe to return for events:read app scope */
+function filterEventForApp(event: Record<string, any>): Record<string, any> {
+  const { id, did, creatorDid, title, description, startsAt, endsAt, timezone, locationType, isVirtual, virtualUrl, venue, address, city, country, status, accessMode, imageUrl, imageAssetId, tags, courseSlug, nameDisplayPolicy, createdAt, updatedAt } = event;
+  return { id, did, creatorDid, title, description, startsAt, endsAt, timezone, locationType, isVirtual, virtualUrl, venue, address, city, country, status, accessMode, imageUrl, imageAssetId, tags, courseSlug, nameDisplayPolicy, createdAt, updatedAt };
+}
+
 export const GET = withLogger('events', async (request, { log }) => {
+  const cors = corsHeaders(request);
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status') || 'published';
   const limit = parseInt(searchParams.get('limit') || '20');
   const courseSlug = searchParams.get('courseSlug');
   const upcoming = searchParams.get('upcoming') === 'true';
+
+  // App auth path
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'events:read' });
+    if ('error' in appResult) {
+      return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
+    }
+    try {
+      const conditions = [eq(events.status, status)];
+      if (courseSlug) conditions.push(eq(events.courseSlug, courseSlug));
+      if (upcoming) conditions.push(gt(events.startsAt, new Date()));
+
+      const eventList = await db
+        .select()
+        .from(events)
+        .where(and(...conditions))
+        .orderBy(upcoming ? asc(events.startsAt) : desc(events.startsAt))
+        .limit(limit);
+
+      return NextResponse.json({ events: eventList.map(e => filterEventForApp(e as Record<string, any>)) }, { headers: cors });
+    } catch (error) {
+      log.error({ err: String(error) }, 'Failed to list events (app auth)');
+      return NextResponse.json({ error: 'Failed to list events' }, { status: 500, headers: cors });
+    }
+  }
 
   try {
     const conditions = [eq(events.status, status)];
