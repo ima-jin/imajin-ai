@@ -8,6 +8,7 @@ import { eq, or, and, isNull, count } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
+import { validateAgentPricingManifest } from '@imajin/fair';
 
 const log = createLogger('kernel');
 
@@ -262,7 +263,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = JSON.parse(bodyText);
-    const { displayName, avatar, avatarAssetId, bio, email, phone, visibility, feature_toggles } = body;
+    const { displayName, avatar, avatarAssetId, bio, email, phone, visibility, feature_toggles, agentPricing } = body;
 
     // Build update object
     const updates: Record<string, any> = {
@@ -278,6 +279,20 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (feature_toggles !== undefined) {
       // Merge incoming feature_toggles over existing ones
       updates.featureToggles = { ...(existing?.featureToggles ?? {}), ...feature_toggles };
+    }
+    if (agentPricing !== undefined) {
+      if (agentPricing === null) {
+        updates.agentPricing = null;
+      } else {
+        const validation = validateAgentPricingManifest(agentPricing);
+        if (!validation.valid) {
+          return NextResponse.json(
+            { error: 'Invalid agent pricing manifest', details: validation.errors },
+            { status: 400, headers: cors }
+          );
+        }
+        updates.agentPricing = agentPricing;
+      }
     }
     if (visibility !== undefined) {
       if (!['public', 'incognito'].includes(visibility)) {
@@ -301,6 +316,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           phone: phone || null,
           visibility: visibility || 'public',
           featureToggles: feature_toggles || {},
+          agentPricing: agentPricing || null,
         })
         .returning();
     } else {

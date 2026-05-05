@@ -31,6 +31,7 @@ export const profiles = profileSchema.table('profiles', {
   metadata: jsonb('metadata').default({}),                    // location, website, etc.
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }), // Online presence tracking
   featureToggles: jsonb('feature_toggles').$type<FeatureToggles>().notNull().default({}),
+  agentPricing: jsonb('agent_pricing').default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   claimedBy: text('claimed_by'),                              // owner DID, null = unclaimed stub
