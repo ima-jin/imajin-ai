@@ -6,9 +6,16 @@ import { revalidatePath } from 'next/cache';
 const log = createLogger('events');
 
 import { db, events, ticketTypes } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth } from '@imajin/auth';
+import { corsHeaders } from '@imajin/config';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq } from 'drizzle-orm';
+
+/** Fields safe to return for events:read app scope */
+function filterEventForApp(event: Record<string, any>): Record<string, any> {
+  const { id, did, creatorDid, title, description, startsAt, endsAt, timezone, locationType, isVirtual, virtualUrl, venue, address, city, country, status, accessMode, imageUrl, imageAssetId, tags, courseSlug, nameDisplayPolicy, createdAt, updatedAt } = event;
+  return { id, did, creatorDid, title, description, startsAt, endsAt, timezone, locationType, isVirtual, virtualUrl, venue, address, city, country, status, accessMode, imageUrl, imageAssetId, tags, courseSlug, nameDisplayPolicy, createdAt, updatedAt };
+}
 
 /**
  * GET /api/events/[id] - Get event details with ticket types
@@ -17,6 +24,45 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const cors = corsHeaders(request);
+
+  // App auth path
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'events:read' });
+    if ('error' in appResult) {
+      return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
+    }
+    try {
+      const { id } = await params;
+      const [event] = await db
+        .select()
+        .from(events)
+        .where(eq(events.id, id))
+        .limit(1);
+
+      if (!event) {
+        return NextResponse.json({ error: 'Event not found' }, { status: 404, headers: cors });
+      }
+
+      // Get ticket types with availability
+      const types = await db
+        .select()
+        .from(ticketTypes)
+        .where(eq(ticketTypes.eventId, id));
+
+      return NextResponse.json({
+        event: filterEventForApp(event as Record<string, any>),
+        ticketTypes: types.map(t => ({
+          ...t,
+          available: t.quantity ? t.quantity - (t.sold || 0) : null,
+        })),
+      }, { headers: cors });
+    } catch (error) {
+      log.error({ err: String(error) }, 'Failed to get event (app auth)');
+      return NextResponse.json({ error: 'Failed to get event' }, { status: 500, headers: cors });
+    }
+  }
+
   try {
     const { id } = await params;
     const [event] = await db
@@ -66,13 +112,25 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+  const cors = corsHeaders(request);
+  let did: string;
+
+  // App auth path
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'events:write' });
+    if ('error' in appResult) {
+      return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
+    }
+    did = appResult.appAuth.userDid;
+  } else {
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+    const { identity } = authResult;
+    did = identity.actingAs || identity.id;
   }
 
-  const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
   const { id } = await params;
 
   try {
@@ -137,13 +195,25 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+  const cors = corsHeaders(request);
+  let did: string;
+
+  // App auth path
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'events:write' });
+    if ('error' in appResult) {
+      return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
+    }
+    did = appResult.appAuth.userDid;
+  } else {
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+    const { identity } = authResult;
+    did = identity.actingAs || identity.id;
   }
 
-  const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
   const { id } = await params;
 
   try {

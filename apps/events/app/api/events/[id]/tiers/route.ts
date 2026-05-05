@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 
 const log = createLogger('events');
 import { db, events, ticketTypes } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth } from '@imajin/auth';
+import { corsHeaders } from '@imajin/config';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq, and, asc, isNull } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
@@ -16,7 +17,33 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const cors = corsHeaders(request);
   const { id } = await params;
+
+  // App auth path
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'events:read' });
+    if ('error' in appResult) {
+      return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
+    }
+    try {
+      const tiers = await db
+        .select()
+        .from(ticketTypes)
+        .where(and(eq(ticketTypes.eventId, id), isNull(ticketTypes.accessCode)))
+        .orderBy(asc(ticketTypes.sortOrder));
+
+      return NextResponse.json({
+        tiers: tiers.map(t => ({
+          ...t,
+          available: t.quantity !== null ? t.quantity - (t.sold || 0) : null,
+        })),
+      }, { headers: cors });
+    } catch (error) {
+      log.error({ err: String(error) }, 'Failed to list tiers (app auth)');
+      return NextResponse.json({ error: 'Failed to list tiers' }, { status: 500, headers: cors });
+    }
+  }
 
   try {
     const tiers = await db
