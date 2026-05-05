@@ -38,7 +38,10 @@ export async function GET(
     }
 
     const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
-    if (effectiveDid !== did) {
+    const isAgentDelegated =
+      authResult.identity.actingAs === did &&
+      authResult.identity.actingAsRole === 'agent';
+    if (effectiveDid !== did && !isAgentDelegated) {
       return NextResponse.json(
         { error: 'Forbidden - can only access your own transactions' },
         { status: 403, headers: cors }
