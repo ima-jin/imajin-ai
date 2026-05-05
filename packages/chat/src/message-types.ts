@@ -1,5 +1,13 @@
+export interface MessageMeta {
+  model?: string;
+  context?: { used: number; max: number; pct: number };
+  tokens?: { in: number; out: number };
+  durationMs?: number;
+  cache?: { hitPct: number };
+}
+
 // Text message (E2EE)
-export type TextContent = { type?: "text"; text: string; encrypted?: string; nonce?: string };
+export type TextContent = { type?: "text"; text: string; encrypted?: string; nonce?: string; meta?: MessageMeta };
 
 // Voice message
 export type VoiceContent = {

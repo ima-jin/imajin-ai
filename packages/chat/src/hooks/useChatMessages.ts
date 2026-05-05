@@ -7,6 +7,7 @@ export interface ChatMessage {
   id: string;
   did: string;
   senderDid: string;
+  senderSubtype?: string;
   content: { type: string; text?: string; [key: string]: unknown };
   replyTo?: string;
   reactions?: { emoji: string; senderDid: string }[];
@@ -55,6 +56,7 @@ export function useChatMessages(did: string): UseChatMessagesResult {
         return {
           ...msg,
           senderDid: msg.senderDid ?? msg.fromDid,
+          senderSubtype: msg.senderSubtype ?? msg.sender_subtype ?? msg.subtype,
           did: msg.did ?? msg.conversationDid,
           replyTo: msg.replyTo ?? msg.replyToMessageId,
           reactions: msg.reactions?.map((r: any) => ({
@@ -114,6 +116,7 @@ export function useChatMessages(did: string): UseChatMessagesResult {
     const normalized: ChatMessage = {
       ...message,
       senderDid: message.senderDid ?? raw.fromDid,
+      senderSubtype: message.senderSubtype ?? raw.senderSubtype ?? raw.sender_subtype ?? raw.subtype,
       did: message.did ?? raw.conversationDid,
       replyTo: raw.replyTo ?? raw.replyToMessageId,
     };
