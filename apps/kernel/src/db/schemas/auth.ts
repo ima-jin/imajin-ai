@@ -196,7 +196,7 @@ export const devices = authSchema.table('devices', {
 export const identityMembers = authSchema.table('identity_members', {
   identityDid: text('identity_did').notNull(),
   memberDid: text('member_did').notNull(),
-  role: text('role').notNull().default('member'),         // 'owner' | 'admin' | 'maintainer' | 'member' | ...
+  role: text('role').notNull().default('member'),         // 'owner' | 'admin' | 'maintainer' | 'member' | 'agent' | ...
   allowedServices: text('allowed_services').array(),      // null = full access, ['events','pay'] = restricted
   addedBy: text('added_by'),
   addedAt: timestamp('added_at', { withTimezone: true }).defaultNow(),

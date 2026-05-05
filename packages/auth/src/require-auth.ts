@@ -16,6 +16,7 @@ function parseCookieValue(cookieHeader: string | null, name: string): string | n
 export interface AuthOptions {
   verifyChain?: boolean; // If true, also verify the chain is valid (not just session)
   service?: string;      // If set, validate that acting-as controller has access to this service
+  permissions?: string[]; // If set, restrict what acting-as roles can do (e.g. ['read'])
 }
 
 /**
@@ -97,6 +98,7 @@ async function validateBearerToken(
 
 interface ActingAsResult {
   valid: boolean;
+  role?: string;                     // e.g. 'owner', 'admin', 'agent'
   allowedServices?: string[] | null; // null = full access
 }
 
@@ -126,7 +128,7 @@ async function validateActingAs(
     );
     if (!res.ok) return { valid: false };
     const data = await res.json();
-    if (data.valid !== true || !["owner", "admin", "maintainer"].includes(data.role)) {
+    if (data.valid !== true || !["owner", "admin", "maintainer", "agent"].includes(data.role)) {
       return { valid: false };
     }
 
@@ -139,7 +141,7 @@ async function validateActingAs(
       }
     }
 
-    return { valid: true, allowedServices };
+    return { valid: true, role: data.role, allowedServices };
   } catch (err) {
     log.error({ err: String(err) }, "[AUTH] Act-as validation failed");
     return { valid: false };
@@ -205,6 +207,7 @@ export async function requireAuth(
         return { error: "Not authorized to act as this group", status: 403 };
       }
       result.identity.actingAs = actingAs;
+      result.identity.actingAsRole = actingAsResult.role;
       result.identity.actingAsServices = actingAsResult.allowedServices ?? undefined;
     }
   }

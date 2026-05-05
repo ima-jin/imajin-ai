@@ -8,6 +8,7 @@ export interface Identity {
   tier?: "soft" | "preliminary" | "established" | "steward" | "operator";
   chainVerified?: boolean;
   actingAs?: string;            // DID of group the caller is acting on behalf of
+  actingAsRole?: string;        // Role of the caller in the group (e.g. 'agent')
   actingAsServices?: string[];  // Services this controller can access (undefined = full access)
 }
 
