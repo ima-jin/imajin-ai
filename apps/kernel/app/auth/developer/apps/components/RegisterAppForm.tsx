@@ -7,6 +7,7 @@ interface RegisteredApp {
   id: string;
   appDid: string;
   name: string;
+  keypair?: { privateKey: string; publicKey: string };
 }
 
 interface Props {
@@ -14,21 +15,21 @@ interface Props {
   onCancel: () => void;
 }
 
-const NODE_ONELINER = `node -e "const{generateKeyPairSync}=require('crypto');const{publicKey,privateKey}=generateKeyPairSync('ed25519');console.log('Public:',publicKey.export({type:'spki',format:'der'}).toString('hex').slice(-64));console.log('Private:',privateKey.export({type:'pkcs8',format:'der'}).toString('hex').slice(-64))"`;
-
-const NOBLE_ONELINER = `npx -y tsx -e "import{etc,getPublicKey}from'@noble/ed25519';const priv=etc.randomPrivateKey();console.log('Private:',Buffer.from(priv).toString('hex'));import{sha512}from'@noble/hashes/sha2.js';etc.sha512Sync=(...m)=>sha512(etc.concatBytes(...m));console.log('Public:',Buffer.from(getPublicKey(priv)).toString('hex'))"`;
-
 export default function RegisterAppForm({ onSuccess, onCancel }: Props) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [callbackUrl, setCallbackUrl] = useState('');
   const [homepageUrl, setHomepageUrl] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
-  const [publicKey, setPublicKey] = useState('');
   const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
-  const [showKeypairHelp, setShowKeypairHelp] = useState(false);
+  const [useOwnKey, setUseOwnKey] = useState(false);
+  const [publicKey, setPublicKey] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [error, setError] = useState('');
+
+  // Post-registration state
+  const [createdApp, setCreatedApp] = useState<RegisteredApp | null>(null);
+  const [keypairDownloaded, setKeypairDownloaded] = useState(false);
 
   function toggleScope(scope: string) {
     setSelectedScopes(prev =>
@@ -41,20 +42,25 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Props) {
     setStatus('loading');
     setError('');
 
+    const payload: Record<string, unknown> = {
+      name: name.trim(),
+      description: description.trim() || undefined,
+      callbackUrl: callbackUrl.trim(),
+      homepageUrl: homepageUrl.trim() || undefined,
+      logoUrl: logoUrl.trim() || undefined,
+      requestedScopes: selectedScopes,
+    };
+
+    if (useOwnKey && publicKey.trim()) {
+      payload.publicKey = publicKey.trim();
+    }
+
     try {
       const res = await fetch('/api/registry/apps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || undefined,
-          callbackUrl: callbackUrl.trim(),
-          homepageUrl: homepageUrl.trim() || undefined,
-          logoUrl: logoUrl.trim() || undefined,
-          publicKey: publicKey.trim(),
-          requestedScopes: selectedScopes,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -64,13 +70,86 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Props) {
         return;
       }
 
-      onSuccess(data);
+      // If server generated a keypair, show the download screen
+      if (data.keypair) {
+        setCreatedApp(data);
+        setStatus('idle');
+      } else {
+        onSuccess(data);
+      }
     } catch {
       setStatus('error');
       setError('Network error — please try again');
     }
   }
 
+  function downloadKeypair() {
+    if (!createdApp?.keypair) return;
+    const blob = new Blob(
+      [JSON.stringify({
+        did: createdApp.appDid,
+        publicKey: createdApp.keypair.publicKey,
+        privateKey: createdApp.keypair.privateKey,
+      }, null, 2)],
+      { type: 'application/json' }
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `.app-${name.trim().toLowerCase().replace(/\s+/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setKeypairDownloaded(true);
+  }
+
+  // --- Post-registration: keypair download screen ---
+  if (createdApp?.keypair) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-5">
+        <div>
+          <h2 className="text-base font-semibold text-white mb-1">App Registered ✓</h2>
+          <p className="text-sm text-zinc-400">
+            <strong className="text-white">{createdApp.name}</strong> — <code className="text-xs text-amber-400">{createdApp.appDid}</code>
+          </p>
+        </div>
+
+        <div className="bg-red-950/30 border border-red-800/40 rounded-lg p-4 space-y-3">
+          <p className="text-sm text-red-300 font-medium">⚠️ Download your keypair now</p>
+          <p className="text-xs text-red-400/80">
+            This is the only time the private key will be shown. It is not stored on the server.
+            If you lose it, you&apos;ll need to re-register the app.
+          </p>
+          <button
+            onClick={downloadKeypair}
+            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded-lg transition-colors text-sm"
+          >
+            Download Keypair (.json)
+          </button>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">App DID</p>
+          <code className="block text-xs text-zinc-300 bg-zinc-800 rounded-lg p-3 font-mono break-all">
+            {createdApp.appDid}
+          </code>
+        </div>
+
+        <div className="flex gap-3 pt-1">
+          <button
+            onClick={() => onSuccess(createdApp)}
+            disabled={!keypairDownloaded}
+            className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-black font-semibold rounded-lg transition-colors text-sm"
+          >
+            {keypairDownloaded ? 'Done' : 'Download keypair first'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Registration form ---
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
       <div className="flex items-center justify-between mb-5">
@@ -183,54 +262,43 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Props) {
           </div>
         </div>
 
-        {/* Public Key */}
-        <div>
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-            Public Key <span className="text-red-400">*</span>
+        {/* Keypair option */}
+        <div className="border-t border-zinc-800 pt-4">
+          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+            Identity Keypair
           </label>
-          <textarea
-            value={publicKey}
-            onChange={e => setPublicKey(e.target.value)}
-            placeholder="64-character hex Ed25519 public key"
-            rows={2}
-            required
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors resize-none text-sm font-mono"
-          />
-          <p className="mt-1 text-xs text-zinc-500">
-            Generate an Ed25519 keypair and paste your public key (hex, 64 chars). Your private key stays with you.
-          </p>
-
-          {/* Keypair help */}
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={() => setShowKeypairHelp(!showKeypairHelp)}
-              className="text-xs text-amber-400/70 hover:text-amber-400 transition-colors flex items-center gap-1"
-            >
-              <span>{showKeypairHelp ? '▼' : '▶'}</span>
-              How to generate a keypair
-            </button>
-
-            {showKeypairHelp && (
-              <div className="mt-2 space-y-3 p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50">
-                <div>
-                  <p className="text-xs text-zinc-400 mb-1.5 font-medium">Option 1 — Node.js built-in:</p>
-                  <div className="relative">
-                    <pre className="text-[10px] text-zinc-300 font-mono bg-zinc-900 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">{NODE_ONELINER}</pre>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs text-zinc-400 mb-1.5 font-medium">Option 2 — @noble/ed25519:</p>
-                  <div className="relative">
-                    <pre className="text-[10px] text-zinc-300 font-mono bg-zinc-900 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">{NOBLE_ONELINER}</pre>
-                  </div>
-                </div>
-                <p className="text-[10px] text-zinc-500">
-                  Save the private key securely — you will need it to sign requests. Never share it.
-                </p>
-              </div>
-            )}
+          <div className="space-y-2">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="radio"
+                checked={!useOwnKey}
+                onChange={() => setUseOwnKey(false)}
+                className="w-4 h-4 border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-zinc-900"
+              />
+              <span className="text-sm text-zinc-300">Generate keypair for me <span className="text-zinc-500">(recommended)</span></span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="radio"
+                checked={useOwnKey}
+                onChange={() => setUseOwnKey(true)}
+                className="w-4 h-4 border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-zinc-900"
+              />
+              <span className="text-sm text-zinc-300">I have my own Ed25519 public key</span>
+            </label>
           </div>
+
+          {useOwnKey && (
+            <div className="mt-3">
+              <textarea
+                value={publicKey}
+                onChange={e => setPublicKey(e.target.value)}
+                placeholder="64-character hex Ed25519 public key"
+                rows={2}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors resize-none text-sm font-mono"
+              />
+            </div>
+          )}
         </div>
 
         {error && (
@@ -249,7 +317,7 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Props) {
           </button>
           <button
             type="submit"
-            disabled={status === 'loading' || !name.trim() || !callbackUrl.trim() || !publicKey.trim()}
+            disabled={status === 'loading' || !name.trim() || !callbackUrl.trim() || (useOwnKey && !publicKey.trim())}
             className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-900/40 disabled:text-amber-700 text-black font-semibold rounded-lg transition-colors text-sm"
           >
             {status === 'loading' ? 'Registering…' : 'Register App'}
