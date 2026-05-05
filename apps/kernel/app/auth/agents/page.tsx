@@ -72,7 +72,7 @@ export default function AgentsPage() {
         return;
       }
     } catch (err) {
-      console.error('Failed to load agents:', err);
+      void err; // logged via status message below
       showStatus('error', 'Failed to load agents');
     } finally {
       setLoading(false);
