@@ -35,9 +35,12 @@ export async function GET(
     );
   }
 
-  // Must be requesting your own balance (or acting as scope)
+  // Must be requesting your own balance (or acting as scope, or agent-delegated)
   const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
-  if (effectiveDid !== decoded) {
+  const isAgentDelegated =
+    authResult.identity.actingAs === decoded &&
+    authResult.identity.actingAsRole === 'agent';
+  if (effectiveDid !== decoded && !isAgentDelegated) {
     return NextResponse.json(
       { error: 'Forbidden - can only access your own balance' },
       { status: 403, headers: cors }

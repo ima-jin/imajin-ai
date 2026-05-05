@@ -6,7 +6,7 @@ import { nanoid } from "nanoid";
 import { db, assets, folders, assetFolders, identities } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql, isNull } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/media/classify";
 import { rateLimit, getClientIP } from "@/src/lib/kernel/rate-limit";
 import { createLogger } from "@imajin/logger";
@@ -359,7 +359,9 @@ export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("Authorization");
   const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
+  const { searchParams } = new URL(request.url);
   let ownerDid: string;
+  let isAgentQuery = false;
   if (bearerToken && internalApiKey && bearerToken === internalApiKey) {
     const ownerDidHeader = request.headers.get("X-Owner-DID");
     if (!ownerDidHeader) {
@@ -371,10 +373,18 @@ export async function GET(request: NextRequest) {
     if ("error" in authResult) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
     }
-    ownerDid = authResult.identity.actingAs || authResult.identity.id;
+    const { identity } = authResult;
+    const didParam = searchParams.get("did");
+
+    if (didParam && didParam !== identity.id) {
+      // Querying another DID's public assets — allowed for any authenticated user
+      ownerDid = didParam;
+      isAgentQuery = true;
+    } else {
+      ownerDid = identity.actingAs || identity.id;
+    }
   }
 
-  const { searchParams } = new URL(request.url);
   const search = searchParams.get("search");      // filename search
   const type = searchParams.get("type");          // e.g. "image"
   const sort = searchParams.get("sort") || "created";
@@ -387,6 +397,14 @@ export async function GET(request: NextRequest) {
 
     // Build where conditions
     const conditions = [eq(assets.ownerDid, ownerDid), eq(assets.status, "active")];
+
+    // If querying another DID's assets, restrict to public ones
+    if (isAgentQuery) {
+      // Public = fairManifest->access->>type = 'public' OR no access restriction set
+      conditions.push(
+        sql`COALESCE((${assets.fairManifest}->'access'->>'type'), 'private') = 'public'`
+      );
+    }
 
     let rows = await db
       .select()
