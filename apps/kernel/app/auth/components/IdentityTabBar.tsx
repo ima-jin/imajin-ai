@@ -17,6 +17,7 @@ interface Tab {
 
 const ALL_TABS: Tab[] = [
   { label: 'Profile', href: '/auth', exact: true },
+  { label: 'Agents', href: '/auth/agents', exact: false },
   { label: 'Attestations', href: '/auth/attestations', exact: false },
   { label: 'Notifications', href: '/auth/notifications', exact: false },
   { label: 'Developer', href: '/auth/developer/apps', exact: false },
