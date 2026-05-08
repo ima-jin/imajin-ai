@@ -22,7 +22,7 @@ export default function MediaLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-[100dvh] flex flex-col overflow-hidden">
       {children}
     </div>
   );
