@@ -281,8 +281,11 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
       <div className="w-full max-w-md rounded-xl border border-orange-500/30 bg-orange-500/5 dark:bg-orange-500/10 p-5 space-y-4">
         <div className="flex items-center gap-2">
           <span className="text-orange-500 text-xl">📬</span>
-          <h3 className="font-semibold text-base">Send your Interac e-Transfer</h3>
+          <h3 className="font-semibold text-base">Reserved — send your e-Transfer to confirm</h3>
         </div>
+        <p className="text-xs text-orange-500">
+          You don't have your ticket yet. It'll be activated once we confirm your payment — we'll email you the ticket then.
+        </p>
 
         <div className="space-y-3 text-sm">
           <div className="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700">
@@ -292,7 +295,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
             </span>
           </div>
           <div className="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700">
-            <span className="text-gray-500 dark:text-gray-400">Send to</span>
+            <span className="text-gray-500 dark:text-gray-400">Send your e-Transfer to</span>
             <span className="font-mono font-medium">{etransfer.email}</span>
           </div>
           <div className="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700">

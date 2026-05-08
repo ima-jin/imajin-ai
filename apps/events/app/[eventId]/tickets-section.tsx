@@ -728,11 +728,14 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
       <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl space-y-3">
         <div className="flex items-center gap-2">
           <span className="text-orange-500 text-xl">📬</span>
-          <h3 className="font-semibold text-base">Send your Interac e-Transfer</h3>
+          <h3 className="font-semibold text-base">Reserved — send your e-Transfer to confirm</h3>
         </div>
+        <p className="text-xs text-orange-500">
+          You don't have your ticket{emtResult.quantity > 1 ? 's' : ''} yet. They'll be activated once we confirm your payment — we'll email you the ticket{emtResult.quantity > 1 ? 's' : ''} then.
+        </p>
         <div className="text-sm space-y-1.5">
           <div className="flex justify-between"><span className="text-gray-500">Amount</span><span className="font-semibold">{new Intl.NumberFormat('en-CA', { style: 'currency', currency: emtResult.currency }).format(emtResult.amount)}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Send to</span><span className="font-mono">{emtResult.email}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Send your e-Transfer to</span><span className="font-mono">{emtResult.email}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Memo</span><span className="font-mono font-semibold text-orange-500">{emtResult.memo}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Pay by</span><span>{new Date(emtResult.deadline).toLocaleString('en-CA', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span></div>
         </div>

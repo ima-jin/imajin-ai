@@ -12,6 +12,8 @@ import { db, events, ticketTypes, tickets, orders, eventInvites } from '@/src/db
 import { eq, and, lt } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
 import { randomBytes } from 'crypto';
+import { getClient } from '@imajin/db';
+import { sendEmail, etransferReservationEmail } from '@/src/lib/email';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const HOLD_HOURS = 72;
@@ -309,6 +311,76 @@ export const POST = withLogger('events', async (request, { log }) => {
 
     const memo = `ORD-${order.id}`;
     const amount = totalAmount / 100;
+
+    // Send the buyer a 'reserved — not yet confirmed' email so they have a
+    // record of the hold, the memo, and the address to send to. We resolve the
+    // buyer's email from auth.identities (contact_email) when not provided in
+    // the body, so logged-in buyers get one too.
+    let buyerEmail = ownerEmail;
+    if (!buyerEmail) {
+      try {
+        const sql = getClient();
+        const rows = await sql<{ contact_email: string | null }[]>`
+          SELECT contact_email FROM auth.identities WHERE id = ${ownerDid} LIMIT 1
+        `;
+        buyerEmail = rows[0]?.contact_email ?? undefined;
+      } catch (err) {
+        log.warn({ err: String(err) }, 'Failed to resolve buyer email for reservation');
+      }
+    }
+
+    if (buyerEmail) {
+      const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+      const eventDate = new Date(event.startsAt);
+      const eventImageUrl = event.imageUrl
+        ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
+        : undefined;
+      const summary = cart.map((item) => ({
+        typeName: typesById.get(item.ticketTypeId)?.name ?? 'Ticket',
+        quantity: item.quantity,
+      }));
+      const formattedAmount = new Intl.NumberFormat('en-CA', {
+        style: 'currency',
+        currency: cartCurrency,
+      }).format(amount);
+      const formattedDeadline = holdUntil.toLocaleString('en-CA', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZoneName: 'short',
+      });
+      sendEmail({
+        to: buyerEmail,
+        subject: `Reserved — send your e-Transfer for ${event.title}`,
+        html: etransferReservationEmail({
+          eventTitle: event.title,
+          eventDate: eventDate.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          }),
+          eventTime: eventDate.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            timeZoneName: 'short',
+          }),
+          ticketSummary: summary,
+          totalQuantity,
+          amount: formattedAmount,
+          payToEmail: etransferEmail,
+          memo,
+          deadline: formattedDeadline,
+          buyerEmail,
+          myTicketsUrl: `${EVENTS_URL}/${event.id}`,
+          eventImageUrl,
+        }),
+      }).catch((err) => log.error({ err: String(err) }, 'Failed to send e-Transfer reservation email'));
+    } else {
+      log.warn({ ownerDid, eventId: body.eventId }, 'No buyer email available for reservation; skipping confirmation send');
+    }
 
     return NextResponse.json(
       {
