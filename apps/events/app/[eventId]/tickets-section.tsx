@@ -644,7 +644,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
   const [step, setStep] = useState<BarStep>('idle');
   const [emtEmail, setEmtEmail] = useState(sessionEmail || '');
   const [emtName, setEmtName] = useState('');
-  const [emtResult, setEmtResult] = useState<{ ticketId: string; email: string; amount: number; currency: string; memo: string; deadline: string; message: string } | null>(null);
+  const [emtResult, setEmtResult] = useState<{ orderId: string; quantity: number; email: string; amount: number; currency: string; memo: string; deadline: string; message: string } | null>(null);
 
   const first = cartItems[0];
   const multiType = cartItems.length > 1;
@@ -692,6 +692,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         body: JSON.stringify({
           eventId,
           ticketTypeId: first.ticket.id,
+          quantity: first.qty,
           ...(inviteToken && { invite: inviteToken }),
           ...(!sessionEmail && emtEmail && { email: emtEmail.trim() }),
           ...(!sessionEmail && emtName && { name: emtName.trim() }),
@@ -705,7 +706,8 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
       }
       const data = await res.json();
       setEmtResult({
-        ticketId: data.ticketId,
+        orderId: data.orderId,
+        quantity: data.instructions.quantity ?? first.qty,
         email: data.instructions.email,
         amount: data.instructions.amount,
         currency: data.instructions.currency,
@@ -735,8 +737,8 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           <div className="flex justify-between"><span className="text-gray-500">Pay by</span><span>{new Date(emtResult.deadline).toLocaleString('en-CA', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span></div>
         </div>
         <p className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 rounded-lg p-3">{emtResult.message}</p>
-        {first && first.qty > 1 && (
-          <p className="text-xs text-amber-500">⚠️ e-Transfer reserves 1 ticket at a time. Send another e-Transfer or use Card to get the remaining {first.qty - 1}.</p>
+        {emtResult.quantity > 1 && (
+          <p className="text-xs text-gray-500">Reserved {emtResult.quantity} tickets in one order. Send a single e-Transfer for the full amount.</p>
         )}
       </div>
     );
@@ -747,7 +749,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
       <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl space-y-3">
         <h3 className="font-semibold text-base">🏦 Pay by e-Transfer</h3>
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          Reserves 1 × {first?.ticket.name} for 72 hours while you send your e-Transfer.
+          Reserves {totalQty} × {first?.ticket.name} for 72 hours while you send your e-Transfer.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           <input type="text" placeholder="Your name" value={emtName} onChange={(e) => setEmtName(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm" />
@@ -807,7 +809,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
       )}
       {etransferEnabled && totalQty > 0 && (
         <p className="text-xs text-gray-400 mt-1">
-          e-Transfer reserves 1 ticket at a time and pays the organizer directly.
+          e-Transfer pays the organizer directly. One transfer covers all reserved tickets.
         </p>
       )}
     </div>

@@ -9,12 +9,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { db, tickets, ticketTypes, events } from '@/src/db';
+import { db, tickets, ticketTypes, events, orders } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 
 const log = createLogger('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, and } from 'drizzle-orm';
 
 export async function POST(
   request: NextRequest,
@@ -53,45 +53,79 @@ export async function POST(
 
     const now = new Date();
 
-    // Confirm the ticket
-    const [confirmed] = await db
-      .update(tickets)
-      .set({
-        status: 'valid',
-        purchasedAt: now,
-        paymentConfirmedAt: now,
-        heldBy: null,
-        heldUntil: null,
-        holdExpiresAt: null,
-      })
-      .where(eq(tickets.id, id))
-      .returning();
+    // If the ticket belongs to an order (multi-ticket EMT), confirm every
+    // held sibling in the order atomically. Single e-Transfer pays for the
+    // whole order; partial confirmation would leave it in a half-state.
+    let confirmedTickets: (typeof tickets.$inferSelect)[];
+    if (ticket.orderId) {
+      confirmedTickets = await db
+        .update(tickets)
+        .set({
+          status: 'valid',
+          purchasedAt: now,
+          paymentConfirmedAt: now,
+          heldBy: null,
+          heldUntil: null,
+          holdExpiresAt: null,
+        })
+        .where(and(eq(tickets.orderId, ticket.orderId), eq(tickets.status, 'held')))
+        .returning();
 
-    // Increment sold count on the ticket type
-    await db
-      .update(ticketTypes)
-      .set({ sold: sql`${ticketTypes.sold} + 1` })
-      .where(eq(ticketTypes.id, ticket.ticketTypeId));
+      // Mark the order completed
+      await db
+        .update(orders)
+        .set({ status: 'completed', purchasedAt: now })
+        .where(eq(orders.id, ticket.orderId));
+    } else {
+      const [single] = await db
+        .update(tickets)
+        .set({
+          status: 'valid',
+          purchasedAt: now,
+          paymentConfirmedAt: now,
+          heldBy: null,
+          heldUntil: null,
+          holdExpiresAt: null,
+        })
+        .where(eq(tickets.id, id))
+        .returning();
+      confirmedTickets = [single];
+    }
+
+    // Increment sold count on the ticket type by the number of tickets confirmed
+    if (confirmedTickets.length > 0) {
+      await db
+        .update(ticketTypes)
+        .set({ sold: sql`${ticketTypes.sold} + ${confirmedTickets.length}` })
+        .where(eq(ticketTypes.id, ticket.ticketTypeId));
+    }
 
     // Fetch event to get creator DID for attestation
     const [event] = await db.select().from(events).where(eq(events.id, ticket.eventId)).limit(1);
 
-    // Fire and forget — never block the response
-    publish('ticket.purchased', {
-      issuer: ticket.ownerDid || '',
-      subject: event?.creatorDid ?? ticket.eventId,
-      scope: 'events',
-      payload: {
-        ticketId: confirmed.id,
-        eventId: ticket.eventId,
-        amount: ticket.pricePaid ?? 0,
-        currency: ticket.currency || 'USD',
-        context_id: ticket.eventId,
-        context_type: 'event',
-      },
-    }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
+    // Fire one ticket.purchased event per confirmed ticket so attribution
+    // and downstream side-effects fire for each.
+    for (const t of confirmedTickets) {
+      publish('ticket.purchased', {
+        issuer: t.ownerDid || '',
+        subject: event?.creatorDid ?? t.eventId,
+        scope: 'events',
+        payload: {
+          ticketId: t.id,
+          eventId: t.eventId,
+          amount: t.pricePaid ?? 0,
+          currency: t.currency || 'USD',
+          context_id: t.eventId,
+          context_type: 'event',
+        },
+      }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
+    }
 
-    return NextResponse.json({ ticket: confirmed });
+    return NextResponse.json({
+      ticket: confirmedTickets[0],
+      confirmedCount: confirmedTickets.length,
+      orderId: ticket.orderId ?? null,
+    });
   } catch (error) {
     log.error({ err: String(error) }, 'confirm-payment error');
     return NextResponse.json({ error: 'Failed to confirm payment' }, { status: 500 });

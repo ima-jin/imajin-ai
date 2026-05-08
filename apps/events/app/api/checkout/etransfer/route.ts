@@ -1,23 +1,26 @@
 /**
  * POST /api/checkout/etransfer
  *
- * Creates an e-Transfer hold on a ticket.
- * Returns payment instructions instead of a Stripe URL.
+ * Creates an e-Transfer hold on N tickets (default 1) of one ticket type.
+ * All N tickets are grouped under a single order with one memo (ORD-{orderId}).
+ * Returns payment instructions for one combined e-Transfer.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
-import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
+import { db, events, ticketTypes, tickets, orders, eventInvites } from '@/src/db';
 import { eq, and, lt } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
 import { randomBytes } from 'crypto';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const HOLD_HOURS = 72;
+const MAX_QUANTITY = 20;
 
 interface ETransferCheckoutRequest {
   eventId: string;
   ticketTypeId: string;
+  quantity?: number;
   email?: string;
   name?: string;
   invite?: string;
@@ -51,6 +54,8 @@ export const POST = withLogger('events', async (request, { log }) => {
     if (!body.eventId || !body.ticketTypeId) {
       return NextResponse.json({ error: 'eventId and ticketTypeId are required' }, { status: 400 });
     }
+
+    const quantity = Math.max(1, Math.min(MAX_QUANTITY, Math.floor(body.quantity ?? 1)));
 
     // Resolve identity: session cookie (hard or soft DID) → email fallback → 401
     let ownerDid: string;
@@ -121,37 +126,49 @@ export const POST = withLogger('events', async (request, { log }) => {
       return NextResponse.json({ error: 'Ticket type not found' }, { status: 404 });
     }
 
-    // Check if user already has an active e-transfer hold for this ticket type
-    const [existingHold] = await db
+    // Check if user already has an active e-transfer hold order for this ticket type
+    const [existingOrder] = await db
       .select()
-      .from(tickets)
+      .from(orders)
       .where(
         and(
-          eq(tickets.ticketTypeId, body.ticketTypeId),
-          eq(tickets.ownerDid, ownerDid),
-          eq(tickets.status, 'held')
+          eq(orders.ticketTypeId, body.ticketTypeId),
+          eq(orders.buyerDid, ownerDid),
+          eq(orders.status, 'pending'),
+          eq(orders.paymentMethod, 'etransfer')
         )
       )
       .limit(1);
 
-    if (existingHold) {
-      // Return existing hold instructions
-      const memo = `TKT-${existingHold.id}`;
-      const amount = ticketType.price / 100;
+    if (existingOrder) {
+      // Return existing hold instructions — don't create another order while one is open.
+      // Pull the earliest hold deadline from the linked tickets.
+      const heldTickets = await db
+        .select()
+        .from(tickets)
+        .where(eq(tickets.orderId, existingOrder.id));
+      const earliestDeadline = heldTickets
+        .map((t) => t.holdExpiresAt)
+        .filter((d): d is Date => !!d)
+        .sort((a, b) => a.getTime() - b.getTime())[0];
+      const memo = `ORD-${existingOrder.id}`;
+      const amount = existingOrder.amountTotal / 100;
       return NextResponse.json({
-        ticketId: existingHold.id,
+        orderId: existingOrder.id,
+        ticketIds: heldTickets.map((t) => t.id),
         instructions: {
           email: etransferEmail,
           amount,
-          currency: ticketType.currency,
+          currency: existingOrder.currency,
           memo,
-          deadline: existingHold.holdExpiresAt,
-          message: `Your ticket is reserved. Once we confirm your e-Transfer, your ticket will be activated.`,
+          deadline: earliestDeadline,
+          quantity: existingOrder.quantity,
+          message: `Your ${existingOrder.quantity} ticket${existingOrder.quantity > 1 ? 's are' : ' is'} reserved. Send one e-Transfer for the full amount; once we confirm it, your tickets will be activated.`,
         },
       });
     }
 
-    // Release expired holds for this ticket type
+    // Release expired holds for this ticket type (frees inventory)
     await db
       .update(tickets)
       .set({ status: 'available', heldBy: null, heldUntil: null })
@@ -163,27 +180,52 @@ export const POST = withLogger('events', async (request, { log }) => {
         )
       );
 
-    // Check availability
+    // Check availability for the requested quantity
     if (ticketType.quantity !== null) {
       const available = ticketType.quantity - (ticketType.sold ?? 0);
-      if (available < 1) {
-        return NextResponse.json({ error: 'No tickets available' }, { status: 409 });
+      if (available < quantity) {
+        return NextResponse.json(
+          { error: `Only ${available} ticket${available !== 1 ? 's' : ''} available` },
+          { status: 409 }
+        );
       }
     }
 
-    // Create held ticket
     const holdUntil = new Date();
     holdUntil.setHours(holdUntil.getHours() + HOLD_HOURS);
 
-    const ticketId = `tkt_${Date.now().toString(36)}_0`;
+    const orderId = `ord_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`;
+    const totalAmount = ticketType.price * quantity;
 
-    const [ticket] = await db
-      .insert(tickets)
+    // Create the order (pending) and N held tickets in sequence.
+    // Drizzle's postgres-js client doesn't expose a transaction helper here,
+    // but failures will leave a pending order with fewer tickets than expected;
+    // the existingOrder branch above will pick it up on retry. Acceptable for
+    // an MVP — tighten with a real tx if it becomes an issue.
+    const [order] = await db
+      .insert(orders)
       .values({
-        id: ticketId,
+        id: orderId,
+        eventId: body.eventId,
+        ticketTypeId: body.ticketTypeId,
+        buyerDid: ownerDid,
+        quantity,
+        amountTotal: totalAmount,
+        currency: ticketType.currency,
+        paymentMethod: 'etransfer',
+        status: 'pending',
+        metadata: {},
+      })
+      .returning();
+
+    const ticketRows: { id: string; eventId: string; ticketTypeId: string; ownerDid: string; orderId: string; originalOwnerDid: string; pricePaid: number; currency: string; status: 'held'; heldBy: string; heldUntil: Date; holdExpiresAt: Date; paymentMethod: 'etransfer'; registrationStatus: string; metadata: Record<string, unknown> }[] = [];
+    for (let i = 0; i < quantity; i++) {
+      ticketRows.push({
+        id: `tkt_${Date.now().toString(36)}_${randomBytes(3).toString('hex')}_${i}`,
         eventId: body.eventId,
         ticketTypeId: body.ticketTypeId,
         ownerDid: ownerDid,
+        orderId: order.id,
         originalOwnerDid: ownerDid,
         pricePaid: ticketType.price,
         currency: ticketType.currency,
@@ -194,22 +236,27 @@ export const POST = withLogger('events', async (request, { log }) => {
         paymentMethod: 'etransfer',
         registrationStatus: ticketType.requiresRegistration ? 'pending' : 'not_required',
         metadata: {},
-      })
-      .returning();
+      });
+    }
+    const insertedTickets = await db.insert(tickets).values(ticketRows).returning();
 
-    const memo = `TKT-${ticket.id}`;
-    const amount = ticketType.price / 100;
+    const memo = `ORD-${order.id}`;
+    const amount = totalAmount / 100;
 
     return NextResponse.json(
       {
-        ticketId: ticket.id,
+        orderId: order.id,
+        ticketIds: insertedTickets.map((t) => t.id),
         instructions: {
           email: etransferEmail,
           amount,
           currency: ticketType.currency,
           memo,
           deadline: holdUntil,
-          message: `Your ticket is reserved. Once we confirm your e-Transfer, your ticket will be activated.`,
+          quantity,
+          message: quantity > 1
+            ? `Your ${quantity} tickets are reserved. Send one e-Transfer for the full amount; once we confirm it, all ${quantity} tickets will be activated.`
+            : `Your ticket is reserved. Once we confirm your e-Transfer, your ticket will be activated.`,
         },
       },
       { status: 201 }

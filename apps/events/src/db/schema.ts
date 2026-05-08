@@ -137,6 +137,7 @@ export const orders = eventsSchema.table('orders', {
   paymentMethod: text('payment_method'),                    // 'stripe' | 'etransfer' | 'free'
   stripeSessionId: text('stripe_session_id'),
   paymentId: text('payment_id'),                            // stripe payment_intent id
+  status: text('status').notNull().default('completed'),    // 'pending' | 'completed' | 'cancelled'
   fairSettlement: jsonb('fair_settlement'),                  // resolved .fair receipt
   purchasedAt: timestamp('purchased_at', { withTimezone: true }),
   metadata: jsonb('metadata').default({}),

@@ -105,6 +105,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
         body: JSON.stringify({
           eventId,
           ticketTypeId: ticket.id,
+          quantity: Math.max(1, quantity || 1),
           ...(inviteToken && { invite: inviteToken }),
           ...(email && { email: email.trim() }),
           ...(name && { name: name.trim() }),
@@ -118,7 +119,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
 
       const data = await response.json();
       setEtransfer({
-        ticketId: data.ticketId,
+        ticketId: data.orderId || data.ticketId,
         email: data.instructions.email,
         amount: data.instructions.amount,
         currency: data.instructions.currency,
