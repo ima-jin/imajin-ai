@@ -14,6 +14,9 @@ interface Props {
   existingTickets: TicketType[];
   creatorEmail?: string | null;
   organizerDids?: string[];
+  viewerDid?: string;
+  creatorHandle?: string | null;
+  creatorName?: string | null;
 }
 
 interface TicketTier {
@@ -37,7 +40,7 @@ interface Survey {
 
 type ActiveTab = 'details' | 'fair';
 
-export default function EventEditForm({ event, existingTickets, creatorEmail, organizerDids }: Props) {
+export default function EventEditForm({ event, existingTickets, creatorEmail, organizerDids, viewerDid, creatorHandle, creatorName }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -319,6 +322,10 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         did={event.creatorDid}
         payUrl={PAY_URL}
         message="Connect Stripe to receive ticket revenue"
+        viewerDid={viewerDid}
+        ownerHandle={creatorHandle}
+        ownerName={creatorName}
+        ownerRole="Event creator"
       />
       {/* Tab Navigation */}
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
