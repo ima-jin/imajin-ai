@@ -36,22 +36,6 @@ interface ETransferCheckoutRequest {
   invite?: string;
 }
 
-/**
- * Create or retrieve a soft DID session from email (same pattern as webhook ticket creation).
- */
-async function getOrCreateSoftDid(email: string, name?: string): Promise<string> {
-  const response = await fetch(`${AUTH_URL}/api/session/soft`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: email.toLowerCase().trim(), name }),
-  });
-  if (!response.ok) {
-    throw new Error(`Soft DID creation failed: ${response.status}`);
-  }
-  const data = await response.json();
-  return data.did;
-}
-
 export const POST = withLogger('events', async (request, { log }) => {
   // Try session auth first (logged-in user), but don't require it
   const session = await optionalAuth(request);
@@ -96,8 +80,48 @@ export const POST = withLogger('events', async (request, { log }) => {
     if (session) {
       ownerDid = session.id;
     } else if (body.email) {
-      ownerDid = await getOrCreateSoftDid(body.email, body.name);
-      ownerEmail = body.email;
+      // Anonymous buyer with an email but no session: send a magic-link
+      // verification email instead of creating a soft DID + hold blindly.
+      // This proves the email is real and owned before we reserve inventory
+      // or send any reservation email.
+      const eventsBase = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+      const reserveParam = Buffer
+        .from(JSON.stringify({ items: cart }), 'utf8')
+        .toString('base64url');
+      const redirectUrl = `${eventsBase}/${body.eventId}?reserve=${reserveParam}${
+        body.invite ? `&invite=${encodeURIComponent(body.invite)}` : ''
+      }`;
+      try {
+        const onboardRes = await fetch(`${AUTH_URL}/api/onboard`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: body.email,
+            name: body.name,
+            redirectUrl,
+            context: 'reserve your tickets',
+          }),
+        });
+        if (!onboardRes.ok) {
+          const errBody = await onboardRes.text().catch(() => '');
+          log.error({ status: onboardRes.status, body: errBody }, 'Magic-link send failed');
+          return NextResponse.json(
+            { error: 'Could not send verification email. Please try again.' },
+            { status: 502 }
+          );
+        }
+      } catch (err) {
+        log.error({ err: String(err) }, 'Magic-link send error');
+        return NextResponse.json(
+          { error: 'Could not send verification email. Please try again.' },
+          { status: 502 }
+        );
+      }
+      return NextResponse.json({
+        verificationSent: true,
+        email: body.email,
+        message: `We sent a verification link to ${body.email}. Click it to confirm your email and reserve your ticket${totalQuantity > 1 ? 's' : ''}.`,
+      });
     } else {
       return NextResponse.json(
         { error: 'Not authenticated. Please log in or provide an email address.' },

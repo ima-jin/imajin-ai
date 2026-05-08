@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { TicketType } from '@/src/db/schema';
 import { apiFetch } from '@imajin/config';
@@ -415,6 +415,52 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
 
   // Lifted quantity state for unified cart
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  // When the buyer comes back from a magic-link verification, the URL has
+  // ?reserve=<base64> with their pre-verified cart. We rehydrate quantities
+  // and trigger an auto-EMT submit on mount.
+  const [pendingAutoReserve, setPendingAutoReserve] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const reserveParam = params.get('reserve');
+    if (!reserveParam) return;
+    if (!sessionEmail) return; // not logged in yet — magic link hasn't completed
+    try {
+      // base64url → base64 → utf8
+      const b64 = reserveParam.replace(/-/g, '+').replace(/_/g, '/').padEnd(
+        Math.ceil(reserveParam.length / 4) * 4,
+        '='
+      );
+      const decoded = JSON.parse(
+        decodeURIComponent(
+          atob(b64)
+            .split('')
+            .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+            .join('')
+        )
+      ) as { items: { ticketTypeId: string; quantity: number }[] };
+      const restored: Record<string, number> = {};
+      for (const item of decoded.items ?? []) {
+        if (item.ticketTypeId) restored[item.ticketTypeId] = item.quantity;
+      }
+      if (Object.keys(restored).length > 0) {
+        setQuantities(restored);
+        setPendingAutoReserve(true);
+      }
+      // Strip the param so reload doesn't re-fire
+      params.delete('reserve');
+      const newSearch = params.toString();
+      window.history.replaceState(
+        {},
+        '',
+        window.location.pathname + (newSearch ? `?${newSearch}` : '')
+      );
+    } catch (err) {
+      console.warn('Failed to decode reserve param', err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const allTickets = [...tickets, ...unlockedTickets];
 
@@ -578,6 +624,8 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
           etransferEnabled={etransferEnabled}
           sessionEmail={sessionEmail}
           onError={(msg) => toast.error(msg)}
+          autoReserve={pendingAutoReserve}
+          onAutoReserveConsumed={() => setPendingAutoReserve(false)}
         />
       )}
 
@@ -636,15 +684,18 @@ interface UnifiedBarProps {
   etransferEnabled: boolean;
   sessionEmail?: string;
   onError: (msg: string) => void;
+  autoReserve?: boolean;
+  onAutoReserveConsumed?: () => void;
 }
 
-function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, onError }: UnifiedBarProps) {
+function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, onError, autoReserve = false, onAutoReserveConsumed }: UnifiedBarProps) {
   const router = useRouter();
-  type BarStep = 'idle' | 'card-loading' | 'emt-form' | 'emt-loading' | 'emt-done';
+  type BarStep = 'idle' | 'card-loading' | 'emt-form' | 'emt-loading' | 'emt-done' | 'emt-verify-sent';
   const [step, setStep] = useState<BarStep>('idle');
   const [emtEmail, setEmtEmail] = useState(sessionEmail || '');
   const [emtName, setEmtName] = useState('');
   const [emtResult, setEmtResult] = useState<{ orderId: string; quantity: number; email: string; amount: number; currency: string; memo: string; deadline: string; message: string } | null>(null);
+  const [verifySentTo, setVerifySentTo] = useState<string | null>(null);
 
   const first = cartItems[0];
   const multiType = cartItems.length > 1;
@@ -705,6 +756,12 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         return;
       }
       const data = await res.json();
+      // Magic-link verification path: server didn't create a hold yet.
+      if (data.verificationSent) {
+        setVerifySentTo(data.email || emtEmail || sessionEmail || null);
+        setStep('emt-verify-sent');
+        return;
+      }
       setEmtResult({
         orderId: data.orderId,
         quantity: data.instructions.quantity ?? totalQty,
@@ -721,6 +778,40 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
       onError('e-Transfer setup failed');
       setStep('idle');
     }
+  }
+
+  // Auto-fire EMT once when returning from a magic-link verification
+  useEffect(() => {
+    if (!autoReserve) return;
+    if (step !== 'idle') return;
+    if (totalQty === 0) return;
+    onAutoReserveConsumed?.();
+    void startEtransfer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoReserve, totalQty]);
+
+  if (step === 'emt-verify-sent') {
+    return (
+      <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-orange-500 text-xl">📨</span>
+          <h3 className="font-semibold text-base">Check your email to confirm</h3>
+        </div>
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          We sent a verification link to <strong className="text-gray-800 dark:text-gray-100">{verifySentTo}</strong>.
+          Click it to confirm your email and we'll reserve your {totalQty} ticket{totalQty !== 1 ? 's' : ''} automatically.
+        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Link expires in 15 minutes. Check spam if you don't see it. You can keep this tab open or close it — the link returns you here.
+        </p>
+        <button
+          onClick={() => { setStep('emt-form'); setVerifySentTo(null); }}
+          className="text-xs text-orange-500 hover:underline"
+        >
+          Use a different email
+        </button>
+      </div>
+    );
   }
 
   if (step === 'emt-done' && emtResult) {
