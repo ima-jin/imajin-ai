@@ -472,7 +472,12 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
     .map(t => ({ ticket: t, qty: quantities[t.id] || 0 }));
   const totalQty = cartItems.reduce((sum, item) => sum + item.qty, 0);
   const totalCents = cartItems.reduce((sum, item) => sum + item.ticket.price * item.qty, 0);
-  const cartCurrency = paidTickets[0]?.currency || 'CAD';
+  // Detect mixed currency in cart — e-Transfer + card both require a single
+  // currency per checkout. Surface this client-side so the user sees a useful
+  // message instead of a server-side toast after they've gone through verify.
+  const cartCurrencies = Array.from(new Set(cartItems.map((c) => c.ticket.currency)));
+  const mixedCurrency = cartCurrencies.length > 1;
+  const cartCurrency = cartCurrencies[0] || paidTickets[0]?.currency || 'CAD';
   const formattedTotal = new Intl.NumberFormat('en-CA', { style: 'currency', currency: cartCurrency }).format(totalCents / 100);
 
   async function handleUnlock() {
@@ -626,6 +631,8 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
           onError={(msg) => toast.error(msg)}
           autoReserve={pendingAutoReserve}
           onAutoReserveConsumed={() => setPendingAutoReserve(false)}
+          mixedCurrency={mixedCurrency}
+          cartCurrencies={cartCurrencies}
         />
       )}
 
@@ -686,9 +693,11 @@ interface UnifiedBarProps {
   onError: (msg: string) => void;
   autoReserve?: boolean;
   onAutoReserveConsumed?: () => void;
+  mixedCurrency?: boolean;
+  cartCurrencies?: string[];
 }
 
-function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, onError, autoReserve = false, onAutoReserveConsumed }: UnifiedBarProps) {
+function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, onError, autoReserve = false, onAutoReserveConsumed, mixedCurrency = false, cartCurrencies = [] }: UnifiedBarProps) {
   const router = useRouter();
   type BarStep = 'idle' | 'card-loading' | 'emt-form' | 'emt-loading' | 'emt-done' | 'emt-verify-sent';
   const [step, setStep] = useState<BarStep>('idle');
@@ -879,9 +888,9 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         <div className="flex flex-col sm:flex-row gap-2">
           <button
             onClick={startStripe}
-            disabled={totalQty === 0 || step === 'card-loading' || step === 'emt-loading'}
+            disabled={totalQty === 0 || mixedCurrency || step === 'card-loading' || step === 'emt-loading'}
             className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${
-              totalQty === 0 || step === 'card-loading'
+              totalQty === 0 || mixedCurrency || step === 'card-loading'
                 ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
                 : 'bg-orange-500 text-white hover:bg-orange-600'
             }`}
@@ -891,9 +900,9 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           {etransferEnabled && (
             <button
               onClick={startEtransfer}
-              disabled={totalQty === 0 || step === 'card-loading' || step === 'emt-loading'}
+              disabled={totalQty === 0 || mixedCurrency || step === 'card-loading' || step === 'emt-loading'}
               className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap border ${
-                totalQty === 0
+                totalQty === 0 || mixedCurrency
                   ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700 cursor-not-allowed'
                   : 'bg-orange-500/20 text-orange-500 border-orange-500/40 hover:bg-orange-500/30'
               }`}
@@ -903,12 +912,21 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           )}
         </div>
       </div>
-      {multiType && (
-        <p className="text-xs text-amber-500 mt-2">
-          ⚠️ Card payment is single-type only — you'll check out {first?.ticket.name} first, then return for the rest. e-Transfer covers the whole cart in one go.
+      {/* Mixed-currency block: takes priority over the multi-type hint */}
+      {mixedCurrency && (
+        <p className="text-xs text-red-500 mt-2">
+          ⚠️ Your cart mixes currencies ({cartCurrencies.join(' + ')}). Pick tickets in one currency to check out together.
         </p>
       )}
-      {etransferEnabled && totalQty > 0 && (
+      {/* Multi-type hint: only relevant when card is the only path. With
+          e-Transfer enabled, EMT covers the whole cart in one go and the user
+          doesn't need this warning. */}
+      {!mixedCurrency && multiType && !etransferEnabled && (
+        <p className="text-xs text-amber-500 mt-2">
+          ⚠️ Card payment is single-type only — you'll check out {first?.ticket.name} first, then return for the rest.
+        </p>
+      )}
+      {!mixedCurrency && etransferEnabled && totalQty > 0 && (
         <p className="text-xs text-gray-400 mt-1">
           e-Transfer pays the organizer directly. One transfer covers all reserved tickets.
         </p>
