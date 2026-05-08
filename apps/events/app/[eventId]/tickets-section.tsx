@@ -691,8 +691,8 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           eventId,
-          ticketTypeId: first.ticket.id,
-          quantity: first.qty,
+          // Send the full cart — server creates one order spanning all types.
+          items: cartItems.map((c) => ({ ticketTypeId: c.ticket.id, quantity: c.qty })),
           ...(inviteToken && { invite: inviteToken }),
           ...(!sessionEmail && emtEmail && { email: emtEmail.trim() }),
           ...(!sessionEmail && emtName && { name: emtName.trim() }),
@@ -707,7 +707,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
       const data = await res.json();
       setEmtResult({
         orderId: data.orderId,
-        quantity: data.instructions.quantity ?? first.qty,
+        quantity: data.instructions.quantity ?? totalQty,
         email: data.instructions.email,
         amount: data.instructions.amount,
         currency: data.instructions.currency,
@@ -749,8 +749,15 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
       <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl space-y-3">
         <h3 className="font-semibold text-base">🏦 Pay by e-Transfer</h3>
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          Reserves {totalQty} × {first?.ticket.name} for 72 hours while you send your e-Transfer.
+          Reserves {totalQty} ticket{totalQty !== 1 ? 's' : ''} for 72 hours while you send your e-Transfer.
         </p>
+        {cartItems.length > 1 && (
+          <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+            {cartItems.map((c) => (
+              <li key={c.ticket.id}>{c.qty} × {c.ticket.name}</li>
+            ))}
+          </ul>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           <input type="text" placeholder="Your name" value={emtName} onChange={(e) => setEmtName(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm" />
           <input type="email" placeholder="Your email" value={emtEmail} onChange={(e) => setEmtEmail(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm" />
@@ -804,7 +811,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
       </div>
       {multiType && (
         <p className="text-xs text-amber-500 mt-2">
-          ⚠️ Multi-type cart: you'll check out {first?.ticket.name} first, then return for the rest.
+          ⚠️ Card payment is single-type only — you'll check out {first?.ticket.name} first, then return for the rest. e-Transfer covers the whole cart in one go.
         </p>
       )}
       {etransferEnabled && totalQty > 0 && (

@@ -17,10 +17,18 @@ const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http:/
 const HOLD_HOURS = 72;
 const MAX_QUANTITY = 20;
 
+interface ETransferCartItem {
+  ticketTypeId: string;
+  quantity: number;
+}
+
 interface ETransferCheckoutRequest {
   eventId: string;
-  ticketTypeId: string;
+  // Legacy single-type payload (still accepted)
+  ticketTypeId?: string;
   quantity?: number;
+  // Multi-type cart payload
+  items?: ETransferCartItem[];
   email?: string;
   name?: string;
   invite?: string;
@@ -51,11 +59,33 @@ export const POST = withLogger('events', async (request, { log }) => {
   try {
     const body: ETransferCheckoutRequest = await request.json();
 
-    if (!body.eventId || !body.ticketTypeId) {
-      return NextResponse.json({ error: 'eventId and ticketTypeId are required' }, { status: 400 });
+    if (!body.eventId) {
+      return NextResponse.json({ error: 'eventId is required' }, { status: 400 });
     }
 
-    const quantity = Math.max(1, Math.min(MAX_QUANTITY, Math.floor(body.quantity ?? 1)));
+    // Normalize to a cart. Accept either legacy {ticketTypeId, quantity} or {items: [...]}.
+    const rawItems: ETransferCartItem[] = body.items && body.items.length > 0
+      ? body.items
+      : body.ticketTypeId
+      ? [{ ticketTypeId: body.ticketTypeId, quantity: body.quantity ?? 1 }]
+      : [];
+
+    if (rawItems.length === 0) {
+      return NextResponse.json({ error: 'items or ticketTypeId is required' }, { status: 400 });
+    }
+
+    // Coalesce duplicates and clamp quantities
+    const cartMap = new Map<string, number>();
+    for (const item of rawItems) {
+      if (!item.ticketTypeId) continue;
+      const q = Math.max(1, Math.min(MAX_QUANTITY, Math.floor(item.quantity ?? 1)));
+      cartMap.set(item.ticketTypeId, (cartMap.get(item.ticketTypeId) ?? 0) + q);
+    }
+    const cart: ETransferCartItem[] = Array.from(cartMap.entries()).map(([ticketTypeId, quantity]) => ({
+      ticketTypeId,
+      quantity: Math.min(MAX_QUANTITY, quantity),
+    }));
+    const totalQuantity = cart.reduce((sum, c) => sum + c.quantity, 0);
 
     // Resolve identity: session cookie (hard or soft DID) → email fallback → 401
     let ownerDid: string;
@@ -115,79 +145,108 @@ export const POST = withLogger('events', async (request, { log }) => {
       }
     }
 
-    // Fetch ticket type
-    const [ticketType] = await db
+    // Fetch all ticket types for this event in one go (filtered to the cart)
+    const ticketTypeIds = cart.map((c) => c.ticketTypeId);
+    const fetchedTypes = await db
       .select()
       .from(ticketTypes)
-      .where(and(eq(ticketTypes.id, body.ticketTypeId), eq(ticketTypes.eventId, body.eventId)))
-      .limit(1);
+      .where(eq(ticketTypes.eventId, body.eventId));
+    const typesById = new Map(fetchedTypes.map((t) => [t.id, t]));
 
-    if (!ticketType) {
-      return NextResponse.json({ error: 'Ticket type not found' }, { status: 404 });
+    for (const item of cart) {
+      if (!typesById.has(item.ticketTypeId)) {
+        return NextResponse.json(
+          { error: `Ticket type ${item.ticketTypeId} not found for this event` },
+          { status: 404 }
+        );
+      }
     }
 
-    // Check if user already has an active e-transfer hold order for this ticket type
-    const [existingOrder] = await db
+    // All ticket types in a cart must share a currency for one combined transfer
+    const currencies = new Set(cart.map((c) => typesById.get(c.ticketTypeId)!.currency));
+    if (currencies.size > 1) {
+      return NextResponse.json(
+        { error: 'All tickets in a cart must use the same currency' },
+        { status: 400 }
+      );
+    }
+    const cartCurrency = typesById.get(cart[0].ticketTypeId)!.currency;
+
+    // Look for an existing pending EMT order from this buyer covering exactly
+    // the same cart shape (same ticket types in same quantities). If found,
+    // return its instructions instead of creating a duplicate hold.
+    const existingOrders = await db
       .select()
       .from(orders)
       .where(
         and(
-          eq(orders.ticketTypeId, body.ticketTypeId),
+          eq(orders.eventId, body.eventId),
           eq(orders.buyerDid, ownerDid),
           eq(orders.status, 'pending'),
           eq(orders.paymentMethod, 'etransfer')
         )
-      )
-      .limit(1);
+      );
 
-    if (existingOrder) {
-      // Return existing hold instructions — don't create another order while one is open.
-      // Pull the earliest hold deadline from the linked tickets.
+    for (const existing of existingOrders) {
       const heldTickets = await db
         .select()
         .from(tickets)
-        .where(eq(tickets.orderId, existingOrder.id));
+        .where(eq(tickets.orderId, existing.id));
+      // Build the cart shape of the existing order
+      const existingCart = new Map<string, number>();
+      for (const t of heldTickets) {
+        existingCart.set(t.ticketTypeId, (existingCart.get(t.ticketTypeId) ?? 0) + 1);
+      }
+      // Compare shapes
+      const shapeMatches =
+        existingCart.size === cartMap.size &&
+        Array.from(cartMap.entries()).every(([k, v]) => existingCart.get(k) === v);
+      if (!shapeMatches) continue;
+
       const earliestDeadline = heldTickets
         .map((t) => t.holdExpiresAt)
         .filter((d): d is Date => !!d)
         .sort((a, b) => a.getTime() - b.getTime())[0];
-      const memo = `ORD-${existingOrder.id}`;
-      const amount = existingOrder.amountTotal / 100;
       return NextResponse.json({
-        orderId: existingOrder.id,
+        orderId: existing.id,
         ticketIds: heldTickets.map((t) => t.id),
         instructions: {
           email: etransferEmail,
-          amount,
-          currency: existingOrder.currency,
-          memo,
+          amount: existing.amountTotal / 100,
+          currency: existing.currency,
+          memo: `ORD-${existing.id}`,
           deadline: earliestDeadline,
-          quantity: existingOrder.quantity,
-          message: `Your ${existingOrder.quantity} ticket${existingOrder.quantity > 1 ? 's are' : ' is'} reserved. Send one e-Transfer for the full amount; once we confirm it, your tickets will be activated.`,
+          quantity: existing.quantity,
+          message: `Your ${existing.quantity} ticket${existing.quantity > 1 ? 's are' : ' is'} reserved. Send one e-Transfer for the full amount; once we confirm it, your tickets will be activated.`,
         },
       });
     }
 
-    // Release expired holds for this ticket type (frees inventory)
-    await db
-      .update(tickets)
-      .set({ status: 'available', heldBy: null, heldUntil: null })
-      .where(
-        and(
-          eq(tickets.ticketTypeId, body.ticketTypeId),
-          eq(tickets.status, 'held'),
-          lt(tickets.heldUntil, new Date())
-        )
-      );
-
-    // Check availability for the requested quantity
-    if (ticketType.quantity !== null) {
-      const available = ticketType.quantity - (ticketType.sold ?? 0);
-      if (available < quantity) {
-        return NextResponse.json(
-          { error: `Only ${available} ticket${available !== 1 ? 's' : ''} available` },
-          { status: 409 }
+    // Release expired holds for any ticket type in the cart (frees inventory).
+    for (const item of cart) {
+      await db
+        .update(tickets)
+        .set({ status: 'available', heldBy: null, heldUntil: null })
+        .where(
+          and(
+            eq(tickets.ticketTypeId, item.ticketTypeId),
+            eq(tickets.status, 'held'),
+            lt(tickets.heldUntil, new Date())
+          )
         );
+    }
+
+    // Check availability per type
+    for (const item of cart) {
+      const tt = typesById.get(item.ticketTypeId)!;
+      if (tt.quantity !== null) {
+        const available = tt.quantity - (tt.sold ?? 0);
+        if (available < item.quantity) {
+          return NextResponse.json(
+            { error: `Only ${available} ${tt.name} ticket${available !== 1 ? 's' : ''} available` },
+            { status: 409 }
+          );
+        }
       }
     }
 
@@ -195,9 +254,12 @@ export const POST = withLogger('events', async (request, { log }) => {
     holdUntil.setHours(holdUntil.getHours() + HOLD_HOURS);
 
     const orderId = `ord_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`;
-    const totalAmount = ticketType.price * quantity;
+    const totalAmount = cart.reduce(
+      (sum, item) => sum + typesById.get(item.ticketTypeId)!.price * item.quantity,
+      0
+    );
 
-    // Create the order (pending) and N held tickets in sequence.
+    // Create the order (pending) and held tickets in sequence.
     // Drizzle's postgres-js client doesn't expose a transaction helper here,
     // but failures will leave a pending order with fewer tickets than expected;
     // the existingOrder branch above will pick it up on retry. Acceptable for
@@ -207,36 +269,41 @@ export const POST = withLogger('events', async (request, { log }) => {
       .values({
         id: orderId,
         eventId: body.eventId,
-        ticketTypeId: body.ticketTypeId,
+        // Single-type orders keep ticket_type_id set; multi-type orders leave it null.
+        ticketTypeId: cart.length === 1 ? cart[0].ticketTypeId : null,
         buyerDid: ownerDid,
-        quantity,
+        quantity: totalQuantity,
         amountTotal: totalAmount,
-        currency: ticketType.currency,
+        currency: cartCurrency,
         paymentMethod: 'etransfer',
         status: 'pending',
-        metadata: {},
+        metadata: cart.length > 1 ? { cart } : {},
       })
       .returning();
 
     const ticketRows: { id: string; eventId: string; ticketTypeId: string; ownerDid: string; orderId: string; originalOwnerDid: string; pricePaid: number; currency: string; status: 'held'; heldBy: string; heldUntil: Date; holdExpiresAt: Date; paymentMethod: 'etransfer'; registrationStatus: string; metadata: Record<string, unknown> }[] = [];
-    for (let i = 0; i < quantity; i++) {
-      ticketRows.push({
-        id: `tkt_${Date.now().toString(36)}_${randomBytes(3).toString('hex')}_${i}`,
-        eventId: body.eventId,
-        ticketTypeId: body.ticketTypeId,
-        ownerDid: ownerDid,
-        orderId: order.id,
-        originalOwnerDid: ownerDid,
-        pricePaid: ticketType.price,
-        currency: ticketType.currency,
-        status: 'held',
-        heldBy: ownerDid,
-        heldUntil: holdUntil,
-        holdExpiresAt: holdUntil,
-        paymentMethod: 'etransfer',
-        registrationStatus: ticketType.requiresRegistration ? 'pending' : 'not_required',
-        metadata: {},
-      });
+    let idx = 0;
+    for (const item of cart) {
+      const tt = typesById.get(item.ticketTypeId)!;
+      for (let i = 0; i < item.quantity; i++) {
+        ticketRows.push({
+          id: `tkt_${Date.now().toString(36)}_${randomBytes(3).toString('hex')}_${idx++}`,
+          eventId: body.eventId,
+          ticketTypeId: item.ticketTypeId,
+          ownerDid: ownerDid,
+          orderId: order.id,
+          originalOwnerDid: ownerDid,
+          pricePaid: tt.price,
+          currency: tt.currency,
+          status: 'held',
+          heldBy: ownerDid,
+          heldUntil: holdUntil,
+          holdExpiresAt: holdUntil,
+          paymentMethod: 'etransfer',
+          registrationStatus: tt.requiresRegistration ? 'pending' : 'not_required',
+          metadata: {},
+        });
+      }
     }
     const insertedTickets = await db.insert(tickets).values(ticketRows).returning();
 
@@ -250,12 +317,12 @@ export const POST = withLogger('events', async (request, { log }) => {
         instructions: {
           email: etransferEmail,
           amount,
-          currency: ticketType.currency,
+          currency: cartCurrency,
           memo,
           deadline: holdUntil,
-          quantity,
-          message: quantity > 1
-            ? `Your ${quantity} tickets are reserved. Send one e-Transfer for the full amount; once we confirm it, all ${quantity} tickets will be activated.`
+          quantity: totalQuantity,
+          message: totalQuantity > 1
+            ? `Your ${totalQuantity} tickets are reserved. Send one e-Transfer for the full amount; once we confirm it, all ${totalQuantity} tickets will be activated.`
             : `Your ticket is reserved. Once we confirm your e-Transfer, your ticket will be activated.`,
         },
       },
