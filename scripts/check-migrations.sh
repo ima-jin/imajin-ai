@@ -17,6 +17,20 @@ if [ ! -d "$MIGRATIONS_DIR" ]; then
   exit 1
 fi
 
+# Guard against orphan migrations in per-app folders (the unified runner only
+# scans migrations/ at repo root). See migrations/0015-0018 for what happens
+# when this drifts.
+ORPHANS=$(find "$BASE_DIR/apps" -path '*/node_modules' -prune -o \
+  \( -path '*/migrations/*.sql' -o -path '*/src/db/migrations/*.sql' \) -print 2>/dev/null)
+if [ -n "$ORPHANS" ]; then
+  echo "❌ Orphan migration files outside root migrations/:"
+  echo "$ORPHANS" | sed 's/^/   /'
+  echo ""
+  echo "Move these to migrations/NNNN_description.sql so scripts/migrate.mjs picks them up."
+  echo "Per-app drizzle/ folders are scratch space only — never the source of truth."
+  exit 1
+fi
+
 FILES=($(ls "$MIGRATIONS_DIR"/*.sql 2>/dev/null | sort))
 COUNT=${#FILES[@]}
 
