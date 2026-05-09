@@ -9,6 +9,7 @@ interface Profile {
   name: string | null;
   handle: string | null;
   avatar: string | null;
+  email: string | null;
 }
 
 interface FairSettlementFee {
@@ -58,6 +59,7 @@ interface GuestListProps {
     confirmedRevenue: number;
     checkedIn: number;
   };
+  autoExpand?: boolean;
 }
 
 function formatCurrency(cents: number | null, currency: string | null): string {
@@ -122,7 +124,10 @@ function ProfileCell({ ownerDid, profile, paymentMethod, paymentId }: {
         {profile?.handle && (
           <p className="text-xs text-gray-400 truncate">@{profile.handle}</p>
         )}
-        {!profile?.name && !profile?.handle && (
+        {profile?.email && (
+          <p className="text-xs text-gray-400 truncate">{profile.email}</p>
+        )}
+        {!profile?.name && !profile?.handle && !profile?.email && (
           <p className="text-xs text-gray-400 font-mono truncate">{ownerDid ? truncateDid(ownerDid) : '—'}</p>
         )}
         {paymentLabel && (
@@ -146,9 +151,9 @@ function ProfileCell({ ownerDid, profile, paymentMethod, paymentId }: {
 
 type FilterKey = 'type' | 'status' | null;
 
-export function GuestList({ eventId, isOwner, summary }: GuestListProps) {
+export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListProps) {
   const { toast } = useToast();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(autoExpand ?? false);
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -390,12 +395,14 @@ export function GuestList({ eventId, isOwner, summary }: GuestListProps) {
         )}
       </div>
       <div className="flex items-center gap-2">
-        <button
-          onClick={() => setExpanded(v => !v)}
-          className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
-        >
-          {expanded ? 'Hide Attendees' : 'Show Attendees'}
-        </button>
+        {!autoExpand && (
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
+          >
+            {expanded ? 'Hide Attendees' : 'Show Attendees'}
+          </button>
+        )}
         <button
           onClick={() => setScannerOpen(v => !v)}
           className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
