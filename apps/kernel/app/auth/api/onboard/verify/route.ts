@@ -201,6 +201,61 @@ export async function GET(request: NextRequest) {
 
     // Create session token — use actual tier (supports hard DID re-auth via magic link)
     const identityTier = (identity.tier || 'soft') as 'soft' | 'preliminary' | 'established';
+
+    // Polling branch: tab A is canonical — hand off via token instead of cookie
+    if (record.pollHandle) {
+      const handoffToken = nanoid(32);
+      await db
+        .update(onboardTokens)
+        .set({ handoffToken })
+        .where(eq(onboardTokens.id, record.id));
+
+      // Scope/attestation side effects (no cookie set in this tab)
+      if (record.scopeDid) {
+        const scopeDid = record.scopeDid;
+        try {
+          const [existing] = await db
+            .select({ removedAt: identityMembers.removedAt })
+            .from(identityMembers)
+            .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, did)))
+            .limit(1);
+          if (!existing) {
+            await db.insert(identityMembers).values({ identityDid: scopeDid, memberDid: did, role: 'member', addedBy: scopeDid });
+          } else if (existing.removedAt) {
+            await db.update(identityMembers)
+              .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedAt: new Date() })
+              .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, did)));
+          }
+        } catch (err) {
+          log.error({ err: String(err) }, '[onboard/verify] Forest member add failed (non-fatal)');
+        }
+        publish('scope.onboard', {
+          issuer: scopeDid,
+          subject: did,
+          scope: 'auth',
+          payload: { context_id: scopeDid, context_type: 'forest' },
+        }).catch(err => log.error({ err: String(err) }, '[onboard/verify] Scope attestation failed (non-fatal)'));
+      }
+
+      emitSessionAttestation({
+        did,
+        method: "email_onboard",
+        tier: identityTier,
+        userAgent: request.headers.get("user-agent"),
+      }).catch(err => log.error({ err: String(err) }, 'Session attestation error'));
+
+      // Fire-and-forget: migrate any guest tickets purchased with this email to the hard DID
+      const EVENTS_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:7006';
+      fetch(`${EVENTS_URL}/events/api/migrate-tickets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail, hardDid: did }),
+      }).catch(err => log.warn({ err: String(err) }, 'Ticket migration call failed (non-fatal)'));
+
+      return affirmationPage();
+    }
+
+    // Non-polling branch: preserve current behavior exactly
     const sessionToken = await createSessionToken({
       sub: did,
       scope: 'actor',
@@ -286,5 +341,18 @@ function errorPage(title: string, message: string): NextResponse {
 <body><h1>${title}</h1><p>${message}</p></body>
 </html>`,
     { status: 400, headers: { 'Content-Type': 'text/html' } }
+  );
+}
+
+function affirmationPage(): NextResponse {
+  return new NextResponse(
+    `<!DOCTYPE html>
+<html>
+<head><title>Email Verified</title><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{font-family:system-ui;max-width:500px;margin:80px auto;padding:20px;text-align:center;background:#000;color:#e4e4e7;}h1{color:#22c55e;font-size:24px;}p{color:#a1a1aa;line-height:1.6;}</style>
+</head>
+<body><h1>✅ Email Verified</h1><p>You can close this tab and return to where you started.</p></body>
+</html>`,
+    { status: 200, headers: { 'Content-Type': 'text/html' } }
   );
 }

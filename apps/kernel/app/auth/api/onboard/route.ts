@@ -36,7 +36,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
   try {
     const body = await request.json();
-    const { email, name, redirectUrl, context, scopeDid } = body;
+    const { email, name, redirectUrl, context, scopeDid, wantPolling } = body;
 
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       return NextResponse.json(
@@ -48,6 +48,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     const normalizedEmail = email.toLowerCase().trim();
     const token = nanoid(48);
     const id = `obt_${nanoid(16)}`;
+    const pollHandle = wantPolling === true ? nanoid(24) : null;
 
     // Store token (15 minute TTL)
     await db.insert(onboardTokens).values({
@@ -58,6 +59,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       redirectUrl: redirectUrl || null,
       context: context || null,
       scopeDid: scopeDid || null,
+      pollHandle,
       expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     });
 
@@ -80,7 +82,10 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    return NextResponse.json({ sent: true }, { headers: cors });
+    return NextResponse.json(
+      { sent: true, ...(pollHandle ? { pollHandle } : {}) },
+      { headers: cors }
+    );
 
   } catch (error) {
     log.error({ err: String(error) }, 'Onboard start error');
