@@ -151,6 +151,12 @@ function useAutoIdentity(servicePrefix: string, domain: string, overrides?: Serv
     }
 
     checkSession();
+
+    // Re-fetch when another tab or component signals a session change
+    // (e.g. after onboarding claim in a polling flow)
+    const handler = () => checkSession();
+    window.addEventListener('imajin:session-changed', handler);
+    return () => window.removeEventListener('imajin:session-changed', handler);
   }, [servicePrefix, domain, overrides]);
 
   return identity;
