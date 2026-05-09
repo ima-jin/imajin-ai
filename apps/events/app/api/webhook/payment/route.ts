@@ -12,6 +12,7 @@ import { db, events, ticketTypes, tickets, orders } from '@/src/db';
 const log = createLogger('events');
 import { eq, and, sql } from 'drizzle-orm';
 import { sendEmail, ticketConfirmationEmail, purchaseReceiptEmail, generateQRCode } from '@/src/lib/email';
+import { backfillContactEmail } from '@/src/lib/contact-email';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js';
@@ -271,14 +272,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     await attachEmailToProfile(ownerDid, customerEmail);
 
     // Issue #4: backfill auth.identities.contact_email with NULL guard
-    try {
-      const normalizedEmail = customerEmail.toLowerCase().trim();
-      await db.execute(
-        sql`UPDATE auth.identities SET contact_email = ${normalizedEmail} WHERE id = ${ownerDid} AND contact_email IS NULL`
-      );
-    } catch (err) {
-      log.warn({ err: String(err) }, 'Failed to backfill auth.identities.contact_email (non-fatal)');
-    }
+    await backfillContactEmail(ownerDid, customerEmail, log);
 
     // Migrate any existing soft DID tickets/chat for this email
     await migrateSoftDidToHard(customerEmail, ownerDid, event.id);
@@ -291,14 +285,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     ownerDid = softSession.did;
 
     // Issue #4: backfill auth.identities.contact_email for soft DID (NULL guard)
-    try {
-      const normalizedEmail = customerEmail.toLowerCase().trim();
-      await db.execute(
-        sql`UPDATE auth.identities SET contact_email = ${normalizedEmail} WHERE id = ${ownerDid} AND contact_email IS NULL`
-      );
-    } catch (err) {
-      log.warn({ err: String(err) }, 'Failed to backfill auth.identities.contact_email for soft DID (non-fatal)');
-    }
+    await backfillContactEmail(ownerDid, customerEmail, log);
   }
 
   // Create order record BEFORE tickets — so we can link them via orderId

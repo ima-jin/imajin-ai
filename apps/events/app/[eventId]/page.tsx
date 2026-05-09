@@ -8,6 +8,7 @@ import { eq, and } from 'drizzle-orm';
 import { TicketsSection } from './tickets-section';
 import { generateQRCode } from '@/src/lib/email';
 import { getClient } from '@imajin/db';
+import { getContactEmail } from '@/src/lib/contact-email';
 
 const sql = getClient();
 
@@ -282,17 +283,9 @@ export default async function EventPage({ params, searchParams }: Props) {
   const did = session ? (session.actingAs || session.id) : null;
 
   // Issue #4: fetch canonical contact_email for the session DID
-  let sessionContactEmail: string | undefined;
-  if (did) {
-    try {
-      const [identityRow] = await sql<{ contact_email: string | null }[]>`
-        SELECT contact_email FROM auth.identities WHERE id = ${did} LIMIT 1
-      `;
-      sessionContactEmail = identityRow?.contact_email ?? undefined;
-    } catch {
-      // non-fatal — proceed without it
-    }
-  }
+  const sessionContactEmail = did
+    ? await getContactEmail(did, log)
+    : undefined;
   const isCreator = did === event.creatorDid;
 
   // Check if user is a cohost

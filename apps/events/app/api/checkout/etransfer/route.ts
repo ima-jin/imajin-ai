@@ -14,6 +14,7 @@ import { optionalAuth } from '@imajin/auth';
 import { randomBytes } from 'crypto';
 import { getClient } from '@imajin/db';
 import { sendEmail, etransferReservationEmail } from '@/src/lib/email';
+import { getContactEmail, backfillContactEmail } from '@/src/lib/contact-email';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const HOLD_HOURS = 72;
@@ -82,29 +83,11 @@ export const POST = withLogger('events', async (request, { log }) => {
 
       // Issue #4: backfill contact_email if buyer provided one and identity lacks it
       if (body.email) {
-        try {
-          const sql = getClient();
-          await sql`
-            UPDATE auth.identities
-            SET contact_email = ${body.email.toLowerCase().trim()}
-            WHERE id = ${ownerDid} AND contact_email IS NULL
-          `;
-        } catch (err) {
-          log.warn({ err: String(err) }, 'Failed to backfill contact_email');
-        }
+        await backfillContactEmail(ownerDid, body.email, log);
       }
 
       // Validate we have an email for ticket delivery
-      let contactEmail: string | null = null;
-      try {
-        const sql = getClient();
-        const rows = await sql<{ contact_email: string | null }[]>`
-          SELECT contact_email FROM auth.identities WHERE id = ${ownerDid} LIMIT 1
-        `;
-        contactEmail = rows[0]?.contact_email ?? null;
-      } catch (err) {
-        log.warn({ err: String(err) }, 'Failed to resolve contact_email');
-      }
+      const contactEmail = await getContactEmail(ownerDid, log);
       if (!contactEmail && !body.email) {
         return NextResponse.json(
           { error: 'Email required to send your ticket', field: 'email' },
