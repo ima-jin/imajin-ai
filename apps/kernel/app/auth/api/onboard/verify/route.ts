@@ -202,85 +202,11 @@ export async function GET(request: NextRequest) {
     // Create session token — use actual tier (supports hard DID re-auth via magic link)
     const identityTier = (identity.tier || 'soft') as 'soft' | 'preliminary' | 'established';
 
-    // Polling branch: tab A is canonical — hand off via token instead of cookie
-    if (record.pollHandle) {
-      const handoffToken = nanoid(32);
-      await db
-        .update(onboardTokens)
-        .set({ handoffToken })
-        .where(eq(onboardTokens.id, record.id));
-
-      // Scope/attestation side effects (no cookie set in this tab)
-      if (record.scopeDid) {
-        const scopeDid = record.scopeDid;
-        try {
-          const [existing] = await db
-            .select({ removedAt: identityMembers.removedAt })
-            .from(identityMembers)
-            .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, did)))
-            .limit(1);
-          if (!existing) {
-            await db.insert(identityMembers).values({ identityDid: scopeDid, memberDid: did, role: 'member', addedBy: scopeDid });
-          } else if (existing.removedAt) {
-            await db.update(identityMembers)
-              .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedAt: new Date() })
-              .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, did)));
-          }
-        } catch (err) {
-          log.error({ err: String(err) }, '[onboard/verify] Forest member add failed (non-fatal)');
-        }
-        publish('scope.onboard', {
-          issuer: scopeDid,
-          subject: did,
-          scope: 'auth',
-          payload: { context_id: scopeDid, context_type: 'forest' },
-        }).catch(err => log.error({ err: String(err) }, '[onboard/verify] Scope attestation failed (non-fatal)'));
-      }
-
-      emitSessionAttestation({
-        did,
-        method: "email_onboard",
-        tier: identityTier,
-        userAgent: request.headers.get("user-agent"),
-      }).catch(err => log.error({ err: String(err) }, 'Session attestation error'));
-
-      // Fire-and-forget: migrate any guest tickets purchased with this email to the hard DID
-      const EVENTS_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:7006';
-      fetch(`${EVENTS_URL}/events/api/migrate-tickets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail, hardDid: did }),
-      }).catch(err => log.warn({ err: String(err) }, 'Ticket migration call failed (non-fatal)'));
-
-      return affirmationPage();
-    }
-
-    // Non-polling branch: preserve current behavior exactly
-    const sessionToken = await createSessionToken({
-      sub: did,
-      scope: 'actor',
-      subtype: 'human',
-      tier: identityTier,
-      handle: identity.handle || undefined,
-      name: identity.name || undefined,
-    });
-
-    // Set cookie and redirect
-    const cookieOptions = getSessionCookieOptions();
-
-    const redirectUrl = record.redirectUrl || '/';
-    const response = NextResponse.redirect(redirectUrl);
-
-    response.cookies.set(
-      cookieOptions.name,
-      sessionToken,
-      cookieOptions.options,
-    );
-
-    // If onboard was scoped to a forest, add user as member and set active forest cookie
+    // Side effects shared by both branches (polling + non-polling):
+    // forest membership, scope attestation, session attestation, ticket migration.
+    // None of these depend on whether we set a cookie or hand off via token.
     if (record.scopeDid) {
       const scopeDid = record.scopeDid;
-      // Add as forest member directly (same-app operation)
       try {
         const [existing] = await db
           .select({ removedAt: identityMembers.removedAt })
@@ -297,15 +223,12 @@ export async function GET(request: NextRequest) {
       } catch (err) {
         log.error({ err: String(err) }, '[onboard/verify] Forest member add failed (non-fatal)');
       }
-      // Emit scope.onboard attestation
       publish('scope.onboard', {
         issuer: scopeDid,
         subject: did,
         scope: 'auth',
         payload: { context_id: scopeDid, context_type: 'forest' },
       }).catch(err => log.error({ err: String(err) }, '[onboard/verify] Scope attestation failed (non-fatal)'));
-      // Set active forest cookie
-      response.cookies.set('x-acting-as', scopeDid, { path: '/', maxAge: 31536000, sameSite: 'lax' });
     }
 
     emitSessionAttestation({
@@ -323,6 +246,34 @@ export async function GET(request: NextRequest) {
       body: JSON.stringify({ email: normalizedEmail, hardDid: did }),
     }).catch(err => log.warn({ err: String(err) }, 'Ticket migration call failed (non-fatal)'));
 
+    // Branch on response shape only:
+    // - Polling: store handoff token, render affirmation (no cookie, no redirect).
+    // - Non-polling: mint session, set cookie, redirect (preserves legacy behavior).
+    if (record.pollHandle) {
+      const handoffToken = nanoid(32);
+      await db
+        .update(onboardTokens)
+        .set({ handoffToken })
+        .where(eq(onboardTokens.id, record.id));
+      return affirmationPage();
+    }
+
+    const sessionToken = await createSessionToken({
+      sub: did,
+      scope: 'actor',
+      subtype: 'human',
+      tier: identityTier,
+      handle: identity.handle || undefined,
+      name: identity.name || undefined,
+    });
+
+    const cookieOptions = getSessionCookieOptions();
+    const redirectUrl = record.redirectUrl || '/';
+    const response = NextResponse.redirect(redirectUrl);
+    response.cookies.set(cookieOptions.name, sessionToken, cookieOptions.options);
+    if (record.scopeDid) {
+      response.cookies.set('x-acting-as', record.scopeDid, { path: '/', maxAge: 31536000, sameSite: 'lax' });
+    }
     return response;
 
   } catch (error) {
