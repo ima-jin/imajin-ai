@@ -286,12 +286,12 @@ function errorPage(title: string, message: string): NextResponse {
   return new NextResponse(
     `<!DOCTYPE html>
 <html>
-<head><title>${title}</title><meta name="viewport" content="width=device-width, initial-scale=1">
+<head><title>${title}</title><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>body{font-family:system-ui;max-width:500px;margin:80px auto;padding:20px;text-align:center;background:#000;color:#e4e4e7;}h1{color:#ef4444;font-size:24px;}p{color:#a1a1aa;line-height:1.6;}</style>
 </head>
 <body><h1>${title}</h1><p>${message}</p></body>
 </html>`,
-    { status: 400, headers: { 'Content-Type': 'text/html' } }
+    { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
   );
 }
 
@@ -299,11 +299,11 @@ function affirmationPage(): NextResponse {
   return new NextResponse(
     `<!DOCTYPE html>
 <html>
-<head><title>Email Verified</title><meta name="viewport" content="width=device-width, initial-scale=1">
+<head><title>Email Verified</title><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>body{font-family:system-ui;max-width:500px;margin:80px auto;padding:20px;text-align:center;background:#000;color:#e4e4e7;}h1{color:#22c55e;font-size:24px;}p{color:#a1a1aa;line-height:1.6;}</style>
 </head>
 <body><h1>✅ Email Verified</h1><p>You can close this tab and return to where you started.</p></body>
 </html>`,
-    { status: 200, headers: { 'Content-Type': 'text/html' } }
+    { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
   );
 }
