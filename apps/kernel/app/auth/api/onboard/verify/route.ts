@@ -201,31 +201,12 @@ export async function GET(request: NextRequest) {
 
     // Create session token — use actual tier (supports hard DID re-auth via magic link)
     const identityTier = (identity.tier || 'soft') as 'soft' | 'preliminary' | 'established';
-    const sessionToken = await createSessionToken({
-      sub: did,
-      scope: 'actor',
-      subtype: 'human',
-      tier: identityTier,
-      handle: identity.handle || undefined,
-      name: identity.name || undefined,
-    });
 
-    // Set cookie and redirect
-    const cookieOptions = getSessionCookieOptions();
-
-    const redirectUrl = record.redirectUrl || '/';
-    const response = NextResponse.redirect(redirectUrl);
-
-    response.cookies.set(
-      cookieOptions.name,
-      sessionToken,
-      cookieOptions.options,
-    );
-
-    // If onboard was scoped to a forest, add user as member and set active forest cookie
+    // Side effects shared by both branches (polling + non-polling):
+    // forest membership, scope attestation, session attestation, ticket migration.
+    // None of these depend on whether we set a cookie or hand off via token.
     if (record.scopeDid) {
       const scopeDid = record.scopeDid;
-      // Add as forest member directly (same-app operation)
       try {
         const [existing] = await db
           .select({ removedAt: identityMembers.removedAt })
@@ -242,15 +223,12 @@ export async function GET(request: NextRequest) {
       } catch (err) {
         log.error({ err: String(err) }, '[onboard/verify] Forest member add failed (non-fatal)');
       }
-      // Emit scope.onboard attestation
       publish('scope.onboard', {
         issuer: scopeDid,
         subject: did,
         scope: 'auth',
         payload: { context_id: scopeDid, context_type: 'forest' },
       }).catch(err => log.error({ err: String(err) }, '[onboard/verify] Scope attestation failed (non-fatal)'));
-      // Set active forest cookie
-      response.cookies.set('x-acting-as', scopeDid, { path: '/', maxAge: 31536000, sameSite: 'lax' });
     }
 
     emitSessionAttestation({
@@ -268,6 +246,34 @@ export async function GET(request: NextRequest) {
       body: JSON.stringify({ email: normalizedEmail, hardDid: did }),
     }).catch(err => log.warn({ err: String(err) }, 'Ticket migration call failed (non-fatal)'));
 
+    // Branch on response shape only:
+    // - Polling: store handoff token, render affirmation (no cookie, no redirect).
+    // - Non-polling: mint session, set cookie, redirect (preserves legacy behavior).
+    if (record.pollHandle) {
+      const handoffToken = nanoid(32);
+      await db
+        .update(onboardTokens)
+        .set({ handoffToken })
+        .where(eq(onboardTokens.id, record.id));
+      return affirmationPage();
+    }
+
+    const sessionToken = await createSessionToken({
+      sub: did,
+      scope: 'actor',
+      subtype: 'human',
+      tier: identityTier,
+      handle: identity.handle || undefined,
+      name: identity.name || undefined,
+    });
+
+    const cookieOptions = getSessionCookieOptions();
+    const redirectUrl = record.redirectUrl || '/';
+    const response = NextResponse.redirect(redirectUrl);
+    response.cookies.set(cookieOptions.name, sessionToken, cookieOptions.options);
+    if (record.scopeDid) {
+      response.cookies.set('x-acting-as', record.scopeDid, { path: '/', maxAge: 31536000, sameSite: 'lax' });
+    }
     return response;
 
   } catch (error) {
@@ -286,5 +292,18 @@ function errorPage(title: string, message: string): NextResponse {
 <body><h1>${title}</h1><p>${message}</p></body>
 </html>`,
     { status: 400, headers: { 'Content-Type': 'text/html' } }
+  );
+}
+
+function affirmationPage(): NextResponse {
+  return new NextResponse(
+    `<!DOCTYPE html>
+<html>
+<head><title>Email Verified</title><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{font-family:system-ui;max-width:500px;margin:80px auto;padding:20px;text-align:center;background:#000;color:#e4e4e7;}h1{color:#22c55e;font-size:24px;}p{color:#a1a1aa;line-height:1.6;}</style>
+</head>
+<body><h1>✅ Email Verified</h1><p>You can close this tab and return to where you started.</p></body>
+</html>`,
+    { status: 200, headers: { 'Content-Type': 'text/html' } }
   );
 }

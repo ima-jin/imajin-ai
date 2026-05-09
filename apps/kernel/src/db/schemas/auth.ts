@@ -75,12 +75,17 @@ export const onboardTokens = authSchema.table('onboard_tokens', {
   redirectUrl: text('redirect_url'),
   context: text('context'),                       // Human-readable: "Enroll in Intro to AI"
   scopeDid: text('scope_did'),                    // Forest DID to join on completion
+  pollHandle: text('poll_handle').unique(),
+  handoffToken: text('handoff_token').unique(),
+  handoffUsedAt: timestamp('handoff_used_at', { withTimezone: true }),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   tokenIdx: index('idx_auth_onboard_tokens_token').on(table.token),
   emailIdx: index('idx_auth_onboard_tokens_email').on(table.email),
+  pollHandleIdx: index('idx_auth_onboard_tokens_poll_handle').on(table.pollHandle),
+  handoffTokenIdx: index('idx_auth_onboard_tokens_handoff_token').on(table.handoffToken),
 }));
 
 /**

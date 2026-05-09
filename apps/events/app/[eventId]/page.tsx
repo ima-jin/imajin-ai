@@ -8,6 +8,7 @@ import { eq, and } from 'drizzle-orm';
 import { TicketsSection } from './tickets-section';
 import { generateQRCode } from '@/src/lib/email';
 import { getClient } from '@imajin/db';
+import { getContactEmail } from '@/src/lib/contact-email';
 
 const sql = getClient();
 
@@ -280,6 +281,11 @@ export default async function EventPage({ params, searchParams }: Props) {
 
   const session = await getSession();
   const did = session ? (session.actingAs || session.id) : null;
+
+  // Issue #4: fetch canonical contact_email for the session DID
+  const sessionContactEmail = did
+    ? await getContactEmail(did, log)
+    : undefined;
   const isCreator = did === event.creatorDid;
 
   // Check if user is a cohost
@@ -817,6 +823,7 @@ export default async function EventPage({ params, searchParams }: Props) {
                 etransferEnabled={etransferEnabled}
                 isAuthenticated={!!session}
                 sessionEmail={session?.email ?? undefined}
+                sessionContactEmail={sessionContactEmail}
                 sellerConnected={sellerConnected}
                 hasHiddenTiers={hasHiddenTiers}
               />

@@ -12,6 +12,7 @@ import { db, events, ticketTypes, tickets, orders } from '@/src/db';
 const log = createLogger('events');
 import { eq, and, sql } from 'drizzle-orm';
 import { sendEmail, ticketConfirmationEmail, purchaseReceiptEmail, generateQRCode } from '@/src/lib/email';
+import { backfillContactEmail } from '@/src/lib/contact-email';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js';
@@ -270,6 +271,9 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     // Attach email to their profile if not already set
     await attachEmailToProfile(ownerDid, customerEmail);
 
+    // Issue #4: backfill auth.identities.contact_email with NULL guard
+    await backfillContactEmail(ownerDid, customerEmail, log);
+
     // Migrate any existing soft DID tickets/chat for this email
     await migrateSoftDidToHard(customerEmail, ownerDid, event.id);
   } else {
@@ -279,6 +283,9 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       throw new Error(`Failed to create soft DID session for ${customerEmail}`);
     }
     ownerDid = softSession.did;
+
+    // Issue #4: backfill auth.identities.contact_email for soft DID (NULL guard)
+    await backfillContactEmail(ownerDid, customerEmail, log);
   }
 
   // Create order record BEFORE tickets — so we can link them via orderId

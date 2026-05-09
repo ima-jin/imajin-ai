@@ -8,6 +8,8 @@ import { TicketPurchase } from './ticket-purchase';
 import { SurveyAccordion } from './survey-accordion';
 import { useToast } from '@imajin/ui';
 
+const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
+
 function timeAgo(dateStr: string): string {
   const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (seconds < 60) return 'just now';
@@ -76,11 +78,12 @@ interface Props {
   etransferEnabled?: boolean;
   isAuthenticated?: boolean;
   sessionEmail?: string;
+  sessionContactEmail?: string;
   sellerConnected?: boolean;
   hasHiddenTiers?: boolean;
 }
 
-export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], hasTicket = false, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sellerConnected = true, hasHiddenTiers = false }: Props) {
+export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], hasTicket = false, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sessionContactEmail, sellerConnected = true, hasHiddenTiers = false }: Props) {
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'buy-tickets'>(
     hasTicket ? 'my-tickets' : 'buy-tickets'
   );
@@ -131,7 +134,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
       {activeTab === 'my-tickets' ? (
         <MyTicketsTab userOrders={userOrders} eventId={eventId} />
       ) : (
-        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} />
+        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sessionContactEmail={sessionContactEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} />
       )}
     </div>
   );
@@ -405,7 +408,7 @@ function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
   );
 }
 
-function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sellerConnected = true, hasHiddenTiers = false }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sessionEmail?: string; sellerConnected?: boolean; hasHiddenTiers?: boolean }) {
+function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sessionContactEmail, sellerConnected = true, hasHiddenTiers = false }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sessionEmail?: string; sessionContactEmail?: string; sellerConnected?: boolean; hasHiddenTiers?: boolean }) {
   const [unlockedTickets, setUnlockedTickets] = useState<TicketType[]>([]);
   const [unlockCode, setUnlockCode] = useState('');
   const [showUnlock, setShowUnlock] = useState(false);
@@ -415,52 +418,6 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
 
   // Lifted quantity state for unified cart
   const [quantities, setQuantities] = useState<Record<string, number>>({});
-  // When the buyer comes back from a magic-link verification, the URL has
-  // ?reserve=<base64> with their pre-verified cart. We rehydrate quantities
-  // and trigger an auto-EMT submit on mount.
-  const [pendingAutoReserve, setPendingAutoReserve] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const reserveParam = params.get('reserve');
-    if (!reserveParam) return;
-    if (!sessionEmail) return; // not logged in yet — magic link hasn't completed
-    try {
-      // base64url → base64 → utf8
-      const b64 = reserveParam.replace(/-/g, '+').replace(/_/g, '/').padEnd(
-        Math.ceil(reserveParam.length / 4) * 4,
-        '='
-      );
-      const decoded = JSON.parse(
-        decodeURIComponent(
-          atob(b64)
-            .split('')
-            .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-            .join('')
-        )
-      ) as { items: { ticketTypeId: string; quantity: number }[] };
-      const restored: Record<string, number> = {};
-      for (const item of decoded.items ?? []) {
-        if (item.ticketTypeId) restored[item.ticketTypeId] = item.quantity;
-      }
-      if (Object.keys(restored).length > 0) {
-        setQuantities(restored);
-        setPendingAutoReserve(true);
-      }
-      // Strip the param so reload doesn't re-fire
-      params.delete('reserve');
-      const newSearch = params.toString();
-      window.history.replaceState(
-        {},
-        '',
-        window.location.pathname + (newSearch ? `?${newSearch}` : '')
-      );
-    } catch (err) {
-      console.warn('Failed to decode reserve param', err);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const allTickets = [...tickets, ...unlockedTickets];
 
@@ -628,9 +585,8 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
           formattedTotal={formattedTotal}
           etransferEnabled={etransferEnabled}
           sessionEmail={sessionEmail}
+          sessionContactEmail={sessionContactEmail}
           onError={(msg) => toast.error(msg)}
-          autoReserve={pendingAutoReserve}
-          onAutoReserveConsumed={() => setPendingAutoReserve(false)}
           mixedCurrency={mixedCurrency}
           cartCurrencies={cartCurrencies}
         />
@@ -690,27 +646,36 @@ interface UnifiedBarProps {
   formattedTotal: string;
   etransferEnabled: boolean;
   sessionEmail?: string;
+  sessionContactEmail?: string;
   onError: (msg: string) => void;
-  autoReserve?: boolean;
-  onAutoReserveConsumed?: () => void;
   mixedCurrency?: boolean;
   cartCurrencies?: string[];
 }
 
-function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, onError, autoReserve = false, onAutoReserveConsumed, mixedCurrency = false, cartCurrencies = [] }: UnifiedBarProps) {
+function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [] }: UnifiedBarProps) {
   const router = useRouter();
   type BarStep = 'idle' | 'card-loading' | 'emt-form' | 'emt-loading' | 'emt-done' | 'emt-verify-sent';
   const [step, setStep] = useState<BarStep>('idle');
-  const [emtEmail, setEmtEmail] = useState(sessionEmail || '');
+  const [emtEmail, setEmtEmail] = useState(sessionContactEmail || sessionEmail || '');
   const [emtName, setEmtName] = useState('');
   const [emtResult, setEmtResult] = useState<{ orderId: string; quantity: number; email: string; amount: number; currency: string; memo: string; deadline: string; message: string } | null>(null);
   const [verifySentTo, setVerifySentTo] = useState<string | null>(null);
+  // Issue #1: polling state for tab-A-canonical verification
+  const [pollHandle, setPollHandle] = useState<string | null>(null);
+  const [pollStatus, setPollStatus] = useState<'pending' | 'completed' | 'claimed' | 'expired' | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
+  const [showFallbackHint, setShowFallbackHint] = useState(false);
 
   const first = cartItems[0];
   const multiType = cartItems.length > 1;
 
   async function startStripe() {
     if (!first) return;
+    // Issue #4: require email if no contactEmail on file
+    if (!sessionContactEmail && !emtEmail.includes('@')) {
+      onError('Please enter your email address');
+      return;
+    }
     setStep('card-loading');
     try {
       const res = await apiFetch('/api/checkout', {
@@ -721,6 +686,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           ticketTypeId: first.ticket.id,
           quantity: first.qty,
           ...(inviteToken && { invite: inviteToken }),
+          ...(!sessionContactEmail && emtEmail && { email: emtEmail.trim() }),
         }),
       });
       if (!res.ok) {
@@ -739,7 +705,8 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
 
   async function startEtransfer() {
     if (!first) return;
-    if (!sessionEmail && !emtEmail.includes('@')) {
+    // Issue #4: use sessionContactEmail to decide if we need the form
+    if (!sessionContactEmail && !emtEmail.includes('@')) {
       setStep('emt-form');
       return;
     }
@@ -754,8 +721,9 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           // Send the full cart — server creates one order spanning all types.
           items: cartItems.map((c) => ({ ticketTypeId: c.ticket.id, quantity: c.qty })),
           ...(inviteToken && { invite: inviteToken }),
-          ...(!sessionEmail && emtEmail && { email: emtEmail.trim() }),
-          ...(!sessionEmail && emtName && { name: emtName.trim() }),
+          // Issue #4: always pass email when available (even if session exists)
+          ...(emtEmail && { email: emtEmail.trim() }),
+          ...(emtName && { name: emtName.trim() }),
         }),
       });
       if (!res.ok) {
@@ -768,6 +736,10 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
       // Magic-link verification path: server didn't create a hold yet.
       if (data.verificationSent) {
         setVerifySentTo(data.email || emtEmail || sessionEmail || null);
+        setPollHandle(data.pollHandle || null);
+        setPollStatus('pending');
+        setPollError(null);
+        setShowFallbackHint(false);
         setStep('emt-verify-sent');
         return;
       }
@@ -789,36 +761,117 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
     }
   }
 
-  // Auto-fire EMT once when returning from a magic-link verification
+  // Issue #1: polling loop for tab-A-canonical verification
   useEffect(() => {
-    if (!autoReserve) return;
-    if (step !== 'idle') return;
-    if (totalQty === 0) return;
-    onAutoReserveConsumed?.();
-    void startEtransfer();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoReserve, totalQty]);
+    if (step !== 'emt-verify-sent' || !pollHandle) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`${AUTH_URL}/api/onboard/poll?handle=${encodeURIComponent(pollHandle)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setPollStatus(data.status);
+
+        if (data.status === 'completed' && data.handoffToken) {
+          clearInterval(pollInterval);
+          // Claim the session in tab A context
+          const claimRes = await fetch(`${AUTH_URL}/api/onboard/claim`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ handoffToken: data.handoffToken }),
+          });
+          if (!claimRes.ok) {
+            const errData = await claimRes.json().catch(() => ({}));
+            setPollError(errData.error || 'Failed to complete verification');
+            setPollStatus('expired');
+            return;
+          }
+          // Session set — re-fire the EMT reserve
+          setPollStatus(null);
+          setPollHandle(null);
+          await startEtransfer();
+        } else if (data.status === 'expired' || data.status === 'claimed') {
+          clearInterval(pollInterval);
+          setPollError('Verification link expired. Please try again.');
+        }
+      } catch {
+        // Polling errors are non-fatal — keep trying
+      }
+    }, 2000);
+
+    // Fallback hint after ~30s
+    const fallbackTimeout = setTimeout(() => {
+      setShowFallbackHint(true);
+    }, 30_000);
+
+    return () => {
+      clearInterval(pollInterval);
+      clearTimeout(fallbackTimeout);
+    };
+  }, [step, pollHandle]);
 
   if (step === 'emt-verify-sent') {
+    const isPolling = pollStatus === 'pending' || pollStatus === 'completed';
+    const isExpired = pollStatus === 'expired' || pollStatus === 'claimed' || !!pollError;
     return (
       <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl space-y-3">
         <div className="flex items-center gap-2">
           <span className="text-orange-500 text-xl">📨</span>
-          <h3 className="font-semibold text-base">Check your email to confirm</h3>
+          <h3 className="font-semibold text-base">
+            {isExpired ? 'Verification expired' : isPolling ? 'Waiting for verification…' : 'Check your email to confirm'}
+          </h3>
         </div>
-        <p className="text-sm text-gray-600 dark:text-gray-300">
-          We sent a verification link to <strong className="text-gray-800 dark:text-gray-100">{verifySentTo}</strong>.
-          Click it to confirm your email and we'll reserve your {totalQty} ticket{totalQty !== 1 ? 's' : ''} automatically.
-        </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          Link expires in 15 minutes. Check spam if you don't see it. You can keep this tab open or close it — the link returns you here.
-        </p>
-        <button
-          onClick={() => { setStep('emt-form'); setVerifySentTo(null); }}
-          className="text-xs text-orange-500 hover:underline"
-        >
-          Use a different email
-        </button>
+        {isExpired ? (
+          <>
+            <p className="text-sm text-red-500">{pollError || 'Verification link expired — please try again.'}</p>
+            <button
+              onClick={() => {
+                setStep('idle');
+                setPollHandle(null);
+                setPollStatus(null);
+                setPollError(null);
+                setShowFallbackHint(false);
+              }}
+              className="px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition"
+            >
+              Try Again
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              We sent a verification link to <strong className="text-gray-800 dark:text-gray-100">{verifySentTo}</strong>.
+              Click it to confirm your email and we'll reserve your {totalQty} ticket{totalQty !== 1 ? 's' : ''} automatically.
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Link expires in 15 minutes. Check spam if you don't see it.
+            </p>
+            {showFallbackHint && (
+              <p className="text-xs text-amber-500">
+                Still waiting? Make sure you clicked the link in your email. If you already verified, you can{' '}
+                <button
+                  onClick={() => {
+                    setStep('idle');
+                    setPollHandle(null);
+                    setPollStatus(null);
+                    setPollError(null);
+                    setShowFallbackHint(false);
+                  }}
+                  className="text-orange-500 hover:underline font-medium"
+                >
+                  retry
+                </button>.
+              </p>
+            )}
+            <button
+              onClick={() => { setStep('emt-form'); setVerifySentTo(null); setPollHandle(null); setPollStatus(null); }}
+              className="text-xs text-orange-500 hover:underline"
+            >
+              Use a different email
+            </button>
+          </>
+        )}
       </div>
     );
   }
@@ -863,7 +916,18 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           <input type="text" placeholder="Your name" value={emtName} onChange={(e) => setEmtName(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm" />
-          <input type="email" placeholder="Your email" value={emtEmail} onChange={(e) => setEmtEmail(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm" />
+          <div>
+            <input
+              type="email"
+              placeholder={sessionContactEmail ? 'Your email' : 'Your email — where should we send your ticket?'}
+              value={emtEmail}
+              onChange={(e) => setEmtEmail(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+            />
+            {!sessionContactEmail && (
+              <p className="text-xs text-gray-500 mt-1">Email required to send your ticket.</p>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={startEtransfer} disabled={!emtEmail.includes('@')} className={`px-5 py-2.5 rounded-lg font-semibold transition ${!emtEmail.includes('@') ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-orange-500 text-white hover:bg-orange-600'}`}>Reserve My Ticket</button>
@@ -875,6 +939,19 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
 
   return (
     <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl">
+      {/* Issue #4: email collection when no contactEmail on file */}
+      {totalQty > 0 && !sessionContactEmail && (
+        <div className="mb-3">
+          <input
+            type="email"
+            placeholder="Your email — where should we send your ticket?"
+            value={emtEmail}
+            onChange={(e) => setEmtEmail(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+          />
+          <p className="text-xs text-gray-500 mt-1">Email required to send your ticket.</p>
+        </div>
+      )}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="text-sm text-gray-500 dark:text-gray-400">
           {totalQty === 0 ? (
@@ -888,9 +965,9 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         <div className="flex flex-col sm:flex-row gap-2">
           <button
             onClick={startStripe}
-            disabled={totalQty === 0 || mixedCurrency || step === 'card-loading' || step === 'emt-loading'}
+            disabled={totalQty === 0 || mixedCurrency || step === 'card-loading' || step === 'emt-loading' || (!sessionContactEmail && !emtEmail.includes('@'))}
             className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${
-              totalQty === 0 || mixedCurrency || step === 'card-loading'
+              totalQty === 0 || mixedCurrency || step === 'card-loading' || (!sessionContactEmail && !emtEmail.includes('@'))
                 ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
                 : 'bg-orange-500 text-white hover:bg-orange-600'
             }`}
@@ -900,9 +977,9 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           {etransferEnabled && (
             <button
               onClick={startEtransfer}
-              disabled={totalQty === 0 || mixedCurrency || step === 'card-loading' || step === 'emt-loading'}
+              disabled={totalQty === 0 || mixedCurrency || step === 'card-loading' || step === 'emt-loading' || (!sessionContactEmail && !emtEmail.includes('@'))}
               className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap border ${
-                totalQty === 0 || mixedCurrency
+                totalQty === 0 || mixedCurrency || (!sessionContactEmail && !emtEmail.includes('@'))
                   ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700 cursor-not-allowed'
                   : 'bg-orange-500/20 text-orange-500 border-orange-500/40 hover:bg-orange-500/30'
               }`}

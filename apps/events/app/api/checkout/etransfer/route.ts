@@ -14,6 +14,7 @@ import { optionalAuth } from '@imajin/auth';
 import { randomBytes } from 'crypto';
 import { getClient } from '@imajin/db';
 import { sendEmail, etransferReservationEmail } from '@/src/lib/email';
+import { getContactEmail, backfillContactEmail } from '@/src/lib/contact-email';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const HOLD_HOURS = 72;
@@ -79,18 +80,35 @@ export const POST = withLogger('events', async (request, { log }) => {
 
     if (session) {
       ownerDid = session.id;
+
+      // Issue #4: backfill contact_email if buyer provided one and identity lacks it
+      if (body.email) {
+        await backfillContactEmail(ownerDid, body.email, log);
+      }
+
+      // Validate we have an email for ticket delivery
+      const contactEmail = await getContactEmail(ownerDid, log);
+      if (!contactEmail && !body.email) {
+        return NextResponse.json(
+          { error: 'Email required to send your ticket', field: 'email' },
+          { status: 400 }
+        );
+      }
+      if (!ownerEmail && contactEmail) {
+        ownerEmail = contactEmail;
+      }
     } else if (body.email) {
       // Anonymous buyer with an email but no session: send a magic-link
       // verification email instead of creating a soft DID + hold blindly.
       // This proves the email is real and owned before we reserve inventory
       // or send any reservation email.
+      // Tab-A-canonical: redirect goes to a simple affirmation page; cart stays
+      // in component state and tab A picks up verification via polling.
       const eventsBase = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
-      const reserveParam = Buffer
-        .from(JSON.stringify({ items: cart }), 'utf8')
-        .toString('base64url');
-      const redirectUrl = `${eventsBase}/${body.eventId}?reserve=${reserveParam}${
-        body.invite ? `&invite=${encodeURIComponent(body.invite)}` : ''
+      const redirectUrl = `${eventsBase}/${body.eventId}${
+        body.invite ? `?invite=${encodeURIComponent(body.invite)}` : ''
       }`;
+      let pollHandle: string | undefined;
       try {
         const onboardRes = await fetch(`${AUTH_URL}/api/onboard`, {
           method: 'POST',
@@ -100,6 +118,7 @@ export const POST = withLogger('events', async (request, { log }) => {
             name: body.name,
             redirectUrl,
             context: 'reserve your tickets',
+            wantPolling: true,
           }),
         });
         if (!onboardRes.ok) {
@@ -110,6 +129,8 @@ export const POST = withLogger('events', async (request, { log }) => {
             { status: 502 }
           );
         }
+        const onboardData = await onboardRes.json();
+        pollHandle = onboardData.pollHandle;
       } catch (err) {
         log.error({ err: String(err) }, 'Magic-link send error');
         return NextResponse.json(
@@ -120,6 +141,7 @@ export const POST = withLogger('events', async (request, { log }) => {
       return NextResponse.json({
         verificationSent: true,
         email: body.email,
+        ...(pollHandle ? { pollHandle } : {}),
         message: `We sent a verification link to ${body.email}. Click it to confirm your email and reserve your ticket${totalQuantity > 1 ? 's' : ''}.`,
       });
     } else {
