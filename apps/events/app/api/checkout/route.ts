@@ -14,6 +14,7 @@ import { db, events, ticketTypes, eventInvites } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
+import { getClient } from '@imajin/db';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL!;
@@ -112,6 +113,20 @@ export const POST = withLogger('events', async (request, { log, correlationId })
     const session = await optionalAuth(request);
     const buyerDid = (session && session.tier !== 'soft') ? session.id : undefined;
 
+    // Resolve contact email for pre-filling Stripe checkout
+    let customerEmail = body.email;
+    if (buyerDid && !customerEmail) {
+      try {
+        const sql = getClient();
+        const rows = await sql<{ contact_email: string | null }[]>`
+          SELECT contact_email FROM auth.identities WHERE id = ${buyerDid} LIMIT 1
+        `;
+        customerEmail = rows[0]?.contact_email ?? undefined;
+      } catch (err) {
+        // non-fatal — Stripe will collect email on its page
+      }
+    }
+
     // Enforce max per order: per-type override > event metadata > default 10, hard cap 20
     const eventMeta = (event.metadata || {}) as Record<string, any>;
     const maxPerOrder = Math.min(
@@ -152,7 +167,7 @@ export const POST = withLogger('events', async (request, { log, correlationId })
           quantity,
         }],
         currency: ticketType.currency,
-        customerEmail: body.email,
+        customerEmail,
         successUrl: `${EVENTS_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}&event=${event.id}`,
         cancelUrl: `${EVENTS_URL}/${event.id}`,
         fairManifest,

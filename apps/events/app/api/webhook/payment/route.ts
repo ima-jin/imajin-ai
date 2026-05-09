@@ -270,6 +270,16 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     // Attach email to their profile if not already set
     await attachEmailToProfile(ownerDid, customerEmail);
 
+    // Issue #4: backfill auth.identities.contact_email with NULL guard
+    try {
+      const normalizedEmail = customerEmail.toLowerCase().trim();
+      await db.execute(
+        sql`UPDATE auth.identities SET contact_email = ${normalizedEmail} WHERE id = ${ownerDid} AND contact_email IS NULL`
+      );
+    } catch (err) {
+      log.warn({ err: String(err) }, 'Failed to backfill auth.identities.contact_email (non-fatal)');
+    }
+
     // Migrate any existing soft DID tickets/chat for this email
     await migrateSoftDidToHard(customerEmail, ownerDid, event.id);
   } else {
@@ -279,6 +289,16 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       throw new Error(`Failed to create soft DID session for ${customerEmail}`);
     }
     ownerDid = softSession.did;
+
+    // Issue #4: backfill auth.identities.contact_email for soft DID (NULL guard)
+    try {
+      const normalizedEmail = customerEmail.toLowerCase().trim();
+      await db.execute(
+        sql`UPDATE auth.identities SET contact_email = ${normalizedEmail} WHERE id = ${ownerDid} AND contact_email IS NULL`
+      );
+    } catch (err) {
+      log.warn({ err: String(err) }, 'Failed to backfill auth.identities.contact_email for soft DID (non-fatal)');
+    }
   }
 
   // Create order record BEFORE tickets — so we can link them via orderId
