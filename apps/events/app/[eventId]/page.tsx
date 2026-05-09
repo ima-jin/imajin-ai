@@ -280,6 +280,19 @@ export default async function EventPage({ params, searchParams }: Props) {
 
   const session = await getSession();
   const did = session ? (session.actingAs || session.id) : null;
+
+  // Issue #4: fetch canonical contact_email for the session DID
+  let sessionContactEmail: string | undefined;
+  if (did) {
+    try {
+      const [identityRow] = await sql<{ contact_email: string | null }[]>`
+        SELECT contact_email FROM auth.identities WHERE id = ${did} LIMIT 1
+      `;
+      sessionContactEmail = identityRow?.contact_email ?? undefined;
+    } catch {
+      // non-fatal — proceed without it
+    }
+  }
   const isCreator = did === event.creatorDid;
 
   // Check if user is a cohost
@@ -817,6 +830,7 @@ export default async function EventPage({ params, searchParams }: Props) {
                 etransferEnabled={etransferEnabled}
                 isAuthenticated={!!session}
                 sessionEmail={session?.email ?? undefined}
+                sessionContactEmail={sessionContactEmail}
                 sellerConnected={sellerConnected}
                 hasHiddenTiers={hasHiddenTiers}
               />
