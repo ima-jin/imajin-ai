@@ -11,7 +11,7 @@ const sql = getClient();
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 
-async function resolveProfile(did: string): Promise<{ did: string; name: string | null; handle: string | null; avatar: string | null }> {
+async function resolveProfile(did: string): Promise<{ did: string; name: string | null; handle: string | null; avatar: string | null; email: string | null }> {
   try {
     const res = await fetch(`${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(did)}`, { cache: 'no-store' });
     if (res.ok) {
@@ -22,10 +22,11 @@ async function resolveProfile(did: string): Promise<{ did: string; name: string 
         name: identity.name || null,
         handle: identity.handle || null,
         avatar: identity.avatar || identity.avatarUrl || null,
+        email: identity.email || null,
       };
     }
   } catch {}
-  return { did, name: null, handle: null, avatar: null };
+  return { did, name: null, handle: null, avatar: null, email: null };
 }
 
 /**
@@ -69,28 +70,37 @@ export async function GET(
              t.last_email_sent_at,
              tt.name as ticket_type,
              tr.name as attendee_name,
-             o.fair_settlement, o.amount_total
+             o.fair_settlement, o.amount_total,
+             i.contact_email,
+             cred.value as fallback_email
       FROM events.tickets t
       JOIN events.ticket_types tt ON t.ticket_type_id = tt.id
       LEFT JOIN events.ticket_registrations tr ON tr.ticket_id = t.id
       LEFT JOIN events.orders o ON t.order_id = o.id
+      LEFT JOIN auth.identities i ON i.id = t.owner_did
+      LEFT JOIN LATERAL (
+        SELECT value FROM auth.credentials
+        WHERE did = t.owner_did AND type = 'email'
+        ORDER BY created_at DESC LIMIT 1
+      ) cred ON true
       WHERE t.event_id = ${id}
       ORDER BY t.created_at DESC
     `;
 
     // Batch-resolve unique DIDs
     const uniqueDids = [...new Set(ticketRows.map((t: any) => t.owner_did).filter(Boolean))] as string[];
-    const profileMap = new Map<string, { name: string | null; handle: string | null; avatar: string | null }>();
+    const profileMap = new Map<string, { name: string | null; handle: string | null; avatar: string | null; email: string | null }>();
 
     await Promise.all(
       uniqueDids.map(async (did) => {
         const profile = await resolveProfile(did);
-        profileMap.set(did, { name: profile.name, handle: profile.handle, avatar: profile.avatar });
+        profileMap.set(did, { name: profile.name, handle: profile.handle, avatar: profile.avatar, email: profile.email });
       })
     );
 
     const guests = ticketRows.map((t: any) => {
       const profile = t.owner_did ? profileMap.get(t.owner_did) ?? null : null;
+      const sqlEmail = t.contact_email || t.fallback_email || null;
       return {
         id: t.id,
         status: t.status,
@@ -103,7 +113,7 @@ export async function GET(
         paymentMethod: t.payment_method ?? null,
         paymentId: t.payment_id ?? null,
         holdExpiresAt: t.hold_expires_at ?? null,
-        profile,
+        profile: profile ? { ...profile, email: sqlEmail || profile.email || null } : (sqlEmail ? { name: null, handle: null, avatar: null, email: sqlEmail } : null),
         registrationStatus: t.registration_status ?? null,
         attendeeName: t.attendee_name ?? null,
         lastEmailSentAt: t.last_email_sent_at ?? null,

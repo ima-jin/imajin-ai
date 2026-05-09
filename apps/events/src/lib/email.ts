@@ -416,6 +416,146 @@ export function registrationReminderEmail(data: RegistrationReminderData): strin
 `;
 }
 
+interface ETransferReservationData {
+  eventTitle: string;
+  eventDate: string;
+  eventTime: string;
+  ticketSummary: Array<{ typeName: string; quantity: number }>;
+  totalQuantity: number;
+  amount: string;
+  payToEmail: string;
+  memo: string;
+  deadline: string;
+  buyerEmail: string;
+  myTicketsUrl: string;
+  eventImageUrl?: string;
+  organizerName?: string;
+}
+
+export function etransferReservationEmail(data: ETransferReservationData): string {
+  const eventImage = data.eventImageUrl
+    ? `<img src="${data.eventImageUrl}" alt="${data.eventTitle}" style="width:100%;max-width:600px;height:auto;display:block;border-radius:8px 8px 0 0;" />`
+    : '';
+
+  const summaryRows = data.ticketSummary.map(t => `
+    <tr>
+      <td style="padding:6px 0;">
+        <span style="font-size:14px;color:#e4e4e7;">${t.quantity} × ${t.typeName}</span>
+      </td>
+    </tr>
+  `).join('');
+
+  const ticketWord = data.totalQuantity === 1 ? 'ticket' : 'tickets';
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background-color:#000000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#000000;">
+    <tr>
+      <td align="center" style="padding:20px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+          ${eventImage ? `<tr><td style="padding:0;">${eventImage}</td></tr>` : ''}
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#111111;padding:32px 32px 16px;${eventImage ? '' : 'border-radius:8px 8px 0 0;'}">
+              <div style="display:inline-block;background:#f97316;color:#000;font-size:11px;font-weight:700;letter-spacing:1px;padding:4px 10px;border-radius:4px;text-transform:uppercase;margin-bottom:16px;">Reserved — Awaiting Payment</div>
+              <h1 style="margin:0 0 8px;font-size:26px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">Your ${ticketWord} ${data.totalQuantity === 1 ? 'is' : 'are'} reserved — not yet confirmed.</h1>
+              <p style="margin:0;font-size:15px;color:#a1a1aa;line-height:1.6;">${data.totalQuantity} ${ticketWord} held for <strong style="color:#ffffff;">${data.eventTitle}</strong>. Send your e-Transfer to complete the purchase.</p>
+            </td>
+          </tr>
+
+          <!-- Important callout -->
+          <tr>
+            <td style="background-color:#111111;padding:0 32px 16px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#1a1000;border:1px solid #f97316;border-radius:8px;">
+                <tr>
+                  <td style="padding:18px 22px;">
+                    <p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#f97316;">You don't have a ticket yet.</p>
+                    <p style="margin:0;font-size:14px;color:#e4e4e7;line-height:1.6;">Your ${ticketWord} will be activated once we confirm your e-Transfer. We'll email <strong style="color:#ffffff;">${data.buyerEmail}</strong> with your ticket${data.totalQuantity > 1 ? 's' : ''} and QR code${data.totalQuantity > 1 ? 's' : ''} as soon as payment is received.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Payment Instructions -->
+          <tr>
+            <td style="background-color:#111111;padding:0 32px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#1a1a1a;border-radius:8px;border:1px solid #262626;">
+                <tr>
+                  <td style="padding:24px;">
+                    <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#ffffff;">Send your Interac e-Transfer</p>
+
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="padding:10px 0;border-bottom:1px solid #262626;">
+                          <span style="font-size:12px;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;">Amount</span><br/>
+                          <span style="font-size:18px;color:#ffffff;font-weight:700;">${data.amount}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 0;border-bottom:1px solid #262626;">
+                          <span style="font-size:12px;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;">Send to (organizer)</span><br/>
+                          <span style="font-family:'SF Mono',Monaco,Consolas,monospace;font-size:14px;color:#e4e4e7;">${data.payToEmail}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 0;border-bottom:1px solid #262626;">
+                          <span style="font-size:12px;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;">Required memo</span><br/>
+                          <span style="font-family:'SF Mono',Monaco,Consolas,monospace;font-size:14px;color:#f97316;font-weight:700;">${data.memo}</span><br/>
+                          <span style="font-size:12px;color:#71717a;">Paste this exactly so we can match the payment to your reservation.</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 0;">
+                          <span style="font-size:12px;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;">Pay by</span><br/>
+                          <span style="font-size:14px;color:#e4e4e7;font-weight:500;">${data.deadline}</span>
+                        </td>
+                      </tr>
+                    </table>
+
+                    ${summaryRows ? `
+                    <p style="margin:18px 0 8px;font-size:12px;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;">Reserved</p>
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${summaryRows}</table>
+                    ` : ''}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- CTA -->
+          <tr>
+            <td style="background-color:#111111;padding:0 32px 32px;text-align:center;">
+              <a href="${data.myTicketsUrl}" style="display:inline-block;background-color:#ffffff;color:#000000;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">View reservation status →</a>
+              <p style="margin:12px 0 0;font-size:12px;color:#52525b;line-height:1.5;">If you don't send the e-Transfer by ${data.deadline}, the hold expires and the ${ticketWord} return to inventory.</p>
+            </td>
+          </tr>
+
+          <!-- Brand -->
+          <tr>
+            <td style="padding:24px 32px;text-align:center;">
+              <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#ffffff;letter-spacing:2px;">IMAJIN</p>
+              <p style="margin:0;font-size:12px;color:#52525b;">The internet that pays you back</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`;
+}
+
 interface PaymentFailedData {
   eventTitle: string;
   ticketType: string;

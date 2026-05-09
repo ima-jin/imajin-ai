@@ -87,6 +87,15 @@ export default async function EditEventPage({ params }: Props) {
     creatorEmail = profile?.contact_email || null;
   } catch {}
 
+  // Fetch creator display info for the payout banner
+  let creatorHandle: string | null = null;
+  let creatorName: string | null = null;
+  try {
+    const [creator] = await sql`SELECT handle, name FROM auth.identities WHERE id = ${event.creatorDid}`;
+    creatorHandle = (creator?.handle as string) || null;
+    creatorName = (creator?.name as string) || null;
+  } catch {}
+
   // Gather all organizer DIDs (creator + cohosts) for survey dropdown
   const organizerDids = [event.creatorDid];
   if (event.podId) {
@@ -121,7 +130,15 @@ export default async function EditEventPage({ params }: Props) {
           </p>
         </div>
 
-        <EventEditForm event={event} existingTickets={tickets} creatorEmail={creatorEmail} organizerDids={organizerDids} />
+        <EventEditForm
+          event={event}
+          existingTickets={tickets}
+          creatorEmail={creatorEmail}
+          organizerDids={organizerDids}
+          viewerDid={did}
+          creatorHandle={creatorHandle}
+          creatorName={creatorName}
+        />
       </div>
     </div>
   );

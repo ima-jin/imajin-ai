@@ -6,7 +6,6 @@
 import { db, events, tickets, ticketTypes } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
-import { GuestList } from './guest-list';
 import { getSession } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 import { AdminTabs } from './admin-tabs';
@@ -146,18 +145,6 @@ export default async function AdminPage({ params }: Props) {
         basePath={basePath}
       />
 
-      {/* Guest List — always visible below tabs, lazy loaded */}
-      <div className="mt-8">
-        <GuestList
-          eventId={eventId}
-          isOwner={isOrganizer}
-          summary={{
-            totalTickets: totalSold,
-            confirmedRevenue,
-            checkedIn,
-          }}
-        />
-      </div>
     </div>
   );
 }

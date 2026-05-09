@@ -130,13 +130,14 @@ export const orders = eventsSchema.table('orders', {
   id: text('id').primaryKey(),                              // ord_xxx
   eventId: text('event_id').references(() => events.id).notNull(),
   buyerDid: text('buyer_did'),
-  ticketTypeId: text('ticket_type_id').references(() => ticketTypes.id).notNull(),
+  ticketTypeId: text('ticket_type_id').references(() => ticketTypes.id),  // null for multi-type orders
   quantity: integer('quantity').notNull().default(1),
   amountTotal: integer('amount_total').notNull(),           // cents
   currency: text('currency').notNull().default('CAD'),
   paymentMethod: text('payment_method'),                    // 'stripe' | 'etransfer' | 'free'
   stripeSessionId: text('stripe_session_id'),
   paymentId: text('payment_id'),                            // stripe payment_intent id
+  status: text('status').notNull().default('completed'),    // 'pending' | 'completed' | 'cancelled'
   fairSettlement: jsonb('fair_settlement'),                  // resolved .fair receipt
   purchasedAt: timestamp('purchased_at', { withTimezone: true }),
   metadata: jsonb('metadata').default({}),

@@ -7,8 +7,9 @@ import { CohostManager } from './cohost-manager';
 import { InviteManager } from './invite-manager';
 import { MessageComposer } from './message-composer';
 import { SalesTab } from './sales-tab';
+import { GuestList } from './guest-list';
 
-type Tab = 'stats' | 'sales' | 'edit' | 'cohosts' | 'invites' | 'message';
+type Tab = 'stats' | 'sales' | 'guests' | 'edit' | 'cohosts' | 'invites' | 'message';
 
 interface AdminTabsProps {
   eventId: string;
@@ -27,6 +28,12 @@ interface AdminTabsProps {
   tiers: TicketType[];
   eventDate: string;
   basePath: string;
+}
+
+interface GuestSummary {
+  totalTickets: number;
+  confirmedRevenue: number;
+  checkedIn: number;
 }
 
 export function AdminTabs({
@@ -52,6 +59,7 @@ export function AdminTabs({
   const tabs: { key: Tab; label: string }[] = [
     { key: 'stats', label: 'Stats' },
     { key: 'sales', label: 'Sales' },
+    { key: 'guests', label: `Guests (${totalSold})` },
     { key: 'edit', label: 'Edit Event' },
     { key: 'cohosts', label: `Co-hosts (${cohostCount})` },
     { key: 'invites', label: `Invitations (${inviteCount})` },
@@ -96,6 +104,19 @@ export function AdminTabs({
         )}
 
         {activeTab === 'sales' && <SalesTab eventId={eventId} />}
+
+        {activeTab === 'guests' && (
+          <GuestList
+            eventId={eventId}
+            isOwner={isOwner}
+            summary={{
+              totalTickets: totalSold,
+              confirmedRevenue,
+              checkedIn,
+            }}
+            autoExpand
+          />
+        )}
 
         {activeTab === 'edit' && (
           <EditTab basePath={basePath} eventId={eventId} />

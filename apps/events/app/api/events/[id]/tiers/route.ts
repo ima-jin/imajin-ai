@@ -88,7 +88,29 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { name, description, price, currency = 'USD', quantity, perks, sortOrder, requiresRegistration, registrationFormId, accessCode } = body;
+
+    // Default new tier currency from the event's existing tiers so we don't
+    // accidentally drift into mixed-currency carts (e.g. legacy 'USD' default
+    // sneaking into a CAD event). Fall back to 'CAD' for new events with no
+    // tiers yet.
+    let defaultCurrency = 'CAD';
+    if (!body.currency) {
+      try {
+        const existing = await db
+          .select({ currency: ticketTypes.currency })
+          .from(ticketTypes)
+          .where(eq(ticketTypes.eventId, id));
+        if (existing.length > 0) {
+          const counts = new Map<string, number>();
+          for (const t of existing) counts.set(t.currency, (counts.get(t.currency) ?? 0) + 1);
+          defaultCurrency = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0][0];
+        }
+      } catch {
+        // fall through with 'CAD'
+      }
+    }
+
+    const { name, description, price, currency = defaultCurrency, quantity, perks, sortOrder, requiresRegistration, registrationFormId, accessCode } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });

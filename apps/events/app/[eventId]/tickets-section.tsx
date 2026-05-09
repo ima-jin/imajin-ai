@@ -1,11 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { TicketType } from '@/src/db/schema';
 import { apiFetch } from '@imajin/config';
 import { TicketPurchase } from './ticket-purchase';
-import { OnboardGate } from '@imajin/onboard';
 import { SurveyAccordion } from './survey-accordion';
 import { useToast } from '@imajin/ui';
 
@@ -416,6 +415,52 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
 
   // Lifted quantity state for unified cart
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  // When the buyer comes back from a magic-link verification, the URL has
+  // ?reserve=<base64> with their pre-verified cart. We rehydrate quantities
+  // and trigger an auto-EMT submit on mount.
+  const [pendingAutoReserve, setPendingAutoReserve] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const reserveParam = params.get('reserve');
+    if (!reserveParam) return;
+    if (!sessionEmail) return; // not logged in yet — magic link hasn't completed
+    try {
+      // base64url → base64 → utf8
+      const b64 = reserveParam.replace(/-/g, '+').replace(/_/g, '/').padEnd(
+        Math.ceil(reserveParam.length / 4) * 4,
+        '='
+      );
+      const decoded = JSON.parse(
+        decodeURIComponent(
+          atob(b64)
+            .split('')
+            .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+            .join('')
+        )
+      ) as { items: { ticketTypeId: string; quantity: number }[] };
+      const restored: Record<string, number> = {};
+      for (const item of decoded.items ?? []) {
+        if (item.ticketTypeId) restored[item.ticketTypeId] = item.quantity;
+      }
+      if (Object.keys(restored).length > 0) {
+        setQuantities(restored);
+        setPendingAutoReserve(true);
+      }
+      // Strip the param so reload doesn't re-fire
+      params.delete('reserve');
+      const newSearch = params.toString();
+      window.history.replaceState(
+        {},
+        '',
+        window.location.pathname + (newSearch ? `?${newSearch}` : '')
+      );
+    } catch (err) {
+      console.warn('Failed to decode reserve param', err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const allTickets = [...tickets, ...unlockedTickets];
 
@@ -427,7 +472,12 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
     .map(t => ({ ticket: t, qty: quantities[t.id] || 0 }));
   const totalQty = cartItems.reduce((sum, item) => sum + item.qty, 0);
   const totalCents = cartItems.reduce((sum, item) => sum + item.ticket.price * item.qty, 0);
-  const cartCurrency = paidTickets[0]?.currency || 'CAD';
+  // Detect mixed currency in cart — e-Transfer + card both require a single
+  // currency per checkout. Surface this client-side so the user sees a useful
+  // message instead of a server-side toast after they've gone through verify.
+  const cartCurrencies = Array.from(new Set(cartItems.map((c) => c.ticket.currency)));
+  const mixedCurrency = cartCurrencies.length > 1;
+  const cartCurrency = cartCurrencies[0] || paidTickets[0]?.currency || 'CAD';
   const formattedTotal = new Intl.NumberFormat('en-CA', { style: 'currency', currency: cartCurrency }).format(totalCents / 100);
 
   async function handleUnlock() {
@@ -544,7 +594,12 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
                       Payments not yet available
                     </p>
                   )
-                ) : isAuthenticated || !etransferEnabled ? (
+                ) : (
+                  // Per-ticket UI: just the quantity stepper for paid tickets
+                  // (checkout happens via the unified cart bar below), or the
+                  // RSVP button for free tickets. Email collection is handled
+                  // inline by TicketPurchase itself when needed — never gate
+                  // the stepper, which has no side-effects.
                   <TicketPurchase
                     eventId={eventId}
                     eventTitle={eventTitle}
@@ -556,25 +611,6 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
                     onQuantityChange={ticket.price > 0 ? (q) => setQuantities(prev => ({ ...prev, [ticket.id]: q })) : undefined}
                     hideCheckoutButton={ticket.price > 0}
                   />
-                ) : (
-                  <OnboardGate
-                    action="purchase a ticket"
-                    onIdentity={() => window.location.reload()}
-                    requireVerification={true}
-                    authUrl={process.env.NEXT_PUBLIC_AUTH_URL}
-                  >
-                    <TicketPurchase
-                      eventId={eventId}
-                      eventTitle={eventTitle}
-                      ticket={ticket}
-                      inviteToken={inviteToken}
-                      etransferEnabled={etransferEnabled}
-                      sessionEmail={sessionEmail}
-                      quantity={ticket.price > 0 ? (quantities[ticket.id] || 0) : undefined}
-                      onQuantityChange={ticket.price > 0 ? (q) => setQuantities(prev => ({ ...prev, [ticket.id]: q })) : undefined}
-                      hideCheckoutButton={ticket.price > 0}
-                    />
-                  </OnboardGate>
                 )}
               </div>
             </div>
@@ -584,59 +620,20 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
 
       {/* Unified checkout bar */}
       {hasPaidTickets && (
-        <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl">
-          <div className="flex items-center justify-between gap-4">
-            <div className="text-sm text-gray-500 dark:text-gray-400">
-              {totalQty === 0 ? (
-                'Select tickets above'
-              ) : (
-                <span className="text-base font-semibold text-white">
-                  {totalQty} ticket{totalQty !== 1 ? 's' : ''} · {formattedTotal}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={() => {
-                // Process first selected type via card checkout
-                if (cartItems.length === 0) return;
-                const first = cartItems[0];
-                // Navigate to checkout for the first type
-                // For multi-type, user will need to come back for additional types
-                apiFetch('/api/checkout', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    eventId,
-                    ticketTypeId: first.ticket.id,
-                    quantity: first.qty,
-                    ...(inviteToken && { invite: inviteToken }),
-                  }),
-                }).then(async (res) => {
-                  if (!res.ok) {
-                    const data = await res.json();
-                    toast.error(data.error || 'Checkout failed');
-                    return;
-                  }
-                  const { url } = await res.json();
-                  window.location.href = url;
-                }).catch(() => toast.error('Checkout failed'));
-              }}
-              disabled={totalQty === 0}
-              className={`px-6 py-3 rounded-lg font-semibold transition whitespace-nowrap ${
-                totalQty === 0
-                  ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                  : 'bg-orange-500 text-white hover:bg-orange-600'
-              }`}
-            >
-              {totalQty === 0 ? 'Checkout' : `Checkout — ${formattedTotal}`}
-            </button>
-          </div>
-          {cartItems.length > 1 && (
-            <p className="text-xs text-amber-500 mt-2">
-              ⚠️ Multi-type cart: you’ll check out {cartItems[0].ticket.name} first, then return for the rest.
-            </p>
-          )}
-        </div>
+        <UnifiedCheckoutBar
+          eventId={eventId}
+          inviteToken={inviteToken}
+          cartItems={cartItems}
+          totalQty={totalQty}
+          formattedTotal={formattedTotal}
+          etransferEnabled={etransferEnabled}
+          sessionEmail={sessionEmail}
+          onError={(msg) => toast.error(msg)}
+          autoReserve={pendingAutoReserve}
+          onAutoReserveConsumed={() => setPendingAutoReserve(false)}
+          mixedCurrency={mixedCurrency}
+          cartCurrencies={cartCurrencies}
+        />
       )}
 
       {/* Unlock hidden tiers */}
@@ -680,6 +677,259 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+interface UnifiedBarProps {
+  eventId: string;
+  inviteToken?: string;
+  cartItems: { ticket: TicketType; qty: number }[];
+  totalQty: number;
+  formattedTotal: string;
+  etransferEnabled: boolean;
+  sessionEmail?: string;
+  onError: (msg: string) => void;
+  autoReserve?: boolean;
+  onAutoReserveConsumed?: () => void;
+  mixedCurrency?: boolean;
+  cartCurrencies?: string[];
+}
+
+function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, onError, autoReserve = false, onAutoReserveConsumed, mixedCurrency = false, cartCurrencies = [] }: UnifiedBarProps) {
+  const router = useRouter();
+  type BarStep = 'idle' | 'card-loading' | 'emt-form' | 'emt-loading' | 'emt-done' | 'emt-verify-sent';
+  const [step, setStep] = useState<BarStep>('idle');
+  const [emtEmail, setEmtEmail] = useState(sessionEmail || '');
+  const [emtName, setEmtName] = useState('');
+  const [emtResult, setEmtResult] = useState<{ orderId: string; quantity: number; email: string; amount: number; currency: string; memo: string; deadline: string; message: string } | null>(null);
+  const [verifySentTo, setVerifySentTo] = useState<string | null>(null);
+
+  const first = cartItems[0];
+  const multiType = cartItems.length > 1;
+
+  async function startStripe() {
+    if (!first) return;
+    setStep('card-loading');
+    try {
+      const res = await apiFetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId,
+          ticketTypeId: first.ticket.id,
+          quantity: first.qty,
+          ...(inviteToken && { invite: inviteToken }),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        onError(data.error || 'Checkout failed');
+        setStep('idle');
+        return;
+      }
+      const { url } = await res.json();
+      window.location.href = url;
+    } catch {
+      onError('Checkout failed');
+      setStep('idle');
+    }
+  }
+
+  async function startEtransfer() {
+    if (!first) return;
+    if (!sessionEmail && !emtEmail.includes('@')) {
+      setStep('emt-form');
+      return;
+    }
+    setStep('emt-loading');
+    try {
+      const res = await apiFetch('/api/checkout/etransfer', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId,
+          // Send the full cart — server creates one order spanning all types.
+          items: cartItems.map((c) => ({ ticketTypeId: c.ticket.id, quantity: c.qty })),
+          ...(inviteToken && { invite: inviteToken }),
+          ...(!sessionEmail && emtEmail && { email: emtEmail.trim() }),
+          ...(!sessionEmail && emtName && { name: emtName.trim() }),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        onError(data.error || 'e-Transfer setup failed');
+        setStep('idle');
+        return;
+      }
+      const data = await res.json();
+      // Magic-link verification path: server didn't create a hold yet.
+      if (data.verificationSent) {
+        setVerifySentTo(data.email || emtEmail || sessionEmail || null);
+        setStep('emt-verify-sent');
+        return;
+      }
+      setEmtResult({
+        orderId: data.orderId,
+        quantity: data.instructions.quantity ?? totalQty,
+        email: data.instructions.email,
+        amount: data.instructions.amount,
+        currency: data.instructions.currency,
+        memo: data.instructions.memo,
+        deadline: data.instructions.deadline,
+        message: data.instructions.message,
+      });
+      setStep('emt-done');
+      router.refresh();
+    } catch {
+      onError('e-Transfer setup failed');
+      setStep('idle');
+    }
+  }
+
+  // Auto-fire EMT once when returning from a magic-link verification
+  useEffect(() => {
+    if (!autoReserve) return;
+    if (step !== 'idle') return;
+    if (totalQty === 0) return;
+    onAutoReserveConsumed?.();
+    void startEtransfer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoReserve, totalQty]);
+
+  if (step === 'emt-verify-sent') {
+    return (
+      <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-orange-500 text-xl">📨</span>
+          <h3 className="font-semibold text-base">Check your email to confirm</h3>
+        </div>
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          We sent a verification link to <strong className="text-gray-800 dark:text-gray-100">{verifySentTo}</strong>.
+          Click it to confirm your email and we'll reserve your {totalQty} ticket{totalQty !== 1 ? 's' : ''} automatically.
+        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Link expires in 15 minutes. Check spam if you don't see it. You can keep this tab open or close it — the link returns you here.
+        </p>
+        <button
+          onClick={() => { setStep('emt-form'); setVerifySentTo(null); }}
+          className="text-xs text-orange-500 hover:underline"
+        >
+          Use a different email
+        </button>
+      </div>
+    );
+  }
+
+  if (step === 'emt-done' && emtResult) {
+    return (
+      <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-orange-500 text-xl">📬</span>
+          <h3 className="font-semibold text-base">Reserved — send your e-Transfer to confirm</h3>
+        </div>
+        <p className="text-xs text-orange-500">
+          You don't have your ticket{emtResult.quantity > 1 ? 's' : ''} yet. They'll be activated once we confirm your payment — we'll email you the ticket{emtResult.quantity > 1 ? 's' : ''} then.
+        </p>
+        <div className="text-sm space-y-1.5">
+          <div className="flex justify-between"><span className="text-gray-500">Amount</span><span className="font-semibold">{new Intl.NumberFormat('en-CA', { style: 'currency', currency: emtResult.currency }).format(emtResult.amount)}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Send your e-Transfer to</span><span className="font-mono">{emtResult.email}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Memo</span><span className="font-mono font-semibold text-orange-500">{emtResult.memo}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Pay by</span><span>{new Date(emtResult.deadline).toLocaleString('en-CA', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span></div>
+        </div>
+        <p className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 rounded-lg p-3">{emtResult.message}</p>
+        {emtResult.quantity > 1 && (
+          <p className="text-xs text-gray-500">Reserved {emtResult.quantity} tickets in one order. Send a single e-Transfer for the full amount.</p>
+        )}
+      </div>
+    );
+  }
+
+  if (step === 'emt-form') {
+    return (
+      <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl space-y-3">
+        <h3 className="font-semibold text-base">🏦 Pay by e-Transfer</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          Reserves {totalQty} ticket{totalQty !== 1 ? 's' : ''} for 72 hours while you send your e-Transfer.
+        </p>
+        {cartItems.length > 1 && (
+          <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+            {cartItems.map((c) => (
+              <li key={c.ticket.id}>{c.qty} × {c.ticket.name}</li>
+            ))}
+          </ul>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <input type="text" placeholder="Your name" value={emtName} onChange={(e) => setEmtName(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm" />
+          <input type="email" placeholder="Your email" value={emtEmail} onChange={(e) => setEmtEmail(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm" />
+        </div>
+        <div className="flex gap-2">
+          <button onClick={startEtransfer} disabled={!emtEmail.includes('@')} className={`px-5 py-2.5 rounded-lg font-semibold transition ${!emtEmail.includes('@') ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-orange-500 text-white hover:bg-orange-600'}`}>Reserve My Ticket</button>
+          <button onClick={() => setStep('idle')} className="px-3 py-2.5 text-sm text-gray-500 hover:text-gray-700">Back</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          {totalQty === 0 ? (
+            'Select tickets above'
+          ) : (
+            <span className="text-base font-semibold text-white">
+              {totalQty} ticket{totalQty !== 1 ? 's' : ''} · {formattedTotal}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <button
+            onClick={startStripe}
+            disabled={totalQty === 0 || mixedCurrency || step === 'card-loading' || step === 'emt-loading'}
+            className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${
+              totalQty === 0 || mixedCurrency || step === 'card-loading'
+                ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
+                : 'bg-orange-500 text-white hover:bg-orange-600'
+            }`}
+          >
+            {step === 'card-loading' ? 'Loading…' : totalQty === 0 ? '💳 Pay with Card' : `💳 Pay with Card — ${formattedTotal}`}
+          </button>
+          {etransferEnabled && (
+            <button
+              onClick={startEtransfer}
+              disabled={totalQty === 0 || mixedCurrency || step === 'card-loading' || step === 'emt-loading'}
+              className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap border ${
+                totalQty === 0 || mixedCurrency
+                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700 cursor-not-allowed'
+                  : 'bg-orange-500/20 text-orange-500 border-orange-500/40 hover:bg-orange-500/30'
+              }`}
+            >
+              {step === 'emt-loading' ? 'Reserving…' : '🏦 Pay by e-Transfer'}
+            </button>
+          )}
+        </div>
+      </div>
+      {/* Mixed-currency block: takes priority over the multi-type hint */}
+      {mixedCurrency && (
+        <p className="text-xs text-red-500 mt-2">
+          ⚠️ Your cart mixes currencies ({cartCurrencies.join(' + ')}). Pick tickets in one currency to check out together.
+        </p>
+      )}
+      {/* Multi-type hint: only relevant when card is the only path. With
+          e-Transfer enabled, EMT covers the whole cart in one go and the user
+          doesn't need this warning. */}
+      {!mixedCurrency && multiType && !etransferEnabled && (
+        <p className="text-xs text-amber-500 mt-2">
+          ⚠️ Card payment is single-type only — you'll check out {first?.ticket.name} first, then return for the rest.
+        </p>
+      )}
+      {!mixedCurrency && etransferEnabled && totalQty > 0 && (
+        <p className="text-xs text-gray-400 mt-1">
+          e-Transfer pays the organizer directly. One transfer covers all reserved tickets.
+        </p>
       )}
     </div>
   );

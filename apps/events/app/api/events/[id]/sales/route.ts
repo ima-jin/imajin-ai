@@ -92,6 +92,8 @@ export async function GET(
         o.created_at,
         i.name AS buyer_name,
         i.handle AS buyer_handle,
+        i.contact_email AS buyer_contact_email,
+        cred.value AS buyer_fallback_email,
         t.id AS ticket_id,
         t.status AS ticket_status,
         tt.name AS ticket_type_name,
@@ -104,6 +106,11 @@ export async function GET(
         tx.metadata AS tx_metadata
       FROM events.orders o
       LEFT JOIN auth.identities i ON i.id = o.buyer_did
+      LEFT JOIN LATERAL (
+        SELECT value FROM auth.credentials
+        WHERE did = o.buyer_did AND type = 'email'
+        ORDER BY created_at DESC LIMIT 1
+      ) cred ON true
       LEFT JOIN pay.transactions tx ON tx.stripe_id = o.stripe_session_id
       LEFT JOIN events.tickets t ON t.order_id = o.id
       LEFT JOIN events.ticket_types tt ON tt.id = t.ticket_type_id
@@ -127,6 +134,7 @@ export async function GET(
         did: string | null;
         name: string | null;
         handle: string | null;
+        email: string | null;
       };
       tickets: SaleTicket[];
       amount: number;
@@ -149,6 +157,7 @@ export async function GET(
             did: row.buyer_did ?? null,
             name: row.buyer_name ?? null,
             handle: row.buyer_handle ?? null,
+            email: row.buyer_contact_email || row.buyer_fallback_email || null,
           },
           tickets: [],
           amount: row.amount_total ? row.amount_total / 100 : 0,
@@ -194,11 +203,18 @@ export async function GET(
         tr.name AS attendee_name,
         tr.email AS attendee_email,
         i.name AS owner_name,
-        i.handle AS owner_handle
+        i.handle AS owner_handle,
+        i.contact_email AS owner_contact_email,
+        cred.value AS owner_fallback_email
       FROM events.tickets t
       LEFT JOIN events.ticket_types tt ON tt.id = t.ticket_type_id
       LEFT JOIN events.ticket_registrations tr ON tr.ticket_id = t.id
       LEFT JOIN auth.identities i ON i.id = t.owner_did
+      LEFT JOIN LATERAL (
+        SELECT value FROM auth.credentials
+        WHERE did = t.owner_did AND type = 'email'
+        ORDER BY created_at DESC LIMIT 1
+      ) cred ON true
       WHERE t.event_id = ${eventId}
         AND t.order_id IS NULL
       ORDER BY t.purchased_at DESC NULLS LAST, t.created_at DESC
@@ -210,6 +226,7 @@ export async function GET(
       ownerDid: r.owner_did ?? null,
       ownerName: r.owner_name ?? r.attendee_name ?? null,
       ownerHandle: r.owner_handle ?? null,
+      ownerEmail: r.owner_contact_email || r.owner_fallback_email || null,
       pricePaid: r.price_paid ?? null,
       currency: r.currency ?? eventRow.currency ?? 'CAD',
       purchasedAt: r.purchased_at ? new Date(r.purchased_at).toISOString() : null,
@@ -250,6 +267,7 @@ export async function GET(
         'Transaction ID',
         'Buyer Name',
         'Buyer Handle',
+        'Buyer Email',
         'Buyer DID',
         'Ticket Type',
         'Quantity',
@@ -276,6 +294,7 @@ export async function GET(
           sale.transactionId ?? '',
           sale.buyer.name ?? '',
           sale.buyer.handle ?? '',
+          sale.buyer.email ?? '',
           sale.buyer.did ?? '',
           ticketTypeStr,
           sale.tickets.length,
@@ -314,6 +333,7 @@ export async function GET(
         buyerDid: s.buyer.did,
         buyerName: s.buyer.name,
         buyerHandle: s.buyer.handle,
+        buyerEmail: s.buyer.email,
         buyerAvatar: null,
         ticketType: ticketTypeStr,
         quantity: s.tickets.length,
@@ -334,6 +354,7 @@ export async function GET(
       buyerDid: o.ownerDid,
       buyerName: o.ownerName ?? o.attendeeName,
       buyerHandle: o.ownerHandle,
+      buyerEmail: o.ownerEmail,
       buyerAvatar: null,
       ticketType: o.ticketType,
       quantity: 1,

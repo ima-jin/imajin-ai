@@ -20,6 +20,7 @@ interface Sale {
   buyerDid: string | null;
   buyerName: string | null;
   buyerHandle: string | null;
+  buyerEmail: string | null;
   buyerAvatar: string | null;
   ticketType: string;
   quantity: number;
@@ -153,11 +154,12 @@ function StatusBadge({ status }: { status: string }) {
   }
 }
 
-function ProfileCell({ buyerDid, buyerName, buyerHandle, buyerAvatar }: {
+function ProfileCell({ buyerDid, buyerName, buyerHandle, buyerAvatar, buyerEmail }: {
   buyerDid: string | null;
   buyerName: string | null;
   buyerHandle: string | null;
   buyerAvatar: string | null;
+  buyerEmail: string | null;
 }) {
   const display = buyerName || buyerHandle || (buyerDid ? truncateId(buyerDid, 20) : '—');
   const initials = display.charAt(0).toUpperCase();
@@ -172,6 +174,9 @@ function ProfileCell({ buyerDid, buyerName, buyerHandle, buyerAvatar }: {
   );
   const handleContent = buyerHandle && (
     <p className="text-xs text-gray-400 truncate">@{buyerHandle}</p>
+  );
+  const emailContent = buyerEmail && (
+    <p className="text-xs text-gray-400 truncate">{buyerEmail}</p>
   );
   const didContent = !buyerName && !buyerHandle && buyerDid && (
     <p className="text-xs text-gray-400 font-mono truncate">{truncateId(buyerDid, 20)}</p>
@@ -198,12 +203,14 @@ function ProfileCell({ buyerDid, buyerName, buyerHandle, buyerAvatar }: {
           <a href={profileUrl} className="hover:text-orange-500 transition">
             {nameContent}
             {handleContent}
+            {emailContent}
             {didContent}
           </a>
         ) : (
           <>
             {nameContent}
             {handleContent}
+            {emailContent}
             {didContent}
           </>
         )}
@@ -356,9 +363,6 @@ export function SalesTab({ eventId }: SalesTabProps) {
                   Tickets
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                  Amount
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                   Status
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
@@ -387,15 +391,13 @@ export function SalesTab({ eventId }: SalesTabProps) {
                         buyerName={sale.buyerName}
                         buyerHandle={sale.buyerHandle}
                         buyerAvatar={sale.buyerAvatar}
+                        buyerEmail={sale.buyerEmail}
                       />
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className="text-sm text-gray-700 dark:text-gray-300">
-                        {sale.quantity}x {sale.ticketType}
+                        {sale.quantity}x {sale.ticketType} — {formatCurrency(sale.amountTotal, sale.currency)}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                      {formatCurrency(sale.amountTotal, sale.currency)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <StatusBadge status={sale.status} />
@@ -449,9 +451,6 @@ export function SalesTab({ eventId }: SalesTabProps) {
                       Status
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                      Price
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                       Date
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
@@ -465,14 +464,12 @@ export function SalesTab({ eventId }: SalesTabProps) {
                       <td className="px-4 py-3 text-xs font-mono text-gray-500 dark:text-gray-400">
                         {orphan.ticketId}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                        {orphan.ticketType}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="text-sm text-gray-700 dark:text-gray-300">{orphan.ticketType}</div>
+                        <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatCurrency(orphan.pricePaid, orphan.currency)}</div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <StatusBadge status={orphan.status === 'valid' || orphan.status === 'used' ? 'completed' : orphan.status} />
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                        {formatCurrency(orphan.pricePaid, orphan.currency)}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                         {formatDateTime(orphan.purchasedAt)}
