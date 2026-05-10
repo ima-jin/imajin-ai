@@ -59,7 +59,7 @@ export default async function Home() {
         <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-2">
           <span className="text-3xl font-bold text-amber-500">人</span>
         </div>
-        <p className="text-base text-gray-500">The sovereign browser.</p>
+        <p className="text-base text-gray-500">Imajin runs your community.</p>
       </section>
 
       {/* PROMO VIDEO */}

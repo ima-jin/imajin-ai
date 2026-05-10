@@ -86,12 +86,11 @@ export default async function ProjectPage() {
           priority
         />
         <h1 className="text-3xl md:text-5xl font-bold text-gray-100 mb-6">
-          The internet that pays you back
+          Imajin runs your community.
         </h1>
         <p className="text-base md:text-lg text-gray-400 leading-relaxed mb-10 max-w-lg">
-          imajin.ai is the reference implementation of the{' '}
-          <span className="text-amber-400 font-medium">MJN Protocol</span> — an open protocol
-          for sovereign human presence. Identity, attribution, and settlement at the protocol layer.
+          Self-hosted software for communities, events, identity, and payments.
+          Open source. Your data, your keys, your domain.
         </p>
         <div className="flex flex-col sm:flex-row gap-4">
           <Link
@@ -107,6 +106,23 @@ export default async function ProjectPage() {
             Read the Essays
           </Link>
         </div>
+      </section>
+
+      {/* ABOUT */}
+      <section className="w-full max-w-xl mb-20 text-center">
+        <p className="text-base text-gray-400 leading-relaxed mb-6">
+          Imajin runs on{' '}
+          <span className="text-amber-400 font-medium">MJN</span>, an open protocol
+          for identity, attribution, consent, and settlement. The protocol is currency-agnostic.
+          Your node can settle in CAD, USD, community credits, or MJNx.
+          MJNx is to Imajin as USD is to SWIFT. SWIFT moves money. It doesn't BE money.
+        </p>
+        <p className="text-sm text-gray-500 leading-relaxed">
+          Today there is one dominant hosted kernel at imajin.ai.
+          Tomorrow, any community can run its own node on its own domain.
+          The architecture is already federated at the protocol layer.
+          The missing piece is node-to-node handshake and data migration tooling.
+        </p>
       </section>
 
       {/* THE MATRIX */}
