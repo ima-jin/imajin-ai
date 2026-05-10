@@ -1,0 +1,26 @@
+name: Check Migrations
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  schema-migration-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine base ref
+        id: base
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "ref=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Schema/migration sync
+        run: bash scripts/check-schema-migration-sync.sh "${{ steps.base.outputs.ref }}"
+      - name: Migrations folder consistency
+        run: bash scripts/check-migrations.sh
