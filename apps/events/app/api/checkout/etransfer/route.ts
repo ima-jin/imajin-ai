@@ -124,10 +124,17 @@ export const POST = withLogger('events', async (request, { log }) => {
         if (!onboardRes.ok) {
           const errBody = await onboardRes.text().catch(() => '');
           log.error({ status: onboardRes.status, body: errBody }, 'Magic-link send failed');
-          return NextResponse.json(
-            { error: 'Could not send verification email. Please try again.' },
-            { status: 502 }
-          );
+          // Issue #13: pass through kernel status codes so the client can show
+          // accurate messages (e.g. 429 rate-limit, 410 gone).
+          const propagateStatus = onboardRes.status === 429 || onboardRes.status === 410
+            ? onboardRes.status
+            : 502;
+          let message = 'Could not send verification email. Please try again.';
+          try {
+            const parsed = JSON.parse(errBody);
+            if (parsed.error) message = parsed.error;
+          } catch { /* ignore parse failure, use generic */ }
+          return NextResponse.json({ error: message }, { status: propagateStatus });
         }
         const onboardData = await onboardRes.json();
         pollHandle = onboardData.pollHandle;
