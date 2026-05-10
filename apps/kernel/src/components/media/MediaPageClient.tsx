@@ -12,8 +12,8 @@ export function MediaPageClient({ session }: Props) {
   const [search, setSearch] = useState('');
 
   return (
-    <div className="flex-1 overflow-hidden">
-      <div className="px-4 py-3">
+    <div className="flex flex-col overflow-hidden min-h-0">
+      <div className="px-4 py-3 shrink-0">
         <input
           type="text"
           placeholder="Search files…"
@@ -22,7 +22,9 @@ export function MediaPageClient({ session }: Props) {
           className="w-52 bg-[#252525] border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500 transition-colors"
         />
       </div>
-      <MediaManager session={session} search={search} />
+      <div className="flex-1 min-h-0 overflow-auto">
+        <MediaManager session={session} search={search} />
+      </div>
     </div>
   );
 }
