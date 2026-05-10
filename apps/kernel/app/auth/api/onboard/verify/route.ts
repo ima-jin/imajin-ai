@@ -14,11 +14,24 @@ import { publish } from '@imajin/bus';
 import { eq, and, gt, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
+import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 
 const log = createLogger('kernel');
 
 export async function GET(request: NextRequest) {
   try {
+    // Generous rate limit — token TTL + single-use enforces correctness.
+    // A user clicking once should never hit this.
+    const ip = getClientIP(request);
+    const rl = rateLimit(ip, 60, 60_000);
+    if (rl.limited) {
+      return errorPage(
+        'Too Many Requests',
+        'You\'ve made too many requests. Please wait a moment and try again.',
+        429
+      );
+    }
+
     const token = request.nextUrl.searchParams.get('token');
 
     if (!token) {
@@ -117,7 +130,7 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      return errorPage('Link Expired', 'This verification link has expired. Please go back and request a new one.');
+      return errorPage('Link Expired', 'This verification link has expired. Please go back and request a new one.', 410);
     }
 
     // Mark token as used
@@ -282,7 +295,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function errorPage(title: string, message: string): NextResponse {
+function errorPage(title: string, message: string, status = 400): NextResponse {
   return new NextResponse(
     `<!DOCTYPE html>
 <html>
@@ -291,7 +304,7 @@ function errorPage(title: string, message: string): NextResponse {
 </head>
 <body><h1>${title}</h1><p>${message}</p></body>
 </html>`,
-    { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+    { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
   );
 }
 

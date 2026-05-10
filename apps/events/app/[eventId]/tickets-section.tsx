@@ -771,7 +771,12 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
     const pollInterval = setInterval(async () => {
       try {
         const res = await fetch(`${AUTH_URL}/api/onboard/poll?handle=${encodeURIComponent(pollHandle)}`);
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (res.status === 429) {
+            setPollError('Too many requests, please wait a moment.');
+          }
+          return;
+        }
         const data = await res.json();
         setPollStatus(data.status);
 
@@ -786,8 +791,15 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           });
           if (!claimRes.ok) {
             const errData = await claimRes.json().catch(() => ({}));
-            setPollError(errData.error || 'Failed to complete verification');
-            setPollStatus('expired');
+            if (claimRes.status === 429) {
+              setPollError('Too many requests, please wait a moment.');
+            } else if (claimRes.status === 410) {
+              setPollError('Verification link expired. Please try again.');
+              setPollStatus('expired');
+            } else {
+              setPollError(errData.error || 'Failed to complete verification');
+              setPollStatus('expired');
+            }
             return;
           }
           // Notify any listening components (e.g. NavBar) that auth changed.
