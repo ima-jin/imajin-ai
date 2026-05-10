@@ -226,6 +226,8 @@ export function SalesTab({ eventId }: SalesTabProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [confirmETransferOrder, setConfirmETransferOrder] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -247,6 +249,25 @@ export function SalesTab({ eventId }: SalesTabProps) {
   useEffect(() => {
     load();
   }, [load]);
+
+  const handleConfirmETransferOrder = async (orderId: string) => {
+    setActionLoading(orderId);
+    try {
+      const res = await apiFetch(`/api/orders/${orderId}/confirm-payment`, { method: 'POST' });
+      if (res.ok) {
+        toast.success('e-Transfer confirmed');
+        load();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || 'Confirmation failed');
+      }
+    } catch {
+      toast.error('Confirmation failed');
+    } finally {
+      setActionLoading(null);
+      setConfirmETransferOrder(null);
+    }
+  };
 
   const handleExport = async (format: 'csv' | 'xlsx' = 'csv') => {
     setExporting(true);
@@ -371,12 +392,16 @@ export function SalesTab({ eventId }: SalesTabProps) {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                   Stripe Ref
                 </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {sales.map((sale) => {
                 const stripeUrl = getStripeDashboardUrl(sale.paymentId, sale.stripeSessionId);
                 const isOrphanOrder = orphanOrders.some(o => o.orderId === sale.orderId);
+                const isPendingEmt = sale.status === 'pending' && sale.paymentMethod === 'etransfer';
 
                 return (
                   <tr
@@ -420,6 +445,17 @@ export function SalesTab({ eventId }: SalesTabProps) {
                         <span className="text-xs text-gray-400 font-mono">
                           {truncateId(sale.stripeSessionId || sale.paymentId || '—', 16)}
                         </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {isPendingEmt && (
+                        <button
+                          onClick={() => setConfirmETransferOrder(sale.orderId)}
+                          disabled={actionLoading === sale.orderId}
+                          className="px-3 py-1 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
+                        >
+                          {actionLoading === sale.orderId ? '…' : 'Confirm e-Transfer'}
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -542,6 +578,35 @@ export function SalesTab({ eventId }: SalesTabProps) {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Order-level e-Transfer confirmation dialog */}
+      {confirmETransferOrder && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold mb-2">Confirm e-Transfer Payment</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+              Have you received the e-Transfer for order{' '}
+              <span className="font-mono text-xs">{confirmETransferOrder}</span>?
+              This will confirm all tickets in the order.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmETransferOrder(null)}
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleConfirmETransferOrder(confirmETransferOrder)}
+                disabled={!!actionLoading}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
+              >
+                {actionLoading === confirmETransferOrder ? 'Confirming…' : 'Confirm Payment'}
+              </button>
             </div>
           </div>
         </div>

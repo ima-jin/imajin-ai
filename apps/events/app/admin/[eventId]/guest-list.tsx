@@ -161,7 +161,6 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
   const [filterValue, setFilterValue] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmRefund, setConfirmRefund] = useState<string | null>(null);
-  const [confirmETransfer, setConfirmETransfer] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
   const [surveyModalTicketId, setSurveyModalTicketId] = useState<string | null>(null);
   const [surveyQuestions, setSurveyQuestions] = useState<Array<{ question: string; answer: unknown }>>([]);
@@ -217,26 +216,6 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
       g.id === ticketId ? { ...g, usedAt: g.usedAt ?? new Date().toISOString() } : g
     ));
   }, []);
-
-  const handleConfirmETransfer = async (ticketId: string) => {
-    setConfirmETransfer(null);
-    setActionLoading(ticketId);
-    try {
-      const res = await apiFetch(`/api/tickets/${ticketId}/confirm-payment`, { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || 'Confirmation failed');
-        return;
-      }
-      setGuests(prev => prev.map(g =>
-        g.id === ticketId ? { ...g, status: 'valid', purchasedAt: data.ticket.purchasedAt } : g
-      ));
-    } catch {
-      toast.error('Confirmation failed');
-    } finally {
-      setActionLoading(null);
-    }
-  };
 
   const handleResendEmail = async (ticketId: string) => {
     setResendState(prev => ({ ...prev, [ticketId]: 'sending' }));
@@ -576,13 +555,9 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
                   <td className="px-4 py-3 whitespace-nowrap">
                     <StatusBadge status={guest.status} paymentMethod={guest.paymentMethod} />
                     {guest.status === 'held' && guest.paymentMethod === 'etransfer' && (
-                      <button
-                        onClick={() => setConfirmETransfer(guest.id)}
-                        disabled={actionLoading === guest.id}
-                        className="mt-1 px-2 py-1 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition disabled:opacity-50 block"
-                      >
-                        {actionLoading === guest.id ? '…' : 'Confirm'}
-                      </button>
+                      <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                        Pending e-Transfer
+                      </span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
@@ -632,33 +607,6 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {/* e-Transfer confirmation dialog */}
-      {confirmETransfer && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm w-full">
-            <h3 className="text-lg font-semibold mb-2">Confirm e-Transfer Payment</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-              Have you received the e-Transfer for ticket <span className="font-mono text-xs">{confirmETransfer}</span>?
-              This will activate the ticket.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setConfirmETransfer(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleConfirmETransfer(confirmETransfer)}
-                className="px-4 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition"
-              >
-                Confirm Payment
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
