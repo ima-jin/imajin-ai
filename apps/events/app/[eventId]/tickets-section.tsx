@@ -172,6 +172,16 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
     ? `${order.quantity}× ${order.ticketTypeName}`
     : order.ticketTypeName;
 
+  // Issue #10: optimistic local state so QR + done state appear immediately
+  const [completedTickets, setCompletedTickets] = useState<Record<string, { status: string; qrCode?: string }>>({});
+
+  const handleRegistrationComplete = (ticketId: string, qrCode?: string) => {
+    setCompletedTickets(prev => ({
+      ...prev,
+      [ticketId]: { status: 'complete', qrCode },
+    }));
+  };
+
   return (
     <div className="border-2 border-orange-500 dark:border-orange-500 rounded-xl p-6 bg-orange-50/50 dark:bg-orange-900/10">
       {/* Order header */}
@@ -186,7 +196,7 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
       {/* QR grid */}
       <div className={`grid gap-4 mb-5 ${order.tickets.length === 1 ? 'grid-cols-1 max-w-[200px]' : 'grid-cols-2 sm:grid-cols-3'}`}>
         {order.tickets.map((ticket) => (
-          <TicketQRCell key={ticket.id} ticket={ticket} eventId={eventId} />
+          <TicketQRCell key={ticket.id} ticket={ticket} eventId={eventId} override={completedTickets[ticket.id]} />
         ))}
       </div>
 
@@ -196,7 +206,12 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
           doesn't force a form on the buyer. */}
       {order.tickets.filter(t => t.ticketType?.registrationFormId && t.registrationStatus !== 'not_required').map((ticket) => (
         <div key={`reg-${ticket.id}`} className="mb-4">
-          <TicketRegistrationSurvey ticket={ticket} eventId={eventId} />
+          <TicketRegistrationSurvey
+            ticket={ticket}
+            eventId={eventId}
+            override={completedTickets[ticket.id]}
+            onComplete={handleRegistrationComplete}
+          />
         </div>
       ))}
 
@@ -208,9 +223,10 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
   );
 }
 
-function TicketQRCell({ ticket }: { ticket: OrderTicket; eventId: string }) {
-  const isPending = ticket.registrationStatus === 'pending';
-  const [qrCode] = useState(ticket.qrCodeDataUri);
+function TicketQRCell({ ticket, override }: { ticket: OrderTicket; eventId: string; override?: { status: string; qrCode?: string } }) {
+  const status = override?.status ?? ticket.registrationStatus;
+  const isPending = status === 'pending';
+  const qrCode = override?.qrCode ?? ticket.qrCodeDataUri;
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -248,11 +264,12 @@ function TicketQRCell({ ticket }: { ticket: OrderTicket; eventId: string }) {
   );
 }
 
-function TicketRegistrationSurvey({ ticket, eventId }: { ticket: OrderTicket; eventId: string }) {
+function TicketRegistrationSurvey({ ticket, eventId, override, onComplete }: { ticket: OrderTicket; eventId: string; override?: { status: string; qrCode?: string }; onComplete?: (ticketId: string, qrCode?: string) => void }) {
   const [regStatus, setRegStatus] = useState(ticket.registrationStatus);
   const [isRetrying, setIsRetrying] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
-  const isPending = regStatus === 'pending';
+  const effectiveStatus = override?.status ?? regStatus;
+  const isPending = effectiveStatus === 'pending';
   const router = useRouter();
   const { toast } = useToast();
 
@@ -266,9 +283,11 @@ function TicketRegistrationSurvey({ ticket, eventId }: { ticket: OrderTicket; ev
         body: JSON.stringify({ formId: ticket.ticketType?.registrationFormId }),
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
         setRegStatus('complete');
+        onComplete?.(ticket.id, data.qrCodeDataUri);
         toast.success('Registration completed successfully');
-        // Refresh server data so QR code appears
+        // Refresh server data so the state is durable after navigation
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
