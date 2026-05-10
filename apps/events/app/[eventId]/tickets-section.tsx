@@ -88,6 +88,34 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
     hasTicket ? 'my-tickets' : 'buy-tickets'
   );
 
+  // Issue #14: read hash on mount so external links / router.refresh can target a tab
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace('#', '');
+      if (hash === 'my-tickets' || hash === 'buy-tickets') {
+        setActiveTab(hash);
+      }
+    }
+  }, []);
+
+  const handleTabChange = (tab: 'my-tickets' | 'buy-tickets') => {
+    setActiveTab(tab);
+    if (typeof window !== 'undefined') {
+      window.location.hash = tab;
+    }
+  };
+
+  const handleJumpToMyTickets = () => {
+    handleTabChange('my-tickets');
+    // Scroll to the first pending registration row after the tab switch renders
+    setTimeout(() => {
+      const el = document.querySelector('[data-registration-pending]');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 50);
+  };
+
   // If no tickets available at all
   if (tickets.length === 0) {
     return (
@@ -109,7 +137,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-700">
         <button
-          onClick={() => setActiveTab('my-tickets')}
+          onClick={() => handleTabChange('my-tickets')}
           className={`px-4 py-2 font-semibold transition-colors border-b-2 ${
             activeTab === 'my-tickets'
               ? 'border-orange-500 text-orange-500'
@@ -119,7 +147,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
           🎫 My Tickets
         </button>
         <button
-          onClick={() => setActiveTab('buy-tickets')}
+          onClick={() => handleTabChange('buy-tickets')}
           className={`px-4 py-2 font-semibold transition-colors border-b-2 ${
             activeTab === 'buy-tickets'
               ? 'border-orange-500 text-orange-500'
@@ -134,7 +162,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
       {activeTab === 'my-tickets' ? (
         <MyTicketsTab userOrders={userOrders} eventId={eventId} />
       ) : (
-        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} userOrders={userOrders} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sessionContactEmail={sessionContactEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} />
+        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} userOrders={userOrders} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sessionContactEmail={sessionContactEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} onJumpToMyTickets={handleJumpToMyTickets} />
       )}
     </div>
   );
@@ -205,7 +233,7 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
           DB misconfig (registrationFormId set on a type that shouldn't need it)
           doesn't force a form on the buyer. */}
       {order.tickets.filter(t => t.ticketType?.registrationFormId && t.registrationStatus !== 'not_required').map((ticket) => (
-        <div key={`reg-${ticket.id}`} className="mb-4">
+        <div key={`reg-${ticket.id}`} className="mb-4" data-registration-pending={ticket.registrationStatus === 'pending' ? 'true' : undefined}>
           <TicketRegistrationSurvey
             ticket={ticket}
             eventId={eventId}
@@ -430,7 +458,7 @@ function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
   );
 }
 
-function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sessionContactEmail, sellerConnected = true, hasHiddenTiers = false }: { eventId: string; eventTitle: string; tickets: TicketType[]; userOrders?: UserOrder[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sessionEmail?: string; sessionContactEmail?: string; sellerConnected?: boolean; hasHiddenTiers?: boolean }) {
+function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sessionContactEmail, sellerConnected = true, hasHiddenTiers = false, onJumpToMyTickets }: { eventId: string; eventTitle: string; tickets: TicketType[]; userOrders?: UserOrder[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sessionEmail?: string; sessionContactEmail?: string; sellerConnected?: boolean; hasHiddenTiers?: boolean; onJumpToMyTickets?: () => void }) {
   const [unlockedTickets, setUnlockedTickets] = useState<TicketType[]>([]);
   const [unlockCode, setUnlockCode] = useState('');
   const [showUnlock, setShowUnlock] = useState(false);
@@ -612,6 +640,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
           mixedCurrency={mixedCurrency}
           cartCurrencies={cartCurrencies}
           userOrders={userOrders}
+          onJumpToMyTickets={onJumpToMyTickets}
         />
       )}
 
@@ -673,9 +702,10 @@ interface UnifiedBarProps {
   onError: (msg: string) => void;
   mixedCurrency?: boolean;
   cartCurrencies?: string[];
+  onJumpToMyTickets?: () => void;
 }
 
-function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [], userOrders = [] }: UnifiedBarProps & { userOrders?: UserOrder[] }) {
+function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [], userOrders = [], onJumpToMyTickets }: UnifiedBarProps & { userOrders?: UserOrder[] }) {
   // Issue #11: count tickets needing registration across all user orders
   const pendingRegistrations = userOrders.flatMap(o =>
     o.tickets.filter(t => t.registrationStatus === 'pending' && t.ticketType?.registrationFormId)
@@ -1005,14 +1035,20 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
               <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
                 You have {totalPendingCount} ticket{totalPendingCount !== 1 ? 's' : ''} that need registration before the event.
               </p>
-              <a
-                href={`/${eventId}`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={() => {
+                  if (onJumpToMyTickets) {
+                    onJumpToMyTickets();
+                  } else {
+                    // Fallback for non-tabbed contexts: set hash and reload
+                    window.location.hash = 'my-tickets';
+                    window.location.reload();
+                  }
+                }}
                 className="inline-block mt-1 text-xs font-semibold text-orange-500 hover:text-orange-600 hover:underline"
               >
                 Register now →
-              </a>
+              </button>
             </div>
           </div>
         )}
