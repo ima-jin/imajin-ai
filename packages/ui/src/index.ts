@@ -25,6 +25,15 @@ export type { Notification, NotificationContextValue } from './notification-prov
 export { NotificationBell } from './notification-bell';
 
 export { ActionSheet } from './action-sheet';
+export { AppShell } from './app-shell';
+export type {
+  AppShellProps,
+  AppShellHeaderProps,
+  AppShellBodyProps,
+  AppShellFooterProps,
+  AppShellSplitProps,
+  AppShellPaneProps,
+} from './app-shell';
 
 export { themeInitScript } from './theme-init';
 
