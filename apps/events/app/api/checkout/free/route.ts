@@ -13,7 +13,7 @@ import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
-import { sendEmail, ticketConfirmationEmail, generateQRCode } from '@/src/lib/email';
+import { generateQRCode } from '@/src/lib/email';
 import { publish } from '@imajin/bus';
 import { getClient } from '@imajin/db';
 import { randomBytes } from 'crypto';
@@ -311,10 +311,12 @@ export const POST = withLogger('events', async (request, { log }) => {
           ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
           : undefined;
 
-        await sendEmail({
-          to: ownerEmail,
-          subject: `You're in — ${event.title}`,
-          html: ticketConfirmationEmail({
+        publish('ticket.confirmed', {
+          issuer: ownerDid,
+          subject: ownerDid,
+          scope: 'events',
+          payload: {
+            email: ownerEmail,
             eventTitle: event.title,
             ticketType: ticketType.name,
             ticketId,
@@ -327,10 +329,12 @@ export const POST = withLogger('events', async (request, { log }) => {
             eventImageUrl,
             eventUrl: `${EVENTS_URL}/${event.id}`,
             qrCodeDataUri,
-          }),
-        });
+            context_id: event.id,
+            context_type: 'event',
+          },
+        }).catch((err) => log.error({ err: String(err) }, 'Ticket confirmed publish error'));
       } catch (emailError) {
-        log.error({ err: String(emailError) }, 'Confirmation email failed (non-fatal)');
+        log.error({ err: String(emailError) }, 'Confirmation publish failed (non-fatal)');
       }
     }
 
