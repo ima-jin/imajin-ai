@@ -554,11 +554,6 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <StatusBadge status={guest.status} paymentMethod={guest.paymentMethod} />
-                    {guest.status === 'held' && guest.paymentMethod === 'etransfer' && (
-                      <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
-                        Pending e-Transfer
-                      </span>
-                    )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                     {formatDate(guest.purchasedAt)}

@@ -104,6 +104,22 @@ export async function confirmHeldTickets(
         `;
         customerEmail = rows[0]?.contact_email ?? null;
         customerName = rows[0]?.name ?? null;
+
+        // Fallback 1: auth.credentials (email type, newest first)
+        if (!customerEmail) {
+          const credRows = await authSql<{ value: string }[]>`
+            SELECT value FROM auth.credentials
+            WHERE did = ${buyerDid} AND type = 'email'
+            ORDER BY created_at DESC LIMIT 1
+          `;
+          customerEmail = credRows[0]?.value ?? null;
+        }
+      }
+
+      // Fallback 2: orders.buyer_email (persists the email from checkout time)
+      if (!customerEmail && orderId) {
+        const orderRows = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+        customerEmail = orderRows[0]?.buyerEmail ?? null;
       }
 
       if (customerEmail) {
@@ -231,7 +247,7 @@ export async function confirmHeldTickets(
           }).catch((err) => log.error({ err: String(err) }, 'Ticket confirmation email failed'));
         }
       } else {
-        log.warn({ buyerDid }, 'No buyer email available on EMT confirm; skipping receipt + ticket emails');
+        log.warn({ buyerDid, orderId }, 'No buyer email available on EMT confirm; skipping receipt + ticket emails');
       }
     } catch (emailErr) {
       log.error({ err: String(emailErr) }, 'EMT confirm email block failed');

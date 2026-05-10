@@ -141,6 +141,8 @@ export const orders = eventsSchema.table('orders', {
   fairSettlement: jsonb('fair_settlement'),                  // resolved .fair receipt
   purchasedAt: timestamp('purchased_at', { withTimezone: true }),
   metadata: jsonb('metadata').default({}),
+  // SQL: ALTER TABLE events.orders ADD COLUMN IF NOT EXISTS buyer_email TEXT;
+  buyerEmail: text('buyer_email'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   eventIdx: index('idx_orders_event').on(table.eventId),
