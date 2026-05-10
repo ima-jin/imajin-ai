@@ -44,6 +44,24 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'mjn', config: { attestationType: 'ticket.purchased' }, enabled: true },
     { type: 'notify', config: { scope: 'event:ticket' }, enabled: true },
   ],
+  'ticket.receipt': [
+    { type: 'notify', config: { scope: 'event:ticket-receipt' }, enabled: true },
+  ],
+  'ticket.confirmed': [
+    { type: 'notify', config: { scope: 'event:ticket-confirmed' }, enabled: true },
+  ],
+  'ticket.reserved': [
+    { type: 'notify', config: { scope: 'event:ticket-reserved' }, enabled: true },
+  ],
+  'ticket.refunded': [
+    { type: 'notify', config: { scope: 'event:ticket-refunded' }, enabled: true },
+  ],
+  'ticket.registration.completed': [
+    { type: 'notify', config: { scope: 'event:ticket-confirmed' }, enabled: true },
+  ],
+  'ticket.registration.reminder': [
+    { type: 'notify', config: { scope: 'event:ticket-registration-reminder' }, enabled: true },
+  ],
   'order.completed': [
     { type: 'settle', config: {}, await: true, enabled: true },
   ],

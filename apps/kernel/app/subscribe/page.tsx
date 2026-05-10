@@ -54,8 +54,8 @@ function SubscribeContent() {
         Stay in the loop
       </h1>
       <p className="text-gray-400 text-center max-w-md mb-8">
-        We're building sovereign identity and profile infrastructure.
-        Sign up to get notified when it's ready.
+        We're building self-hosted community infrastructure.
+        Sign up to get notified when new features land.
       </p>
 
       {/* Form */}
@@ -98,7 +98,7 @@ function SubscribeContent() {
 
       {/* Note */}
       <p className="mt-8 text-xs text-gray-600 text-center max-w-sm">
-        No spam. Just meaningful updates about our progress toward sovereign infrastructure.
+        No spam. Just meaningful updates about our progress.
       </p>
     </main>
   );

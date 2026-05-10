@@ -31,10 +31,10 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL(wwwUrl),
   title: {
-    default: `Imajin — Sovereign Technology${envLabel}`,
+    default: `Imajin runs your community${envLabel}`,
     template: `%s | Imajin${envLabel}`,
   },
-  description: 'Own your data. Own your identity. Own your devices. Exit infrastructure for the sovereign individual.',
+  description: 'Self-hosted software for communities, events, identity, and payments. Open source. Your data, your keys, your domain.',
   keywords: ['sovereign', 'decentralized', 'identity', 'self-hosted', 'no-subscription', 'imajin'],
   authors: [{ name: 'Imajin', url: wwwUrl }],
   openGraph: {
@@ -42,21 +42,21 @@ export const metadata: Metadata = {
     locale: 'en_US',
     url: wwwUrl,
     siteName: `Imajin${envLabel}`,
-    title: `Imajin — Sovereign Technology${envLabel}`,
-    description: 'Own your data. Own your identity. Own your devices. No subscriptions. No cloud dependency. No surveillance capitalism.',
+    title: `Imajin runs your community${envLabel}`,
+    description: 'Self-hosted software for communities, events, identity, and payments. Open source. Your data, your keys, your domain.',
     images: [
       {
         url: '/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'Imajin — Sovereign Technology',
+        alt: 'Imajin runs your community',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: `Imajin — Sovereign Technology${envLabel}`,
-    description: 'Own your data. Own your identity. Own your devices.',
+    title: `Imajin runs your community${envLabel}`,
+    description: 'Self-hosted software for communities, events, identity, and payments.',
     images: ['/og-image.png'],
   },
   robots: {
