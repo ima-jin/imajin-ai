@@ -196,6 +196,17 @@ async function getUserOrders(eventId: string, userDid: string) {
     // Order-level settlement (fairSettlement column) takes precedence; fall back to legacy ticket-level
     const fairSettlement = (orderData?.fairSettlement as any) ?? ticketMeta.fair_settlement ?? null;
 
+    // Count unique ticket types within this order so mixed orders show
+    // e.g. "1× Premium + 2× Bunkie" instead of collapsing to the first type.
+    const typeCounts = new Map<string, number>();
+    for (const { ticketType: tt } of groupRows) {
+      const name = tt?.name || 'Ticket';
+      typeCounts.set(name, (typeCounts.get(name) || 0) + 1);
+    }
+    const ticketTypeName = Array.from(typeCounts.entries())
+      .map(([name, count]) => (count > 1 ? `${count}× ${name}` : name))
+      .join(' + ');
+
     return {
       id: isLegacy ? first.ticket.id : first.ticket.orderId!,
       isLegacy,
@@ -203,7 +214,7 @@ async function getUserOrders(eventId: string, userDid: string) {
       totalAmount: orderData?.amountTotal ?? first.ticket.pricePaid,
       currency: orderData?.currency ?? first.ticket.currency,
       purchasedAt: (first.ticket.purchasedAt || first.ticket.createdAt)?.toISOString() || null,
-      ticketTypeName: first.ticketType?.name || 'Ticket',
+      ticketTypeName,
       fairSettlement,
       tickets: groupRows.map(({ ticket, ticketType, qrCodeDataUri }) => ({
         id: ticket.id,

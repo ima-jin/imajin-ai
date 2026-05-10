@@ -191,7 +191,10 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
       </div>
 
       {/* Registration surveys — full width, outside the QR grid */}
-      {order.tickets.filter(t => t.ticketType?.registrationFormId).map((ticket) => (
+      {/* Defensive: also exclude tickets explicitly marked not_required so a
+          DB misconfig (registrationFormId set on a type that shouldn't need it)
+          doesn't force a form on the buyer. */}
+      {order.tickets.filter(t => t.ticketType?.registrationFormId && t.registrationStatus !== 'not_required').map((ticket) => (
         <div key={`reg-${ticket.id}`} className="mb-4">
           <TicketRegistrationSurvey ticket={ticket} eventId={eventId} />
         </div>
@@ -787,10 +790,52 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
             setPollStatus('expired');
             return;
           }
-          // Session set — re-fire the EMT reserve
+          // Notify any listening components (e.g. NavBar) that auth changed.
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('imajin:session-changed'));
+          }
+          // Re-fire the EMT reserve directly without router.refresh().
+          // Calling startEtransfer() triggers router.refresh() which re-runs
+          // server components, flips hasTicket from false → true, and remounts
+          // PurchaseUI — wiping cart state. We handle the transition client-side.
           setPollStatus(null);
           setPollHandle(null);
-          await startEtransfer();
+          setStep('emt-loading');
+          try {
+            const reserveRes = await apiFetch('/api/checkout/etransfer', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventId,
+                items: cartItems.map((c) => ({ ticketTypeId: c.ticket.id, quantity: c.qty })),
+                ...(inviteToken && { invite: inviteToken }),
+                ...(emtEmail && { email: emtEmail.trim() }),
+                ...(emtName && { name: emtName.trim() }),
+              }),
+            });
+            if (!reserveRes.ok) {
+              const errData = await reserveRes.json().catch(() => ({}));
+              onError(errData.error || 'e-Transfer setup failed');
+              setStep('idle');
+              return;
+            }
+            const reserveData = await reserveRes.json();
+            setEmtResult({
+              orderId: reserveData.orderId,
+              quantity: reserveData.instructions.quantity ?? totalQty,
+              email: reserveData.instructions.email,
+              amount: reserveData.instructions.amount,
+              currency: reserveData.instructions.currency,
+              memo: reserveData.instructions.memo,
+              deadline: reserveData.instructions.deadline,
+              message: reserveData.instructions.message,
+            });
+            setStep('emt-done');
+          } catch {
+            onError('e-Transfer setup failed');
+            setStep('idle');
+          }
         } else if (data.status === 'expired' || data.status === 'claimed') {
           clearInterval(pollInterval);
           setPollError('Verification link expired. Please try again.');

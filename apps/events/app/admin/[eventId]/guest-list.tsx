@@ -536,9 +536,6 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
                   )}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                  Price
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                   Purchased
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
@@ -560,7 +557,20 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
                     <ProfileCell ownerDid={guest.ownerDid} profile={guest.profile} paymentMethod={guest.paymentMethod} paymentId={guest.paymentId} />
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="text-sm text-gray-700 dark:text-gray-300">{guest.ticketType}</div>
+                    <div className="text-sm text-gray-700 dark:text-gray-300">
+                      {guest.ticketType}
+                      {' — '}
+                      <span className="text-gray-500 dark:text-gray-400">{formatCurrency(guest.pricePaid, guest.currency)}</span>
+                      {guest.fairSettlement && (
+                        <button
+                          onClick={() => setExpandedReceipt(prev => prev === guest.id ? null : guest.id)}
+                          className="ml-1 text-base leading-none hover:scale-110 transition-transform"
+                          title=".fair settlement receipt"
+                        >
+                          ⚖️
+                        </button>
+                      )}
+                    </div>
                     <div className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5">{guest.id}</div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
@@ -574,20 +584,6 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
                         {actionLoading === guest.id ? '…' : 'Confirm'}
                       </button>
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                    <div className="flex items-center gap-1.5">
-                      {formatCurrency(guest.pricePaid, guest.currency)}
-                      {guest.fairSettlement && (
-                        <button
-                          onClick={() => setExpandedReceipt(prev => prev === guest.id ? null : guest.id)}
-                          className="text-base leading-none hover:scale-110 transition-transform"
-                          title=".fair settlement receipt"
-                        >
-                          ⚖️
-                        </button>
-                      )}
-                    </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                     {formatDate(guest.purchasedAt)}
@@ -627,7 +623,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
                 </tr>
                 {expandedReceipt === guest.id && guest.fairSettlement && (
                   <tr className="bg-gray-50/50 dark:bg-gray-900/30">
-                    <td colSpan={8} className="px-6 pb-3 pt-0">
+                    <td colSpan={7} className="px-6 pb-3 pt-0">
                       <GuestFairReceipt settlement={guest.fairSettlement} />
                     </td>
                   </tr>
