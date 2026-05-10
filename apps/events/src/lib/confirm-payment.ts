@@ -8,7 +8,7 @@ import { publish } from '@imajin/bus';
 import { db, tickets, ticketTypes, events, orders } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { randomBytes } from 'crypto';
-import { sendEmail, ticketConfirmationEmail, purchaseReceiptEmail, generateQRCode } from '@/src/lib/email';
+import { generateQRCode } from '@/src/lib/email';
 import { eq, sql, and, inArray } from 'drizzle-orm';
 
 const log = createLogger('events');
@@ -197,10 +197,12 @@ export async function confirmHeldTickets(
           : `${EVENTS_URL}/${event.id}/my-tickets`;
 
         // 1. Purchase receipt (always)
-        await sendEmail({
-          to: customerEmail,
-          subject: `Purchase receipt — ${event.title}`,
-          html: purchaseReceiptEmail({
+        publish('ticket.receipt', {
+          issuer: buyerDid || '',
+          subject: buyerDid || '',
+          scope: 'events',
+          payload: {
+            email: customerEmail,
             buyerName: customerName || undefined,
             eventTitle: event.title,
             eventDate: formattedEventDate,
@@ -215,8 +217,10 @@ export async function confirmHeldTickets(
             registrationUrl,
             eventImageUrl,
             hasRegistrationRequired: anyRegistrationRequired,
-          }),
-        }).catch((err) => log.error({ err: String(err) }, 'Receipt email failed'));
+            context_id: event.id,
+            context_type: 'event',
+          },
+        }).catch((err) => log.error({ err: String(err) }, 'Receipt publish error'));
 
         // 2. Ticket confirmation with QR codes (only if no registration required)
         if (!anyRegistrationRequired) {
@@ -227,10 +231,12 @@ export async function confirmHeldTickets(
             }))
           );
           const primaryType = typesById.get(confirmedTickets[0].ticketTypeId);
-          await sendEmail({
-            to: customerEmail,
-            subject: `You're in — ${event.title}`,
-            html: ticketConfirmationEmail({
+          publish('ticket.confirmed', {
+            issuer: buyerDid || '',
+            subject: buyerDid || '',
+            scope: 'events',
+            payload: {
+              email: customerEmail,
               eventTitle: event.title,
               ticketType: primaryType?.name ?? 'Ticket',
               ticketId: confirmedTickets[0].id,
@@ -243,8 +249,10 @@ export async function confirmHeldTickets(
               eventImageUrl,
               eventUrl: `${EVENTS_URL}/${event.id}`,
               tickets: ticketsWithQr,
-            }),
-          }).catch((err) => log.error({ err: String(err) }, 'Ticket confirmation email failed'));
+              context_id: event.id,
+              context_type: 'event',
+            },
+          }).catch((err) => log.error({ err: String(err) }, 'Ticket confirmed publish error'));
         }
       } else {
         log.warn({ buyerDid, orderId }, 'No buyer email available on EMT confirm; skipping receipt + ticket emails');
