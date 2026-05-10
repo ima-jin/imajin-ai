@@ -2,6 +2,11 @@
 
 Not every item applies to every PR. Scan the categories — check only what's relevant to your change.
 
+## Schema changes
+- [ ] Any edit to `apps/*/src/db/schema.ts` requires a matching `migrations/NNNN_*.sql` file in the same PR
+- [ ] Idempotent SQL preferred (`IF NOT EXISTS`, `IF EXISTS`)
+- [ ] Exception only via `migration-not-required: <reason>` in commit body
+
 ## Schema / Database
 - [ ] Migration generated via `drizzle-kit generate` from the app directory (never hand-written SQL)
 - [ ] Migration has `→ statement-breakpoint` between each SQL statement

@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+# Schema/migration sync guard. Compares working tree against HEAD.
+# For broader changes (multi-commit branches), CI runs the same check against origin/main.
+STAGED_SCHEMA=$(git diff --cached --name-only | grep -E '(apps/.*/src/db/schema\.ts|packages/db/src/.*\.ts)$' || true)
+STAGED_MIGRATIONS=$(git diff --cached --name-only --diff-filter=A | grep -E '^migrations/[0-9]{4}_.*\.sql$' || true)
+if [ -n "$STAGED_SCHEMA" ] && [ -z "$STAGED_MIGRATIONS" ]; then
+  echo "❌ Staged schema change without a new migration file:"
+  echo "$STAGED_SCHEMA" | sed 's/^/   /'
+  NEXT=$(printf '%04d' $(( $(ls migrations/*.sql 2>/dev/null | grep -oP '\K\d{4}' | sort -n | tail -1 || echo 0) + 1 )))
+  echo "Create migrations/${NEXT}_<description>.sql, or commit with 'migration-not-required: <reason>' to override (CI will still check the full PR)."
+  exit 1
+fi
+
+# Also run the existing migrations folder consistency check
+bash scripts/check-migrations.sh
