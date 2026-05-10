@@ -398,6 +398,93 @@ export interface BusEventMap {
     currency: string;
     interestDids?: string[];
   };
+  'ticket.receipt': {
+    email: string;
+    eventTitle: string;
+    eventDate: string;
+    eventTime: string;
+    ticketSummary: Array<{ typeName: string; quantity: number; unitPrice: string }>;
+    totalPaid: string;
+    paymentMethod: string;
+    registrationUrl: string;
+    eventImageUrl?: string;
+    hasRegistrationRequired?: boolean;
+    context_id: string;
+    context_type: string;
+  };
+  'ticket.confirmed': {
+    email: string;
+    eventTitle: string;
+    eventDate: string;
+    eventTime: string;
+    isVirtual: boolean;
+    venue?: string;
+    price: string;
+    magicLink: string;
+    eventImageUrl?: string;
+    eventUrl?: string;
+    tickets?: Array<{ id: string; qrCodeDataUri: string }>;
+    ticketType?: string;
+    ticketId?: string;
+    qrCodeDataUri?: string;
+    context_id: string;
+    context_type: string;
+  };
+  'ticket.reserved': {
+    email: string;
+    eventTitle: string;
+    eventDate: string;
+    eventTime: string;
+    ticketSummary: Array<{ typeName: string; quantity: number }>;
+    totalQuantity: number;
+    amount: string;
+    payToEmail: string;
+    memo: string;
+    deadline: string;
+    buyerEmail: string;
+    myTicketsUrl: string;
+    eventImageUrl?: string;
+    context_id: string;
+    context_type: string;
+  };
+  'ticket.refunded': {
+    email: string;
+    refundMessage: string;
+    eventTitle: string;
+    eventImageUrl?: string | null;
+    eventUrl?: string;
+    manualRefundRequired?: boolean;
+    context_id: string;
+    context_type: string;
+  };
+  'ticket.registration.completed': {
+    email: string;
+    eventTitle: string;
+    eventDate: string;
+    eventTime: string;
+    isVirtual: boolean;
+    venue?: string;
+    price: string;
+    magicLink: string;
+    eventImageUrl?: string;
+    eventUrl?: string;
+    tickets?: Array<{ id: string; qrCodeDataUri: string }>;
+    ticketType?: string;
+    ticketId?: string;
+    qrCodeDataUri?: string;
+    context_id: string;
+    context_type: string;
+  };
+  'ticket.registration.reminder': {
+    email: string;
+    eventTitle: string;
+    eventDate: string;
+    pendingCount: number;
+    registrationUrl: string;
+    eventImageUrl?: string;
+    context_id: string;
+    context_type: string;
+  };
 }
 
 export type BusEventType = keyof BusEventMap;
