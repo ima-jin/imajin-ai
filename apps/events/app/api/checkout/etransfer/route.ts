@@ -326,6 +326,7 @@ export const POST = withLogger('events', async (request, { log }) => {
         paymentMethod: 'etransfer',
         status: 'pending',
         metadata: cart.length > 1 ? { cart } : {},
+        buyerEmail,
       })
       .returning();
 
