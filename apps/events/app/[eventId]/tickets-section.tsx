@@ -100,7 +100,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
 
   // If user doesn't have tickets, show purchase UI only
   if (!hasTicket || userOrders.length === 0) {
-    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} />;
+    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} userOrders={userOrders} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} />;
   }
 
   // User has tickets - show tabbed interface
@@ -134,7 +134,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
       {activeTab === 'my-tickets' ? (
         <MyTicketsTab userOrders={userOrders} eventId={eventId} />
       ) : (
-        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sessionContactEmail={sessionContactEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} />
+        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} userOrders={userOrders} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sessionContactEmail={sessionContactEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} />
       )}
     </div>
   );
@@ -430,7 +430,7 @@ function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
   );
 }
 
-function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sessionContactEmail, sellerConnected = true, hasHiddenTiers = false }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sessionEmail?: string; sessionContactEmail?: string; sellerConnected?: boolean; hasHiddenTiers?: boolean }) {
+function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sessionContactEmail, sellerConnected = true, hasHiddenTiers = false }: { eventId: string; eventTitle: string; tickets: TicketType[]; userOrders?: UserOrder[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sessionEmail?: string; sessionContactEmail?: string; sellerConnected?: boolean; hasHiddenTiers?: boolean }) {
   const [unlockedTickets, setUnlockedTickets] = useState<TicketType[]>([]);
   const [unlockCode, setUnlockCode] = useState('');
   const [showUnlock, setShowUnlock] = useState(false);
@@ -611,6 +611,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
           onError={(msg) => toast.error(msg)}
           mixedCurrency={mixedCurrency}
           cartCurrencies={cartCurrencies}
+          userOrders={userOrders}
         />
       )}
 
@@ -674,13 +675,48 @@ interface UnifiedBarProps {
   cartCurrencies?: string[];
 }
 
-function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [] }: UnifiedBarProps) {
+function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [], userOrders = [] }: UnifiedBarProps & { userOrders?: UserOrder[] }) {
+  // Issue #11: count tickets needing registration across all user orders
+  const pendingRegistrations = userOrders.flatMap(o =>
+    o.tickets.filter(t => t.registrationStatus === 'pending' && t.ticketType?.registrationFormId)
+  );
+  // Newly purchased tickets that require registration (checked from cart while userOrders may be stale)
+  const cartPendingCount = cartItems.filter(c => c.ticket.requiresRegistration).reduce((sum, c) => sum + c.qty, 0);
+  const totalPendingCount = pendingRegistrations.length + cartPendingCount;
+  const hasPendingRegistrations = totalPendingCount > 0;
+
   const router = useRouter();
   type BarStep = 'idle' | 'card-loading' | 'emt-form' | 'emt-loading' | 'emt-done' | 'emt-verify-sent';
-  const [step, setStep] = useState<BarStep>('idle');
+  const [step, setStepState] = useState<BarStep>(() => {
+    try {
+      const saved = sessionStorage.getItem('emtResult');
+      if (saved) return 'emt-done';
+    } catch {}
+    return 'idle';
+  });
+  const setStep = (s: BarStep) => {
+    setStepState(s);
+    if (s !== 'emt-done') {
+      try { sessionStorage.removeItem('emtResult'); } catch {}
+    }
+  };
   const [emtEmail, setEmtEmail] = useState(sessionContactEmail || sessionEmail || '');
   const [emtName, setEmtName] = useState('');
-  const [emtResult, setEmtResult] = useState<{ orderId: string; quantity: number; email: string; amount: number; currency: string; memo: string; deadline: string; message: string } | null>(null);
+  const [emtResult, setEmtResultState] = useState<{ orderId: string; quantity: number; email: string; amount: number; currency: string; memo: string; deadline: string; message: string } | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('emtResult');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+  const setEmtResult = (result: typeof emtResult) => {
+    setEmtResultState(result);
+    if (result) {
+      try { sessionStorage.setItem('emtResult', JSON.stringify(result)); } catch {}
+    } else {
+      try { sessionStorage.removeItem('emtResult'); } catch {}
+    }
+  };
   const [verifySentTo, setVerifySentTo] = useState<string | null>(null);
   // Issue #1: polling state for tab-A-canonical verification
   const [pollHandle, setPollHandle] = useState<string | null>(null);
@@ -863,6 +899,8 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
               message: reserveData.instructions.message,
             });
             setStep('emt-done');
+            // Refresh server data so My Tickets tab sees the new order
+            router.refresh();
           } catch {
             onError('e-Transfer setup failed');
             setStep('idle');
@@ -959,6 +997,25 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           <span className="text-orange-500 text-xl">📬</span>
           <h3 className="font-semibold text-base">Reserved — send your e-Transfer to confirm</h3>
         </div>
+        {/* Issue #11: prompt for unregistered tickets without losing EMT context */}
+        {hasPendingRegistrations && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-start gap-2">
+            <span className="text-amber-600 dark:text-amber-400 text-lg shrink-0">⚠️</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                You have {totalPendingCount} ticket{totalPendingCount !== 1 ? 's' : ''} that need registration before the event.
+              </p>
+              <a
+                href={`/${eventId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-1 text-xs font-semibold text-orange-500 hover:text-orange-600 hover:underline"
+              >
+                Register now →
+              </a>
+            </div>
+          </div>
+        )}
         <p className="text-xs text-orange-500">
           You don't have your ticket{emtResult.quantity > 1 ? 's' : ''} yet. They'll be activated once we confirm your payment — we'll email you the ticket{emtResult.quantity > 1 ? 's' : ''} then.
         </p>
