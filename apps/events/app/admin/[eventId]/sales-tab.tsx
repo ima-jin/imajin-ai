@@ -374,7 +374,7 @@ export function SalesTab({ eventId }: SalesTabProps) {
       {/* Sales table */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px]">
+          <table className="w-full">
             <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
@@ -419,7 +419,7 @@ export function SalesTab({ eventId }: SalesTabProps) {
                         buyerEmail={sale.buyerEmail}
                       />
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="px-4 py-3">
                       <span className="text-sm text-gray-700 dark:text-gray-300">
                         {sale.quantity}x {sale.ticketType} — {formatCurrency(sale.amountTotal, sale.currency)}
                       </span>
