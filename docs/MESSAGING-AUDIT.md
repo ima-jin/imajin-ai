@@ -68,8 +68,8 @@ Your data, your keys, your domain.
 ### Before (hero section)
 
 ```
-1 kernel (9 domains) + 6 federated apps. 78 days. ~133K lines of code.
-~1,750 commits. ~135 identities. All open source. All self-hosted.
+9 apps + 21 shared packages. 98 days. ~122K lines of code.
+~2,290 commits. 246 identities. All open source. All self-hosted.
 ```
 
 ### After

@@ -282,11 +282,11 @@ See [articles/ARCHITECTURE.md](./apps/kernel/articles/ARCHITECTURE.md) for full 
 
 | Metric | Value |
 |--------|-------|
-| Codebase | ~133K lines |
-| Commits | ~1,750 |
-| Identities | ~135 |
-| Days since launch | ~99 |
-| Services | 9 core + 6 apps |
+| Codebase | ~122K lines |
+| Commits | ~2,290 |
+| Identities | 246 |
+| Days since launch | ~98 |
+| Services | 9 apps + 21 shared packages |
 | License | MIT |
 
 1 kernel (9 domains) plus 6 federated apps. All open source. All self-hostable. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed. It was excavated.

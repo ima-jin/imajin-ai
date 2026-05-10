@@ -365,7 +365,7 @@ npx ajv-cli validate -s node_modules/.fair/schema/fair.schema.json -d my-project
 - ✅ Cryptographic .fair signature verification at settlement
 - ✅ DFOS protocol bridge (key rotation, CID, countersignatures)
 - ✅ Federation registry
-- ✅ 1 kernel (9 domains) + 6 federated apps, self-hosted, ~135 registered identities
+- ✅ 9 apps + 21 shared packages, self-hosted, 246 registered identities
 - ✅ Postgres backups (hourly, local + NAS)
 
 ### Coming Next
@@ -414,4 +414,4 @@ Not yet. For now, it's direct HTTP calls. The OpenAPI specs at `/api/spec` can g
 
 *The RFCs tell you why this matters. This guide tells you how it works. Start with `curl` and go from there.*
 
-*Updated April 8, 2026. 1 kernel (9 domains) + 6 federated apps, ~135 identities, 1,722 commits.*
+*Updated May 10, 2026. 9 apps + 21 shared packages, 246 identities, 2,290 commits.*
