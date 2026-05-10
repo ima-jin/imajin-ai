@@ -100,7 +100,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
 
   // If user doesn't have tickets, show purchase UI only
   if (!hasTicket || userOrders.length === 0) {
-    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} />;
+    return <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} userOrders={userOrders} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} />;
   }
 
   // User has tickets - show tabbed interface
@@ -134,7 +134,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
       {activeTab === 'my-tickets' ? (
         <MyTicketsTab userOrders={userOrders} eventId={eventId} />
       ) : (
-        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sessionContactEmail={sessionContactEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} />
+        <PurchaseUI eventId={eventId} eventTitle={eventTitle} tickets={tickets} userOrders={userOrders} inviteToken={inviteToken} etransferEnabled={etransferEnabled} isAuthenticated={isAuthenticated} sessionEmail={sessionEmail} sessionContactEmail={sessionContactEmail} sellerConnected={sellerConnected} hasHiddenTiers={hasHiddenTiers} />
       )}
     </div>
   );
@@ -172,6 +172,16 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
     ? `${order.quantity}× ${order.ticketTypeName}`
     : order.ticketTypeName;
 
+  // Issue #10: optimistic local state so QR + done state appear immediately
+  const [completedTickets, setCompletedTickets] = useState<Record<string, { status: string; qrCode?: string }>>({});
+
+  const handleRegistrationComplete = (ticketId: string, qrCode?: string) => {
+    setCompletedTickets(prev => ({
+      ...prev,
+      [ticketId]: { status: 'complete', qrCode },
+    }));
+  };
+
   return (
     <div className="border-2 border-orange-500 dark:border-orange-500 rounded-xl p-6 bg-orange-50/50 dark:bg-orange-900/10">
       {/* Order header */}
@@ -186,7 +196,7 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
       {/* QR grid */}
       <div className={`grid gap-4 mb-5 ${order.tickets.length === 1 ? 'grid-cols-1 max-w-[200px]' : 'grid-cols-2 sm:grid-cols-3'}`}>
         {order.tickets.map((ticket) => (
-          <TicketQRCell key={ticket.id} ticket={ticket} eventId={eventId} />
+          <TicketQRCell key={ticket.id} ticket={ticket} eventId={eventId} override={completedTickets[ticket.id]} />
         ))}
       </div>
 
@@ -196,7 +206,12 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
           doesn't force a form on the buyer. */}
       {order.tickets.filter(t => t.ticketType?.registrationFormId && t.registrationStatus !== 'not_required').map((ticket) => (
         <div key={`reg-${ticket.id}`} className="mb-4">
-          <TicketRegistrationSurvey ticket={ticket} eventId={eventId} />
+          <TicketRegistrationSurvey
+            ticket={ticket}
+            eventId={eventId}
+            override={completedTickets[ticket.id]}
+            onComplete={handleRegistrationComplete}
+          />
         </div>
       ))}
 
@@ -208,9 +223,10 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
   );
 }
 
-function TicketQRCell({ ticket }: { ticket: OrderTicket; eventId: string }) {
-  const isPending = ticket.registrationStatus === 'pending';
-  const [qrCode] = useState(ticket.qrCodeDataUri);
+function TicketQRCell({ ticket, override }: { ticket: OrderTicket; eventId: string; override?: { status: string; qrCode?: string } }) {
+  const status = override?.status ?? ticket.registrationStatus;
+  const isPending = status === 'pending';
+  const qrCode = override?.qrCode ?? ticket.qrCodeDataUri;
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -248,11 +264,12 @@ function TicketQRCell({ ticket }: { ticket: OrderTicket; eventId: string }) {
   );
 }
 
-function TicketRegistrationSurvey({ ticket, eventId }: { ticket: OrderTicket; eventId: string }) {
+function TicketRegistrationSurvey({ ticket, eventId, override, onComplete }: { ticket: OrderTicket; eventId: string; override?: { status: string; qrCode?: string }; onComplete?: (ticketId: string, qrCode?: string) => void }) {
   const [regStatus, setRegStatus] = useState(ticket.registrationStatus);
   const [isRetrying, setIsRetrying] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
-  const isPending = regStatus === 'pending';
+  const effectiveStatus = override?.status ?? regStatus;
+  const isPending = effectiveStatus === 'pending';
   const router = useRouter();
   const { toast } = useToast();
 
@@ -266,9 +283,11 @@ function TicketRegistrationSurvey({ ticket, eventId }: { ticket: OrderTicket; ev
         body: JSON.stringify({ formId: ticket.ticketType?.registrationFormId }),
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
         setRegStatus('complete');
+        onComplete?.(ticket.id, data.qrCodeDataUri);
         toast.success('Registration completed successfully');
-        // Refresh server data so QR code appears
+        // Refresh server data so the state is durable after navigation
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -411,7 +430,7 @@ function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
   );
 }
 
-function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sessionContactEmail, sellerConnected = true, hasHiddenTiers = false }: { eventId: string; eventTitle: string; tickets: TicketType[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sessionEmail?: string; sessionContactEmail?: string; sellerConnected?: boolean; hasHiddenTiers?: boolean }) {
+function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sessionContactEmail, sellerConnected = true, hasHiddenTiers = false }: { eventId: string; eventTitle: string; tickets: TicketType[]; userOrders?: UserOrder[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sessionEmail?: string; sessionContactEmail?: string; sellerConnected?: boolean; hasHiddenTiers?: boolean }) {
   const [unlockedTickets, setUnlockedTickets] = useState<TicketType[]>([]);
   const [unlockCode, setUnlockCode] = useState('');
   const [showUnlock, setShowUnlock] = useState(false);
@@ -592,6 +611,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, inviteToken, etransferEnable
           onError={(msg) => toast.error(msg)}
           mixedCurrency={mixedCurrency}
           cartCurrencies={cartCurrencies}
+          userOrders={userOrders}
         />
       )}
 
@@ -655,13 +675,48 @@ interface UnifiedBarProps {
   cartCurrencies?: string[];
 }
 
-function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [] }: UnifiedBarProps) {
+function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [], userOrders = [] }: UnifiedBarProps & { userOrders?: UserOrder[] }) {
+  // Issue #11: count tickets needing registration across all user orders
+  const pendingRegistrations = userOrders.flatMap(o =>
+    o.tickets.filter(t => t.registrationStatus === 'pending' && t.ticketType?.registrationFormId)
+  );
+  // Newly purchased tickets that require registration (checked from cart while userOrders may be stale)
+  const cartPendingCount = cartItems.filter(c => c.ticket.requiresRegistration).reduce((sum, c) => sum + c.qty, 0);
+  const totalPendingCount = pendingRegistrations.length + cartPendingCount;
+  const hasPendingRegistrations = totalPendingCount > 0;
+
   const router = useRouter();
   type BarStep = 'idle' | 'card-loading' | 'emt-form' | 'emt-loading' | 'emt-done' | 'emt-verify-sent';
-  const [step, setStep] = useState<BarStep>('idle');
+  const [step, setStepState] = useState<BarStep>(() => {
+    try {
+      const saved = sessionStorage.getItem('emtResult');
+      if (saved) return 'emt-done';
+    } catch {}
+    return 'idle';
+  });
+  const setStep = (s: BarStep) => {
+    setStepState(s);
+    if (s !== 'emt-done') {
+      try { sessionStorage.removeItem('emtResult'); } catch {}
+    }
+  };
   const [emtEmail, setEmtEmail] = useState(sessionContactEmail || sessionEmail || '');
   const [emtName, setEmtName] = useState('');
-  const [emtResult, setEmtResult] = useState<{ orderId: string; quantity: number; email: string; amount: number; currency: string; memo: string; deadline: string; message: string } | null>(null);
+  const [emtResult, setEmtResultState] = useState<{ orderId: string; quantity: number; email: string; amount: number; currency: string; memo: string; deadline: string; message: string } | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('emtResult');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+  const setEmtResult = (result: typeof emtResult) => {
+    setEmtResultState(result);
+    if (result) {
+      try { sessionStorage.setItem('emtResult', JSON.stringify(result)); } catch {}
+    } else {
+      try { sessionStorage.removeItem('emtResult'); } catch {}
+    }
+  };
   const [verifySentTo, setVerifySentTo] = useState<string | null>(null);
   // Issue #1: polling state for tab-A-canonical verification
   const [pollHandle, setPollHandle] = useState<string | null>(null);
@@ -771,7 +826,12 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
     const pollInterval = setInterval(async () => {
       try {
         const res = await fetch(`${AUTH_URL}/api/onboard/poll?handle=${encodeURIComponent(pollHandle)}`);
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (res.status === 429) {
+            setPollError('Too many requests, please wait a moment.');
+          }
+          return;
+        }
         const data = await res.json();
         setPollStatus(data.status);
 
@@ -786,8 +846,15 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           });
           if (!claimRes.ok) {
             const errData = await claimRes.json().catch(() => ({}));
-            setPollError(errData.error || 'Failed to complete verification');
-            setPollStatus('expired');
+            if (claimRes.status === 429) {
+              setPollError('Too many requests, please wait a moment.');
+            } else if (claimRes.status === 410) {
+              setPollError('Verification link expired. Please try again.');
+              setPollStatus('expired');
+            } else {
+              setPollError(errData.error || 'Failed to complete verification');
+              setPollStatus('expired');
+            }
             return;
           }
           // Notify any listening components (e.g. NavBar) that auth changed.
@@ -832,6 +899,8 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
               message: reserveData.instructions.message,
             });
             setStep('emt-done');
+            // Refresh server data so My Tickets tab sees the new order
+            router.refresh();
           } catch {
             onError('e-Transfer setup failed');
             setStep('idle');
@@ -928,6 +997,25 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           <span className="text-orange-500 text-xl">📬</span>
           <h3 className="font-semibold text-base">Reserved — send your e-Transfer to confirm</h3>
         </div>
+        {/* Issue #11: prompt for unregistered tickets without losing EMT context */}
+        {hasPendingRegistrations && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-start gap-2">
+            <span className="text-amber-600 dark:text-amber-400 text-lg shrink-0">⚠️</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                You have {totalPendingCount} ticket{totalPendingCount !== 1 ? 's' : ''} that need registration before the event.
+              </p>
+              <a
+                href={`/${eventId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-1 text-xs font-semibold text-orange-500 hover:text-orange-600 hover:underline"
+              >
+                Register now →
+              </a>
+            </div>
+          </div>
+        )}
         <p className="text-xs text-orange-500">
           You don't have your ticket{emtResult.quantity > 1 ? 's' : ''} yet. They'll be activated once we confirm your payment — we'll email you the ticket{emtResult.quantity > 1 ? 's' : ''} then.
         </p>

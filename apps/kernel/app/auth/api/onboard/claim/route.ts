@@ -23,8 +23,10 @@ export async function OPTIONS(request: NextRequest) {
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
+  // Single-use token enforces correctness; limit is defense-in-depth.
+  // 20/min allows rapid testing without blocking legitimate retries.
   const ip = getClientIP(request);
-  const rl = rateLimit(ip, 10, 60_000);
+  const rl = rateLimit(ip, 20, 60_000);
   if (rl.limited) {
     return NextResponse.json(
       { error: 'Too many requests', retryAfter: rl.retryAfter },

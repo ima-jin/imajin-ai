@@ -21,8 +21,10 @@ export async function OPTIONS(request: NextRequest) {
 export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
+  // Generous per-IP limit: multiple users in one office can share an IP.
+  // Each client polls every 2s for ~60s = 30 polls. 200/min leaves headroom.
   const ip = getClientIP(request);
-  const rl = rateLimit(ip, 30, 60_000);
+  const rl = rateLimit(ip, 200, 60_000);
   if (rl.limited) {
     return NextResponse.json(
       { error: 'Too many requests', retryAfter: rl.retryAfter },

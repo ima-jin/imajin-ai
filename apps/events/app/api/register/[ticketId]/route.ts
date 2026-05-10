@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { db, tickets, events, ticketTypes, ticketRegistrations } from '@/src/db';
+import { revalidatePath } from 'next/cache';
 
 const log = createLogger('events');
 import { eq, and } from 'drizzle-orm';
@@ -209,7 +210,10 @@ export async function POST(
       log.error({ err: String(emailError) }, 'Failed to send ticket confirmation email after registration');
     }
 
-    return NextResponse.json({ success: true, registration });
+    // Invalidate the event page cache so subsequent SSR sees the updated state
+    revalidatePath(`/events/${event.id}`);
+
+    return NextResponse.json({ success: true, registration, qrCodeDataUri });
 
   } catch (error) {
     log.error({ err: String(error) }, 'Registration error');
