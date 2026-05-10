@@ -13,7 +13,7 @@ import { eq, and, lt } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
 import { randomBytes } from 'crypto';
 import { getClient } from '@imajin/db';
-import { sendEmail, etransferReservationEmail } from '@/src/lib/email';
+import { publish } from '@imajin/bus';
 import { getContactEmail, backfillContactEmail } from '@/src/lib/contact-email';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
@@ -405,10 +405,12 @@ export const POST = withLogger('events', async (request, { log }) => {
         minute: '2-digit',
         timeZoneName: 'short',
       });
-      sendEmail({
-        to: buyerEmail,
-        subject: `Reserved — send your e-Transfer for ${event.title}`,
-        html: etransferReservationEmail({
+      publish('ticket.reserved', {
+        issuer: ownerDid,
+        subject: ownerDid,
+        scope: 'events',
+        payload: {
+          email: buyerEmail,
           eventTitle: event.title,
           eventDate: eventDate.toLocaleDateString('en-US', {
             weekday: 'long',
@@ -430,8 +432,10 @@ export const POST = withLogger('events', async (request, { log }) => {
           buyerEmail,
           myTicketsUrl: `${EVENTS_URL}/${event.id}`,
           eventImageUrl,
-        }),
-      }).catch((err) => log.error({ err: String(err) }, 'Failed to send e-Transfer reservation email'));
+          context_id: event.id,
+          context_type: 'event',
+        },
+      }).catch((err) => log.error({ err: String(err) }, 'Failed to publish ticket reserved event'));
     } else {
       log.warn({ ownerDid, eventId: body.eventId }, 'No buyer email available for reservation; skipping confirmation send');
     }
