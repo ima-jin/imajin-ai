@@ -11,7 +11,7 @@ import { db, events, ticketTypes, tickets, orders } from '@/src/db';
 
 const log = createLogger('events');
 import { eq, and, sql } from 'drizzle-orm';
-import { sendEmail, ticketConfirmationEmail, purchaseReceiptEmail, generateQRCode } from '@/src/lib/email';
+import { generateQRCode } from '@/src/lib/email';
 import { backfillContactEmail } from '@/src/lib/contact-email';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
@@ -480,12 +480,14 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     ? `${EVENTS_URL}/${event.id}/register/${createdTickets[0].id}`
     : `${EVENTS_URL}/${event.id}/my-tickets`;
 
-  // Always send a purchase receipt to the buyer
+  // Always publish a purchase receipt to the buyer
   try {
-    await sendEmail({
-      to: customerEmail,
-      subject: `Purchase receipt — ${event.title}`,
-      html: purchaseReceiptEmail({
+    publish('ticket.receipt', {
+      issuer: ownerDid,
+      subject: ownerDid,
+      scope: 'events',
+      payload: {
+        email: customerEmail,
         buyerName: customerName || undefined,
         eventTitle: event.title,
         eventDate: formattedEventDate,
@@ -496,13 +498,15 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         registrationUrl,
         eventImageUrl,
         hasRegistrationRequired: ticketType.requiresRegistration,
-      }),
-    });
+        context_id: event.id,
+        context_type: 'event',
+      },
+    }).catch((err) => log.error({ customerEmail, err: String(err) }, '[webhook] Purchase receipt publish error'));
   } catch (emailError) {
-    log.error({ customerEmail, err: String(emailError) }, '[webhook] Purchase receipt email failed');
+    log.error({ customerEmail, err: String(emailError) }, '[webhook] Purchase receipt publish failed');
   }
 
-  // Only send the ticket confirmation (with QR) immediately for non-registration tickets
+  // Only publish the ticket confirmation (with QR) immediately for non-registration tickets
   if (!ticketType.requiresRegistration) {
     try {
       // Generate QR codes for ALL tickets in the order
@@ -513,13 +517,15 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         }))
       );
 
-      await sendEmail({
-        to: customerEmail,
-        subject: `You're in — ${event.title}`,
-        html: ticketConfirmationEmail({
+      publish('ticket.confirmed', {
+        issuer: ownerDid,
+        subject: ownerDid,
+        scope: 'events',
+        payload: {
+          email: customerEmail,
           eventTitle: event.title,
           ticketType: ticketType.name,
-          ticketId: createdTickets[0].id,  // fallback for single-ticket compat
+          ticketId: createdTickets[0].id,
           eventDate: formattedEventDate,
           eventTime: formattedEventTime,
           isVirtual: event.isVirtual ?? false,
@@ -529,10 +535,12 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
           eventImageUrl,
           eventUrl: `${EVENTS_URL}/${event.id}`,
           tickets: ticketsWithQr,
-        }),
-      });
+          context_id: event.id,
+          context_type: 'event',
+        },
+      }).catch((err) => log.error({ customerEmail, err: String(err) }, '[webhook] Ticket confirmed publish error'));
     } catch (emailError) {
-      log.error({ customerEmail, err: String(emailError) }, '[webhook] Ticket confirmation email failed');
+      log.error({ customerEmail, err: String(emailError) }, '[webhook] Ticket confirmation publish failed');
     }
   }
 }

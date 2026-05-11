@@ -7,7 +7,7 @@ const log = createLogger('events');
 import { requireAuth, getEmailForDid } from '@imajin/auth';
 import { eq, sql } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
-import { sendEmail, renderBroadcastEmail } from '@imajin/email';
+import { publish } from '@imajin/bus';
 
 const sqlClient = getClient();
 
@@ -161,21 +161,25 @@ export async function POST(
         const imageUrl = event.imageUrl
           ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
           : null;
-        const { html, text } = renderBroadcastEmail(refundMessage, {
-          title: event.title,
-          imageUrl,
-          eventUrl: `${EVENTS_URL}/${event.id}`,
-        });
 
-        await sendEmail({
-          to: customerEmail,
-          subject: manualRefundRequired ? `Refund pending: ${event.title}` : `Refund: ${event.title}`,
-          html,
-          text,
-        });
+        publish('ticket.refunded', {
+          issuer: did,
+          subject: ticket.ownerDid || '',
+          scope: 'events',
+          payload: {
+            email: customerEmail,
+            refundMessage,
+            eventTitle: event.title,
+            eventImageUrl: imageUrl,
+            eventUrl: `${EVENTS_URL}/${event.id}`,
+            manualRefundRequired,
+            context_id: event.id,
+            context_type: 'event',
+          },
+        }).catch((err) => log.error({ err: String(err) }, '[refund] Failed to publish ticket refunded event'));
       }
     } catch (emailErr) {
-      log.error({ err: String(emailErr) }, '[refund] Failed to send refund email (non-fatal)');
+      log.error({ err: String(emailErr) }, '[refund] Failed to publish refund event (non-fatal)');
     }
 
     return NextResponse.json({

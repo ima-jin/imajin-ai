@@ -15,7 +15,7 @@ import { revalidatePath } from 'next/cache';
 const log = createLogger('events');
 import { eq, and } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
-import { sendEmail, ticketConfirmationEmail, generateQRCode } from '@/src/lib/email';
+import { generateQRCode } from '@/src/lib/email';
 import { publish } from '@imajin/bus';
 
 export async function POST(
@@ -157,7 +157,8 @@ export async function POST(
       }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
     }
 
-    // Send ticket confirmation email to the registered attendee (skip if no email, e.g. Dykil form)
+    // Send ticket confirmation via bus (skip if no email, e.g. Dykil form)
+    let qrCodeDataUri: string | undefined;
     if (registration.email) try {
       const [ticketType] = await db
         .select()
@@ -171,12 +172,14 @@ export async function POST(
         ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
         : undefined;
 
-      const qrCodeDataUri = await generateQRCode(ticket.id);
+      qrCodeDataUri = await generateQRCode(ticket.id);
 
-      await sendEmail({
-        to: registration.email,
-        subject: `You're in — ${event.title}`,
-        html: ticketConfirmationEmail({
+      publish('ticket.registration.completed', {
+        issuer: ticket.ownerDid || '',
+        subject: ticket.ownerDid || '',
+        scope: 'events',
+        payload: {
+          email: registration.email,
           eventTitle: event.title,
           ticketType: ticketType?.name ?? 'Ticket',
           ticketId: ticket.id,
@@ -203,11 +206,13 @@ export async function POST(
           eventImageUrl,
           eventUrl: `${EVENTS_URL}/${event.id}`,
           qrCodeDataUri,
-        }),
-      });
+          context_id: event.id,
+          context_type: 'event',
+        },
+      }).catch((err) => log.error({ err: String(err) }, 'Registration completed publish error'));
     } catch (emailError) {
       // Non-fatal: log but don't fail the registration
-      log.error({ err: String(emailError) }, 'Failed to send ticket confirmation email after registration');
+      log.error({ err: String(emailError) }, 'Failed to publish ticket registration completed event');
     }
 
     // Invalidate the event page cache so subsequent SSR sees the updated state

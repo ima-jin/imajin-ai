@@ -8,7 +8,8 @@ import { requireAuth, getEmailForDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { db, tickets, events, ticketTypes, ticketRegistrations } from '@/src/db';
 import { getClient } from '@imajin/db';
-import { sendEmail, generateQRCode, ticketConfirmationEmail, registrationReminderEmail } from '@/src/lib/email';
+import { generateQRCode } from '@/src/lib/email';
+import { publish } from '@imajin/bus';
 
 const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
@@ -150,20 +151,22 @@ export async function POST(
       timeZoneName: 'short',
     });
 
-    let emailResult;
-
     if (ticket.registrationStatus === 'pending') {
-      emailResult = await sendEmail({
-        to: customerEmail,
-        subject: `Don't forget to register — ${event.title}`,
-        html: registrationReminderEmail({
+      publish('ticket.registration.reminder', {
+        issuer: did,
+        subject: ticket.ownerDid || '',
+        scope: 'events',
+        payload: {
+          email: customerEmail,
           eventTitle: event.title,
           eventDate: formattedEventDate,
           pendingCount: 1,
           registrationUrl: magicLink,
           eventImageUrl,
-        }),
-      });
+          context_id: event.id,
+          context_type: 'event',
+        },
+      }).catch((err) => log.error({ err: String(err) }, 'Registration reminder publish error'));
     } else {
       const qrCodeDataUri = await generateQRCode(ticket.id);
       const formattedPrice =
@@ -174,10 +177,12 @@ export async function POST(
             }).format(ticket.pricePaid / 100)
           : 'Free';
 
-      emailResult = await sendEmail({
-        to: customerEmail,
-        subject: `You're in — ${event.title}`,
-        html: ticketConfirmationEmail({
+      publish('ticket.confirmed', {
+        issuer: did,
+        subject: ticket.ownerDid || '',
+        scope: 'events',
+        payload: {
+          email: customerEmail,
           eventTitle: event.title,
           ticketType: ticketType.name,
           ticketId: ticket.id,
@@ -190,16 +195,10 @@ export async function POST(
           eventImageUrl,
           eventUrl: `${EVENTS_URL}/${event.id}`,
           qrCodeDataUri,
-        }),
-      });
-    }
-
-    if (!emailResult?.success) {
-      log.error({ err: String(emailResult?.error) }, 'SendGrid delivery failed');
-      return NextResponse.json(
-        { error: 'Failed to deliver email. Check SendGrid configuration.' },
-        { status: 502 }
-      );
+          context_id: event.id,
+          context_type: 'event',
+        },
+      }).catch((err) => log.error({ err: String(err) }, 'Ticket confirmed publish error'));
     }
 
     // Record the send timestamp
