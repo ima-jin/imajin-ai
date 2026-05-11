@@ -1,9 +1,23 @@
 import * as jose from 'jose';
+import * as ed from '@noble/ed25519';
+import { sha512 } from '@noble/hashes/sha512';
+
+// @noble/ed25519 v2 requires sha512 to be wired up explicitly in non-web environments
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(ed.etc as any).sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
+
+// PKCS8 prefix for Ed25519 keys (16 bytes, RFC 8410):
+// SEQUENCE { INTEGER 0, SEQUENCE { OID 1.3.101.112 }, OCTET STRING { OCTET STRING { <32 bytes> } } }
+const PKCS8_ED25519_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
+// SPKI prefix for Ed25519 public keys (12 bytes, RFC 8410):
+// SEQUENCE { SEQUENCE { OID 1.3.101.112 }, BIT STRING { <32 bytes> } }
+const SPKI_ED25519_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 
 export interface ReceiptPayload {
   iss: 'node';
   aud: string; // asset:{assetId}
   sub: string; // settlementId
+  buyer: string; // buyer DID — receipt is bound to this identity (non-transferable in v1)
   action: string;
   amount: number;
   currency: string;
@@ -24,6 +38,7 @@ export async function signReceipt(
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const jwt = await new jose.SignJWT({
+    buyer: payload.buyer,
     action: payload.action,
     amount: payload.amount,
     currency: payload.currency,
@@ -68,6 +83,11 @@ export async function verifyReceipt(
       return null;
     }
 
+    const buyer = payload.buyer as unknown;
+    if (typeof buyer !== 'string' || !buyer || !buyer.startsWith('did:')) {
+      return null;
+    }
+
     const action = payload.action as unknown;
     if (typeof action !== 'string' || !action) {
       return null;
@@ -92,6 +112,7 @@ export async function verifyReceipt(
       iss: 'node',
       aud: audStr,
       sub,
+      buyer,
       action,
       amount,
       currency,
@@ -125,36 +146,26 @@ export function receiptExpiryForAction(action: string): number {
 }
 
 export async function loadSigningKey(privateKeyHex: string): Promise<jose.KeyLike> {
-  const privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
-  const pkcs8Pem = `-----BEGIN PRIVATE KEY-----\n${privateKeyBytes.toString('base64')}\n-----END PRIVATE KEY-----`;
+  const seed = Buffer.from(privateKeyHex, 'hex');
+  if (seed.length !== 32) {
+    throw new Error(`AUTH_PRIVATE_KEY must be 32-byte hex (got ${seed.length} bytes)`);
+  }
+  const pkcs8Der = Buffer.concat([PKCS8_ED25519_PREFIX, seed]);
+  const pkcs8Pem = `-----BEGIN PRIVATE KEY-----\n${pkcs8Der.toString('base64')}\n-----END PRIVATE KEY-----`;
   return jose.importPKCS8(pkcs8Pem, 'EdDSA');
 }
 
 /**
- * Derive the public verification key from a hex-encoded raw private key.
+ * Derive the public verification key from a 32-byte hex-encoded private seed.
  */
 export async function loadVerifyKey(privateKeyHex: string): Promise<jose.KeyLike> {
-  const privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
-
-  // Import as extractable to derive public key
-  const privateKey = await crypto.subtle.importKey(
-    'pkcs8',
-    privateKeyBytes,
-    { name: 'Ed25519' },
-    true,
-    ['sign'],
-  );
-
-  const jwk = await crypto.subtle.exportKey('jwk', privateKey);
-  const publicKey = await crypto.subtle.importKey(
-    'jwk',
-    { kty: jwk.kty, crv: jwk.crv, x: jwk.x },
-    { name: 'Ed25519' },
-    true,
-    ['verify'],
-  );
-
-  const spkiBytes = await crypto.subtle.exportKey('spki', publicKey);
-  const spkiPem = `-----BEGIN PUBLIC KEY-----\n${Buffer.from(spkiBytes).toString('base64')}\n-----END PUBLIC KEY-----`;
+  const seed = Buffer.from(privateKeyHex, 'hex');
+  if (seed.length !== 32) {
+    throw new Error(`AUTH_PRIVATE_KEY must be 32-byte hex (got ${seed.length} bytes)`);
+  }
+  // Derive public key from seed using @noble/ed25519
+  const pubKey = await ed.getPublicKeyAsync(new Uint8Array(seed));
+  const spkiDer = Buffer.concat([SPKI_ED25519_PREFIX, Buffer.from(pubKey)]);
+  const spkiPem = `-----BEGIN PUBLIC KEY-----\n${spkiDer.toString('base64')}\n-----END PUBLIC KEY-----`;
   return jose.importSPKI(spkiPem, 'EdDSA');
 }

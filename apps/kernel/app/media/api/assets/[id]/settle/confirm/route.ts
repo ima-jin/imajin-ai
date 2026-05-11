@@ -17,10 +17,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, assets, settlements } from "@/src/db";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "@imajin/auth";
-import { canonicalize } from "@imajin/auth";
 import { signReceipt, loadSigningKey, receiptExpiryForAction } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
-import { createHash } from "crypto";
 
 const log = createLogger("kernel");
 
@@ -96,7 +94,13 @@ export async function POST(
     return NextResponse.json({ received: true, receipt: settlement.receiptToken });
   }
 
-  // Sign receipt
+  // Settlement must have a buyer for buyer-bound receipts
+  if (!settlement.buyerDid) {
+    log.error({ settlementId }, "Settlement has no buyer DID — cannot mint receipt");
+    return NextResponse.json({ error: "Settlement missing buyer" }, { status: 400 });
+  }
+
+  // Sign receipt — bound to the buyer DID (non-transferable in v1)
   let receiptToken: string;
   try {
     const signKey = await getSignKey();
@@ -104,6 +108,7 @@ export async function POST(
       {
         aud: `asset:${settlement.assetId}`,
         sub: settlementId,
+        buyer: settlement.buyerDid,
         action: settlement.action,
         amount: settlement.amount,
         currency: settlement.currency,

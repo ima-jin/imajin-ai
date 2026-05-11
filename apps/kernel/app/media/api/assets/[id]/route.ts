@@ -238,6 +238,23 @@ export async function GET(
       return NextResponse.json({ error: "Receipt action mismatch" }, { status: 402 });
     }
 
+    // Buyer-binding: caller must be authenticated AND match the receipt's buyer DID.
+    // Receipts are non-transferable in v1 — transfer semantics tracked in #904.
+    const buyerAuth = await requireAuth(request);
+    if ("error" in buyerAuth) {
+      return NextResponse.json(
+        { error: "Authentication required to redeem payment receipt" },
+        { status: 401 }
+      );
+    }
+    const callerDid = buyerAuth.identity.actingAs || buyerAuth.identity.id;
+    if (callerDid !== receiptPayload.buyer) {
+      return NextResponse.json(
+        { error: "Receipt is bound to a different identity" },
+        { status: 403 }
+      );
+    }
+
     // Check receipt against database settlement record
     const [settlement] = await db
       .select()

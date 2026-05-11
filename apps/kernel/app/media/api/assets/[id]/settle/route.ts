@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, assets, settlements } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { canonicalize } from "@imajin/auth";
-import { eq } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { isFairManifestV1_1 } from "@imajin/fair";
 import type { FairManifestV1_1 } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
@@ -96,18 +96,16 @@ export async function POST(
     );
   }
 
-  // 4. Auth — single attempt; capture buyerDid if present.
-  // Derivative + commercial-not-allowed requires authentication.
+  // 4. Auth required — receipts are buyer-bound (non-transferable in v1).
+  // Buyer DID is embedded in the receipt JWT and verified at asset access time.
   const authResult = await requireAuth(request);
-  let buyerDid: string | null = null;
-  if (!("error" in authResult)) {
-    buyerDid = authResult.identity.actingAs || authResult.identity.id;
-  } else if (action === "derivative" && manifest.commercial?.allowed === false) {
+  if ("error" in authResult) {
     return NextResponse.json(
-      { error: "Authentication required for derivative settlement" },
+      { error: "Authentication required to settle" },
       { status: 401 }
     );
   }
+  const buyerDid = authResult.identity.actingAs || authResult.identity.id;
 
   // 5. Validate manifest.owner is a DID before interpolating into URI
   if (!manifest.owner || !manifest.owner.startsWith("did:")) {
@@ -115,9 +113,56 @@ export async function POST(
     return NextResponse.json({ error: "Asset manifest has invalid owner DID" }, { status: 500 });
   }
 
-  // 6. Create settlement row
-  const settlementId = `stl_${nanoid(16)}`;
+  // 6. Rate limit + idempotent dedup of pending settlements for this buyer.
+  // - Reuse an existing pending row for the same (buyer, asset, action) within 30 min
+  //   so client retries return the same settlementId instead of piling up rows.
+  // - Hard cap: more than 10 pending settlements created by this buyer in the last 5 min → 429.
+  const dedupWindow = new Date(Date.now() - 30 * 60 * 1000);
+  const [existing] = await db
+    .select()
+    .from(settlements)
+    .where(
+      and(
+        eq(settlements.buyerDid, buyerDid),
+        eq(settlements.assetId, id),
+        eq(settlements.action, action),
+        eq(settlements.status, "pending"),
+        gte(settlements.settledAt, dedupWindow)
+      )
+    )
+    .limit(1);
+
   const price = distRight.price;
+
+  if (existing) {
+    const uri = `mjnx:pay?to=${encodeURIComponent(manifest.owner)}&amount=${price.amount}&currency=${encodeURIComponent(price.currency)}&memo=settle:${existing.id}`;
+    return NextResponse.json({
+      settlementId: existing.id,
+      uri,
+      scheme: "mjnx-direct",
+      reused: true,
+    });
+  }
+
+  const rateWindow = new Date(Date.now() - 5 * 60 * 1000);
+  const recent = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(settlements)
+    .where(
+      and(
+        eq(settlements.buyerDid, buyerDid),
+        gte(settlements.settledAt, rateWindow)
+      )
+    );
+  if ((recent[0]?.count ?? 0) > 10) {
+    return NextResponse.json(
+      { error: "Settlement rate limit exceeded — try again in a few minutes" },
+      { status: 429 }
+    );
+  }
+
+  // 7. Create settlement row
+  const settlementId = `stl_${nanoid(16)}`;
   const manifestDigest = `sha256:${createHash('sha256').update(canonicalize(manifest)).digest('hex')}`;
 
   try {
@@ -130,7 +175,7 @@ export async function POST(
       currency: price.currency,
       scheme: "mjnx-direct",
       status: "pending",
-      receiptToken: "pending",
+      receiptToken: "", // filled on confirmation
       fairManifestDigest: manifestDigest,
     });
   } catch (err) {
@@ -138,7 +183,7 @@ export async function POST(
     return NextResponse.json({ error: "Database failure" }, { status: 500 });
   }
 
-  // 7. Build MJNx deep-link URI
+  // 8. Build MJNx deep-link URI
   const uri = `mjnx:pay?to=${encodeURIComponent(manifest.owner)}&amount=${price.amount}&currency=${encodeURIComponent(price.currency)}&memo=settle:${settlementId}`;
 
   return NextResponse.json({

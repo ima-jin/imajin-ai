@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { signReceipt, verifyReceipt, loadSigningKey, loadVerifyKey } from '../src/receipt';
 
-// Deterministic test key — 64 bytes hex (ed25519 private key seed)
-const TEST_KEY_HEX = 'aabbccdd11223344aabbccdd11223344aabbccdd11223344aabbccdd11223344aabbccdd11223344aabbccdd11223344aabbccdd11223344aabbccdd11223344';
+// Deterministic test key — 32-byte hex (ed25519 raw seed per RFC 8032)
+const TEST_KEY_HEX = 'aabbccdd11223344aabbccdd11223344aabbccdd11223344aabbccdd11223344';
 
 describe('signReceipt / verifyReceipt', () => {
   it('round-trips a valid receipt', async () => {
@@ -13,6 +13,7 @@ describe('signReceipt / verifyReceipt', () => {
       {
         aud: 'asset:test123',
         sub: 'stl_abc123',
+        buyer: 'did:imajin:buyer1',
         action: 'reproduction',
         amount: 500,
         currency: 'USD',
@@ -25,6 +26,7 @@ describe('signReceipt / verifyReceipt', () => {
     expect(decoded).not.toBeNull();
     expect(decoded!.aud).toBe('asset:test123');
     expect(decoded!.sub).toBe('stl_abc123');
+    expect(decoded!.buyer).toBe('did:imajin:buyer1');
     expect(decoded!.action).toBe('reproduction');
     expect(decoded!.amount).toBe(500);
     expect(decoded!.currency).toBe('USD');
@@ -41,6 +43,7 @@ describe('signReceipt / verifyReceipt', () => {
       {
         aud: 'asset:test123',
         sub: 'stl_abc123',
+        buyer: 'did:imajin:buyer1',
         action: 'reproduction',
         amount: 500,
         currency: 'USD',
@@ -84,6 +87,7 @@ describe('signReceipt / verifyReceipt', () => {
       {
         aud: 'asset:test123',
         sub: 'stl_abc123',
+        buyer: 'did:imajin:buyer1',
         action: 'reproduction',
         amount: 500,
         currency: 'USD',
@@ -102,5 +106,44 @@ describe('signReceipt / verifyReceipt', () => {
     const verifyKey = await loadVerifyKey(TEST_KEY_HEX);
     const decoded = await verifyReceipt('not.a.jwt', verifyKey);
     expect(decoded).toBeNull();
+  });
+
+  it('rejects receipt with missing or non-DID buyer claim', async () => {
+    const signKey = await loadSigningKey(TEST_KEY_HEX);
+    const verifyKey = await loadVerifyKey(TEST_KEY_HEX);
+
+    // Manually craft a JWT without buyer claim
+    const { SignJWT } = await import('jose');
+    const noBuyer = await new SignJWT({
+      action: 'reproduction',
+      amount: 100,
+      currency: 'USD',
+      manifestDigest: 'sha256:x',
+    })
+      .setProtectedHeader({ alg: 'EdDSA' })
+      .setIssuer('node')
+      .setAudience('asset:test')
+      .setSubject('stl_x')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(signKey);
+    expect(await verifyReceipt(noBuyer, verifyKey)).toBeNull();
+
+    // Non-DID buyer claim
+    const badBuyer = await new SignJWT({
+      buyer: 'not-a-did',
+      action: 'reproduction',
+      amount: 100,
+      currency: 'USD',
+      manifestDigest: 'sha256:x',
+    })
+      .setProtectedHeader({ alg: 'EdDSA' })
+      .setIssuer('node')
+      .setAudience('asset:test')
+      .setSubject('stl_x')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(signKey);
+    expect(await verifyReceipt(badBuyer, verifyKey)).toBeNull();
   });
 });
