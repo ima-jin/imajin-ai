@@ -224,6 +224,9 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'attestation', config: { attestationType: 'listing.created' }, enabled: true },
     { type: 'notify', config: {}, enabled: true },
   ],
+  'asset.fair.upgraded': [
+    { type: 'attestation', config: { attestationType: 'asset.fair.upgraded' }, enabled: true },
+  ],
 };
 
 export function getChainConfig(eventType: string, _scope: string): ChainConfig {
