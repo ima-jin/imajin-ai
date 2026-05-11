@@ -314,6 +314,24 @@ export const POST = withLogger('events', async (request, { log }) => {
       0
     );
 
+    // Resolve the buyer's email up-front so it can be stored on the order row.
+    // Falls back to auth.identities.contact_email when the request didn't carry
+    // one (e.g. logged-in user with no body.email). Declared before the orders
+    // INSERT to avoid a temporal-dead-zone bug — the field is referenced via
+    // shorthand in the .values() block below.
+    let buyerEmail: string | undefined = ownerEmail;
+    if (!buyerEmail) {
+      try {
+        const sql = getClient();
+        const rows = await sql<{ contact_email: string | null }[]>`
+          SELECT contact_email FROM auth.identities WHERE id = ${ownerDid} LIMIT 1
+        `;
+        buyerEmail = rows[0]?.contact_email ?? undefined;
+      } catch (err) {
+        log.warn({ err: String(err) }, 'Failed to resolve buyer email for reservation');
+      }
+    }
+
     // Create the order (pending) and held tickets in sequence.
     // Drizzle's postgres-js client doesn't expose a transaction helper here,
     // but failures will leave a pending order with fewer tickets than expected;
@@ -367,22 +385,9 @@ export const POST = withLogger('events', async (request, { log }) => {
     const amount = totalAmount / 100;
 
     // Send the buyer a 'reserved — not yet confirmed' email so they have a
-    // record of the hold, the memo, and the address to send to. We resolve the
-    // buyer's email from auth.identities (contact_email) when not provided in
-    // the body, so logged-in buyers get one too.
-    let buyerEmail = ownerEmail;
-    if (!buyerEmail) {
-      try {
-        const sql = getClient();
-        const rows = await sql<{ contact_email: string | null }[]>`
-          SELECT contact_email FROM auth.identities WHERE id = ${ownerDid} LIMIT 1
-        `;
-        buyerEmail = rows[0]?.contact_email ?? undefined;
-      } catch (err) {
-        log.warn({ err: String(err) }, 'Failed to resolve buyer email for reservation');
-      }
-    }
-
+    // record of the hold, the memo, and the address to send to. buyerEmail
+    // was resolved earlier (above the orders INSERT) so it could be persisted
+    // on the order row.
     if (buyerEmail) {
       const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
       const eventDate = new Date(event.startsAt);
