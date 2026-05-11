@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile, unlink, rename, stat, open } from "fs/promises";
 import path from "path";
+import { createHash } from "crypto";
 import { db, assets, settlements, accessLog } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq, and, sql } from "drizzle-orm";
 import { createReadStream } from "fs";
 import type { FairManifest } from "@imajin/fair";
-import { isFairManifestV1_1, build402Response, verifyReceipt, loadVerifyKey } from "@imajin/fair";
+import { isFairManifestV1_1, build402Response, verifyReceipt, loadVerifyKey, canonicalize } from "@imajin/fair";
 import type { FairAction } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 
@@ -111,6 +112,27 @@ function getVerifyKey(): Promise<import('jose').KeyLike> {
   return verifyKeyPromise;
 }
 
+/** Build .fair sidecar headers for an asset response (#882) */
+function buildFairHeaders(
+  assetId: string,
+  manifest: FairManifest | null,
+  dfosEventId: string | null,
+): Record<string, string> {
+  const headers: Record<string, string> = {};
+  headers["Link"] = `</media/api/assets/${assetId}/fair>; rel="fair"; type="application/fair+json"`;
+
+  if (manifest) {
+    const digest = createHash("sha256").update(canonicalize(manifest)).digest("hex");
+    headers["X-Fair-Digest"] = `sha256:${digest}`;
+  }
+
+  if (dfosEventId) {
+    headers["X-Fair-Dfos"] = `dfos:event:${dfosEventId}`;
+  }
+
+  return headers;
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/assets/[id] — serve asset file with .fair access control
 // ---------------------------------------------------------------------------
@@ -157,6 +179,9 @@ export async function GET(
 
   const access = manifest?.access ?? "private";
   const accessType = getAccessType(access);
+
+  // 2b. Compute .fair sidecar headers (used for both full and Range responses)
+  const fairHeaders = buildFairHeaders(id, manifest, asset.fairDfosEventId ?? null);
 
   // 3. Access control
   if (accessType !== "public") {
@@ -395,6 +420,7 @@ export async function GET(
       "X-Variants": JSON.stringify(variants),
       "X-Transcoding": JSON.stringify(transcoding),
       "Cache-Control": cacheControl,
+      ...fairHeaders,
     });
   }
 
@@ -404,6 +430,11 @@ export async function GET(
     headers.set("Cache-Control", isResized ? "public, max-age=3600" : "public, max-age=86400");
   } else {
     headers.set("Cache-Control", "private, max-age=3600");
+  }
+
+  // Add .fair sidecar headers
+  for (const [k, v] of Object.entries(fairHeaders)) {
+    headers.set(k, v);
   }
 
   headers.set("Content-Length", String(outputBuffer.length));
