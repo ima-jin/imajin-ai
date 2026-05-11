@@ -54,9 +54,9 @@ export async function publishContentEvent(
     throw new Error('DFOS_RELAY_URL is not configured');
   }
 
-  const privateKeyHex = process.env.DFOS_PRIVATE_KEY_HEX;
+  const privateKeyHex = process.env.DFOS_PRIVATE_KEY_HEX || process.env.AUTH_PRIVATE_KEY;
   if (!privateKeyHex) {
-    throw new Error('DFOS_PRIVATE_KEY_HEX is not configured');
+    throw new Error('DFOS_PRIVATE_KEY_HEX (or AUTH_PRIVATE_KEY) is not configured');
   }
 
   const signer = createSigner(privateKeyHex);
