@@ -81,13 +81,29 @@ export async function POST(
   }
 
   const nodeDid = await getNodeDid();
-  const privateKey = Buffer.from(privateKeyHex, "hex");
+
+  // AUTH_PRIVATE_KEY may be either:
+  //   - 32-byte raw Ed25519 seed (64 hex chars), or
+  //   - 48-byte PKCS8 DER (96 hex chars, with 16-byte algorithm-OID prefix).
+  // Noble wants the 32-byte raw seed.
+  const keyBuf = Buffer.from(privateKeyHex, "hex");
+  let seedBytes: Uint8Array;
+  if (keyBuf.length === 32) {
+    seedBytes = new Uint8Array(keyBuf);
+  } else if (keyBuf.length === 48) {
+    // PKCS8 DER: SEQUENCE { INTEGER 0, SEQUENCE { OID 1.3.101.112 }, OCTET STRING { OCTET STRING { <32 bytes> } } }
+    // Last 32 bytes are the seed.
+    seedBytes = new Uint8Array(keyBuf.subarray(16));
+  } else {
+    log.error({ len: keyBuf.length }, "AUTH_PRIVATE_KEY wrong length (expected 32 or 48 bytes)");
+    return NextResponse.json({ error: "Signing key has wrong length" }, { status: 500 });
+  }
 
   let signed: FairManifestV1_1;
   try {
     signed = await signManifest(upgraded, {
       did: nodeDid,
-      privateKey: new Uint8Array(privateKey),
+      privateKey: seedBytes,
     });
   } catch (err) {
     log.error({ err: String(err) }, "Failed to sign upgraded manifest");

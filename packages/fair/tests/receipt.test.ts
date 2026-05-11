@@ -108,6 +108,36 @@ describe('signReceipt / verifyReceipt', () => {
     expect(decoded).toBeNull();
   });
 
+  it('accepts AUTH_PRIVATE_KEY as 48-byte PKCS8 DER (with 16-byte Ed25519 prefix)', async () => {
+    // Same 32-byte seed, but wrapped in PKCS8 DER format (96 hex chars)
+    const PKCS8_PREFIX = '302e020100300506032b657004220420';
+    const PKCS8_TEST_KEY = PKCS8_PREFIX + TEST_KEY_HEX;
+
+    const signKey = await loadSigningKey(PKCS8_TEST_KEY);
+    const verifyKey = await loadVerifyKey(PKCS8_TEST_KEY);
+
+    const token = await signReceipt(
+      {
+        aud: 'asset:test123',
+        sub: 'stl_pkcs8',
+        buyer: 'did:imajin:buyer1',
+        action: 'reproduction',
+        amount: 100,
+        currency: 'USD',
+        manifestDigest: 'sha256:x',
+      },
+      signKey,
+    );
+
+    const decoded = await verifyReceipt(token, verifyKey);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.buyer).toBe('did:imajin:buyer1');
+  });
+
+  it('rejects wrong-length keys', async () => {
+    await expect(loadSigningKey('aabbcc')).rejects.toThrow(/32- or 48-byte/);
+  });
+
   it('rejects receipt with missing or non-DID buyer claim', async () => {
     const signKey = await loadSigningKey(TEST_KEY_HEX);
     const verifyKey = await loadVerifyKey(TEST_KEY_HEX);

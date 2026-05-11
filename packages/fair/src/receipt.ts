@@ -145,11 +145,20 @@ export function receiptExpiryForAction(action: string): number {
   return now + 30 * 24 * 60 * 60;
 }
 
+/**
+ * Accepts AUTH_PRIVATE_KEY in either format:
+ *   - 32-byte raw Ed25519 seed (64 hex chars)
+ *   - 48-byte PKCS8 DER (96 hex chars, with 16-byte algorithm-OID prefix)
+ */
+function extractEd25519Seed(privateKeyHex: string): Buffer {
+  const buf = Buffer.from(privateKeyHex, 'hex');
+  if (buf.length === 32) return buf;
+  if (buf.length === 48) return buf.subarray(16) as Buffer; // strip PKCS8 prefix
+  throw new Error(`AUTH_PRIVATE_KEY must be 32- or 48-byte hex (got ${buf.length} bytes)`);
+}
+
 export async function loadSigningKey(privateKeyHex: string): Promise<jose.KeyLike> {
-  const seed = Buffer.from(privateKeyHex, 'hex');
-  if (seed.length !== 32) {
-    throw new Error(`AUTH_PRIVATE_KEY must be 32-byte hex (got ${seed.length} bytes)`);
-  }
+  const seed = extractEd25519Seed(privateKeyHex);
   const pkcs8Der = Buffer.concat([PKCS8_ED25519_PREFIX, seed]);
   const pkcs8Pem = `-----BEGIN PRIVATE KEY-----\n${pkcs8Der.toString('base64')}\n-----END PRIVATE KEY-----`;
   return jose.importPKCS8(pkcs8Pem, 'EdDSA');
@@ -159,10 +168,7 @@ export async function loadSigningKey(privateKeyHex: string): Promise<jose.KeyLik
  * Derive the public verification key from a 32-byte hex-encoded private seed.
  */
 export async function loadVerifyKey(privateKeyHex: string): Promise<jose.KeyLike> {
-  const seed = Buffer.from(privateKeyHex, 'hex');
-  if (seed.length !== 32) {
-    throw new Error(`AUTH_PRIVATE_KEY must be 32-byte hex (got ${seed.length} bytes)`);
-  }
+  const seed = extractEd25519Seed(privateKeyHex);
   // Derive public key from seed using @noble/ed25519
   const pubKey = await ed.getPublicKeyAsync(new Uint8Array(seed));
   const spkiDer = Buffer.concat([SPKI_ED25519_PREFIX, Buffer.from(pubKey)]);
