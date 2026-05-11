@@ -26,6 +26,8 @@ export { NotificationBell } from './notification-bell';
 
 export { ActionSheet } from './action-sheet';
 export { AppShell } from './app-shell';
+export { DidShareListEditor } from './DidShareListEditor';
+export { MoneyInput } from './MoneyInput';
 export type {
   AppShellProps,
   AppShellHeaderProps,
