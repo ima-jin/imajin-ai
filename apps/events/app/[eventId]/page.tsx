@@ -345,6 +345,38 @@ export default async function EventPage({ params, searchParams }: Props) {
   // Fetch user's orders (+ legacy tickets) if logged in
   let userOrders = session?.id ? await getUserOrders(event.id, session.id) : [];
 
+  // Auto-complete pending tickets whose Dykil survey response already exists.
+  // The in-page SurveyAccordion fires POST /api/register/[ticketId] on submit,
+  // but if a user fills the survey via a direct Dykil URL, the events ticket
+  // stays 'pending' forever without this backstop. Status flip only — no
+  // cross-schema metadata writes, no ticket_registrations writes (#826).
+  if (session?.id && userOrders.length > 0) {
+    const pendingTicketIds = userOrders
+      .flatMap((o) => o.tickets)
+      .filter((t) => t.registrationStatus === 'pending' && t.ticketType?.registrationFormId)
+      .map((t) => t.id);
+    if (pendingTicketIds.length > 0) {
+      try {
+        const completed = await sql<{ id: string }[]>`
+          UPDATE events.tickets
+          SET registration_status = 'complete'
+          WHERE id = ANY(${pendingTicketIds}::text[])
+            AND registration_status = 'pending'
+            AND EXISTS (
+              SELECT 1 FROM dykil.survey_responses sr WHERE sr.ticket_id = events.tickets.id
+            )
+          RETURNING id
+        `;
+        if (completed.length > 0) {
+          // Regenerate userOrders so QR codes render for the freshly-completed tickets.
+          userOrders = await getUserOrders(event.id, session.id);
+        }
+      } catch (err) {
+        log.error({ err: String(err) }, 'Auto-complete pending tickets failed');
+      }
+    }
+  }
+
   const hasTicket = userOrders.length > 0;
 
   // Whether we should show the ticket purchase section
