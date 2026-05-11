@@ -6,15 +6,27 @@ export type {
   FairIntegrity,
   FairIntent,
   FairManifest,
+  FairManifestV1_0,
+  FairManifestV1_1,
   FairSignature,
+  // v1.1 new types
+  Money,
+  DidShareEntry,
+  DidShareList,
+  FairDistributionRight,
+  FairTraining,
+  FairCommercial,
+  FairTransferV1_1,
+  FairAccessV1_1,
 } from './types';
+export { isFairManifestV1_1 } from './types';
 
 export type { FairTemplate, TemplateConfig } from './templates';
 export { templates } from './templates';
 
 export { validateManifest, isValidManifest } from './validate';
 export { createManifest } from './create';
-export { canonicalizeForSigning } from './canonical';
+export { canonicalize, canonicalizeForSigning } from './canonical';
 export { signManifest, verifyManifest, platformSign, verifyPlatformSignature } from './sign';
 export { FairAccordion } from './components/FairAccordion';
 export { FairEditor } from './components/FairEditor';
@@ -47,3 +59,5 @@ export type {
   AgentPricingManifest,
   AgentCostBreakdown,
 } from './agent-pricing';
+
+export { upgradeToV1_1 } from './upgrade';
