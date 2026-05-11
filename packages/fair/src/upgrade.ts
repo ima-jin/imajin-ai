@@ -179,6 +179,7 @@ export function upgradeToV1_1(manifest: FairManifestV1_0 | FairManifestV1_1): Fa
     terms: v1_0.terms,
     intent: v1_0.intent,
     tipping: defaults.tipping,
+    // settlement is convention-driven; leave undefined on upgrade
   };
 
   // Apply type-aware overrides based on mimeType

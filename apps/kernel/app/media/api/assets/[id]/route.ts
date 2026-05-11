@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile, unlink, rename, stat, open } from "fs/promises";
 import path from "path";
-import { db, assets } from "@/src/db";
+import { db, assets, settlements, accessLog } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
-import { eq } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { createReadStream } from "fs";
 import type { FairManifest } from "@imajin/fair";
+import { isFairManifestV1_1, build402Response, verifyReceipt, loadVerifyKey } from "@imajin/fair";
+import type { FairAction } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 
 const log = createLogger("kernel");
@@ -78,6 +80,35 @@ function getAccessType(
 function getAllowedDids(access: FairManifest["access"]): string[] {
   if (!access || typeof access === "string") return [];
   return access.allowedDids ?? [];
+}
+
+function determineAction(request: NextRequest, mimeType: string): FairAction {
+  const { searchParams } = new URL(request.url);
+  const explicit = searchParams.get("action");
+  if (explicit === 'reproduction' || explicit === 'streaming' || explicit === 'derivative' || explicit === 'syndication') {
+    return explicit;
+  }
+
+  const rangeHeader = request.headers.get("range");
+  if (rangeHeader && (mimeType.startsWith("audio/") || mimeType.startsWith("video/"))) {
+    return 'streaming';
+  }
+
+  return 'reproduction';
+}
+
+// Cache the verify key loaded from AUTH_PRIVATE_KEY
+let verifyKeyPromise: Promise<import('jose').KeyLike> | null = null;
+function getVerifyKey(): Promise<import('jose').KeyLike> {
+  if (!verifyKeyPromise) {
+    const privateKeyHex = process.env.AUTH_PRIVATE_KEY;
+    if (!privateKeyHex) {
+      verifyKeyPromise = Promise.reject(new Error('AUTH_PRIVATE_KEY not configured'));
+    } else {
+      verifyKeyPromise = loadVerifyKey(privateKeyHex);
+    }
+  }
+  return verifyKeyPromise;
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +190,128 @@ export async function GET(
     }
   }
 
-  // 4. Read file from storage
+  // 4. Determine action and check for priced distribution
+  const action = determineAction(request, asset.mimeType);
+  const distRight = isFairManifestV1_1(manifest) ? manifest.distribution?.[action] : undefined;
+  const hasPrice = !!distRight?.price;
+
+  // 4a. Price-aware settlement flow
+  if (hasPrice) {
+    const receiptHeader = request.headers.get("X-Payment-Receipt");
+
+    if (!receiptHeader) {
+      // No receipt → 402 with settlement options
+      try {
+        const baseUrl = `${new URL(request.url).origin}/media/api/assets`;
+        const resp = build402Response({
+          manifest: manifest as import("@imajin/fair").FairManifestV1_1,
+          assetId: id,
+          action,
+          supportedSchemes: ['mjnx-direct'],
+          baseUrl,
+        });
+        return NextResponse.json(resp.body, { status: 402, headers: resp.headers });
+      } catch (err) {
+        log.error({ err: String(err), assetId: id, action }, "build402Response failed");
+        return NextResponse.json({ error: "Settlement configuration error" }, { status: 500 });
+      }
+    }
+
+    // Verify receipt
+    let receiptPayload;
+    try {
+      const verifyKey = await getVerifyKey();
+      receiptPayload = await verifyReceipt(receiptHeader, verifyKey);
+    } catch {
+      receiptPayload = null;
+    }
+
+    if (!receiptPayload) {
+      return NextResponse.json({ error: "Invalid payment receipt" }, { status: 402 });
+    }
+
+    // Validate receipt claims match this request
+    if (receiptPayload.aud !== `asset:${id}`) {
+      return NextResponse.json({ error: "Receipt audience mismatch" }, { status: 402 });
+    }
+    if (receiptPayload.action !== action) {
+      return NextResponse.json({ error: "Receipt action mismatch" }, { status: 402 });
+    }
+
+    // Buyer-binding: caller must be authenticated AND match the receipt's buyer DID.
+    // Receipts are non-transferable in v1 — transfer semantics tracked in #904.
+    const buyerAuth = await requireAuth(request);
+    if ("error" in buyerAuth) {
+      return NextResponse.json(
+        { error: "Authentication required to redeem payment receipt" },
+        { status: 401 }
+      );
+    }
+    const callerDid = buyerAuth.identity.actingAs || buyerAuth.identity.id;
+    if (callerDid !== receiptPayload.buyer) {
+      return NextResponse.json(
+        { error: "Receipt is bound to a different identity" },
+        { status: 403 }
+      );
+    }
+
+    // Check receipt against database settlement record
+    const [settlement] = await db
+      .select()
+      .from(settlements)
+      .where(
+        and(
+          eq(settlements.id, receiptPayload.sub),
+          eq(settlements.assetId, id),
+          eq(settlements.action, action),
+          eq(settlements.receiptToken, receiptHeader)
+        )
+      )
+      .limit(1);
+
+    if (!settlement) {
+      return NextResponse.json({ error: "Settlement not found" }, { status: 402 });
+    }
+
+    // Replay protection: check for excessive access from same settlement
+    const replayWindow = new Date(Date.now() - 60 * 60 * 1000); // 1 hour
+    const recentAccessCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(accessLog)
+      .where(
+        and(
+          eq(accessLog.settlementId, settlement.id),
+          sql`${accessLog.at} > ${replayWindow}`
+        )
+      );
+
+    const accessCount = recentAccessCount[0]?.count ?? 0;
+    if (accessCount > 100) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded for this settlement" },
+        { status: 429 }
+      );
+    }
+
+    // Log access
+    try {
+      const { nanoid } = await import('nanoid');
+      await db.insert(accessLog).values({
+        id: `acc_${nanoid(16)}`,
+        assetId: id,
+        action,
+        settlementId: settlement.id,
+        buyerDid: settlement.buyerDid ?? undefined,
+        ip: request.headers.get("x-forwarded-for") || request.ip || undefined,
+        userAgent: request.headers.get("user-agent") || undefined,
+      });
+    } catch (err) {
+      log.error({ err: String(err), assetId: id }, "Access log insertion failed");
+      // Non-blocking — continue serving
+    }
+  }
+
+  // 5. Read file from storage
   let fileBuffer: Buffer;
   try {
     fileBuffer = await readFile(asset.storagePath);

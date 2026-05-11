@@ -161,6 +161,36 @@ function validateV1_1(manifest: Record<string, unknown>): string[] {
     }
   }
 
+  // Settlement (optional)
+  if (manifest.settlement !== undefined) {
+    const settlement = manifest.settlement as Record<string, unknown>;
+    if (typeof settlement !== "object" || settlement === null) {
+      errors.push("settlement must be an object");
+    } else {
+      if (settlement.endpoint !== undefined && typeof settlement.endpoint !== "string") {
+        errors.push("settlement.endpoint must be a string when present");
+      }
+      if (settlement.schemes !== undefined) {
+        if (!Array.isArray(settlement.schemes)) {
+          errors.push("settlement.schemes must be an array when present");
+        } else {
+          const validSchemes = ["x402", "stripe-link", "mjnx-direct", "solana-pay", "lightning"];
+          for (const s of settlement.schemes) {
+            if (typeof s !== "string" || !validSchemes.includes(s)) {
+              errors.push(`settlement.schemes contains invalid scheme: ${s}`);
+            }
+          }
+        }
+      }
+      if (settlement.fallback !== undefined) {
+        const validSchemes = ["x402", "stripe-link", "mjnx-direct", "solana-pay", "lightning"];
+        if (typeof settlement.fallback !== "string" || !validSchemes.includes(settlement.fallback)) {
+          errors.push("settlement.fallback must be a valid settlement scheme");
+        }
+      }
+    }
+  }
+
   // Fees (optional)
   if (manifest.fees !== undefined) {
     if (!Array.isArray(manifest.fees)) {

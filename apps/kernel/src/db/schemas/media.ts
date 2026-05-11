@@ -95,5 +95,55 @@ export const assetReferences = mediaSchema.table("asset_references", {
   uniq: unique("uq_asset_reference").on(table.assetId, table.service, table.entityType, table.entityId),
 }));
 
+export const settlements = mediaSchema.table(
+  "settlements",
+  {
+    id: text("id").primaryKey(),                              // stl_<nanoid>
+    assetId: text("asset_id").notNull(),
+    action: text("action").notNull(),                         // reproduction | streaming | derivative | syndication
+    buyerDid: text("buyer_did"),                              // nullable (anonymous)
+    amount: integer("amount").notNull(),                      // minor units
+    currency: text("currency").notNull(),
+    scheme: text("scheme").notNull(),                         // x402 | stripe-link | mjnx-direct | ...
+    status: text("status").notNull().default("pending"),      // pending | completed
+    receiptToken: text("receipt_token").notNull(),            // signed JWT
+    externalReceiptId: text("external_receipt_id"),           // scheme-specific id (Stripe charge id, etc.)
+    fairManifestDigest: text("fair_manifest_digest").notNull(), // sha256: of manifest at time of settle
+    dfosEventId: text("dfos_event_id"),                       // if publishContentEvent succeeded
+    settledAt: timestamp("settled_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    assetIdx: index("idx_settlements_asset").on(table.assetId),
+    buyerIdx: index("idx_settlements_buyer").on(table.buyerDid),
+    dfosIdx: index("idx_settlements_dfos").on(table.dfosEventId),
+    settledAtIdx: index("idx_settlements_settled_at").on(table.settledAt),
+  })
+);
+
+export type Settlement = typeof settlements.$inferSelect;
+export type NewSettlement = typeof settlements.$inferInsert;
+
+export const accessLog = mediaSchema.table(
+  "access_log",
+  {
+    id: text("id").primaryKey(),                              // acc_<nanoid>
+    assetId: text("asset_id").notNull(),
+    action: text("action").notNull(),
+    settlementId: text("settlement_id"),                      // nullable for free access
+    buyerDid: text("buyer_did"),
+    ip: text("ip"),                                           // hashed for privacy if desired
+    userAgent: text("user_agent"),
+    at: timestamp("at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    assetIdx: index("idx_access_log_asset").on(table.assetId),
+    buyerIdx: index("idx_access_log_buyer").on(table.buyerDid),
+    atIdx: index("idx_access_log_at").on(table.at),
+  })
+);
+
+export type AccessLog = typeof accessLog.$inferSelect;
+export type NewAccessLog = typeof accessLog.$inferInsert;
+
 export type AssetReference = typeof assetReferences.$inferSelect;
 export type NewAssetReference = typeof assetReferences.$inferInsert;
