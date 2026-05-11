@@ -1,3 +1,7 @@
+// ============================================================================
+// .fair v1.0 types (preserved — backward compatible)
+// ============================================================================
+
 export interface FairSignature {
   algorithm: 'ed25519';
   value: string; // 128 hex chars (64 bytes)
@@ -5,40 +9,45 @@ export interface FairSignature {
 }
 
 export interface FairEntry {
-  did: string;
-  role: string; // creator, collaborator, producer, performer, platform, venue, etc.
-  share: number; // 0.0 to 1.0
+  did?: string;
+  role: string;
+  share: number;
   note?: string;
-  chainProof?: {            // present when contributor has chain identity
-    verified: boolean;      // was chain verified at manifest creation time?
-    verifiedAt?: string;    // ISO timestamp
+  name?: string;
+  chainProof?: {
+    verified: boolean;
+    verifiedAt?: string;
   };
 }
 
 export interface FairFee {
-  role: string;        // 'processor', 'gas', etc.
-  name: string;        // 'Stripe', 'Solana', etc.
-  rateBps: number;     // basis points — upper estimate used for application_fee (370 = 3.7%)
-  minRateBps?: number; // basis points — minimum rate for display (290 = 2.9%)
-  fixedCents: number;  // per-transaction fixed cost in cents (30 = $0.30)
+  role: string;
+  name: string;
+  rateBps: number;
+  minRateBps?: number;
+  fixedCents: number;
 }
 
 export interface FairTransfer {
   allowed: boolean;
   refundable?: boolean;
-  resaleRoyalty?: number; // 0.0 to 1.0, royalty to original creator
-  faceValueCap?: boolean; // prevent scalping above face value
+  resaleRoyalty?: number;
+  faceValueCap?: boolean;
+  // v1.1 optional fields for union compatibility
+  requiresAttribution?: boolean;
+  price?: Money;
+  resaleRoyaltyBps?: number;
 }
 
 export interface FairAccess {
   type: "public" | "private" | "trust-graph" | "conversation";
-  allowedDids?: string[]; // for private access
-  conversationDid?: string; // for conversation-scoped access
+  allowedDids?: string[];
+  conversationDid?: string;
 }
 
 export interface FairIntegrity {
-  hash: string; // sha256:...
-  size: number; // bytes
+  hash: string;
+  size: number;
 }
 
 export interface FairIntent {
@@ -46,24 +55,135 @@ export interface FairIntent {
   constraints?: Record<string, unknown>;
 }
 
-export interface FairManifest {
-  fair: string; // version, e.g. "1.0"
-  id: string; // asset/event ID
-  type: string; // mime type or "event", "ticket", etc.
-  owner: string; // DID of owner
-  created: string; // ISO 8601
-  source?: string; // "upload", "create", etc.
+export interface FairManifestV1_0 {
+  fair: string; // "1.0"
+  id: string;
+  type: string;
+  owner: string;
+  created: string;
+  source?: string;
   access: FairAccess | "public" | "private";
   transfer?: FairTransfer;
   fees?: FairFee[];
   attribution: FairEntry[];
   distributions?: FairEntry[];
   integrity?: FairIntegrity;
-  terms?: string; // license URL or text
-  intent?: FairIntent; // stated purpose and optional constraints
-  signature?: FairSignature; // creator signature (required in Phase 1)
-  platformSignature?: FairSignature; // platform endorsement signature
-  // backward compat with existing events code
+  terms?: string;
+  intent?: FairIntent;
+  signature?: FairSignature;
+  platformSignature?: FairSignature;
   version?: string;
-  chain?: FairEntry[]; // alias for attribution
+  chain?: FairEntry[];
+}
+
+// ============================================================================
+// .fair v1.1 types (new)
+// ============================================================================
+
+export interface Money {
+  amount: number; // non-negative integer, minor units (cents)
+  currency: string; // ISO 4217 3-letter uppercase or 'MJNX'
+}
+
+export interface DidShareEntry {
+  did?: string;
+  role: string;
+  share: number;
+  name?: string;
+  note?: string;
+  chainProof?: {
+    verified: boolean;
+    verifiedAt?: string;
+  };
+}
+
+export type DidShareList = DidShareEntry[];
+
+export interface FairDistributionRight {
+  mode: string;
+  price?: Money;
+  splits?: DidShareList;
+  quote?: { maxPercent?: number; maxWords?: number };
+  sampling?: { allowed?: string; share?: number };
+  sync?: { allowed?: string };
+}
+
+export interface FairTraining {
+  allowed: boolean;
+  grants?: Array<{ purpose: string; scope?: string; expires?: string }>;
+}
+
+export interface FairCommercial {
+  allowed: boolean;
+  contactRequired?: boolean;
+}
+
+export interface FairTransferV1_1 {
+  allowed: boolean;
+  requiresAttribution?: boolean;
+  price?: Money;
+  resaleRoyaltyBps?: number;
+  // v1.0 backward compat padding
+  refundable?: boolean;
+  faceValueCap?: boolean;
+  resaleRoyalty?: number;
+}
+
+export interface FairAccessV1_1 {
+  type: "public" | "private" | "trust-graph" | "conversation";
+  allowedDids?: string[];
+  conversationDid?: string;
+}
+
+export interface Signature {
+  signer: string;
+  alg: 'ed25519';
+  value: string; // base64url
+  signedAt: string; // ISO 8601
+}
+
+export interface SignedFairManifest extends FairManifestV1_1 {
+  signature: Signature;
+}
+
+export interface FairManifestV1_1 {
+  fair: string; // "1.1"
+  version: '1.1';
+  id: string;
+  type: string;
+  owner: string;
+  created: string;
+  source?: string;
+  access: FairAccessV1_1 | "public" | "private";
+  transfer?: FairTransferV1_1;
+  fees?: FairFee[];
+  attribution: DidShareList;
+  distribution?: {
+    reproduction?: FairDistributionRight;
+    streaming?: FairDistributionRight;
+    derivative?: FairDistributionRight;
+    syndication?: FairDistributionRight;
+  };
+  training?: FairTraining;
+  commercial?: FairCommercial;
+  integrity?: FairIntegrity;
+  terms?: string;
+  intent?: FairIntent;
+  signature?: Signature;
+  tipping?: { enabled: boolean };
+  // backward compat aliases
+  distributions?: DidShareList;
+  chain?: DidShareList;
+  platformSignature?: FairSignature;
+}
+
+/** Union type — narrow with `'version' in m && m.version === '1.1'` */
+export type FairManifest = FairManifestV1_0 | FairManifestV1_1;
+
+// ============================================================================
+// Type guards
+// ============================================================================
+
+export function isFairManifestV1_1(m: FairManifest): m is FairManifestV1_1 {
+  return 'version' in m && m.version === '1.1';
 }

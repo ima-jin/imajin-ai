@@ -2,9 +2,9 @@ import type { FairManifest } from './types';
 
 /**
  * Deterministic JSON canonicalization: sorted keys, no whitespace.
- * Used to produce the byte string that is signed/verified.
+ * Equivalent to RFC 8785 JCS — pure function, no I/O.
  */
-function canonicalize(value: unknown): string {
+export function canonicalize(value: unknown): string {
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value);
   }
