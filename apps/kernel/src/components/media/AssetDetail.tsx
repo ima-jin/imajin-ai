@@ -129,6 +129,9 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   const [transcript, setTranscript] = useState<Record<string, unknown> | null>(
     () => (asset.metadata as Record<string, unknown> | null)?.transcript as Record<string, unknown> | null ?? null
   );
+  const [upgradingFair, setUpgradingFair] = useState(false);
+  const [upgradeError, setUpgradeError] = useState<string | null>(null);
+  const [upgradedToast, setUpgradedToast] = useState(false);
 
   const isImage = asset.mimeType.startsWith("image/");
   const isAudio = asset.mimeType.startsWith("audio/");
@@ -206,6 +209,36 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(manifest),
     }).catch(() => {});
+  };
+
+  const handleUpgradeFair = async () => {
+    if (!confirm(
+      "Upgrade this asset's `.fair` manifest? Existing values preserved; new primitives added with defaults including AI training opt-out (off by default)."
+    )) {
+      return;
+    }
+    setUpgradingFair(true);
+    setUpgradeError(null);
+    try {
+      const res = await fetch(`/media/api/assets/${asset.id}/upgrade-fair`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setUpgradeError(data.error || "Upgrade failed");
+        return;
+      }
+      if (data.manifest) {
+        setFairManifest(data.manifest as FairManifest);
+        setUpgradedToast(true);
+        setTimeout(() => setUpgradedToast(false), 2000);
+      }
+    } catch {
+      setUpgradeError("Network error");
+    } finally {
+      setUpgradingFair(false);
+    }
   };
 
   const handleMove = async (folderId: string) => {
@@ -470,6 +503,25 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
           ) : (
             <div className="bg-[#252525] rounded-xl p-3 text-xs text-gray-500 italic">
               No .fair manifest.
+            </div>
+          )}
+
+          {/* v1.0 → v1.1 upgrade button */}
+          {fairManifest && (fairManifest as Record<string, unknown>).version !== '1.1' && isOwner && (
+            <div className="mt-2 space-y-2">
+              <button
+                onClick={handleUpgradeFair}
+                disabled={upgradingFair}
+                className="w-full py-1.5 text-xs bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-lg hover:bg-orange-500/20 transition-colors disabled:opacity-50"
+              >
+                {upgradingFair ? "Upgrading…" : "Upgrade to v1.1"}
+              </button>
+              {upgradedToast && (
+                <p className="text-xs text-green-400">Upgraded</p>
+              )}
+              {upgradeError && (
+                <p className="text-xs text-red-400">{upgradeError}</p>
+              )}
             </div>
           )}
         </div>
