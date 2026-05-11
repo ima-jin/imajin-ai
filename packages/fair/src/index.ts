@@ -63,3 +63,9 @@ export type {
 } from './agent-pricing';
 
 export { upgradeToV1_1 } from './upgrade';
+export { verifyManifestFromAsset } from './verify-from-asset';
+export type {
+  VerificationResult,
+  VerifyManifestFromAssetOptions,
+  FetchResponse,
+} from './verify-from-asset';

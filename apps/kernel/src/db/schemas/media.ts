@@ -28,6 +28,9 @@ export const assets = mediaSchema.table(
     fairManifest: jsonb("fair_manifest").default({}),          // inline .fair JSON
     fairPath: text("fair_path"),                               // path to .fair.json file
 
+    // DFOS federation anchor
+    fairDfosEventId: text("fair_dfos_event_id"),               // DFOS event ID for signed manifest anchor
+
     // Organization
     folderId: text("folder_id"),                               // virtual folder (future #187)
     tags: jsonb("tags").default([]),
