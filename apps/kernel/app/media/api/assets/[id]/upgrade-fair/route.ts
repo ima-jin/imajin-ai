@@ -66,9 +66,25 @@ export async function POST(
     );
   }
 
-  // 4. Upgrade to v1.1
-  const upgraded = upgradeToV1_1(manifest);
-  const oldVersion = (manifest as Record<string, unknown>).version ?? "1.0";
+  // 4. Normalize pre-1.0 manifests (e.g. version 0.2.0 — no `type`, no `fair`,
+  //    `createdAt` instead of `created`). Backfill from asset row when possible.
+  const raw = manifest as Record<string, unknown>;
+  const oldVersion = String(raw.version ?? raw.fair ?? "1.0");
+  const normalized: Record<string, unknown> = {
+    ...raw,
+    fair: typeof raw.fair === "string" ? raw.fair : "1.0",
+    type: typeof raw.type === "string" ? raw.type : asset.mimeType,
+    created: typeof raw.created === "string"
+      ? raw.created
+      : typeof raw.createdAt === "string"
+        ? raw.createdAt
+        : new Date().toISOString(),
+    owner: typeof raw.owner === "string" ? raw.owner : asset.ownerDid,
+    id: typeof raw.id === "string" ? raw.id : asset.id,
+  };
+
+  // 5. Upgrade to v1.1
+  const upgraded = upgradeToV1_1(normalized as unknown as FairManifest);
 
   // 5. Sign with platform/node key
   const privateKeyHex = process.env.AUTH_PRIVATE_KEY;
@@ -132,7 +148,7 @@ export async function POST(
       scope: "media",
       payload: {
         assetId: id,
-        oldVersion: String(oldVersion),
+        oldVersion,
         newVersion: "1.1",
         signer: nodeDid,
       },

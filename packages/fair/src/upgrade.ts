@@ -6,7 +6,8 @@ function asDistributionRight(mode: string): FairDistributionRight {
   return { mode };
 }
 
-function mimeBucket(mimeType: string): 'text' | 'image' | 'audio' | 'video' | 'other' {
+function mimeBucket(mimeType: string | undefined | null): 'text' | 'image' | 'audio' | 'video' | 'other' {
+  if (!mimeType || typeof mimeType !== 'string') return 'other';
   if (mimeType.startsWith('text/')) return 'text';
   if (mimeType.startsWith('image/')) return 'image';
   if (mimeType.startsWith('audio/')) return 'audio';
