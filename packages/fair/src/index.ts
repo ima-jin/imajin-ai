@@ -24,7 +24,7 @@ export type {
 export { isFairManifestV1_1 } from './types';
 
 export type { FairTemplate, TemplateConfig } from './templates';
-export { templates } from './templates';
+export { templates, getDefaultManifest } from './templates';
 
 export { validateManifest, isValidManifest } from './validate';
 export { createManifest } from './create';
