@@ -1,37 +1,28 @@
+// TODO(#904): Replace owner-confirms-receipt with atomic node-ledger debit when MJNx balance system lands. Until then, settlement is operator-mediated.
+
 /**
  * POST /media/api/assets/[id]/settle/confirm
  *
- * Webhook handler for settlement confirmation.
+ * Owner-mediated settlement confirmation for MJNx-direct.
  *
- * Stripe: receives checkout.session.completed webhook,
- * verifies signature, signs receipt, updates settlement row.
+ * The asset owner (authenticated) confirms receipt of an MJNx payment,
+ * triggering receipt JWT signing and DFOS event publication.
  *
- * MJNx-direct: accepts a direct POST from the buyer or node
- * after on-chain confirmation (simplified — no on-chain verification in v1).
+ * Full ledger integration (buyer-side atomic debit) is tracked in #904.
+ *
+ * Body: { settlementId, txHash? }
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { db, settlements } from "@/src/db";
+import { db, assets, settlements } from "@/src/db";
 import { eq } from "drizzle-orm";
+import { requireAuth } from "@imajin/auth";
+import { canonicalize } from "@imajin/auth";
 import { signReceipt, loadSigningKey, receiptExpiryForAction } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
-import Stripe from "stripe";
+import { createHash } from "crypto";
 
 const log = createLogger("kernel");
-
-// Lazy Stripe initialization
-let _stripe: Stripe | null = null;
-function getStripe(): Stripe {
-  if (!_stripe) {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error("STRIPE_SECRET_KEY not configured");
-    }
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: "2024-11-20.acacia" as Stripe.LatestApiVersion,
-    });
-  }
-  return _stripe;
-}
 
 // Cache signing key
 let signKeyPromise: Promise<import("jose").KeyLike> | null = null;
@@ -47,156 +38,20 @@ function getSignKey(): Promise<import("jose").KeyLike> {
   return signKeyPromise;
 }
 
-export async function POST(request: NextRequest) {
-  const source = request.headers.get("X-Settle-Source") || "stripe";
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
 
-  if (source === "stripe") {
-    return handleStripeWebhook(request);
+  // Require authentication — caller must be the asset owner
+  const authResult = await requireAuth(request);
+  if ("error" in authResult) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
+  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
 
-  if (source === "mjnx") {
-    return handleMjnxConfirmation(request);
-  }
-
-  return NextResponse.json({ error: "Unknown source" }, { status: 400 });
-}
-
-async function handleStripeWebhook(request: NextRequest): Promise<NextResponse> {
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    log.error({}, "STRIPE_WEBHOOK_SECRET not configured");
-    return NextResponse.json({ error: "Webhook not configured" }, { status: 500 });
-  }
-
-  const body = await request.text();
-  const signature = request.headers.get("stripe-signature");
-
-  if (!signature) {
-    return NextResponse.json({ error: "Missing stripe-signature" }, { status: 400 });
-  }
-
-  let event: Stripe.Event;
-  try {
-    const stripe = getStripe();
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-  } catch (err) {
-    log.error({ err: String(err) }, "Stripe webhook signature verification failed");
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
-  }
-
-  if (event.type !== "checkout.session.completed") {
-    return NextResponse.json({ received: true });
-  }
-
-  const session = event.data.object as Stripe.Checkout.Session;
-  const settlementId = session.metadata?.settlementId;
-  const assetId = session.metadata?.assetId;
-
-  if (!settlementId || !assetId) {
-    log.warn({ sessionId: session.id }, "Missing settlementId or assetId in session metadata");
-    return NextResponse.json({ received: true });
-  }
-
-  // Find the settlement row
-  const [settlement] = await db
-    .select()
-    .from(settlements)
-    .where(eq(settlements.id, settlementId))
-    .limit(1);
-
-  if (!settlement) {
-    log.warn({ settlementId }, "Settlement row not found");
-    return NextResponse.json({ error: "Settlement not found" }, { status: 404 });
-  }
-
-  if (settlement.receiptToken !== "pending") {
-    log.info({ settlementId }, "Settlement already completed — idempotency skip");
-    return NextResponse.json({ received: true, receipt: settlement.receiptToken });
-  }
-
-  // Sign receipt
-  const paymentId =
-    typeof session.payment_intent === "string"
-      ? session.payment_intent
-      : session.payment_intent?.id || session.id;
-
-  let receiptToken: string;
-  try {
-    const signKey = await getSignKey();
-    receiptToken = await signReceipt(
-      {
-        aud: `asset:${assetId}`,
-        sub: settlementId,
-        action: settlement.action,
-        amount: settlement.amount,
-        currency: settlement.currency,
-        manifestDigest: settlement.fairManifestDigest,
-        exp: receiptExpiryForAction(settlement.action),
-      },
-      signKey
-    );
-  } catch (err) {
-    log.error({ err: String(err), settlementId }, "Receipt signing failed");
-    return NextResponse.json({ error: "Receipt signing failed" }, { status: 500 });
-  }
-
-  // Update settlement row
-  try {
-    await db
-      .update(settlements)
-      .set({
-        receiptToken,
-        externalReceiptId: paymentId,
-        settledAt: new Date(),
-      })
-      .where(eq(settlements.id, settlementId));
-  } catch (err) {
-    log.error({ err: String(err), settlementId }, "Failed to update settlement row");
-    return NextResponse.json({ error: "Database failure" }, { status: 500 });
-  }
-
-  // Publish to DFOS if available (feature-detect)
-  let dfosEventId: string | null = null;
-  try {
-    const { publishContentEvent } = await import("@imajin/dfos");
-    const result = await publishContentEvent({
-      topic: "fair.settlement.completed",
-      payload: {
-        assetId,
-        settlementId,
-        action: settlement.action,
-        amount: settlement.amount,
-        currency: settlement.currency,
-        scheme: settlement.scheme,
-        buyerDid: settlement.buyerDid,
-        externalReceiptId: paymentId,
-        manifestDigest: settlement.fairManifestDigest,
-        settledAt: new Date().toISOString(),
-      },
-    });
-    dfosEventId = result.eventId;
-  } catch (err) {
-    log.warn({ err: String(err), settlementId }, "DFOS publish failed (non-fatal)");
-    // Non-blocking — don't fail the webhook
-  }
-
-  if (dfosEventId) {
-    try {
-      await db
-        .update(settlements)
-        .set({ dfosEventId })
-        .where(eq(settlements.id, settlementId));
-    } catch (err) {
-      log.warn({ err: String(err), settlementId, dfosEventId }, "Failed to store DFOS eventId");
-    }
-  }
-
-  log.info({ settlementId, assetId, paymentId }, "Settlement completed via Stripe");
-
-  return NextResponse.json({ received: true, receipt: receiptToken });
-}
-
-async function handleMjnxConfirmation(request: NextRequest): Promise<NextResponse> {
+  // Parse body
   let body: {
     settlementId?: unknown;
     txHash?: unknown;
@@ -214,6 +69,7 @@ async function handleMjnxConfirmation(request: NextRequest): Promise<NextRespons
     return NextResponse.json({ error: "Missing settlementId" }, { status: 400 });
   }
 
+  // Look up settlement
   const [settlement] = await db
     .select()
     .from(settlements)
@@ -224,10 +80,23 @@ async function handleMjnxConfirmation(request: NextRequest): Promise<NextRespons
     return NextResponse.json({ error: "Settlement not found" }, { status: 404 });
   }
 
-  if (settlement.receiptToken !== "pending") {
+  // Verify the requester is the asset owner
+  const [asset] = await db
+    .select()
+    .from(assets)
+    .where(eq(assets.id, settlement.assetId))
+    .limit(1);
+
+  if (!asset || asset.ownerDid !== requesterDid) {
+    return NextResponse.json({ error: "Forbidden — only the asset owner can confirm settlement" }, { status: 403 });
+  }
+
+  // Idempotency: already completed
+  if (settlement.status === "completed") {
     return NextResponse.json({ received: true, receipt: settlement.receiptToken });
   }
 
+  // Sign receipt
   let receiptToken: string;
   try {
     const signKey = await getSignKey();
@@ -248,16 +117,23 @@ async function handleMjnxConfirmation(request: NextRequest): Promise<NextRespons
     return NextResponse.json({ error: "Receipt signing failed" }, { status: 500 });
   }
 
-  await db
-    .update(settlements)
-    .set({
-      receiptToken,
-      externalReceiptId: txHash || "mjnx-confirmed",
-      settledAt: new Date(),
-    })
-    .where(eq(settlements.id, settlementId));
+  // Update settlement row
+  try {
+    await db
+      .update(settlements)
+      .set({
+        receiptToken,
+        status: "completed",
+        externalReceiptId: txHash || "mjnx-confirmed",
+        settledAt: new Date(),
+      })
+      .where(eq(settlements.id, settlementId));
+  } catch (err) {
+    log.error({ err: String(err), settlementId }, "Failed to update settlement row");
+    return NextResponse.json({ error: "Database failure" }, { status: 500 });
+  }
 
-  // DFOS publish (feature-detect)
+  // Publish to DFOS if available (feature-detect)
   let dfosEventId: string | null = null;
   try {
     const { publishContentEvent } = await import("@imajin/dfos");
@@ -289,7 +165,7 @@ async function handleMjnxConfirmation(request: NextRequest): Promise<NextRespons
     }
   }
 
-  log.info({ settlementId, txHash }, "Settlement completed via MJNx");
+  log.info({ settlementId, txHash, assetId: settlement.assetId }, "Settlement confirmed by owner via MJNx");
 
   return NextResponse.json({ received: true, receipt: receiptToken });
 }

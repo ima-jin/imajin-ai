@@ -3,31 +3,25 @@
  *
  * Initiate settlement for a priced asset action.
  *
- * Body: { action?, scheme, returnUrl? }
+ * Body: { action?, scheme: "mjnx-direct" }
  * - action defaults to "reproduction"
- * - scheme: "stripe-link" | "mjnx-direct" | "x402" | "solana-pay" | "lightning"
+ * - scheme: must be "mjnx-direct" (fiat rails deferred to #904)
  *
- * Returns: { settlementId, url } for stripe-link, { settlementId, uri } for mjnx-direct
+ * Returns: { settlementId, uri } where uri is the mjnx:pay deep link
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets, settlements } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
+import { canonicalize } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import { isFairManifestV1_1 } from "@imajin/fair";
-import type { FairManifestV1_1, SettlementScheme } from "@imajin/fair";
-import { getPaymentService } from "@/src/lib/pay/pay";
+import type { FairManifestV1_1 } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 import { nanoid } from "nanoid";
+import { createHash } from "crypto";
 
 const log = createLogger("kernel");
-
-function isValidScheme(s: unknown): s is SettlementScheme {
-  return (
-    typeof s === "string" &&
-    ["x402", "stripe-link", "mjnx-direct", "solana-pay", "lightning"].includes(s)
-  );
-}
 
 function isValidAction(s: unknown): s is "reproduction" | "streaming" | "derivative" | "syndication" {
   return (
@@ -46,7 +40,6 @@ export async function POST(
   let body: {
     action?: unknown;
     scheme?: unknown;
-    returnUrl?: unknown;
   };
   try {
     body = await request.json();
@@ -56,10 +49,15 @@ export async function POST(
 
   const action = isValidAction(body.action) ? body.action : "reproduction";
   const scheme = body.scheme;
-  const returnUrl = typeof body.returnUrl === "string" ? body.returnUrl : undefined;
 
-  if (!isValidScheme(scheme)) {
-    return NextResponse.json({ error: "Invalid or missing scheme" }, { status: 400 });
+  if (scheme !== "mjnx-direct") {
+    return NextResponse.json(
+      {
+        error: "Only mjnx-direct settlement is supported on this node. Fiat rails are tracked in #904.",
+        scheme,
+      },
+      { status: 400 }
+    );
   }
 
   // 2. Look up asset
@@ -98,34 +96,29 @@ export async function POST(
     );
   }
 
-  // 4. Auth check
-  // Anonymous settlement allowed for reproduction; required for derivative if commercial not allowed
+  // 4. Auth — single attempt; capture buyerDid if present.
+  // Derivative + commercial-not-allowed requires authentication.
+  const authResult = await requireAuth(request);
   let buyerDid: string | null = null;
-  if (action === "derivative" && manifest.commercial?.allowed === false) {
-    const authResult = await requireAuth(request);
-    if ("error" in authResult) {
-      return NextResponse.json(
-        { error: "Authentication required for derivative settlement" },
-        { status: 401 }
-      );
-    }
+  if (!("error" in authResult)) {
     buyerDid = authResult.identity.actingAs || authResult.identity.id;
+  } else if (action === "derivative" && manifest.commercial?.allowed === false) {
+    return NextResponse.json(
+      { error: "Authentication required for derivative settlement" },
+      { status: 401 }
+    );
   }
 
-  // Optional auth for other actions (capture buyer DID if available)
-  if (!buyerDid) {
-    const authResult = await requireAuth(request);
-    if (!("error" in authResult)) {
-      buyerDid = authResult.identity.actingAs || authResult.identity.id;
-    }
+  // 5. Validate manifest.owner is a DID before interpolating into URI
+  if (!manifest.owner || !manifest.owner.startsWith("did:")) {
+    log.error({ assetId: id, owner: manifest.owner }, "manifest.owner is not a valid DID");
+    return NextResponse.json({ error: "Asset manifest has invalid owner DID" }, { status: 500 });
   }
 
-  // 5. Create settlement row
+  // 6. Create settlement row
   const settlementId = `stl_${nanoid(16)}`;
   const price = distRight.price;
-
-  // Compute manifest digest (simple sha256 of canonical JSON)
-  const manifestDigest = `sha256:${await sha256Text(JSON.stringify(manifest))}`;
+  const manifestDigest = `sha256:${createHash('sha256').update(canonicalize(manifest)).digest('hex')}`;
 
   try {
     await db.insert(settlements).values({
@@ -135,8 +128,9 @@ export async function POST(
       buyerDid,
       amount: price.amount,
       currency: price.currency,
-      scheme,
-      receiptToken: "pending", // will be updated on confirmation
+      scheme: "mjnx-direct",
+      status: "pending",
+      receiptToken: "pending",
       fairManifestDigest: manifestDigest,
     });
   } catch (err) {
@@ -144,73 +138,12 @@ export async function POST(
     return NextResponse.json({ error: "Database failure" }, { status: 500 });
   }
 
-  // 6. Scheme-specific handling
-  if (scheme === "stripe-link") {
-    try {
-      const pay = getPaymentService();
-      const baseUrl = `${new URL(request.url).origin}/media/api/assets`;
-      const successUrl = returnUrl || `${baseUrl}/${id}?settlement=${settlementId}`;
-      const cancelUrl = `${baseUrl}/${id}?settlement=${settlementId}&canceled=true`;
+  // 7. Build MJNx deep-link URI
+  const uri = `mjnx:pay?to=${encodeURIComponent(manifest.owner)}&amount=${price.amount}&currency=${encodeURIComponent(price.currency)}&memo=settle:${settlementId}`;
 
-      const splitsJson = distRight.splits ? JSON.stringify(distRight.splits) : undefined;
-
-      const checkout = await pay.checkout({
-        items: [
-          {
-            name: `${manifest.type} — ${action}`,
-            amount: price.amount,
-            quantity: 1,
-          },
-        ],
-        currency: price.currency as "USD" | "CAD" | "EUR" | "GBP",
-        successUrl,
-        cancelUrl,
-        metadata: {
-          settlementId,
-          assetId: id,
-          action,
-          buyerDid: buyerDid || "",
-          splits: splitsJson || "",
-          manifestDigest,
-          service: "media",
-        },
-      });
-
-      return NextResponse.json({
-        settlementId,
-        url: checkout.url,
-        scheme: "stripe-link",
-      });
-    } catch (err) {
-      log.error({ err: String(err), settlementId }, "Stripe checkout creation failed");
-      return NextResponse.json({ error: "Payment provider error" }, { status: 500 });
-    }
-  }
-
-  if (scheme === "mjnx-direct") {
-    const uri = `mjnx:pay?to=${encodeURIComponent(manifest.owner)}&amount=${price.amount}&currency=${encodeURIComponent(price.currency)}&memo=settle:${settlementId}`;
-    return NextResponse.json({
-      settlementId,
-      uri,
-      scheme: "mjnx-direct",
-    });
-  }
-
-  // Stubs for not-yet-supported schemes
-  if (scheme === "x402" || scheme === "solana-pay" || scheme === "lightning") {
-    return NextResponse.json(
-      { error: "Scheme not supported on this node", scheme },
-      { status: 501 }
-    );
-  }
-
-  return NextResponse.json({ error: "Unknown scheme" }, { status: 400 });
-}
-
-async function sha256Text(text: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(text);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return NextResponse.json({
+    settlementId,
+    uri,
+    scheme: "mjnx-direct",
+  });
 }
