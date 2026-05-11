@@ -71,3 +71,10 @@ export type { Build402ResponseOpts, Fair402Response, FairAction } from './http-4
 
 export { signReceipt, verifyReceipt, loadSigningKey, loadVerifyKey, receiptExpiryForAction } from './receipt';
 export type { ReceiptPayload } from './receipt';
+
+export { verifyManifestFromAsset } from './verify-from-asset';
+export type {
+  VerificationResult,
+  VerifyManifestFromAssetOptions,
+  FetchResponse,
+} from './verify-from-asset';

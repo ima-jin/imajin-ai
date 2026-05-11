@@ -86,7 +86,7 @@ describe('publishContentEvent', () => {
   it('throws if DFOS_PRIVATE_KEY_HEX is missing', async () => {
     await expect(
       publishContentEvent({ topic: 'test', payload: {} })
-    ).rejects.toThrow('DFOS_PRIVATE_KEY_HEX is not configured');
+    ).rejects.toThrow('DFOS_PRIVATE_KEY_HEX (or AUTH_PRIVATE_KEY) is not configured');
   });
 
   it('throws on relay error response', async () => {
