@@ -189,11 +189,21 @@ export async function confirmHeldTickets(
           ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`
           : `${EVENTS_URL}/${event.id}/my-tickets`;
 
-        const anyRegistrationRequired = Array.from(typesById.values()).some(
-          (tt) => tt.requiresRegistration
-        );
-        const registrationUrl = anyRegistrationRequired
-          ? `${EVENTS_URL}/${event.id}/register/${confirmedTickets[0].id}`
+        // Split tickets by whether their type requires registration
+        const bundleTickets = confirmedTickets.filter((t) => {
+          const tt = typesById.get(t.ticketTypeId);
+          return tt && !tt.requiresRegistration;
+        });
+        const registrationPendingTickets = confirmedTickets.filter((t) => {
+          const tt = typesById.get(t.ticketTypeId);
+          return tt?.requiresRegistration && t.registrationStatus !== 'complete';
+        });
+
+        // CTA targets: the first pending-and-required ticket, falling back to my-tickets
+        const ctaTicket = registrationPendingTickets[0] ?? null;
+        const anyPendingRegistration = registrationPendingTickets.length > 0;
+        const registrationUrl = ctaTicket
+          ? `${EVENTS_URL}/${event.id}/register/${ctaTicket.id}`
           : `${EVENTS_URL}/${event.id}/my-tickets`;
 
         // 1. Purchase receipt (always)
@@ -216,35 +226,39 @@ export async function confirmHeldTickets(
             paymentMethod: 'E-Transfer',
             registrationUrl,
             eventImageUrl,
-            hasRegistrationRequired: anyRegistrationRequired,
+            hasRegistrationRequired: anyPendingRegistration,
             context_id: event.id,
             context_type: 'event',
           },
         }).catch((err) => log.error({ err: String(err) }, 'Receipt publish error'));
 
-        // 2. Ticket confirmation with QR codes (only if no registration required)
-        if (!anyRegistrationRequired) {
+        // 2. Ticket confirmation with QR codes for no-registration tickets
+        if (bundleTickets.length > 0) {
           const ticketsWithQr = await Promise.all(
-            confirmedTickets.map(async (t) => ({
+            bundleTickets.map(async (t) => ({
               id: t.id,
               qrCodeDataUri: await generateQRCode(t.id),
             }))
           );
-          const primaryType = typesById.get(confirmedTickets[0].ticketTypeId);
+          const primaryType = typesById.get(bundleTickets[0].ticketTypeId);
+          // Recompute formatted price for the bundle subset (sum of bundleTickets pricePaid)
+          const bundleCents = bundleTickets.reduce((sum, t) => sum + (t.pricePaid ?? 0), 0);
+          const bundleFormatted = fmt(bundleCents);
           publish('ticket.confirmed', {
-            issuer: buyerDid || '',
-            subject: buyerDid || '',
+            issuer: bundleTickets[0].ownerDid || '',
+            subject: bundleTickets[0].ownerDid || customerEmail,
             scope: 'events',
             payload: {
+              to: customerEmail,
               email: customerEmail,
               eventTitle: event.title,
               ticketType: primaryType?.name ?? 'Ticket',
-              ticketId: confirmedTickets[0].id,
+              ticketId: bundleTickets[0].id,
               eventDate: formattedEventDate,
               eventTime: formattedEventTime,
               isVirtual: event.isVirtual ?? false,
               venue: event.venue ?? undefined,
-              price: totalFormatted,
+              price: bundleFormatted,
               magicLink,
               eventImageUrl,
               eventUrl: `${EVENTS_URL}/${event.id}`,
@@ -252,7 +266,7 @@ export async function confirmHeldTickets(
               context_id: event.id,
               context_type: 'event',
             },
-          }).catch((err) => log.error({ err: String(err) }, 'Ticket confirmed publish error'));
+          }).catch((err) => log.error({ err: String(err) }, 'Failed to publish ticket confirmed event'));
         }
       } else {
         log.warn({ buyerDid, orderId }, 'No buyer email available on EMT confirm; skipping receipt + ticket emails');
