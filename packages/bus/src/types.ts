@@ -485,6 +485,12 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
+  'asset.fair.upgraded': {
+    assetId: string;
+    oldVersion: string;
+    newVersion: string;
+    signer: string;
+  };
 }
 
 export type BusEventType = keyof BusEventMap;
