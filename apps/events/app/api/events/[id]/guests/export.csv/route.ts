@@ -76,10 +76,13 @@ export async function GET(
         t.id, t.status, t.owner_did, t.price_paid, t.currency, t.purchased_at, t.used_at,
         t.payment_method, t.order_id, t.registration_status,
         tt.name AS ticket_type, tt.registration_form_id,
-        tr.name AS attendee_name, tr.email AS attendee_email, tr.form_id, tr.response_id
+        COALESCE(sr.answers->>'full_name', sr.answers->>'name') AS attendee_name,
+        sr.answers->>'email' AS attendee_email,
+        sr.survey_id AS form_id,
+        sr.id AS response_id
       FROM events.tickets t
       JOIN events.ticket_types tt ON t.ticket_type_id = tt.id
-      LEFT JOIN events.ticket_registrations tr ON tr.ticket_id = t.id
+      LEFT JOIN dykil.survey_responses sr ON sr.ticket_id = t.id
       WHERE t.event_id = ${id}
       ORDER BY t.created_at DESC
     `;

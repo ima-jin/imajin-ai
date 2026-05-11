@@ -77,7 +77,7 @@ export async function GET(
      * Fetch all orders for this event, joined with:
      *   - auth.identities (buyer name / handle)
      *   - pay.transactions (stripe session id when available)
-     *   - events.tickets + ticket_types + ticket_registrations
+     *   - events.tickets + ticket_types + dykil.survey_responses
      */
     const orderRows = await sql`
       SELECT
@@ -97,8 +97,8 @@ export async function GET(
         t.id AS ticket_id,
         t.status AS ticket_status,
         tt.name AS ticket_type_name,
-        tr.name AS attendee_name,
-        tr.email AS attendee_email,
+        COALESCE(sr.answers->>'full_name', sr.answers->>'name') AS attendee_name,
+        sr.answers->>'email' AS attendee_email,
         tx.id AS transaction_id,
         tx.amount AS tx_amount,
         tx.status AS tx_status,
@@ -114,7 +114,7 @@ export async function GET(
       LEFT JOIN pay.transactions tx ON tx.stripe_id = o.stripe_session_id
       LEFT JOIN events.tickets t ON t.order_id = o.id
       LEFT JOIN events.ticket_types tt ON tt.id = t.ticket_type_id
-      LEFT JOIN events.ticket_registrations tr ON tr.ticket_id = t.id
+      LEFT JOIN dykil.survey_responses sr ON sr.ticket_id = t.id
       WHERE o.event_id = ${eventId}
       ORDER BY o.created_at DESC, t.created_at ASC
     `;
@@ -200,15 +200,15 @@ export async function GET(
         t.payment_method,
         t.payment_id,
         tt.name AS ticket_type_name,
-        tr.name AS attendee_name,
-        tr.email AS attendee_email,
+        COALESCE(sr.answers->>'full_name', sr.answers->>'name') AS attendee_name,
+        sr.answers->>'email' AS attendee_email,
         i.name AS owner_name,
         i.handle AS owner_handle,
         i.contact_email AS owner_contact_email,
         cred.value AS owner_fallback_email
       FROM events.tickets t
       LEFT JOIN events.ticket_types tt ON tt.id = t.ticket_type_id
-      LEFT JOIN events.ticket_registrations tr ON tr.ticket_id = t.id
+      LEFT JOIN dykil.survey_responses sr ON sr.ticket_id = t.id
       LEFT JOIN auth.identities i ON i.id = t.owner_did
       LEFT JOIN LATERAL (
         SELECT value FROM auth.credentials

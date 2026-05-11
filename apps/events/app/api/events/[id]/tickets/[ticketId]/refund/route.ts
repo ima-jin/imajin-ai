@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { db, events, ticketTypes, ticketRegistrations } from '@/src/db';
+import { db, events, ticketTypes } from '@/src/db';
 import { isEventOrganizer } from '@/src/lib/organizer';
 
 const log = createLogger('events');
@@ -124,14 +124,12 @@ export async function POST(
 
     // Send refund notification email (fire-and-forget, non-fatal)
     try {
-      const [registration] = await db
-        .select()
-        .from(ticketRegistrations)
-        .where(eq(ticketRegistrations.ticketId, ticketId))
-        .limit(1);
+      const [surveyResponse] = await sqlClient`
+        SELECT answers FROM dykil.survey_responses WHERE ticket_id = ${ticketId} LIMIT 1
+      `;
 
-      if (registration?.email) {
-        customerEmail = registration.email;
+      if (surveyResponse?.answers?.email) {
+        customerEmail = surveyResponse.answers.email;
       } else if (ticket.owner_did) {
         const profileRows = await sqlClient`
           SELECT contact_email FROM profile.profiles WHERE did = ${ticket.owner_did} LIMIT 1
