@@ -304,32 +304,75 @@ function TicketRegistrationSurvey({ ticket, eventId, override, onComplete }: { t
   async function handleRegistrationComplete() {
     setIsRetrying(true);
     setLastError(null);
-    try {
-      const res = await apiFetch(`/api/register/${ticket.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formId: ticket.ticketType?.registrationFormId }),
-      });
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setRegStatus('complete');
-        onComplete?.(ticket.id, data.qrCodeDataUri);
-        toast.success('Registration completed successfully');
-        // Refresh server data so the state is durable after navigation
-        router.refresh();
-      } else {
+
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      console.log('[events:registration]', { ticketId: ticket.id, attempt, maxRetries }, 'POST attempt');
+      try {
+        const res = await apiFetch(`/api/register/${ticket.id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ formId: ticket.ticketType?.registrationFormId }),
+        });
+        console.log('[events:registration]', { ticketId: ticket.id, attempt, status: res.status }, 'POST response');
+
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setRegStatus('complete');
+          onComplete?.(ticket.id, data.qrCodeDataUri);
+          toast.success('Registration completed successfully');
+          // Refresh server data so the state is durable after navigation
+          router.refresh();
+          setIsRetrying(false);
+          return;
+        }
+
+        // Idempotent: 409 means already complete (not an error)
+        if (res.status === 409) {
+          setRegStatus('complete');
+          onComplete?.(ticket.id);
+          toast.success('Registration already complete');
+          router.refresh();
+          setIsRetrying(false);
+          return;
+        }
+
         const data = await res.json().catch(() => ({}));
         const msg = data.error || `Registration failed (${res.status})`;
-        setLastError(msg);
-        toast.error(msg);
+
+        // Client errors (4xx) — don't retry
+        if (res.status >= 400 && res.status < 500) {
+          setLastError(msg);
+          toast.error(msg);
+          setIsRetrying(false);
+          return;
+        }
+
+        // Server error (5xx) — retry with backoff unless last attempt
+        if (attempt === maxRetries) {
+          setLastError(msg);
+          toast.error(msg);
+          setIsRetrying(false);
+          return;
+        }
+        const backoff = 500 * Math.pow(2, attempt - 1);
+        console.log('[events:registration]', { ticketId: ticket.id, attempt, backoff }, 'retrying 5xx');
+        await new Promise(r => setTimeout(r, backoff));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Registration failed';
+        console.error('[events:registration]', { ticketId: ticket.id, attempt, error: msg }, 'POST network error');
+        if (attempt === maxRetries) {
+          setLastError(msg);
+          toast.error(msg);
+          setIsRetrying(false);
+          return;
+        }
+        const backoff = 500 * Math.pow(2, attempt - 1);
+        await new Promise(r => setTimeout(r, backoff));
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Registration failed';
-      setLastError(msg);
-      toast.error(msg);
-    } finally {
-      setIsRetrying(false);
     }
+
+    setIsRetrying(false);
   }
 
   if (!ticket.ticketType?.registrationFormId) return null;
