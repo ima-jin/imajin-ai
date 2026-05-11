@@ -67,7 +67,7 @@ describe('build402Response', () => {
     });
 
     expect(result.body.settlement.schemes).toEqual(['stripe-link', 'mjnx-direct']);
-    expect(result.headers['X-Settle-Stripe']).toBeDefined();
+    expect(result.headers['X-Settle-StripeLink']).toBeDefined();
     expect(result.headers['X-Settle-MjnxDirect']).toBeDefined();
     expect(result.headers['X-Settle-X402']).toBeUndefined();
   });
@@ -102,7 +102,7 @@ describe('build402Response', () => {
       },
     });
 
-    expect(result.headers['X-Settle-Stripe']).toBe('https://pay.stripe.com/link/test_123');
+    expect(result.headers['X-Settle-StripeLink']).toBe('https://pay.stripe.com/link/test_123');
     expect(result.headers['X-Settle-MjnxDirect']).toBe('mjnx:pay?to=did:imajin:owner123&amount=500');
     expect(result.body.settlement.urls).toEqual({
       'stripe-link': 'https://pay.stripe.com/link/test_123',

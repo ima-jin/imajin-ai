@@ -207,7 +207,7 @@ export async function GET(
           manifest: manifest as import("@imajin/fair").FairManifestV1_1,
           assetId: id,
           action,
-          supportedSchemes: ['stripe-link', 'mjnx-direct'],
+          supportedSchemes: ['mjnx-direct'],
           baseUrl,
         });
         return NextResponse.json(resp.body, { status: 402, headers: resp.headers });
