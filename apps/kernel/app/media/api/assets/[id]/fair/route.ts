@@ -3,7 +3,9 @@ import { readFile, writeFile } from "fs/promises";
 import { db, assets } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
-import type { FairManifest } from "@imajin/fair";
+import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
+import { isFairManifestV1_1 } from "@imajin/fair";
+import { signFairAsNode } from "@/src/lib/kernel/sign-fair-manifest";
 import { createLogger } from "@imajin/logger";
 
 const log = createLogger("kernel");
@@ -155,24 +157,36 @@ export async function PUT(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // v1.1 manifests are always node-signed. If the owner edited the content,
+  // the existing signature is over stale data — re-sign with the node key
+  // before persisting. v1.0 manifests are written through as-is for now.
+  let toPersist: FairManifest = manifest;
+  if (isFairManifestV1_1(manifest)) {
+    const result = await signFairAsNode(manifest as FairManifestV1_1);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+    toPersist = result.signed;
+  }
+
   // Update DB
   await db
     .update(assets)
-    .set({ fairManifest: manifest as unknown as Record<string, unknown> })
+    .set({ fairManifest: toPersist as unknown as Record<string, unknown> })
     .where(eq(assets.id, id));
 
-  // TODO(#894): On manual manifest upgrade, re-sign and re-publish to DFOS
-  // if the signature changes. Wire up publishContentEvent + update
+  // TODO(#894): On manual manifest upgrade, re-publish to DFOS so the
+  // updated signature propagates. Wire up publishContentEvent + update
   // assets.fair_dfos_event_id when D5 ships.
 
   // Update sidecar file if it exists
   if (asset.fairPath) {
     try {
-      await writeFile(asset.fairPath, JSON.stringify(manifest, null, 2));
+      await writeFile(asset.fairPath, JSON.stringify(toPersist, null, 2));
     } catch {
       // Non-fatal — DB is source of truth
     }
   }
 
-  return NextResponse.json({ ok: true, manifest });
+  return NextResponse.json({ ok: true, manifest: toPersist });
 }

@@ -266,11 +266,13 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   const metadata = asset.metadata as Record<string, unknown> | null;
   const exif = metadata?.exif as Record<string, unknown> | undefined;
 
-  // Determine manifest version and signing state
+  // Determine manifest version and signing state.
+  // The owner can always edit their own manifest (server re-signs on save with
+  // the node key). Non-owners get a read-only view whenever the manifest is
+  // signed — they have nothing to gain from local edits.
   const isV1_1 = fairManifest ? isFairManifestV1_1(fairManifest) : false;
   const isSigned = !!fairManifest && 'signature' in fairManifest && !!fairManifest.signature;
-  const isSigner = isSigned && currentDid === (fairManifest as FairManifestV1_1).signature?.signer;
-  const readOnlyEditor = isSigned && !isSigner;
+  const readOnlyEditor = isSigned && !isOwner;
 
   return (
     <div className="flex flex-1 overflow-hidden">

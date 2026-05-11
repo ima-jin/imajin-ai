@@ -77,37 +77,71 @@ function buildDefaults(mimeType: string): {
   };
 }
 
+const EPSILON = 0.001;
+
 /**
  * Convert a DidShareList from v1.0 attribution/chain format.
- * If the v1.0 attribution only has the owner, we apply the new 99/1 default.
- * Otherwise we preserve all entries and normalize shares if they sum > 1.
+ *
+ * Migration must produce a manifest that passes the totals=100% validator,
+ * otherwise the upgraded asset becomes uneditable garbage. We handle three
+ * cases:
+ *
+ *   1. Single creator entry — apply the new 99/1 default (owner + Imajin
+ *      platform). This covers both the canonical share=1.0 case and the
+ *      "share was bogus from v1.0" case (e.g. share=0.52 with no other
+ *      entries, which we saw in the wild on dev assets).
+ *
+ *   2. Multiple entries summing close to 1.0 — preserve as-is.
+ *
+ *   3. Multiple entries with shares interpreted as percentages (any single
+ *      share > 1, or total > 1.5) — divide by 100 first, then validate.
+ *
+ *   4. Multiple entries whose normalized shares still don't sum to 1.0 —
+ *      scale proportionally. Preserves the ratio the user intended while
+ *      ensuring the manifest validates.
  */
 function convertAttribution(
   v1_0: FairManifestV1_0,
 ): FairManifestV1_1['attribution'] {
   const entries = v1_0.attribution?.length ? v1_0.attribution : (v1_0.chain ?? []);
 
-  // If only a single creator entry with share=1.0, apply the new 99/1 default
-  if (
-    entries.length === 1 &&
-    entries[0].role === 'creator' &&
-    entries[0].share === 1.0
-  ) {
+  // Case 1: single creator entry — always apply the 99/1 default.
+  if (entries.length === 1 && entries[0].role === 'creator') {
     return [
       { did: v1_0.owner, role: 'creator', share: 0.99 },
       { role: 'platform', name: 'Imajin', share: 0.01 },
     ];
   }
 
-  // Otherwise preserve existing entries (they may not sum to 1.0, but that's user data)
-  return entries.map((e) => ({
+  if (entries.length === 0) {
+    return [
+      { did: v1_0.owner, role: 'creator', share: 0.99 },
+      { role: 'platform', name: 'Imajin', share: 0.01 },
+    ];
+  }
+
+  // Case 3: percentages-as-fractions — divide by 100.
+  const rawSum = entries.reduce((s, e) => s + (e.share ?? 0), 0);
+  const looksLikePercentages = entries.some((e) => (e.share ?? 0) > 1) || rawSum > 1.5;
+  const scale = looksLikePercentages ? 100 : 1;
+
+  const stage1 = entries.map((e) => ({
     did: e.did,
     role: e.role,
-    share: e.share,
+    share: (e.share ?? 0) / scale,
     name: e.name,
     note: e.note,
     chainProof: e.chainProof,
   }));
+
+  // Case 4: still not summing to 1.0 — scale proportionally.
+  const stage1Sum = stage1.reduce((s, e) => s + e.share, 0);
+  if (stage1Sum > 0 && Math.abs(stage1Sum - 1.0) > EPSILON) {
+    return stage1.map((e) => ({ ...e, share: e.share / stage1Sum }));
+  }
+
+  // Case 2: shares already sum to 1.0 within tolerance.
+  return stage1;
 }
 
 /**
