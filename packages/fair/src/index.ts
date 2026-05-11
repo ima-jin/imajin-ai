@@ -18,6 +18,8 @@ export type {
   FairCommercial,
   FairTransferV1_1,
   FairAccessV1_1,
+  Signature,
+  SignedFairManifest,
 } from './types';
 export { isFairManifestV1_1 } from './types';
 
