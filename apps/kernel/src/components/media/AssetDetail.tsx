@@ -142,6 +142,8 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   const [transcript, setTranscript] = useState<Record<string, unknown> | null>(
     () => (asset.metadata as Record<string, unknown> | null)?.transcript as Record<string, unknown> | null ?? null
   );
+  const [upgradingFair, setUpgradingFair] = useState(false);
+  const [upgradeError, setUpgradeError] = useState<string | null>(null);
 
   const isImage = asset.mimeType.startsWith("image/");
   const isAudio = asset.mimeType.startsWith("audio/");
@@ -219,6 +221,34 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(manifest),
     }).catch(() => {});
+  };
+
+  const handleUpgradeFair = async () => {
+    if (!confirm(
+      "Upgrade this asset's `.fair` manifest? Existing values preserved; new primitives added with defaults including AI training opt-out."
+    )) {
+      return;
+    }
+    setUpgradingFair(true);
+    setUpgradeError(null);
+    try {
+      const res = await fetch(`/media/api/assets/${asset.id}/upgrade-fair`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setUpgradeError(data.error || "Upgrade failed");
+        return;
+      }
+      if (data.manifest) {
+        setFairManifest(data.manifest as FairManifest);
+      }
+    } catch {
+      setUpgradeError("Network error");
+    } finally {
+      setUpgradingFair(false);
+    }
   };
 
   const handleMove = async (folderId: string) => {
@@ -511,15 +541,19 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
             </div>
           )}
 
-          {/* v1.0 → v1.1 upgrade placeholder (Commit 5/6 will wire the actual button) */}
+          {/* v1.0 → v1.1 upgrade button */}
           {fairManifest && !isV1_1 && isOwner && (
-            <div className="mt-2">
+            <div className="mt-2 space-y-2">
               <button
-                disabled
-                className="w-full py-1.5 text-xs bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-lg opacity-50 cursor-not-allowed"
+                onClick={handleUpgradeFair}
+                disabled={upgradingFair}
+                className="w-full py-1.5 text-xs bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-lg hover:bg-orange-500/20 transition-colors disabled:opacity-50"
               >
-                Upgrade to v1.1 (coming soon)
+                {upgradingFair ? "Upgrading…" : "Upgrade to v1.1"}
               </button>
+              {upgradeError && (
+                <p className="text-xs text-red-400">{upgradeError}</p>
+              )}
             </div>
           )}
         </div>
