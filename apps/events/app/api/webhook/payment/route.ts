@@ -475,9 +475,17 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     currency: currency.toUpperCase(),
   }).format(amountTotal / 100 / quantity);
 
-  // Deep link: if registration required, go to the registration form; otherwise my-tickets
-  const registrationUrl = ticketType.requiresRegistration
-    ? `${EVENTS_URL}/${event.id}/register/${createdTickets[0].id}`
+  // Split tickets by whether their type requires registration
+  const bundleTickets = createdTickets.filter((t) => !ticketType.requiresRegistration);
+  const registrationPendingTickets = createdTickets.filter(
+    (t) => ticketType.requiresRegistration && t.registrationStatus !== 'complete'
+  );
+
+  // CTA targets: the first pending-and-required ticket, falling back to my-tickets
+  const ctaTicket = registrationPendingTickets[0] ?? null;
+  const anyPendingRegistration = registrationPendingTickets.length > 0;
+  const registrationUrl = ctaTicket
+    ? `${EVENTS_URL}/${event.id}/register/${ctaTicket.id}`
     : `${EVENTS_URL}/${event.id}/my-tickets`;
 
   // Always publish a purchase receipt to the buyer
@@ -497,7 +505,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         paymentMethod: paymentId ? 'Credit Card' : 'E-Transfer',
         registrationUrl,
         eventImageUrl,
-        hasRegistrationRequired: ticketType.requiresRegistration,
+        hasRegistrationRequired: anyPendingRegistration,
         context_id: event.id,
         context_type: 'event',
       },
@@ -506,31 +514,38 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     log.error({ customerEmail, err: String(emailError) }, '[webhook] Purchase receipt publish failed');
   }
 
-  // Only publish the ticket confirmation (with QR) immediately for non-registration tickets
-  if (!ticketType.requiresRegistration) {
+  // Only publish the ticket confirmation (with QR) immediately for no-registration tickets
+  if (bundleTickets.length > 0) {
     try {
-      // Generate QR codes for ALL tickets in the order
+      // Generate QR codes for the bundle subset
       const ticketsWithQr = await Promise.all(
-        createdTickets.map(async (t) => ({
+        bundleTickets.map(async (t) => ({
           id: t.id,
           qrCodeDataUri: await generateQRCode(t.id),
         }))
       );
+      // Recompute formatted price for the bundle subset
+      const bundleCents = bundleTickets.reduce((sum, t) => sum + (t.pricePaid ?? 0), 0);
+      const bundleFormatted = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency.toUpperCase(),
+      }).format(bundleCents / 100);
 
       publish('ticket.confirmed', {
         issuer: ownerDid,
         subject: ownerDid,
         scope: 'events',
         payload: {
+          to: customerEmail,
           email: customerEmail,
           eventTitle: event.title,
           ticketType: ticketType.name,
-          ticketId: createdTickets[0].id,
+          ticketId: bundleTickets[0].id,
           eventDate: formattedEventDate,
           eventTime: formattedEventTime,
           isVirtual: event.isVirtual ?? false,
           venue: event.venue ?? undefined,
-          price: formattedTotal,
+          price: bundleFormatted,
           magicLink,
           eventImageUrl,
           eventUrl: `${EVENTS_URL}/${event.id}`,
