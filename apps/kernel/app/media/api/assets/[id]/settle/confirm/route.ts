@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, settlements } from "@/src/db";
 import { eq } from "drizzle-orm";
-import { signReceipt, loadSigningKey } from "@imajin/fair";
+import { signReceipt, loadSigningKey, receiptExpiryForAction } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 import Stripe from "stripe";
 
@@ -131,6 +131,7 @@ async function handleStripeWebhook(request: NextRequest): Promise<NextResponse> 
         amount: settlement.amount,
         currency: settlement.currency,
         manifestDigest: settlement.fairManifestDigest,
+        exp: receiptExpiryForAction(settlement.action),
       },
       signKey
     );
@@ -238,6 +239,7 @@ async function handleMjnxConfirmation(request: NextRequest): Promise<NextRespons
         amount: settlement.amount,
         currency: settlement.currency,
         manifestDigest: settlement.fairManifestDigest,
+        exp: receiptExpiryForAction(settlement.action),
       },
       signKey
     );

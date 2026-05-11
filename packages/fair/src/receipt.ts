@@ -109,6 +109,21 @@ export async function verifyReceipt(
  *
  * Expects AUTH_PRIVATE_KEY format: 64-byte hex string.
  */
+/**
+ * Suggested expiration for a receipt based on action type.
+ * - reproduction: 30 days
+ * - streaming: 24 hours
+ * - derivative: 30 days
+ * - syndication: 30 days
+ */
+export function receiptExpiryForAction(action: string): number {
+  const now = Math.floor(Date.now() / 1000);
+  if (action === 'streaming') {
+    return now + 24 * 60 * 60;
+  }
+  return now + 30 * 24 * 60 * 60;
+}
+
 export async function loadSigningKey(privateKeyHex: string): Promise<jose.KeyLike> {
   const privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
   const pkcs8Pem = `-----BEGIN PRIVATE KEY-----\n${privateKeyBytes.toString('base64')}\n-----END PRIVATE KEY-----`;

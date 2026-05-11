@@ -68,3 +68,6 @@ export { upgradeToV1_1 } from './upgrade';
 
 export { build402Response } from './http-402';
 export type { Build402ResponseOpts, Fair402Response, FairAction } from './http-402';
+
+export { signReceipt, verifyReceipt, loadSigningKey, loadVerifyKey, receiptExpiryForAction } from './receipt';
+export type { ReceiptPayload } from './receipt';

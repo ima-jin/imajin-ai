@@ -3,7 +3,7 @@ import { readFile, unlink, rename, stat, open } from "fs/promises";
 import path from "path";
 import { db, assets, settlements, accessLog } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { createReadStream } from "fs";
 import type { FairManifest } from "@imajin/fair";
 import { isFairManifestV1_1, build402Response, verifyReceipt, loadVerifyKey } from "@imajin/fair";
@@ -254,6 +254,27 @@ export async function GET(
 
     if (!settlement) {
       return NextResponse.json({ error: "Settlement not found" }, { status: 402 });
+    }
+
+    // Replay protection: check for excessive access from same settlement
+    const replayWindow = new Date(Date.now() - 60 * 60 * 1000); // 1 hour
+    const recentAccessCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(accessLog)
+      .where(
+        and(
+          eq(accessLog.settlementId, settlement.id),
+          sql`${accessLog.at} > ${replayWindow}`
+        )
+      );
+
+    const accessCount = recentAccessCount[0]?.count ?? 0;
+    if (accessCount > 100) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded for this settlement" },
+        { status: 429 }
+      );
+    }
     }
 
     // Log access
