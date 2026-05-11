@@ -146,6 +146,14 @@ export interface SignedFairManifest extends FairManifestV1_1 {
   signature: Signature;
 }
 
+export type SettlementScheme = 'x402' | 'stripe-link' | 'mjnx-direct' | 'solana-pay' | 'lightning';
+
+export interface SettlementConfig {
+  endpoint?: string;             // override convention
+  schemes?: SettlementScheme[];  // override server's default list
+  fallback?: SettlementScheme;   // preferred for human checkout
+}
+
 export interface FairManifestV1_1 {
   fair: string; // "1.1"
   version: '1.1';
@@ -171,6 +179,7 @@ export interface FairManifestV1_1 {
   intent?: FairIntent;
   signature?: Signature;
   tipping?: { enabled: boolean };
+  settlement?: SettlementConfig;
   // backward compat aliases
   distributions?: DidShareList;
   chain?: DidShareList;

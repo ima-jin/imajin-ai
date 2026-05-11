@@ -202,6 +202,56 @@ describe('validateManifest v1.1', () => {
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.includes('sum'))).toBe(true);
   });
+
+  it('accepts settlement when present and valid', () => {
+    const result = validateManifest(
+      makeValidV1_1({
+        settlement: {
+          endpoint: 'https://custom.example.com/settle',
+          schemes: ['stripe-link', 'mjnx-direct'],
+          fallback: 'stripe-link',
+        },
+      }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('accepts manifest without settlement field', () => {
+    const manifest = makeValidV1_1();
+    delete (manifest as Record<string, unknown>).settlement;
+    const result = validateManifest(manifest);
+    expect(result.ok).toBe(true);
+  });
+
+  it('fails when settlement.endpoint is not a string', () => {
+    const result = validateManifest(
+      makeValidV1_1({
+        settlement: { endpoint: 123 } as unknown as Record<string, unknown>,
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes('settlement.endpoint'))).toBe(true);
+  });
+
+  it('fails when settlement.schemes contains invalid scheme', () => {
+    const result = validateManifest(
+      makeValidV1_1({
+        settlement: { schemes: ['stripe-link', 'bogus'] } as unknown as Record<string, unknown>,
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes('invalid scheme'))).toBe(true);
+  });
+
+  it('fails when settlement.fallback is invalid', () => {
+    const result = validateManifest(
+      makeValidV1_1({
+        settlement: { fallback: 'bogus' } as unknown as Record<string, unknown>,
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes('settlement.fallback'))).toBe(true);
+  });
 });
 
 // ─── D1: upgradeToV1_1 ──────────────────────────────────────────────────────

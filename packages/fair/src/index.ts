@@ -20,6 +20,8 @@ export type {
   FairAccessV1_1,
   Signature,
   SignedFairManifest,
+  SettlementScheme,
+  SettlementConfig,
 } from './types';
 export { isFairManifestV1_1 } from './types';
 
