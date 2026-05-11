@@ -29,6 +29,7 @@ export function SurveyAccordion({
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [iframeHeight, setIframeHeight] = useState(600);
   const [isCompleted, setIsCompleted] = useState(initialCompleted);
+  const isCompletingRef = useRef(false);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -77,18 +78,30 @@ export function SurveyAccordion({
       if (event.data.type === 'survey-height') {
         setIframeHeight(event.data.height + 40); // Add some padding
       } else if (event.data.type === 'survey-completed') {
+        // Guard against double-fire from iframe or React strict mode
+        if (isCompletingRef.current) return;
+
         // Store hint for optimistic UI on other components
         try { localStorage.setItem(storageKey, 'true'); } catch {}
         // Call onComplete first (which registers the response in DB),
         // then mark completed and collapse. Don't fetchStatus here —
         // the DB update hasn't happened yet at this point.
         const finish = () => {
+          isCompletingRef.current = false;
           setIsCompleted(true);
           setIsExpanded(false);
         };
         if (onComplete) {
-          // onComplete handles the DB write; mark done after it resolves
-          Promise.resolve(onComplete()).then(finish).catch(finish);
+          // onComplete handles the DB write; mark done after it resolves.
+          // If it fails, DO NOT collapse — keep the accordion open so the
+          // user sees the error and can retry. This prevents silent failures
+          // where the user thinks they're done but the ticket is still pending.
+          isCompletingRef.current = true;
+          Promise.resolve(onComplete()).then(finish).catch((err) => {
+            console.error('[events:survey-accordion] onComplete failed:', err);
+            isCompletingRef.current = false;
+            // Leave accordion expanded and isCompleted false so user can retry
+          });
         } else {
           finish();
         }

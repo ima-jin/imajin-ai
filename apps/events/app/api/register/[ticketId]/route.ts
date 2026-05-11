@@ -8,104 +8,87 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createLogger } from '@imajin/logger';
+import { withLogger } from '@imajin/logger';
 import { db, tickets } from '@/src/db';
-
-const log = createLogger('events');
 import { eq } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { ticketId: string } }
-) {
-  try {
-    const { ticketId } = params;
+export const POST = withLogger('events', async (request, { log }) => {
+  const ticketId = request.nextUrl.pathname.split('/').pop()!;
 
-    // Load ticket
-    const [ticket] = await db
-      .select()
-      .from(tickets)
-      .where(eq(tickets.id, ticketId))
-      .limit(1);
+  log.info({ ticketId }, 'registration POST attempt');
 
-    if (!ticket) {
-      return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
-    }
+  // Load ticket
+  const [ticket] = await db
+    .select()
+    .from(tickets)
+    .where(eq(tickets.id, ticketId))
+    .limit(1);
 
-    if (ticket.registrationStatus !== 'pending') {
-      return NextResponse.json(
-        { error: `Ticket registration status is '${ticket.registrationStatus}', expected 'pending'` },
-        { status: 409 }
-      );
-    }
+  if (!ticket) {
+    log.warn({ ticketId }, 'ticket not found');
+    return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
+  }
 
-    // Verify Dykil survey response exists for this ticket
-    const sql = getClient();
-    const [surveyResponse] = await sql`
-      SELECT id FROM dykil.survey_responses WHERE ticket_id = ${ticketId} LIMIT 1
-    `;
+  log.info({ ticketId, currentStatus: ticket.registrationStatus }, 'ticket loaded');
 
-    if (!surveyResponse) {
-      return NextResponse.json(
-        { error: 'No survey response found for this ticket' },
-        { status: 404 }
-      );
-    }
-
-    await db
-      .update(tickets)
-      .set({ registrationStatus: 'complete' })
-      .where(eq(tickets.id, ticket.id));
-
-    return NextResponse.json({ success: true });
-
-  } catch (error) {
-    log.error({ err: String(error) }, 'Registration error');
+  if (ticket.registrationStatus !== 'pending') {
+    log.warn({ ticketId, status: ticket.registrationStatus }, 'ticket not pending (idempotent)');
     return NextResponse.json(
-      { error: 'Failed to complete registration' },
-      { status: 500 }
+      { error: `Ticket registration status is '${ticket.registrationStatus}', expected 'pending'` },
+      { status: 409 }
     );
   }
-}
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { ticketId: string } }
-) {
-  try {
-    const { ticketId } = params;
+  // Verify Dykil survey response exists for this ticket
+  const sql = getClient();
+  const [surveyResponse] = await sql`
+    SELECT id FROM dykil.survey_responses WHERE ticket_id = ${ticketId} LIMIT 1
+  `;
 
-    const sql = getClient();
-    const [response] = await sql`
-      SELECT id, survey_id, answers, created_at
-      FROM dykil.survey_responses
-      WHERE ticket_id = ${ticketId}
-      LIMIT 1
-    `;
-
-    if (!response) {
-      return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
-    }
-
-    // Backwards-compatible shape
-    const registration = {
-      id: response.id,
-      ticketId,
-      formId: response.survey_id,
-      responseId: response.id,
-      name: response.answers?.full_name || response.answers?.name || null,
-      email: response.answers?.email || null,
-      registeredAt: response.created_at,
-    };
-
-    return NextResponse.json({ registration });
-
-  } catch (error) {
-    log.error({ err: String(error) }, 'Registration lookup error');
+  if (!surveyResponse) {
+    log.warn({ ticketId }, 'no survey response found for ticket');
     return NextResponse.json(
-      { error: 'Failed to look up registration' },
-      { status: 500 }
+      { error: 'No survey response found for this ticket' },
+      { status: 404 }
     );
   }
-}
+
+  await db
+    .update(tickets)
+    .set({ registrationStatus: 'complete' })
+    .where(eq(tickets.id, ticket.id));
+
+  log.info({ ticketId }, 'registration status updated to complete');
+
+  return NextResponse.json({ success: true });
+});
+
+export const GET = withLogger('events', async (request) => {
+  const ticketId = request.nextUrl.pathname.split('/').pop()!;
+
+  const sql = getClient();
+  const [response] = await sql`
+    SELECT id, survey_id, answers, created_at
+    FROM dykil.survey_responses
+    WHERE ticket_id = ${ticketId}
+    LIMIT 1
+  `;
+
+  if (!response) {
+    return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
+  }
+
+  // Backwards-compatible shape
+  const registration = {
+    id: response.id,
+    ticketId,
+    formId: response.survey_id,
+    responseId: response.id,
+    name: response.answers?.full_name || response.answers?.name || null,
+    email: response.answers?.email || null,
+    registeredAt: response.created_at,
+  };
+
+  return NextResponse.json({ registration });
+});
