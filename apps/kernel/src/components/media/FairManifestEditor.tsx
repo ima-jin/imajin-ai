@@ -272,7 +272,9 @@ export function FairManifestEditor({
           <span className="text-gray-600 text-xs">v{local.version || local.fair || '1.0'}</span>
           {isSigned && (
             <span className="text-[10px] px-1.5 py-0.5 bg-emerald-900/30 border border-emerald-700/50 rounded-full text-emerald-400">
-              {isSigner ? 'Signed by you' : `Signed by ${local.signature!.signer.slice(0, 12)}…`}
+              {isSigner
+                ? 'Signed by you'
+                : `Signed by ${local.signature!.signer.slice(0, 16)}…`}
             </span>
           )}
         </div>
@@ -280,6 +282,29 @@ export function FairManifestEditor({
           <span className="text-[10px] text-gray-500">(re-signing on save)</span>
         )}
       </div>
+
+      {/* Signature details */}
+      {isSigned && (
+        <div className="bg-[#1a1a1a] rounded-lg p-2 space-y-1">
+          <p className="text-[10px] text-gray-500">
+            Signed by{' '}
+            <code className="text-gray-400">{local.signature!.signer}</code>
+            {' '}on{' '}
+            {local.signature!.signedAt
+              ? new Date(local.signature!.signedAt).toLocaleDateString()
+              : 'unknown date'}
+          </p>
+          {/* DFOS anchoring — from #897 / #882 */}
+          {'fair_dfos_event_id' in local && (local as Record<string, unknown>).fair_dfos_event_id && (
+            <p className="text-[10px] text-gray-500">
+              Anchored on DFOS:{" "}
+              <code className="text-gray-400">
+                {(local as Record<string, unknown>).fair_dfos_event_id as string}
+              </code>
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Validation summary */}
       {!validation.ok && (
