@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, assets } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
-import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
-import { upgradeToV1_1, signManifest } from "@imajin/fair";
+import type { FairManifest } from "@imajin/fair";
+import { upgradeToV1_1 } from "@imajin/fair";
 import { getNodeDid } from "@/src/lib/kernel/node-identity";
+import { signFairAsNode } from "@/src/lib/kernel/sign-fair-manifest";
 import { createLogger } from "@imajin/logger";
 import * as bus from "@imajin/bus";
 
@@ -86,48 +87,13 @@ export async function POST(
   // 5. Upgrade to v1.1
   const upgraded = upgradeToV1_1(normalized as unknown as FairManifest);
 
-  // 5. Sign with platform/node key
-  const privateKeyHex = process.env.AUTH_PRIVATE_KEY;
-  if (!privateKeyHex) {
-    log.error({}, "AUTH_PRIVATE_KEY not configured — cannot sign upgraded manifest");
-    return NextResponse.json(
-      { error: "Signing key not available" },
-      { status: 500 }
-    );
+  // 6. Sign with node key (shared helper — same path as PUT /fair).
+  const signResult = await signFairAsNode(upgraded);
+  if (!signResult.ok) {
+    return NextResponse.json({ error: signResult.error }, { status: signResult.status });
   }
-
+  const signed = signResult.signed;
   const nodeDid = await getNodeDid();
-
-  // AUTH_PRIVATE_KEY may be either:
-  //   - 32-byte raw Ed25519 seed (64 hex chars), or
-  //   - 48-byte PKCS8 DER (96 hex chars, with 16-byte algorithm-OID prefix).
-  // Noble wants the 32-byte raw seed.
-  const keyBuf = Buffer.from(privateKeyHex, "hex");
-  let seedBytes: Uint8Array;
-  if (keyBuf.length === 32) {
-    seedBytes = new Uint8Array(keyBuf);
-  } else if (keyBuf.length === 48) {
-    // PKCS8 DER: SEQUENCE { INTEGER 0, SEQUENCE { OID 1.3.101.112 }, OCTET STRING { OCTET STRING { <32 bytes> } } }
-    // Last 32 bytes are the seed.
-    seedBytes = new Uint8Array(keyBuf.subarray(16));
-  } else {
-    log.error({ len: keyBuf.length }, "AUTH_PRIVATE_KEY wrong length (expected 32 or 48 bytes)");
-    return NextResponse.json({ error: "Signing key has wrong length" }, { status: 500 });
-  }
-
-  let signed: FairManifestV1_1;
-  try {
-    signed = await signManifest(upgraded, {
-      did: nodeDid,
-      privateKey: seedBytes,
-    });
-  } catch (err) {
-    log.error({ err: String(err) }, "Failed to sign upgraded manifest");
-    return NextResponse.json(
-      { error: "Signing failed" },
-      { status: 500 }
-    );
-  }
 
   // 6. Persist to DB
   try {

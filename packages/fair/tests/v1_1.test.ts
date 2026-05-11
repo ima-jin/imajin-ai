@@ -347,6 +347,85 @@ describe('upgradeToV1_1', () => {
     const result = upgradeToV1_1(v1_0 as any);
     expect(result.distribution?.derivative?.sync?.allowed).toBe('reserved');
   });
+
+  // Regression: a single-creator v1.0 manifest with a non-1.0 share
+  // (e.g. 0.52 from misuse of the share field) used to be migrated
+  // verbatim, producing a v1.1 manifest that failed the totals=100%
+  // validator and became uneditable in the UI.
+  it('normalizes a single-creator entry with a bogus share to the 99/1 default', () => {
+    const v1_0 = {
+      fair: '1.0',
+      id: 'asset_old',
+      type: 'image/png',
+      owner: 'did:imajin:owner',
+      created: '2024-01-01T00:00:00Z',
+      access: 'public',
+      attribution: [{ did: 'did:imajin:owner', role: 'creator', share: 0.52 }],
+    };
+    const result = upgradeToV1_1(v1_0 as any);
+    expect(result.attribution).toHaveLength(2);
+    const total = result.attribution.reduce((s: number, e) => s + e.share, 0);
+    expect(Math.abs(total - 1.0)).toBeLessThan(0.001);
+    expect(result.attribution[0].did).toBe('did:imajin:owner');
+    expect(result.attribution[0].share).toBe(0.99);
+  });
+
+  it('treats percentage-style multi-entry attribution (sum 100) as fractions', () => {
+    const v1_0 = {
+      fair: '1.0',
+      id: 'asset_old',
+      type: 'image/png',
+      owner: 'did:imajin:owner',
+      created: '2024-01-01T00:00:00Z',
+      access: 'public',
+      attribution: [
+        { did: 'did:imajin:a', role: 'creator', share: 70 },
+        { did: 'did:imajin:b', role: 'collaborator', share: 30 },
+      ],
+    };
+    const result = upgradeToV1_1(v1_0 as any);
+    const total = result.attribution.reduce((s: number, e) => s + e.share, 0);
+    expect(Math.abs(total - 1.0)).toBeLessThan(0.001);
+    expect(result.attribution[0].share).toBeCloseTo(0.7, 6);
+    expect(result.attribution[1].share).toBeCloseTo(0.3, 6);
+  });
+
+  it('proportionally scales multi-entry attribution that does not sum to 1', () => {
+    const v1_0 = {
+      fair: '1.0',
+      id: 'asset_old',
+      type: 'image/png',
+      owner: 'did:imajin:owner',
+      created: '2024-01-01T00:00:00Z',
+      access: 'public',
+      attribution: [
+        { did: 'did:imajin:a', role: 'creator', share: 0.3 },
+        { did: 'did:imajin:b', role: 'collaborator', share: 0.2 },
+      ],
+    };
+    const result = upgradeToV1_1(v1_0 as any);
+    const total = result.attribution.reduce((s: number, e) => s + e.share, 0);
+    expect(Math.abs(total - 1.0)).toBeLessThan(0.001);
+    // Ratio preserved: 0.3:0.2 → 0.6:0.4
+    expect(result.attribution[0].share).toBeCloseTo(0.6, 6);
+    expect(result.attribution[1].share).toBeCloseTo(0.4, 6);
+  });
+
+  it('falls back to 99/1 default when v1.0 attribution is empty', () => {
+    const v1_0 = {
+      fair: '1.0',
+      id: 'asset_old',
+      type: 'image/png',
+      owner: 'did:imajin:owner',
+      created: '2024-01-01T00:00:00Z',
+      access: 'public',
+      attribution: [],
+    };
+    const result = upgradeToV1_1(v1_0 as any);
+    expect(result.attribution).toHaveLength(2);
+    expect(result.attribution[0].share).toBe(0.99);
+    expect(result.attribution[1].share).toBe(0.01);
+  });
 });
 
 // ─── D2: sign/verify ────────────────────────────────────────────────────────
