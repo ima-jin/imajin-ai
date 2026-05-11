@@ -105,6 +105,7 @@ export const settlements = mediaSchema.table(
     amount: integer("amount").notNull(),                      // minor units
     currency: text("currency").notNull(),
     scheme: text("scheme").notNull(),                         // x402 | stripe-link | mjnx-direct | ...
+    status: text("status").notNull().default("pending"),      // pending | completed
     receiptToken: text("receipt_token").notNull(),            // signed JWT
     externalReceiptId: text("external_receipt_id"),           // scheme-specific id (Stripe charge id, etc.)
     fairManifestDigest: text("fair_manifest_digest").notNull(), // sha256: of manifest at time of settle
