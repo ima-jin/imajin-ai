@@ -10,7 +10,9 @@ import { eq, and, sql, isNull } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/media/classify";
 import { rateLimit, getClientIP } from "@/src/lib/kernel/rate-limit";
 import { createLogger } from "@imajin/logger";
-import { getDefaultManifest } from "@imajin/fair";
+import { getDefaultManifest, signManifest, canonicalize } from "@imajin/fair";
+import { publishContentEvent } from "@imajin/dfos";
+import { hexToBytes } from "@imajin/auth";
 
 const log = createLogger("kernel");
 
@@ -225,10 +227,25 @@ export async function POST(request: NextRequest) {
   fairManifest.created = new Date().toISOString();
   fairManifest.access = { type: accessLevel };
 
+  // Sign the manifest with the platform key
+  const platformDid = process.env.PLATFORM_DID;
+  const platformKeyHex = process.env.AUTH_PRIVATE_KEY;
+  let signedManifest = fairManifest;
+  if (platformDid && platformKeyHex) {
+    try {
+      signedManifest = await signManifest(
+        fairManifest,
+        { did: platformDid, privateKey: hexToBytes(platformKeyHex) }
+      );
+    } catch (err) {
+      log.warn({ err: String(err) }, "Manifest signing failed, using unsigned manifest");
+    }
+  }
+
   try {
     await mkdir(dirPath, { recursive: true });
     await writeFile(storagePath, buffer);
-    await writeFile(fairPath, JSON.stringify(fairManifest, null, 2));
+    await writeFile(fairPath, JSON.stringify(signedManifest, null, 2));
   } catch (err) {
     log.error({ err: String(err) }, "Storage write failed");
     return NextResponse.json(
@@ -250,7 +267,7 @@ export async function POST(request: NextRequest) {
         size: file.size,
         storagePath,
         hash,
-        fairManifest,
+        fairManifest: signedManifest,
         fairPath,
         status: "active",
         metadata: context ? { context } : {},
@@ -262,6 +279,32 @@ export async function POST(request: NextRequest) {
       { error: "Database failure", detail: String(err) },
       { status: 500 }
     );
+  }
+
+  // Publish signed manifest to DFOS federation (best-effort, never blocks upload)
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
+  const manifestUrl = `${baseUrl}/media/api/assets/${assetId}/fair`;
+  const manifestDigest = createHash("sha256").update(canonicalize(signedManifest)).digest("hex");
+
+  try {
+    const dfosResult = await publishContentEvent({
+      topic: "fair.manifest.published",
+      payload: {
+        assetId,
+        ownerDid,
+        manifestDigest: `sha256:${manifestDigest}`,
+        manifestUrl,
+        fairVersion: (signedManifest as { fair?: string }).fair || "1.1",
+        signedAt: new Date().toISOString(),
+      },
+    });
+    // Store the DFOS event ID on the asset record
+    await db
+      .update(assets)
+      .set({ fairDfosEventId: dfosResult.eventId })
+      .where(eq(assets.id, assetId));
+  } catch (err) {
+    log.error({ err: String(err), assetId }, "DFOS publish failed (non-fatal)");
   }
 
   // Auto-assign to folder based on context
@@ -298,7 +341,6 @@ export async function POST(request: NextRequest) {
   }
 
   // Build public URL — use configured base URL, not request origin (which may be localhost behind reverse proxy)
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
   const url = `${baseUrl}/media/api/assets/${record.id}`;
 
   const response = NextResponse.json(
