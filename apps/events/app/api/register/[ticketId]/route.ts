@@ -9,14 +9,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { db, tickets, events, ticketTypes, ticketRegistrations } from '@/src/db';
-import { revalidatePath } from 'next/cache';
+import { db, tickets } from '@/src/db';
 
 const log = createLogger('events');
-import { eq, and } from 'drizzle-orm';
-import { randomBytes } from 'crypto';
-import { generateQRCode } from '@/src/lib/email';
-import { publish } from '@imajin/bus';
+import { eq } from 'drizzle-orm';
+import { getClient } from '@imajin/db';
 
 export async function POST(
   request: NextRequest,
@@ -24,25 +21,6 @@ export async function POST(
 ) {
   try {
     const { ticketId } = params;
-
-    const body = await request.json();
-    const { name, email, formId, responseId, registeredByDid } = body;
-
-    if (!formId) {
-      return NextResponse.json(
-        { error: 'formId is required' },
-        { status: 400 }
-      );
-    }
-
-    // Name/email required only for simple forms (no Dykil survey)
-    const isDykilForm = formId.startsWith('survey_');
-    if (!isDykilForm && (!name || !email)) {
-      return NextResponse.json(
-        { error: 'name and email are required' },
-        { status: 400 }
-      );
-    }
 
     // Load ticket
     const [ticket] = await db
@@ -62,168 +40,30 @@ export async function POST(
       );
     }
 
-    // Load event for config checks
-    const [event] = await db
-      .select()
-      .from(events)
-      .where(eq(events.id, ticket.eventId))
-      .limit(1);
+    // Verify Dykil survey response exists for this ticket
+    const sql = getClient();
+    const [surveyResponse] = await sql`
+      SELECT id FROM dykil.survey_responses WHERE ticket_id = ${ticketId} LIMIT 1
+    `;
 
-    if (!event) {
-      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    if (!surveyResponse) {
+      return NextResponse.json(
+        { error: 'No survey response found for this ticket' },
+        { status: 404 }
+      );
     }
-
-    const regConfig = (event.registrationConfig || {}) as {
-      enforce_unique_emails?: boolean;
-      registration_deadline?: string;
-    };
-
-    // Check registration deadline
-    if (regConfig.registration_deadline) {
-      const deadline = new Date(regConfig.registration_deadline);
-      if (new Date() > deadline) {
-        return NextResponse.json(
-          { error: 'Registration deadline has passed' },
-          { status: 422 }
-        );
-      }
-    }
-
-    // Check email uniqueness across event
-    if (regConfig.enforce_unique_emails && email) {
-      const [existing] = await db
-        .select({ id: ticketRegistrations.id })
-        .from(ticketRegistrations)
-        .where(
-          and(
-            eq(ticketRegistrations.eventId, event.id),
-            eq(ticketRegistrations.email, email.toLowerCase().trim())
-          )
-        )
-        .limit(1);
-
-      if (existing) {
-        return NextResponse.json(
-          { error: 'An registration with this email already exists for this event' },
-          { status: 409 }
-        );
-      }
-    }
-
-    const registrationId = `reg_${randomBytes(8).toString('hex')}`;
-
-    const [registration] = await db
-      .insert(ticketRegistrations)
-      .values({
-        id: registrationId,
-        ticketId: ticket.id,
-        eventId: event.id,
-        name: name?.trim() || null,
-        email: email?.toLowerCase().trim() || null,
-        formId,
-        responseId: responseId || null,
-        registeredByDid: registeredByDid || null,
-      })
-      .returning();
 
     await db
       .update(tickets)
       .set({ registrationStatus: 'complete' })
       .where(eq(tickets.id, ticket.id));
 
-    // Notify attendee — fire and forget
-    if (ticket.ownerDid && registration.email) {
-      publish('event.registration', {
-        issuer: ticket.ownerDid,
-        subject: ticket.ownerDid,
-        scope: 'events',
-        payload: {
-          eventTitle: event.title,
-          email: registration.email,
-          context_id: event.id,
-          context_type: 'event',
-        },
-      }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
-
-      publish('event.rsvp', {
-        issuer: ticket.ownerDid,
-        subject: '',
-        scope: 'events',
-        payload: {
-          context_id: event.id,
-          context_type: 'event',
-          interestDids: [ticket.ownerDid],
-        },
-      }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
-    }
-
-    // Send ticket confirmation via bus (skip if no email, e.g. Dykil form)
-    let qrCodeDataUri: string | undefined;
-    if (registration.email) try {
-      const [ticketType] = await db
-        .select()
-        .from(ticketTypes)
-        .where(eq(ticketTypes.id, ticket.ticketTypeId))
-        .limit(1);
-
-      const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
-      const eventDate = new Date(event.startsAt);
-      const eventImageUrl = event.imageUrl
-        ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
-        : undefined;
-
-      qrCodeDataUri = await generateQRCode(ticket.id);
-
-      publish('ticket.registration.completed', {
-        issuer: ticket.ownerDid || '',
-        subject: ticket.ownerDid || '',
-        scope: 'events',
-        payload: {
-          email: registration.email,
-          eventTitle: event.title,
-          ticketType: ticketType?.name ?? 'Ticket',
-          ticketId: ticket.id,
-          eventDate: eventDate.toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          }),
-          eventTime: eventDate.toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            timeZoneName: 'short',
-          }),
-          isVirtual: event.isVirtual ?? false,
-          venue: event.venue ?? undefined,
-          price: ticket.pricePaid != null
-            ? new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: ticket.currency || 'USD',
-              }).format(ticket.pricePaid / 100)
-            : 'Included',
-          magicLink: `${EVENTS_URL}/${event.id}`,
-          eventImageUrl,
-          eventUrl: `${EVENTS_URL}/${event.id}`,
-          qrCodeDataUri,
-          context_id: event.id,
-          context_type: 'event',
-        },
-      }).catch((err) => log.error({ err: String(err) }, 'Registration completed publish error'));
-    } catch (emailError) {
-      // Non-fatal: log but don't fail the registration
-      log.error({ err: String(emailError) }, 'Failed to publish ticket registration completed event');
-    }
-
-    // Invalidate the event page cache so subsequent SSR sees the updated state
-    revalidatePath(`/events/${event.id}`);
-
-    return NextResponse.json({ success: true, registration, qrCodeDataUri });
+    return NextResponse.json({ success: true });
 
   } catch (error) {
     log.error({ err: String(error) }, 'Registration error');
     return NextResponse.json(
-      { error: 'Failed to create registration' },
+      { error: 'Failed to complete registration' },
       { status: 500 }
     );
   }
@@ -236,15 +76,28 @@ export async function GET(
   try {
     const { ticketId } = params;
 
-    const [registration] = await db
-      .select()
-      .from(ticketRegistrations)
-      .where(eq(ticketRegistrations.ticketId, ticketId))
-      .limit(1);
+    const sql = getClient();
+    const [response] = await sql`
+      SELECT id, survey_id, answers, created_at
+      FROM dykil.survey_responses
+      WHERE ticket_id = ${ticketId}
+      LIMIT 1
+    `;
 
-    if (!registration) {
+    if (!response) {
       return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
     }
+
+    // Backwards-compatible shape
+    const registration = {
+      id: response.id,
+      ticketId,
+      formId: response.survey_id,
+      responseId: response.id,
+      name: response.answers?.full_name || response.answers?.name || null,
+      email: response.answers?.email || null,
+      registeredAt: response.created_at,
+    };
 
     return NextResponse.json({ registration });
 

@@ -6,7 +6,7 @@ const log = createLogger('events');
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, getEmailForDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
-import { db, tickets, events, ticketTypes, ticketRegistrations } from '@/src/db';
+import { db, tickets, events, ticketTypes } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { generateQRCode } from '@/src/lib/email';
 import { publish } from '@imajin/bus';
@@ -80,16 +80,15 @@ export async function POST(
       return NextResponse.json({ error: 'Ticket type not found' }, { status: 404 });
     }
 
-    const [registration] = await db
-      .select()
-      .from(ticketRegistrations)
-      .where(eq(ticketRegistrations.ticketId, ticketId))
-      .limit(1);
+    const sqlClient = getClient();
+    const [surveyResponse] = await sqlClient`
+      SELECT answers FROM dykil.survey_responses WHERE ticket_id = ${ticketId} LIMIT 1
+    `;
 
-    // Determine email: registration.email > profile.contact_email > auth credential
+    // Determine email: survey response email > profile.contact_email > auth credential
     let customerEmail: string | null = null;
-    if (registration?.email) {
-      customerEmail = registration.email;
+    if (surveyResponse?.answers?.email) {
+      customerEmail = surveyResponse.answers.email;
     } else if (ticket.ownerDid) {
       // Try profile contact email (user's preferred transactional email)
       const profileSql = getClient();
@@ -125,7 +124,7 @@ export async function POST(
       VALUES (
         ${onboardId},
         ${customerEmail.toLowerCase().trim()},
-        ${registration?.name || null},
+        ${surveyResponse?.answers?.full_name || surveyResponse?.answers?.name || null},
         ${onboardToken},
         ${redirectUrl},
         ${'access your ticket for ' + event.title},

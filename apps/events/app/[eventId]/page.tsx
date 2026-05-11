@@ -345,63 +345,6 @@ export default async function EventPage({ params, searchParams }: Props) {
   // Fetch user's orders (+ legacy tickets) if logged in
   let userOrders = session?.id ? await getUserOrders(event.id, session.id) : [];
 
-  // Auto-sync orphan tickets: DB pending, but Dykil has a response
-  if (session?.id && userOrders.length > 0) {
-    const pendingTickets = userOrders.flatMap(o => o.tickets).filter(t => t.registrationStatus === 'pending' && t.ticketType?.registrationFormId);
-    if (pendingTickets.length > 0) {
-      const syncedTicketIds = new Set<string>();
-      await Promise.all(
-        pendingTickets.map(async (ticket) => {
-          const formId = ticket.ticketType?.registrationFormId;
-          if (!formId) return;
-          try {
-            const rows = await sql`
-              SELECT id, answers
-              FROM dykil.survey_responses
-              WHERE survey_id = ${formId} AND ticket_id = ${ticket.id}
-              LIMIT 1
-            `;
-            if (rows.length > 0) {
-              const response = rows[0];
-              const answers = response.answers as Record<string, unknown> || {};
-              const currentMeta = (await sql`
-                SELECT metadata FROM events.tickets WHERE id = ${ticket.id}
-              `)[0]?.metadata || {};
-              const updatedMeta = JSON.stringify({ ...currentMeta, surveyAnswers: answers, surveyResponseId: response.id, syncedAt: new Date().toISOString() });
-              await sql`
-                UPDATE events.tickets
-                SET registration_status = 'complete',
-                    metadata = ${updatedMeta}::jsonb
-                WHERE id = ${ticket.id}
-              `;
-              // Also create ticket_registrations row if missing (so CSV export + guest list work)
-              const [existingReg] = await sql`
-                SELECT id FROM events.ticket_registrations WHERE ticket_id = ${ticket.id} LIMIT 1
-              `;
-              if (!existingReg) {
-                const regId = `reg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-                const attendeeName = (answers.full_name || answers.name || '') as string;
-                const attendeeEmail = (answers.email || '') as string;
-                await sql`
-                  INSERT INTO events.ticket_registrations (id, ticket_id, event_id, name, email, form_id, response_id)
-                  VALUES (${regId}, ${ticket.id}, ${event.id}, ${attendeeName || null}, ${attendeeEmail || null}, ${formId}, ${response.id})
-                  ON CONFLICT DO NOTHING
-                `;
-              }
-              syncedTicketIds.add(ticket.id);
-            }
-          } catch (err) {
-            log.error({ err: String(err), ticketId: ticket.id }, 'Auto-sync failed for ticket');
-          }
-        })
-      );
-      // Regenerate userOrders so QR codes are produced for newly-synced tickets
-      if (syncedTicketIds.size > 0) {
-        userOrders = await getUserOrders(event.id, session.id);
-      }
-    }
-  }
-
   const hasTicket = userOrders.length > 0;
 
   // Whether we should show the ticket purchase section
