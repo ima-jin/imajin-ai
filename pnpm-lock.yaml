@@ -808,6 +808,10 @@ importers:
       '@noble/curves':
         specifier: ^1.8.1
         version: 1.9.7
+    devDependencies:
+      vitest:
+        specifier: ^1.0.0
+        version: 1.6.1(@types/node@22.19.17)
 
   packages/email:
     dependencies:
