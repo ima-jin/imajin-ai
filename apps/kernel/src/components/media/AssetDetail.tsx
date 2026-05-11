@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import type { Asset } from "@/src/db/schema";
-import { FairEditor } from "@imajin/fair";
-import type { FairManifest } from "@imajin/fair";
+import { FairEditor, isFairManifestV1_1 } from "@imajin/fair";
+import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
+import { FairManifestEditor } from "./FairManifestEditor";
 
 const PROFILE_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX
   ? `${process.env.NEXT_PUBLIC_SERVICE_PREFIX}profile.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`
@@ -45,7 +46,7 @@ function FairEditModal({
       onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
     >
       <div
-        className="bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl p-4 w-[480px] max-h-[80vh] overflow-y-auto"
+        className="bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl p-4 w-[520px] max-h-[85vh] overflow-y-auto"
         role="dialog"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
@@ -59,33 +60,45 @@ function FairEditModal({
             ✕
           </button>
         </div>
-        <FairEditor
-          resolveProfile={resolveProfile}
-          manifest={draft}
-          readOnly={false}
-          onChange={setDraft}
-          sections={["attribution", "access", "transfer"]}
-        />
-        <div className="flex justify-end gap-2 mt-3">
-          <button
-            onClick={onCancel}
-            className="px-3 py-1.5 text-sm text-gray-400 hover:text-white rounded-md transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            disabled={saving}
-            onClick={async () => {
-              setSaving(true);
-              await onSave(draft);
-              setSaving(false);
-              onCancel();
-            }}
-            className="px-4 py-1.5 text-sm bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-colors disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
+        {isFairManifestV1_1(draft) ? (
+          <FairManifestEditor
+            manifest={draft}
+            mimeType={(draft as FairManifestV1_1).type}
+            onChange={(m) => setDraft(m)}
+            onSave={() => { setSaving(true); onSave(draft); setSaving(false); onCancel(); }}
+            readOnly={false}
+          />
+        ) : (
+          <FairEditor
+            resolveProfile={resolveProfile}
+            manifest={draft}
+            readOnly={false}
+            onChange={setDraft}
+            sections={["attribution", "access", "transfer"]}
+          />
+        )}
+        {!isFairManifestV1_1(draft) && (
+          <div className="flex justify-end gap-2 mt-3">
+            <button
+              onClick={onCancel}
+              className="px-3 py-1.5 text-sm text-gray-400 hover:text-white rounded-md transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              disabled={saving}
+              onClick={async () => {
+                setSaving(true);
+                await onSave(draft);
+                setSaving(false);
+                onCancel();
+              }}
+              className="px-4 py-1.5 text-sm bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -222,6 +235,12 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   const currentFolder = folders.find((f) => f.id === asset.folderId);
   const metadata = asset.metadata as Record<string, unknown> | null;
   const exif = metadata?.exif as Record<string, unknown> | undefined;
+
+  // Determine manifest version and signing state
+  const isV1_1 = fairManifest ? isFairManifestV1_1(fairManifest) : false;
+  const isSigned = !!fairManifest && 'signature' in fairManifest && !!fairManifest.signature;
+  const isSigner = isSigned && currentDid === (fairManifest as FairManifestV1_1).signature?.signer;
+  const readOnlyEditor = isSigned && !isSigner;
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -404,7 +423,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
       </div>
 
       {/* Metadata sidebar */}
-      <div className="w-72 shrink-0 overflow-y-auto bg-[#1a1a1a] border-l border-gray-800 p-4 space-y-4">
+      <div className="w-80 shrink-0 overflow-y-auto bg-[#1a1a1a] border-l border-gray-800 p-4 space-y-4">
         {/* Classification */}
         {asset.classification && (
           <div className="bg-[#252525] rounded-xl p-3">
@@ -450,8 +469,15 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
         {/* .fair manifest */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-gray-500 uppercase tracking-widest">.fair</p>
-            {fairManifest && (
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-gray-500 uppercase tracking-widest">.fair</p>
+              {fairManifest && !isV1_1 && (
+                <span className="text-[10px] px-1.5 py-0.5 bg-yellow-900/30 border border-yellow-700/50 rounded-full text-yellow-400">
+                  v1.0 legacy
+                </span>
+              )}
+            </div>
+            {fairManifest && isOwner && (
               <button
                 onClick={() => setEditingFair(true)}
                 className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
@@ -462,21 +488,45 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
           </div>
 
           {fairManifest ? (
-            <FairEditor resolveProfile={resolveProfile}
-              manifest={fairManifest}
-              readOnly={true}
-              sections={["attribution", "access", "transfer"]}
-            />
+            isV1_1 ? (
+              <FairManifestEditor
+                manifest={fairManifest as FairManifestV1_1}
+                mimeType={asset.mimeType}
+                onChange={(m) => setFairManifest(m)}
+                onSave={() => handleSaveFair(fairManifest)}
+                readOnly={readOnlyEditor}
+                currentUserDid={currentDid}
+              />
+            ) : (
+              <FairEditor
+                resolveProfile={resolveProfile}
+                manifest={fairManifest}
+                readOnly={true}
+                sections={["attribution", "access", "transfer"]}
+              />
+            )
           ) : (
             <div className="bg-[#252525] rounded-xl p-3 text-xs text-gray-500 italic">
               No .fair manifest.
             </div>
           )}
+
+          {/* v1.0 → v1.1 upgrade placeholder (Commit 5/6 will wire the actual button) */}
+          {fairManifest && !isV1_1 && isOwner && (
+            <div className="mt-2">
+              <button
+                disabled
+                className="w-full py-1.5 text-xs bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-lg opacity-50 cursor-not-allowed"
+              >
+                Upgrade to v1.1 (coming soon)
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* .fair edit modal */}
-      {editingFair && fairManifest && (
+      {/* .fair edit modal (for v1.0 or when opening full editor) */}
+      {editingFair && fairManifest && !isV1_1 && (
         <FairEditModal
           manifest={fairManifest}
           onSave={handleSaveFair}
