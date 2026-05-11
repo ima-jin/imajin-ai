@@ -275,7 +275,6 @@ export async function GET(
         { status: 429 }
       );
     }
-    }
 
     // Log access
     try {
