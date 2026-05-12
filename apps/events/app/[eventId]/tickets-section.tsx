@@ -548,7 +548,12 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
     setUnlockLoading(true);
     setUnlockError(null);
     try {
-      const res = await fetch(`/api/events/${eventId}/tiers/unlock?code=${encodeURIComponent(unlockCode.trim())}`);
+      // Must use apiFetch so the request routes to the events service in
+      // production. Raw fetch resolves the relative URL against window.origin,
+      // which is the marketing site / kernel in prod (events lives on a
+      // separate origin). That returned HTML, res.json() threw, and the user
+      // saw 'Failed to unlock. Please try again.' for every valid code.
+      const res = await apiFetch(`/api/events/${eventId}/tiers/unlock?code=${encodeURIComponent(unlockCode.trim())}`);
       const data = await res.json();
       if (!res.ok) {
         setUnlockError(data.error || 'Invalid code');
