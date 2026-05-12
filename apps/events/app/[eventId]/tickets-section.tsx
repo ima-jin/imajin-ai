@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { TicketType } from '@/src/db/schema';
 import { apiFetch } from '@imajin/config';
@@ -760,9 +760,18 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
 
   const router = useRouter();
   type BarStep = 'idle' | 'card-loading' | 'emt-form' | 'emt-loading' | 'emt-done' | 'emt-verify-sent';
+
+  // EMT reservation results are persisted in sessionStorage so a tab refresh
+  // doesn't wipe the 'send your e-Transfer to confirm' screen. Scoped per
+  // user (sessionEmail) so logging out and back in as someone else doesn't
+  // resurrect the previous user's reservation panel.
+  const emtStorageKey = sessionContactEmail || sessionEmail
+    ? `emtResult:${(sessionContactEmail || sessionEmail || '').toLowerCase().trim()}`
+    : 'emtResult:anon';
+
   const [step, setStepState] = useState<BarStep>(() => {
     try {
-      const saved = sessionStorage.getItem('emtResult');
+      const saved = sessionStorage.getItem(emtStorageKey);
       if (saved) return 'emt-done';
     } catch {}
     return 'idle';
@@ -770,14 +779,14 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
   const setStep = (s: BarStep) => {
     setStepState(s);
     if (s !== 'emt-done') {
-      try { sessionStorage.removeItem('emtResult'); } catch {}
+      try { sessionStorage.removeItem(emtStorageKey); } catch {}
     }
   };
   const [emtEmail, setEmtEmail] = useState(sessionContactEmail || sessionEmail || '');
   const [emtName, setEmtName] = useState('');
   const [emtResult, setEmtResultState] = useState<{ orderId: string; quantity: number; email: string; amount: number; currency: string; memo: string; deadline: string; message: string } | null>(() => {
     try {
-      const saved = sessionStorage.getItem('emtResult');
+      const saved = sessionStorage.getItem(emtStorageKey);
       if (saved) return JSON.parse(saved);
     } catch {}
     return null;
@@ -785,11 +794,44 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
   const setEmtResult = (result: typeof emtResult) => {
     setEmtResultState(result);
     if (result) {
-      try { sessionStorage.setItem('emtResult', JSON.stringify(result)); } catch {}
+      try { sessionStorage.setItem(emtStorageKey, JSON.stringify(result)); } catch {}
     } else {
-      try { sessionStorage.removeItem('emtResult'); } catch {}
+      try { sessionStorage.removeItem(emtStorageKey); } catch {}
     }
   };
+
+  // Clean up any legacy un-scoped 'emtResult' key (pre-fix). One-time
+  // best-effort sweep; harmless if it's already gone.
+  useEffect(() => {
+    try { sessionStorage.removeItem('emtResult'); } catch {}
+  }, []);
+
+  // If the signed-in user changes (e.g. log out + log in as someone else in
+  // the same tab), drop any in-memory reservation state so the new user
+  // doesn't see the previous user's 'Reserved' panel. The session change
+  // also flips emtStorageKey on the next render so a fresh sessionStorage
+  // read won't pick up the old user's saved reservation.
+  const prevSessionKeyRef = useRef(emtStorageKey);
+  useEffect(() => {
+    if (prevSessionKeyRef.current !== emtStorageKey) {
+      prevSessionKeyRef.current = emtStorageKey;
+      setStepState('idle');
+      setEmtResultState(null);
+    }
+  }, [emtStorageKey]);
+
+  // The MagicLinkButton fires 'imajin:session-changed' after a successful
+  // cross-tab login. Use it as a belt-and-suspenders trigger for the same
+  // cleanup in case the session prop doesn't update on the same tick.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = () => {
+      setStepState('idle');
+      setEmtResultState(null);
+    };
+    window.addEventListener('imajin:session-changed', handler);
+    return () => window.removeEventListener('imajin:session-changed', handler);
+  }, []);
   const [verifySentTo, setVerifySentTo] = useState<string | null>(null);
   // Issue #1: polling state for tab-A-canonical verification
   const [pollHandle, setPollHandle] = useState<string | null>(null);
