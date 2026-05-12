@@ -27,8 +27,13 @@ export async function OPTIONS(request: NextRequest) {
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
+  // 20 req/min/IP. Two paths funnel through here now (#912):
+  //   - new soft-DID onboarding (purchase / signup)
+  //   - existing-account login (mode='login', replaces /api/magic/send)
+  // The previous 5/min limit locked legitimate retries from a single tester
+  // out within seconds and offered no real abuse protection vs 20.
   const ip = getClientIP(request);
-  const rl = rateLimit(ip, 5, 60_000);
+  const rl = rateLimit(ip, 20, 60_000);
   if (rl.limited) {
     return NextResponse.json(
       { error: 'Too many requests', retryAfter: rl.retryAfter },
