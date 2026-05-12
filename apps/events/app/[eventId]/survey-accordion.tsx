@@ -86,6 +86,24 @@ export function SurveyAccordion({
       if (event.data.type === 'survey-height') {
         setIframeHeight(event.data.height + 40); // Add some padding
       } else if (event.data.type === 'survey-completed') {
+        // Dykil sends two distinct 'survey-completed' shapes:
+        //   1. Fresh submit:    { type, surveyId, answers: {...} }  — user just
+        //      finished. Run onComplete (registers + flips status) and collapse.
+        //   2. On-load FYI:    { type, surveyId }                  — the iframe
+        //      loaded with a ticketId that already has a response. The accordion
+        //      is already 'complete'; the user expanded it to review/edit and
+        //      we must NOT collapse it or run onComplete again. Without this
+        //      branch the box would expand and immediately re-collapse the moment
+        //      Dykil finished its initial fetch.
+        const isFreshSubmit =
+          event.data.answers !== undefined && event.data.answers !== null;
+        if (!isFreshSubmit) {
+          // Sync local state in case parent hadn't told us yet, but stay open.
+          setIsCompleted(true);
+          try { localStorage.setItem(storageKey, 'true'); } catch {}
+          return;
+        }
+
         // Guard against double-fire from iframe or React strict mode
         if (isCompletingRef.current) return;
 
