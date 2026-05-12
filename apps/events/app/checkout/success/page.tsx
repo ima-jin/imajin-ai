@@ -81,12 +81,12 @@ export default async function SuccessPage({ searchParams }: Props) {
             You must complete the registration form before your tickets are confirmed.
           </p>
           <Link
-            href={`/${event.id}`}
+            href={`/${event.id}#tickets`}
             className="inline-block px-6 py-3 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-lg transition"
           >
             Complete Registration Now →
           </Link>
-          <AutoRedirect href={`/${event.id}`} seconds={5} />
+          <AutoRedirect href={`/${event.id}#tickets`} seconds={5} />
         </div>
       )}
 
