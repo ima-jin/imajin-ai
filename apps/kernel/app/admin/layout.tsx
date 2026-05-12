@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { label: 'Overview', href: '/admin', icon: '📊' },
   { label: 'Users', href: '/admin/users', icon: '👥' },
   { label: 'Subscribers', href: '/admin/subscribers', icon: '📬' },
+  { label: 'Deposits', href: '/admin/deposits', icon: '💰' },
   { label: 'Newsletter', href: '/admin/newsletter', icon: '📰' },
   { label: 'Services', href: '/admin/services', icon: '⚙️' },
   { label: 'Federation', href: '/admin/federation', icon: '🌐' },
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
   { label: 'Config', href: '/admin/config', icon: '🔧' },
   { label: 'Moderation', href: '/admin/moderation', icon: '🛡️' },
   { label: 'Events', href: '/admin/events', icon: '🔔' },
+  { label: 'Withdrawals', href: '/admin/withdrawals', icon: '💸' },
   { label: 'Telemetry', href: '/admin/telemetry', icon: '📈' },
   { label: 'Logs', href: '/admin/logs', icon: '📋' },
 ];
