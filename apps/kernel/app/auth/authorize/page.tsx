@@ -34,12 +34,25 @@ function AuthorizeForm() {
       return;
     }
 
-    fetch(`/api/registry/apps/${appId}`)
+    // Check if user is logged in before showing consent screen
+    fetch('/profile/api/auth/session', { credentials: 'include' })
+      .then(res => res.json())
+      .then(session => {
+        if (!session?.did) {
+          // Not logged in — redirect to login, then back here
+          const returnUrl = encodeURIComponent(window.location.href);
+          window.location.href = `/auth/login?redirect=${returnUrl}`;
+          return;
+        }
+        return fetch(`/api/registry/apps/${appId}`);
+      })
       .then(res => {
+        if (!res) return; // redirecting to login
         if (!res.ok) throw new Error('App not found');
         return res.json();
       })
-      .then((data: AppInfo) => {
+      .then((data?: AppInfo) => {
+        if (!data) return; // redirecting to login
         setApp(data);
 
         // Scopes from URL (what the app is requesting right now), filtered against what the app registered
