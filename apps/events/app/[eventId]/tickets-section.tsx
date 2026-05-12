@@ -1118,7 +1118,16 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
     );
   }
 
-  if (step === 'emt-done' && emtResult) {
+  // The 'Reserved — send your e-Transfer' panel takes over the entire
+  // checkout bar while a user has an outstanding EMT reservation. That's
+  // the right thing when their cart is empty (their last action *was* the
+  // reservation), but the moment they start composing a NEW cart on the
+  // same page (e.g. 'Buy more tickets' tab) it blocks the pay-by-card /
+  // pay-by-EMT CTAs at the bottom of the ticket list. Fall through to the
+  // normal checkout UI as soon as the user has anything in the new cart;
+  // the reservation is still visible on the My Tickets tab, and this panel
+  // returns automatically when the cart is empty again.
+  if (step === 'emt-done' && emtResult && totalQty === 0) {
     return (
       <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl space-y-3">
         <div className="flex items-center gap-2">
