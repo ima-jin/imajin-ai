@@ -1,0 +1,25 @@
+-- 0027_drop_ticket_registrations.sql
+--
+-- Issue #826 — Part 3 (final).
+--
+-- Drop events.ticket_registrations. The table was a denormalized copy of
+-- attendee identity that drifted from the source of truth (dykil.survey_responses).
+-- After #906 (data migration: every registration now has a matching survey_response)
+-- and #907 (code refactor: all reads now join dykil.survey_responses directly),
+-- nothing in app code touches this table.
+--
+-- Pre-flight check (run before applying, results captured 2026-05-11 evening):
+--   SELECT COUNT(*) FROM events.ticket_registrations;
+--     prod: 69, dev: 11
+--   SELECT COUNT(*) FROM events.ticket_registrations tr
+--   WHERE NOT EXISTS (SELECT 1 FROM dykil.survey_responses sr WHERE sr.ticket_id = tr.ticket_id);
+--     prod: 0, dev: 0
+--
+-- Every registration row has a corresponding dykil.survey_responses row joined
+-- by ticket_id. App code reads attendee identity from survey_response.answers
+-- (full_name, email). Safe to drop.
+--
+-- CASCADE handles the FK from any stray references; in practice there should
+-- be none (only the table's own indexes and PK reference it).
+
+DROP TABLE IF EXISTS events.ticket_registrations CASCADE;
