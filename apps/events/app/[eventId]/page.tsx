@@ -169,10 +169,19 @@ async function getUserOrders(eventId: string, userDid: string) {
       )
     );
 
-  // Generate QR codes in parallel
+  // Generate QR codes in parallel.
+  //
+  // Only mint a QR when the ticket is actually redeemable:
+  //   - ticket.status ∈ {'valid', 'used'} — 'held' means the EMT/payment hasn't
+  //     arrived yet, 'available' means no buyer, 'refunded'/'cancelled' are dead.
+  //   - registrationStatus !== 'pending' — attendee still needs to complete
+  //     their survey before they can scan in.
+  const QR_REDEEMABLE_STATUSES = new Set(['valid', 'used']);
   const rowsWithQr = await Promise.all(
     rows.map(async ({ ticket, ticketType, order }) => {
-      const qrCodeDataUri = ticket.registrationStatus !== 'pending'
+      const isRedeemable = QR_REDEEMABLE_STATUSES.has(ticket.status);
+      const regOk = ticket.registrationStatus !== 'pending';
+      const qrCodeDataUri = isRedeemable && regOk
         ? (await generateQRCode(ticket.id) || undefined)
         : undefined;
       return { ticket, ticketType, order, qrCodeDataUri };
