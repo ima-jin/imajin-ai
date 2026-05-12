@@ -15,11 +15,15 @@ interface AssetGridProps {
   typeFilter: string;
   selectedAssetId: string | null;
   folders?: Folder[];
+  selectedAssetIds?: Set<string>;
+  moveFolderId?: string;
   onSortChange: (sort: string) => void;
   onOrderChange: (order: string) => void;
   onTypeFilterChange: (type: string) => void;
   onSelectAsset: (id: string) => void;
   onUploaded: () => void;
+  onSelectedAssetIdsChange?: (ids: Set<string>) => void;
+  onMoveFolderIdChange?: (id: string) => void;
 }
 
 export function AssetGrid({
@@ -30,16 +34,45 @@ export function AssetGrid({
   typeFilter,
   selectedAssetId,
   folders = [],
+  selectedAssetIds: externalSelectedAssetIds,
+  moveFolderId: externalMoveFolderId,
   onSortChange,
   onOrderChange,
   onTypeFilterChange,
   onSelectAsset,
   onUploaded,
+  onSelectedAssetIdsChange,
+  onMoveFolderIdChange,
 }: AssetGridProps) {
   const [dragging, setDragging] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("large-grid");
-  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
-  const [moveFolderId, setMoveFolderId] = useState<string>("");
+  const [internalSelectedAssetIds, setInternalSelectedAssetIds] = useState<Set<string>>(new Set());
+  const [internalMoveFolderId, setInternalMoveFolderId] = useState<string>("");
+
+  const selectedAssetIds = externalSelectedAssetIds ?? internalSelectedAssetIds;
+  const moveFolderId = externalMoveFolderId ?? internalMoveFolderId;
+
+  const setSelectedAssetIds = useCallback((value: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof value === 'function') {
+      const next = value(selectedAssetIds);
+      if (onSelectedAssetIdsChange) onSelectedAssetIdsChange(next);
+      else setInternalSelectedAssetIds(next);
+    } else {
+      if (onSelectedAssetIdsChange) onSelectedAssetIdsChange(value);
+      else setInternalSelectedAssetIds(value);
+    }
+  }, [onSelectedAssetIdsChange, selectedAssetIds]);
+
+  const setMoveFolderId = useCallback((value: string | ((prev: string) => string)) => {
+    if (typeof value === 'function') {
+      const next = value(moveFolderId);
+      if (onMoveFolderIdChange) onMoveFolderIdChange(next);
+      else setInternalMoveFolderId(next);
+    } else {
+      if (onMoveFolderIdChange) onMoveFolderIdChange(value);
+      else setInternalMoveFolderId(value);
+    }
+  }, [onMoveFolderIdChange, moveFolderId]);
   const lastClickIdx = useRef<number | null>(null);
   const uploadRef = useRef<UploadZoneHandle>(null);
   const dragCounter = useRef(0);
@@ -156,7 +189,7 @@ export function AssetGrid({
           return next;
         });
       } else {
-        setSelectedAssetIds(new Set());
+        // Don't clear multi-selection on normal click — it survives detail open/close
         lastClickIdx.current = idx;
         onSelectAsset(asset.id);
       }
@@ -211,20 +244,31 @@ export function AssetGrid({
 
   const handleBatchMove = useCallback(async () => {
     if (!moveFolderId) return;
-    await Promise.all(
-      Array.from(selectedAssetIds).map((id) =>
-        fetch(`/media/api/assets/${id}`, {
-          method: "PATCH",
+    const results = await Promise.allSettled(
+      Array.from(selectedAssetIds).map(async (id) => {
+        const res = await fetch(`/media/api/assets/${id}/folders`, {
+          method: "PUT",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ folderId: moveFolderId }),
-        })
-      )
+          body: JSON.stringify({ folderIds: [moveFolderId] }),
+        });
+        if (!res.ok) throw new Error(`${id}: ${res.status}`);
+        return id;
+      })
     );
-    setSelectedAssetIds(new Set());
+    const failed = results.filter((r) => r.status === "rejected");
+    const succeeded = results.filter((r) => r.status === "fulfilled").map((r) => (r as PromiseFulfilledResult<string>).value);
+    setSelectedAssetIds((prev) => {
+      const next = new Set(prev);
+      for (const id of succeeded) next.delete(id);
+      return next;
+    });
+    if (failed.length > 0) {
+      alert(`${failed.length} of ${results.length} file(s) failed to move. The rest were moved.`);
+    }
     setMoveFolderId("");
     onUploaded();
-  }, [selectedAssetIds, moveFolderId, onUploaded]);
+  }, [selectedAssetIds, moveFolderId, onUploaded, setSelectedAssetIds, setMoveFolderId]);
 
   return (
     <div

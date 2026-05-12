@@ -5,6 +5,8 @@ import { requireAuth } from "@imajin/auth";
 import { eq, sql } from "drizzle-orm";
 import { withLogger } from "@imajin/logger";
 
+export const dynamic = "force-dynamic";
+
 // ---------------------------------------------------------------------------
 // GET /api/folders — list all folders for authenticated user with asset counts
 // ---------------------------------------------------------------------------

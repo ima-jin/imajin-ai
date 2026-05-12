@@ -313,7 +313,7 @@ export async function POST(request: NextRequest) {
     const folderConfig = CONTEXT_FOLDER_MAP[folderKey];
     if (folderConfig) {
       try {
-        // Find or create the system folder for this user
+        // Find or create the system folder for this user (idempotent under races)
         const existing = await db.select().from(folders).where(
           and(eq(folders.ownerDid, ownerDid), eq(folders.name, folderConfig.name), eq(folders.isSystem, true))
         ).limit(1);
@@ -323,13 +323,21 @@ export async function POST(request: NextRequest) {
           folderId = existing[0].id;
         } else {
           folderId = `folder_${nanoid(16)}`;
-          await db.insert(folders).values({
+          const [inserted] = await db.insert(folders).values({
             id: folderId,
             ownerDid,
             name: folderConfig.name,
             icon: folderConfig.icon,
             isSystem: true,
-          });
+          }).onConflictDoNothing().returning();
+
+          if (!inserted) {
+            // Another request created it concurrently; fetch the winner
+            const [retry] = await db.select().from(folders).where(
+              and(eq(folders.ownerDid, ownerDid), eq(folders.name, folderConfig.name), eq(folders.isSystem, true))
+            ).limit(1);
+            if (retry) folderId = retry.id;
+          }
         }
 
         // Link asset to folder
