@@ -188,7 +188,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     const checkoutRequest: CheckoutRequest = {
       items: body.items,
-      currency: body.currency || 'USD',
+      currency: body.currency || 'CAD',
       mode: body.mode,
       customerEmail: body.customerEmail,
       successUrl: body.successUrl,
@@ -215,7 +215,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       fromDid: (identity?.actingAs || identity?.id) || null,
       toDid: body.metadata?.to_did || body.metadata?.recipient_did || 'platform',
       amount: (totalAmount / 100).toString(), // Convert cents to dollars
-      currency: body.currency || 'USD',
+      currency: body.currency || 'CAD',
       status: 'pending',
       stripeId: result.id,
       metadata: body.metadata,

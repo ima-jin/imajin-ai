@@ -41,7 +41,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
 
     const body = await request.json();
-    const { did, amount, service, type, metadata = {} } = body;
+    const { did, amount, service, type, metadata = {}, currency = 'CAD' } = body;
 
     if (!did || !amount || !service || !type) {
       return NextResponse.json(
@@ -69,7 +69,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         fromDid: null, // topup has no from_did
         toDid: did,
         amount: amount.toString(),
-        currency: 'USD',
+        currency,
         status: 'completed',
         source: 'fiat',
         metadata,
@@ -82,7 +82,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
           did,
           cashAmount: amount.toString(),
           creditAmount: '0',
-          currency: 'USD',
+          currency,
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({

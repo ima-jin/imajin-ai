@@ -95,7 +95,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     
     const escrowRequest: EscrowRequest = {
       amount: body.amount,
-      currency: body.currency || 'USD',
+      currency: body.currency || 'CAD',
       from: body.from,
       to: body.to,
       arbiter: body.arbiter,

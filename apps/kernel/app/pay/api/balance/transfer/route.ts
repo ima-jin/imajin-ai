@@ -91,6 +91,23 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
+    const transferCurrency = senderBalance?.currency || 'CAD';
+
+    // Check recipient balance currency (if exists)
+    const recipientBalanceRows = await db
+      .select()
+      .from(balances)
+      .where(eq(balances.did, to_did))
+      .limit(1);
+
+    const recipientBalance = recipientBalanceRows[0];
+    if (recipientBalance && recipientBalance.currency !== transferCurrency) {
+      return NextResponse.json(
+        { error: 'Currency mismatch' },
+        { status: 400, headers: cors }
+      );
+    }
+
     // Determine how much to burn from each bucket (credits first)
     const creditBurn = Math.min(currentCredit, amount);
     const cashBurn = amount - creditBurn;
@@ -117,7 +134,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         fromDid: from_did,
         toDid: to_did,
         amount: amount.toString(),
-        currency: 'USD',
+        currency: transferCurrency,
         status: 'completed',
         source,
         metadata,
@@ -140,7 +157,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
           did: to_did,
           cashAmount: amount.toString(),
           creditAmount: '0',
-          currency: 'USD',
+          currency: transferCurrency,
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({

@@ -12,7 +12,7 @@ export const transactions = paySchema.table('transactions', {
   fromDid: text('from_did'),                             // who paid (null for anonymous/external)
   toDid: text('to_did').notNull(),                       // who received
   amount: numeric('amount', { precision: 20, scale: 8 }).notNull(),
-  currency: text('currency').notNull().default('USD'),
+  currency: text('currency').notNull().default('CAD'),
   status: text('status').notNull().default('pending'),   // pending | completed | failed | refunded
   source: text('source').notNull().default('fiat'),      // 'fiat' | 'credit' | 'mixed'
   stripeId: text('stripe_id'),                           // payment intent / invoice / checkout session
@@ -37,7 +37,7 @@ export const balances = paySchema.table('balances', {
   did: text('did').primaryKey(),
   cashAmount: numeric('cash_amount', { precision: 20, scale: 8 }).notNull().default('0'),
   creditAmount: numeric('credit_amount', { precision: 20, scale: 8 }).notNull().default('0'),
-  currency: text('currency').notNull().default('USD'),
+  currency: text('currency').notNull().default('CAD'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 

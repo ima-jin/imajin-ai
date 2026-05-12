@@ -64,7 +64,7 @@ export async function GET(
         creditAmount,
         mjnBalance: creditAmount,
         total: cashAmount + creditAmount,
-        currency: row?.currency || 'USD',
+        currency: row?.currency || 'CAD',
         updatedAt: row?.updatedAt?.toISOString() || new Date().toISOString(),
       },
       { headers: cors }
