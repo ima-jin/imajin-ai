@@ -189,15 +189,18 @@ export async function confirmHeldTickets(
           ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`
           : `${EVENTS_URL}/${event.id}/my-tickets`;
 
-        // Split tickets by whether their type requires registration
-        const bundleTickets = confirmedTickets.filter((t) => {
-          const tt = typesById.get(t.ticketTypeId);
-          return tt && !tt.requiresRegistration;
-        });
-        const registrationPendingTickets = confirmedTickets.filter((t) => {
-          const tt = typesById.get(t.ticketTypeId);
-          return tt?.requiresRegistration && t.registrationStatus !== 'complete';
-        });
+        // Split tickets by their actual registration state, not by ticket-type
+        // policy. A reg-required ticket that's already 'complete' is just as
+        // redeemable as a 'not_required' ticket and belongs in the bundle email.
+        //
+        // Previous logic gated on tt.requiresRegistration, which excluded
+        // already-registered tickets from the "you're in" QR email entirely.
+        const bundleTickets = confirmedTickets.filter(
+          (t) => t.registrationStatus !== 'pending',
+        );
+        const registrationPendingTickets = confirmedTickets.filter(
+          (t) => t.registrationStatus === 'pending',
+        );
 
         // CTA targets: the first pending-and-required ticket, falling back to my-tickets
         const ctaTicket = registrationPendingTickets[0] ?? null;

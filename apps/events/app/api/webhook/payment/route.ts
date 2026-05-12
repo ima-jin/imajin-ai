@@ -475,10 +475,16 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     currency: currency.toUpperCase(),
   }).format(amountTotal / 100 / quantity);
 
-  // Split tickets by whether their type requires registration
-  const bundleTickets = createdTickets.filter((t) => !ticketType.requiresRegistration);
+  // Split tickets by their actual registration state, not by ticket-type
+  // policy. A reg-required ticket that's already 'complete' is redeemable
+  // and belongs in the bundle email. The previous filter on
+  // ticketType.requiresRegistration excluded already-registered tickets from
+  // the "you're in" QR email entirely.
+  const bundleTickets = createdTickets.filter(
+    (t) => t.registrationStatus !== 'pending',
+  );
   const registrationPendingTickets = createdTickets.filter(
-    (t) => ticketType.requiresRegistration && t.registrationStatus !== 'complete'
+    (t) => t.registrationStatus === 'pending',
   );
 
   // CTA targets: the first pending-and-required ticket, falling back to my-tickets
