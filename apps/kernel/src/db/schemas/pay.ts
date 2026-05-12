@@ -38,6 +38,7 @@ export const balances = paySchema.table('balances', {
   cashAmount: numeric('cash_amount', { precision: 20, scale: 8 }).notNull().default('0'),
   creditAmount: numeric('credit_amount', { precision: 20, scale: 8 }).notNull().default('0'),
   currency: text('currency').notNull().default('USD'),
+  withdrawalsEnabled: boolean('withdrawals_enabled').notNull().default(false),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
@@ -97,6 +98,21 @@ export const feeLedger = paySchema.table('fee_ledger', {
   recipientIdx: index('idx_fee_ledger_recipient').on(table.recipientDid, table.status),
 }));
 
+export const withdrawalRequests = paySchema.table('withdrawal_requests', {
+  id: text('id').primaryKey(),                              // wr_xxx
+  did: text('did').notNull(),                               // who's withdrawing
+  amount: numeric('amount', { precision: 20, scale: 8 }).notNull(),
+  currency: text('currency').notNull().default('CAD'),
+  emtEmail: text('emt_email').notNull(),                    // where to send EMT
+  status: text('status').notNull().default('requested'),    // requested | processing | sent | cancelled
+  adminNotes: text('admin_notes'),
+  requestedAt: timestamp('requested_at', { withTimezone: true }).defaultNow(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+}, (table) => ({
+  didIdx: index('idx_withdrawal_requests_did').on(table.did),
+  statusIdx: index('idx_withdrawal_requests_status').on(table.status),
+}));
+
 // Types
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
@@ -106,3 +122,5 @@ export type BalanceRollup = typeof balanceRollups.$inferSelect;
 export type NewBalanceRollup = typeof balanceRollups.$inferInsert;
 export type ConnectedAccount = typeof connectedAccounts.$inferSelect;
 export type NewConnectedAccount = typeof connectedAccounts.$inferInsert;
+export type WithdrawalRequest = typeof withdrawalRequests.$inferSelect;
+export type NewWithdrawalRequest = typeof withdrawalRequests.$inferInsert;

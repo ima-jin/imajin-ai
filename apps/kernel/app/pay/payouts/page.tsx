@@ -3,7 +3,10 @@ import { getSession } from '@imajin/auth';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { createLogger } from '@imajin/logger';
+import { db, balances } from '@/src/db';
+import { eq } from 'drizzle-orm';
 import { PayoutActions } from './PayoutActions';
+import { EmtWithdrawalForm } from './EmtWithdrawalForm';
 
 const log = createLogger('kernel');
 
@@ -56,6 +59,14 @@ export default async function PayoutsPage() {
   const cookieHeader = cookieStore.getAll().map(c => `${c.name}=${c.value}`).join('; ');
   const status = await getConnectStatus(did, cookieHeader);
 
+  const [balanceRow] = await db
+    .select()
+    .from(balances)
+    .where(eq(balances.did, did))
+    .limit(1);
+  const cashAmount = balanceRow ? parseFloat(balanceRow.cashAmount) : 0;
+  const withdrawalsEnabled = balanceRow?.withdrawalsEnabled ?? false;
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
@@ -65,6 +76,15 @@ export default async function PayoutsPage() {
         </Link>
         <h1 className="text-3xl font-bold text-white">Payouts</h1>
       </div>
+
+      {/* EMT Withdrawal */}
+      {withdrawalsEnabled && (
+        <EmtWithdrawalForm
+          did={did}
+          cashAmount={cashAmount}
+          currency={balanceRow?.currency || 'CAD'}
+        />
+      )}
 
       {/* Payout Status Card */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">

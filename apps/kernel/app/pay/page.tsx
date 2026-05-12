@@ -90,6 +90,24 @@ export default async function Home() {
         </Link>
       </div>
 
+      {/* Request Withdrawal — only if enabled */}
+      {balance?.withdrawalsEnabled && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium text-white">Request EMT Withdrawal</div>
+            <div className="text-xs text-zinc-500 mt-0.5">
+              Minimum $10 CAD · Sent to your email via Interac e-Transfer
+            </div>
+          </div>
+          <Link
+            href="/pay/payouts"
+            className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 text-sm font-medium transition-colors"
+          >
+            Request
+          </Link>
+        </div>
+      )}
+
       {/* Recent Transactions */}
       <div>
         <div className="flex items-center justify-between mb-4">
