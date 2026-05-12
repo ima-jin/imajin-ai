@@ -702,6 +702,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
           cartCurrencies={cartCurrencies}
           userOrders={userOrders}
           onJumpToMyTickets={onJumpToMyTickets}
+          clearCart={() => setQuantities({})}
         />
       )}
 
@@ -766,7 +767,7 @@ interface UnifiedBarProps {
   onJumpToMyTickets?: () => void;
 }
 
-function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [], userOrders = [], onJumpToMyTickets }: UnifiedBarProps & { userOrders?: UserOrder[] }) {
+function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [], userOrders = [], onJumpToMyTickets, clearCart }: UnifiedBarProps & { userOrders?: UserOrder[]; clearCart?: () => void }) {
   // Issue #11: count tickets needing registration across all user orders
   const pendingRegistrations = userOrders.flatMap(o =>
     o.tickets.filter(t => t.registrationStatus === 'pending' && t.ticketType?.registrationFormId)
@@ -947,6 +948,9 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         deadline: data.instructions.deadline,
         message: data.instructions.message,
       });
+      // Clear the cart so the emt-done panel renders immediately (it gates on
+      // totalQty === 0 to allow new cart composition after a reservation).
+      clearCart?.();
       setStep('emt-done');
       // Don't call router.refresh() here — it causes the component tree to
       // restructure (tabs appear) which unmounts the emt-done card before the
@@ -1037,6 +1041,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
               deadline: reserveData.instructions.deadline,
               message: reserveData.instructions.message,
             });
+            clearCart?.();
             setStep('emt-done');
             // Don't router.refresh() here — same reason as startEtransfer.
             // The "View My Tickets" button in emt-done handles it.
