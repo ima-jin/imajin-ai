@@ -945,7 +945,10 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         message: data.instructions.message,
       });
       setStep('emt-done');
-      router.refresh();
+      // Don't call router.refresh() here — it causes the component tree to
+      // restructure (tabs appear) which unmounts the emt-done card before the
+      // user can read the instructions. The "View My Tickets" button in the
+      // emt-done card handles refresh when the user is ready.
     } catch {
       onError('e-Transfer setup failed');
       setStep('idle');
@@ -1032,8 +1035,8 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
               message: reserveData.instructions.message,
             });
             setStep('emt-done');
-            // Refresh server data so My Tickets tab sees the new order
-            router.refresh();
+            // Don't router.refresh() here — same reason as startEtransfer.
+            // The "View My Tickets" button in emt-done handles it.
           } catch {
             onError('e-Transfer setup failed');
             setStep('idle');
@@ -1177,6 +1180,23 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         {emtResult.quantity > 1 && (
           <p className="text-xs text-gray-500">Reserved {emtResult.quantity} tickets in one order. Send a single e-Transfer for the full amount.</p>
         )}
+        <button
+          onClick={() => {
+            // Clear the emt-done state so it doesn't persist on return
+            setEmtResult(null);
+            setStep('idle');
+            router.refresh();
+            if (onJumpToMyTickets) {
+              onJumpToMyTickets();
+            } else {
+              window.location.hash = 'my-tickets';
+              window.location.reload();
+            }
+          }}
+          className="w-full px-4 py-2.5 rounded-lg font-semibold text-sm bg-orange-500 text-white hover:bg-orange-600 transition"
+        >
+          🎫 View My Tickets →
+        </button>
       </div>
     );
   }
