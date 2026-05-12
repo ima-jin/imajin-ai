@@ -196,9 +196,11 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
         }).format(order.totalAmount / 100)
     : 'N/A';
 
-  const headerLabel = order.quantity > 1
-    ? `${order.quantity}× ${order.ticketTypeName}`
-    : order.ticketTypeName;
+  // order.ticketTypeName already encodes per-type counts for mixed orders
+  // (e.g. "2× Things are great" or "1× Premium + 2× Bunkie"). Don't
+  // wrap it with another order.quantity× prefix or the label doubles up
+  // ("2× 2× Things are great").
+  const headerLabel = order.ticketTypeName;
 
   // Issue #10: optimistic local state so QR + done state appear immediately
   const [completedTickets, setCompletedTickets] = useState<Record<string, { status: string; qrCode?: string }>>({});
