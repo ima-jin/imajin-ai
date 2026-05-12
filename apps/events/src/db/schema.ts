@@ -81,7 +81,7 @@ export const ticketTypes = eventsSchema.table('ticket_types', {
   name: text('name').notNull(),                             // "Virtual", "Physical", "VIP"
   description: text('description'),
   price: integer('price').notNull(),                        // in cents
-  currency: text('currency').notNull().default('USD'),
+  currency: text('currency').notNull().default('CAD'),
   quantity: integer('quantity'),                            // null = unlimited
   sold: integer('sold').default(0),
 

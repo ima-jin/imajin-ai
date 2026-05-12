@@ -114,6 +114,7 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
   const handleFolderSelect = useCallback((id: string | null) => {
     setSelectedFolderId(id);
     setSelectedAssetId(null);
+    setSelectedAssetIds(new Set());
     setMobileSidebarOpen(false);
   }, []);
 
@@ -219,6 +220,7 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
               onUploaded={() => {
                 loadAssets();
                 loadFolders();
+                setSelectedAssetIds(new Set());
               }}
               onSelectedAssetIdsChange={setSelectedAssetIds}
               onMoveFolderIdChange={setMoveFolderId}

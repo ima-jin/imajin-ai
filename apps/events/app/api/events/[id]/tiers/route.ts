@@ -168,7 +168,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { tierId, name, description, price, quantity, perks, sortOrder, requiresRegistration, registrationFormId, accessCode } = body;
+    const { tierId, name, description, price, currency, quantity, perks, sortOrder, requiresRegistration, registrationFormId, accessCode } = body;
 
     if (!tierId) {
       return NextResponse.json({ error: 'tierId is required' }, { status: 400 });
@@ -198,6 +198,16 @@ export async function PUT(
     if (requiresRegistration !== undefined) updates.requiresRegistration = requiresRegistration;
     if (registrationFormId !== undefined) updates.registrationFormId = registrationFormId || null;
     if (accessCode !== undefined) updates.accessCode = accessCode?.trim() || null;
+
+    // Currency - freely editable if no tickets sold
+    if (currency !== undefined) {
+      const sold = tier.sold || 0;
+      if (sold === 0) {
+        updates.currency = currency;
+      } else if (currency !== tier.currency) {
+        violations.push(`currency cannot be changed after tickets are sold`);
+      }
+    }
 
     // Price - freely editable if no tickets sold, can only decrease after sales
     if (price !== undefined) {

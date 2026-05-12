@@ -189,7 +189,13 @@ export function AssetGrid({
           return next;
         });
       } else {
-        // Don't clear multi-selection on normal click — it survives detail open/close
+        // Normal click: toggle this asset in the selection AND open detail
+        setSelectedAssetIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(asset.id)) next.delete(asset.id);
+          else next.add(asset.id);
+          return next;
+        });
         lastClickIdx.current = idx;
         onSelectAsset(asset.id);
       }
