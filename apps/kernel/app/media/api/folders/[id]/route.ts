@@ -4,6 +4,8 @@ import { requireAuth } from "@imajin/auth";
 import { eq, and } from "drizzle-orm";
 import { createLogger } from "@imajin/logger";
 
+export const dynamic = "force-dynamic";
+
 const log = createLogger("kernel");
 
 // ---------------------------------------------------------------------------

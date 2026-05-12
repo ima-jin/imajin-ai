@@ -40,6 +40,8 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
   const [typeFilter, setTypeFilter] = useState("");
   const [sort, setSort] = useState<SortKey>("created");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
+  const [moveFolderId, setMoveFolderId] = useState<string>("");
 
   // Persist sort/order to localStorage after mount
   useEffect(() => {
@@ -60,7 +62,7 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
 
   const loadAssets = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ sort, order });
+    const params = new URLSearchParams({ sort, order, limit: "200" });
     if (typeFilter) params.set("type", typeFilter);
     const res = await fetch(`/media/api/assets?${params}`, { credentials: "include" });
     if (res.ok) {
@@ -142,7 +144,8 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
     await fetch(`/media/api/folders/${id}`, { method: "DELETE", credentials: "include" });
     if (selectedFolderId === id) setSelectedFolderId(null);
     loadFolders();
-  }, [loadFolders, selectedFolderId]);
+    loadAssets();
+  }, [loadFolders, loadAssets, selectedFolderId]);
 
   const sidebarContent = (
     <FolderTree
@@ -185,8 +188,12 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
               onDeleted={() => {
                 setSelectedAssetId(null);
                 loadAssets();
+                loadFolders();
               }}
-              onMoved={loadAssets}
+              onMoved={() => {
+                loadAssets();
+                loadFolders();
+              }}
             />
           ) : (
             <AssetGrid
@@ -197,6 +204,8 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
               typeFilter={typeFilter}
               selectedAssetId={selectedAssetId}
               folders={folders}
+              selectedAssetIds={selectedAssetIds}
+              moveFolderId={moveFolderId}
               onSortChange={(s) => {
                 setSort(s as SortKey);
                 localStorage.setItem("imajin-media-sort", s);
@@ -207,7 +216,12 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
               }}
               onTypeFilterChange={setTypeFilter}
               onSelectAsset={setSelectedAssetId}
-              onUploaded={loadAssets}
+              onUploaded={() => {
+                loadAssets();
+                loadFolders();
+              }}
+              onSelectedAssetIdsChange={setSelectedAssetIds}
+              onMoveFolderIdChange={setMoveFolderId}
             />
           )}
         </AppShell.Split.Pane>

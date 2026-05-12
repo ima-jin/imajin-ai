@@ -5,6 +5,8 @@ import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import { withLogger } from "@imajin/logger";
 
+export const dynamic = "force-dynamic";
+
 const DEFAULT_FOLDERS = [
   { name: "Photos", icon: "📷" },
   { name: "Audio", icon: "🎵" },
@@ -23,17 +25,6 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   }
   const ownerDid = authResult.identity.actingAs || authResult.identity.id;
 
-  // Check if any folders already exist for this user
-  const existing = await db
-    .select({ id: folders.id })
-    .from(folders)
-    .where(eq(folders.ownerDid, ownerDid))
-    .limit(1);
-
-  if (existing.length > 0) {
-    return NextResponse.json({ message: "Already initialized", created: [] });
-  }
-
   try {
     const values = DEFAULT_FOLDERS.map((f, i) => ({
       id: `folder_${nanoid(16)}`,
@@ -45,8 +36,17 @@ export const POST = withLogger('kernel', async (request, { log }) => {
       parentId: null,
     }));
 
-    const created = await db.insert(folders).values(values).returning();
-    return NextResponse.json({ message: "Initialized", created }, { status: 201 });
+    // ON CONFLICT DO NOTHING makes this idempotent even under concurrent requests.
+    const created = await db
+      .insert(folders)
+      .values(values)
+      .onConflictDoNothing()
+      .returning();
+
+    return NextResponse.json(
+      { message: created.length > 0 ? "Initialized" : "Already initialized", created },
+      { status: created.length > 0 ? 201 : 200 }
+    );
   } catch (err) {
     log.error({ err: String(err) }, "DB insert failed");
     return NextResponse.json({ error: "Database failure", detail: String(err) }, { status: 500 });
