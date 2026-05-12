@@ -39,6 +39,7 @@ export const balances = paySchema.table('balances', {
   creditAmount: numeric('credit_amount', { precision: 20, scale: 8 }).notNull().default('0'),
   currency: text('currency').notNull().default('CAD'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  withdrawalsEnabled: boolean('withdrawals_enabled').notNull().default(false),
 });
 
 /**
@@ -96,6 +97,27 @@ export const feeLedger = paySchema.table('fee_ledger', {
   txIdx: index('idx_fee_ledger_tx').on(table.transactionId),
   recipientIdx: index('idx_fee_ledger_recipient').on(table.recipientDid, table.status),
 }));
+
+/**
+ * Withdrawal Requests - manual EMT withdrawal requests from users
+ */
+export const withdrawalRequests = paySchema.table('withdrawal_requests', {
+  id: text('id').primaryKey(),
+  did: text('did').notNull(),
+  amount: numeric('amount', { precision: 20, scale: 8 }).notNull(),
+  currency: text('currency').notNull().default('CAD'),
+  emtEmail: text('emt_email').notNull(),
+  status: text('status').notNull().default('requested'),
+  adminNotes: text('admin_notes'),
+  requestedAt: timestamp('requested_at', { withTimezone: true }).defaultNow(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+}, (table) => ({
+  didIdx: index('idx_withdrawal_requests_did').on(table.did),
+  statusIdx: index('idx_withdrawal_requests_status').on(table.status),
+}));
+
+export type WithdrawalRequest = typeof withdrawalRequests.$inferSelect;
+export type NewWithdrawalRequest = typeof withdrawalRequests.$inferInsert;
 
 // Types
 export type Transaction = typeof transactions.$inferSelect;
