@@ -72,8 +72,16 @@ export function SurveyAccordion({
   // Listen for postMessage from iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // Validate origin for security
-      if (!event.origin.includes('dykil')) return;
+      // Validate source: only accept messages from THIS accordion's iframe.
+      // We previously checked event.origin.includes('dykil'), but Dykil is
+      // deployed under a path (e.g. dev-jin.imajin.ai/dykil/...) not a
+      // dedicated subdomain, so the origin doesn't contain 'dykil' and every
+      // postMessage was getting silently dropped — which is why ticket
+      // registrations stayed 'pending' even after the user submitted the
+      // survey. Comparing event.source to the iframe's contentWindow is
+      // strictly more secure than origin-string-matching anyway.
+      const iframe = iframeRef.current;
+      if (!iframe || event.source !== iframe.contentWindow) return;
 
       if (event.data.type === 'survey-height') {
         setIframeHeight(event.data.height + 40); // Add some padding
