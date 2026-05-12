@@ -45,7 +45,9 @@ export async function requireAppAuth(
   }
 
   try {
-    const res = await fetch(`${authUrl}/auth/api/apps/validate`, {
+    // AUTH_SERVICE_URL already includes the `/auth` prefix (consistent with
+    // require-auth.ts and session.ts which use `${authUrl}/api/...`)
+    const res = await fetch(`${authUrl}/api/apps/validate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
