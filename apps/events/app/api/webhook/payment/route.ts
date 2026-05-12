@@ -1,11 +1,14 @@
 /**
  * POST /api/webhook/payment
- * 
+ *
  * Called by pay service when a checkout completes.
- * Creates the ticket record and sends confirmation email.
+ * Creates order + ticket records via the shared createOrderWithTickets
+ * helper. Webhook-only logic (soft-DID creation, chat member sync, email
+ * migration, .fair settlement signals, per-ticket bus publishes, onboard
+ * token magic links) stays here.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { withLogger, createLogger } from '@imajin/logger';
 import { db, events, ticketTypes, tickets, orders } from '@/src/db';
 
@@ -13,18 +16,14 @@ const log = createLogger('events');
 import { eq, and, sql } from 'drizzle-orm';
 import { generateQRCode } from '@/src/lib/email';
 import { backfillContactEmail } from '@/src/lib/contact-email';
-import * as ed from '@noble/ed25519';
-import { sha512 } from '@noble/hashes/sha2.js';
-import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js';
+import { createOrderWithTickets } from '@/src/lib/checkout-common';
 import { randomBytes } from 'crypto';
 import { getClient } from '@imajin/db';
+import { publish } from '@imajin/bus';
 import * as bus from '@imajin/bus';
 
-// Configure ed25519 with sha512
-ed.hashes.sha512 = sha512;
-
-// Shared secret between pay service and events service
-// In production, use proper service-to-service auth
+// Shared secret between pay service and events service.
+// In production, use proper service-to-service auth.
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET!;
 const PROFILE_URL = process.env.PROFILE_URL!;
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3003';
@@ -121,7 +120,6 @@ async function attachEmailToProfile(did: string, email: string): Promise<void> {
  */
 async function migrateSoftDidToHard(email: string, hardDid: string, eventId: string): Promise<void> {
   try {
-    // Find tickets for this event purchased with this email but owned by a different DID
     const softTickets = await db
       .select({ id: tickets.id, ownerDid: tickets.ownerDid })
       .from(tickets)
@@ -137,7 +135,6 @@ async function migrateSoftDidToHard(email: string, hardDid: string, eventId: str
 
     const softDids = Array.from(new Set(softTickets.map(t => t.ownerDid)));
 
-    // Migrate tickets to hard DID
     await db
       .update(tickets)
       .set({ ownerDid: hardDid })
@@ -151,7 +148,6 @@ async function migrateSoftDidToHard(email: string, hardDid: string, eventId: str
 
     log.info({ count: softTickets.length, softDids, hardDid }, 'Migrated tickets from soft DIDs to hard DID');
 
-    // Migrate chat participation for each soft DID
     const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
     if (CHAT_URL) {
       for (const softDid of softDids) {
@@ -195,7 +191,6 @@ interface PaymentWebhookPayload {
 
 export const POST = withLogger('events', async (request, { log }) => {
   try {
-    // Verify webhook secret
     const authHeader = request.headers.get('authorization');
     if (authHeader !== `Bearer ${WEBHOOK_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -258,7 +253,6 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     throw new Error('Customer email is required for ticket creation');
   }
 
-  // Get event
   const [event] = await db
     .select()
     .from(events)
@@ -284,124 +278,68 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   let ownerDid: string;
 
   if (metadata.buyerDid) {
-    // Buyer was logged in with a hard DID
     ownerDid = metadata.buyerDid;
     log.info({ ownerDid }, 'Buyer authenticated with hard DID');
 
-    // Attach email to their profile if not already set
     await attachEmailToProfile(ownerDid, customerEmail);
-
-    // Issue #4: backfill auth.identities.contact_email with NULL guard
     await backfillContactEmail(ownerDid, customerEmail, log);
-
-    // Migrate any existing soft DID tickets/chat for this email
     await migrateSoftDidToHard(customerEmail, ownerDid, event.id);
   } else {
-    // Guest buyer — create soft DID session
     const softSession = await createSoftDidSession(customerEmail, customerName || undefined);
     if (!softSession?.did) {
       throw new Error(`Failed to create soft DID session for ${customerEmail}`);
     }
     ownerDid = softSession.did;
-
-    // Issue #4: backfill auth.identities.contact_email for soft DID (NULL guard)
     await backfillContactEmail(ownerDid, customerEmail, log);
   }
 
-  // Create order record BEFORE tickets — so we can link them via orderId
-  const orderId = `ord_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`;
-  await db.insert(orders).values({
-    id: orderId,
+  const { tickets: createdTickets, order } = await createOrderWithTickets({
     eventId: event.id,
     buyerDid: ownerDid,
-    ticketTypeId: firstType.id,
-    quantity: totalQuantity,
-    amountTotal,
+    cart,
+    typesById,
+    totalQuantity,
+    totalAmount: amountTotal,
     currency: currency.toUpperCase(),
     paymentMethod: paymentId ? 'stripe' : 'etransfer',
+    ticketStatus: 'valid',
     stripeSessionId: sessionId,
-    paymentId: paymentId || null,
-    purchasedAt: new Date(),
-    metadata: {
+    paymentId: paymentId || undefined,
+    orderMetadata: {
       purchaseEmail: customerEmail,
       customerName: customerName || null,
       cart: cart.map(c => ({ ticketTypeId: c.ticketTypeId, quantity: c.quantity })),
     },
+    ticketMetadata: {
+      stripeSessionId: sessionId,
+      purchaseEmail: customerEmail,
+    },
+    eventDid: event.did,
+    eventPrivateKey: event.privateKey,
+    customerEmail,
+    log,
+    incrementSold: true,
   });
 
-  // Create tickets for all types in the cart
-  const createdTickets = [];
-  let ticketIndex = 0;
+  const orderId = order.id;
 
-  for (const cartItem of cart) {
-    const ticketType = typesById.get(cartItem.ticketTypeId)!;
-    const perTicketPrice = Math.round(ticketType.price * cartItem.quantity > 0 ? ticketType.price : 0);
-
-    for (let i = 0; i < cartItem.quantity; i++) {
-      const ticketId = `tkt_${Date.now().toString(36)}_${ticketIndex++}`;
-
-      // Sign ticket with event's Ed25519 private key
-      const signatureData = `${ticketId}:${event.did}:${customerEmail}:${Date.now()}`;
-      const msgBytes = new TextEncoder().encode(signatureData);
-      let signature: string;
-      if (event.privateKey) {
-        const sigBytes = await ed.signAsync(msgBytes, hexToBytes(event.privateKey));
-        signature = bytesToHex(sigBytes);
-      } else {
-        log.warn({ eventId: event.id }, 'Event has no privateKey — using base64 fallback signature');
-        signature = Buffer.from(signatureData).toString('base64');
-      }
-
-      const [ticket] = await db.insert(tickets).values({
-        id: ticketId,
-        eventId: event.id,
-        ticketTypeId: ticketType.id,
-        orderId,
-        ownerDid,
-        originalOwnerDid: ownerDid,
-        pricePaid: perTicketPrice,
-        currency: currency.toUpperCase(),
-        paymentId: paymentId || sessionId,
-        paymentMethod: paymentId ? 'stripe' : 'etransfer',
-        status: 'valid',
-        purchasedAt: new Date(),
-        signature,
-
-        registrationStatus: ticketType.requiresRegistration ? 'pending' : 'not_required',
-        metadata: {
-          stripeSessionId: sessionId,
-          purchaseEmail: customerEmail,
-        },
-      }).returning();
-
-      createdTickets.push(ticket);
-
-      // Fire and forget — never block the response
-      bus.publish('ticket.purchased', {
-        issuer: ownerDid, subject: event.creatorDid, scope: 'events',
-        payload: {
-          ticketId: ticket.id, eventId: event.id,
-          amount: perTicketPrice, currency,
+  // Per-ticket attestation: fire-and-forget so we never block the response.
+  for (const ticket of createdTickets) {
+    bus.publish('ticket.purchased', {
+      issuer: ownerDid, subject: event.creatorDid, scope: 'events',
+      payload: {
+        ticketId: ticket.id, eventId: event.id,
+        amount: ticket.pricePaid ?? 0, currency,
         context_id: event.id, context_type: 'event',
         to: ownerDid,
         interestDids: [ownerDid],
       }
     });
-    }
-  }
-
-  // Update sold count for each ticket type in the cart
-  for (const cartItem of cart) {
-    await db
-      .update(ticketTypes)
-      .set({ sold: sql`${ticketTypes.sold} + ${cartItem.quantity}` })
-      .where(eq(ticketTypes.id, cartItem.ticketTypeId));
   }
 
   log.info({ count: createdTickets.length, orderId, customerEmail }, 'Order + tickets created');
 
-  // Add buyer to event chat conversation_members (non-fatal)
-  // The event DID is the conversation DID
+  // Add buyer to event chat conversation_members (non-fatal). Event DID = conversation DID.
   const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
   if (CHAT_URL) {
     try {
@@ -435,7 +373,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         fairManifest: eventMetadata.fair || null,
         metadata: {
           ticketIds: createdTickets.map(t => t.id),
-          ticketTypeId: ticketType.id,
+          ticketTypeId: firstType.id,
           stripeSessionId: sessionId,
           eventId: event.id,
         },
@@ -478,7 +416,6 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
 
   const magicLink = onboardToken ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}` : undefined;
 
-  // Build absolute event image URL
   const eventImageUrl = event.imageUrl
     ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
     : undefined;
@@ -534,7 +471,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         eventTitle: event.title,
         eventDate: formattedEventDate,
         eventTime: formattedEventTime,
-        ticketSummary: [{ typeName: ticketType.name, quantity, unitPrice }],
+        ticketSummary: [{ typeName: firstType.name, quantity, unitPrice }],
         totalPaid: formattedTotal,
         paymentMethod: paymentId ? 'Credit Card' : 'E-Transfer',
         registrationUrl,
@@ -551,14 +488,12 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   // Only publish the ticket confirmation (with QR) immediately for no-registration tickets
   if (bundleTickets.length > 0) {
     try {
-      // Generate QR codes for the bundle subset
       const ticketsWithQr = await Promise.all(
         bundleTickets.map(async (t) => ({
           id: t.id,
           qrCodeDataUri: await generateQRCode(t.id),
         }))
       );
-      // Recompute formatted price for the bundle subset
       const bundleCents = bundleTickets.reduce((sum, t) => sum + (t.pricePaid ?? 0), 0);
       const bundleFormatted = new Intl.NumberFormat('en-US', {
         style: 'currency',
@@ -573,7 +508,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
           to: customerEmail,
           email: customerEmail,
           eventTitle: event.title,
-          ticketType: ticketType.name,
+          ticketType: firstType.name,
           ticketId: bundleTickets[0].id,
           eventDate: formattedEventDate,
           eventTime: formattedEventTime,
@@ -596,14 +531,13 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
 
 async function handlePaymentFailed(payload: PaymentWebhookPayload) {
   const { metadata, customerEmail } = payload;
-  
-  // Get event for the retry URL
+
   const [event] = await db
     .select()
     .from(events)
     .where(eq(events.id, metadata.eventId))
     .limit(1);
-  
+
   if (!event) {
     log.error({ eventId: metadata.eventId }, 'Event not found for failed payment');
     return;
@@ -616,7 +550,7 @@ async function handlePaymentFailed(payload: PaymentWebhookPayload) {
     .limit(1);
 
   log.info({ customerEmail, eventTitle: event.title }, 'Payment failed');
-  
+
   // Optionally send a "payment failed" email
   // For now, just log it - Stripe also sends their own failure emails
 }
