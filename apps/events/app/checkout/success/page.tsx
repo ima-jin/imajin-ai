@@ -86,14 +86,14 @@ export default async function SuccessPage({ searchParams }: Props) {
           >
             Complete Registration Now →
           </Link>
-          <AutoRedirect href={`/${event.id}#tickets`} seconds={5} />
+          <AutoRedirect href={`/${event.id}#tickets`} seconds={10} />
         </div>
       )}
 
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
         {event ? (
           <Link
-            href={`/${event.id}`}
+            href={`/${event.id}#tickets`}
             className="inline-block px-8 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-semibold text-lg"
           >
             Go to the Event →
