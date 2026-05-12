@@ -183,8 +183,12 @@ interface PaymentWebhookPayload {
   metadata: {
     eventId: string;
     eventDid: string;
-    ticketTypeId: string;
-    quantity: string;
+    // Legacy single-type fields
+    ticketTypeId?: string;
+    quantity?: string;
+    // Multi-type cart (JSON string)
+    cart?: string;
+    totalQuantity?: string;
     buyerDid?: string;
   };
 }
@@ -221,7 +225,22 @@ export const POST = withLogger('events', async (request, { log }) => {
 async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const { metadata, customerName, amountTotal, currency, sessionId, paymentId } = payload;
   const customerEmail = payload.customerEmail || null;
-  const quantity = parseInt(metadata.quantity) || 1;
+
+  // Parse cart: multi-type (cart JSON) or legacy single-type
+  interface CartEntry { ticketTypeId: string; quantity: number }
+  let cart: CartEntry[];
+  if (metadata.cart) {
+    try {
+      cart = JSON.parse(metadata.cart);
+    } catch {
+      throw new Error(`Invalid cart metadata: ${metadata.cart}`);
+    }
+  } else if (metadata.ticketTypeId) {
+    cart = [{ ticketTypeId: metadata.ticketTypeId, quantity: parseInt(metadata.quantity || '1') }];
+  } else {
+    throw new Error('No cart or ticketTypeId in metadata');
+  }
+  const totalQuantity = cart.reduce((sum, c) => sum + c.quantity, 0);
 
   // Idempotency: check if an order for this Stripe session already exists
   const existingOrder = await db
@@ -239,7 +258,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     throw new Error('Customer email is required for ticket creation');
   }
 
-  // Get event and ticket type
+  // Get event
   const [event] = await db
     .select()
     .from(events)
@@ -250,15 +269,16 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     throw new Error(`Event not found: ${metadata.eventId}`);
   }
 
-  const [ticketType] = await db
-    .select()
-    .from(ticketTypes)
-    .where(eq(ticketTypes.id, metadata.ticketTypeId))
-    .limit(1);
-
-  if (!ticketType) {
-    throw new Error(`Ticket type not found: ${metadata.ticketTypeId}`);
+  // Fetch all ticket types referenced in cart
+  const allTypes = await db.select().from(ticketTypes).where(eq(ticketTypes.eventId, metadata.eventId));
+  const typesById = new Map(allTypes.map(t => [t.id, t]));
+  for (const item of cart) {
+    if (!typesById.has(item.ticketTypeId)) {
+      throw new Error(`Ticket type not found: ${item.ticketTypeId}`);
+    }
   }
+  // Use first type for backward-compat fields that need a single value
+  const firstType = typesById.get(cart[0].ticketTypeId)!;
 
   // Resolve owner DID: use hard DID if buyer was logged in, otherwise create soft DID
   let ownerDid: string;
@@ -294,8 +314,8 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     id: orderId,
     eventId: event.id,
     buyerDid: ownerDid,
-    ticketTypeId: ticketType.id,
-    quantity,
+    ticketTypeId: firstType.id,
+    quantity: totalQuantity,
     amountTotal,
     currency: currency.toUpperCase(),
     paymentMethod: paymentId ? 'stripe' : 'etransfer',
@@ -305,70 +325,78 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     metadata: {
       purchaseEmail: customerEmail,
       customerName: customerName || null,
+      cart: cart.map(c => ({ ticketTypeId: c.ticketTypeId, quantity: c.quantity })),
     },
   });
 
-  // Create ticket(s)
+  // Create tickets for all types in the cart
   const createdTickets = [];
+  let ticketIndex = 0;
 
-  for (let i = 0; i < quantity; i++) {
-    const ticketId = `tkt_${Date.now().toString(36)}_${i}`;
+  for (const cartItem of cart) {
+    const ticketType = typesById.get(cartItem.ticketTypeId)!;
+    const perTicketPrice = Math.round(ticketType.price * cartItem.quantity > 0 ? ticketType.price : 0);
 
-    // Sign ticket with event's Ed25519 private key
-    const signatureData = `${ticketId}:${event.did}:${customerEmail}:${Date.now()}`;
-    const msgBytes = new TextEncoder().encode(signatureData);
-    let signature: string;
-    if (event.privateKey) {
-      const sigBytes = await ed.signAsync(msgBytes, hexToBytes(event.privateKey));
-      signature = bytesToHex(sigBytes);
-    } else {
-      // Fallback for events created before privateKey was stored
-      log.warn({ eventId: event.id }, 'Event has no privateKey — using base64 fallback signature');
-      signature = Buffer.from(signatureData).toString('base64');
-    }
+    for (let i = 0; i < cartItem.quantity; i++) {
+      const ticketId = `tkt_${Date.now().toString(36)}_${ticketIndex++}`;
 
-    const [ticket] = await db.insert(tickets).values({
-      id: ticketId,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      orderId,
-      ownerDid,
-      originalOwnerDid: ownerDid,
-      pricePaid: amountTotal / quantity,
-      currency: currency.toUpperCase(),
-      paymentId: paymentId || sessionId,
-      paymentMethod: paymentId ? 'stripe' : 'etransfer',
-      status: 'valid',
-      purchasedAt: new Date(),
-      signature,
+      // Sign ticket with event's Ed25519 private key
+      const signatureData = `${ticketId}:${event.did}:${customerEmail}:${Date.now()}`;
+      const msgBytes = new TextEncoder().encode(signatureData);
+      let signature: string;
+      if (event.privateKey) {
+        const sigBytes = await ed.signAsync(msgBytes, hexToBytes(event.privateKey));
+        signature = bytesToHex(sigBytes);
+      } else {
+        log.warn({ eventId: event.id }, 'Event has no privateKey — using base64 fallback signature');
+        signature = Buffer.from(signatureData).toString('base64');
+      }
 
-      registrationStatus: ticketType.requiresRegistration ? 'pending' : 'not_required',
-      metadata: {
-        stripeSessionId: sessionId,
-        purchaseEmail: customerEmail,
-      },
-    }).returning();
+      const [ticket] = await db.insert(tickets).values({
+        id: ticketId,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        orderId,
+        ownerDid,
+        originalOwnerDid: ownerDid,
+        pricePaid: perTicketPrice,
+        currency: currency.toUpperCase(),
+        paymentId: paymentId || sessionId,
+        paymentMethod: paymentId ? 'stripe' : 'etransfer',
+        status: 'valid',
+        purchasedAt: new Date(),
+        signature,
 
-    createdTickets.push(ticket);
+        registrationStatus: ticketType.requiresRegistration ? 'pending' : 'not_required',
+        metadata: {
+          stripeSessionId: sessionId,
+          purchaseEmail: customerEmail,
+        },
+      }).returning();
 
-    // Fire and forget — never block the response
-    bus.publish('ticket.purchased', {
-      issuer: ownerDid, subject: event.creatorDid, scope: 'events',
-      payload: {
-        ticketId: ticket.id, eventId: event.id,
-        amount: amountTotal / quantity, currency,
+      createdTickets.push(ticket);
+
+      // Fire and forget — never block the response
+      bus.publish('ticket.purchased', {
+        issuer: ownerDid, subject: event.creatorDid, scope: 'events',
+        payload: {
+          ticketId: ticket.id, eventId: event.id,
+          amount: perTicketPrice, currency,
         context_id: event.id, context_type: 'event',
         to: ownerDid,
         interestDids: [ownerDid],
       }
     });
+    }
   }
 
-  // Update sold count
-  await db
-    .update(ticketTypes)
-    .set({ sold: sql`${ticketTypes.sold} + ${quantity}` })
-    .where(eq(ticketTypes.id, ticketType.id));
+  // Update sold count for each ticket type in the cart
+  for (const cartItem of cart) {
+    await db
+      .update(ticketTypes)
+      .set({ sold: sql`${ticketTypes.sold} + ${cartItem.quantity}` })
+      .where(eq(ticketTypes.id, cartItem.ticketTypeId));
+  }
 
   log.info({ count: createdTickets.length, orderId, customerEmail }, 'Order + tickets created');
 

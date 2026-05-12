@@ -874,6 +874,9 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           eventId,
+          // Send full cart for multi-type orders
+          items: cartItems.map(ci => ({ ticketTypeId: ci.ticket.id, quantity: ci.qty })),
+          // Legacy single-type fields for backward compat
           ticketTypeId: first.ticket.id,
           quantity: first.qty,
           ...(inviteToken && { invite: inviteToken }),
@@ -1296,14 +1299,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           ⚠️ Your cart mixes currencies ({cartCurrencies.join(' + ')}). Pick tickets in one currency to check out together.
         </p>
       )}
-      {/* Multi-type hint: only relevant when card is the only path. With
-          e-Transfer enabled, EMT covers the whole cart in one go and the user
-          doesn't need this warning. */}
-      {!mixedCurrency && multiType && !etransferEnabled && (
-        <p className="text-xs text-amber-500 mt-2">
-          ⚠️ Card payment is single-type only — you'll check out {first?.ticket.name} first, then return for the rest.
-        </p>
-      )}
+
       {!mixedCurrency && etransferEnabled && totalQty > 0 && (
         <p className="text-xs text-gray-400 mt-1">
           e-Transfer pays the organizer directly. One transfer covers all reserved tickets.
