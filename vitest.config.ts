@@ -1,7 +1,13 @@
 import { defineConfig } from 'vitest/config';
+import { resolve } from 'path';
 
 export default defineConfig({
   test: {
-    include: ['packages/*/tests/**/*.test.ts'],
+    include: ['packages/*/tests/**/*.test.ts', 'apps/**/__tests__/**/*.test.ts'],
+  },
+  resolve: {
+    alias: {
+      '@/': resolve(__dirname, 'apps/kernel/'),
+    },
   },
 });
