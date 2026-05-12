@@ -1,20 +1,25 @@
 /**
  * POST /api/checkout/etransfer
  *
- * Creates an e-Transfer hold on N tickets (default 1) of one ticket type.
- * All N tickets are grouped under a single order with one memo (ORD-{orderId}).
- * Returns payment instructions for one combined e-Transfer.
+ * Creates an e-Transfer hold on N tickets (default 1) of one or more ticket
+ * types. All N tickets are grouped under a single order with one memo
+ * (ORD-{orderId}). Returns payment instructions for one combined e-Transfer.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
-import { db, events, ticketTypes, tickets, orders, eventInvites } from '@/src/db';
-import { eq, and, lt } from 'drizzle-orm';
-import { optionalAuth } from '@imajin/auth';
-import { randomBytes } from 'crypto';
-import { getClient } from '@imajin/db';
+import { db, events, tickets, orders } from '@/src/db';
+import { eq, and } from 'drizzle-orm';
 import { publish } from '@imajin/bus';
-import { getContactEmail, backfillContactEmail } from '@/src/lib/contact-email';
+import { getClient } from '@imajin/db';
+import {
+  validateCart,
+  resolveCheckoutIdentity,
+  validateInviteAccess,
+  createOrderWithTickets,
+  CheckoutValidationError,
+  type CartItem,
+} from '@/src/lib/checkout-common';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const HOLD_HOURS = 72;
@@ -38,11 +43,6 @@ interface ETransferCheckoutRequest {
 }
 
 export const POST = withLogger('events', async (request, { log }) => {
-  // Try session auth first (logged-in user), but don't require it
-  const session = await optionalAuth(request);
-
-  // We'll resolve identity after parsing body (may need email fallback)
-
   try {
     const body: ETransferCheckoutRequest = await request.json();
 
@@ -68,34 +68,30 @@ export const POST = withLogger('events', async (request, { log }) => {
       const q = Math.max(1, Math.min(MAX_QUANTITY, Math.floor(item.quantity ?? 1)));
       cartMap.set(item.ticketTypeId, (cartMap.get(item.ticketTypeId) ?? 0) + q);
     }
-    const cart: ETransferCartItem[] = Array.from(cartMap.entries()).map(([ticketTypeId, quantity]) => ({
+    const cart: CartItem[] = Array.from(cartMap.entries()).map(([ticketTypeId, quantity]) => ({
       ticketTypeId,
       quantity: Math.min(MAX_QUANTITY, quantity),
     }));
     const totalQuantity = cart.reduce((sum, c) => sum + c.quantity, 0);
 
-    // Resolve identity: session cookie (hard or soft DID) → email fallback → 401
+    // Resolve identity from session (any tier). The new-magic-link branch
+    // below handles the anonymous-with-email case before we touch any other
+    // helpers, since it short-circuits to a "verification email sent" reply.
+    const identity = await resolveCheckoutIdentity(request, { email: body.email }, log);
+
     let ownerDid: string;
-    let ownerEmail: string | undefined = body.email;
+    let ownerEmail: string | undefined;
 
-    if (session) {
-      ownerDid = session.id;
-
-      // Issue #4: backfill contact_email if buyer provided one and identity lacks it
-      if (body.email) {
-        await backfillContactEmail(ownerDid, body.email, log);
-      }
+    if (identity.did) {
+      ownerDid = identity.did;
+      ownerEmail = identity.email;
 
       // Validate we have an email for ticket delivery
-      const contactEmail = await getContactEmail(ownerDid, log);
-      if (!contactEmail && !body.email) {
+      if (!ownerEmail) {
         return NextResponse.json(
           { error: 'Email required to send your ticket', field: 'email' },
           { status: 400 }
         );
-      }
-      if (!ownerEmail && contactEmail) {
-        ownerEmail = contactEmail;
       }
     } else if (body.email) {
       // Anonymous buyer with an email but no session: send a magic-link
@@ -158,13 +154,11 @@ export const POST = withLogger('events', async (request, { log }) => {
       );
     }
 
-    // Fetch event
+    // Fetch event for downstream emtEmail + invite + emails
     const [event] = await db.select().from(events).where(eq(events.id, body.eventId)).limit(1);
-
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
-
     if (event.status !== 'published') {
       return NextResponse.json({ error: 'Tickets are not available for this event' }, { status: 400 });
     }
@@ -174,58 +168,17 @@ export const POST = withLogger('events', async (request, { log }) => {
       return NextResponse.json({ error: 'e-Transfer is not available for this event' }, { status: 400 });
     }
 
-    // Invite-only access check
     if (event.accessMode === 'invite_only') {
       const token = body.invite || request.nextUrl.searchParams.get('invite');
-      if (!token) {
-        return NextResponse.json({ error: 'This event requires an invite link' }, { status: 403 });
-      }
-
-      const [invite] = await db
-        .select()
-        .from(eventInvites)
-        .where(and(eq(eventInvites.eventId, body.eventId), eq(eventInvites.token, token)))
-        .limit(1);
-
-      if (!invite) {
-        return NextResponse.json({ error: 'Invalid invite token' }, { status: 403 });
-      }
-
-      if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
-        return NextResponse.json({ error: 'This invite link has expired' }, { status: 403 });
-      }
-
-      if (invite.maxUses !== null && invite.usedCount >= invite.maxUses) {
-        return NextResponse.json({ error: 'This invite link has reached its maximum uses' }, { status: 403 });
-      }
+      await validateInviteAccess(body.eventId, token);
     }
 
-    // Fetch all ticket types for this event in one go (filtered to the cart)
-    const ticketTypeIds = cart.map((c) => c.ticketTypeId);
-    const fetchedTypes = await db
-      .select()
-      .from(ticketTypes)
-      .where(eq(ticketTypes.eventId, body.eventId));
-    const typesById = new Map(fetchedTypes.map((t) => [t.id, t]));
-
-    for (const item of cart) {
-      if (!typesById.has(item.ticketTypeId)) {
-        return NextResponse.json(
-          { error: `Ticket type ${item.ticketTypeId} not found for this event` },
-          { status: 404 }
-        );
-      }
-    }
-
-    // All ticket types in a cart must share a currency for one combined transfer
-    const currencies = new Set(cart.map((c) => typesById.get(c.ticketTypeId)!.currency));
-    if (currencies.size > 1) {
-      return NextResponse.json(
-        { error: 'All tickets in a cart must use the same currency' },
-        { status: 400 }
-      );
-    }
-    const cartCurrency = typesById.get(cart[0].ticketTypeId)!.currency;
+    // First validateCart pass: types exist + currency consistency. Availability
+    // is deferred until AFTER duplicate-pending-order detection so a buyer
+    // with an existing hold can still retrieve it when stock has since sold
+    // out.
+    const initial = await validateCart(body.eventId, cart);
+    const cartCurrency = initial.currency;
 
     // Look for an existing pending EMT order from this buyer covering exactly
     // the same cart shape (same ticket types in same quantities). If found,
@@ -247,12 +200,10 @@ export const POST = withLogger('events', async (request, { log }) => {
         .select()
         .from(tickets)
         .where(eq(tickets.orderId, existing.id));
-      // Build the cart shape of the existing order
       const existingCart = new Map<string, number>();
       for (const t of heldTickets) {
         existingCart.set(t.ticketTypeId, (existingCart.get(t.ticketTypeId) ?? 0) + 1);
       }
-      // Compare shapes
       const shapeMatches =
         existingCart.size === cartMap.size &&
         Array.from(cartMap.entries()).every(([k, v]) => existingCart.get(k) === v);
@@ -277,48 +228,20 @@ export const POST = withLogger('events', async (request, { log }) => {
       });
     }
 
-    // Release expired holds for any ticket type in the cart (frees inventory).
-    for (const item of cart) {
-      await db
-        .update(tickets)
-        .set({ status: 'available', heldBy: null, heldUntil: null })
-        .where(
-          and(
-            eq(tickets.ticketTypeId, item.ticketTypeId),
-            eq(tickets.status, 'held'),
-            lt(tickets.heldUntil, new Date())
-          )
-        );
-    }
-
-    // Check availability per type
-    for (const item of cart) {
-      const tt = typesById.get(item.ticketTypeId)!;
-      if (tt.quantity !== null) {
-        const available = tt.quantity - (tt.sold ?? 0);
-        if (available < item.quantity) {
-          return NextResponse.json(
-            { error: `Only ${available} ${tt.name} ticket${available !== 1 ? 's' : ''} available` },
-            { status: 409 }
-          );
-        }
-      }
-    }
+    // Second pass: release expired holds + availability check. Re-fetches
+    // types so post-release sold counts are accurate.
+    const validated = await validateCart(body.eventId, cart, {
+      releaseExpiredHolds: true,
+      checkAvailability: true,
+      availabilityStatusCode: 409,
+    });
 
     const holdUntil = new Date();
     holdUntil.setHours(holdUntil.getHours() + HOLD_HOURS);
 
-    const orderId = `ord_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`;
-    const totalAmount = cart.reduce(
-      (sum, item) => sum + typesById.get(item.ticketTypeId)!.price * item.quantity,
-      0
-    );
-
     // Resolve the buyer's email up-front so it can be stored on the order row.
     // Falls back to auth.identities.contact_email when the request didn't carry
-    // one (e.g. logged-in user with no body.email). Declared before the orders
-    // INSERT to avoid a temporal-dead-zone bug — the field is referenced via
-    // shorthand in the .values() block below.
+    // one (e.g. logged-in user with no body.email).
     let buyerEmail: string | undefined = ownerEmail;
     if (!buyerEmail) {
       try {
@@ -332,62 +255,27 @@ export const POST = withLogger('events', async (request, { log }) => {
       }
     }
 
-    // Create the order (pending) and held tickets in sequence.
-    // Drizzle's postgres-js client doesn't expose a transaction helper here,
-    // but failures will leave a pending order with fewer tickets than expected;
-    // the existingOrder branch above will pick it up on retry. Acceptable for
-    // an MVP — tighten with a real tx if it becomes an issue.
-    const [order] = await db
-      .insert(orders)
-      .values({
-        id: orderId,
-        eventId: body.eventId,
-        // Single-type orders keep ticket_type_id set; multi-type orders leave it null.
-        ticketTypeId: cart.length === 1 ? cart[0].ticketTypeId : null,
-        buyerDid: ownerDid,
-        quantity: totalQuantity,
-        amountTotal: totalAmount,
-        currency: cartCurrency,
-        paymentMethod: 'etransfer',
-        status: 'pending',
-        metadata: cart.length > 1 ? { cart } : {},
-        buyerEmail,
-      })
-      .returning();
-
-    const ticketRows: { id: string; eventId: string; ticketTypeId: string; ownerDid: string; orderId: string; originalOwnerDid: string; pricePaid: number; currency: string; status: 'held'; heldBy: string; heldUntil: Date; holdExpiresAt: Date; paymentMethod: 'etransfer'; registrationStatus: string; metadata: Record<string, unknown> }[] = [];
-    let idx = 0;
-    for (const item of cart) {
-      const tt = typesById.get(item.ticketTypeId)!;
-      for (let i = 0; i < item.quantity; i++) {
-        ticketRows.push({
-          id: `tkt_${Date.now().toString(36)}_${randomBytes(3).toString('hex')}_${idx++}`,
-          eventId: body.eventId,
-          ticketTypeId: item.ticketTypeId,
-          ownerDid: ownerDid,
-          orderId: order.id,
-          originalOwnerDid: ownerDid,
-          pricePaid: tt.price,
-          currency: tt.currency,
-          status: 'held',
-          heldBy: ownerDid,
-          heldUntil: holdUntil,
-          holdExpiresAt: holdUntil,
-          paymentMethod: 'etransfer',
-          registrationStatus: tt.requiresRegistration ? 'pending' : 'not_required',
-          metadata: {},
-        });
-      }
-    }
-    const insertedTickets = await db.insert(tickets).values(ticketRows).returning();
+    const { order, tickets: insertedTickets } = await createOrderWithTickets({
+      eventId: body.eventId,
+      buyerDid: ownerDid,
+      buyerEmail,
+      cart,
+      typesById: validated.typesById,
+      totalQuantity: validated.totalQuantity,
+      totalAmount: validated.totalAmount,
+      currency: validated.currency,
+      paymentMethod: 'etransfer',
+      ticketStatus: 'held',
+      holdExpiresAt: holdUntil,
+      orderMetadata: cart.length > 1 ? { cart } : {},
+      log,
+    });
 
     const memo = `ORD-${order.id}`;
-    const amount = totalAmount / 100;
+    const amount = validated.totalAmount / 100;
 
     // Send the buyer a 'reserved — not yet confirmed' email so they have a
-    // record of the hold, the memo, and the address to send to. buyerEmail
-    // was resolved earlier (above the orders INSERT) so it could be persisted
-    // on the order row.
+    // record of the hold, the memo, and the address to send to.
     if (buyerEmail) {
       const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
       const eventDate = new Date(event.startsAt);
@@ -395,7 +283,7 @@ export const POST = withLogger('events', async (request, { log }) => {
         ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
         : undefined;
       const summary = cart.map((item) => ({
-        typeName: typesById.get(item.ticketTypeId)?.name ?? 'Ticket',
+        typeName: validated.typesById.get(item.ticketTypeId)?.name ?? 'Ticket',
         quantity: item.quantity,
       }));
       const formattedAmount = new Intl.NumberFormat('en-CA', {
@@ -464,6 +352,12 @@ export const POST = withLogger('events', async (request, { log }) => {
       { status: 201 }
     );
   } catch (error) {
+    if (error instanceof CheckoutValidationError) {
+      return NextResponse.json(
+        { error: error.message, ...(error.field ? { field: error.field } : {}) },
+        { status: error.statusCode },
+      );
+    }
     log.error({ err: String(error) }, 'e-Transfer checkout error');
     return NextResponse.json(
       { error: 'Failed to process e-Transfer' },
