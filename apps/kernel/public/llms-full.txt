@@ -217,23 +217,31 @@ If the token was used within the last 60 seconds, a new session is issued anyway
 
 For returning users with a soft DID who need to re-authenticate.
 Hard DID accounts (keypair holders) cannot use magic links — returns 403.
+Unknown emails get a silent 200 (anti-enumeration).
 
 ```
-POST https://auth.imajin.ai/api/magic/send
+POST https://auth.imajin.ai/api/onboard
 Content-Type: application/json
 
 {
   "email": "user@example.com",
-  "redirectUrl": "https://events.imajin.ai/evt_123"  // optional
+  "mode": "login",
+  "context": "log back in",
+  "redirectUrl": "https://events.imajin.ai/evt_123",  // optional
+  "wantPolling": true                                  // optional, for cross-tab handoff
 }
 ```
 
-Response (200): `{ "sent": true }`
+Response (200): `{ "sent": true, "pollHandle": "..." }` (pollHandle only when wantPolling)
 
 Error if hard DID (403):
 ```json
 { "error": "This account requires private key authentication. Use your backup key file to log in." }
 ```
+
+With `wantPolling`, the client can poll `GET /api/onboard/poll?handle=<pollHandle>` and
+claim the session via `POST /api/onboard/claim` once status flips to `completed` — lets
+the original tab log in automatically after the user verifies in their email tab.
 
 ---
 

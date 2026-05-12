@@ -406,47 +406,24 @@ paths:
         "400":
           description: Missing or invalid token (returns HTML error page)
 
-  /api/magic/send:
-    post:
-      tags: [auth]
-      operationId: sendMagicLink
-      summary: Send a magic link email for re-authentication
-      description: |
-        Sends a magic link to the email associated with a soft or hard DID. Always returns
-        `{ sent: true }` to prevent email enumeration. Rate-limited to 5 req/min per IP.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [email]
-              properties:
-                email: { type: string, format: email }
-                redirectUrl: { type: string }
-      responses:
-        "200":
-          description: Magic link sent (or silently suppressed — always 200 to prevent enumeration)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  sent: { type: boolean }
-        "429":
-          description: Too many requests
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-
   /api/onboard:
     post:
       tags: [auth]
       operationId: initiateOnboard
-      summary: Initiate email-based onboarding — sends verification email
+      summary: Initiate email-based onboarding or login — sends verification email
       description: |
         Sends a verification email with a magic link. The link calls `/api/onboard/verify` to
-        complete onboarding and mint a soft DID. Rate-limited to 5 req/min per IP.
+        complete the flow.
+
+        Default behavior (no `mode`): mints or reuses a soft DID for any email. Used by
+        purchase/signup flows.
+
+        `mode: "login"`: only sends to existing accounts. Returns `{ sent: true }` for
+        unknown emails (anti-enumeration). Returns 403 for hard-DID accounts — those must
+        authenticate by key, not by email.
+
+        Set `wantPolling: true` to receive a `pollHandle` for cross-tab handoff via
+        `/api/onboard/poll`. Rate-limited to 5 req/min per IP.
       requestBody:
         required: true
         content:
@@ -458,18 +435,30 @@ paths:
                 email: { type: string, format: email }
                 name: { type: string }
                 redirectUrl: { type: string }
-                context: { type: string, description: "Context label shown in email (e.g. event name)" }
+                context: { type: string, description: "Context label shown in email (e.g. event name, 'log back in')" }
+                scopeDid: { type: string, description: "Optional scope DID to bind the resulting session to" }
+                wantPolling: { type: boolean, description: "Return a pollHandle for cross-tab session handoff" }
+                mode:
+                  type: string
+                  enum: [login]
+                  description: "login = require existing account, reject hard DIDs, silent success on unknown email"
       responses:
         "200":
-          description: Verification email sent
+          description: Verification email sent (or silently suppressed in login mode for unknown emails)
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   sent: { type: boolean }
+                  pollHandle: { type: string, description: "Present when wantPolling=true" }
         "400":
           description: Invalid email
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: "mode=login only — account requires private key authentication (hard DID)"
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
