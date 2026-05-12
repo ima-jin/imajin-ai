@@ -9,8 +9,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { onboardTokens } from '@/src/db';
+import { onboardTokens, credentials, identities } from '@/src/db';
 import { sendEmail } from '@imajin/email';
+import { getClient } from '@imajin/db';
+import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { corsHeaders } from '@imajin/config';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
@@ -36,7 +38,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
   try {
     const body = await request.json();
-    const { email, name, redirectUrl, context, scopeDid, wantPolling } = body;
+    const { email, name, redirectUrl, context, scopeDid, wantPolling, mode } = body;
 
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       return NextResponse.json(
@@ -46,6 +48,73 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
 
     const normalizedEmail = email.toLowerCase().trim();
+
+    // mode='login' (used by MagicLinkButton): only send to existing accounts,
+    // reject hard DIDs (they must authenticate by key, not email), and apply
+    // email enumeration protection by returning { sent: true } silently when
+    // no account is found. Onboarding flows (mode unset) accept any email and
+    // mint a fresh soft DID on verify.
+    if (mode === 'login') {
+      const [cred] = await db
+        .select({ did: credentials.did })
+        .from(credentials)
+        .where(
+          and(
+            eq(credentials.type, 'email'),
+            eq(credentials.value, normalizedEmail),
+          )
+        )
+        .limit(1);
+
+      let resolvedDid = cred?.did;
+
+      if (!resolvedDid) {
+        // Fallback: legacy profile.profiles contact_email lookup, with backfill
+        // into credentials so the next call hits the fast path.
+        const rawSql = getClient();
+        const profileRows = await rawSql<{ did: string }[]>`
+          SELECT did FROM profile.profiles
+          WHERE LOWER(contact_email) = ${normalizedEmail}
+          LIMIT 1
+        `;
+        if (profileRows.length > 0) {
+          resolvedDid = profileRows[0].did;
+          try {
+            await db.insert(credentials).values({
+              id: `cred_${nanoid(16)}`,
+              did: resolvedDid,
+              type: 'email',
+              value: normalizedEmail,
+              verifiedAt: new Date(),
+            });
+          } catch (e: unknown) {
+            // 23505 = unique violation; harmless race.
+            const code = (e as { code?: string } | null)?.code;
+            if (code !== '23505') throw e;
+          }
+        }
+      }
+
+      if (!resolvedDid) {
+        // Unknown email — silently succeed to prevent enumeration.
+        log.info({ email: normalizedEmail }, 'Login requested for unknown email');
+        return NextResponse.json({ sent: true }, { headers: cors });
+      }
+
+      const [identity] = await db
+        .select({ tier: identities.tier })
+        .from(identities)
+        .where(eq(identities.id, resolvedDid))
+        .limit(1);
+
+      if (identity && identity.tier !== 'soft') {
+        return NextResponse.json(
+          { error: 'This account requires private key authentication. Use your backup key file to log in.' },
+          { status: 403, headers: cors }
+        );
+      }
+    }
+
     const token = nanoid(48);
     const id = `obt_${nanoid(16)}`;
     const pollHandle = wantPolling === true ? nanoid(24) : null;
