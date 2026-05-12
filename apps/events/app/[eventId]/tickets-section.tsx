@@ -342,7 +342,18 @@ function TicketRegistrationSurvey({ ticket, eventId, override, onComplete }: { t
         const data = await res.json().catch(() => ({}));
         const msg = data.error || `Registration failed (${res.status})`;
 
-        // Client errors (4xx) — don't retry
+        // 404 from /api/register typically means the Dykil survey_responses
+        // row hasn't been INSERTed yet — a transient race that resolves in
+        // milliseconds. Retry with backoff like a 5xx. Dykil now posts before
+        // postMessage so this should be rare; the retry is defense in depth.
+        if (res.status === 404 && attempt < maxRetries) {
+          const backoff = 500 * Math.pow(2, attempt - 1);
+          console.log('[events:registration]', { ticketId: ticket.id, attempt, backoff }, 'retrying 404 (likely Dykil race)');
+          await new Promise(r => setTimeout(r, backoff));
+          continue;
+        }
+
+        // Other client errors (4xx) — don't retry
         if (res.status >= 400 && res.status < 500) {
           setLastError(msg);
           toast.error(msg);

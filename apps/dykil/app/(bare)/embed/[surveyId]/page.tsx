@@ -251,13 +251,17 @@ export default function SurveyEmbedPage() {
       surveyModelRef.current.data = data;
     }
     setSubmitted(true);
-    // Notify parent iframe immediately — include answers so host can extract name/email
-    window.parent.postMessage(
-      { type: 'survey-completed', surveyId, answers: data },
-      '*'
-    );
 
-    // POST in background — response is already shown to user
+    // POST first, THEN postMessage to parent. The old order was:
+    //   1) postMessage immediately, 2) POST in background
+    // which raced the parent's downstream /api/register call against our own
+    // INSERT into dykil.survey_responses. The events POST would frequently
+    // arrive before Dykil's row was committed and 404 with 'No survey response
+    // found for this ticket' — the user had to retry to make it stick.
+    //
+    // setSubmitted(true) above already shows the 'Response submitted' UI to the
+    // user immediately; the network round-trip happens 'invisibly' behind it.
+    // Only the postMessage that drives downstream state needs to wait.
     try {
       const res = await apiFetch(`/api/surveys/${surveyId}/respond`, {
         method: 'POST',
@@ -279,6 +283,14 @@ export default function SurveyEmbedPage() {
     } catch (error) {
       console.error('Failed to submit response:', error);
     }
+
+    // Now that the response is durable in dykil.survey_responses, tell the
+    // parent. The parent's onComplete → POST /api/register/[ticketId] will
+    // find the row and flip the ticket to 'complete' without racing.
+    window.parent.postMessage(
+      { type: 'survey-completed', surveyId, answers: data },
+      '*'
+    );
   };
 
   if (loading) {
