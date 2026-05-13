@@ -23,6 +23,7 @@ interface TicketTier {
   id?: string;
   name: string;
   price: number;
+  currency: string;
   quantity: number | null;
   description: string;
   perks?: string[];
@@ -132,6 +133,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
       id: t.id,
       name: t.name,
       price: t.price / 100, // Convert cents to dollars
+      currency: t.currency || 'CAD',
       quantity: t.quantity,
       description: t.description || '',
       perks: Array.isArray(t.perks) ? t.perks.map(String) : [],
@@ -143,7 +145,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
   );
 
   function addTier() {
-    setTiers([...tiers, { name: '', price: 0, quantity: null, description: '', requiresRegistration: false, registrationFormId: '', accessCode: '' }]);
+    setTiers([...tiers, { name: '', price: 0, currency: 'CAD', quantity: null, description: '', requiresRegistration: false, registrationFormId: '', accessCode: '' }]);
   }
 
   function updateTier(index: number, field: keyof TicketTier, value: any) {
@@ -236,6 +238,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
               name: tier.name,
               description: tier.description,
               price: Math.round(tier.price * 100), // Convert dollars to cents
+              currency: tier.currency || 'CAD',
               quantity: tier.quantity,
               perks: tier.perks || [],
               sortOrder: i,
@@ -258,6 +261,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
               name: tier.name,
               description: tier.description,
               price: Math.round(tier.price * 100),
+              currency: tier.currency || 'CAD',
               quantity: tier.quantity,
               perks: tier.perks || [],
               sortOrder: i,
@@ -657,15 +661,25 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Price (CAD)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={tier.price}
-                  onChange={(e) => updateTier(index, 'price', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
-                />
+                <label className="block text-sm font-medium mb-1">Price</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={tier.price}
+                    onChange={(e) => updateTier(index, 'price', parseFloat(e.target.value) || 0)}
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
+                  />
+                  <select
+                    value={tier.currency}
+                    onChange={(e) => updateTier(index, 'currency', e.target.value)}
+                    className="w-20 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="CAD">CAD</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Quantity {tier.sold ? `(${tier.sold} sold)` : ''}</label>
