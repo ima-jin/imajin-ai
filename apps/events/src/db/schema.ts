@@ -32,6 +32,11 @@ export const events = eventsSchema.table('events', {
   // Status
   status: text('status').notNull().default('draft'),        // draft, published, cancelled, completed
 
+  // Campaign fields
+  eventType: text('event_type').notNull().default('event'),  // 'event' | 'campaign'
+  targetAmount: integer('target_amount'),                    // funding goal in cents (null for regular events)
+  deadline: timestamp('deadline', { withTimezone: true }),   // campaign deadline (null = no deadline)
+
   // Access control
   accessMode: text('access_mode').notNull().default('public'), // public, invite_only
   
@@ -275,6 +280,40 @@ export const eventInvites = eventsSchema.table('event_invites', {
 // ticket_registrations was dropped in migration 0027 (#826 Part 3).
 // Attendee identity lives in dykil.survey_responses; joins use ticket_id.
 
+/**
+ * Pledges — conditional commitments for campaign events.
+ * Uses Stripe SetupIntent to save payment method without charging.
+ * Charged only when campaign target is met.
+ */
+export const pledges = eventsSchema.table('pledges', {
+  id: text('id').primaryKey(),                                 // plg_xxx
+  eventId: text('event_id').references(() => events.id).notNull(),
+  backerDid: text('backer_did').notNull(),
+  amount: integer('amount').notNull(),                         // cents
+  currency: text('currency').notNull().default('CAD'),
+
+  // Stripe
+  stripeSetupIntentId: text('stripe_setup_intent_id'),         // si_xxx
+  stripePaymentMethodId: text('stripe_payment_method_id'),     // pm_xxx
+  stripeCustomerId: text('stripe_customer_id'),                // cus_xxx
+
+  // MJNx escrow (future V2)
+  mjnxEscrowId: text('mjnx_escrow_id'),
+
+  // Status: pending (setup in progress), confirmed (card saved), charged, failed, cancelled
+  status: text('status').notNull().default('pending'),
+
+  chargedAt: timestamp('charged_at', { withTimezone: true }),
+  failureReason: text('failure_reason'),
+
+  metadata: jsonb('metadata').default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  eventIdx: index('idx_pledges_event').on(table.eventId),
+  backerIdx: index('idx_pledges_backer').on(table.backerDid),
+  statusIdx: index('idx_pledges_status').on(table.status),
+}));
+
 // Types
 export type Event = typeof events.$inferSelect;
 export type NewEvent = typeof events.$inferInsert;
@@ -286,4 +325,6 @@ export type TicketTransfer = typeof ticketTransfers.$inferSelect;
 export type TicketQueueEntry = typeof ticketQueue.$inferSelect;
 export type EventInvite = typeof eventInvites.$inferSelect;
 export type NewEventInvite = typeof eventInvites.$inferInsert;
+export type Pledge = typeof pledges.$inferSelect;
+export type NewPledge = typeof pledges.$inferInsert;
 

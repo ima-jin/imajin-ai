@@ -37,6 +37,11 @@ export default function EventCreateForm({ organizerDid }: Props) {
   const [coverImageUrl, setCoverImageUrl] = useState('');
   const [courseSlug, setCourseSlug] = useState('');
 
+  // Event type
+  const [eventType, setEventType] = useState<'event' | 'campaign'>('event');
+  const [targetAmount, setTargetAmount] = useState('');
+  const [campaignDeadline, setCampaignDeadline] = useState('');
+
   // Ticket tiers
   const [tiers, setTiers] = useState<TicketTier[]>([
     { name: 'General Admission', price: 0, quantity: null, description: '' }
@@ -82,13 +87,18 @@ export default function EventCreateForm({ organizerDid }: Props) {
           country: locationType !== 'virtual' ? country : null,
           imageUrl: coverImageUrl || null,
           courseSlug: courseSlug || null,
-          tickets: tiers.filter(t => t.name).map(t => ({
+          eventType,
+          ...(eventType === 'campaign' && {
+            targetAmount: Math.round(parseFloat(targetAmount) * 100),
+            deadline: campaignDeadline ? new Date(campaignDeadline).toISOString() : null,
+          }),
+          tickets: eventType === 'event' ? tiers.filter(t => t.name).map(t => ({
             name: t.name,
             description: t.description,
             price: Math.round(t.price * 100), // Convert to cents
             currency: 'CAD',
             quantity: t.quantity,
-          })),
+          })) : [],
         }),
       });
 
@@ -112,7 +122,63 @@ export default function EventCreateForm({ organizerDid }: Props) {
       {/* Basic Info */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-4">
         <h2 className="text-xl font-semibold">Basic Info</h2>
-        
+
+        {/* Event Type */}
+        <div>
+          <label className="block text-sm font-medium mb-2">Event Type</label>
+          <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+            {(['event', 'campaign'] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setEventType(type)}
+                className={`flex-1 py-2 text-sm font-medium transition ${
+                  eventType === type
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
+                }`}
+              >
+                {type === 'event' ? '🎉 Event' : '💰 Campaign'}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            {eventType === 'campaign'
+              ? 'Campaigns collect pledges toward a funding goal. Money only moves when the goal is reached.'
+              : 'Standard event with ticket sales.'}
+          </p>
+        </div>
+
+        {/* Campaign fields */}
+        {eventType === 'campaign' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl">
+            <div>
+              <label className="block text-sm font-medium mb-1">Funding Goal (CAD) *</label>
+              <input
+                type="number"
+                min="1"
+                step="0.01"
+                value={targetAmount}
+                onChange={(e) => setTargetAmount(e.target.value)}
+                required={eventType === 'campaign'}
+                placeholder="5000"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">Minimum $1.00</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Deadline</label>
+              <input
+                type="datetime-local"
+                value={campaignDeadline}
+                onChange={(e) => setCampaignDeadline(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">Optional — when pledging closes</p>
+            </div>
+          </div>
+        )}
+
         <div>
           <label className="block text-sm font-medium mb-1">Event Name *</label>
           <input
@@ -262,79 +328,81 @@ export default function EventCreateForm({ organizerDid }: Props) {
         </div>
       </div>
 
-      {/* Ticket Tiers */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-4">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-semibold">Tickets</h2>
-          <button
-            type="button"
-            onClick={addTier}
-            className="text-orange-500 hover:text-orange-600 text-sm font-medium"
-          >
-            + Add Tier
-          </button>
-        </div>
-
-        {tiers.map((tier, index) => (
-          <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
-            <div className="flex justify-between items-start">
-              <div className="flex-1 grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Tier Name</label>
-                  <input
-                    type="text"
-                    value={tier.name}
-                    onChange={(e) => updateTier(index, 'name', e.target.value)}
-                    placeholder="General Admission"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Price (CAD)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={tier.price}
-                    onChange={(e) => updateTier(index, 'price', parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Quantity (blank = unlimited)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={tier.quantity || ''}
-                    onChange={(e) => updateTier(index, 'quantity', e.target.value ? parseInt(e.target.value) : null)}
-                    placeholder="Unlimited"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Description</label>
-                  <input
-                    type="text"
-                    value={tier.description}
-                    onChange={(e) => updateTier(index, 'description', e.target.value)}
-                    placeholder="What's included"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
-                  />
-                </div>
-              </div>
-              {tiers.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeTier(index)}
-                  className="ml-3 text-red-500 hover:text-red-600 text-sm"
-                >
-                  Remove
-                </button>
-              )}
-            </div>
+      {/* Ticket Tiers — only for regular events */}
+      {eventType === 'event' && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold">Tickets</h2>
+            <button
+              type="button"
+              onClick={addTier}
+              className="text-orange-500 hover:text-orange-600 text-sm font-medium"
+            >
+              + Add Tier
+            </button>
           </div>
-        ))}
-      </div>
+
+          {tiers.map((tier, index) => (
+            <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
+              <div className="flex justify-between items-start">
+                <div className="flex-1 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Tier Name</label>
+                    <input
+                      type="text"
+                      value={tier.name}
+                      onChange={(e) => updateTier(index, 'name', e.target.value)}
+                      placeholder="General Admission"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Price (CAD)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={tier.price}
+                      onChange={(e) => updateTier(index, 'price', parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Quantity (blank = unlimited)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={tier.quantity || ''}
+                      onChange={(e) => updateTier(index, 'quantity', e.target.value ? parseInt(e.target.value) : null)}
+                      placeholder="Unlimited"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Description</label>
+                    <input
+                      type="text"
+                      value={tier.description}
+                      onChange={(e) => updateTier(index, 'description', e.target.value)}
+                      placeholder="What's included"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
+                    />
+                  </div>
+                </div>
+                {tiers.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeTier(index)}
+                    className="ml-3 text-red-500 hover:text-red-600 text-sm"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
@@ -347,7 +415,7 @@ export default function EventCreateForm({ organizerDid }: Props) {
         disabled={loading}
         className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-semibold rounded-lg transition"
       >
-        {loading ? 'Creating...' : 'Create Event'}
+        {loading ? 'Creating...' : eventType === 'campaign' ? 'Create Campaign' : 'Create Event'}
       </button>
     </form>
   );

@@ -6,6 +6,7 @@ const log = createLogger('events');
 import { db, events, ticketTypes, tickets, orders, eventInvites } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { TicketsSection } from './tickets-section';
+import { CampaignSection } from './campaign-section';
 import { generateQRCode } from '@/src/lib/email';
 import { getClient } from '@imajin/db';
 import { getContactEmail } from '@/src/lib/contact-email';
@@ -755,50 +756,61 @@ export default async function EventPage({ params, searchParams }: Props) {
           />
         </div>
 
-        {/* Tickets Section */}
-        <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8" id="tickets">
-          <div className="flex items-baseline justify-between mb-6">
-            <h2 className="text-2xl md:text-3xl font-bold">Tickets</h2>
-            {!session && <MagicLinkButton eventId={event.id} />}
-          </div>
+        {/* Campaign Section (for campaign events) */}
+        {event.eventType === 'campaign' && status !== 'cancelled' && (
+          <CampaignSection
+            eventId={event.id}
+            eventTitle={event.title}
+            isAuthenticated={!!session}
+          />
+        )}
 
-          {!canSeeTickets ? (
-            <div className="text-center py-12">
-              <div className="text-5xl mb-4">🔒</div>
-              <p className="text-lg font-semibold mb-2">This event is invite-only</p>
-              <p className="text-gray-500 dark:text-gray-400 text-sm">
-                You need a valid invite link to purchase tickets.
-              </p>
+        {/* Tickets Section (for regular events) */}
+        {event.eventType !== 'campaign' && (
+          <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8" id="tickets">
+            <div className="flex items-baseline justify-between mb-6">
+              <h2 className="text-2xl md:text-3xl font-bold">Tickets</h2>
+              {!session && <MagicLinkButton eventId={event.id} />}
             </div>
-          ) : canPurchaseTickets ? (
-            <TicketsGate
-              surveysRequired={requiredSurveyIds.length > 0}
-              initialCompleted={surveysCompleted}
-              requiredSurveyIds={requiredSurveyIds}
-            >
-              <TicketsSection
-                eventId={event.id}
-                eventTitle={event.title}
-                tickets={ticketTypesList}
-                userOrders={userOrders}
-                hasTicket={hasTicket}
-                inviteToken={inviteToken}
-                etransferEnabled={etransferEnabled}
-                isAuthenticated={!!session}
-                sessionEmail={session?.email ?? undefined}
-                sessionContactEmail={sessionContactEmail}
-                sellerConnected={sellerConnected}
-                hasHiddenTiers={hasHiddenTiers}
-              />
-            </TicketsGate>
-          ) : (
-            <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-              {status === 'cancelled' ? 'Ticket sales are closed — this event was cancelled.' :
-               status === 'completed' ? 'This event has ended. Ticket sales are closed.' :
-               'Ticket sales are not currently available.'}
-            </p>
-          )}
-        </div>
+
+            {!canSeeTickets ? (
+              <div className="text-center py-12">
+                <div className="text-5xl mb-4">🔒</div>
+                <p className="text-lg font-semibold mb-2">This event is invite-only</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">
+                  You need a valid invite link to purchase tickets.
+                </p>
+              </div>
+            ) : canPurchaseTickets ? (
+              <TicketsGate
+                surveysRequired={requiredSurveyIds.length > 0}
+                initialCompleted={surveysCompleted}
+                requiredSurveyIds={requiredSurveyIds}
+              >
+                <TicketsSection
+                  eventId={event.id}
+                  eventTitle={event.title}
+                  tickets={ticketTypesList}
+                  userOrders={userOrders}
+                  hasTicket={hasTicket}
+                  inviteToken={inviteToken}
+                  etransferEnabled={etransferEnabled}
+                  isAuthenticated={!!session}
+                  sessionEmail={session?.email ?? undefined}
+                  sessionContactEmail={sessionContactEmail}
+                  sellerConnected={sellerConnected}
+                  hasHiddenTiers={hasHiddenTiers}
+                />
+              </TicketsGate>
+            ) : (
+              <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+                {status === 'cancelled' ? 'Ticket sales are closed — this event was cancelled.' :
+                 status === 'completed' ? 'This event has ended. Ticket sales are closed.' :
+                 'Ticket sales are not currently available.'}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Mobile Sticky Bottom Bar — only for purchasable events */}

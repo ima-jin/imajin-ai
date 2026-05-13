@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 interface CountdownProps {
   targetDate: string;
+  label?: string;
 }
 
 interface TimeLeft {
@@ -28,7 +29,7 @@ function calculateTimeLeft(targetDate: string): TimeLeft | null {
   };
 }
 
-export function Countdown({ targetDate }: CountdownProps) {
+export function Countdown({ targetDate, label = 'Event starts in' }: CountdownProps) {
   const [timeLeft, setTimeLeft] = useState<TimeLeft | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -48,12 +49,12 @@ export function Countdown({ targetDate }: CountdownProps) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-8">
         <div className="text-center">
-          <p className="text-sm text-gray-500 uppercase tracking-wide mb-4">Event starts in</p>
+          <p className="text-sm text-gray-500 uppercase tracking-wide mb-4">{label}</p>
           <div className="flex justify-center gap-4">
-            {['Days', 'Hours', 'Minutes', 'Seconds'].map((label) => (
-              <div key={label} className="text-center">
+            {['Days', 'Hours', 'Minutes', 'Seconds'].map((unitLabel) => (
+              <div key={unitLabel} className="text-center">
                 <div className="text-4xl font-bold text-gray-300">--</div>
-                <div className="text-xs text-gray-500 uppercase">{label}</div>
+                <div className="text-xs text-gray-500 uppercase">{unitLabel}</div>
               </div>
             ))}
           </div>
@@ -80,10 +81,10 @@ export function Countdown({ targetDate }: CountdownProps) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-8">
       <div className="text-center">
-        <p className="text-sm text-gray-500 uppercase tracking-wide mb-4">Event starts in</p>
+        <p className="text-sm text-gray-500 uppercase tracking-wide mb-4">{label}</p>
         <div className="flex justify-center gap-4 md:gap-8">
-          {units.map(({ value, label }) => (
-            <div key={label} className="text-center">
+          {units.map(({ value, label: unitLabel }) => (
+            <div key={unitLabel} className="text-center">
               <div className="text-3xl md:text-5xl font-bold bg-gradient-to-br from-orange-500 to-amber-600 bg-clip-text text-transparent">
                 {value.toString().padStart(2, '0')}
               </div>
