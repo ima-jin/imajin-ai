@@ -90,7 +90,8 @@ function DistributionRightEditor({
   readOnly?: boolean;
 }) {
   const mode = right?.mode ?? 'reserved';
-  const showPrice = mode === 'allowed' || mode === 'allow-with-share' || mode === 'allow-with-attribution';
+  const canHavePrice = mode === 'allowed' || mode === 'allow-with-share' || mode === 'allow-with-attribution';
+  const hasPrice = canHavePrice && !!right?.price && right.price.amount > 0;
   const showSplits = mode === 'allow-with-share';
   const showQuote = mode === 'quote-with-attribution';
   const showSampling = showQuote; // for audio
@@ -101,7 +102,10 @@ function DistributionRightEditor({
         value={mode}
         onChange={(e) => {
           const newMode = e.target.value;
-          onChange({ ...right, mode: newMode });
+          // When switching modes, strip the price if moving to a non-priceable mode
+          const isPriceable = newMode === 'allowed' || newMode === 'allow-with-share' || newMode === 'allow-with-attribution';
+          const { price: _price, ...rest } = right ?? {};
+          onChange(isPriceable ? { ...right, mode: newMode } : { ...rest, mode: newMode });
         }}
         disabled={readOnly}
         className="w-full bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-orange-500 disabled:opacity-60"
@@ -113,12 +117,41 @@ function DistributionRightEditor({
         ))}
       </select>
 
-      {showPrice && (
-        <MoneyInput
-          value={right?.price}
-          onChange={(price) => onChange({ ...right, price: price ?? undefined })}
-          readOnly={readOnly}
-        />
+      {canHavePrice && (
+        <div className="space-y-2">
+          <Toggle
+            label="Set a price"
+            checked={hasPrice}
+            onChange={(checked) => {
+              if (checked) {
+                onChange({ ...right, price: { amount: 100, currency: 'USD' } });
+              } else {
+                // Remove price entirely — free access
+                const { price: _p, ...rest } = right ?? {};
+                onChange({ ...rest, mode: right?.mode ?? 'allowed' });
+              }
+            }}
+            readOnly={readOnly}
+          />
+          {hasPrice && (
+            <MoneyInput
+              value={right?.price}
+              onChange={(price) => {
+                if (!price || price.amount === 0) {
+                  // Clearing price or setting to 0 → remove price (free)
+                  const { price: _p, ...rest } = right ?? {};
+                  onChange({ ...rest, mode: right?.mode ?? 'allowed' });
+                } else {
+                  onChange({ ...right, price });
+                }
+              }}
+              readOnly={readOnly}
+            />
+          )}
+          {!hasPrice && (
+            <p className="text-[10px] text-gray-500">Free — no payment required</p>
+          )}
+        </div>
       )}
 
       {showSplits && (
