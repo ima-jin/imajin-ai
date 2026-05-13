@@ -14,6 +14,28 @@ import type {
 import { validateManifest } from '@imajin/fair';
 import { DidShareListEditor, MoneyInput } from '@imajin/ui';
 
+const CONNECTIONS_URL_BASE = process.env.NEXT_PUBLIC_CONNECTIONS_URL || 'https://jin.imajin.ai/connections';
+const CONNECTIONS_API_URL = `${CONNECTIONS_URL_BASE}/api/connections`;
+
+const PROFILE_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX
+  ? `${process.env.NEXT_PUBLIC_SERVICE_PREFIX}profile.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`
+  : 'https://profile.imajin.ai';
+
+async function resolveProfile(did: string): Promise<{ name: string; handle?: string; avatar?: string } | null> {
+  try {
+    const res = await fetch(`${PROFILE_URL}/api/profile/${encodeURIComponent(did)}`, { credentials: 'include' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      name: data.handle || data.name || did.slice(0, 16) + '…',
+      handle: data.handle,
+      avatar: data.avatar,
+    };
+  } catch {
+    return null;
+  }
+}
+
 interface SectionProps {
   title: string;
   error?: boolean;
@@ -84,10 +106,14 @@ function DistributionRightEditor({
   right,
   onChange,
   readOnly,
+  connectionsUrl,
+  resolveProfile,
 }: {
   right?: FairDistributionRight;
   onChange: (r: FairDistributionRight | undefined) => void;
   readOnly?: boolean;
+  connectionsUrl?: string;
+  resolveProfile?: (did: string) => Promise<{ name: string; handle?: string; avatar?: string } | null>;
 }) {
   const mode = right?.mode ?? 'reserved';
   const canHavePrice = mode === 'allowed' || mode === 'allow-with-share' || mode === 'allow-with-attribution';
@@ -159,6 +185,8 @@ function DistributionRightEditor({
           value={right?.splits ?? [{ role: 'creator', share: 1 }]}
           onChange={(splits) => onChange({ ...right, splits })}
           readOnly={readOnly}
+          connectionsUrl={connectionsUrl}
+          resolveProfile={resolveProfile}
         />
       )}
 
@@ -229,6 +257,8 @@ export interface FairManifestEditorProps {
   onSave?: () => void;
   readOnly?: boolean;
   currentUserDid?: string;
+  connectionsUrl?: string;
+  resolveProfile?: (did: string) => Promise<{ name: string; handle?: string; avatar?: string } | null>;
 }
 
 export function FairManifestEditor({
@@ -238,6 +268,8 @@ export function FairManifestEditor({
   onSave,
   readOnly = false,
   currentUserDid,
+  connectionsUrl = CONNECTIONS_API_URL,
+  resolveProfile: resolveProfileProp = resolveProfile,
 }: FairManifestEditorProps) {
   const [local, setLocal] = useState<FairManifestV1_1>(manifest);
   const [validation, setValidation] = useState<{ ok: boolean; errors: string[] }>({
@@ -355,6 +387,8 @@ export function FairManifestEditor({
           onChange={(entries) => update({ attribution: entries })}
           readOnly={readOnly}
           defaultDid={currentUserDid}
+          connectionsUrl={connectionsUrl}
+          resolveProfile={resolveProfileProp}
         />
       </Section>
 
@@ -408,6 +442,8 @@ export function FairManifestEditor({
                 right={distribution[key]}
                 onChange={(r) => update({ distribution: { ...distribution, [key]: r } })}
                 readOnly={readOnly}
+                connectionsUrl={connectionsUrl}
+                resolveProfile={resolveProfileProp}
               />
             </div>
           ))}
@@ -457,6 +493,8 @@ export function FairManifestEditor({
                     }
                     readOnly={readOnly}
                     defaultDid={currentUserDid}
+                    connectionsUrl={connectionsUrl}
+                    resolveProfile={resolveProfileProp}
                   />
                 </div>
               )}
