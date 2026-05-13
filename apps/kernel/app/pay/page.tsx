@@ -63,10 +63,22 @@ export default async function Home() {
       />
 
       {/* Quick Navigation */}
-      <div className="flex gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <Link
+          href="/pay/topup"
+          className="bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 text-center transition-colors group"
+        >
+          <div className="text-2xl mb-2">💳</div>
+          <div className="text-sm font-medium text-white group-hover:text-orange-400 transition-colors">
+            Add Funds
+          </div>
+          <div className="text-xs text-zinc-500 mt-1">
+            Top up your balance
+          </div>
+        </Link>
         <Link
           href="/pay/payouts"
-          className="flex-1 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 text-center transition-colors group"
+          className="bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 text-center transition-colors group"
         >
           <div className="text-2xl mb-2">💰</div>
           <div className="text-sm font-medium text-white group-hover:text-orange-400 transition-colors">
@@ -78,7 +90,7 @@ export default async function Home() {
         </Link>
         <Link
           href="/pay/history"
-          className="flex-1 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 text-center transition-colors group"
+          className="bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 text-center transition-colors group"
         >
           <div className="text-2xl mb-2">📊</div>
           <div className="text-sm font-medium text-white group-hover:text-orange-400 transition-colors">
