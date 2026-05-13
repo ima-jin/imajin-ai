@@ -218,7 +218,7 @@ export async function GET(
   // 4. Determine action and check for priced distribution
   const action = determineAction(request, asset.mimeType);
   const distRight = isFairManifestV1_1(manifest) ? manifest.distribution?.[action] : undefined;
-  const hasPrice = !!distRight?.price;
+  const hasPrice = !!distRight?.price && distRight.price.amount > 0;
 
   // 4a. Price-aware settlement flow
   if (hasPrice) {
@@ -227,7 +227,8 @@ export async function GET(
     if (!receiptHeader) {
       // No receipt → 402 with settlement options
       try {
-        const baseUrl = `${new URL(request.url).origin}/media/api/assets`;
+        const publicBase = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
+        const baseUrl = `${publicBase}/media/api/assets`;
         const resp = build402Response({
           manifest: manifest as import("@imajin/fair").FairManifestV1_1,
           assetId: id,
