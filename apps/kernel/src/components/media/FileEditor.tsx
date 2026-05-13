@@ -75,7 +75,7 @@ export function FileEditor({ asset, isOwner }: FileEditorProps) {
   useEffect(() => {
     setLoading(true);
     setContent(null);
-    fetch(`/media/api/assets/${asset.id}?t=${Date.now()}`, { credentials: "include", cache: "no-store" })
+    fetch(`/media/api/assets/${asset.id}?t=${Date.now()}`, { credentials: "include", cache: "no-store", headers: { Accept: "application/octet-stream" } })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.text();
