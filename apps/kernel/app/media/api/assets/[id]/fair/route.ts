@@ -7,6 +7,7 @@ import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
 import { isFairManifestV1_1 } from "@imajin/fair";
 import { signFairAsNode } from "@/src/lib/kernel/sign-fair-manifest";
 import { createLogger } from "@imajin/logger";
+import { renderFairHtml } from "@/src/lib/media/render-fair-html";
 
 const log = createLogger("kernel");
 
@@ -110,8 +111,31 @@ export async function GET(
     }
   }
 
-  return NextResponse.json(manifest, {
-    headers: { "X-Fair-Access": accessType },
+  // Content negotiation: HTML for browsers, JSON for API consumers.
+  // ?format=json forces JSON even from a browser.
+  const wantsJson =
+    request.nextUrl.searchParams.get("format") === "json" ||
+    !request.headers.get("accept")?.includes("text/html");
+
+  if (wantsJson) {
+    return NextResponse.json(manifest, {
+      headers: { "X-Fair-Access": accessType },
+    });
+  }
+
+  const baseUrl =
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    process.env.MEDIA_PUBLIC_URL ||
+    new URL(request.url).origin;
+
+  const html = renderFairHtml(manifest, id, baseUrl);
+  return new NextResponse(html, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "X-Fair-Access": accessType,
+      "Cache-Control": "public, max-age=300",
+    },
   });
 }
 
