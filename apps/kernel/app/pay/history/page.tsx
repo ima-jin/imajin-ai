@@ -51,7 +51,7 @@ export default async function HistoryPage({
   const conditions = [userTxCondition];
   if (service) conditions.push(eq(transactions.service, service));
   if (currency === 'MJN') conditions.push(eq(transactions.currency, 'MJN'));
-  if (currency === 'Fiat') conditions.push(inArray(transactions.currency, ['USD', 'CHF', 'EUR', 'GBP']));
+  if (currency === 'Fiat') conditions.push(inArray(transactions.currency, ['CAD', 'USD', 'CHF', 'EUR', 'GBP']));
   if (from) conditions.push(gte(transactions.createdAt, new Date(from)));
   if (to) {
     const toDate = new Date(to);

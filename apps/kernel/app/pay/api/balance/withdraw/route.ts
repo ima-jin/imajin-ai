@@ -56,7 +56,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
   try {
     const body = await request.json();
-    const { amount, currency = 'USD', account_id } = body;
+    const { amount, currency = 'CAD', account_id } = body;
 
     if (!amount || typeof amount !== 'number' || amount <= 0) {
       return NextResponse.json(

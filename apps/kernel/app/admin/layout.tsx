@@ -18,6 +18,8 @@ const NAV_ITEMS = [
   { label: 'Moderation', href: '/admin/moderation', icon: '🛡️' },
   { label: 'Events', href: '/admin/events', icon: '🔔' },
   { label: 'Telemetry', href: '/admin/telemetry', icon: '📈' },
+  { label: 'Deposits', href: '/admin/deposits', icon: '💰' },
+  { label: 'Withdrawals', href: '/admin/withdrawals', icon: '💸' },
   { label: 'Logs', href: '/admin/logs', icon: '📋' },
 ];
 

@@ -522,6 +522,16 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
   const [unlockError, setUnlockError] = useState<string | null>(null);
   const { toast } = useToast();
 
+  // MJNx balance for authenticated buyers
+  const [buyerBalance, setBuyerBalance] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    apiFetch('/api/balance')
+      .then(r => r.json())
+      .then(d => setBuyerBalance(d.balance ?? 0))
+      .catch(() => {});
+  }, [isAuthenticated]);
+
   // Lifted quantity state for unified cart
   const [quantities, setQuantities] = useState<Record<string, number>>({});
 
@@ -703,6 +713,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
           userOrders={userOrders}
           onJumpToMyTickets={onJumpToMyTickets}
           clearCart={() => setQuantities({})}
+          buyerBalance={buyerBalance}
         />
       )}
 
@@ -765,9 +776,10 @@ interface UnifiedBarProps {
   mixedCurrency?: boolean;
   cartCurrencies?: string[];
   onJumpToMyTickets?: () => void;
+  buyerBalance?: number | null;
 }
 
-function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [], userOrders = [], onJumpToMyTickets, clearCart }: UnifiedBarProps & { userOrders?: UserOrder[]; clearCart?: () => void }) {
+function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [], userOrders = [], onJumpToMyTickets, clearCart, buyerBalance = null }: UnifiedBarProps & { userOrders?: UserOrder[]; clearCart?: () => void }) {
   // Issue #11: count tickets needing registration across all user orders
   const pendingRegistrations = userOrders.flatMap(o =>
     o.tickets.filter(t => t.registrationStatus === 'pending' && t.ticketType?.registrationFormId)
@@ -778,7 +790,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
   const hasPendingRegistrations = totalPendingCount > 0;
 
   const router = useRouter();
-  type BarStep = 'idle' | 'card-loading' | 'emt-form' | 'emt-loading' | 'emt-done' | 'emt-verify-sent';
+  type BarStep = 'idle' | 'card-loading' | 'emt-form' | 'emt-loading' | 'emt-done' | 'emt-verify-sent' | 'balance-loading';
 
   // EMT reservation results are persisted in sessionStorage so a tab refresh
   // doesn't wipe the 'send your e-Transfer to confirm' screen. Scoped per
@@ -958,6 +970,36 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
       // emt-done card handles refresh when the user is ready.
     } catch {
       onError('e-Transfer setup failed');
+      setStep('idle');
+    }
+  }
+
+  const totalAmountDollars = cartItems.reduce((sum, item) => sum + item.ticket.price * item.qty, 0) / 100;
+
+  async function startBalance() {
+    setStep('balance-loading');
+    try {
+      const res = await apiFetch('/api/checkout/balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId,
+          items: cartItems.map(c => ({ ticketTypeId: c.ticket.id, quantity: c.qty })),
+          ...(inviteToken && { invite: inviteToken }),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        onError(data.error || 'Balance checkout failed');
+        setStep('idle');
+        return;
+      }
+      const data = await res.json();
+      // Balance checkout is instant — go straight to success
+      router.push(`/checkout/success?event=${eventId}`);
+      router.refresh();
+    } catch {
+      onError('Balance checkout failed');
       setStep('idle');
     }
   }
@@ -1283,6 +1325,19 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           >
             {step === 'card-loading' ? 'Loading…' : totalQty === 0 ? '💳 Pay with Card' : `💳 Pay with Card — ${formattedTotal}`}
           </button>
+          {buyerBalance !== null && buyerBalance > 0 && (
+            <button
+              onClick={startBalance}
+              disabled={totalQty === 0 || mixedCurrency || buyerBalance < totalAmountDollars || step !== 'idle'}
+              className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap border ${
+                totalQty === 0 || buyerBalance < totalAmountDollars
+                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700 cursor-not-allowed'
+                  : 'bg-green-500/20 text-green-500 border-green-500/40 hover:bg-green-500/30'
+              }`}
+            >
+              {step === 'balance-loading' ? 'Processing…' : `💰 Pay with Balance — $${buyerBalance.toFixed(2)}`}
+            </button>
+          )}
           {etransferEnabled && (
             <button
               onClick={startEtransfer}

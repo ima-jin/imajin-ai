@@ -58,7 +58,7 @@ export default async function Home() {
       <BalanceCard
         cashAmount={cashAmount}
         creditAmount={creditAmount}
-        currency={balance?.currency || 'USD'}
+        currency={balance?.currency || 'CAD'}
         updatedAt={balance?.updatedAt ?? null}
       />
 

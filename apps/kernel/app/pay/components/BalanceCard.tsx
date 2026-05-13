@@ -5,7 +5,7 @@ interface BalanceCardProps {
   updatedAt?: Date | null;
 }
 
-export function BalanceCard({ cashAmount, creditAmount, currency = 'USD', updatedAt }: BalanceCardProps) {
+export function BalanceCard({ cashAmount, creditAmount, currency = 'CAD', updatedAt }: BalanceCardProps) {
   const fmtCash = (n: number) =>
     new Intl.NumberFormat('en-US', {
       style: 'currency',

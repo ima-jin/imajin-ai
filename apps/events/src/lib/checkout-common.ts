@@ -70,7 +70,7 @@ export interface CreateOrderWithTicketsParams {
   totalQuantity: number;
   totalAmount: number;
   currency: string;
-  paymentMethod: 'stripe' | 'etransfer' | 'free';
+  paymentMethod: 'stripe' | 'etransfer' | 'free' | 'balance';
   ticketStatus: 'valid' | 'held';
   holdExpiresAt?: Date;
   stripeSessionId?: string;

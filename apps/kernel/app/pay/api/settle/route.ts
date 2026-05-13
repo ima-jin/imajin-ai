@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { from_did, total_amount, service, type, fair_manifest, funded = false, funded_provider, metadata = {} } = body;
+    const { from_did, total_amount, service, type, fair_manifest, funded = false, funded_provider, metadata = {}, currency = 'CAD' } = body;
 
     if (!from_did || !total_amount || !service || !type || !fair_manifest) {
       return NextResponse.json(
@@ -192,6 +192,7 @@ export async function POST(request: NextRequest) {
     let source: 'credit' | 'fiat' | 'mixed' | 'external';
     let creditBurn = 0;
     let cashBurn = 0;
+    let settleCurrency = currency;
 
     if (funded) {
       // Externally funded (e.g. Stripe checkout) — no balance check, no debit
@@ -208,6 +209,7 @@ export async function POST(request: NextRequest) {
       const currentCash = senderBalance ? parseFloat(senderBalance.cashAmount) : 0;
       const currentCredit = senderBalance ? parseFloat(senderBalance.creditAmount) : 0;
       const totalBalance = currentCash + currentCredit;
+      settleCurrency = senderBalance?.currency || currency;
 
       if (totalBalance < total_amount) {
         return NextResponse.json(
@@ -272,7 +274,7 @@ export async function POST(request: NextRequest) {
           fromDid: from_did,
           toDid: recipient.did,
           amount: recipient.amount.toString(),
-          currency: 'USD',
+          currency: settleCurrency,
           status: 'completed',
           source,
           fairManifest: fair_manifest,
@@ -295,7 +297,7 @@ export async function POST(request: NextRequest) {
               did: recipient.did,
               cashAmount: recipient.amount.toString(),
               creditAmount: '0',
-              currency: 'USD',
+              currency: settleCurrency,
               updatedAt: new Date(),
             })
             .onConflictDoUpdate({

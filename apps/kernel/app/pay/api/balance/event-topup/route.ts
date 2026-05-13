@@ -96,6 +96,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     const senderBalance = senderRows[0];
     const currentCash = senderBalance ? parseFloat(senderBalance.cashAmount) : 0;
+    const topupCurrency = senderBalance?.currency || 'CAD';
 
     if (currentCash < totalCashDebit) {
       return NextResponse.json(
@@ -131,7 +132,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
           fromDid: from_did,
           toDid: recipientDid,
           amount: totalGift.toString(),
-          currency: 'USD',
+          currency: topupCurrency,
           status: 'completed',
           source: 'fiat',
           batchId,
@@ -150,7 +151,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
             did: recipientDid,
             cashAmount: cashPerRecipient.toString(),
             creditAmount: creditPerRecipient.toString(),
-            currency: 'USD',
+            currency: topupCurrency,
             updatedAt: new Date(),
           })
           .onConflictDoUpdate({
