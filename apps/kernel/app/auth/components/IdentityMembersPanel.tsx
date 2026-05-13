@@ -27,7 +27,7 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
   const [removingDid, setRemovingDid] = useState<string | null>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const authUrl =
+  const authBase =
     typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_AUTH_URL ?? '');
 
   useEffect(() => {
@@ -39,7 +39,7 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
     setLoading(true);
     try {
       const res = await fetch(
-        `${authUrl}/api/groups/${encodeURIComponent(groupDid)}`,
+        `${authBase}/auth/api/groups/${encodeURIComponent(groupDid)}`,
         { credentials: 'include' }
       );
       if (res.ok) {
@@ -64,7 +64,7 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
     setAddingMember(true);
     try {
       const res = await fetch(
-        `${authUrl}/api/groups/${encodeURIComponent(groupDid)}/controllers`,
+        `${authBase}/auth/api/groups/${encodeURIComponent(groupDid)}/controllers`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -92,7 +92,7 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
     setRemovingDid(controllerDid);
     try {
       const res = await fetch(
-        `${authUrl}/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(controllerDid)}`,
+        `${authBase}/auth/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(controllerDid)}`,
         { method: 'DELETE', credentials: 'include' }
       );
       if (res.ok) {
@@ -136,7 +136,7 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
             </span>
           )}
         </div>
-        <p className="text-sm text-gray-400 mb-6">People who can manage this identity.</p>
+        <p className="text-sm text-gray-400 mb-6">People connected to this identity.</p>
 
         {controllers.length === 0 ? (
           <p className="text-sm text-gray-500 mb-6">No members found.</p>

@@ -94,7 +94,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
     setLoading(true);
     try {
       const [groupRes, configRes] = await Promise.all([
-        fetch(`${authUrl}/api/groups/${encodeURIComponent(groupDid)}`, { credentials: 'include' }),
+        fetch(`${authUrl}/auth/api/groups/${encodeURIComponent(groupDid)}`, { credentials: 'include' }),
         fetch(`${profileUrl}/api/forest/${encodeURIComponent(groupDid)}/config`, { credentials: 'include' }),
       ]);
 
@@ -158,7 +158,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
     if (!addDid.trim()) return;
     setAddingMember(true);
     try {
-      const res = await fetch(`${authUrl}/api/groups/${encodeURIComponent(groupDid)}/controllers`, {
+      const res = await fetch(`${authUrl}/auth/api/groups/${encodeURIComponent(groupDid)}/controllers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -190,7 +190,7 @@ export default function IdentitySettingsPage({ params }: { params: { groupDid: s
     setRemovingDid(controllerDid);
     try {
       const res = await fetch(
-        `${authUrl}/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(controllerDid)}`,
+        `${authUrl}/auth/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(controllerDid)}`,
         { method: 'DELETE', credentials: 'include' }
       );
       if (res.ok) {
