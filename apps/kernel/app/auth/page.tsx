@@ -65,11 +65,18 @@ export default async function AuthPage() {
 
   const mediaUrl = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
 
-  // Resolve avatar URL
+  // Resolve avatar URL — relative /api/media/ paths must go through the
+  // public URL because Caddy serves them via file_server; the Next.js image
+  // optimizer fetches internally from localhost where that route doesn't exist.
+  const publicBase = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_WWW_URL || '';
   let avatarSrc: string | null = null;
   if (profile.avatarAssetId && mediaUrl) {
     avatarSrc = `${mediaUrl}/api/media/${profile.avatarAssetId}`;
-  } else if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.startsWith('/'))) {
+  } else if (profile.avatar && profile.avatar.startsWith('http')) {
+    avatarSrc = profile.avatar;
+  } else if (profile.avatar && profile.avatar.startsWith('/') && publicBase) {
+    avatarSrc = `${publicBase}${profile.avatar}`;
+  } else if (profile.avatar && profile.avatar.startsWith('/')) {
     avatarSrc = profile.avatar;
   }
 
