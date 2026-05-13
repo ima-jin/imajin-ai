@@ -380,7 +380,96 @@ export async function GET(
     );
   }
 
-  // 5. Thumbnail generation for images (?w=<pixels>)
+  // 5a. Auto-render markdown articles as HTML
+  // If it's text/markdown with frontmatter status: POSTED and the client
+  // isn't requesting raw bytes, render as a styled article page.
+  if (
+    asset.mimeType === "text/markdown" &&
+    !download &&
+    request.headers.get("accept") !== "application/octet-stream"
+  ) {
+    const mdContent = fileBuffer.toString("utf-8");
+    const matter = (await import("gray-matter")).default;
+    const { data: fm, content: body } = matter(mdContent);
+
+    if (fm.status === "POSTED" && fm.title) {
+      const { remark } = await import("remark");
+      const remarkGfm = (await import("remark-gfm")).default;
+      const remarkHtml = (await import("remark-html")).default;
+
+      // Strip first H1 if it matches the frontmatter title (avoid duplicate)
+      const bodyClean = body.replace(/^#\s+.+\n+/, "");
+      const processed = await remark().use(remarkGfm).use(remarkHtml, { sanitize: false }).process(bodyClean);
+      const articleHtml = processed.toString();
+
+      const escapedTitle = (fm.title as string).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const escapedSubtitle = fm.subtitle ? (fm.subtitle as string).replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
+      const escapedDesc = fm.description ? (fm.description as string).replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
+      const author = fm.author || "";
+      const date = fm.date
+        ? new Date(fm.date as string).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+        : "";
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapedTitle}</title>
+  <meta name="description" content="${escapedDesc}">
+  <meta property="og:title" content="${escapedTitle}">
+  <meta property="og:description" content="${escapedDesc}">
+  <meta property="og:type" content="article">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.7; color: #e0e0e0; background: #0a0a0a; }
+    article { max-width: 680px; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
+    header { margin-bottom: 2.5rem; border-bottom: 1px solid #222; padding-bottom: 2rem; }
+    h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; color: #fff; margin-bottom: 0.5rem; }
+    .subtitle { font-size: 1.2rem; color: #999; margin-bottom: 1rem; }
+    .meta { font-size: 0.85rem; color: #666; }
+    .meta span + span::before { content: ' · '; }
+    h2 { font-size: 1.5rem; font-weight: 600; color: #fff; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.2rem; font-weight: 600; color: #ddd; margin: 2rem 0 0.75rem; }
+    p { margin-bottom: 1.2rem; }
+    ul, ol { margin: 0 0 1.2rem 1.5rem; }
+    li { margin-bottom: 0.4rem; }
+    strong { color: #fff; }
+    a { color: #f97316; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    blockquote { border-left: 3px solid #f97316; margin: 1.5rem 0; padding: 0.5rem 1rem; color: #aaa; }
+    code { background: #1a1a1a; padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.9em; }
+    pre { background: #1a1a1a; padding: 1rem; border-radius: 6px; overflow-x: auto; margin-bottom: 1.2rem; }
+    pre code { background: none; padding: 0; }
+    hr { border: none; border-top: 1px solid #222; margin: 2rem 0; }
+  </style>
+</head>
+<body>
+  <article>
+    <header>
+      <h1>${escapedTitle}</h1>
+      ${escapedSubtitle ? `<p class="subtitle">${escapedSubtitle}</p>` : ""}
+      <div class="meta">
+        ${author ? `<span>${author}</span>` : ""}
+        ${date ? `<span>${date}</span>` : ""}
+      </div>
+    </header>
+    ${articleHtml}
+  </article>
+</body>
+</html>`;
+
+      const responseHeaders = new Headers();
+      responseHeaders.set("Content-Type", "text/html; charset=utf-8");
+      responseHeaders.set("Cache-Control", accessType === "public" ? "public, max-age=3600" : "private, max-age=3600");
+      for (const [k, v] of Object.entries(fairHeaders)) {
+        responseHeaders.set(k, v);
+      }
+      return new NextResponse(html, { status: 200, headers: responseHeaders });
+    }
+  }
+
+  // 5b. Thumbnail generation for images (?w=<pixels>)
   let outputBuffer: Buffer = fileBuffer;
   const outputMime = asset.mimeType;
 
