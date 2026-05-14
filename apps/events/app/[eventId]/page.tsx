@@ -20,6 +20,7 @@ import { SurveyAccordion } from './survey-accordion';
 import { FairAccordion } from '@imajin/fair';
 import { TicketsGate } from './tickets-gate';
 import { MagicLinkButton } from './magic-link-button';
+import { ReAuthBanner } from './re-auth-banner';
 import { ShareButton } from './share-button';
 import { getSession } from '@imajin/auth';
 import { MarkdownContent } from '@imajin/ui';
@@ -539,6 +540,9 @@ export default async function EventPage({ params, searchParams }: Props) {
             This event has ended.
           </div>
         )}
+
+        {/* Re-auth banner for returning ticket holders */}
+        {!session && <ReAuthBanner eventId={event.id} />}
 
         {/* Event Info Card */}
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8 mb-6">
