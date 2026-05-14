@@ -58,6 +58,9 @@ export const POST = withLogger('events', async (request, { log, correlationId })
       tickets: ticketTypesInput,
       courseSlug,
       emtEmail,
+      eventType,
+      targetAmount,
+      deadline,
     } = body;
 
     // Validate required fields
@@ -66,6 +69,11 @@ export const POST = withLogger('events', async (request, { log, correlationId })
     }
     if (!startsAt) {
       return NextResponse.json({ error: 'startsAt is required' }, { status: 400 });
+    }
+    if (eventType === 'campaign') {
+      if (typeof targetAmount !== 'number' || targetAmount <= 0 || !Number.isInteger(targetAmount)) {
+        return NextResponse.json({ error: 'targetAmount must be a positive integer (cents)' }, { status: 400 });
+      }
     }
 
     // Generate event ID and DID
@@ -160,6 +168,9 @@ export const POST = withLogger('events', async (request, { log, correlationId })
       tags: tags || [],
       courseSlug: courseSlug || null,
       emtEmail: emtEmail || null,
+      eventType: eventType || 'event',
+      targetAmount: eventType === 'campaign' ? targetAmount : null,
+      deadline: eventType === 'campaign' && deadline ? new Date(deadline) : null,
       status: 'draft',
       metadata: { fair: fairManifest },
     }).returning();

@@ -8,6 +8,7 @@ import { FairEditor } from '@imajin/fair';
 import { apiFetch } from '@imajin/config';
 import type { FairManifest } from '@imajin/fair';
 import type { Event, TicketType } from '@/src/db/schema';
+import { CampaignDashboard } from './campaign-dashboard';
 
 interface Props {
   event: Event;
@@ -39,7 +40,7 @@ interface Survey {
   responseCount?: number;
 }
 
-type ActiveTab = 'details' | 'fair';
+type ActiveTab = 'details' | 'fair' | 'campaign';
 
 export default function EventEditForm({ event, existingTickets, creatorEmail, organizerDids, viewerDid, creatorHandle, creatorName }: Props) {
   const router = useRouter();
@@ -355,6 +356,19 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         >
           ⚖️ .fair Attribution
         </button>
+        {(event as any).eventType === 'campaign' && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('campaign')}
+            className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition ${
+              activeTab === 'campaign'
+                ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            💰 Campaign
+          </button>
+        )}
       </div>
 
       {/* .fair Editor */}
@@ -403,6 +417,11 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
             </div>
           )}
         </div>
+      )}
+
+      {/* Campaign Dashboard */}
+      {activeTab === 'campaign' && (
+        <CampaignDashboard eventId={event.id} />
       )}
 
     {activeTab === 'details' && (
