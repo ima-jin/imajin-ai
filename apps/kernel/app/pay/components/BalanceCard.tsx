@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 interface BalanceCardProps {
   cashAmount: number;
   creditAmount: number;
@@ -15,7 +17,15 @@ export function BalanceCard({ cashAmount, creditAmount, currency = 'CAD', update
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-      <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">Your Balance</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Your Balance</h2>
+        <Link
+          href="/pay/topup"
+          className="text-xs font-medium text-orange-500 hover:text-orange-400 transition-colors"
+        >
+          + Add Funds
+        </Link>
+      </div>
 
       <div className="text-4xl font-bold text-white mb-6">{fmtCash(cashAmount)}</div>
 

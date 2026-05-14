@@ -432,6 +432,61 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     }
   }
 
+  // Handle top-up checkout sessions
+  if (session.metadata?.service === 'topup') {
+    const topupAmountStr = session.metadata?.topupAmount;
+    const buyerDid = session.metadata?.buyerDid;
+
+    if (topupAmountStr && buyerDid) {
+      const topupAmount = parseFloat(topupAmountStr);
+
+      // Atomic operation: insert transaction + update cash balance
+      const txId = generateId('tx');
+      await db.transaction(async (tx) => {
+        // Insert completed top-up transaction
+        await tx.insert(transactions).values({
+          id: txId,
+          service: 'topup',
+          type: 'topup',
+          fromDid: null,
+          toDid: buyerDid,
+          amount: topupAmount.toString(),
+          currency: (session.currency || 'cad').toUpperCase(),
+          status: 'completed',
+          stripeId: session.id,
+          source: 'fiat',
+          metadata: {
+            ...session.metadata,
+            checkoutSessionId: session.id,
+          },
+        });
+
+        // Credit cash balance
+        await tx
+          .insert(balances)
+          .values({
+            did: buyerDid,
+            cashAmount: topupAmount.toString(),
+            creditAmount: '0',
+            currency: (session.currency || 'cad').toUpperCase(),
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: balances.did,
+            set: {
+              cashAmount: sql`${balances.cashAmount} + ${topupAmount}`,
+              updatedAt: new Date(),
+            },
+          });
+      });
+
+      log.info({ service: 'pay', transactionId: txId, buyerDid, amount: topupAmount }, 'Top-up credited via webhook');
+    }
+
+    // Skip further processing — topups don't need service notifications
+    return;
+  }
+
   // Notify the originating service based on metadata
   // Events service handles event tickets
   if (session.metadata?.eventId) {
