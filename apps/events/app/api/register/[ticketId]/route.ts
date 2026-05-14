@@ -41,7 +41,7 @@ export const POST = withLogger('events', async (request, { log }) => {
   log.info({ ticketId, currentStatus: ticket.registrationStatus }, 'ticket loaded');
 
   if (ticket.registrationStatus !== 'pending') {
-    log.warn({ ticketId, status: ticket.registrationStatus }, 'ticket not pending (idempotent)');
+    log.warn({ ticketId, regStatus: ticket.registrationStatus }, 'ticket not pending (idempotent)');
     return NextResponse.json(
       { error: `Ticket registration status is '${ticket.registrationStatus}', expected 'pending'` },
       { status: 409 }

@@ -1,5 +1,5 @@
 export interface LogContext {
-  service: string;
+  service?: string;
   correlationId?: string;
   did?: string;
   method?: string;

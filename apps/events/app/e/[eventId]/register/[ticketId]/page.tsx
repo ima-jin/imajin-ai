@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { db, tickets, ticketTypes, events } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import RegisterForm from './register-form';
+import RegisterClient from './register-client';
 
 interface Props {
   params: Promise<{ eventId: string; ticketId: string }>;
@@ -34,8 +34,6 @@ export default async function RegisterPage({ params, searchParams }: Props) {
     notFound();
   }
 
-  // Magic token validation removed — auth handled via onboard session + DID match
-
   // Check registration status
   if (ticket.registrationStatus === 'complete') {
     return (
@@ -46,7 +44,7 @@ export default async function RegisterPage({ params, searchParams }: Props) {
           This ticket has already been registered.
         </p>
         <Link
-          href={`/${eventId}`}
+          href={`/e/${eventId}`}
           className="mt-6 inline-block px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition"
         >
           Go to Event →
@@ -64,7 +62,7 @@ export default async function RegisterPage({ params, searchParams }: Props) {
           This ticket does not require registration.
         </p>
         <Link
-          href={`/${eventId}`}
+          href={`/e/${eventId}`}
           className="mt-6 inline-block text-orange-500 hover:text-orange-600 font-medium"
         >
           ← Back to Event
@@ -84,8 +82,7 @@ export default async function RegisterPage({ params, searchParams }: Props) {
     notFound();
   }
 
-  const formId = ticketType.registrationFormId || 'none';
-  const hasCustomForm = !!ticketType.registrationFormId;
+  const registrationFormId = ticketType.registrationFormId || null;
 
   return (
     <div className="max-w-lg mx-auto py-8 px-4">
@@ -95,18 +92,15 @@ export default async function RegisterPage({ params, searchParams }: Props) {
         <p className="text-gray-600 dark:text-gray-400 mt-1">{ticketType.name}</p>
       </div>
 
-      <RegisterForm
+      <RegisterClient
         ticketId={ticketId}
         eventId={eventId}
-        eventTitle={event.title}
-        ticketTypeName={ticketType.name}
-        hasCustomForm={hasCustomForm}
-        formId={formId}
+        registrationFormId={registrationFormId}
       />
 
       <div className="mt-6 text-center">
         <Link
-          href={`/${eventId}`}
+          href={`/e/${eventId}`}
           className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
         >
           ← Back to Event
