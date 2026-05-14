@@ -4,7 +4,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import * as ed from '@noble/ed25519';
-import { buildPublicUrl } from '@imajin/config';
+import { buildPublicUrl, profilePath } from '@imajin/config';
 import { useIdentity } from '../context/IdentityContext';
 import { ImageUpload } from '../components/ImageUpload';
 
@@ -220,7 +220,7 @@ function EditProfileContent() {
 
       // Redirect to profile after 1 second
       setTimeout(() => {
-        router.push(`/profile/${handle || did}`);
+        router.push(profilePath(handle || did));
       }, 1000);
     } catch (err: any) {
       console.error('Update failed:', err);
@@ -472,7 +472,7 @@ function EditProfileContent() {
           <div className="flex gap-3">
             <button
               type="button"
-              onClick={() => router.push(`/profile/${handle || did}`)}
+              onClick={() => router.push(profilePath(handle || did))}
               className="flex-1 px-6 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition font-semibold"
             >
               Cancel

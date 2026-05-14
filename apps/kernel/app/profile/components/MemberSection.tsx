@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Avatar } from './Avatar';
+import { profilePath } from '@imajin/config';
 import type { MemberEntry } from '../lib/profile-data';
 
 interface MemberSectionProps {
@@ -34,7 +35,7 @@ export function MemberSection({ memberCount, topMembers, children }: MemberSecti
           {topMembers.map((m) => (
             <a
               key={m.did}
-              href={`/profile/${m.handle ?? m.did}`}
+              href={profilePath(m.handle ?? m.did)}
               title={m.displayName}
               className="shrink-0"
             >

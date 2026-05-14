@@ -5,6 +5,7 @@ import { requireAuth } from '@imajin/auth';
 const log = createLogger('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
+import { eventUrl } from '@imajin/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -218,7 +219,7 @@ export async function POST(
           imageUrl: event.image_url
             ? (event.image_url.startsWith('http') ? event.image_url : `${EVENTS_URL}${event.image_url}`)
             : null,
-          eventUrl: `${EVENTS_URL}/${id}`,
+          eventUrl: eventUrl(EVENTS_URL, id),
         },
         ...(organizerEmail ? { replyTo: organizerEmail } : {}),
       }),

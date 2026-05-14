@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useIdentity } from './context/IdentityContext';
 import { ImajinFooter } from '@imajin/ui';
+import { profilePath } from '@imajin/config';
 
 export default function Home() {
   const { isLoggedIn, handle, did } = useIdentity();
@@ -16,7 +17,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!loading && isLoggedIn && (handle || did)) {
-      window.location.href = `/profile/${handle || did}`;
+      window.location.href = profilePath(handle || did);
     }
   }, [loading, isLoggedIn, handle, did]);
 

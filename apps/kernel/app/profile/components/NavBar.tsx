@@ -4,6 +4,7 @@ import { NavBar as BaseNavBar } from '@imajin/ui';
 import type { ServiceUrls } from '@imajin/ui';
 import { useIdentity } from '../context/IdentityContext';
 import { useRouter } from 'next/navigation';
+import { profilePath } from '@imajin/config';
 
 const PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
@@ -36,7 +37,7 @@ export function NavBar({ currentService = 'Profile' }: { currentService?: string
         handle,
         did,
         onLogout: () => { logout(); router.push('/'); },
-        onViewProfile: () => router.push(`/profile/${handle || did}`),
+        onViewProfile: () => router.push(profilePath(handle || did)),
         onEditProfile: () => router.push('/profile/edit'),
         onLogin: () => router.push('/auth/login'),
         onRegister: () => router.push('/auth/register'),

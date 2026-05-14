@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders, corsOptions } from '@imajin/config';
+import { corsHeaders, corsOptions, profilePath } from '@imajin/config';
 import { requireAuth } from '@imajin/auth';
 import { db, bumpSessions, bumpMatches, pods, podMembers, connections, profiles, nodes } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
@@ -182,13 +182,13 @@ export async function POST(request: NextRequest) {
         notifyBumpDid(didA, {
           type: 'bump:connected', matchId, connectionId: podId,
           peer: { did: didB, handle: profileB?.handle ?? undefined, name: profileB?.displayName ?? undefined, avatar: profileB?.avatar ?? undefined },
-          redirectUrl: (metaB.bumpRedirectUrl as string) || (profileB?.handle ? `/profile/@${profileB.handle}` : `/profile/${didB}`),
+          redirectUrl: (metaB.bumpRedirectUrl as string) || profilePath(profileB?.handle || didB),
         }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] notify connected error'));
 
         notifyBumpDid(didB, {
           type: 'bump:connected', matchId, connectionId: podId,
           peer: { did: didA, handle: profileA?.handle ?? undefined, name: profileA?.displayName ?? undefined, avatar: profileA?.avatar ?? undefined },
-          redirectUrl: (metaA.bumpRedirectUrl as string) || (profileA?.handle ? `/profile/@${profileA.handle}` : `/profile/${didA}`),
+          redirectUrl: (metaA.bumpRedirectUrl as string) || profilePath(profileA?.handle || didA),
         }).catch((err: unknown) => log.error({ err: String(err) }, '[bump/confirm] notify connected error'));
 
         return NextResponse.json({ status: 'connected' }, { headers: cors });

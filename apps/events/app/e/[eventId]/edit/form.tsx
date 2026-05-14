@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ImageUpload } from '@/app/components/ImageUpload';
 import { MarkdownEditor, PayoutSetupBanner } from '@imajin/ui';
 import { FairEditor } from '@imajin/fair';
-import { apiFetch } from '@imajin/config';
+import { apiFetch, eventPath } from '@imajin/config';
 import type { FairManifest } from '@imajin/fair';
 import type { Event, TicketType } from '@/src/db/schema';
 import { CampaignDashboard } from './campaign-dashboard';
@@ -278,7 +278,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         }
       }
 
-      router.push(`/${event.id}`);
+      router.push(eventPath(event.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update event');
     } finally {
@@ -1007,7 +1007,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
       <div className="flex gap-3">
         <button
           type="button"
-          onClick={() => router.push(`/${event.id}`)}
+          onClick={() => router.push(eventPath(event.id))}
           className="flex-1 py-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-semibold rounded-lg transition"
         >
           Cancel

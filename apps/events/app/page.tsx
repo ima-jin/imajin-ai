@@ -8,6 +8,7 @@ import { db, events } from '@/src/db';
 import { desc, eq, or, and, ne, isNull, inArray } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 import { getLocationType } from '@/src/lib/location';
+import { eventPath } from '@imajin/config';
 
 /** Strip markdown syntax to get clean plaintext for excerpts */
 function stripMarkdown(text: string): string {
@@ -142,7 +143,7 @@ export default async function HomePage() {
             return (
             <Link
               key={event.id}
-              href={`/${event.id}`}
+              href={eventPath(event.id)}
               className={`bg-gray-900 border border-gray-800 rounded-xl p-6 hover:border-gray-700 transition${isDimmed ? ' opacity-60' : ''}`}
             >
               <div className="flex gap-6">

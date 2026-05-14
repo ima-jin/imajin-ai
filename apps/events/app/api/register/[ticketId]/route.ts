@@ -17,6 +17,7 @@ import { eq } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';
 import { generateQRCode } from '@/src/lib/email';
+import { eventUrl } from '@imajin/config';
 
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
 
@@ -156,9 +157,9 @@ export const POST = withLogger('events', async (request, { log }) => {
                   currency: ticket.currency || 'USD',
                 }).format(ticket.pricePaid / 100)
               : 'Included',
-          magicLink: `${EVENTS_URL}/${event.id}`,
+          magicLink: eventUrl(EVENTS_URL, event.id),
           eventImageUrl,
-          eventUrl: `${EVENTS_URL}/${event.id}`,
+          eventUrl: eventUrl(EVENTS_URL, event.id),
           qrCodeDataUri,
           context_id: event.id,
           context_type: 'event',

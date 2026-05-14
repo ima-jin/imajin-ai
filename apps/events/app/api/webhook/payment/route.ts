@@ -18,6 +18,7 @@ import { generateQRCode } from '@/src/lib/email';
 import { backfillContactEmail } from '@/src/lib/contact-email';
 import { createOrderWithTickets } from '@/src/lib/checkout-common';
 import { randomBytes } from 'crypto';
+import { eventUrl, eventRegisterUrl, eventMyTicketsUrl } from '@imajin/config';
 import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';
 import * as bus from '@imajin/bus';
@@ -395,7 +396,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     const authSql = getClient();
     onboardToken = randomBytes(36).toString('hex');
     const onboardId = `obt_${randomBytes(8).toString('hex')}`;
-    const redirectUrl = `${EVENTS_URL}/${event.id}`;
+    const redirectUrl = eventUrl(EVENTS_URL, event.id);
 
     await authSql`
       INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
@@ -456,8 +457,8 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const ctaTicket = registrationPendingTickets[0] ?? null;
   const anyPendingRegistration = registrationPendingTickets.length > 0;
   const registrationUrl = ctaTicket
-    ? `${EVENTS_URL}/${event.id}/register/${ctaTicket.id}`
-    : `${EVENTS_URL}/${event.id}/my-tickets`;
+    ? eventRegisterUrl(EVENTS_URL, event.id, ctaTicket.id)
+    : eventMyTicketsUrl(EVENTS_URL, event.id);
 
   // Always publish a purchase receipt to the buyer
   try {
@@ -517,7 +518,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
           price: bundleFormatted,
           magicLink,
           eventImageUrl,
-          eventUrl: `${EVENTS_URL}/${event.id}`,
+          eventUrl: eventUrl(EVENTS_URL, event.id),
           tickets: ticketsWithQr,
           context_id: event.id,
           context_type: 'event',

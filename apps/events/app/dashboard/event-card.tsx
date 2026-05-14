@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { eventPath, eventEditPath } from '@imajin/config';
 
 interface EventWithStats {
   id: string;
@@ -54,7 +55,7 @@ export function EventCard({ event }: Props) {
   return (
     <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow group">
       {/* Image */}
-      <Link href={`/${event.id}`} className="block">
+      <Link href={eventPath(event.id)} className="block">
         <div className="relative h-48 bg-gradient-to-br from-orange-500 to-amber-600 overflow-hidden">
           {event.imageUrl ? (
             <img
@@ -78,7 +79,7 @@ export function EventCard({ event }: Props) {
 
       {/* Content */}
       <div className="p-5">
-        <Link href={`/${event.id}`} className="block mb-3">
+        <Link href={eventPath(event.id)} className="block mb-3">
           <h3 className="text-xl font-bold group-hover:text-orange-500 transition-colors line-clamp-2">
             {event.title}
           </h3>
@@ -108,13 +109,13 @@ export function EventCard({ event }: Props) {
         {/* Actions */}
         <div className="mt-4 flex gap-2">
           <Link
-            href={`/${event.id}/edit`}
+            href={eventEditPath(event.id)}
             className="flex-1 text-center px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-medium rounded-lg transition-colors"
           >
             Edit
           </Link>
           <Link
-            href={`/${event.id}`}
+            href={eventPath(event.id)}
             className="flex-1 text-center px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors"
           >
             View
