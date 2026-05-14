@@ -731,9 +731,11 @@ export default async function EventPage({ params, searchParams }: Props) {
         )}
 
         {/* Event Lobby Accordion */}
-        <div className="mb-6">
-          <EventLobbyAccordion eventId={event.id} eventDid={event.did} />
-        </div>
+        {event.chatEnabled && (
+          <div className="mb-6">
+            <EventLobbyAccordion eventId={event.id} eventDid={event.did} />
+          </div>
+        )}
 
         {/* Event Surveys */}
         {visibleSurveys.map((survey: any) => {
