@@ -17,6 +17,13 @@ const nextConfig = {
     '@imajin/trust-graph',
     '@imajin/ui',
   ],
+  async rewrites() {
+    return [
+      // Public short URLs → internal route groups
+      { source: '/p/:handle', destination: '/profile/p/:handle' },
+      { source: '/p/:handle/:path*', destination: '/profile/p/:handle/:path*' },
+    ];
+  },
   typescript: { ignoreBuildErrors: true },
   reactStrictMode: true,
   images: {
