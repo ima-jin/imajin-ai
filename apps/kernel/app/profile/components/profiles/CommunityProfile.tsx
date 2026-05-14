@@ -12,7 +12,9 @@ import { MemberList } from '../MemberList';
 import { Avatar } from '../Avatar';
 import { CopyDid } from '../CopyDid';
 import { MemberSection } from '../MemberSection';
+import { CommunityPageClient } from './CommunityPageClient';
 import type { ProfileViewProps } from '../../lib/types';
+import type { CommunityTab } from '../CommunityTabs';
 
 async function resolveCanJoin(
   profileDid: string,
@@ -43,12 +45,7 @@ async function resolveCanJoin(
   return { canJoin: true, joinVisibility };
 }
 
-export async function CommunityProfile({
-  profile,
-  identity,
-  viewer,
-  links,
-}: ProfileViewProps) {
+export async function CommunityProfile({ profile, identity, viewer, links }: ProfileViewProps) {
   const [forestConfig, viewerMemberRole] = await Promise.all([
     getForestConfig(profile.did),
     viewer.viewerDid && !viewer.isSelf
@@ -57,36 +54,103 @@ export async function CommunityProfile({
   ]);
 
   const { canJoin, joinVisibility } = await resolveCanJoin(
-    profile.did,
-    viewer,
-    viewerMemberRole,
-    forestConfig
+    profile.did, viewer, viewerMemberRole, forestConfig
   );
 
-  const isMaintainer =
-    viewerMemberRole === 'owner' ||
-    viewerMemberRole === 'admin' ||
-    viewerMemberRole === 'maintainer';
+  const isMember = !!viewerMemberRole;
+  const isMaintainer = ['owner', 'admin', 'maintainer'].includes(viewerMemberRole ?? '');
 
   const allMembers = await getMembersByRole(profile.did);
   const memberCount = allMembers.length;
-
   const topMembers = allMembers
-    .filter((m) => ['owner', 'admin', 'maintainer'].includes(m.role))
+    .filter(m => ['owner', 'admin', 'maintainer'].includes(m.role))
     .slice(0, 5);
 
-  const showEvents =
-    forestConfig?.enabledServices.includes('events') &&
-    profile.featureToggles?.show_events;
+  const enabledServices = forestConfig?.enabledServices ?? [];
 
-  const showMarket =
-    forestConfig?.enabledServices.includes('market') &&
-    profile.featureToggles?.show_market_items;
+  // Determine which tabs to show
+  const enabledTabs: CommunityTab[] = ['overview'];
+  if (enabledServices.includes('events') || profile.featureToggles?.show_events) {
+    enabledTabs.push('events');
+  }
+  if (enabledServices.includes('chat')) {
+    enabledTabs.push('chat');
+  }
+  enabledTabs.push('members'); // always show members
+  if (enabledServices.includes('market') && profile.featureToggles?.show_market_items) {
+    enabledTabs.push('market');
+  }
+
+  const showEvents = enabledServices.includes('events') && profile.featureToggles?.show_events;
+  const showMarket = enabledServices.includes('market') && profile.featureToggles?.show_market_items;
+
+  // --- Build tab content sections ---
+
+  const overviewContent = (
+    <div className="space-y-6">
+      {/* Gallery */}
+      <StubGallery identityDid={profile.did} isMaintainer={isMaintainer} />
+
+      {/* Links */}
+      {links.length > 0 && (
+        <div className="space-y-2">
+          {links.map((link, i) => (
+            <a
+              key={i}
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition"
+            >
+              <p className="text-white text-sm font-medium">{link.title}</p>
+              {link.description && (
+                <p className="text-gray-500 text-xs mt-0.5">{link.description}</p>
+              )}
+            </a>
+          ))}
+        </div>
+      )}
+
+      {/* Contact */}
+      <ContactCard contactEmail={profile.contactEmail} phone={profile.phone} />
+
+      <p className="text-xs text-gray-500 text-center">
+        Member since {formatMemberSince(profile.createdAt)}
+      </p>
+    </div>
+  );
+
+  const eventsContent = showEvents ? (
+    <UpcomingEvents
+      did={profile.did}
+      eventsBaseUrl={buildPublicUrl('events')}
+      viewerDid={viewer.viewerDid}
+    />
+  ) : (
+    <p className="text-sm text-zinc-500 text-center py-8">No events yet</p>
+  );
+
+  const membersContent = (
+    <MemberList
+      identityDid={profile.did}
+      grouped
+      showCount
+      title="Members"
+    />
+  );
+
+  const marketContent = showMarket ? (
+    <MarketItems
+      did={profile.did}
+      handle={profile.handle}
+      marketBaseUrl={buildPublicUrl('market')}
+    />
+  ) : null;
 
   return (
     <div className="max-w-lg mx-auto">
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl overflow-hidden">
-        {/* 1. Banner */}
+        {/* Banner */}
         {profile.banner && (
           <div
             className="w-full h-48 bg-cover bg-center"
@@ -94,118 +158,70 @@ export async function CommunityProfile({
           />
         )}
 
-        <div className="p-8 text-center">
-          {/* 2. Header */}
-          <ScopeHeader profile={profile} identity={identity} />
+        <div className="p-8">
+          {/* Header — always visible */}
+          <div className="text-center mb-6">
+            <ScopeHeader profile={profile} identity={identity} />
 
-          {profile.bio && (
-            <p className="text-gray-300 mb-6">{profile.bio}</p>
-          )}
+            {profile.bio && (
+              <p className="text-gray-300 mb-4">{profile.bio}</p>
+            )}
 
-          {/* 3. Action row */}
-          <div className="flex items-center justify-center gap-3">
-            <JoinButton
-              identityDid={profile.did}
-              viewerDid={viewer.viewerDid}
-              initialMemberRole={viewerMemberRole}
-              canJoin={canJoin}
-              joinVisibility={joinVisibility}
-            />
-            {viewer.viewerDid && !viewer.isSelf && (
-              <FollowButton
-                targetDid={profile.did}
-                initialFollowing={viewer.isFollowing}
+            {/* Actions */}
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <JoinButton
+                identityDid={profile.did}
+                viewerDid={viewer.viewerDid}
+                initialMemberRole={viewerMemberRole}
+                canJoin={canJoin}
+                joinVisibility={joinVisibility}
               />
+              {viewer.viewerDid && !viewer.isSelf && (
+                <FollowButton
+                  targetDid={profile.did}
+                  initialFollowing={viewer.isFollowing}
+                />
+              )}
+            </div>
+
+            {/* Member count + avatars */}
+            {memberCount > 0 && (
+              <div className="flex items-center justify-center gap-3 mb-2">
+                <span className="text-sm text-gray-400">
+                  {memberCount} member{memberCount !== 1 ? 's' : ''}
+                </span>
+                {topMembers.length > 0 && (
+                  <div className="flex items-center -space-x-2">
+                    {topMembers.map(m => (
+                      <a
+                        key={m.did}
+                        href={`/profile/${m.handle ?? m.did}`}
+                        title={m.displayName}
+                        className="relative inline-block border-2 border-[#0a0a0a] rounded-full"
+                      >
+                        <Avatar avatar={m.avatar} displayName={m.displayName} size="sm" />
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
-          {/* 4. Member summary */}
-          {memberCount > 0 && (
-            <div className="flex items-center justify-center gap-3 mb-6">
-              <span className="text-sm text-gray-400">
-                {memberCount} member{memberCount !== 1 ? 's' : ''}
-              </span>
-              {topMembers.length > 0 && (
-                <div className="flex items-center -space-x-2">
-                  {topMembers.map((m) => (
-                    <a
-                      key={m.did}
-                      href={`/profile/${m.handle ?? m.did}`}
-                      title={m.displayName}
-                      className="relative inline-block border-2 border-[#0a0a0a] rounded-full"
-                    >
-                      <Avatar avatar={m.avatar} displayName={m.displayName} size="sm" />
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 5. Upcoming events */}
-          {showEvents && (
-            <UpcomingEvents
-              did={profile.did}
-              eventsBaseUrl={buildPublicUrl('events')}
-              viewerDid={viewer.viewerDid}
-            />
-          )}
-
-          {/* 6. Market items */}
-          {showMarket && (
-            <MarketItems
-              did={profile.did}
-              handle={profile.handle}
-              marketBaseUrl={buildPublicUrl('market')}
-            />
-          )}
-
-          {/* 7. Gallery */}
-          <StubGallery identityDid={profile.did} isMaintainer={isMaintainer} />
-
-          {/* 8. Links */}
-          {links.length > 0 && (
-            <div className="mb-6 space-y-2 text-left">
-              {links.map((link, i) => (
-                <a
-                  key={i}
-                  href={link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition"
-                >
-                  <p className="text-white text-sm font-medium">{link.title}</p>
-                  {link.description && (
-                    <p className="text-gray-500 text-xs mt-0.5">{link.description}</p>
-                  )}
-                </a>
-              ))}
-            </div>
-          )}
-
-          {/* 9. Members section */}
-          {memberCount > 0 && (
-            <MemberSection memberCount={memberCount} topMembers={topMembers}>
-              <MemberList
-                identityDid={profile.did}
-                grouped
-                showCount
-                title="Members"
-              />
-            </MemberSection>
-          )}
-
-          {/* 10. Contact */}
-          <ContactCard contactEmail={profile.contactEmail} phone={profile.phone} />
-
-          {/* Member since */}
-          <p className="text-xs text-gray-500 mt-4">
-            Member since {formatMemberSince(profile.createdAt)}
-          </p>
+          {/* Tabbed content */}
+          <CommunityPageClient
+            enabledTabs={enabledTabs}
+            isMember={isMember}
+            overviewContent={overviewContent}
+            eventsContent={eventsContent}
+            membersContent={membersContent}
+            marketContent={marketContent}
+            communityDid={profile.did}
+          />
         </div>
       </div>
 
-      {/* 11. Footer */}
+      {/* Footer */}
       <div className="text-center mt-4 space-y-1">
         <p className="text-xs text-gray-600">Powered by Imajin</p>
         <CopyDid did={profile.did} />
