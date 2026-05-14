@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ChatProvider, useChatWebSocket } from '@imajin/chat';
 import { apiFetch } from '@imajin/config';
-import { EventChat } from './components/EventChat';
+import { EventChatWrapper } from './components/EventChatWrapper';
 
 const CHAT_URL = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
 // Use same-origin proxy for access checks (cross-origin cookie forwarding is unreliable)
@@ -37,7 +37,7 @@ function AccordionContent({ eventId, eventDid, isExpanded, onUnreadChange }: Acc
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-4">
-      <EventChat did={eventDid} eventId={eventId} compact />
+      <EventChatWrapper did={eventDid} eventId={eventId} compact />
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { useVoiceRecording } from './hooks/useVoiceRecording';
 import { useLocationShare } from './hooks/useLocationShare';
 import { MessageBubble } from './MessageBubble';
 import { VoiceRecorder } from '@imajin/input';
+import { NameDisplaySelector, type NameDisplayPolicy } from './NameDisplaySelector';
 
 interface ChatProps {
   did: string;
@@ -22,6 +23,16 @@ interface ChatProps {
   enableLocation?: boolean;
   onAccessDenied?: () => void;
   className?: string;
+
+  // NEW — from EventChat consolidation
+  compact?: boolean;                      // Tighter spacing for embed use
+  footerText?: string;                    // e.g. "Visible to all ticket holders"
+  enterToSend?: boolean;                  // Enter sends message (default: false, Enter = newline)
+  showCapabilityGates?: boolean;          // Show 🔒 icons for locked features instead of hiding
+  nameDisplayPolicy?: NameDisplayPolicy;
+  displayPrefStorageKey?: string;         // localStorage key for attendee display pref (enables the selector)
+  onDisplayPrefChange?: (pref: string) => void;
+  resolveDisplayName?: (did: string, names: Record<string, string>, currentUserDid?: string) => string | undefined; // Custom name resolver
 }
 
 function computeReactions(
@@ -63,6 +74,14 @@ export function Chat({
   enableLocation = false,
   onAccessDenied,
   className,
+  compact = false,
+  footerText,
+  enterToSend = false,
+  showCapabilityGates = false,
+  nameDisplayPolicy,
+  displayPrefStorageKey,
+  onDisplayPrefChange,
+  resolveDisplayName,
 }: ChatProps) {
   const access = useChatAccess(did);
   const { messages, hasMore, loadMore, isLoading, pushMessage, updateMessage, removeMessage, addReactionToMessage, removeReactionFromMessage } = useChatMessages(did);
@@ -199,8 +218,12 @@ export function Chat({
     stopTyping();
   }, [composerText, isSending, editingMsg, replyTo, editMessage, sendMessage, stopTyping]);
 
-  // Enter = newline (default behavior). No keyboard shortcut to send.
-  // Users send via the send button.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (enterToSend && e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setComposerText(e.target.value);
@@ -325,7 +348,7 @@ export function Chat({
   return (
     <div className={`flex flex-col h-full ${className ?? ''}`}>
       {/* Message list */}
-      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-1">
+      <div ref={scrollContainerRef} onScroll={handleScroll} className={`flex-1 min-h-0 overflow-y-auto space-y-1 ${compact ? 'px-2 py-2' : 'px-4 py-3'}`}>
         <div ref={sentinelRef} />
         {isLoading && (
           <p className="text-center text-xs text-slate-400 py-2 animate-pulse">Loading…</p>
@@ -372,7 +395,9 @@ export function Chat({
               <MessageBubble
                 message={toMsgShape(msg)}
                 isOwn={msg.senderDid === currentUserDid}
-                senderLabel={didNames[msg.senderDid] || msg.senderDid.slice(-8)}
+                senderLabel={resolveDisplayName
+                  ? (resolveDisplayName(msg.senderDid, didNames, currentUserDid) ?? didNames[msg.senderDid] ?? msg.senderDid.slice(-8))
+                  : (didNames[msg.senderDid] ?? msg.senderDid.slice(-8))}
                 showSenderLabel={showSenderLabel}
                 onReply={() => handleReply(msg)}
                 onEdit={() => handleEdit(msg)}
@@ -417,7 +442,7 @@ export function Chat({
       </div>
 
       {/* Composer */}
-      <div className="flex flex-wrap items-end gap-1 py-2 border-t border-slate-200 dark:border-zinc-700   overflow-hidden">
+      <div className={`flex flex-wrap items-end gap-1 border-t border-slate-200 dark:border-zinc-700 overflow-hidden ${compact ? 'py-1' : 'py-2'}`}>
         {(replyTo || editingMsg) && (
           <div className="flex items-start justify-between mb-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 text-xs w-full">
             <div className="min-w-0">
@@ -440,7 +465,7 @@ export function Chat({
           </div>
         )}
 
-        {enableMedia && (
+        {(enableMedia || showCapabilityGates) && (
           <input
             ref={fileInputRef}
             type="file"
@@ -458,14 +483,23 @@ export function Chat({
             {'\uD83D\uDCCE'}
           </button>
         )}
+        {!voiceActive && !enableMedia && showCapabilityGates && (
+          <div
+            className="p-1.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
+            title="Verify your identity to send files"
+          >
+            🔒
+          </div>
+        )}
         {!voiceActive && (
           <textarea
             ref={textareaRef}
             value={composerText}
             onChange={handleTextChange}
+            onKeyDown={handleKeyDown}
             placeholder="Message…"
             rows={1}
-            className="flex-1 min-w-0 min-h-9 resize-none overflow-hidden bg-slate-100 dark:bg-zinc-800 rounded-2xl px-4 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none"
+            className={`flex-1 min-w-0 resize-none overflow-hidden bg-slate-100 dark:bg-zinc-800 rounded-2xl text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none ${compact ? 'px-2 py-1 min-h-8' : 'px-4 py-2 min-h-9'}`}
           />
         )}
         {!voiceActive && enableLocation && (
@@ -478,6 +512,14 @@ export function Chat({
             {'\uD83D\uDCCD'}
           </button>
         )}
+        {!voiceActive && !enableLocation && showCapabilityGates && (
+          <div
+            className="p-1.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
+            title="Verify your identity to share location"
+          >
+            🔒
+          </div>
+        )}
         {enableVoice && (
           <VoiceRecorder
             onRecordingStart={() => setVoiceActive(true)}
@@ -485,6 +527,14 @@ export function Chat({
             onCancel={() => setVoiceActive(false)}
             disabled={isSending}
           />
+        )}
+        {!enableVoice && showCapabilityGates && (
+          <div
+            className="p-1.5 opacity-50 cursor-not-allowed text-gray-400 flex-shrink-0"
+            title="Verify your identity to send voice messages"
+          >
+            🔒
+          </div>
         )}
         {voiceActive && voiceSending && (
           <span className="text-xs text-slate-400 flex-shrink-0">Sending…</span>
@@ -500,6 +550,20 @@ export function Chat({
           </svg>
         </button>
       </div>
+
+      {/* Footer */}
+      {(footerText || (nameDisplayPolicy === 'attendee_choice' && displayPrefStorageKey)) && (
+        <div className={`flex items-center justify-between ${compact ? 'mt-1' : 'mt-2'}`}>
+          {footerText && <p className="text-xs text-gray-400">{footerText}</p>}
+          {nameDisplayPolicy === 'attendee_choice' && displayPrefStorageKey && (
+            <NameDisplaySelector
+              policy={nameDisplayPolicy}
+              storageKey={displayPrefStorageKey}
+              onChange={onDisplayPrefChange}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

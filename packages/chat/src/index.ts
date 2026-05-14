@@ -18,6 +18,9 @@ export { useDidNames } from './hooks/useDidNames';
 
 /** @deprecated Use @imajin/input instead */
 export { VoiceRecorder } from '@imajin/input';
+export { NameDisplaySelector } from './NameDisplaySelector';
+export type { NameDisplayPolicy, DisplayPref } from './NameDisplaySelector';
+
 export { useFileUpload } from './hooks/useFileUpload';
 export { useVoiceRecording } from './hooks/useVoiceRecording';
 export { useLocationShare } from './hooks/useLocationShare';
