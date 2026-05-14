@@ -56,7 +56,17 @@ function AddMemberPicker({
   onAdd: (did: string) => void;
   onCancel: () => void;
 }) {
+  const [search, setSearch] = useState('');
   const didNames = useDidNames(connections.map((c) => c.did));
+
+  const filtered = search.trim()
+    ? connections.filter((conn) => {
+        const q = search.toLowerCase();
+        const name = didNames[conn.did]?.toLowerCase() ?? '';
+        const handle = conn.handle?.toLowerCase() ?? '';
+        return name.includes(q) || handle.includes(q) || conn.did.toLowerCase().includes(q);
+      })
+    : connections;
 
   return (
     <div className="mt-2">
@@ -71,21 +81,35 @@ function AddMemberPicker({
       ) : connections.length === 0 ? (
         <p className="text-xs text-gray-400">No connections available to add.</p>
       ) : (
-        <div className="flex flex-wrap gap-1">
-          {connections.map((conn) => {
-            const label = didNames[conn.did] || (conn.handle ? `@${conn.handle}` : conn.did.slice(-8));
-            return (
-              <button
-                key={conn.did}
-                onClick={() => onAdd(conn.did)}
-                disabled={addingDid === conn.did}
-                className="px-2 py-1 text-xs bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-full hover:border-orange-400 hover:text-orange-500 transition disabled:opacity-50"
-              >
-                {addingDid === conn.did ? '…' : label}
-              </button>
-            );
-          })}
-        </div>
+        <>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or handle…"
+            autoFocus
+            className="w-full mb-2 px-3 py-1.5 text-xs bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg outline-none focus:ring-2 focus:ring-orange-500/40"
+          />
+          {filtered.length === 0 ? (
+            <p className="text-xs text-gray-400">No matches</p>
+          ) : (
+            <div className="flex flex-wrap gap-1 max-h-48 overflow-y-auto">
+              {filtered.map((conn) => {
+                const label = didNames[conn.did] || (conn.handle ? `@${conn.handle}` : conn.did.slice(-8));
+                return (
+                  <button
+                    key={conn.did}
+                    onClick={() => onAdd(conn.did)}
+                    disabled={addingDid === conn.did}
+                    className="px-2 py-1 text-xs bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-full hover:border-orange-400 hover:text-orange-500 transition disabled:opacity-50"
+                  >
+                    {addingDid === conn.did ? '…' : label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
