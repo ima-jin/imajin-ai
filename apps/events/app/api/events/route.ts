@@ -61,6 +61,8 @@ export const POST = withLogger('events', async (request, { log, correlationId })
       eventType,
       targetAmount,
       deadline,
+      nameDisplayPolicy,
+      chatEnabled,
     } = body;
 
     // Validate required fields
@@ -168,6 +170,8 @@ export const POST = withLogger('events', async (request, { log, correlationId })
       tags: tags || [],
       courseSlug: courseSlug || null,
       emtEmail: emtEmail || null,
+      nameDisplayPolicy: nameDisplayPolicy || 'attendee_choice',
+      chatEnabled: chatEnabled !== undefined ? chatEnabled : true,
       eventType: eventType || 'event',
       targetAmount: eventType === 'campaign' ? targetAmount : null,
       deadline: eventType === 'campaign' && deadline ? new Date(deadline) : null,
@@ -236,6 +240,21 @@ export const POST = withLogger('events', async (request, { log, correlationId })
       } catch (chatError) {
         log.warn({ err: String(chatError) }, 'Event chat creation failed (non-fatal)');
       }
+
+      // Sync name display policy to chat conversation context
+      try {
+        const internalKey = process.env.AUTH_INTERNAL_API_KEY;
+        await fetch(`${CHAT_URL}/api/d/${encodeURIComponent(eventDid)}/context`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(internalKey ? { 'Authorization': `Bearer ${internalKey}` } : {}),
+          },
+          body: JSON.stringify({ context: { nameDisplayPolicy: nameDisplayPolicy || 'attendee_choice' } }),
+        });
+      } catch {
+        // Best-effort — chat conversation may not exist yet
+      }
     }
 
     // Store event keypair (in real system, this would be encrypted/secured)
@@ -262,8 +281,8 @@ export const POST = withLogger('events', async (request, { log, correlationId })
  */
 /** Fields safe to return for events:read app scope */
 function filterEventForApp(event: Record<string, any>): Record<string, any> {
-  const { id, did, creatorDid, title, description, startsAt, endsAt, timezone, locationType, isVirtual, virtualUrl, venue, address, city, country, status, accessMode, imageUrl, imageAssetId, tags, courseSlug, nameDisplayPolicy, createdAt, updatedAt } = event;
-  return { id, did, creatorDid, title, description, startsAt, endsAt, timezone, locationType, isVirtual, virtualUrl, venue, address, city, country, status, accessMode, imageUrl, imageAssetId, tags, courseSlug, nameDisplayPolicy, createdAt, updatedAt };
+  const { id, did, creatorDid, title, description, startsAt, endsAt, timezone, locationType, isVirtual, virtualUrl, venue, address, city, country, status, accessMode, imageUrl, imageAssetId, tags, courseSlug, nameDisplayPolicy, chatEnabled, createdAt, updatedAt } = event;
+  return { id, did, creatorDid, title, description, startsAt, endsAt, timezone, locationType, isVirtual, virtualUrl, venue, address, city, country, status, accessMode, imageUrl, imageAssetId, tags, courseSlug, nameDisplayPolicy, chatEnabled, createdAt, updatedAt };
 }
 
 export const GET = withLogger('events', async (request, { log }) => {

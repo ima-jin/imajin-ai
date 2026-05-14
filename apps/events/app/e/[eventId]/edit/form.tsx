@@ -76,6 +76,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
   const [nameDisplayPolicy, setNameDisplayPolicy] = useState(
     (event as any).nameDisplayPolicy || 'attendee_choice'
   );
+  const [chatEnabled, setChatEnabled] = useState(event.chatEnabled ?? true);
   const [accessMode, setAccessMode] = useState<'public' | 'invite_only'>(
     (event.accessMode as 'public' | 'invite_only') || 'public'
   );
@@ -204,6 +205,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
           imageUrl: imageUrl || null,
           status,
           nameDisplayPolicy,
+          chatEnabled,
           accessMode,
           courseSlug: courseSlug || null,
           emtEmail: emtEnabled ? (emtEmail.trim() || null) : null,
@@ -938,6 +940,22 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
             Control how attendee names appear in the event chat.
           </p>
         </div>
+
+        {/* Chat Toggle */}
+        <div className="flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700">
+          <div>
+            <label className="font-medium text-sm">Event Chat</label>
+            <p className="text-xs text-gray-500">Allow ticket holders to chat</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setChatEnabled(!chatEnabled)}
+            className={`relative w-12 h-6 rounded-full transition-colors ${chatEnabled ? 'bg-orange-500' : 'bg-gray-600'}`}
+          >
+            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${chatEnabled ? 'translate-x-6' : ''}`} />
+          </button>
+        </div>
+
         <div className="space-y-3">
           {([
             { value: 'attendee_choice', label: 'Attendee choice', description: 'Each attendee picks how their name appears' },

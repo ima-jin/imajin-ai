@@ -13,8 +13,8 @@ import { eq } from 'drizzle-orm';
 
 /** Fields safe to return for events:read app scope */
 function filterEventForApp(event: Record<string, any>): Record<string, any> {
-  const { id, did, creatorDid, title, description, startsAt, endsAt, timezone, locationType, isVirtual, virtualUrl, venue, address, city, country, status, accessMode, imageUrl, imageAssetId, tags, courseSlug, nameDisplayPolicy, createdAt, updatedAt } = event;
-  return { id, did, creatorDid, title, description, startsAt, endsAt, timezone, locationType, isVirtual, virtualUrl, venue, address, city, country, status, accessMode, imageUrl, imageAssetId, tags, courseSlug, nameDisplayPolicy, createdAt, updatedAt };
+  const { id, did, creatorDid, title, description, startsAt, endsAt, timezone, locationType, isVirtual, virtualUrl, venue, address, city, country, status, accessMode, imageUrl, imageAssetId, tags, courseSlug, nameDisplayPolicy, chatEnabled, createdAt, updatedAt } = event;
+  return { id, did, creatorDid, title, description, startsAt, endsAt, timezone, locationType, isVirtual, virtualUrl, venue, address, city, country, status, accessMode, imageUrl, imageAssetId, tags, courseSlug, nameDisplayPolicy, chatEnabled, createdAt, updatedAt };
 }
 
 /**
@@ -253,6 +253,7 @@ export async function PUT(
       status,
       metadata,
       nameDisplayPolicy,
+      chatEnabled,
     } = body;
 
     const VALID_NAME_POLICIES = ['real_name', 'handle', 'anonymous', 'attendee_choice'];
@@ -289,12 +290,33 @@ export async function PUT(
     if (body.accessMode !== undefined) updates.accessMode = body.accessMode;
     if (body.courseSlug !== undefined) updates.courseSlug = body.courseSlug || null;
     if (body.emtEmail !== undefined) updates.emtEmail = body.emtEmail || null;
+    if (chatEnabled !== undefined) updates.chatEnabled = chatEnabled;
 
     const [updated] = await db
       .update(events)
       .set(updates)
       .where(eq(events.id, id))
       .returning();
+
+    // Sync name display policy to chat conversation context if it changed
+    if (nameDisplayPolicy !== undefined && updated) {
+      const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
+      if (CHAT_URL) {
+        try {
+          const internalKey = process.env.AUTH_INTERNAL_API_KEY;
+          await fetch(`${CHAT_URL}/api/d/${encodeURIComponent(updated.did)}/context`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(internalKey ? { 'Authorization': `Bearer ${internalKey}` } : {}),
+            },
+            body: JSON.stringify({ context: { nameDisplayPolicy } }),
+          });
+        } catch {
+          // Best-effort sync
+        }
+      }
+    }
 
     // Bust the cache for this event page
     revalidatePath(`/${id}`);

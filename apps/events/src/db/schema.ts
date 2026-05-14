@@ -55,6 +55,9 @@ export const events = eventsSchema.table('events', {
   // Name display policy
   nameDisplayPolicy: text('name_display_policy').notNull().default('attendee_choice'), // real_name, handle, anonymous, attendee_choice
 
+  // Chat toggle
+  chatEnabled: boolean('chat_enabled').notNull().default(true),
+
   // Course link
   // SQL: ALTER TABLE events.events ADD COLUMN IF NOT EXISTS course_slug TEXT;
   // SQL: CREATE INDEX IF NOT EXISTS idx_events_course_slug ON events.events(course_slug);

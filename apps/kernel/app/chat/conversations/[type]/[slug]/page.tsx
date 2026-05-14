@@ -137,6 +137,7 @@ function DIDConversationView({ did }: { did: string }) {
   const [loadingConnections, setLoadingConnections] = useState(false);
   const [addingDid, setAddingDid] = useState<string | null>(null);
   const [dmPartnerName, setDmPartnerName] = useState<string | null>(null);
+  const [nameDisplayPolicy, setNameDisplayPolicy] = useState<string | null>(null);
   const parsed = parseConvDid(did);
 
   const callerRole = members.find((m) => m.did === identity?.did)?.role ?? null;
@@ -180,6 +181,10 @@ function DIDConversationView({ did }: { did: string }) {
         if (parsed.type === 'dm' && conv?.otherParticipant) {
           const p = conv.otherParticipant;
           setDmPartnerName(p.name || (p.handle ? `@${p.handle}` : null));
+        }
+        // Extract name display policy from conversation context
+        if (conv?.context?.nameDisplayPolicy) {
+          setNameDisplayPolicy(conv.context.nameDisplayPolicy as string);
         }
       })
       .catch(() => {});
@@ -474,6 +479,8 @@ function DIDConversationView({ did }: { did: string }) {
           enableVoice
           enableMedia
           enableLocation
+          nameDisplayPolicy={(nameDisplayPolicy as any) || undefined}
+          displayPrefStorageKey={nameDisplayPolicy === 'attendee_choice' ? `chat_displayPref_${did}` : undefined}
           className="h-full"
         />
       </div>
