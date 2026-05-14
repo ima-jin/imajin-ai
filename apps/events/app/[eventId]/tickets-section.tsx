@@ -646,7 +646,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
               <div className="flex flex-col items-stretch md:items-end gap-3">
                 <div className="text-left md:text-right">
                   <div className="text-3xl md:text-4xl font-bold">
-                    {ticket.price === 0 ? 'Free' : `CA$${(ticket.price / 100).toFixed(2)}`}
+                    {ticket.price === 0 ? 'Free' : new Intl.NumberFormat('en-CA', { style: 'currency', currency: ticket.currency || 'CAD' }).format(ticket.price / 100)}
                   </div>
                   {ticket.price > 0 && (
                     <div className="text-sm text-gray-500">{ticket.currency}</div>
