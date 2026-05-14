@@ -20,6 +20,7 @@ import {
   CheckoutValidationError,
   type CartItem,
 } from '@/src/lib/checkout-common';
+import { eventUrl, eventMyTicketsUrl } from '@imajin/config';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const HOLD_HOURS = 72;
@@ -101,7 +102,7 @@ export const POST = withLogger('events', async (request, { log }) => {
       // Tab-A-canonical: redirect goes to a simple affirmation page; cart stays
       // in component state and tab A picks up verification via polling.
       const eventsBase = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
-      const redirectUrl = `${eventsBase}/${body.eventId}${
+      const redirectUrl = `${eventUrl(eventsBase, body.eventId)}${
         body.invite ? `?invite=${encodeURIComponent(body.invite)}` : ''
       }`;
       let pollHandle: string | undefined;
@@ -323,7 +324,7 @@ export const POST = withLogger('events', async (request, { log }) => {
           memo,
           deadline: formattedDeadline,
           buyerEmail,
-          myTicketsUrl: `${EVENTS_URL}/${event.id}`,
+          myTicketsUrl: eventMyTicketsUrl(EVENTS_URL, event.id),
           eventImageUrl,
           context_id: event.id,
           context_type: 'event',

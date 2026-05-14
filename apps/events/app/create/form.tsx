@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ImageUpload } from '@/app/components/ImageUpload';
 import { MarkdownEditor } from '@imajin/ui';
-import { apiFetch } from '@imajin/config';
+import { apiFetch, eventPath } from '@imajin/config';
 
 interface Props {
   organizerDid: string;
@@ -108,7 +108,7 @@ export default function EventCreateForm({ organizerDid }: Props) {
       }
 
       const data = await response.json();
-      router.push(`/${data.event.id}`);
+      router.push(eventPath(data.event.id));
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create event');

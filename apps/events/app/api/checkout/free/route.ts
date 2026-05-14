@@ -21,6 +21,7 @@ import { randomBytes } from 'crypto';
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL!;
 const PROFILE_URL = process.env.PROFILE_URL!;
+import { eventUrl } from '@imajin/config';
 
 interface FreeCheckoutRequest {
   eventId: string;
@@ -296,7 +297,7 @@ export const POST = withLogger('events', async (request, { log }) => {
               ${ownerEmail.toLowerCase().trim()},
               ${body.name || null},
               ${onboardToken},
-              ${`${EVENTS_URL}/${event.id}`},
+              ${eventUrl(EVENTS_URL, event.id)},
               ${'access your RSVP for ' + event.title},
               ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()}
             )
@@ -327,7 +328,7 @@ export const POST = withLogger('events', async (request, { log }) => {
             price: 'Free',
             magicLink: magicLink || '',
             eventImageUrl,
-            eventUrl: `${EVENTS_URL}/${event.id}`,
+            eventUrl: eventUrl(EVENTS_URL, event.id),
             qrCodeDataUri,
             context_id: event.id,
             context_type: 'event',

@@ -21,6 +21,7 @@ import {
   CheckoutValidationError,
   type CartItem,
 } from '@/src/lib/checkout-common';
+import { eventUrl } from '@imajin/config';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const MAX_QUANTITY = 20;
@@ -241,7 +242,7 @@ export const POST = withLogger('events', async (request, { log }) => {
               venue: event.venue ?? undefined,
               price: `$${(totalAmount / 100).toFixed(2)} (Balance)`,
               eventImageUrl,
-              eventUrl: `${EVENTS_URL}/${event.id}`,
+              eventUrl: eventUrl(EVENTS_URL, event.id),
               context_id: event.id,
               context_type: 'event',
             },

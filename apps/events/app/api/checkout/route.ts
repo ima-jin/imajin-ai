@@ -18,6 +18,7 @@ import {
   CheckoutValidationError,
   type CartItem,
 } from '@/src/lib/checkout-common';
+import { eventUrl } from '@imajin/config';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL!;
@@ -152,7 +153,7 @@ export const POST = withLogger('events', async (request, { log, correlationId })
         currency: cartCurrency,
         customerEmail,
         successUrl: `${EVENTS_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}&event=${event.id}`,
-        cancelUrl: `${EVENTS_URL}/${event.id}`,
+        cancelUrl: eventUrl(EVENTS_URL, event.id),
         fairManifest,
         sellerDid: event.creatorDid,
         metadata: {

@@ -3,6 +3,7 @@ import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt'
 import { db, profiles } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import Link from 'next/link';
+import { profilePath } from '@imajin/config';
 import Image from 'next/image';
 
 export default async function AuthPage() {
@@ -166,7 +167,7 @@ export default async function AuthPage() {
             Edit Profile
           </Link>
           <Link
-            href={`/profile/${encodeURIComponent(profile.handle ?? effectiveDid)}`}
+            href={profilePath(encodeURIComponent(profile.handle ?? effectiveDid))}
             className="inline-block px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-semibold rounded-lg transition-colors"
           >
             View Public Profile

@@ -3,6 +3,7 @@ import { requireAdmin } from '@imajin/auth';
 import { db, events } from '@/src/db';
 import { desc } from 'drizzle-orm';
 import Link from 'next/link';
+import { eventAdminPath } from '@imajin/config';
 
 export default async function AdminEventsPage() {
   const session = await requireAdmin();
@@ -63,7 +64,7 @@ export default async function AdminEventsPage() {
                 <tr key={event.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                   <td className="px-4 py-3">
                     <Link
-                      href={`/admin/${event.id}`}
+                      href={eventAdminPath(event.id)}
                       className="text-sm font-medium text-orange-500 hover:text-orange-600"
                     >
                       {event.title}

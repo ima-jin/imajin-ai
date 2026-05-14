@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { eventUrl } from '@imajin/config';
 
 interface UpcomingEventsProps {
   did: string;
@@ -60,7 +61,7 @@ export function UpcomingEvents({ did, eventsBaseUrl, viewerDid }: UpcomingEvents
         {events.map((event) => (
           <li key={event.eventId}>
             <a
-              href={`${eventsBase}/${event.eventId}`}
+              href={eventUrl(eventsBase, event.eventId)}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-3 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:border-gray-700 transition"

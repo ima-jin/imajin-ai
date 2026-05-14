@@ -13,6 +13,7 @@ import { publish } from '@imajin/bus';
 
 const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+import { eventUrl, eventRegisterUrl, eventMyTicketsUrl } from '@imajin/config';
 
 function redactEmail(email: string): string {
   const atIdx = email.indexOf('@');
@@ -116,8 +117,8 @@ export async function POST(
     const onboardId = `obt_${randomBytes(8).toString('hex')}`;
     // Deep link to the specific ticket's registration page
     const redirectUrl = ticket.registrationStatus === 'pending'
-      ? `${EVENTS_URL}/${event.id}/register/${ticket.id}`
-      : `${EVENTS_URL}/${event.id}/my-tickets`;
+      ? eventRegisterUrl(EVENTS_URL, event.id, ticket.id)
+      : eventMyTicketsUrl(EVENTS_URL, event.id);
 
     await authSql`
       INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
@@ -192,7 +193,7 @@ export async function POST(
           price: formattedPrice,
           magicLink,
           eventImageUrl,
-          eventUrl: `${EVENTS_URL}/${event.id}`,
+          eventUrl: eventUrl(EVENTS_URL, event.id),
           qrCodeDataUri,
           context_id: event.id,
           context_type: 'event',

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { db, ticketTypes, events } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { AutoRedirect } from './auto-redirect';
+import { eventCheckoutSuccessPath } from '@imajin/config';
 
 interface Props {
   searchParams: Promise<{ session_id?: string; event?: string }>;
@@ -81,19 +82,19 @@ export default async function SuccessPage({ searchParams }: Props) {
             You must complete the registration form before your tickets are confirmed.
           </p>
           <Link
-            href={`/${event.id}#tickets`}
+            href={eventCheckoutSuccessPath(event.id)}
             className="inline-block px-6 py-3 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-lg transition"
           >
             Complete Registration Now →
           </Link>
-          <AutoRedirect href={`/${event.id}#tickets`} seconds={10} />
+          <AutoRedirect href={eventCheckoutSuccessPath(event.id)} seconds={10} />
         </div>
       )}
 
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
         {event ? (
           <Link
-            href={`/${event.id}#tickets`}
+            href={eventCheckoutSuccessPath(event.id)}
             className="inline-block px-8 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-semibold text-lg"
           >
             Go to the Event →

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { normalizeHandleInput } from '@imajin/config';
+import { normalizeHandleInput, profilePath } from '@imajin/config';
 
 const CATEGORY_PRESETS = ['café', 'restaurant', 'shop', 'venue', 'studio', 'bar', 'gallery', 'gym'];
 
@@ -184,7 +184,7 @@ export default function NewStubPage() {
         return;
       }
 
-      const dest = data.handle ? `/profile/${data.handle}` : `/profile/${data.did}`;
+      const dest = data.handle ? profilePath(data.handle) : profilePath(data.did);
       router.push(dest);
     } catch {
       setError('Something went wrong. Please try again.');

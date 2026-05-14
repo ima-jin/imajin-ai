@@ -20,6 +20,7 @@ const log = createLogger('kernel');
 
 const EVENTS_SERVICE_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:3006';
 const EVENTS_URL = process.env.EVENTS_URL || 'https://events.imajin.ai';
+import { eventUrl } from '@imajin/config';
 
 interface TicketData {
   ticket: {
@@ -175,7 +176,7 @@ export async function GET(request: NextRequest) {
     // Set session cookie
     const cookieOptions = getSessionCookieOptions();
 
-    const response = NextResponse.redirect(`${EVENTS_URL}/${ticketData.ticket.eventId}`);
+    const response = NextResponse.redirect(eventUrl(EVENTS_URL, ticketData.ticket.eventId));
 
     response.cookies.set(
       cookieOptions.name,

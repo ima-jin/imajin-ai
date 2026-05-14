@@ -1,4 +1,4 @@
-import { buildPublicUrl } from '@imajin/config';
+import { buildPublicUrl, profilePath } from '@imajin/config';
 import { getForestConfig, getViewerMembership, getMembersByRole } from '../../lib/profile-data';
 import { formatMemberSince } from '../../lib/profile-utils';
 import { ScopeHeader } from '../ScopeHeader';
@@ -195,7 +195,7 @@ export async function CommunityProfile({ profile, identity, viewer, links }: Pro
                     {topMembers.map(m => (
                       <a
                         key={m.did}
-                        href={`/profile/${m.handle ?? m.did}`}
+                        href={profilePath(m.handle ?? m.did)}
                         title={m.displayName}
                         className="relative inline-block border-2 border-[#0a0a0a] rounded-full"
                       >

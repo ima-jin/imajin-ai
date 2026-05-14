@@ -8,6 +8,7 @@ import { requireAuth, getEmailForDid } from '@imajin/auth';
 import { eq, sql } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';
+import { eventUrl } from '@imajin/config';
 
 const sqlClient = getClient();
 
@@ -169,7 +170,7 @@ export async function POST(
             refundMessage,
             eventTitle: event.title,
             eventImageUrl: imageUrl,
-            eventUrl: `${EVENTS_URL}/${event.id}`,
+            eventUrl: eventUrl(EVENTS_URL, event.id),
             manualRefundRequired,
             context_id: event.id,
             context_type: 'event',

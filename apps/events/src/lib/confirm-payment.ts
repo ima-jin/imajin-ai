@@ -14,6 +14,7 @@ import { eq, sql, and, inArray } from 'drizzle-orm';
 const log = createLogger('events');
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || 'https://auth.imajin.ai';
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+import { eventUrl, eventRegisterUrl, eventMyTicketsUrl } from '@imajin/config';
 
 export interface ConfirmPaymentResult {
   confirmedTickets: (typeof tickets.$inferSelect)[];
@@ -168,7 +169,7 @@ export async function confirmHeldTickets(
         try {
           onboardToken = randomBytes(36).toString('hex');
           const onboardId = `obt_${randomBytes(8).toString('hex')}`;
-          const redirectUrl = `${EVENTS_URL}/${event.id}`;
+          const redirectUrl = eventUrl(EVENTS_URL, event.id);
           await authSql`
             INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
             VALUES (
@@ -187,7 +188,7 @@ export async function confirmHeldTickets(
         }
         const magicLink = onboardToken
           ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`
-          : `${EVENTS_URL}/${event.id}/my-tickets`;
+          : eventMyTicketsUrl(EVENTS_URL, event.id);
 
         // Split tickets by their actual registration state, not by ticket-type
         // policy. A reg-required ticket that's already 'complete' is just as
@@ -206,8 +207,8 @@ export async function confirmHeldTickets(
         const ctaTicket = registrationPendingTickets[0] ?? null;
         const anyPendingRegistration = registrationPendingTickets.length > 0;
         const registrationUrl = ctaTicket
-          ? `${EVENTS_URL}/${event.id}/register/${ctaTicket.id}`
-          : `${EVENTS_URL}/${event.id}/my-tickets`;
+          ? eventRegisterUrl(EVENTS_URL, event.id, ctaTicket.id)
+          : eventMyTicketsUrl(EVENTS_URL, event.id);
 
         // 1. Purchase receipt (always)
         publish('ticket.receipt', {
@@ -264,7 +265,7 @@ export async function confirmHeldTickets(
               price: bundleFormatted,
               magicLink,
               eventImageUrl,
-              eventUrl: `${EVENTS_URL}/${event.id}`,
+              eventUrl: eventUrl(EVENTS_URL, event.id),
               tickets: ticketsWithQr,
               context_id: event.id,
               context_type: 'event',

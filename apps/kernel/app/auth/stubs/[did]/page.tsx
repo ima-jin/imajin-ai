@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { normalizeHandleInput } from '@imajin/config';
+import { normalizeHandleInput, profilePath } from '@imajin/config';
 
 const CATEGORY_PRESETS = ['café', 'restaurant', 'shop', 'venue', 'studio', 'bar', 'gallery', 'gym'];
 const MAX_IMAGES = 6;
@@ -418,7 +418,7 @@ export default function EditStubPage() {
     );
   }
 
-  const profileUrl = stub.handle ? `/profile/${stub.handle}` : `/profile/${stub.did}`;
+  const profileUrl = profilePath(stub.handle || stub.did);
 
   return (
     <div className="max-w-lg mx-auto py-8 space-y-6">

@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { normalizeHandleInput } from '@imajin/config';
+import { normalizeHandleInput, profilePath } from '@imajin/config';
 import * as ed from '@noble/ed25519';
 import { useIdentity } from '../context/IdentityContext';
 import { ImageUpload } from '../components/ImageUpload';
@@ -362,7 +362,7 @@ function RegisterPage() {
             </a>
           ) : (
             <button
-              onClick={() => router.push(`/profile/${profile.handle || profile.did}`)}
+              onClick={() => router.push(profilePath(profile.handle || profile.did))}
               className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold"
             >
               View Your Profile →
@@ -415,7 +415,7 @@ function RegisterPage() {
             </p>
             <div className="flex gap-2 mt-2">
               <button
-                onClick={() => router.push(`/profile/${loggedInHandle || did}`)}
+                onClick={() => router.push(profilePath(loggedInHandle || did))}
                 className="text-xs text-[#F59E0B] hover:underline"
               >
                 Go to profile
