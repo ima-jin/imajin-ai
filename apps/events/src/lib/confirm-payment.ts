@@ -164,32 +164,6 @@ export async function confirmHeldTickets(
           ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
           : undefined;
 
-        // Magic-link onboard token
-        let onboardToken: string | null = null;
-        try {
-          onboardToken = randomBytes(36).toString('hex');
-          const onboardId = `obt_${randomBytes(8).toString('hex')}`;
-          const redirectUrl = eventUrl(EVENTS_URL, event.id);
-          await authSql`
-            INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
-            VALUES (
-              ${onboardId},
-              ${customerEmail.toLowerCase().trim()},
-              ${customerName || null},
-              ${onboardToken},
-              ${redirectUrl},
-              ${'access your ticket for ' + event.title},
-              ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()}
-            )
-          `;
-        } catch (err) {
-          log.error({ err: String(err) }, 'Onboard token creation failed (non-fatal)');
-          onboardToken = null;
-        }
-        const magicLink = onboardToken
-          ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`
-          : eventMyTicketsUrl(EVENTS_URL, event.id);
-
         // Split tickets by their actual registration state, not by ticket-type
         // policy. A reg-required ticket that's already 'complete' is just as
         // redeemable as a 'not_required' ticket and belongs in the bundle email.
@@ -206,8 +180,42 @@ export async function confirmHeldTickets(
         // CTA targets: the first pending-and-required ticket, falling back to my-tickets
         const ctaTicket = registrationPendingTickets[0] ?? null;
         const anyPendingRegistration = registrationPendingTickets.length > 0;
-        const registrationUrl = ctaTicket
+
+        // Magic-link onboard token — redirect destination depends on whether
+        // there are registration-pending tickets. If so, land on the register
+        // page (with a session cookie already set); otherwise, the event page.
+        let onboardToken: string | null = null;
+        const onboardRedirectUrl = ctaTicket
           ? eventRegisterUrl(EVENTS_URL, event.id, ctaTicket.id)
+          : eventUrl(EVENTS_URL, event.id);
+        try {
+          onboardToken = randomBytes(36).toString('hex');
+          const onboardId = `obt_${randomBytes(8).toString('hex')}`;
+          await authSql`
+            INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
+            VALUES (
+              ${onboardId},
+              ${customerEmail.toLowerCase().trim()},
+              ${customerName || null},
+              ${onboardToken},
+              ${onboardRedirectUrl},
+              ${'access your ticket for ' + event.title},
+              ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()}
+            )
+          `;
+        } catch (err) {
+          log.error({ err: String(err) }, 'Onboard token creation failed (non-fatal)');
+          onboardToken = null;
+        }
+        const magicLink = onboardToken
+          ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`
+          : eventMyTicketsUrl(EVENTS_URL, event.id);
+
+        // Registration CTA goes through the magic link so users land
+        // authenticated. Falls back to the naked register URL if token
+        // creation failed.
+        const registrationUrl = anyPendingRegistration
+          ? (onboardToken ? magicLink : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id))
           : eventMyTicketsUrl(EVENTS_URL, event.id);
 
         // 1. Purchase receipt (always)

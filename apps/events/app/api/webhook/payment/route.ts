@@ -391,12 +391,27 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || 'https://auth.imajin.ai';
   const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
 
+  // Determine registration-pending tickets early so the onboard token can
+  // redirect to the register page when applicable.
+  const bundleTickets = createdTickets.filter(
+    (t) => t.registrationStatus !== 'pending',
+  );
+  const registrationPendingTickets = createdTickets.filter(
+    (t) => t.registrationStatus === 'pending',
+  );
+  const ctaTicket = registrationPendingTickets[0] ?? null;
+  const anyPendingRegistration = registrationPendingTickets.length > 0;
+
+  // Magic-link onboard token — redirect to register page when there are
+  // pending registrations so users land authenticated.
   let onboardToken: string | null = null;
+  const onboardRedirectUrl = ctaTicket
+    ? eventRegisterUrl(EVENTS_URL, event.id, ctaTicket.id)
+    : eventUrl(EVENTS_URL, event.id);
   try {
     const authSql = getClient();
     onboardToken = randomBytes(36).toString('hex');
     const onboardId = `obt_${randomBytes(8).toString('hex')}`;
-    const redirectUrl = eventUrl(EVENTS_URL, event.id);
 
     await authSql`
       INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
@@ -405,7 +420,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
         ${customerEmail.toLowerCase().trim()},
         ${customerName || null},
         ${onboardToken},
-        ${redirectUrl},
+        ${onboardRedirectUrl},
         ${'access your ticket for ' + event.title},
         ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()}
       )
@@ -416,6 +431,11 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   }
 
   const magicLink = onboardToken ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}` : undefined;
+
+  // Registration CTA goes through magic link for auth; falls back to naked URL.
+  const registrationUrl = anyPendingRegistration
+    ? (onboardToken ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}` : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id))
+    : eventMyTicketsUrl(EVENTS_URL, event.id);
 
   const eventImageUrl = event.imageUrl
     ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
@@ -441,24 +461,8 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     currency: currency.toUpperCase(),
   }).format(amountTotal / 100 / quantity);
 
-  // Split tickets by their actual registration state, not by ticket-type
-  // policy. A reg-required ticket that's already 'complete' is redeemable
-  // and belongs in the bundle email. The previous filter on
-  // ticketType.requiresRegistration excluded already-registered tickets from
-  // the "you're in" QR email entirely.
-  const bundleTickets = createdTickets.filter(
-    (t) => t.registrationStatus !== 'pending',
-  );
-  const registrationPendingTickets = createdTickets.filter(
-    (t) => t.registrationStatus === 'pending',
-  );
-
-  // CTA targets: the first pending-and-required ticket, falling back to my-tickets
-  const ctaTicket = registrationPendingTickets[0] ?? null;
-  const anyPendingRegistration = registrationPendingTickets.length > 0;
-  const registrationUrl = ctaTicket
-    ? eventRegisterUrl(EVENTS_URL, event.id, ctaTicket.id)
-    : eventMyTicketsUrl(EVENTS_URL, event.id);
+  // bundleTickets, registrationPendingTickets, ctaTicket, anyPendingRegistration,
+  // and registrationUrl are computed above (before onboard token creation).
 
   // Always publish a purchase receipt to the buyer
   try {
