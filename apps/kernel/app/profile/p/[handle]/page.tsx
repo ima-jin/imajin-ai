@@ -8,13 +8,13 @@ import {
   isConnected,
   getLinks,
   getIdentityInfo,
-} from '../lib/profile-data';
-import { getScopeEmoji } from '../lib/profile-utils';
-import { GatedProfile } from '../components/GatedProfile';
-import { ActorProfile } from '../components/profiles/ActorProfile';
-import { BusinessProfile } from '../components/profiles/BusinessProfile';
-import { CommunityProfile } from '../components/profiles/CommunityProfile';
-import { FamilyProfile } from '../components/profiles/FamilyProfile';
+} from '../../lib/profile-data';
+import { getScopeEmoji } from '../../lib/profile-utils';
+import { GatedProfile } from '../../components/GatedProfile';
+import { ActorProfile } from '../../components/profiles/ActorProfile';
+import { BusinessProfile } from '../../components/profiles/BusinessProfile';
+import { CommunityProfile } from '../../components/profiles/CommunityProfile';
+import { FamilyProfile } from '../../components/profiles/FamilyProfile';
 
 interface PageProps {
   params: Promise<{ handle: string }>;
