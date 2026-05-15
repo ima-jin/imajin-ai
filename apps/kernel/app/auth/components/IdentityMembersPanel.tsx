@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import IdentityPicker from './IdentityPicker';
+import { SERVICES } from '@imajin/config';
 
 interface Controller {
   controllerDid: string;
   role: string;
   addedBy: string;
   addedAt: string;
+  allowedServices: string[] | null;
 }
 
 const ROLE_STYLES: Record<string, string> = {
@@ -18,20 +21,32 @@ const ROLE_STYLES: Record<string, string> = {
 
 const ADD_ROLES = ['admin', 'maintainer', 'member'];
 
+const SELECTABLE_SERVICES = SERVICES.filter(
+  (s) =>
+    s.visibility !== 'internal' &&
+    s.category !== 'meta' &&
+    s.category !== 'infrastructure' &&
+    s.category !== 'kernel'
+);
+
 export default function IdentityMembersPanel({ groupDid }: { groupDid: string }) {
   const [loading, setLoading] = useState(true);
   const [controllers, setControllers] = useState<Controller[]>([]);
   const [addDid, setAddDid] = useState('');
   const [addRole, setAddRole] = useState('member');
+  const [addServiceRestricted, setAddServiceRestricted] = useState(false);
+  const [addAllowedServices, setAddAllowedServices] = useState<string[]>([]);
   const [addingMember, setAddingMember] = useState(false);
   const [removingDid, setRemovingDid] = useState<string | null>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [enabledServices, setEnabledServices] = useState<string[]>([]);
 
   const authBase =
     typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_AUTH_URL ?? '');
 
   useEffect(() => {
     loadData();
+    loadConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupDid]);
 
@@ -53,6 +68,25 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
     }
   }
 
+  async function loadConfig() {
+    try {
+      const profileUrl =
+        typeof window !== 'undefined'
+          ? window.location.origin
+          : (process.env.NEXT_PUBLIC_PROFILE_URL ?? '');
+      const res = await fetch(
+        `${profileUrl}/api/forest/${encodeURIComponent(groupDid)}/config`,
+        { credentials: 'include' }
+      );
+      if (res.ok) {
+        const cfg = await res.json();
+        setEnabledServices(cfg.enabledServices ?? []);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   function showStatus(type: 'success' | 'error', text: string) {
     setStatus({ type, text });
     setTimeout(() => setStatus(null), 5000);
@@ -69,12 +103,21 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ did: addDid.trim(), role: addRole }),
+          body: JSON.stringify({
+            did: addDid.trim(),
+            role: addRole,
+            allowedServices:
+              addServiceRestricted && addAllowedServices.length > 0
+                ? addAllowedServices
+                : null,
+          }),
         }
       );
       if (res.ok) {
         setAddDid('');
         setAddRole('member');
+        setAddServiceRestricted(false);
+        setAddAllowedServices([]);
         showStatus('success', 'Member added.');
         await loadData();
       } else {
@@ -108,6 +151,8 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
       setRemovingDid(null);
     }
   }
+
+  const existingDids = controllers.map((c) => c.controllerDid);
 
   if (loading) {
     return <div className="text-gray-400 py-8">Loading members…</div>;
@@ -168,6 +213,16 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
                     <span className={`px-2 py-0.5 text-xs rounded border capitalize ${roleStyle}`}>
                       {ctrl.role}
                     </span>
+                    {ctrl.allowedServices && ctrl.allowedServices.length > 0 && (
+                      <span
+                        className="px-2 py-0.5 text-xs rounded border border-gray-700 text-gray-400"
+                        title={ctrl.allowedServices.join(', ')}
+                      >
+                        {ctrl.allowedServices.length === 1
+                          ? ctrl.allowedServices[0]
+                          : `${ctrl.allowedServices.length} services`}
+                      </span>
+                    )}
                     {!isOwner && (
                       <button
                         onClick={() => handleRemoveMember(ctrl.controllerDid)}
@@ -186,32 +241,81 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
         )}
 
         {/* Add member form */}
-        <form onSubmit={handleAddMember} className="flex gap-2">
-          <input
-            type="text"
-            value={addDid}
-            onChange={(e) => setAddDid(e.target.value)}
-            placeholder="DID or handle"
-            className="flex-1 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
-          />
-          <select
-            value={addRole}
-            onChange={(e) => setAddRole(e.target.value)}
-            className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent"
-          >
-            {ADD_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            disabled={addingMember || !addDid.trim()}
-            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition disabled:opacity-40 whitespace-nowrap"
-          >
-            {addingMember ? 'Adding…' : 'Add'}
-          </button>
+        <form onSubmit={handleAddMember} className="space-y-3">
+          <div className="flex gap-2 items-start">
+            <div className="flex-1 min-w-0">
+              <IdentityPicker
+                onSelect={(identity) => setAddDid(identity.did)}
+                placeholder="Search by handle or name…"
+                excludeDids={existingDids}
+              />
+            </div>
+            <select
+              value={addRole}
+              onChange={(e) => setAddRole(e.target.value)}
+              className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-transparent shrink-0"
+            >
+              {ADD_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              disabled={addingMember || !addDid.trim()}
+              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition disabled:opacity-40 whitespace-nowrap shrink-0"
+            >
+              {addingMember ? 'Adding…' : 'Add'}
+            </button>
+          </div>
+
+          {/* Service restrictions */}
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={addServiceRestricted}
+                onChange={(e) => setAddServiceRestricted(e.target.checked)}
+                className="accent-amber-500"
+              />
+              <span className="text-sm text-gray-400">Restrict to specific services</span>
+            </label>
+            {addServiceRestricted && (
+              <div className="flex flex-wrap gap-2 pl-6">
+                {(enabledServices.length > 0
+                  ? enabledServices
+                  : SELECTABLE_SERVICES.map((s) => s.name)
+                ).map((svc) => {
+                  const svcInfo = SELECTABLE_SERVICES.find((s) => s.name === svc);
+                  const label = svcInfo?.label || svc;
+                  const checked = addAllowedServices.includes(svc);
+                  return (
+                    <label
+                      key={svc}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs cursor-pointer transition ${
+                        checked
+                          ? 'border-amber-600 bg-amber-900/20 text-amber-400'
+                          : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setAddAllowedServices((prev) =>
+                            checked ? prev.filter((s) => s !== svc) : [...prev, svc]
+                          )
+                        }
+                        className="sr-only"
+                      />
+                      {label}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </form>
       </div>
     </div>

@@ -6,6 +6,9 @@ import { SERVICES, buildPublicUrl } from '@imajin/config';
 interface IdentityConfig {
   enabledServices: string[];
   landingService: string | null;
+  joinVisibility: 'open' | 'network' | 'invite';
+  joinNetworkDepth: number;
+  scopeFeeBps: number;
   theme: Record<string, unknown>;
 }
 
@@ -23,6 +26,9 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
   const [loading, setLoading] = useState(true);
   const [enabledServices, setEnabledServices] = useState<string[]>([]);
   const [landingService, setLandingService] = useState<string | null>(null);
+  const [joinVisibility, setJoinVisibility] = useState<'open' | 'network' | 'invite'>('open');
+  const [joinNetworkDepth, setJoinNetworkDepth] = useState<number>(2);
+  const [scopeFeeBps, setScopeFeeBps] = useState<number>(25);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copyLabel, setCopyLabel] = useState('Copy');
@@ -48,6 +54,9 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
         const cfg: IdentityConfig = await configRes.json();
         setEnabledServices(cfg.enabledServices ?? []);
         setLandingService(cfg.landingService ?? null);
+        setJoinVisibility(cfg.joinVisibility ?? 'open');
+        setJoinNetworkDepth(cfg.joinNetworkDepth ?? 2);
+        setScopeFeeBps(cfg.scopeFeeBps ?? 25);
       }
     } catch (err) {
       console.error('Failed to load identity settings:', err);
@@ -80,7 +89,13 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ enabledServices, landingService }),
+          body: JSON.stringify({
+            enabledServices,
+            landingService,
+            joinVisibility,
+            joinNetworkDepth,
+            scopeFeeBps,
+          }),
         }
       );
       if (res.ok) {
@@ -196,6 +211,78 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
             Enable at least one app to set a landing page.
           </p>
         )}
+      </div>
+
+      {/* Join Visibility */}
+      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">
+          Join Visibility
+        </h2>
+        <p className="text-sm text-gray-400 mb-4">
+          Control who can see the join button on your community profile.
+        </p>
+
+        <div className="space-y-4">
+          <select
+            value={joinVisibility}
+            onChange={(e) => setJoinVisibility(e.target.value as 'open' | 'network' | 'invite')}
+            className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+          >
+            <option value="open">🌐 Open — Anyone can join</option>
+            <option value="network">🔗 Network — Connections of members</option>
+            <option value="invite">🔒 Invite Only — Onboard link only</option>
+          </select>
+
+          {joinVisibility === 'network' && (
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Network depth</label>
+              <select
+                value={joinNetworkDepth}
+                onChange={(e) => setJoinNetworkDepth(Number(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              >
+                <option value={1}>1 — Direct connections only</option>
+                <option value={2}>2 — Friends of friends</option>
+                <option value={3}>3 — Three degrees</option>
+              </select>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Scope Fee */}
+      <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">
+          Scope Fee
+        </h2>
+        <p className="text-sm text-gray-400 mb-4">
+          Fee taken from transactions within this community. Added to the .fair attribution chain.
+        </p>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min={0}
+              max={500}
+              step={5}
+              value={scopeFeeBps}
+              onChange={(e) => setScopeFeeBps(Number(e.target.value))}
+              className="flex-1 accent-amber-500"
+            />
+            <span className="text-white font-mono text-sm w-16 text-right">
+              {(scopeFeeBps / 100).toFixed(2)}%
+            </span>
+          </div>
+          <div className="flex justify-between text-xs text-gray-500">
+            <span>0%</span>
+            <span>Default: 0.25%</span>
+            <span>5%</span>
+          </div>
+          <p className="text-xs text-gray-500">
+            {scopeFeeBps} basis points · Collected on every transaction within this scope
+          </p>
+        </div>
       </div>
 
       {/* Onboarding */}
