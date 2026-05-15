@@ -17,6 +17,9 @@ interface AssetGridProps {
   folders?: Folder[];
   selectedAssetIds?: Set<string>;
   moveFolderId?: string;
+  selectionMode?: boolean;
+  lastClickIdx?: number | null;
+  onLastClickIdxChange?: (idx: number | null) => void;
   onSortChange: (sort: string) => void;
   onOrderChange: (order: string) => void;
   onTypeFilterChange: (type: string) => void;
@@ -36,6 +39,9 @@ export function AssetGrid({
   folders = [],
   selectedAssetIds: externalSelectedAssetIds,
   moveFolderId: externalMoveFolderId,
+  selectionMode = false,
+  lastClickIdx: lastClickIdxValue,
+  onLastClickIdxChange,
   onSortChange,
   onOrderChange,
   onTypeFilterChange,
@@ -73,7 +79,7 @@ export function AssetGrid({
       else setInternalMoveFolderId(value);
     }
   }, [onMoveFolderIdChange, moveFolderId]);
-  const lastClickIdx = useRef<number | null>(null);
+  const selectionActive = selectedAssetIds.size > 0 || selectionMode;
   const uploadRef = useRef<UploadZoneHandle>(null);
   const dragCounter = useRef(0);
 
@@ -176,31 +182,36 @@ export function AssetGrid({
           else next.add(asset.id);
           return next;
         });
-        lastClickIdx.current = idx;
-      } else if (e.shiftKey && lastClickIdx.current !== null) {
+        onLastClickIdxChange?.(idx);
+      } else if (e.shiftKey && lastClickIdxValue != null) {
         e.preventDefault();
-        const start = Math.min(lastClickIdx.current, idx);
-        const end = Math.max(lastClickIdx.current, idx);
-        setSelectedAssetIds(() => {
-          const next = new Set<string>();
+        const start = Math.min(lastClickIdxValue, idx);
+        const end = Math.max(lastClickIdxValue, idx);
+        setSelectedAssetIds((prev) => {
+          const next = new Set(prev);
           for (let i = start; i <= end; i++) {
             next.add(assets[i].id);
           }
           return next;
         });
       } else {
-        // Normal click: toggle this asset in the selection AND open detail
-        setSelectedAssetIds((prev) => {
-          const next = new Set(prev);
-          if (next.has(asset.id)) next.delete(asset.id);
-          else next.add(asset.id);
-          return next;
-        });
-        lastClickIdx.current = idx;
-        onSelectAsset(asset.id);
+        if (selectionMode) {
+          // In selection mode: toggle selection only
+          setSelectedAssetIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(asset.id)) next.delete(asset.id);
+            else next.add(asset.id);
+            return next;
+          });
+          onLastClickIdxChange?.(idx);
+        } else {
+          // Not in selection mode: open detail
+          onLastClickIdxChange?.(idx);
+          onSelectAsset(asset.id);
+        }
       }
     },
-    [assets, onSelectAsset]
+    [assets, onSelectAsset, selectionMode, lastClickIdxValue, onLastClickIdxChange]
   );
 
   const handleCheckClick = useCallback((e: React.MouseEvent, assetId: string, idx: number) => {
@@ -211,8 +222,8 @@ export function AssetGrid({
       else next.add(assetId);
       return next;
     });
-    lastClickIdx.current = idx;
-  }, []);
+    onLastClickIdxChange?.(idx);
+  }, [setSelectedAssetIds, onLastClickIdxChange]);
 
   const handleBatchDelete = useCallback(async () => {
     if (!window.confirm(`Delete ${selectedAssetIds.size} file(s)? This cannot be undone.`)) return;
@@ -433,7 +444,10 @@ export function AssetGrid({
             Delete
           </button>
           <button
-            onClick={() => setSelectedAssetIds(new Set())}
+            onClick={() => {
+              setSelectedAssetIds(new Set());
+              onLastClickIdxChange?.(null);
+            }}
             className="text-xs px-2 py-1 rounded text-gray-500 hover:text-gray-300 hover:bg-white/10 transition-colors"
           >
             ✕
@@ -475,6 +489,7 @@ export function AssetGrid({
                 asset={asset}
                 selected={asset.id === selectedAssetId}
                 checked={selectedAssetIds.has(asset.id)}
+                selectionActive={selectionActive}
                 onSelect={(e) => handleCardClick(e, asset, idx)}
                 onCheck={(e) => handleCheckClick(e, asset.id, idx)}
               />
@@ -489,6 +504,7 @@ export function AssetGrid({
                 selected={asset.id === selectedAssetId}
                 checked={selectedAssetIds.has(asset.id)}
                 compact
+                selectionActive={selectionActive}
                 onSelect={(e) => handleCardClick(e, asset, idx)}
                 onCheck={(e) => handleCheckClick(e, asset.id, idx)}
               />
@@ -522,17 +538,19 @@ export function AssetGrid({
                 >
                   {/* Checkbox */}
                   <div
-                    className={`shrink-0 transition-opacity ${isChecked ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                    className={`shrink-0 transition-opacity ${isChecked || selectionActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
                     onClick={(e) => handleCheckClick(e, asset.id, idx)}
                   >
-                    <div
-                      className={`w-4 h-4 rounded border-2 flex items-center justify-center text-[9px] font-bold transition-colors ${
-                        isChecked
-                          ? "bg-orange-500 border-orange-500 text-white"
-                          : "bg-black/60 border-gray-400 text-transparent"
-                      }`}
-                    >
-                      ✓
+                    <div className="flex items-center justify-center min-w-[44px] min-h-[44px]">
+                      <div
+                        className={`w-4 h-4 rounded border-2 flex items-center justify-center text-[9px] font-bold transition-colors ${
+                          isChecked
+                            ? "bg-orange-500 border-orange-500 text-white"
+                            : "bg-black/60 border-gray-400 text-transparent"
+                        }`}
+                      >
+                        ✓
+                      </div>
                     </div>
                   </div>
                   <span className="text-lg shrink-0">{getMimeIcon(asset.mimeType)}</span>
