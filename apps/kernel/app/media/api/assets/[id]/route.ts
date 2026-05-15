@@ -574,6 +574,11 @@ export async function DELETE(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // Immutability check
+  if (asset.immutable) {
+    return NextResponse.json({ error: "Immutable asset — cannot delete" }, { status: 403 });
+  }
+
   // Remove files from disk (best-effort — don't fail if already gone)
   try { await unlink(asset.storagePath); } catch {}
   if (asset.fairPath) {
@@ -627,6 +632,11 @@ export async function PATCH(
 
   if (asset.ownerDid !== requesterDid) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Immutability check
+  if (asset.immutable) {
+    return NextResponse.json({ error: "Immutable asset — cannot rename" }, { status: 403 });
   }
 
   const newFilename = filename.trim();

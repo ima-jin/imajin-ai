@@ -1,6 +1,7 @@
-import { db, identities, attestations } from '@/src/db';
-import { eq, or, and, isNull, desc, inArray } from 'drizzle-orm';
+import { db, identities, attestations, attestationSignatures } from '@/src/db';
+import { eq, or, and, isNull, desc, inArray, sql } from 'drizzle-orm';
 import Link from 'next/link';
+import DocumentSigningCard from '../attestations/components/DocumentSigningCard';
 
 const TYPE_BADGE: Record<string, { label: string; classes: string }> = {
   'session.created': {
@@ -27,9 +28,19 @@ const TYPE_BADGE: Record<string, { label: string; classes: string }> = {
     label: 'customer',
     classes: 'bg-amber-900/30 text-amber-400 border-amber-800',
   },
+  'document.created': {
+    label: 'document',
+    classes: 'bg-orange-900/30 text-orange-400 border-orange-800',
+  },
+  'document.amended': {
+    label: 'amendment',
+    classes: 'bg-orange-900/30 text-orange-300 border-orange-800',
+  },
 };
 
 const ALL_TYPES = Object.keys(TYPE_BADGE);
+
+const DOCUMENT_TYPES = ['document.created', 'document.amended'];
 
 function getBadge(type: string) {
   return (
@@ -102,6 +113,34 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
       : [];
   const identityMap = new Map(identityRows.map((i) => [i.id, i]));
 
+  // Fetch signatures for document attestations
+  const documentAttIds = items.filter((att) => DOCUMENT_TYPES.includes(att.type)).map((att) => att.id);
+  let documentSigs: typeof attestationSignatures.$inferSelect[] = [];
+  if (documentAttIds.length > 0) {
+    documentSigs = await db
+      .select()
+      .from(attestationSignatures)
+      .where(inArray(attestationSignatures.attestationId, documentAttIds));
+  }
+
+  // Resolve signer identities for document cards
+  const signerDids = [...new Set(documentSigs.map((s) => s.signerDid))];
+  const signerIdentityRows = signerDids.length > 0
+    ? await db
+        .select({ id: identities.id, handle: identities.handle, name: identities.name, avatarUrl: identities.avatarUrl })
+        .from(identities)
+        .where(inArray(identities.id, signerDids))
+    : [];
+  const signerIdentityMap = new Map(signerIdentityRows.map((i) => [i.id, i]));
+
+  // Group signatures by attestation
+  const sigsByAttestation = new Map<string, typeof documentSigs>();
+  for (const sig of documentSigs) {
+    const existing = sigsByAttestation.get(sig.attestationId) ?? [];
+    existing.push(sig);
+    sigsByAttestation.set(sig.attestationId, existing);
+  }
+
   const filterParams: Record<string, string> = {};
   if (typeFilter) filterParams.type = typeFilter;
   if (role !== 'all') filterParams.role = role;
@@ -109,9 +148,6 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <h2 className="text-xl font-bold text-white">Attestations</h2>
-
       {/* Filter bar */}
       <form
         method="GET"
@@ -177,8 +213,26 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
           )}
         </div>
       ) : (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800">
+        <div className="space-y-3">
           {items.map((att) => {
+            // Document attestations get the rich card
+            if (DOCUMENT_TYPES.includes(att.type)) {
+              const sigs = sigsByAttestation.get(att.id) ?? [];
+              const sigsWithIdentity = sigs.map((sig) => ({
+                ...sig,
+                identity: signerIdentityMap.get(sig.signerDid) ?? null,
+              }));
+              return (
+                <DocumentSigningCard
+                  key={att.id}
+                  attestation={att as any}
+                  signatures={sigsWithIdentity}
+                  sessionDid={sessionDid}
+                />
+              );
+            }
+
+            // Standard attestation entry
             const badge = getBadge(att.type);
             const issuer = identityMap.get(att.issuerDid);
             const subject = identityMap.get(att.subjectDid);
@@ -203,7 +257,7 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
             };
 
             return (
-              <details key={att.id} className="group">
+              <details key={att.id} className="group bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
                 <summary className="px-5 py-4 flex items-center gap-3 cursor-pointer hover:bg-zinc-800/40 transition-colors [list-style:none] [&::-webkit-details-marker]:hidden">
                   {/* Type badge */}
                   <span
