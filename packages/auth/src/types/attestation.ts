@@ -40,6 +40,11 @@ export const ATTESTATION_TYPES = [
   'tip.granted',
   'app.authorized',
   'app.revoked',
+  'document.created',
+  'document.signed',
+  'document.executed',
+  'document.declined',
+  'document.amended',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];

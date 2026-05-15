@@ -41,6 +41,9 @@ export const assets = mediaSchema.table(
 
     metadata: jsonb("metadata").default({}),
 
+    // Immutability — locked from modification/deletion (e.g. signed documents)
+    immutable: boolean("immutable").default(false),
+
     // Status
     status: text("status").notNull().default("active"),        // active, deleted, processing
 

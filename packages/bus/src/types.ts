@@ -491,6 +491,36 @@ export interface BusEventMap {
     newVersion: string;
     signer: string;
   };
+  'document.created': {
+    attestationId: string;
+    documentAssetId: string;
+    creatorDid: string;
+    signerDids: string[];
+    context_id: string;
+    context_type: string;
+  };
+  'document.signed': {
+    attestationId: string;
+    signerDid: string;
+    documentAssetId: string;
+    context_id: string;
+    context_type: string;
+  };
+  'document.executed': {
+    attestationId: string;
+    documentAssetId: string;
+    creatorDid: string;
+    signerDids: string[];
+    context_id: string;
+    context_type: string;
+  };
+  'document.declined': {
+    attestationId: string;
+    signerDid: string;
+    documentAssetId: string;
+    context_id: string;
+    context_type: string;
+  };
 }
 
 export type BusEventType = keyof BusEventMap;

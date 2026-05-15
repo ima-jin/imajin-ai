@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, jsonb, integer, boolean, index, uniqueIndex, pgSchema } from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
 
 /** Key role configuration for multi-device / role-separated identities */
 export interface KeyRoles {
@@ -103,7 +104,10 @@ export const attestations = authSchema.table('attestations', {
   cid: text('cid'),                                    // dag-cbor CID of attestation payload
   authorJws: text('author_jws'),                       // JWS compact token (author signature)
   witnessJws: text('witness_jws'),                     // JWS compact token (countersignature)
-  attestationStatus: text('attestation_status').default('pending'), // 'pending' | 'bilateral' | 'declined'
+  attestationStatus: text('attestation_status').default('pending'), // 'pending' | 'bilateral' | 'declined' | 'collecting' | 'executed' | 'expired'
+  documentHash: text('document_hash'),                 // sha256 of signed document
+  documentAssetId: text('document_asset_id'),          // references media.assets.id
+  totalSigners: integer('total_signers'),              // expected number of signatures
   issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
@@ -112,6 +116,35 @@ export const attestations = authSchema.table('attestations', {
   issuerIdx: index('idx_auth_attestations_issuer').on(table.issuerDid),
   typeIdx: index('idx_auth_attestations_type').on(table.type),
   statusIdx: index('idx_auth_attestations_status').on(table.attestationStatus),
+}));
+
+/**
+ * Attestation Signatures — multi-party signing records
+ */
+export const attestationSignatures = authSchema.table('attestation_signatures', {
+  id: text('id').primaryKey(),                         // sig_xxx
+  attestationId: text('attestation_id').notNull().references(() => attestations.id, { onDelete: 'cascade' }),
+  signerDid: text('signer_did').notNull(),
+  jws: text('jws'),                                    // JWS compact token
+  signedAt: timestamp('signed_at', { withTimezone: true }),
+  status: text('status').notNull().default('pending'), // 'pending' | 'signed' | 'declined'
+  role: text('role').notNull().default('signer'),      // 'creator' | 'signer'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  attIdx: index('idx_attestation_sigs_att').on(table.attestationId),
+  signerIdx: index('idx_attestation_sigs_signer').on(table.signerDid),
+  statusIdx: index('idx_attestation_sigs_status').on(table.status),
+}));
+
+export const attestationRelations = relations(attestations, ({ many }) => ({
+  signatures: many(attestationSignatures),
+}));
+
+export const attestationSignatureRelations = relations(attestationSignatures, ({ one }) => ({
+  attestation: one(attestations, {
+    fields: [attestationSignatures.attestationId],
+    references: [attestations.id],
+  }),
 }));
 
 /**
@@ -219,6 +252,8 @@ export type Token = typeof tokens.$inferSelect;
 export type OnboardToken = typeof onboardTokens.$inferSelect;
 export type Attestation = typeof attestations.$inferSelect;
 export type NewAttestation = typeof attestations.$inferInsert;
+export type AttestationSignature = typeof attestationSignatures.$inferSelect;
+export type NewAttestationSignature = typeof attestationSignatures.$inferInsert;
 export type Credential = typeof credentials.$inferSelect;
 export type NewCredential = typeof credentials.$inferInsert;
 export type IdentityChain = typeof identityChains.$inferSelect;

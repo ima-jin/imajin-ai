@@ -128,6 +128,27 @@ export const EMISSION_SCHEDULE: Record<string, EmissionSpec> = {
       { to: 'scope', amount: 1, reason: 'New member onboarded' },
     ],
   },
+
+  // === Document Signing ===
+  'document.created': {
+    gas: 0.01,
+    emit: [
+      { to: 'issuer', amount: 2, reason: 'Document signing request created' },
+    ],
+  },
+  'document.signed': {
+    gas: 0.001,
+    emit: [
+      { to: 'subject', amount: 1, reason: 'Document signed' },
+    ],
+  },
+  'document.executed': {
+    gas: 0.01,
+    emit: [
+      { to: 'issuer', amount: 5, reason: 'Document fully executed' },
+      { to: 'subject', amount: 2, reason: 'Document fully executed' },
+    ],
+  },
 };
 
 /**

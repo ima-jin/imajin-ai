@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { redirect } from 'next/navigation';
 import AttestationList from '../components/AttestationList';
+import CreateDocumentForm from './components/CreateDocumentForm';
 
 interface SearchParams {
   type?: string;
@@ -28,5 +29,13 @@ export default async function AttestationsPage({ searchParams }: { searchParams:
   const actingAs = cookieStore.get('x-acting-as')?.value || null;
   const effectiveDid = actingAs || sessionDid;
 
-  return <AttestationList sessionDid={effectiveDid} searchParams={searchParams} />;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-white">Attestations</h2>
+        <CreateDocumentForm sessionDid={effectiveDid} />
+      </div>
+      <AttestationList sessionDid={effectiveDid} searchParams={searchParams} />
+    </div>
+  );
 }
