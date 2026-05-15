@@ -171,6 +171,15 @@ export function NavBar({
   serviceUrls,
   children,
 }: NavBarProps) {
+  // Embed mode: skip NavBar when ?embed=hub is present
+  const [isEmbed, setIsEmbed] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsEmbed(new URLSearchParams(window.location.search).get('embed') === 'hub');
+    }
+  }, []);
+  if (isEmbed) return null;
+
   const userLinks = buildUserLinks(servicePrefix, domain, serviceUrls);
   const isDev = servicePrefix.includes('dev-');
   const [showDropdown, setShowDropdown] = useState(false);

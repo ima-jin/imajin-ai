@@ -355,7 +355,7 @@ export default function DashboardPage() {
             <div className="text-5xl mb-4">🏪</div>
             <p className="text-lg font-medium text-gray-200 mb-2">
               {statusFilter === 'all'
-                ? "You haven't listed anything yet."
+                ? "No listings yet. Create your first listing."
                 : `No ${statusFilter} listings.`}
             </p>
             {statusFilter === 'all' && (

@@ -524,8 +524,8 @@ export function AssetGrid({
         ) : assets.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center py-16 min-h-[300px]">
             <span className="text-6xl mb-4">📂</span>
-            <p className="text-gray-400 text-lg font-medium mb-1">No files here</p>
-            <p className="text-gray-600 text-sm mb-6">Drag and drop files to upload, or click + Upload</p>
+            <p className="text-gray-400 text-lg font-medium mb-1">No media yet</p>
+            <p className="text-gray-600 text-sm mb-6">Upload your first file.</p>
             <button
               onClick={() => uploadRef.current?.openPicker()}
               className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg transition-colors"

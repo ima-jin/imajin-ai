@@ -83,9 +83,9 @@ export default async function DashboardPage() {
         <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg p-12 text-center">
           <div className="max-w-md mx-auto">
             <div className="text-6xl mb-4">🎉</div>
-            <h2 className="text-2xl font-bold mb-3">Create your first event</h2>
+            <h2 className="text-2xl font-bold mb-3">No events yet</h2>
             <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Start bringing people together. Create an event, sell tickets, and build your community.
+              Create your first event to start bringing people together, sell tickets, and build your community.
             </p>
             <Link
               href="/create"
