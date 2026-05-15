@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import type { Asset } from "@/src/db/schema";
 
 interface AssetCardProps {
@@ -7,6 +8,7 @@ interface AssetCardProps {
   selected: boolean;
   checked: boolean;
   compact?: boolean;
+  selectionActive?: boolean;
   onSelect: (e: React.MouseEvent) => void;
   onCheck: (e: React.MouseEvent) => void;
 }
@@ -62,7 +64,7 @@ export function FairBadge({ access }: { access: string }) {
   );
 }
 
-export function AssetCard({ asset, selected, checked, compact, onSelect, onCheck }: AssetCardProps) {
+function AssetCard({ asset, selected, checked, compact, selectionActive, onSelect, onCheck }: AssetCardProps) {
   const isImage = asset.mimeType.startsWith("image/");
   const fairAccess = getFairAccess(asset.fairManifest);
 
@@ -77,19 +79,21 @@ export function AssetCard({ asset, selected, checked, compact, onSelect, onCheck
     >
       {/* Checkbox overlay */}
       <div
-        className={`absolute top-1.5 left-1.5 z-10 transition-opacity ${
-          checked ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+        className={`absolute top-0.5 left-0.5 z-10 transition-opacity ${
+          checked || selectionActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
         }`}
         onClick={onCheck}
       >
-        <div
-          className={`w-5 h-5 rounded border-2 flex items-center justify-center text-[10px] font-bold transition-colors ${
-            checked
-              ? "bg-orange-500 border-orange-500 text-white"
-              : "bg-black/60 border-gray-400 text-transparent"
-          }`}
-        >
-          ✓
+        <div className="flex items-center justify-center min-w-[44px] min-h-[44px]">
+          <div
+            className={`w-5 h-5 rounded border-2 flex items-center justify-center text-[10px] font-bold transition-colors ${
+              checked
+                ? "bg-orange-500 border-orange-500 text-white"
+                : "bg-black/60 border-gray-400 text-transparent"
+            }`}
+          >
+            ✓
+          </div>
         </div>
       </div>
 
@@ -132,3 +136,14 @@ export function AssetCard({ asset, selected, checked, compact, onSelect, onCheck
     </div>
   );
 }
+
+const MemoAssetCard = React.memo(AssetCard, (prev, next) => {
+  return prev.asset.id === next.asset.id
+    && prev.selected === next.selected
+    && prev.checked === next.checked
+    && prev.selectionActive === next.selectionActive
+    && prev.compact === next.compact;
+});
+
+export { MemoAssetCard as AssetCard };
+export default MemoAssetCard;
