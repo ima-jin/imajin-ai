@@ -2,6 +2,7 @@
 
 import React from "react";
 import type { Asset } from "@/src/db/schema";
+import { useLongPress } from "./useLongPress";
 
 interface AssetCardProps {
   asset: Asset;
@@ -11,6 +12,7 @@ interface AssetCardProps {
   selectionActive?: boolean;
   onSelect: (e: React.MouseEvent) => void;
   onCheck: (e: React.MouseEvent) => void;
+  onLongPress?: () => void;
 }
 
 export function formatSize(bytes: number): string {
@@ -64,18 +66,24 @@ export function FairBadge({ access }: { access: string }) {
   );
 }
 
-function AssetCard({ asset, selected, checked, compact, selectionActive, onSelect, onCheck }: AssetCardProps) {
+function AssetCard({ asset, selected, checked, compact, selectionActive, onSelect, onCheck, onLongPress }: AssetCardProps) {
   const isImage = asset.mimeType.startsWith("image/");
   const fairAccess = getFairAccess(asset.fairManifest);
+  const longPress = useLongPress(() => {
+    onLongPress?.();
+  }, 400);
 
   return (
     <div
       className={`group relative bg-[#252525] rounded-xl overflow-hidden cursor-pointer border-2 transition-all duration-150 ${
         selected || checked
           ? "border-orange-500 shadow-lg shadow-orange-500/20"
+          : selectionActive
+          ? "border-transparent hover:border-gray-500 opacity-90 hover:opacity-100"
           : "border-transparent hover:border-gray-600"
       }`}
       onClick={onSelect}
+      {...longPress}
     >
       {/* Checkbox overlay */}
       <div
@@ -142,7 +150,8 @@ const MemoAssetCard = React.memo(AssetCard, (prev, next) => {
     && prev.selected === next.selected
     && prev.checked === next.checked
     && prev.selectionActive === next.selectionActive
-    && prev.compact === next.compact;
+    && prev.compact === next.compact
+    && prev.onLongPress === next.onLongPress;
 });
 
 export { MemoAssetCard as AssetCard };
