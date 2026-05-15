@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import type { Asset, Folder } from "@/src/db/schema";
 import { AssetCard, formatSize, getMimeIcon, getFairAccess, FairBadge } from "./AssetCard";
 import { UploadZone, type UploadZoneHandle } from "./UploadZone";
+import { SelectionToolbar } from "./SelectionToolbar";
 
 type ViewMode = "large-grid" | "small-grid" | "list";
 
@@ -82,6 +83,44 @@ export function AssetGrid({
   const selectionActive = selectedAssetIds.size > 0 || selectionMode;
   const uploadRef = useRef<UploadZoneHandle>(null);
   const dragCounter = useRef(0);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const batchDeleteRef = useRef<() => void>(() => {});
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Only handle when no input is focused
+      const active = document.activeElement;
+      const isTyping = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT");
+      if (isTyping) return;
+
+      // Ctrl/Cmd+A — select all visible
+      if ((e.ctrlKey || e.metaKey) && e.key === "a") {
+        e.preventDefault();
+        setSelectedAssetIds(new Set(assets.map((a) => a.id)));
+        onLastClickIdxChange?.(null);
+        return;
+      }
+
+      // Escape — exit selection mode
+      if (e.key === "Escape" && selectionActive) {
+        e.preventDefault();
+        setSelectedAssetIds(new Set());
+        onLastClickIdxChange?.(null);
+        return;
+      }
+
+      // Delete / Backspace — batch delete
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedAssetIds.size > 0) {
+        e.preventDefault();
+        batchDeleteRef.current();
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [assets, selectionActive, selectedAssetIds.size, setSelectedAssetIds, onLastClickIdxChange]);
 
   // Init viewMode from localStorage after mount (avoids SSR mismatch)
   useEffect(() => {
@@ -225,6 +264,16 @@ export function AssetGrid({
     onLastClickIdxChange?.(idx);
   }, [setSelectedAssetIds, onLastClickIdxChange]);
 
+  const handleLongPress = useCallback((assetId: string, idx: number) => {
+    setSelectedAssetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
+    onLastClickIdxChange?.(idx);
+  }, [setSelectedAssetIds, onLastClickIdxChange]);
+
   const handleBatchDelete = useCallback(async () => {
     if (!window.confirm(`Delete ${selectedAssetIds.size} file(s)? This cannot be undone.`)) return;
     const results = await Promise.allSettled(
@@ -247,6 +296,11 @@ export function AssetGrid({
     }
     onUploaded();
   }, [selectedAssetIds, onUploaded]);
+
+  // Keep ref in sync so keyboard shortcut can call latest version
+  useEffect(() => {
+    batchDeleteRef.current = handleBatchDelete;
+  }, [handleBatchDelete]);
 
   const handleBatchDownload = useCallback(() => {
     Array.from(selectedAssetIds).forEach((id) => {
@@ -400,58 +454,56 @@ export function AssetGrid({
         </div>
       )}
 
-      {/* Batch action bar — visible when >1 selected */}
-      {selectedAssetIds.size > 1 && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-orange-500/10 border-b border-orange-500/30 shrink-0 flex-wrap">
-          <span className="text-xs text-orange-400 font-medium">
-            {selectedAssetIds.size} selected
-          </span>
-          <div className="flex-1" />
-          <button
-            onClick={handleBatchDownload}
-            className="text-xs px-2.5 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition-colors"
+      {/* Selection toolbar — visible when in selection mode */}
+      {selectionActive && selectedAssetIds.size > 0 && (
+        <SelectionToolbar
+          count={selectedAssetIds.size}
+          total={assets.length}
+          onSelectAll={() => {
+            setSelectedAssetIds(new Set(assets.map((a) => a.id)));
+            onLastClickIdxChange?.(null);
+          }}
+          onClearSelection={() => {
+            setSelectedAssetIds(new Set());
+            onLastClickIdxChange?.(null);
+          }}
+          onDelete={handleBatchDelete}
+          onMove={() => {
+            // Show move folder selector inline; if already visible, trigger move
+            if (!moveFolderId && folders.length > 0) {
+              setMoveFolderId(folders[0]?.id ?? "");
+            } else {
+              handleBatchMove();
+            }
+          }}
+          onDownload={handleBatchDownload}
+        />
+      )}
+
+      {/* Inline move folder selector when triggered from toolbar */}
+      {selectionActive && selectedAssetIds.size > 0 && folders.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-1.5 bg-[#1a1a1a] border-b border-gray-800 shrink-0">
+          <span className="text-xs text-gray-500">Move to:</span>
+          <select
+            value={moveFolderId}
+            onChange={(e) => setMoveFolderId(e.target.value)}
+            className="bg-[#252525] border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-orange-500"
           >
-            ↓ Download
-          </button>
-          {folders.length > 0 && (
-            <div className="flex items-center gap-1">
-              <select
-                value={moveFolderId}
-                onChange={(e) => setMoveFolderId(e.target.value)}
-                className="bg-[#252525] border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-orange-500"
-              >
-                <option value="">Move to folder…</option>
-                {folders.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
-              {moveFolderId && (
-                <button
-                  onClick={handleBatchMove}
-                  className="text-xs px-2.5 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition-colors"
-                >
-                  Move
-                </button>
-              )}
-            </div>
+            <option value="">Select folder…</option>
+            {folders.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+          {moveFolderId && (
+            <button
+              onClick={handleBatchMove}
+              className="text-xs px-2.5 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition-colors"
+            >
+              Move
+            </button>
           )}
-          <button
-            onClick={handleBatchDelete}
-            className="text-xs px-2.5 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-          >
-            Delete
-          </button>
-          <button
-            onClick={() => {
-              setSelectedAssetIds(new Set());
-              onLastClickIdxChange?.(null);
-            }}
-            className="text-xs px-2 py-1 rounded text-gray-500 hover:text-gray-300 hover:bg-white/10 transition-colors"
-          >
-            ✕
-          </button>
         </div>
       )}
 
@@ -482,7 +534,7 @@ export function AssetGrid({
             </button>
           </div>
         ) : viewMode === "large-grid" ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+          <div ref={gridRef} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {assets.map((asset, idx) => (
               <AssetCard
                 key={asset.id}
@@ -492,11 +544,12 @@ export function AssetGrid({
                 selectionActive={selectionActive}
                 onSelect={(e) => handleCardClick(e, asset, idx)}
                 onCheck={(e) => handleCheckClick(e, asset.id, idx)}
+                onLongPress={() => handleLongPress(asset.id, idx)}
               />
             ))}
           </div>
         ) : viewMode === "small-grid" ? (
-          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
+          <div ref={gridRef} className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
             {assets.map((asset, idx) => (
               <AssetCard
                 key={asset.id}
@@ -507,6 +560,7 @@ export function AssetGrid({
                 selectionActive={selectionActive}
                 onSelect={(e) => handleCardClick(e, asset, idx)}
                 onCheck={(e) => handleCheckClick(e, asset.id, idx)}
+                onLongPress={() => handleLongPress(asset.id, idx)}
               />
             ))}
           </div>
