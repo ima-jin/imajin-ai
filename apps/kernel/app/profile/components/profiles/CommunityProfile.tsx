@@ -11,7 +11,7 @@ import { ContactCard } from '../ContactCard';
 import { MemberList } from '../MemberList';
 import { Avatar } from '../Avatar';
 import { CopyDid } from '../CopyDid';
-import { MemberSection } from '../MemberSection';
+
 import { CommunityPageClient } from './CommunityPageClient';
 import type { ProfileViewProps } from '../../lib/types';
 import type { CommunityTab } from '../CommunityTabs';
@@ -148,7 +148,7 @@ export async function CommunityProfile({ profile, identity, viewer, links }: Pro
   ) : null;
 
   return (
-    <div className="max-w-lg mx-auto">
+    <div className="max-w-2xl mx-auto">
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl overflow-hidden">
         {/* Banner */}
         {profile.banner && (

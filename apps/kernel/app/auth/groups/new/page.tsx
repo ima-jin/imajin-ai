@@ -206,7 +206,7 @@ function NewGroupForm() {
         return;
       }
 
-      window.location.href = `/auth/groups/${encodeURIComponent(data.did)}/settings`;
+      window.location.href = '/auth';
     } catch {
       setStatus('error');
       setError('Failed to create identity');
@@ -220,7 +220,7 @@ function NewGroupForm() {
     <div className="max-w-lg mx-auto py-8">
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
         <div className="mb-6">
-          <a href="/auth/groups" className="text-sm text-zinc-500 hover:text-zinc-300 transition">
+          <a href="/auth" className="text-sm text-zinc-500 hover:text-zinc-300 transition">
             ← Back to identities
           </a>
           <h1 className="text-2xl font-bold text-white mt-3 mb-1">Create Identity</h1>

@@ -73,7 +73,7 @@ export default async function IdentityDetail({ did, sessionDid }: Props) {
     if (membership?.role === 'maintainer' || profile?.claimedBy === null) {
       editHref = `/auth/stubs/${did}`;
     } else if (membership?.role === 'owner' || membership?.role === 'admin') {
-      editHref = `/auth/groups/${did}/settings`;
+      editHref = `/auth/settings`;
     }
   }
 

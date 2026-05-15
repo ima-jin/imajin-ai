@@ -1,7 +1,8 @@
 import { cookies } from 'next/headers';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { db, profiles } from '@/src/db';
+import { db, profiles, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
+
 import Link from 'next/link';
 import { profilePath } from '@imajin/config';
 import Image from 'next/image';
@@ -39,12 +40,19 @@ export default async function AuthPage() {
   const actingAs = cookieStore.get('x-acting-as')?.value || null;
   const effectiveDid = actingAs || sessionDid;
 
-  // Fetch profile data
-  const [profile] = await db
-    .select()
-    .from(profiles)
-    .where(eq(profiles.did, effectiveDid))
-    .limit(1);
+  // Fetch profile + identity data
+  const [[profile], [identityRow]] = await Promise.all([
+    db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.did, effectiveDid))
+      .limit(1),
+    db
+      .select({ handle: identities.handle })
+      .from(identities)
+      .where(eq(identities.id, effectiveDid))
+      .limit(1),
+  ]);
 
   if (!profile) {
     return (
@@ -167,7 +175,7 @@ export default async function AuthPage() {
             Edit Profile
           </Link>
           <Link
-            href={profilePath(encodeURIComponent(profile.handle ?? effectiveDid))}
+            href={profilePath(encodeURIComponent(profile.handle || identityRow?.handle || effectiveDid))}
             className="inline-block px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-semibold rounded-lg transition-colors"
           >
             View Public Profile
