@@ -6,6 +6,8 @@ Self-hosted software for running communities, events, identity, and payments. Wi
 
 [See it live](https://imajin.ai) · [Buy us a coffee](https://coffee.imajin.ai/veteze) · [Jin's Launch Party](https://events.imajin.ai/jins-launch-party)
 
+Live since February 2026. 246 identities. ~2,480 commits. One kernel, two platform apps, five Imajin apps, three client apps. All real, all self-hostable.
+
 ---
 
 ## What you can do with it today
@@ -132,7 +134,7 @@ Shared libraries used across all apps.
 | [@imajin/chat](./packages/chat) | Chat components (Chat orchestrator, MessageBubble, voice, media) |
 | [@imajin/trust-graph](./packages/trust-graph) | Trust graph queries (connection checks) |
 | [@imajin/cid](./packages/cid) | Content-addressed identifiers (CID generation) |
-| [@imajin/dfos](./packages/dfos) | DFOS protocol integration (chain provider, relay) |
+| [@imajin/dfos](./packages/dfos) | [DFOS](https://dfos.com) integration — open cryptographic identity protocol (chain provider, relay) |
 | [@imajin/llm](./packages/llm) | LLM inference abstraction (cost tracking, routing) |
 
 ---
@@ -250,10 +252,6 @@ imajin-ai/
 │   ├── pay/           # @imajin/pay — payments
 │   ├── trust-graph/   # @imajin/trust-graph — trust queries
 │   └── ui/            # @imajin/ui — shared components
-├── articles/          # Essays & grounding docs (30+ essays)
-│   ├── grounding-02-THESIS.md      # Canonical concept definitions
-│   ├── grounding-03-ARCHITECTURE.md # Technical architecture
-│   └── essay-*.md     # The essay series
 ├── docs/
 │   ├── DEVELOPER.md   # Getting started guide
 │   ├── ENVIRONMENTS.md # Database & deployment config
@@ -277,7 +275,7 @@ Self-hosted on HP ProLiant ML350p Gen8 (Ubuntu 24.04). Caddy for reverse proxy p
 
 **pm2 naming:** Bare names = prod (`kernel`, `events`). Prefixed = dev (`dev-kernel`, `dev-events`).
 
-See [articles/ARCHITECTURE.md](./apps/kernel/articles/ARCHITECTURE.md) for full deployment topology.
+See [ENVIRONMENTS.md](./docs/ENVIRONMENTS.md) for full deployment topology.
 
 ---
 
@@ -288,8 +286,8 @@ See [articles/ARCHITECTURE.md](./apps/kernel/articles/ARCHITECTURE.md) for full 
 | [MJN Whitepaper](./docs/mjn-whitepaper.md) | Protocol specification — 4 scopes x 5 primitives |
 | [Developer Guide](./docs/DEVELOPER.md) | Getting started — quickstart, env vars, local dev |
 | [Environments](./docs/ENVIRONMENTS.md) | Database & deployment config |
-| [Cost Estimate](./COST_ESTIMATE.md) | COCOMO II analysis — what this would cost traditionally |
-| [Essays](./apps/kernel/articles/) | 30+ essays — thesis, architecture, industry applications |
+| [Migrations](./docs/MIGRATIONS.md) | Database migration system |
+| [Essays](https://jin.imajin.ai/articles) | Thesis, architecture, industry applications (30+ essays) |
 
 ---
 
@@ -300,7 +298,7 @@ See [articles/ARCHITECTURE.md](./apps/kernel/articles/ARCHITECTURE.md) for full 
 | Codebase | ~122K lines |
 | Commits | ~2,480 |
 | Identities | 246 |
-| Days since first commit | 94 |
+| Live since | February 2026 |
 | Inference cost | ~$12K |
 | Services | 9 apps + 21 shared packages |
 | License | MIT |
