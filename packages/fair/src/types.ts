@@ -193,6 +193,6 @@ export type FairManifest = FairManifestV1_0 | FairManifestV1_1;
 // Type guards
 // ============================================================================
 
-export function isFairManifestV1_1(m: FairManifest): m is FairManifestV1_1 {
-  return 'version' in m && m.version === '1.1';
+export function isFairManifestV1_1(m: FairManifest | null | undefined): m is FairManifestV1_1 {
+  return !!m && typeof m === 'object' && 'version' in m && m.version === '1.1';
 }

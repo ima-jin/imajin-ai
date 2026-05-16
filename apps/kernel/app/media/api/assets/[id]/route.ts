@@ -217,7 +217,7 @@ export async function GET(
 
   // 4. Determine action and check for priced distribution
   const action = determineAction(request, asset.mimeType);
-  const distRight = isFairManifestV1_1(manifest) ? manifest.distribution?.[action] : undefined;
+  const distRight = manifest && isFairManifestV1_1(manifest) ? manifest.distribution?.[action] : undefined;
   const hasPrice = !!distRight?.price && distRight.price.amount > 0;
 
   // 4a. Price-aware settlement flow
