@@ -18,9 +18,17 @@ const SERVICE_URLS: Record<string, string> = {
 
 export default function ServiceEmbed({ service, did }: Props) {
   const baseUrl = SERVICE_URLS[service] ?? '';
+
+  // Kernel services (pay, media) use their own path, not /dashboard
+  const KERNEL_PATHS: Record<string, string> = {
+    pay: '/pay',
+    media: '/media',
+  };
+
+  const path = KERNEL_PATHS[service] || '/dashboard';
   const src = baseUrl
-    ? `${baseUrl}/dashboard?embed=hub&did=${encodeURIComponent(did)}`
-    : `/dashboard?embed=hub&did=${encodeURIComponent(did)}`;
+    ? `${baseUrl}${path}?embed=hub&did=${encodeURIComponent(did)}`
+    : `${path}?embed=hub&did=${encodeURIComponent(did)}`;
 
   return (
     <iframe
