@@ -177,7 +177,8 @@ export default function DashboardPage() {
                       <button
                         onClick={() => {
                           const handle = survey.handle || 'survey';
-                          const url = `${window.location.origin}/${handle}/${survey.id}`;
+                          const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '/dykil';
+                          const url = `${window.location.origin}${basePath}/${handle}/${survey.id}`;
                           navigator.clipboard.writeText(url);
                           toast.success('Survey link copied!');
                         }}

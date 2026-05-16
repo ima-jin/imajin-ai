@@ -42,6 +42,17 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
   const [order, setOrder] = useState<"asc" | "desc">("desc");
   const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
   const [moveFolderId, setMoveFolderId] = useState<string>("");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [lastClickIdx, setLastClickIdx] = useState<number | null>(null);
+
+  // Auto-enter/exit selection mode based on selectedAssetIds
+  useEffect(() => {
+    if (selectedAssetIds.size > 0 && !selectionMode) {
+      setSelectionMode(true);
+    } else if (selectedAssetIds.size === 0 && selectionMode) {
+      setSelectionMode(false);
+    }
+  }, [selectedAssetIds, selectionMode]);
 
   // Persist sort/order to localStorage after mount
   useEffect(() => {
@@ -115,6 +126,7 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
     setSelectedFolderId(id);
     setSelectedAssetId(null);
     setSelectedAssetIds(new Set());
+    setLastClickIdx(null);
     setMobileSidebarOpen(false);
   }, []);
 
@@ -221,9 +233,13 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
                 loadAssets();
                 loadFolders();
                 setSelectedAssetIds(new Set());
+                setLastClickIdx(null);
               }}
               onSelectedAssetIdsChange={setSelectedAssetIds}
               onMoveFolderIdChange={setMoveFolderId}
+              selectionMode={selectionMode}
+              lastClickIdx={lastClickIdx}
+              onLastClickIdxChange={setLastClickIdx}
             />
           )}
         </AppShell.Split.Pane>

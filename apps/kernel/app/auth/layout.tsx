@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { db, identities, identityMembers } from '@/src/db';
+import { db, identities, identityMembers, forestConfig } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import IdentitySwitcher from './components/IdentitySwitcher';
 import IdentityDetail from './components/IdentityDetail';
@@ -48,7 +48,20 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   let showSettings = false;
   let showMembers = false;
   const showSecurity = effectiveIdentity?.scope === 'actor';
+
+  // Query forest_config for enabled services and landing service
+  let enabledServices: string[] = [];
+  let landingService: string | null = null;
+
   if (effectiveIdentity?.scope && effectiveIdentity.scope !== 'actor') {
+    const [forestRow] = await db
+      .select({ enabledServices: forestConfig.enabledServices, landingService: forestConfig.landingService })
+      .from(forestConfig)
+      .where(eq(forestConfig.groupDid, effectiveDid))
+      .limit(1);
+    enabledServices = forestRow?.enabledServices ?? [];
+    landingService = forestRow?.landingService ?? null;
+
     const [membership] = await db
       .select({ role: identityMembers.role })
       .from(identityMembers)
@@ -64,6 +77,9 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
       showSettings = true;
       showMembers = true;
     }
+  } else {
+    // Actor scope: all services visible
+    enabledServices = ['events', 'market', 'coffee', 'dykil', 'learn', 'links', 'pay', 'media'];
   }
 
   const authUrl = '/auth';
@@ -83,10 +99,18 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   );
 
   const identityDetail = <IdentityDetail did={effectiveDid} sessionDid={sessionDid} />;
-  const tabBar = <IdentityTabBar showSettings={showSettings} showMembers={showMembers} showSecurity={showSecurity} />;
+  const tabBar = (
+    <IdentityTabBar
+      showSettings={showSettings}
+      showMembers={showMembers}
+      showSecurity={showSecurity}
+      enabledServices={enabledServices}
+      landingService={landingService}
+    />
+  );
 
   return (
-    <AuthLayoutShell leftRail={leftRail} identityDetail={identityDetail} tabBar={tabBar}>
+    <AuthLayoutShell leftRail={leftRail} identityDetail={identityDetail} tabBar={tabBar} landingService={landingService}>
       {children}
     </AuthLayoutShell>
   );
