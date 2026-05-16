@@ -10,6 +10,8 @@ export interface Identity {
   actingAs?: string;            // DID of group the caller is acting on behalf of
   actingAsRole?: string;        // Role of the caller in the group (e.g. 'agent')
   actingAsServices?: string[];  // Services this controller can access (undefined = full access)
+  actingFor?: string;           // DID of identity agent is delegated to
+  actingForRole?: string;       // always 'agent' for now
 }
 
 export interface AuthResult {

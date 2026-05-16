@@ -212,5 +212,22 @@ export async function requireAuth(
     }
   }
 
+  // Handle X-Acting-For header for agent delegation (separate from group acting-as)
+  if ("identity" in result && result.identity) {
+    const actingFor = request.headers.get("x-acting-for");
+    if (actingFor) {
+      const actingForResult = await validateActingAs(
+        result.identity.id,
+        actingFor,
+        options?.service
+      );
+      if (!actingForResult.valid || actingForResult.role !== 'agent') {
+        return { error: "Not authorized to act for this identity", status: 403 };
+      }
+      result.identity.actingFor = actingFor;
+      result.identity.actingForRole = actingForResult.role;
+    }
+  }
+
   return result;
 }

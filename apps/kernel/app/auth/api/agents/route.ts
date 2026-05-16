@@ -154,6 +154,14 @@ export async function POST(request: NextRequest) {
       addedBy: caller.id,
     });
 
+    // Reverse membership: agent is delegated to human
+    await db.insert(identityMembers).values({
+      identityDid: caller.id,
+      memberDid: agentDid,
+      role: 'agent',
+      addedBy: caller.id,
+    });
+
     return NextResponse.json(
       {
         did: agentDid,
