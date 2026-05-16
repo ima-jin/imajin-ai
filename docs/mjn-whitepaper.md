@@ -63,7 +63,7 @@ Format: `did:imajin:xxx` — generated from an Ed25519 public key. Stable from c
 
 The same keypair produces both `did:imajin:xxx` and `did:dfos:xxx` — byte-compatible, same curve, no derivation. Your DID is also a valid Solana wallet address.
 
-DFOS relay: `registry.imajin.ai/relay/`
+DFOS relay: `jin.imajin.ai/registry/relay/`
 
 ### Three Standing Tiers
 
@@ -175,7 +175,7 @@ Frequency-scaled depth gating prevents spam: costs escalate with repetition (1×
 
 ### 5. Discovery
 
-Federated registry at `registry.imajin.ai`. Nodes announce presence, operators, and served scopes. Node DIDs are chain-verified on registration.
+Federated registry at `jin.imajin.ai/registry`. Nodes announce presence, operators, and served scopes. Node DIDs are chain-verified on registration.
 
 **Exit credentials:** On departure, Actors receive a signed portable credential — public summary (aggregate stats) and encrypted context (full attestation history under departing Actor's key). Integrity is provable because signing started at onboarding, not at departure.
 
@@ -187,20 +187,20 @@ Federated registry at `registry.imajin.ai`. Nodes announce presence, operators, 
 
 | Service | URL | Role |
 |---------|-----|------|
-| auth | auth.imajin.ai | Kernel — DIDs, sessions, attestations, DFOS bridge |
-| pay | pay.imajin.ai | Kernel — Stripe, settlement, .fair verification |
-| connections | connections.imajin.ai | Trust — pods, invites, groups, vouches |
-| profile | profile.imajin.ai | Discovery — public profiles, handles |
-| registry | registry.imajin.ai | Federation — node discovery, DFOS relay |
-| events | events.imajin.ai | Userspace — events, tickets, .fair splits |
-| chat | chat.imajin.ai | Userspace — DID messaging, WebSocket |
-| notify | notify.imajin.ai | Userspace — notifications, preferences, broadcasts |
-| media | media.imajin.ai | Userspace — assets, .fair sidecars |
-| learn | learn.imajin.ai | Userspace — courses, enrollment |
-| market | market.imajin.ai | Userspace — local commerce |
-| coffee | coffee.imajin.ai | Userspace — tipping pages |
-| links | links.imajin.ai | Userspace — link-in-bio |
-| dykil | dykil.imajin.ai | Userspace — spending surveys |
+| auth | jin.imajin.ai/auth | Kernel — DIDs, sessions, attestations, DFOS bridge |
+| pay | jin.imajin.ai/pay | Kernel — Stripe, settlement, .fair verification |
+| connections | jin.imajin.ai/connections | Trust — pods, invites, groups, vouches |
+| profile | jin.imajin.ai/profile | Discovery — public profiles, handles |
+| registry | jin.imajin.ai/registry | Federation — node discovery, DFOS relay |
+| events | jin.imajin.ai/events | Userspace — events, tickets, .fair splits |
+| chat | jin.imajin.ai/chat | Userspace — DID messaging, WebSocket |
+| notify | jin.imajin.ai/notify | Userspace — notifications, preferences, broadcasts |
+| media | jin.imajin.ai/media | Userspace — assets, .fair sidecars |
+| learn | jin.imajin.ai/learn | Userspace — courses, enrollment |
+| market | jin.imajin.ai/market | Userspace — local commerce |
+| coffee | jin.imajin.ai/coffee | Userspace — tipping pages |
+| links | jin.imajin.ai/links | Userspace — link-in-bio |
+| dykil | jin.imajin.ai/dykil | Userspace — spending surveys |
 | www | imajin.ai | Userspace — landing, app launcher |
 
 Every service exposes OpenAPI at `/api/spec`.
@@ -246,7 +246,7 @@ Federation is the honest architecture: central registry now (ships fast), on-cha
 | ✅ | 15-service JBOS on single server |
 | ✅ | Three-tier DID identity |
 | ✅ | DFOS chain-backed identity across all services |
-| ✅ | DFOS relay at registry.imajin.ai/relay/ |
+| ✅ | DFOS relay at jin.imajin.ai/registry/relay/ |
 | ✅ | Bilateral attestations via countersignatures |
 | ✅ | 6 attestation types with Ed25519 signing |
 | ✅ | .fair signing at settlement |

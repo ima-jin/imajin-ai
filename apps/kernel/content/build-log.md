@@ -290,7 +290,7 @@ Emerged from rethinking work order #274 (unified domain). Started as "should we 
 First PR (#482) merged — chat UI cleanup, Signal-style composer. Getting local dev running exposed every friction point:
 
 - Wrong default ports in 6 `package.json` files
-- `buildUrl` producing `http://localhost:auth.imajin.ai` — localhost detection added
+- `buildUrl` producing `http://localhost:jin.imajin.ai/auth` — localhost detection added
 - `AUTH_PRIVATE_KEY` must be PKCS#8, not random bytes
 - Session cookies rejected on localhost — made cookie config localhost-aware
 - Chat `server.js` doesn't load `.env.local` (plain Node, not Next.js)
@@ -725,7 +725,7 @@ Academically validated by a 2025 Springer philosophy paper proving the current a
 
 - Complete architecture overhaul: conversations keyed by deterministic DIDs instead of DB IDs
 - New v2 schema: conversations, messages, reactions, read receipts
-- `@imajin/chat` shared package — one `<Chat did="..." />` component powers chat.imajin.ai AND event lobbies
+- `@imajin/chat` shared package — one `<Chat did="..." />` component powers jin.imajin.ai/chat AND event lobbies
 - WebSocket subscriptions per-conversation with auth
 - Group messaging: create groups, search/filter contacts, compose to multiple people
 - Composer extracted: voice recording, file upload, location sharing, emoji — all shared
@@ -877,7 +877,7 @@ Academically validated by a 2025 Springer philosophy paper proving the current a
 
 - **Media service complete** (#177) — 7 child tickets, `@imajin/fair` shared package, full upload/delivery/folders/classification/UI
 - **Auth tier resolution bug** — fixed magic link always minting soft JWTs even for hard DID users
-- **Login consolidation** (#207, PR #208) — auth.imajin.ai is canonical, killed profile login, 264+/391-
+- **Login consolidation** (#207, PR #208) — jin.imajin.ai/auth is canonical, killed profile login, 264+/391-
 - **Nav-bar login loop fix** — all apps now go directly to auth, bypassing profile redirect
 - **Auth stale localStorage fix** — validates session cookie before trusting localStorage
 - **Shared `isEventOrganizer()`** (#210) — replaced inline auth in 8 API routes
@@ -956,7 +956,7 @@ Academically validated by a 2025 Springer philosophy paper proving the current a
 
 ### 🎤 Input Service (#166–172)
 
-- `apps/input/` — universal input gateway at input.imajin.ai
+- `apps/input/` — universal input gateway at jin.imajin.ai/input
 - Port 3008/7008
 - Telegram-style input with voice transcription + telemetry
 

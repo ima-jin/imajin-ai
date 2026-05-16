@@ -1,7 +1,7 @@
-# apps/events — events.imajin.ai
+# apps/events — jin.imajin.ai/events
 
 **Status:** 🔴 Not Started  
-**Domain:** events.imajin.ai  
+**Domain:** jin.imajin.ai/events  
 **Port:** 3006  
 **Stack:** Next.js 14, Tailwind, Drizzle, Neon Postgres
 
@@ -253,11 +253,11 @@ CREATE INDEX idx_events_search ON events
 │     → Reserve tickets (optimistic lock)                         │
 │                                                                 │
 │  3. Events service initiates payment                            │
-│     → POST pay.imajin.ai/api/checkout                           │
+│     → POST jin.imajin.ai/pay/api/checkout                           │
 │     → Returns Stripe checkout URL                               │
 │                                                                 │
 │  4. User completes payment on Stripe                            │
-│     → Stripe webhook → pay.imajin.ai                            │
+│     → Stripe webhook → jin.imajin.ai/pay                            │
 │     → Pay service calls events webhook                          │
 │                                                                 │
 │  5. Events service mints ticket                                 │
@@ -278,7 +278,7 @@ CREATE INDEX idx_events_search ON events
 
 ### Create Event with Tickets
 ```typescript
-const response = await fetch('https://events.imajin.ai/api/events', {
+const response = await fetch('https://jin.imajin.ai/events/api/events', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -321,18 +321,18 @@ const event = await response.json();
 ### Search Events
 ```typescript
 // Upcoming events
-const response = await fetch('https://events.imajin.ai/api/events/search?status=published&after=2026-02-14');
+const response = await fetch('https://jin.imajin.ai/events/api/events/search?status=published&after=2026-02-14');
 
 // By creator
-const response = await fetch('https://events.imajin.ai/api/events/search?creator=did:imajin:jin123');
+const response = await fetch('https://jin.imajin.ai/events/api/events/search?creator=did:imajin:jin123');
 
 // Full text search
-const response = await fetch('https://events.imajin.ai/api/events/search?q=launch+party');
+const response = await fetch('https://jin.imajin.ai/events/api/events/search?q=launch+party');
 ```
 
 ### Purchase Ticket
 ```typescript
-const response = await fetch('https://events.imajin.ai/api/events/evt_xxx/purchase', {
+const response = await fetch('https://jin.imajin.ai/events/api/events/evt_xxx/purchase', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -350,7 +350,7 @@ window.location.href = checkoutUrl; // Redirect to Stripe
 
 ### Verify Ticket
 ```typescript
-const response = await fetch('https://events.imajin.ai/api/tickets/verify', {
+const response = await fetch('https://jin.imajin.ai/events/api/tickets/verify', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -366,7 +366,7 @@ const { valid, ticket, event } = await response.json();
 
 ### Transfer Ticket
 ```typescript
-const response = await fetch('https://events.imajin.ai/api/tickets/tkt_xxx/transfer', {
+const response = await fetch('https://jin.imajin.ai/events/api/tickets/tkt_xxx/transfer', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -380,7 +380,7 @@ const response = await fetch('https://events.imajin.ai/api/tickets/tkt_xxx/trans
 
 ### List My Tickets
 ```typescript
-const response = await fetch('https://events.imajin.ai/api/my/tickets', {
+const response = await fetch('https://jin.imajin.ai/events/api/my/tickets', {
   headers: { 'Authorization': 'Bearer imajin_tok_xxx' },
 });
 
@@ -391,7 +391,7 @@ const { tickets } = await response.json();
 
 ## Event Page
 
-Public page at `events.imajin.ai/:id`:
+Public page at `jin.imajin.ai/events/:id`:
 
 ```
 ┌─────────────────────────────────────────┐
@@ -420,7 +420,7 @@ Public page at `events.imajin.ai/:id`:
 
 ## Ticket Page
 
-Public proof at `events.imajin.ai/tickets/:id`:
+Public proof at `jin.imajin.ai/events/tickets/:id`:
 
 ```
 ┌─────────────────────────────────────────┐
@@ -486,17 +486,17 @@ Every ticket includes attribution:
 
 ## Integration
 
-### With auth.imajin.ai
+### With jin.imajin.ai/auth
 - Event creation requires valid token
 - Validates buyer identity
 - Verifies signatures for transfers
 
-### With pay.imajin.ai
+### With jin.imajin.ai/pay
 - Initiates checkout sessions
 - Receives webhook confirmations
 - Handles refunds
 
-### With profile.imajin.ai
+### With jin.imajin.ai/profile
 - Creator name/avatar on event page
 - Owner info on ticket page
 
@@ -506,10 +506,10 @@ Every ticket includes attribution:
 
 ```bash
 DATABASE_URL=postgres://...
-AUTH_SERVICE_URL=https://auth.imajin.ai
-PAY_SERVICE_URL=https://pay.imajin.ai
-PROFILE_SERVICE_URL=https://profile.imajin.ai
-NEXT_PUBLIC_BASE_URL=https://events.imajin.ai
+AUTH_SERVICE_URL=https://jin.imajin.ai/auth
+PAY_SERVICE_URL=https://jin.imajin.ai/pay
+PROFILE_SERVICE_URL=https://jin.imajin.ai/profile
+NEXT_PUBLIC_BASE_URL=https://jin.imajin.ai/events
 WEBHOOK_SECRET=whsec_xxx
 ```
 

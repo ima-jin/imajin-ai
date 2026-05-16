@@ -23,7 +23,7 @@ The OpenClaw Imajin plugin (`extensions/imajin/`) acts as a bridge:
 {
   "plugin": "imajin",
   "config": {
-    "kernelUrl": "wss://kernel.imajin.ai/agent/ws",
+    "kernelUrl": "wss://jin.imajin.ai/agent/ws",
     "did": "did:imajin:7Kx9...",
     "keypairPath": ".jin-identity.json",
     "onStartup": true
@@ -153,7 +153,7 @@ npm install @imajin/agent-client
 import { ImajinClient } from '@imajin/agent-client';
 
 const client = await ImajinClient.connect({
-  kernelUrl: 'wss://kernel.imajin.ai/agent/ws',
+  kernelUrl: 'wss://jin.imajin.ai/agent/ws',
   privateKey: process.env.AGENT_PRIVATE_KEY,
   did: 'did:imajin:7Kx9...',
 });
@@ -200,7 +200,7 @@ Imajin handles:
 
 The wire protocol is WebSocket + JSON. If your language can open a WebSocket and sign bytes with Ed25519, it can be an Imajin agent.
 
-1. Connect to `wss://kernel.imajin.ai/agent/ws`
+1. Connect to `wss://jin.imajin.ai/agent/ws`
 2. Complete the challenge-response auth (sign nonce with Ed25519)
 3. Send `tool.call` messages with signed payloads
 4. Receive `tool.result` and `event.push` messages

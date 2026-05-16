@@ -29,7 +29,7 @@ Store the private key securely. This is the agent's identity — lose it and the
 ## Step 2: Register the Agent DID
 
 ```bash
-curl -X POST https://auth.imajin.ai/api/register \
+curl -X POST https://jin.imajin.ai/auth/api/register \
   -H "Content-Type: application/json" \
   -d '{
     "publicKey": "<agent-public-key-hex>",
@@ -61,7 +61,7 @@ The ImajinAgentEnv wire protocol uses WebSocket with Ed25519 challenge-response:
 ```
 Agent                                    Kernel Gateway
   │                                           │
-  │──── ws://kernel.imajin.ai/agent/ws ──────>│
+  │──── ws://jin.imajin.ai/agent/ws ──────>│
   │                                           │
   │──── auth.hello { did } ──────────────────>│
   │<─── auth.challenge { nonce } ─────────────│
@@ -76,7 +76,7 @@ In TypeScript:
 import WebSocket from 'ws';
 import { sign } from '@noble/ed25519';
 
-const ws = new WebSocket('wss://kernel.imajin.ai/agent/ws');
+const ws = new WebSocket('wss://jin.imajin.ai/agent/ws');
 
 ws.on('open', () => {
   ws.send(JSON.stringify({
@@ -200,4 +200,4 @@ The agent is a first-class citizen. It can message, read media, browse profiles,
 
 ---
 
-*Every service publishes an OpenAPI spec at `https://<service>.imajin.ai/api/spec`. For direct HTTP API usage without the agent protocol, see the [Developer Guide](../developer-guide.md).*
+*Every service publishes an OpenAPI spec at `https://jin.imajin.ai/{service}/api/spec`. For direct HTTP API usage without the agent protocol, see the [Developer Guide](../developer-guide.md).*

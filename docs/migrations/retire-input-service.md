@@ -6,8 +6,8 @@ The `apps/input` service (ports 3008/7008) has been retired. Its routes have bee
 
 | Old endpoint | New endpoint |
 |---|---|
-| `input.imajin.ai/api/transcribe` | `media.imajin.ai/api/transcribe` |
-| `input.imajin.ai/api/upload` | `media.imajin.ai/api/assets` |
+| `jin.imajin.ai/input/api/transcribe` | `jin.imajin.ai/media/api/transcribe` |
+| `jin.imajin.ai/input/api/upload` | `jin.imajin.ai/media/api/assets` |
 
 Audio filename renaming (`blob.webm` → `Audio_YYYY_MM_DD_HH_MM_SS.webm`) is now handled inside the media `/api/assets` POST handler.
 
@@ -39,11 +39,11 @@ GPU_AUTH_TOKEN=<your token if set>
 
 ### Caddy
 
-If an `input.imajin.ai` block exists in the Caddyfile, remove it:
+If an `jin.imajin.ai/input` block exists in the Caddyfile, remove it:
 
 ```
 # Remove this block:
-input.imajin.ai {
+jin.imajin.ai/input {
   reverse_proxy localhost:7008
 }
 ```

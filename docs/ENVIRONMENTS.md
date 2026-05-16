@@ -56,12 +56,12 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | Tier | Service | Dev | Prod | Domain |
 |------|---------|-----|------|--------|
 | Core | kernel | 3000 | 7000 | imajin.ai (+ auth/pay/profile/connections/registry/chat/media/notify subdomains via Caddy) |
-| Core | events | 3006 | 7006 | events.imajin.ai |
-| Imajin | coffee | 3100 | 7100 | coffee.imajin.ai |
-| Imajin | dykil | 3101 | 7101 | dykil.imajin.ai |
-| Imajin | links | 3102 | 7102 | links.imajin.ai |
-| Imajin | learn | 3103 | 7103 | learn.imajin.ai |
-| Imajin | market | 3104 | 7104 | market.imajin.ai |
+| Core | events | 3006 | 7006 | jin.imajin.ai/events |
+| Imajin | coffee | 3100 | 7100 | jin.imajin.ai/coffee |
+| Imajin | dykil | 3101 | 7101 | jin.imajin.ai/dykil |
+| Imajin | links | 3102 | 7102 | jin.imajin.ai/links |
+| Imajin | learn | 3103 | 7103 | jin.imajin.ai/learn |
+| Imajin | market | 3104 | 7104 | jin.imajin.ai/market |
 | Client | fixready | 3400 | 7400 | fixready.imajin.ai |
 | Client | karaoke | 3401 | 7401 | karaoke.imajin.ai |
 

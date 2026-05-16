@@ -113,7 +113,7 @@ The Cultural DID likely builds on top of the existing **pod** primitive in conne
 
 ## References
 - Current DID types: human, event, service, presence
-- Pods: connections.imajin.ai
+- Pods: jin.imajin.ai/connections
 - .fair attribution: packages/fair
 - #114: Declared-Intent Marketplace (Cultural DIDs as economic entities)
 - #246: Check-ins (Cultural DIDs as location-associated scenes)

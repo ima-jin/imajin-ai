@@ -33,7 +33,7 @@ Each institution becomes an **issuance point** on the network. The DID they issu
 ### What already exists
 - **Ed25519 keypair identity** — no platform issues it, no platform can revoke it
 - **EventDID** — events as first-class identity-issuing entities
-- **Federated nodes** — anyone can run a node (registry.imajin.ai)
+- **Federated nodes** — anyone can run a node (jin.imajin.ai/registry)
 - **MJN Foundation** (planned) — protocol stewardship separate from Imajin Inc.
 
 ### What this adds

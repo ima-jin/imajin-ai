@@ -65,7 +65,7 @@ MJN in   → Foundation burns MJN → fiat to user's bank
 - **Network rewards** — node operators earn for infrastructure
 
 ### Secondary: Fiat Top-Up
-- Users buy MJN directly through pay.imajin.ai
+- Users buy MJN directly through jin.imajin.ai/pay
 - Stripe charges their card, Foundation mints MJN
 - Familiar UX — like loading a transit card or buying game credits
 
@@ -80,8 +80,8 @@ MJN in   → Foundation burns MJN → fiat to user's bank
 - **Event tickets** — pay in MJN for lower fees, instant confirmation
 - **Inference queries** — trust-gated presence queries cost MJN
 - **.fair settlements** — attribution chain splits execute on-chain
-- **Course enrollment** — learn.imajin.ai accepts MJN
-- **Tipping** — coffee.imajin.ai micropayments
+- **Course enrollment** — jin.imajin.ai/learn accepts MJN
+- **Tipping** — jin.imajin.ai/coffee micropayments
 
 ### Participating Businesses (Org DIDs)
 - Org DIDs in your trust graph accept MJN at their businesses
@@ -149,7 +149,7 @@ The MJN Foundation operates as a **protocol clearinghouse**, not a bank.
 - Foundation receives mint authority
 - Initial mint for gas subsidy pool
 - Fixed rate published
-- Fiat bridge activated via pay.imajin.ai
+- Fiat bridge activated via jin.imajin.ai/pay
 
 ### Growth
 - Supply increases as fiat flows in (mint on deposit)

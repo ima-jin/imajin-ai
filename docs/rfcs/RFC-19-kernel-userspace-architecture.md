@@ -148,7 +148,7 @@ Every userspace app declares itself:
   "did": "did:imajin:app:market",
   "name": "Market",
   "description": "Local commerce, trust-based discovery",
-  "url": "https://market.imajin.ai",
+  "url": "https://jin.imajin.ai/market",
   "icon": "🏪",
   "author_did": "did:imajin:6JSKE52ySFid2x7ejUEw6VV1NyJA1idfVKpg3We9b5Nc",
   "scopes": ["identity:read", "trust:read", "media:read", "attestation:write"],
@@ -305,7 +305,7 @@ MJN accrues to participants, not platforms.
 4. Chat WS stays separate
 5. One domain: `jin.imajin.ai`
 6. Subdomain redirects (301) for old URLs
-7. `registry.imajin.ai` stays permanent (DFOS spec)
+7. `jin.imajin.ai/registry` stays permanent (DFOS spec)
 
 ### Phase 2: Userspace extraction
 

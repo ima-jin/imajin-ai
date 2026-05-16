@@ -41,15 +41,15 @@ This is the bridge from "interesting idea" to "here are real numbers from real b
 
 Dykil isn't just an app — it's a form engine that other Imajin apps embed:
 
-- **events.imajin.ai** — pre/post event surveys, RSVP questions
-- **profile.imajin.ai** — extended profile questions, skill assessments
-- **learn.imajin.ai** — course feedback, knowledge checks, quizzes
-- **coffee.imajin.ai** — preference matching ("what kind of conversations interest you?")
-- **connections.imajin.ai** — trust graph onboarding ("how do you know this person?")
+- **jin.imajin.ai/events** — pre/post event surveys, RSVP questions
+- **jin.imajin.ai/profile** — extended profile questions, skill assessments
+- **jin.imajin.ai/learn** — course feedback, knowledge checks, quizzes
+- **jin.imajin.ai/coffee** — preference matching ("what kind of conversations interest you?")
+- **jin.imajin.ai/connections** — trust graph onboarding ("how do you know this person?")
 
 ### 4. Standalone Surveys
 
-Anyone can create a survey at `dykil.imajin.ai/create`, share the link, collect responses. Google Forms replacement that respects privacy.
+Anyone can create a survey at `jin.imajin.ai/dykil/create`, share the link, collect responses. Google Forms replacement that respects privacy.
 
 ## Architecture
 
@@ -133,7 +133,7 @@ Other apps embed dykil forms via:
 
 1. **API** — `GET /api/surveys/{id}` returns the form schema, `POST /api/surveys/{id}/respond` submits answers
 2. **React component** — `<DykilForm surveyId="xxx" />` imported from `@imajin/dykil` (future shared package)
-3. **iframe** — `dykil.imajin.ai/embed/{id}` for external sites
+3. **iframe** — `jin.imajin.ai/dykil/embed/{id}` for external sites
 
 ## Current State
 

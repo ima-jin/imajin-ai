@@ -192,7 +192,7 @@ Published to the registry (and optionally to DFOS chain) when a developer regist
   },
   "bundle": {
     "hash": "sha256:a1b2c3...",
-    "url": "https://registry.imajin.ai/apps/booking-calendar/1.2.0.tar.gz",
+    "url": "https://jin.imajin.ai/registry/apps/booking-calendar/1.2.0.tar.gz",
     "entry": "server.js",
     "runtime": "node22"
   },
@@ -293,7 +293,7 @@ docker create \
   --env APP_TOKEN=<issued_token> \
   --env DATABASE_URL=postgresql://app_xyz:...@db:5432/imajin_prod \
   --env PORT=9001 \
-  registry.imajin.ai/apps/xyz:1.2.0
+  jin.imajin.ai/registry/apps/xyz:1.2.0
 
 # Caddy config added:
 # /app/xyz/* → localhost:9001

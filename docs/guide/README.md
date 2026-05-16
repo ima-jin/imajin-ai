@@ -28,7 +28,7 @@
 - **Protocol RFCs:** [docs/rfcs/](../rfcs/) (the "why" behind decisions)
 - **Source code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - **.fair spec:** [github.com/ima-jin/.fair](https://github.com/ima-jin/.fair)
-- **OpenAPI specs:** `https://<service>.imajin.ai/api/spec`
+- **OpenAPI specs:** `https://jin.imajin.ai/{service}/api/spec`
 
 ---
 

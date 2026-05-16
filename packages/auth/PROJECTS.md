@@ -2,7 +2,7 @@
 
 **Status:** 🟡 Planning  
 **Package:** `packages/auth` (library)  
-**App:** `apps/auth` (API service → auth.imajin.ai)
+**App:** `apps/auth` (API service → jin.imajin.ai/auth)
 
 ---
 
@@ -82,7 +82,7 @@ packages/auth/
 ```
 
 ### App (`apps/auth`)
-API service — deployed to Vercel as auth.imajin.ai.
+API service — deployed to Vercel as jin.imajin.ai/auth.
 
 ```
 apps/auth/
@@ -266,7 +266,7 @@ Deployed via GitHub Actions to imajin-server (self-hosted).
 - Push to `main` → auto-deploy to dev (`dev-auth`, port 3001)
 - Push `v*` tag → deploy to prod (`auth`, port 7001)
 
-Domain: `auth.imajin.ai`
+Domain: `jin.imajin.ai/auth`
 
 ---
 
@@ -279,7 +279,7 @@ Domain: `auth.imajin.ai`
 - [ ] Extract Kratos provider from imajin-web
 - [ ] Create apps/auth API routes
 - [ ] Database schema + Drizzle setup
-- [ ] Landing page for auth.imajin.ai
+- [ ] Landing page for jin.imajin.ai/auth
 - [ ] Documentation / developer guide
 
 ---

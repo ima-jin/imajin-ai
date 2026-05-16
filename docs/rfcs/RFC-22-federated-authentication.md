@@ -53,13 +53,13 @@ The primary flow for cross-platform authentication. Designed with Brandon (DFOS)
 ### Flow
 
 ```
-1. User visits requesting service (e.g., events.imajin.ai)
+1. User visits requesting service (e.g., jin.imajin.ai/events)
    → Clicks "Login with DFOS" (or "Login from another node")
 
 2. Requesting service generates a challenge nonce and redirects:
    GET https://home-platform.example.com/auth/consent
      ?challenge=<random-nonce>
-     &callback=https://events.imajin.ai/auth/callback
+     &callback=https://jin.imajin.ai/events/auth/callback
      &requesting_did=<requesting-service-relay-DID>
      &scopes=identity,email    ← what data the requesting service wants
 
@@ -79,7 +79,7 @@ The primary flow for cross-platform authentication. Designed with Brandon (DFOS)
    — Result: a JWS artifact containing the challenge, user's DID, consented data
 
 6. Home platform redirects back:
-   GET https://events.imajin.ai/auth/callback
+   GET https://jin.imajin.ai/events/auth/callback
      ?artifact=<signed-JWS-token>
 
 7. Requesting service verifies:

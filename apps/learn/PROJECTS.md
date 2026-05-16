@@ -1,7 +1,7 @@
 # Learn — Imajin AI Training
 
 **Status:** 🟡 Planning  
-**Domain:** learn.imajin.ai  
+**Domain:** jin.imajin.ai/learn  
 **Stack:** Next.js 14, Tailwind, Postgres
 
 ---

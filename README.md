@@ -4,7 +4,7 @@
 
 Self-hosted software for running communities, events, identity, and payments. Without renting from Discord, Eventbrite, Stripe, or anyone else. Open source. Your data, your keys, your domain.
 
-[See it live](https://imajin.ai) · [Buy us a coffee](https://coffee.imajin.ai/veteze) · [Jin's Launch Party](https://events.imajin.ai/jins-launch-party)
+[See it live](https://imajin.ai) · [Buy us a coffee](https://jin.imajin.ai/coffee/veteze) · [Jin's Launch Party](https://jin.imajin.ai/events/jins-launch-party)
 
 Live since February 2026. 246 identities. ~2,480 commits. One kernel, two platform apps, five Imajin apps, three client apps. All real, all self-hostable.
 
@@ -12,8 +12,8 @@ Live since February 2026. 246 identities. ~2,480 commits. One kernel, two platfo
 
 ## What you can do with it today
 
-- **Run events.** Sell tickets, accept e-Transfer or Stripe, send receipts, manage guest lists. [events.imajin.ai](https://events.imajin.ai)
-- **Host an identity.** Cryptographic DID, profile page, link tree, attestations, contact channels. [profile.imajin.ai](https://profile.imajin.ai)
+- **Run events.** Sell tickets, accept e-Transfer or Stripe, send receipts, manage guest lists. [jin.imajin.ai/events](https://jin.imajin.ai/events)
+- **Host an identity.** Cryptographic DID, profile page, link tree, attestations, contact channels. [jin.imajin.ai/profile](https://jin.imajin.ai/profile)
 - **Accept payments.** Stripe plus optional Solana. Your keys, your account, your money.
 - **Build a community.** Federated registry, scoped forums, shared identity, governance attestations.
 - **Plug in custom apps.** Reuse auth, identity, payments, and attribution as primitives instead of stitching together five SaaS APIs.
@@ -75,11 +75,11 @@ Core services that make up the sovereign stack.
 | App | Dev Port | Prod Port | Domain | Purpose | Status |
 |-----|----------|-----------|--------|---------|--------|
 | [kernel](./apps/kernel) | 3000 | 7000 | [imajin.ai](https://imajin.ai) | Core platform: auth, identity, pay, profile, connections, registry, chat, media, notify | Live |
-| [events](./apps/events) | 3006 | 7006 | [events.imajin.ai](https://events.imajin.ai) | Create events, sell tickets | Live |
+| [events](./apps/events) | 3006 | 7006 | [jin.imajin.ai/events](https://jin.imajin.ai/events) | Create events, sell tickets | Live |
 
 ### Imajin Apps (3100+/7100+)
 
-Account-based apps tied to a user's DID, accessible at `{service}.imajin.ai/{handle}`.
+Account-based apps tied to a user's DID, accessible at `jin.imajin.ai/{service}/{handle}`.
 
 | App | Dev Port | Prod Port | Purpose | Status |
 |-----|----------|-----------|---------|--------|

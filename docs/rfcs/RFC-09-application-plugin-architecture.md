@@ -22,7 +22,7 @@ This extends #244 (delegated app sessions) from "apps can use Imajin auth" to "a
 ## How It Works
 
 ### For Users
-1. Browse available apps in the registry (registry.imajin.ai already exists)
+1. Browse available apps in the registry (jin.imajin.ai/registry already exists)
 2. Add an app to their launcher/dock
 3. Agree to the app's usage policy and data scope (granular consent from #244)
 4. App appears in their nav alongside core services
@@ -50,7 +50,7 @@ This extends #244 (delegated app sessions) from "apps can use Imajin auth" to "a
 ### Business & Commerce
 - **Booking/scheduling** — trust-graph-scoped availability, appointment management
 - **Inventory/POS** — for Org DIDs (#248) running physical locations
-- **Accounting** — transaction reporting from pay.imajin.ai settlement data
+- **Accounting** — transaction reporting from jin.imajin.ai/pay settlement data
 - **Invoicing** — DID-to-DID billing with .fair attribution
 
 ### Community

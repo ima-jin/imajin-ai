@@ -16,21 +16,21 @@ You interact with MJN the same way you interact with Stripe or Auth0 — by call
 
 | Service | URL | What It Does |
 |---------|-----|-------------|
-| **auth** | auth.imajin.ai | Identity — DIDs, authentication, sessions, attestations, DFOS bridge |
-| **profile** | profile.imajin.ai | Public profiles, handles, discovery |
-| **connections** | connections.imajin.ai | Trust graph — pods, invites, groups, vouch attestations |
-| **pay** | pay.imajin.ai | Payments — Stripe checkout, balances, settlement with .fair verification |
-| **events** | events.imajin.ai | Events, tickets, check-in, registration surveys |
-| **chat** | chat.imajin.ai | DID-based messaging — conversations, media, reactions, WebSocket |
-| **notify** | notify.imajin.ai | Notifications, preferences, event broadcasts |
-| **media** | media.imajin.ai | Asset storage with .fair attribution, DID-pegged folders |
-| **learn** | learn.imajin.ai | Courses, modules, presentations, enrollment, progress |
-| **market** | market.imajin.ai | Consent-based local commerce, listings, seller dashboards |
-| **registry** | registry.imajin.ai | Node federation, service discovery |
+| **auth** | jin.imajin.ai/auth | Identity — DIDs, authentication, sessions, attestations, DFOS bridge |
+| **profile** | jin.imajin.ai/profile | Public profiles, handles, discovery |
+| **connections** | jin.imajin.ai/connections | Trust graph — pods, invites, groups, vouch attestations |
+| **pay** | jin.imajin.ai/pay | Payments — Stripe checkout, balances, settlement with .fair verification |
+| **events** | jin.imajin.ai/events | Events, tickets, check-in, registration surveys |
+| **chat** | jin.imajin.ai/chat | DID-based messaging — conversations, media, reactions, WebSocket |
+| **notify** | jin.imajin.ai/notify | Notifications, preferences, event broadcasts |
+| **media** | jin.imajin.ai/media | Asset storage with .fair attribution, DID-pegged folders |
+| **learn** | jin.imajin.ai/learn | Courses, modules, presentations, enrollment, progress |
+| **market** | jin.imajin.ai/market | Consent-based local commerce, listings, seller dashboards |
+| **registry** | jin.imajin.ai/registry | Node federation, service discovery |
 | **www** | imajin.ai | Landing page, essays, bug reports, app launcher |
-| **coffee** | coffee.imajin.ai | Tipping / support pages |
-| **links** | links.imajin.ai | Link-in-bio pages |
-| **dykil** | dykil.imajin.ai | Community spending surveys |
+| **coffee** | jin.imajin.ai/coffee | Tipping / support pages |
+| **links** | jin.imajin.ai/links | Link-in-bio pages |
+| **dykil** | jin.imajin.ai/dykil | Community spending surveys |
 
 Every service exposes an OpenAPI spec at `/api/spec`.
 
@@ -46,7 +46,7 @@ The simplest path. No cryptography. Just an email address.
 
 ```bash
 # Start onboarding — sends a verification email
-curl -X POST https://auth.imajin.ai/api/onboard \
+curl -X POST https://jin.imajin.ai/auth/api/onboard \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com", "name": "Your Name"}'
 
@@ -74,7 +74,7 @@ node -e "
 
 ```bash
 # Register with your public key (invite-only — you need an invite code)
-curl -X POST https://auth.imajin.ai/api/register \
+curl -X POST https://jin.imajin.ai/auth/api/register \
   -H "Content-Type: application/json" \
   -d '{
     "publicKey": "<your-public-key-hex>",
@@ -93,14 +93,14 @@ curl -X POST https://auth.imajin.ai/api/register \
 
 ```bash
 # Request a challenge
-curl -X POST https://auth.imajin.ai/api/login/challenge \
+curl -X POST https://jin.imajin.ai/auth/api/login/challenge \
   -H "Content-Type: application/json" \
   -d '{"handle": "yourhandle"}'
 
 # Response: { "challengeId": "chl_abc123", "challenge": "a1b2c3...", "expiresAt": "..." }
 
 # Sign the challenge with your private key, then verify
-curl -X POST https://auth.imajin.ai/api/login/verify \
+curl -X POST https://jin.imajin.ai/auth/api/login/verify \
   -H "Content-Type: application/json" \
   -d '{
     "challengeId": "chl_abc123",
@@ -114,10 +114,10 @@ curl -X POST https://auth.imajin.ai/api/login/verify \
 
 ```bash
 # List events
-curl https://events.imajin.ai/api/events
+curl https://jin.imajin.ai/events/api/events
 
 # Start checkout for a specific event tier
-curl -X POST https://events.imajin.ai/api/checkout \
+curl -X POST https://jin.imajin.ai/events/api/checkout \
   -H "Content-Type: application/json" \
   -H "Cookie: imajin_session=<your-session-token>" \
   -d '{"eventId": "evt_abc123", "tierId": "tier_xyz"}'
@@ -131,7 +131,7 @@ curl -X POST https://events.imajin.ai/api/checkout \
 Every event (and every media asset) has a .fair manifest:
 
 ```bash
-curl https://events.imajin.ai/api/events/<event-id>/fair
+curl https://jin.imajin.ai/events/api/events/<event-id>/fair
 
 # Response:
 # {
@@ -199,11 +199,11 @@ Relationships between identities. Pods (1:1 connections), groups, invites. The t
 
 ```bash
 # Create an invite link
-curl -X POST https://connections.imajin.ai/api/invites \
+curl -X POST https://jin.imajin.ai/connections/api/invites \
   -H "Cookie: imajin_session=<token>"
 
 # Check connection status
-curl https://connections.imajin.ai/api/connections/status/<their-did> \
+curl https://jin.imajin.ai/connections/api/connections/status/<their-did> \
   -H "Cookie: imajin_session=<token>"
 ```
 
@@ -222,7 +222,7 @@ Cryptographically signed records of actions and trust. Live attestation types:
 
 ```bash
 # Query attestations for a DID
-curl https://auth.imajin.ai/api/attestations?subject_did=did:imajin:xxx&type=vouch \
+curl https://jin.imajin.ai/auth/api/attestations?subject_did=did:imajin:xxx&type=vouch \
   -H "Cookie: imajin_session=<token>"
 ```
 
@@ -232,7 +232,7 @@ Every conversation is a DID. DMs, groups, and event chats all use the same primi
 
 ```bash
 # Send a message to a conversation
-curl -X POST https://chat.imajin.ai/api/d/did:imajin:event:summer-camp/messages \
+curl -X POST https://jin.imajin.ai/chat/api/d/did:imajin:event:summer-camp/messages \
   -H "Content-Type: application/json" \
   -H "Cookie: imajin_session=<token>" \
   -d '{"content": "Hello everyone!"}'
@@ -242,15 +242,15 @@ Real-time via WebSocket with deferred token authentication. `<Chat did="..." />`
 
 ### Payments
 
-Stripe-backed today. Every service that charges calls `pay.imajin.ai`:
+Stripe-backed today. Every service that charges calls `jin.imajin.ai/pay`:
 
 ```bash
 # Check balance
-curl https://pay.imajin.ai/api/balance/<your-did> \
+curl https://jin.imajin.ai/pay/api/balance/<your-did> \
   -H "Cookie: imajin_session=<token>"
 
 # View transaction history
-curl https://pay.imajin.ai/api/transactions/<your-did> \
+curl https://jin.imajin.ai/pay/api/transactions/<your-did> \
   -H "Cookie: imajin_session=<token>"
 ```
 
@@ -264,9 +264,9 @@ Every service is a standard REST API. Call them from any language. Session cooki
 
 Each service publishes an OpenAPI spec:
 ```bash
-curl https://auth.imajin.ai/api/spec
-curl https://events.imajin.ai/api/spec
-curl https://pay.imajin.ai/api/spec
+curl https://jin.imajin.ai/auth/api/spec
+curl https://jin.imajin.ai/events/api/spec
+curl https://jin.imajin.ai/pay/api/spec
 # etc.
 ```
 
@@ -284,7 +284,7 @@ pnpm install
 
 Register your node with the federation registry:
 ```bash
-curl -X POST https://registry.imajin.ai/api/node/register \
+curl -X POST https://jin.imajin.ai/registry/api/node/register \
   -H "Content-Type: application/json" \
   -d '{"did": "<your-node-did>", "hostname": "yournode.example.com"}'
 ```
@@ -407,7 +407,7 @@ Not yet. For now, it's direct HTTP calls. The OpenAPI specs at `/api/spec` can g
 - **Source code:** [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)
 - **Protocol RFCs:** See `docs/rfcs/` for protocol specifications
 - **.fair spec:** [github.com/ima-jin/.fair](https://github.com/ima-jin/.fair)
-- **OpenAPI specs:** `https://<service>.imajin.ai/api/spec`
+- **OpenAPI specs:** `https://jin.imajin.ai/{service}/api/spec`
 - **First demonstration:** April 1, 2026
 
 ---

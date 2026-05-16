@@ -1,7 +1,7 @@
-# apps/links — links.imajin.ai
+# apps/links — jin.imajin.ai/links
 
 **Status:** 🟡 Scaffolded  
-**Domain:** links.imajin.ai  
+**Domain:** jin.imajin.ai/links  
 **Port:** 3010  
 **Stack:** Next.js 14, Tailwind, Drizzle, Neon Postgres
 
@@ -161,7 +161,7 @@ CREATE INDEX idx_link_clicks_date ON link_clicks(clicked_at);
 
 ### Create Links Page
 ```typescript
-const response = await fetch('https://links.imajin.ai/api/pages', {
+const response = await fetch('https://jin.imajin.ai/links/api/pages', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -185,7 +185,7 @@ const response = await fetch('https://links.imajin.ai/api/pages', {
 
 ### Add Links
 ```typescript
-const response = await fetch('https://links.imajin.ai/api/pages/jin/links', {
+const response = await fetch('https://jin.imajin.ai/links/api/pages/jin/links', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -193,10 +193,10 @@ const response = await fetch('https://links.imajin.ai/api/pages/jin/links', {
   },
   body: JSON.stringify({
     links: [
-      { title: 'Profile', url: 'https://profile.imajin.ai/jin', icon: '👤' },
-      { title: 'Buy me a coffee', url: 'https://coffee.imajin.ai/jin', icon: '☕' },
+      { title: 'Profile', url: 'https://jin.imajin.ai/profile/jin', icon: '👤' },
+      { title: 'Buy me a coffee', url: 'https://jin.imajin.ai/coffee/jin', icon: '☕' },
       { title: 'GitHub', url: 'https://github.com/ima-jin', icon: '🐙' },
-      { title: 'Launch Party Tickets', url: 'https://events.imajin.ai/launch-party', icon: '🎉' },
+      { title: 'Launch Party Tickets', url: 'https://jin.imajin.ai/events/launch-party', icon: '🎉' },
     ],
   }),
 });
@@ -204,7 +204,7 @@ const response = await fetch('https://links.imajin.ai/api/pages/jin/links', {
 
 ### Get Page Stats
 ```typescript
-const response = await fetch('https://links.imajin.ai/api/pages/jin/stats', {
+const response = await fetch('https://jin.imajin.ai/links/api/pages/jin/stats', {
   headers: { 'Authorization': 'Bearer imajin_tok_xxx' },
 });
 
@@ -226,7 +226,7 @@ const stats = await response.json();
 
 ## Links Page
 
-Public page at `links.imajin.ai/:handle`:
+Public page at `jin.imajin.ai/links/:handle`:
 
 ```
 ┌─────────────────────────────────────────┐
@@ -296,15 +296,15 @@ The goal: useful stats without surveillance.
 
 ## Integration
 
-### With profile.imajin.ai
+### With jin.imajin.ai/profile
 - Link from profile to links page
 - Optionally embed links on profile
 
-### With coffee.imajin.ai
+### With jin.imajin.ai/coffee
 - Quick link to tip page
 - "Support me" button integration
 
-### With auth.imajin.ai
+### With jin.imajin.ai/auth
 - Page ownership via DID
 - Token validation for edits
 
@@ -314,8 +314,8 @@ The goal: useful stats without surveillance.
 
 ```bash
 DATABASE_URL=postgres://...
-AUTH_SERVICE_URL=https://auth.imajin.ai
-NEXT_PUBLIC_BASE_URL=https://links.imajin.ai
+AUTH_SERVICE_URL=https://jin.imajin.ai/auth
+NEXT_PUBLIC_BASE_URL=https://jin.imajin.ai/links
 ```
 
 ---

@@ -49,7 +49,7 @@ Org DIDs can be **soft-loaded** via check-in data from users:
 - Post commercial messages to trust-graph connections (Tier 1 in #114 — free/low cost)
 - Participate in declared-intent marketplace (#114) as a business
 - Issue .fair manifests on products and services
-- Hold a balance and transact via pay.imajin.ai
+- Hold a balance and transact via jin.imajin.ai/pay
 - Run an "Ask [Business]" presence (#117 — trust graph queries)
 
 ### What an Org DID Cannot Do

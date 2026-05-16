@@ -69,7 +69,7 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 │                                                                     │
 │                                       5. BUY TICKET                 │
 │                                          POST /api/events/:id/purchase │
-│                                          → pay.imajin.ai processes  │
+│                                          → jin.imajin.ai/pay processes  │
 │                                          → $1 charged               │
 │                                          → .fair manifest created   │
 │                                          → ownership transferred    │
@@ -94,7 +94,7 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 
 **Steps:**
 1. Generate Ed25519 keypair for Jin
-2. POST to `auth.imajin.ai/api/register`
+2. POST to `jin.imajin.ai/auth/api/register`
 3. Receive DID
 
 **Expected:**
@@ -117,7 +117,7 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 
 **Steps:**
 1. Generate Ed25519 keypair for attendee
-2. POST to `auth.imajin.ai/api/register`
+2. POST to `jin.imajin.ai/auth/api/register`
 3. Receive DID
 
 **Expected:**
@@ -140,7 +140,7 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 
 **Steps:**
 1. Sign profile payload with private key
-2. POST to `profile.imajin.ai/api/profile`
+2. POST to `jin.imajin.ai/profile/api/profile`
 3. Profile stored and linked to DID
 
 **Expected:**
@@ -165,7 +165,7 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 
 **Steps:**
 1. Sign event payload with Jin's private key
-2. POST to `events.imajin.ai/api/events`
+2. POST to `jin.imajin.ai/events/api/events`
 3. Event created with ticket configuration
 
 **Payload:**
@@ -210,7 +210,7 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 **Preconditions:** TC-004 complete
 
 **Steps:**
-1. GET `events.imajin.ai/api/events/search?q=launch+party`
+1. GET `jin.imajin.ai/events/api/events/search?q=launch+party`
 2. Jin's event appears in results
 
 **Expected:** Event listing with ticket availability
@@ -226,7 +226,7 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 **Steps:**
 1. Node B requests connection to Node A (Jin)
 2. Sign connection request with Node B's key
-3. POST to `connections.imajin.ai/api/connections`
+3. POST to `jin.imajin.ai/connections/api/connections`
 4. Trust relationship recorded
 
 **Payload:**
@@ -251,8 +251,8 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 
 **Steps:**
 1. Node B selects virtual ticket
-2. POST to `tickets.imajin.ai/api/purchase`
-3. Redirected to `pay.imajin.ai/checkout`
+2. POST to `jin.imajin.ai/events/api/purchase`
+3. Redirected to `jin.imajin.ai/pay/checkout`
 4. Payment processed ($1 via Stripe)
 5. Ticket ownership transferred
 6. .fair manifest created
@@ -314,7 +314,7 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 
 **Steps:**
 1. Node B queries owned tickets
-2. GET `tickets.imajin.ai/api/tickets?owner=did:imajin:nodeB`
+2. GET `jin.imajin.ai/events/api/tickets?owner=did:imajin:nodeB`
 3. Ticket verifiable with signature
 
 **Expected:** Ticket with valid signature chain
@@ -361,14 +361,14 @@ Two nodes. Full lifecycle. First real ticket sold on the sovereign network.
 
 | Service | Domain | Status | Blocker |
 |---------|--------|--------|---------|
-| **auth** | auth.imajin.ai | ✅ Scaffold | - |
-| **pay** | pay.imajin.ai | ✅ Scaffold | - |
-| **registry** | registry.imajin.ai | ✅ Scaffold | - |
-| **profile** | profile.imajin.ai | 🔴 Missing | Needs scaffold |
-| **events** | events.imajin.ai | 🔴 Missing | Needs scaffold |
-| **events** | events.imajin.ai | 🔴 Missing | Events + tickets merged |
-| **connections** | connections.imajin.ai | 🔴 Missing | Needs scaffold |
-| **chat** | chat.imajin.ai | 🔴 Missing | Needs scaffold |
+| **auth** | jin.imajin.ai/auth | ✅ Scaffold | - |
+| **pay** | jin.imajin.ai/pay | ✅ Scaffold | - |
+| **registry** | jin.imajin.ai/registry | ✅ Scaffold | - |
+| **profile** | jin.imajin.ai/profile | 🔴 Missing | Needs scaffold |
+| **events** | jin.imajin.ai/events | 🔴 Missing | Needs scaffold |
+| **events** | jin.imajin.ai/events | 🔴 Missing | Events + tickets merged |
+| **connections** | jin.imajin.ai/connections | 🔴 Missing | Needs scaffold |
+| **chat** | jin.imajin.ai/chat | 🔴 Missing | Needs scaffold |
 
 ---
 

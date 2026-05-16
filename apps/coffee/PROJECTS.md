@@ -1,7 +1,7 @@
-# apps/coffee — coffee.imajin.ai
+# apps/coffee — jin.imajin.ai/coffee
 
 **Status:** 🟡 Scaffolded  
-**Domain:** coffee.imajin.ai  
+**Domain:** jin.imajin.ai/coffee  
 **Port:** 3009  
 **Stack:** Next.js 14, Tailwind, Drizzle, Neon Postgres
 
@@ -156,7 +156,7 @@ CREATE INDEX idx_tips_created ON tips(created_at DESC);
 
 ### Create Tip Page
 ```typescript
-const response = await fetch('https://coffee.imajin.ai/api/pages', {
+const response = await fetch('https://jin.imajin.ai/coffee/api/pages', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -177,7 +177,7 @@ const response = await fetch('https://coffee.imajin.ai/api/pages', {
 
 ### Send Tip (Stripe)
 ```typescript
-const response = await fetch('https://coffee.imajin.ai/api/tip', {
+const response = await fetch('https://jin.imajin.ai/coffee/api/tip', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -196,7 +196,7 @@ const { clientSecret } = await response.json();
 
 ### Send Tip (Solana)
 ```typescript
-const response = await fetch('https://coffee.imajin.ai/api/tip', {
+const response = await fetch('https://jin.imajin.ai/coffee/api/tip', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -214,7 +214,7 @@ const { transaction } = await response.json();
 
 ### Get Tips Received
 ```typescript
-const response = await fetch('https://coffee.imajin.ai/api/tips/did:imajin:ryan123', {
+const response = await fetch('https://jin.imajin.ai/coffee/api/tips/did:imajin:ryan123', {
   headers: { 'Authorization': 'Bearer imajin_tok_xxx' },
 });
 
@@ -226,7 +226,7 @@ const { tips, total } = await response.json();
 
 ## Tip Page
 
-Public page at `coffee.imajin.ai/:handle`:
+Public page at `jin.imajin.ai/coffee/:handle`:
 
 ```
 ┌─────────────────────────────────────────┐
@@ -266,7 +266,7 @@ Public page at `coffee.imajin.ai/:handle`:
 Generate QR that links to tip page:
 
 ```
-coffee.imajin.ai/ryan
+jin.imajin.ai/coffee/ryan
 ```
 
 Busker/street performer can:
@@ -301,15 +301,15 @@ For crypto tips:
 
 ## Integration
 
-### With pay.imajin.ai
+### With jin.imajin.ai/pay
 - Stripe payment processing
 - Solana transaction building
 
-### With auth.imajin.ai
+### With jin.imajin.ai/auth
 - Optional auth for tip senders (attribution)
 - Required auth for page owners
 
-### With profile.imajin.ai
+### With jin.imajin.ai/profile
 - Link from profile to coffee page
 - Pull avatar/name for page display
 
@@ -319,12 +319,12 @@ For crypto tips:
 
 ```bash
 DATABASE_URL=postgres://...
-AUTH_SERVICE_URL=https://auth.imajin.ai
-PAY_SERVICE_URL=https://pay.imajin.ai
+AUTH_SERVICE_URL=https://jin.imajin.ai/auth
+PAY_SERVICE_URL=https://jin.imajin.ai/pay
 STRIPE_SECRET_KEY=sk_xxx
 STRIPE_CONNECT_CLIENT_ID=ca_xxx
 SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
-NEXT_PUBLIC_BASE_URL=https://coffee.imajin.ai
+NEXT_PUBLIC_BASE_URL=https://jin.imajin.ai/coffee
 ```
 
 ---
