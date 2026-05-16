@@ -120,12 +120,6 @@ jobs:
             echo "::endgroup::"
           done
 
-      - name: Commit version bumps
-        if: ${{ inputs.dry_run != true }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add packages/*/package.json
-          PKGS="${{ steps.packages.outputs.list }}"
-          git commit -m "chore: publish ${PKGS// /, } to npm [skip ci]" || echo "No changes to commit"
-          git push
+      # Version bumps are local to the workflow run only.
+      # package.json versions in main are updated manually when needed.
+      # This avoids branch protection conflicts with push-back commits.
