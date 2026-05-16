@@ -95,6 +95,21 @@ Separate repos. Consume the platform but aren't part of it. Own databases.
 |-----|------|--------|---------|--------|
 | fixready | [imajin-fixready](https://github.com/ima-jin/imajin-fixready) | [fixready.imajin.ai](https://fixready.imajin.ai) | Home repair knowledge marketplace | Live |
 | karaoke | [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke) | [karaoke.imajin.ai](https://karaoke.imajin.ai) | Music & performance | Live |
+| scorecard | [imajin-scorecard](https://github.com/ima-jin/imajin-scorecard) | [scorecard.imajin.ai](https://scorecard.imajin.ai) | Scored assessments & lead generation | Alpha |
+
+---
+
+## Plugin Surface
+
+The platform exposes a plugin surface — auth, pay, registry, trust-graph, profile, and .fair attribution — consumed by independent apps that own their own data and ship on their own cadence. Three apps currently build on this surface: karaoke, fixready, and scorecard. Three is the threshold where bad abstractions start to show; the surface has held under it.
+
+| Consumer | Repo | Platform deps | Matrix cells exercised |
+|---|---|---|---|
+| karaoke | [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke) | _(owner)_ | _(owner)_ |
+| fixready | [imajin-fixready](https://github.com/ima-jin/imajin-fixready) | _(owner)_ | _(owner)_ |
+| scorecard | [imajin-scorecard](https://github.com/ima-jin/imajin-scorecard) | _(owner)_ | _(owner)_ |
+
+Three consumers pulling on different cells is the project's strongest current evidence that the matrix is a real surface, not a diagram.
 
 ---
 
@@ -177,7 +192,7 @@ App (events, coffee, etc.)
             Webhook → Fulfillment callback
 ```
 
-Apps don't need Stripe keys. They call the node's pay service. Money flows directly to the node operator. No middleman.
+Apps don't need Stripe keys. They call the node's pay service. Pay uses Stripe Connect — each node operator is a connected account with their own KYC and is independently the merchant of record for their transactions. The platform is not a shared merchant. Funds settle directly to the operator.
 
 ---
 
