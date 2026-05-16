@@ -60,12 +60,19 @@ export default function ResultsPage() {
         const surveyData = await surveyRes.json();
         const responsesData = await responsesRes.json();
 
-        // Normalize survey fields structure
+        // Normalize survey fields structure — flatten pages into elements
+        let elements: SurveyJSElement[] = [];
+        if (typeof surveyData.fields === 'object' && 'pages' in surveyData.fields && Array.isArray(surveyData.fields.pages)) {
+          // Multi-page format: flatten all page elements
+          elements = surveyData.fields.pages.flatMap((p: any) => p.elements || []);
+        } else if (typeof surveyData.fields === 'object' && 'elements' in surveyData.fields) {
+          elements = surveyData.fields.elements;
+        } else if (Array.isArray(surveyData.fields)) {
+          elements = surveyData.fields;
+        }
         const normalizedSurvey = {
           ...surveyData,
-          fields: typeof surveyData.fields === 'object' && 'elements' in surveyData.fields
-            ? surveyData.fields
-            : { elements: Array.isArray(surveyData.fields) ? surveyData.fields : [] }
+          fields: { elements }
         };
 
         setSurvey(normalizedSurvey);
