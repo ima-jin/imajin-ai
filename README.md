@@ -134,7 +134,7 @@ Shared libraries used across all apps.
 | [@imajin/chat](./packages/chat) | Chat components (Chat orchestrator, MessageBubble, voice, media) |
 | [@imajin/trust-graph](./packages/trust-graph) | Trust graph queries (connection checks) |
 | [@imajin/cid](./packages/cid) | Content-addressed identifiers (CID generation) |
-| [@imajin/dfos](./packages/dfos) | [DFOS](https://dfos.com) integration — open cryptographic identity protocol (chain provider, relay) |
+| [@imajin/dfos](./packages/dfos) | [DFOS](https://protocol.dfos.com) integration — an open standard for cryptographic identity and verifiable content (chain provider, relay) |
 | [@imajin/llm](./packages/llm) | LLM inference abstraction (cost tracking, routing) |
 
 ---
