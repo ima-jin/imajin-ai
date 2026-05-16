@@ -1,0 +1,133 @@
+name: Publish Packages to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package to publish"
+        required: true
+        type: choice
+        options:
+          - tokens
+          - config
+          - ui
+          - all
+      version_bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      dry_run:
+        description: "Dry run (skip actual publish)"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  # Publish order matters — tokens first, then config, then ui
+  ALL_PACKAGES: "tokens config ui"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Determine packages to publish
+        id: packages
+        run: |
+          if [ "${{ inputs.package }}" = "all" ]; then
+            echo "list=${{ env.ALL_PACKAGES }}" >> $GITHUB_OUTPUT
+          else
+            echo "list=${{ inputs.package }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bump versions
+        run: |
+          for pkg in ${{ steps.packages.outputs.list }}; do
+            echo "::group::Bumping $pkg"
+            cd packages/$pkg
+            # Use npm version to bump (modifies package.json in place)
+            NEW_VERSION=$(npm version ${{ inputs.version_bump }} --no-git-tag-version | tr -d 'v')
+            echo "Bumped @imajin/$pkg to $NEW_VERSION"
+            cd ../..
+            echo "::endgroup::"
+          done
+
+      - name: Build packages
+        run: |
+          for pkg in ${{ steps.packages.outputs.list }}; do
+            echo "::group::Building $pkg"
+            cd packages/$pkg
+            if grep -q '"build"' package.json; then
+              pnpm build
+              echo "Built $pkg"
+            else
+              echo "No build script for $pkg, skipping"
+            fi
+            cd ../..
+            echo "::endgroup::"
+          done
+
+      - name: Prepare and publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for pkg in ${{ steps.packages.outputs.list }}; do
+            echo "::group::Publishing @ima-jin/$pkg"
+
+            PUBLISH_DIR=$(mktemp -d)
+
+            # Prepare the package (rewrite names, resolve deps)
+            node scripts/prepare-npm-publish.mjs "packages/$pkg" "$PUBLISH_DIR"
+
+            # Show what we're about to publish
+            echo "--- package.json ---"
+            cat "$PUBLISH_DIR/package.json"
+            echo ""
+            echo "--- files ---"
+            find "$PUBLISH_DIR" -type f | head -50
+
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              echo "DRY RUN — skipping publish"
+              cd "$PUBLISH_DIR"
+              npm publish --dry-run --access public 2>&1 || true
+              cd -
+            else
+              cd "$PUBLISH_DIR"
+              npm publish --access public
+              cd -
+              echo "Published @ima-jin/$pkg"
+            fi
+
+            rm -rf "$PUBLISH_DIR"
+            echo "::endgroup::"
+          done
+
+      - name: Commit version bumps
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages/*/package.json
+          PKGS="${{ steps.packages.outputs.list }}"
+          git commit -m "chore: publish ${PKGS// /, } to npm [skip ci]" || echo "No changes to commit"
+          git push

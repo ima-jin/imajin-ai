@@ -7,10 +7,21 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "files": [
+    "dist/",
+    "src/"
+  ],
   "dependencies": {
     "@imajin/tokens": "workspace:*"
   },
   "peerDependencies": {
     "next": ">=14"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5"
+  },
+  "scripts": {
+    "build": "tsup"
   }
 }
