@@ -7,6 +7,10 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "files": [
+    "dist/",
+    "src/"
+  ],
   "dependencies": {
     "@imajin/config": "workspace:*",
     "@mdxeditor/editor": "^3.52.4",
@@ -15,6 +19,10 @@
   },
   "devDependencies": {
     "@types/react": "^18",
+    "tsup": "^8.0.0",
     "typescript": "^5"
+  },
+  "scripts": {
+    "build": "tsup"
   }
 }
