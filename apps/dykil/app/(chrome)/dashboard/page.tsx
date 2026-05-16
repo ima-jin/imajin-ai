@@ -130,7 +130,7 @@ export default function DashboardPage() {
             <div className="text-6xl mb-4">📊</div>
             <h2 className="text-2xl font-bold mb-2">No surveys yet</h2>
             <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Create your first survey to get started
+              Create your first survey to get started.
             </p>
             <button
               onClick={() => router.push('/create')}

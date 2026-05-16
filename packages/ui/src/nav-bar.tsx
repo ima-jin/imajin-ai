@@ -171,6 +171,14 @@ export function NavBar({
   serviceUrls,
   children,
 }: NavBarProps) {
+  // Embed mode: skip NavBar when ?embed=hub is present
+  const [isEmbed, setIsEmbed] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsEmbed(new URLSearchParams(window.location.search).get('embed') === 'hub');
+    }
+  }, []);
+
   const userLinks = buildUserLinks(servicePrefix, domain, serviceUrls);
   const isDev = servicePrefix.includes('dev-');
   const [showDropdown, setShowDropdown] = useState(false);
@@ -266,7 +274,7 @@ export function NavBar({
     }
   }, [showDropdown]);
 
-  return (
+  return !isEmbed ? (
     <nav className="w-full border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm relative z-50">
       {isDev && (
         <div className="w-full bg-amber-500/90 text-black text-xs font-bold text-center py-1 tracking-wide">
@@ -599,5 +607,5 @@ export function NavBar({
         </div>
       )}
     </nav>
-  );
+  ) : null;
 }

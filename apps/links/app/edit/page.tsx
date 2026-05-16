@@ -502,7 +502,7 @@ export default function EditPage() {
         <div className="space-y-3">
           {page.links.length === 0 ? (
             <div className="text-center py-12 text-gray-500 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-              <p>No links yet. Add your first link above!</p>
+              <p>No links yet. Create your first link.</p>
             </div>
           ) : (
             page.links.map((link, index) => (

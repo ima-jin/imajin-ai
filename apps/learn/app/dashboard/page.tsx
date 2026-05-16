@@ -134,7 +134,7 @@ export default function DashboardPage() {
         {courses.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
             <div className="text-4xl mb-4">📚</div>
-            <p>No courses yet. Create your first one above!</p>
+            <p>No courses yet. Create your first course.</p>
           </div>
         ) : (
           <div className="space-y-4">

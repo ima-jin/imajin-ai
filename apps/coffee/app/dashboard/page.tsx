@@ -43,7 +43,7 @@ export default function DashboardPage() {
 
         if (!pageRes.ok) {
           if (pageRes.status === 404) {
-            setError('No coffee page found. Please create one first.');
+            setError('No pages yet. Create your first page.');
           } else {
             setError('Failed to load dashboard');
           }
@@ -131,20 +131,29 @@ export default function DashboardPage() {
   }
 
   if (error) {
+    const isNoPage = error.includes('No pages yet');
     return (
       <main className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4">
         <div className="max-w-5xl mx-auto">
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-6 text-center">
-            <p className="text-red-800 dark:text-red-200 mb-4">{error}</p>
-            {error.includes('create one') && (
+          {isNoPage ? (
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-12 text-center">
+              <div className="text-6xl mb-4">☕</div>
+              <h2 className="text-2xl font-bold mb-3">No pages yet</h2>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                Create your first page to start receiving tips and support.
+              </p>
               <Link
                 href="/edit"
                 className="inline-block px-6 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-semibold transition"
               >
                 Create Coffee Page
               </Link>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-6 text-center">
+              <p className="text-red-800 dark:text-red-200 mb-4">{error}</p>
+            </div>
+          )}
         </div>
       </main>
     );
