@@ -103,11 +103,11 @@ Separate repos. Consume the platform but aren't part of it. Own databases.
 
 The platform exposes a plugin surface — auth, pay, registry, trust-graph, profile, and .fair attribution — consumed by independent apps that own their own data and ship on their own cadence. Three apps currently build on this surface: karaoke, fixready, and scorecard. Three is the threshold where bad abstractions start to show; the surface has held under it.
 
-| Consumer | Repo | Platform deps | Matrix cells exercised |
+| Consumer | Repo | Live deps | Planned |
 |---|---|---|---|
-| karaoke | [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke) | _(owner)_ | _(owner)_ |
-| fixready | [imajin-fixready](https://github.com/ima-jin/imajin-fixready) | _(owner)_ | _(owner)_ |
-| scorecard | [imajin-scorecard](https://github.com/ima-jin/imajin-scorecard) | _(owner)_ | _(owner)_ |
+| karaoke | [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke) | Identity, Events, Connections | Attestation, Settlement (PWYC tipping) |
+| fixready | [imajin-fixready](https://github.com/ima-jin/imajin-fixready) | Identity | Attestation, Settlement, Discovery |
+| scorecard | [imajin-scorecard](https://github.com/ima-jin/imajin-scorecard) | Identity | Attestation, Settlement, Discovery |
 
 Three consumers pulling on different cells is the project's strongest current evidence that the matrix is a real surface, not a diagram.
 
@@ -298,13 +298,14 @@ See [articles/ARCHITECTURE.md](./apps/kernel/articles/ARCHITECTURE.md) for full 
 | Metric | Value |
 |--------|-------|
 | Codebase | ~122K lines |
-| Commits | ~2,290 |
+| Commits | ~2,480 |
 | Identities | 246 |
-| Days since launch | ~98 |
+| Days since first commit | 94 |
+| Inference cost | ~$12K |
 | Services | 9 apps + 21 shared packages |
 | License | MIT |
 
-1 kernel (9 domains) plus 6 federated apps. All open source. All self-hostable. Every DID we generated turned out to already be a valid Solana wallet. The protocol wasn't designed. It was excavated.
+1 kernel (9 domains) plus 6 federated apps. All open source. All self-hostable.
 
 ---
 
