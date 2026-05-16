@@ -7,6 +7,8 @@ interface Props {
   showSettings: boolean;
   showMembers: boolean;
   showSecurity: boolean;
+  enabledServices: string[];
+  landingService?: string | null;
 }
 
 interface Tab {
@@ -27,7 +29,44 @@ const ALL_TABS: Tab[] = [
   { label: 'Members', href: '/auth/members', exact: false },
 ];
 
-export default function IdentityTabBar({ showSettings, showMembers, showSecurity }: Props) {
+const SERVICE_TABS: Tab[] = [
+  { label: 'Events', href: '/auth/events', exact: false },
+  { label: 'Market', href: '/auth/market', exact: false },
+  { label: 'Coffee', href: '/auth/coffee', exact: false },
+  { label: 'Dykil', href: '/auth/dykil', exact: false },
+  { label: 'Learn', href: '/auth/learn', exact: false },
+  { label: 'Links', href: '/auth/links', exact: false },
+  { label: 'Pay', href: '/auth/pay', exact: false },
+  { label: 'Media', href: '/auth/media', exact: false },
+];
+
+function serviceFromHref(href: string): string {
+  return href.split('/').pop() ?? '';
+}
+
+function TabLink({ tab, pathname }: { tab: Tab; pathname: string }) {
+  const isActive = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
+  return (
+    <Link
+      key={tab.href}
+      href={tab.href}
+      className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+        isActive
+          ? 'border-amber-500 text-amber-400'
+          : 'border-transparent text-zinc-400 hover:text-white hover:border-zinc-600'
+      }`}
+    >
+      {tab.label}
+    </Link>
+  );
+}
+
+export default function IdentityTabBar({
+  showSettings,
+  showMembers,
+  showSecurity,
+  enabledServices,
+}: Props) {
   const pathname = usePathname();
 
   const tabs = ALL_TABS.filter((tab) => {
@@ -37,24 +76,24 @@ export default function IdentityTabBar({ showSettings, showMembers, showSecurity
     return true;
   });
 
+  const serviceTabs = SERVICE_TABS.filter((tab) => {
+    const service = serviceFromHref(tab.href);
+    return enabledServices.includes(service);
+  });
+
   return (
-    <div className="border-b border-zinc-800 flex gap-1">
-      {tabs.map((tab) => {
-        const isActive = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
-        return (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              isActive
-                ? 'border-amber-500 text-amber-400'
-                : 'border-transparent text-zinc-400 hover:text-white hover:border-zinc-600'
-            }`}
-          >
-            {tab.label}
-          </Link>
-        );
-      })}
+    <div className="border-b border-zinc-800 flex gap-1 flex-wrap">
+      {tabs.map((tab) => (
+        <TabLink key={tab.href} tab={tab} pathname={pathname} />
+      ))}
+      {serviceTabs.length > 0 && (
+        <div className="flex items-center mx-1">
+          <div className="w-px h-5 bg-zinc-700" />
+        </div>
+      )}
+      {serviceTabs.map((tab) => (
+        <TabLink key={tab.href} tab={tab} pathname={pathname} />
+      ))}
     </div>
   );
 }

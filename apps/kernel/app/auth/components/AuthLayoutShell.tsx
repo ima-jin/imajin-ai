@@ -1,6 +1,7 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 const BYPASS_PREFIXES = ['/auth/login', '/auth/register', '/auth/onboard'];
 
@@ -9,10 +10,19 @@ interface Props {
   identityDetail: React.ReactNode;
   tabBar: React.ReactNode;
   children: React.ReactNode;
+  landingService?: string | null;
 }
 
-export default function AuthLayoutShell({ leftRail, identityDetail, tabBar, children }: Props) {
+export default function AuthLayoutShell({ leftRail, identityDetail, tabBar, children, landingService }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  // Redirect to landing service when landing on /auth directly
+  useEffect(() => {
+    if (pathname === '/auth' && landingService) {
+      router.replace(`/auth/${landingService}`);
+    }
+  }, [pathname, landingService, router]);
 
   if (BYPASS_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return <>{children}</>;
