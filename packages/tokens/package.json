@@ -1,6 +1,6 @@
 {
   "name": "@imajin/tokens",
-  "version": "0.1.0",
+  "version": "0.6.1",
   "description": "Imajin design tokens — DTCG format, built with Style Dictionary v4",
   "main": "./dist/tailwind.js",
   "exports": {
