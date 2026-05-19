@@ -192,7 +192,7 @@ export async function GET(
         { status: 403 }
       );
     }
-    const requesterDid = authResult.identity.actingAs || authResult.identity.id;
+    const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
 
     if (accessType === "private") {
       if (requesterDid !== asset.ownerDid) {
@@ -552,7 +552,20 @@ export async function DELETE(
   if ("error" in authResult) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
+  const { identity } = authResult;
+
+  // Approval gate: agents cannot delete via delegation
+  if (identity.actingFor) {
+    return NextResponse.json({
+      error: "Agent delegation does not permit destructive operations",
+      code: "AGENT_APPROVAL_REQUIRED",
+      action: "delete",
+      assetId: id,
+      ownerDid: identity.actingFor,
+    }, { status: 403 });
+  }
+
+  const requesterDid = identity.actingAs || identity.id;
 
   let asset;
   try {
@@ -604,7 +617,20 @@ export async function PATCH(
   if ("error" in authResult) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
+  const { identity } = authResult;
+
+  // Approval gate: agents cannot rename via delegation
+  if (identity.actingFor) {
+    return NextResponse.json({
+      error: "Agent delegation does not permit destructive operations",
+      code: "AGENT_APPROVAL_REQUIRED",
+      action: "rename",
+      assetId: id,
+      ownerDid: identity.actingFor,
+    }, { status: 403 });
+  }
+
+  const requesterDid = identity.actingAs || identity.id;
 
   let body: { filename?: unknown };
   try {

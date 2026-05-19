@@ -11,6 +11,7 @@ export function createMediaTools(config: {
   const authHeaders: Record<string, string> = {
     Authorization: `Bearer ${config.apiKey}`,
     'X-Owner-DID': config.targetDid,
+    'X-Uploaded-By': config.requesterDid,
   };
 
   return {

@@ -17,7 +17,8 @@ export const assets = mediaSchema.table(
   "assets",
   {
     id: text("id").primaryKey(),                               // asset_xxx
-    ownerDid: text("owner_did").notNull(),                     // DID of uploader
+    ownerDid: text("owner_did").notNull(),                     // DID of owner (may differ from uploader)
+    uploadedBy: text("uploaded_by"),                            // DID of actual uploader (audit trail)
     filename: text("filename").notNull(),                      // original filename
     mimeType: text("mime_type").notNull(),                     // image/jpeg, etc.
     size: integer("size").notNull(),                           // bytes
@@ -52,6 +53,7 @@ export const assets = mediaSchema.table(
   },
   (table) => ({
     ownerIdx: index("idx_assets_owner").on(table.ownerDid),
+    uploadedByIdx: index("idx_assets_uploaded_by").on(table.uploadedBy),
     statusIdx: index("idx_assets_status").on(table.status),
     mimeIdx: index("idx_assets_mime").on(table.mimeType),
     folderIdx: index("idx_assets_folder").on(table.folderId),

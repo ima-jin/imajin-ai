@@ -103,7 +103,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const { identity } = authResult;
-  const ownerDid = identity.actingAs || identity.id;
+  const ownerDid = identity.actingFor || identity.actingAs || identity.id;
+  const uploadedBy = identity.id;
 
   // Fetch full identity row to get uploadLimitMb
   const [identityRow] = await db
@@ -263,6 +264,7 @@ export async function POST(request: NextRequest) {
       .values({
         id: assetId,
         ownerDid,
+        uploadedBy,
         filename: originalName,
         mimeType,
         size: file.size,
@@ -393,6 +395,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   let ownerDid: string;
+  let uploadedBy: string | undefined;
   let isAgentQuery = false;
   if (bearerToken && internalApiKey && bearerToken === internalApiKey) {
     const ownerDidHeader = request.headers.get("X-Owner-DID");
@@ -400,6 +403,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "X-Owner-DID header required" }, { status: 400, headers: cors });
     }
     ownerDid = ownerDidHeader;
+    // NEW: capture uploaded-by from internal caller
+    uploadedBy = request.headers.get("X-Uploaded-By") || ownerDidHeader;
   } else {
     const authResult = await requireAuth(request);
     if ("error" in authResult) {
@@ -413,7 +418,7 @@ export async function GET(request: NextRequest) {
       ownerDid = didParam;
       isAgentQuery = true;
     } else {
-      ownerDid = identity.actingAs || identity.id;
+      ownerDid = identity.actingFor || identity.actingAs || identity.id;
     }
   }
 
