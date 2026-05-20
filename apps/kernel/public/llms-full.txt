@@ -1,6 +1,6 @@
 # Imajin Network (MJN Protocol)
 # llms-full.txt — Complete technical reference for AI consumption
-# v0.5 · March 2026 · DRAFT
+# v0.6 · May 2026 · DRAFT
 # Ryan Veteze · ryan@imajin.ai · github.com/ima-jin/imajin-ai
 #
 # This document is intended as a complete integration reference.
@@ -10,492 +10,606 @@
 
 ## 1. What This Is
 
-MJN is a cryptographic operating system that runs as Just a Bunch Of Services (JBOS).
+MJN is a cryptographic operating system that runs as a single consolidated kernel with a federated userspace.
 
-15 HTTP services. Each does one thing. Each has its own schema. Each is independently deployable.
-No service mesh. No orchestration framework. No API gateway. Just Next.js apps behind Caddy.
+The **kernel** (`apps/kernel`) is one Next.js application handling identity, authentication, payments, messaging, media, trust graph, and registry. One domain, one cookie, one build. The userspace apps (events, market, learn, coffee, links, dykil) are independent Next.js apps that consume the kernel via HTTP, each with their own schema, each replaceable.
 
-The services are commodity. Swap them, rewrite them, add more. The value is in the cryptographic
-substrate underneath — signed identity chains that make every action verifiable and every
-relationship bilateral.
+No service mesh. No orchestration framework. No API gateway. Kernel routes behind Caddy. Userspace apps behind Caddy. The value is in the cryptographic substrate underneath — signed identity chains that make every action verifiable and every relationship bilateral.
 
-Without the chains, each service is a dumb CRUD app. With the chains, they form a sovereign
-operating system where identity, attribution, trust, and settlement are structural properties —
-not features bolted on after the fact.
+**Build stats (May 2026):**
+| Metric | Value |
+|--------|-------|
+| Monorepo version | 0.6.1 |
+| Lines of TypeScript/TSX | ~134,000 |
+| Commits | 2,467 |
+| Days building | ~110 (started Feb 1, 2026) |
+| Shared packages | 20 |
 
 ---
 
-## 2. Architecture: JBOS on a Cryptographic Substrate
+## 2. Architecture: Kernel + Bus + Vault + Broker
 
 ```
-                    JBOS (Just a Bunch Of Services)
-┌──────────────────────────────────────────────────────────┐
-│  www · events · chat · learn · market · coffee · links   │  ← Userspace
-│  dykil · input · media                                   │     (disposable)
-├──────────────────────────────────────────────────────────┤
-│  connections · profile · registry                        │  ← Trust + Discovery
-├──────────────────────────────────────────────────────────┤
-│  auth · pay                                              │  ← Kernel
-│  attestations · .fair manifests · settlement             │     (signed chains)
-├──────────────────────────────────────────────────────────┤
-│  DFOS Proof Chains (L0–L5)                               │  ← Substrate
-│  Ed25519 · CID · dag-cbor · countersignatures            │     (cryptographic)
-└──────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Userspace Apps (federated, replaceable)                    │
+│  events · market · learn · coffee · links · dykil           │
+├─────────────────────────────────────────────────────────────┤
+│  Kernel (single Next.js app, single domain)                 │
+│  auth · pay · chat · media · profile · connections · registry│
+│  ├─ Event Bus (@imajin/bus) — reactor chains                │
+│  ├─ Vault (imajin-cli) — encrypted key-value store          │
+│  └─ Broker (specced) — consent-gated selective disclosure   │
+├─────────────────────────────────────────────────────────────┤
+│  DFOS Proof Chains (L0–L5) · .fair Attribution              │
+│  Ed25519 · CID · dag-cbor · countersignatures               │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Why JBOS works:**
-- No inter-service trust assumptions. Services verify chains, not each other.
-- Any service can be replaced without affecting others.
-- New services inherit the full trust graph and identity system by importing `@imajin/auth`.
+**Why this works:**
+- The kernel is sovereign infrastructure. One cookie, one session, no CORS between auth/pay/chat.
+- Userspace apps inherit the full trust graph and identity system by importing `@imajin/auth`.
 - The complexity lives in the chain layer, not the orchestration layer.
 - Runs on a single server with pm2. No Kubernetes. No Docker in production.
 
-### Service URLs
+### Kernel Consolidation
 
-| Service     | URL                         | Role                                          |
-|-------------|-----------------------------|-----------------------------------------------|
-| auth        | auth.imajin.ai              | Kernel — DIDs, sessions, attestations, DFOS   |
-| pay         | pay.imajin.ai               | Kernel — Stripe, settlement, .fair            |
-| connections | connections.imajin.ai       | Trust — pods, invites, groups, vouch          |
-| profile     | profile.imajin.ai           | Discovery — public profiles, handles          |
-| registry    | registry.imajin.ai          | Federation — node discovery, DFOS relay       |
-| events      | events.imajin.ai            | Userspace — events, tickets, check-in         |
-| chat        | chat.imajin.ai              | Userspace — DID-based messaging, WebSocket    |
-| media       | media.imajin.ai             | Userspace — asset storage, .fair sidecars     |
-| input       | input.imajin.ai             | Userspace — voice transcription, upload relay |
-| learn       | learn.imajin.ai             | Userspace — courses, modules, enrollment      |
-| market      | market.imajin.ai            | Userspace — consent-based local commerce      |
-| coffee      | coffee.imajin.ai            | Userspace — tipping / support pages           |
-| links       | links.imajin.ai             | Userspace — link-in-bio pages                 |
-| dykil       | dykil.imajin.ai             | Userspace — community spending surveys        |
-| www         | imajin.ai                   | Userspace — landing page, app launcher        |
+The kernel consolidated what were formerly 8 separate services into one application:
 
-Every service exposes OpenAPI at `/api/spec`.
+| Route prefix | Responsibility |
+|--------------|----------------|
+| `/auth/*` | DIDs, sessions, attestations, challenges, registration, agents, apps |
+| `/pay/*` | Stripe checkout, settlement, .fair splits, MJNx ledger |
+| `/chat/*` | DID-based messaging, WebSocket tokens, conversations |
+| `/media/*` | Asset storage, .fair sidecars, on-the-fly resizing |
+| `/profile/*` | Public profiles, handles, presence |
+| `/connections/*` | Trust graph, pods, invites |
+| `/registry/*` | Node federation, app manifests, DFOS relay |
+| `/input/*` | Voice transcription, file processing |
 
-Shared packages: `@imajin/auth` · `@imajin/db` · `@imajin/fair` · `@imajin/chat` ·
-                 `@imajin/ui` · `@imajin/config` · `@imajin/llm` · `@imajin/media`
+Chat's WebSocket server (`ws-server.js`) runs as a separate process. Caddy routes `/chat/ws` to it.
 
 ---
 
-## 3. Identity: DIDs, Tiers, and DFOS
+## 3. Identity
 
 ### DID Format
 
-Actor DIDs take two forms depending on how they were created:
-
-- **Soft DID**: `did:imajin:<nanoid(44)>` — random stable identifier minted at email verification.
-  No keypair. Cannot sign. A placeholder key (`soft_<random>`) is stored in the DB.
-- **Hard DID**: `did:imajin:<sha256(Ed25519_pubkey)>` — deterministically derived from the
-  Ed25519 public key. Cryptographically self-certifying. Can sign attestations, messages, etc.
+- **Soft DID**: `did:imajin:<nanoid(44)>` — random stable identifier minted at email verification. No keypair. Cannot sign. Stored in DB with a placeholder key.
+- **Hard DID**: `did:imajin:<sha256(Ed25519_pubkey)>` — deterministically derived from the Ed25519 public key. Cryptographically self-certifying. Can sign attestations, messages, etc.
 
 Conversation DIDs (chat):
-- DM: `did:imajin:dm:<sha256(sorted_member_dids)>` — deterministic from participants
-- Group: `did:imajin:group:<uuid>` — server-generated
+- DM: `did:imajin:dm:<sha256(sorted_member_dids)>.slice(0,16)` — deterministic from participants
+- Group: `did:imajin:group:<sha256(sorted_members).slice(0,16)>` — deterministic from sorted member DIDs
 - Event chat: `did:imajin:event:<eventId>` or `did:imajin:evt_<eventId>`
 
-### Three Standing Tiers
+### Five Standing Tiers
 
-Standing is computed from attestation history — not assigned by an administrator.
+Tier progression: `soft → preliminary → established → steward → operator`
 
-- **soft**: Email-verified only. No keypair. Can buy tickets, enroll in courses. Cannot send
-  messages, sign attestations, or create listings. Upgrade path: keypair registration.
-- **preliminary**: Ed25519 keypair + invite code. Full trust graph access. Can send messages,
-  create events and listings, issue attestations.
+- **soft**: Email-verified only. No keypair. Can buy tickets, enroll in courses. Cannot send messages, sign attestations, or create listings.
+- **preliminary**: Ed25519 keypair + invite code. Full trust graph access. Can send messages, create events and listings, issue attestations.
 - **established**: Earned through attestation history. Can vouch for others, invite new members.
+- **steward**: Trusted community steward. Elevated governance rights.
+- **operator**: Platform operator. Full access.
+
+Helper functions from `@imajin/auth`:
+```typescript
+import { isVerifiedTier, isEstablishedTier, isStewardTier, isOperatorTier } from '@imajin/auth';
+// isVerifiedTier: preliminary+   isEstablishedTier: established+
+// isStewardTier: steward+        isOperatorTier: operator only
+```
 
 ### Four Identity Scopes
 
-- **Actor**: One DID, one keypair. Subtypes: HumanActor, AgentActor (child key, scoped),
-  DeviceActor.
-- **Family**: Intimate shared trust. Shared resources, delegated authority.
-- **Community**: Shared practice. Quorum-governed, contribution-weighted.
-- **Business**: Structured entity. Roles, delegation chains. Cannot initiate connections —
-  all outreach is consent-gated and gas-priced.
+- **actor**: One DID, one keypair. Subtypes: `human`, `agent`, `device`, `presence`, `org`, `service`, `event`.
+- **family**: Intimate shared trust. Shared resources, delegated authority.
+- **community**: Shared practice. Quorum-governed, contribution-weighted.
+- **business**: Structured entity. Roles, delegation chains. Cannot initiate connections — all outreach is consent-gated.
 
-### DFOS Integration
+### identity_members Table
 
-Every `did:imajin` can be anchored to a DFOS proof chain (protocol.dfos.com). Same Ed25519
-keypair produces both `did:imajin:xxx` and `did:dfos:xxx` — byte-compatible, same curve.
+Group identities use a membership table (`identity_members`) linking a group DID to member DIDs with roles:
 
-DFOS relay: `registry.imajin.ai/relay/`
-
-Chain is canonical. `did:imajin` is a stable alias. Identity is self-certifying — verifiable
-without Imajin's server. `chainVerified: true` in session response means a DFOS chain has
-been registered and verified for this DID.
-
+```typescript
+// From apps/kernel/src/db/schemas/auth.ts (excerpt)
+export const identityMembers = authSchema.table('identity_members', {
+  identityDid: text('identity_did').notNull(),   // group DID
+  memberDid: text('member_did').notNull(),       // actor DID
+  role: text('role').notNull().default('member'), // owner | admin | maintainer | agent | member
+  addedBy: text('added_by'),
+  addedAt: timestamp('added_at').defaultNow(),
+  removedAt: timestamp('removed_at'),
+});
 ```
-MJN (L6)     ← identity + attribution + trust + settlement
-DFOS (L0–L5) ← proof chains, key rotation, countersignatures
-HTTPS        ← transport
+
+### Act-As Delegation
+
+Two delegation mechanisms:
+
+1. **X-Acting-As** — group identity impersonation. A controller (owner/admin/maintainer/agent) of a group DID can act on its behalf:
+```typescript
+// In requireAuth — validated server-side
+const actingAs = request.headers.get("x-acting-as");
+// Calls: GET /auth/api/groups/{groupDid}/controllers/{callerDid}
+// Returns: { valid: true, role: 'admin', allowedServices: ['events', 'market'] }
+```
+
+2. **X-Acting-For** — agent delegation. An agent DID can act for its principal:
+```typescript
+const actingFor = request.headers.get("x-acting-for");
+// Validates that caller has role='agent' for the target identity
+```
+
+### Soft DID Creation (Lazy Minting)
+
+DIDs are minted on first use. No batch import, no onboarding step.
+
+```typescript
+// Server-side: email verification creates a soft DID
+POST /auth/api/onboard
+{ "email": "user@example.com", "name": "Jane", "redirectUrl": "...", "context": "buy a ticket" }
+
+// Returns: { sent: true }
+// User clicks email link → GET /auth/api/onboard/verify?token=...
+// → soft DID created, session cookie set, redirect to redirectUrl
+```
+
+### DFOS Anchoring
+
+Every `did:imajin` can be anchored to a DFOS proof chain. Same Ed25519 keypair produces both `did:imajin:xxx` and `did:dfos:xxx` — byte-compatible, same curve.
+
+```typescript
+import { createIdentityChain, verifyChain, DFOS_DID_PREFIX } from '@imajin/dfos';
+
+// Create a DFOS chain from an Imajin keypair
+const { did, log, operationCID } = await createIdentityChain({
+  privateKeyHex: '64-char-hex...',
+  publicKeyHex: '64-char-hex...',
+});
+// Returns: did = 'did:dfos:...', log = [jwsToken]
+
+// Verify a chain
+const verified = await verifyChain(log);
+// Returns: VerifiedIdentity with did, authKeys, assertKeys, controllerKeys
+```
+
+Chain verification endpoint:
+```
+GET /auth/api/identity/{did}/verify
+→ { hasDfosChain: true, chainValid: true, chainLength: 3, dbConsistent: true }
 ```
 
 ---
 
 ## 4. Authentication
 
-Three flows. All produce the same session cookie (`imajin_session`). All cookies are
-`HttpOnly; Secure; SameSite=Lax; Domain=.imajin.ai` — valid across all `*.imajin.ai` services.
+All auth flows produce the same session cookie (`imajin_session` in prod, `imajin_session_dev` in dev). Cookie attributes: `HttpOnly; Secure; SameSite=Lax; Domain=.imajin.ai` — valid across all `*.imajin.ai` services.
 
-In development: cookie name is `imajin_session_dev`.
+### Flow 1: Soft DID (Email / Magic Link)
 
-### Flow 1: Soft DID (Email Only)
-
-For users without a keypair. Creates or retrieves a soft DID from email.
-
-**Option A: Direct soft session**
-
+**Direct soft session:**
 ```
-POST https://auth.imajin.ai/api/session/soft
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "name": "Jane Smith"         // optional
-}
+POST /auth/api/session/soft
+{ "email": "user@example.com", "name": "Jane" }
+→ { "did": "did:imajin:abc...", "handle": null, "type": "human", "name": "Jane", "tier": "soft" }
 ```
 
-Response (200):
-```json
-{
-  "did": "did:imajin:abc123...",
-  "handle": null,
-  "type": "human",
-  "name": "Jane Smith",
-  "tier": "soft"
-}
+**OnboardGate (email verification with proof):**
 ```
-
-Sets cookie: `imajin_session=<jwt>`
-
-Error (400):
-```json
-{ "error": "Valid email required" }
+POST /auth/api/onboard
+{ "email": "user@example.com", "name": "Jane", "redirectUrl": "...", "context": "buy a ticket" }
+→ { "sent": true }
 ```
+Token TTL: 15 minutes. Grace window for email scanners: 60 seconds.
 
-Error (429):
-```json
-{ "error": "Too many requests", "retryAfter": 30 }
+**Magic link re-auth (soft DIDs only):**
 ```
-
-**Option B: OnboardGate (email verification flow)**
-
-Used when the caller needs proof that the email was verified (not just provided).
-This is the standard flow for unauthenticated buyers, ticket holders, etc.
-
-Step 1 — send verification email:
+POST /auth/api/onboard
+{ "email": "user@example.com", "mode": "login", "wantPolling": true }
+→ { "sent": true, "pollHandle": "..." }
 ```
-POST https://auth.imajin.ai/api/onboard
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "name": "Jane Smith",           // optional
-  "redirectUrl": "https://events.imajin.ai/evt_123",  // optional
-  "context": "buy a ticket"        // optional, shown in email
-}
-```
-
-Response (200):
-```json
-{ "sent": true }
-```
-
-Always returns `{ sent: true }` even if email not found (prevents enumeration).
-
-Step 2 — user clicks link, server completes:
-```
-GET https://auth.imajin.ai/api/onboard/verify?token=<48-char-token>
-```
-
-On success: HTTP 302 redirect to `redirectUrl` (or `/`), with cookie set.
-Token TTL: 15 minutes.
-
-Grace window: email security scanners (Outlook Safe Links, etc.) may pre-consume the GET.
-If the token was used within the last 60 seconds, a new session is issued anyway.
-
-**Option C: Magic Link Re-auth (soft DIDs only)**
-
-For returning users with a soft DID who need to re-authenticate.
-Hard DID accounts (keypair holders) cannot use magic links — returns 403.
-Unknown emails get a silent 200 (anti-enumeration).
-
-```
-POST https://auth.imajin.ai/api/onboard
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "mode": "login",
-  "context": "log back in",
-  "redirectUrl": "https://events.imajin.ai/evt_123",  // optional
-  "wantPolling": true                                  // optional, for cross-tab handoff
-}
-```
-
-Response (200): `{ "sent": true, "pollHandle": "..." }` (pollHandle only when wantPolling)
-
-Error if hard DID (403):
-```json
-{ "error": "This account requires private key authentication. Use your backup key file to log in." }
-```
-
-With `wantPolling`, the client can poll `GET /api/onboard/poll?handle=<pollHandle>` and
-claim the session via `POST /api/onboard/claim` once status flips to `completed` — lets
-the original tab log in automatically after the user verifies in their email tab.
-
----
+Poll: `GET /auth/api/onboard/poll?handle=...` → claim via `POST /auth/api/onboard/claim`
 
 ### Flow 2: Challenge-Response (Ed25519 Keypair)
 
-For users with a keypair. This is how preliminary and established DIDs authenticate.
-
-Step 1 — request a challenge:
 ```
-POST https://auth.imajin.ai/api/login/challenge
-Content-Type: application/json
-
-{
-  "handle": "alice"    // OR
-  "did": "did:imajin:abc123..."
-}
+POST /auth/api/challenge
+{ "handle": "alice" }  // or { "did": "did:imajin:..." }
+→ { "challengeId": "chl_xxx", "challenge": "hex...", "expiresAt": "..." }
 ```
-
-Response (200):
-```json
-{
-  "challengeId": "chl_abc123xyz",
-  "challenge": "a1b2c3d4...hex...",
-  "expiresAt": "2026-03-25T10:05:00.000Z"
-}
-```
-
 Challenge TTL: 5 minutes.
 
-Step 2 — sign the challenge with your Ed25519 private key and verify:
 ```
-POST https://auth.imajin.ai/api/login/verify
-Content-Type: application/json
-
-{
-  "challengeId": "chl_abc123xyz",
-  "signature": "deadbeef...128-char-hex-ed25519-sig...",
-  "dfosChain": { ... }   // optional: DFOS chain for chain-verified session
-}
+POST /auth/api/authenticate
+{ "challengeId": "chl_xxx", "signature": "128-char-hex-ed25519-sig", "dfosChain": { ... } }
+→ { "did": "did:imajin:...", "handle": "alice", "type": "human", "name": "Alice" }
 ```
-
 Signature: Ed25519 sign of the raw `challenge` hex string using your private key.
 
-Response (200):
-```json
+### Flow 3: Registration (New Keypair)
+
+Derive DID client-side:
+```typescript
+const did = "did:imajin:" + sha256(publicKey_bytes).hex();
+```
+
+```
+POST /auth/api/register
 {
-  "did": "did:imajin:abc123...",
+  "publicKey": "64-char-hex...",
   "handle": "alice",
-  "type": "human",
-  "name": "Alice"
-}
-```
-
-Sets cookie: `imajin_session=<jwt>`
-
-Error (401): `{ "error": "Invalid signature" }`
-Error (400): `{ "error": "Challenge not found, expired, or already used" }`
-
----
-
-### Flow 3: Registration (New Keypair Identity)
-
-For first-time registration. Requires an invite code for human identities.
-Service accounts (type != 'human') bypass the invite gate.
-
-Generate an Ed25519 keypair. Derive the DID client-side:
-```
-did = "did:imajin:" + sha256(publicKey_bytes).hex()
-```
-
-Sign the registration payload:
-```javascript
-const payload = JSON.stringify({ publicKey, handle, name, type });
-const signature = ed25519.sign(payload, privateKey); // hex-encoded
-```
-
-```
-POST https://auth.imajin.ai/api/register
-Content-Type: application/json
-
-{
-  "publicKey": "abc123...64-char-hex...",
-  "handle": "alice",           // optional, 3-30 chars [a-z0-9_]
-  "name": "Alice",             // optional
-  "type": "human",             // human|agent|presence|org|device|service|event
-  "signature": "deadbeef...128-char-hex...",
-  "inviteCode": "abc123def456" // required for human type
-  "email": "alice@example.com",// optional, for contact
-  "dfosChain": { ... }         // optional: DFOS chain to anchor immediately
-}
-```
-
-Response (201):
-```json
-{
-  "did": "did:imajin:abc123...",
-  "handle": "alice",
-  "type": "human",
-  "created": true,
-  "inviteAccepted": true
-}
-```
-
-Sets cookie: `imajin_session=<jwt>`. Tier is `preliminary` on successful registration.
-
-If public key already exists (re-register): returns existing DID with 200 + new session cookie.
-If handle is taken by a different key: returns 409 `{ "error": "Handle already taken" }`.
-If invite invalid or used: 403 `{ "error": "Invalid or expired invite code" }`.
-
-Registration side effects (non-fatal):
-- Creates profile row in profile service
-- Auto-accepts invite (creates connection in connections service)
-
----
-
-## 5. Session Model
-
-### Checking Current Session
-
-```
-GET https://auth.imajin.ai/api/session
-Cookie: imajin_session=<jwt>
-```
-
-Response (200):
-```json
-{
-  "did": "did:imajin:abc123...",
-  "handle": "alice",
-  "type": "human",
   "name": "Alice",
-  "role": "member",
-  "tier": "soft" | "preliminary" | "established",
-  "chainVerified": false
+  "type": "human",
+  "signature": "128-char-hex...",
+  "inviteCode": "abc123...",
+  "email": "alice@example.com",
+  "dfosChain": { ... }
 }
+→ { "did": "did:imajin:...", "handle": "alice", "type": "human", "created": true }
 ```
 
-`chainVerified: true` means a valid DFOS chain has been registered and verified for this DID.
-
-Error (401): `{ "error": "Not authenticated" }`
-
-### Cross-Service Auth
-
-The same session cookie is valid across all `*.imajin.ai` services. All services validate
-sessions by forwarding the cookie to `AUTH_SERVICE_URL/api/session`. No service-to-service
-JWT, no shared secret — just the cookie and the auth service as the single source of truth.
-
-### Bearer Token (Machine Clients)
-
-Services also accept `Authorization: Bearer <token>` for machine clients. Tokens are validated
-via `POST /api/validate`:
-
-```
-POST https://auth.imajin.ai/api/validate
-Content-Type: application/json
-
-{
-  "token": "<opaque-token-string>"
-}
-```
-
-Response:
-```json
-{
-  "valid": true,
-  "identity": {
-    "id": "did:imajin:abc123...",
-    "type": "human",
-    "name": "Alice",
-    "metadata": { ... }
-  }
-}
-```
-
-Invalid or expired: `{ "valid": false, "error": "Invalid or expired token" }`.
+Type values: `human | agent | presence | org | device | service | event`
+Human registration requires an invite code. Service accounts bypass the invite gate.
 
 ### Auth Middleware Hierarchy
 
-The `@imajin/auth` package exposes three middleware functions used by every service:
+`@imajin/auth` exposes these guards:
 
-| Function                | Tier accepted                | Use case                         |
-|-------------------------|------------------------------|----------------------------------|
-| `requireAuth(request)`  | soft, preliminary, established | Most endpoints                 |
-| `requireHardDID(request)` | preliminary, established   | Signing, trust-gated actions   |
-| `requireEstablishedDID(request)` | established only    | Vouching, advanced trust ops  |
+| Function | Tier accepted | Use case |
+|----------|--------------|----------|
+| `requireAuth(request, options?)` | soft+ | Most endpoints |
+| `requireHardDID(request)` | preliminary+ | Signing, trust-gated actions |
+| `requireEstablishedDID(request)` | established+ | Vouching, advanced trust ops |
 
-All return `{ identity: Identity }` or `{ error: string, status: number }`.
+All return `{ identity: Identity } | { error: string, status: number }`.
 
 `Identity` shape:
 ```typescript
-{
-  id: string;          // DID
-  type: "human" | "agent" | "presence";
+interface Identity {
+  id: string;                    // DID
+  scope: string;                 // 'actor' | 'family' | 'community' | 'business'
+  subtype?: string;              // 'human' | 'agent' | 'device' | etc.
   name?: string;
   handle?: string;
-  tier?: "soft" | "preliminary" | "established";
+  email?: string | null;
+  tier?: "soft" | "preliminary" | "established" | "steward" | "operator";
   chainVerified?: boolean;
+  actingAs?: string;             // group DID being impersonated
+  actingAsRole?: string;         // role in that group
+  actingAsServices?: string[];   // restricted service list (undefined = full)
+  actingFor?: string;            // DID the agent is delegated to
+  actingForRole?: string;        // always 'agent' for now
 }
 ```
 
-In API routes, pattern is:
+In API routes:
 ```typescript
-const authResult = await requireAuth(request);
+const authResult = await requireAuth(request, { verifyChain: true, service: 'events' });
 if ('error' in authResult) {
   return NextResponse.json({ error: authResult.error }, { status: authResult.status });
 }
 const { identity } = authResult;
 ```
 
+### App Authentication (Federated Services)
+
+Userspace apps authenticate via `requireAppAuth()` using attestation-based consent:
+
+```typescript
+// Client sends:
+X-App-DID: did:imajin:app_xxx
+X-App-Authorization: att_xxx
+
+// Server validates:
+const result = await requireAppAuth(request, { scope: 'events:read' });
+if ('error' in result) { /* 401/403 */ }
+const { appDid, userDid, scopes, attestationId } = result.appAuth;
+```
+
+The attestation must be type `app.authorized`, issued by the user, subject = app DID, payload containing approved scopes. Validated at `/auth/api/apps/validate` (internal endpoint, Bearer `ATTESTATION_INTERNAL_API_KEY`).
+
+### Session Validation
+
+```
+GET /auth/api/session  (with Cookie: imajin_session=...)
+→ { did, handle, type, name, scope, subtype, tier, chainVerified }
+```
+
+Server components use `getSession()` from `@imajin/auth`:
+```typescript
+import { getSession } from '@imajin/auth';
+const identity = await getSession({ service: 'events' });
+// Reads from next/headers cookie store, validates acting-as server-side
+```
+
+### Bearer Tokens (Machine Clients)
+
+```
+Authorization: Bearer <token>
+```
+
+Validated via `POST /auth/api/validate`:
+```
+POST /auth/api/validate
+{ "token": "imajin_tok_xxx" }
+→ { valid: true, identity: { id, type, name, ... } }
+```
+
 ---
 
-## 6. Attestations
+## 5. Event Bus
 
-Every trust-relevant action emits a cryptographically signed attestation. Unsigned attestations
-are rejected at write — a 4xx, not a null signature.
+The event bus (`@imajin/bus`) is the nervous system. Services publish events; reactor chains handle side effects.
 
-### Live Attestation Types
+### Core Pattern
 
+```typescript
+import { publish } from '@imajin/bus';
+
+await publish('listing.purchased', {
+  issuer: buyerDid,
+  subject: sellerDid,
+  scope: 'market',
+  payload: {
+    context_id: listingId,
+    context_type: 'market',
+    amount: 15000,               // cents
+    currency: 'CAD',
+    fairManifest: { ... },       // .fair fee manifest
+    funded: true,
+    funded_provider: 'stripe',
+    buyerDid,
+    metadata: { listingId },
+    interestDids: [buyerDid, sellerDid],
+  },
+});
 ```
-transaction.settled    Payment processed with verified .fair chain (pay)
-customer               First transaction with a service (pay)
-connection.invited     Invite extended (connections)
-connection.accepted    Invite accepted (connections)
-vouch                  Inviter sponsors acceptee into trust graph (connections)
-session.created        Login event with auth method metadata (auth)
-```
 
-### Attestation Shape
+The bus runs a reactor chain for the event type. Each reactor is fire-and-forget by default (`await: false`), or blocking (`await: true`) for ordering-sensitive operations like settlement.
 
-```json
-{
-  "id": "att_abc123xyz",
-  "issuerDid": "did:imajin:issuer...",
-  "subjectDid": "did:imajin:subject...",
-  "type": "connection.invited",
-  "contextId": "inv_abc123",
-  "contextType": "connection",
-  "payload": { "delivery": "link" },
-  "signature": "deadbeef...128-char-hex...",
-  "cid": "bafyrei...",
-  "authorJws": null,
-  "witnessJws": null,
-  "attestationStatus": null,
-  "issuedAt": "2026-03-25T10:00:00.000Z",
-  "revokedAt": null
+### BusEvent Shape
+
+```typescript
+interface BusEvent {
+  type: string;              // 'listing.purchased', 'identity.created', etc.
+  issuer: string;            // DID of the actor
+  subject: string;           // DID of the target
+  scope: string;             // service scope ('events', 'pay', 'market', etc.)
+  payload?: Record<string, unknown>;
+  correlationId?: string;    // trace across reactors
+  timestamp?: string;        // ISO 8601, defaults to now
 }
 ```
 
-- `cid`: content address (dag-cbor + CID) of the payload — enables DFOS chain anchoring.
-- `authorJws`: issuer's JWS (new-style bilateral attestations). Null for legacy.
-- `witnessJws`: subject's countersignature after `POST /api/attestations/countersign`.
-- `attestationStatus`: `null` (legacy) | `"pending"` | `"bilateral"` | `"declined"`.
+### Reactor Chain Configuration
 
-### Signature Format
+Phase 1 uses hardcoded defaults in `packages/bus/src/config.ts`. Phase 2 will be DB-backed.
+
+```typescript
+// Example: listing.purchased chain
+{
+  'listing.purchased': [
+    { type: 'attestation', config: { attestationType: 'listing.purchased' }, enabled: true },
+    { type: 'mjn',       config: { attestationType: 'listing.purchased' }, enabled: true },
+    { type: 'settle',    config: {}, await: true, enabled: true },
+    { type: 'notify',    config: { scope: 'market:purchase' }, enabled: true },
+  ],
+}
+```
+
+Built-in reactors:
+| Reactor | Purpose |
+|---------|---------|
+| `attestation` | Issues a signed attestation via auth service |
+| `mjn` | Credits MJN tokens based on emission schedule |
+| `settle` | Calls pay service to process .fair settlement |
+| `notify` | Sends notification + interest signals |
+| `emit` | Emits structured log/event for analytics |
+| `dfos` | Phase 2: direct DFOS chain append (currently deferred to attestation path) |
+| `webhook` | POSTs event payload to configured external URL |
+
+### The listing.purchased Flow (Cleanest Example)
+
+```typescript
+// apps/market/app/api/webhook/route.ts
+// Called by pay service after Stripe payment succeeds
+
+bus.publish('listing.purchased', {
+  issuer: body.metadata?.buyerDid || '',
+  subject: listing.sellerDid,
+  scope: 'market',
+  payload: {
+    context_id: listingId,
+    context_type: 'market',
+    amount: body.metadata?.amount || 0,
+    currency: body.metadata?.currency || 'CAD',
+    fairManifest: listing.fairManifest || null,
+    funded: true,
+    funded_provider: 'stripe',
+    buyerDid: body.metadata?.buyerDid || '',
+    metadata: { listingId },
+    interestDids: [buyerDid, sellerDid].filter(Boolean),
+  },
+});
+```
+
+Chain execution:
+1. **attestation reactor** → `emitAttestation({ issuer_did: buyer, subject_did: seller, type: 'listing.purchased', ... })`
+2. **mjn reactor** → looks up `EMISSION_SCHEDULE['listing.purchased']`, credits buyer 0.25% of sale and seller 0.25% of sale in MJN
+3. **settle reactor** → resolves .fair chain, deducts Stripe processing fee from seller share, POSTs to pay service `/api/settle`
+4. **notify reactor** → sends `market:purchase` notification to seller, emits interest signals to both DIDs
+
+### Reactor Registry
+
+```typescript
+import { registerReactor } from '@imajin/bus';
+
+registerReactor('my-reactor', async (event, config) => {
+  // Your side-effect logic
+});
+```
+
+### Type-Safe Events
+
+```typescript
+import type { BusEventMap, BusEventType } from '@imajin/bus';
+
+// Payloads are typed — the compiler catches bad call sites
+await publish('identity.created', {
+  issuer: did, subject: did, scope: 'auth',
+  payload: { scope: 'actor', subtype: 'human', tier: 'soft', context_id: did, context_type: 'identity' }
+});
+```
+
+---
+
+## 6. Vault
+
+The vault is an encrypted key-value store. It lives in the `imajin-cli` repo (separate from the monorepo) and is used by node operators for secrets management.
+
+### Cryptography
+
+- **Ed25519 → X25519 key derivation** using `@noble/curves/ed25519` Montgomery conversion
+- **XSalsa20-Poly1305** authenticated encryption via `tweetnacl` (NaCl box/secretbox)
+- **CID addressing** — every encrypted blob gets a deterministic `dag-cbor + SHA-256` CID
+
+```typescript
+import {
+  encrypt, decrypt, serializeBlob, deserializeBlob, computeCid,
+  ed25519ToX25519Keys, ed25519PublicToX25519
+} from '@imajin/cli/crypto/vault-crypto';
+
+// Encrypt a secret to a recipient's Ed25519 public key
+const encryptedBlob = encrypt(plaintext, recipientEd25519PublicKeyHex, senderEd25519SecretKeyHex);
+const serialized = serializeBlob(encryptedBlob);
+const cid = await computeCid(serialized);
+
+// Decrypt
+const blob = deserializeBlob(serialized);
+const plaintext = decrypt(blob, senderEd25519PublicKeyHex, recipientEd25519SecretKeyHex);
+```
+
+### CLI Interface
+
+```bash
+imajin vault set <KEY> <VALUE>     # Encrypt and store
+imajin vault get <KEY>             # Retrieve and decrypt
+imajin vault list                  # List all entries
+```
+
+Storage: `~/.imajin/vault.json`. Each entry tracks field, CID, encrypted blob, nonce, sender DID, sender pubkey, timestamp, and `previousCid` for history chaining.
+
+### Bus Events for Hot-Reload
+
+Vault changes can emit bus events (specced) so kernel services hot-reload secrets without restart.
+
+---
+
+## 7. Selective Disclosure & Broker
+
+The broker is a consent-gated data release layer. Specced in #786/#1003. Not yet implemented in the monorepo — described here for integration planning.
+
+### Core Pattern
+
+A subject's personal data is encrypted at rest. Only released to specific requesters when the subject has granted consent for a specific purpose — with every release audited.
+
+### Consent Grants
+
+```json
+{
+  "dietary_restrictions": [
+    { "purpose": "restaurant_reservation", "release": "raw", "duration": "trip" }
+  ],
+  "allergies": [
+    { "purpose": "restaurant_reservation", "release": "attestation" },
+    { "purpose": "emergency_medical", "release": "raw", "duration": "permanent" }
+  ]
+}
+```
+
+### Release Modes
+
+| Mode | What requester sees |
+|------|---------------------|
+| **raw** | Actual value: "vegetarian, gluten-free" |
+| **attestation** | Confirmation without details: `{ has_allergies: true }` |
+| **none** | Field omitted from response |
+
+### Request Flow
+
+```typescript
+// Specced API — not yet live
+bus.broker({
+  requester: "did:tripian:restaurant_abc",
+  subject: travelerDid,
+  fields: ["dietary", "allergies", "budget"],
+  purpose: "restaurant_reservation"
+});
+// Returns filtered envelope + writes audit log
+```
+
+### Shadow Mode (PoC)
+
+For the Hawaii PoC, the broker runs in shadow mode: consent checks and field filtering execute and log decisions, but nothing is gated — the app continues to work. After PoC, shadow mode flips to enforcement.
+
+### Integration Pattern (Tripian)
+
+1. **Get-or-create DID** — first time any entity is referenced, call `POST /registry/identity`
+2. **Set traveler preferences** — encrypt and store via vault API, keyed to traveler DID
+3. **Request data** — call `broker.request()` with provider DID, traveler DID, fields, purpose
+4. **Receive filtered response** — only consented fields, in appropriate release mode
+
+Zero migration required. Tripian's existing systems don't change. The DID layer wraps around them.
+
+---
+
+## 8. Attestations
+
+Attestations are cryptographically signed claims about identities. Unsigned attestations are rejected at write.
+
+### Shape
+
+```typescript
+interface Attestation {
+  id: string;                    // att_xxx
+  issuerDid: string;
+  subjectDid: string;
+  type: string;                  // from ATTESTATION_TYPES
+  contextId: string | null;      // e.g. event DID
+  contextType: string | null;    // e.g. 'event'
+  payload: Record<string, unknown> | null;
+  signature: string;             // Ed25519 hex (128 chars) — legacy
+  cid: string | null;            // dag-cbor CID of payload
+  authorJws: string | null;      // JWS compact token (author sig)
+  witnessJws: string | null;     // JWS compact token (countersignature)
+  attestationStatus: string;     // 'pending' | 'bilateral' | 'declined' | 'collecting' | 'executed' | 'expired'
+  documentHash: string | null;
+  documentAssetId: string | null;
+  totalSigners: number | null;
+  issuedAt: Date;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+}
+```
+
+### Attestation Types (Live)
+
+```typescript
+const ATTESTATION_TYPES = [
+  'transaction.settled', 'customer', 'connection.invited', 'connection.accepted',
+  'vouch', 'session.created', 'identity.created', 'identity.verified.preliminary',
+  'identity.verified.hard', 'identity.verified.steward', 'identity.verified.operator',
+  'tip.granted', 'ticket.purchased', 'listing.purchased', 'group.created',
+  'group.member.added', 'group.member.removed', 'group.member.left',
+  'pod.created', 'pod.member.added', 'pod.member.removed', 'pod.role.changed',
+  'scope.onboard', 'event.created', 'event.attendance', 'handle.claimed',
+  'learn.enrolled', 'learn.completed', 'stub.created', 'asset.fair.upgraded',
+  'document.created', 'document.signed', 'document.executed', 'document.declined',
+  'app.authorized',
+] as const;
+```
+
+### Signing
 
 Sign the canonicalized JSON of:
 ```json
@@ -509,1259 +623,585 @@ Sign the canonicalized JSON of:
 }
 ```
 
-`canonicalize()` sorts keys deterministically (RFC 8785). `issued_at` is Unix milliseconds.
-Sign the resulting UTF-8 string with your Ed25519 private key. Result is 128-char hex.
+`canonicalize()` sorts keys deterministically. `issued_at` is Unix milliseconds. Result is 128-char hex Ed25519 signature.
 
 ### Creating an Attestation
 
 ```
-POST https://auth.imajin.ai/api/attestations
-Cookie: imajin_session=<jwt>   (or Authorization: Bearer <token>)
-Content-Type: application/json
-
+POST /auth/api/attestations
+Cookie: imajin_session=...
 {
   "issuer_did": "did:imajin:issuer...",
   "subject_did": "did:imajin:subject...",
   "type": "vouch",
-  "context_id": "inv_abc123",      // optional
-  "context_type": "connection",    // optional
-  "payload": { "note": "great colleague" },  // optional
+  "context_id": "inv_abc123",
+  "context_type": "connection",
+  "payload": { "note": "great colleague" },
   "signature": "deadbeef...128-char-hex...",
-  "issued_at": 1742900000000       // optional, defaults to now
+  "issued_at": 1742900000000
 }
 ```
 
-Response (201): the full attestation object.
-
-Error (400): `{ "error": "Invalid type. Must be one of: transaction.settled, ..." }`
-Error (400): `{ "error": "Invalid signature" }`
-Error (401): `{ "error": "Not authenticated" }`
-
-### Querying Attestations
-
-By query params:
+Internal (server-side) attestations are signed by the platform keypair (`AUTH_PRIVATE_KEY`):
 ```
-GET https://auth.imajin.ai/api/attestations?subject_did=did:imajin:subject...&type=vouch&limit=20
+POST /auth/api/attestations/internal
+Authorization: Bearer {ATTESTATION_INTERNAL_API_KEY}
+{ issuer_did, subject_did, type, context_id?, context_type?, payload? }
 ```
 
-Params: `subject_did` (required), `type`, `issuer_did`, `status`, `limit` (max 100).
-Returns array of attestation objects, newest first. Non-revoked only.
-
-Shorthand (subject DID in path):
-```
-GET https://auth.imajin.ai/api/attestations/did:imajin:subject...
-```
-
-### Countersigning (Bilateral Attestations)
-
-Only the attestation subject can countersign. Transitions status from `pending` → `bilateral`.
+### Querying
 
 ```
-POST https://auth.imajin.ai/api/attestations/countersign
-Cookie: imajin_session=<jwt>
-Content-Type: application/json
-
-{
-  "attestationId": "att_abc123xyz",
-  "witnessJws": "<jws-string>"
-}
+GET /auth/api/attestations?subject_did={did}&type=vouch&limit=20
+GET /auth/api/attestations/{did}   // shorthand
 ```
 
-Response (200):
-```json
-{
-  "id": "att_abc123xyz",
-  "cid": "bafyrei...",
-  "status": "bilateral"
-}
-```
+### Countersigning
 
-Error (409): `{ "error": "Cannot countersign — attestation is bilateral" }` (already done)
-Error (403): `{ "error": "Only the attestation subject can countersign" }`
+```
+POST /auth/api/attestations/countersign
+{ "attestationId": "att_abc", "witnessJws": "<jws>" }
+```
+Transitions status from `pending` → `bilateral`. Only the subject can countersign.
 
 ---
 
-## 7. .fair Attribution
+## 9. .fair Attribution
 
 Every asset carries a `.fair` manifest: who contributed, in what proportion, under what terms.
-Unsigned manifests are rejected at settlement.
 
-### Manifest Format
+### Manifest Format (v1.1)
 
-```json
-{
-  "id": "asset-123",
-  "version": "0.3.0",
-  "type": "track",
-  "contributors": [
-    { "id": "did:imajin:5Qn8...", "role": "artist", "weight": 0.6 },
-    { "id": "did:imajin:8Xk2...", "role": "producer", "weight": 0.4 }
-  ],
-  "terms": { "train": { "consent": "explicit", "price": 0.50 } },
-  "signature": "...",
-  "platformSignature": "..."
+```typescript
+interface FairManifestV1_1 {
+  fair: "1.1";
+  version: "1.1";
+  id: string;
+  type: string;
+  owner: string;               // DID
+  created: string;             // ISO 8601
+  source?: string;
+  access: FairAccessV1_1 | "public" | "private";
+  transfer?: FairTransferV1_1;
+  fees?: FairFee[];
+  attribution: DidShareList;   // who gets paid
+  distribution?: {             // usage rights
+    reproduction?: FairDistributionRight;
+    streaming?: FairDistributionRight;
+    derivative?: FairDistributionRight;
+    syndication?: FairDistributionRight;
+  };
+  training?: FairTraining;
+  commercial?: FairCommercial;
+  integrity?: FairIntegrity;
+  terms?: string;
+  intent?: FairIntent;
+  signature?: Signature;       // Ed25519, base64url
+  tipping?: { enabled: boolean };
+  settlement?: SettlementConfig;
+  chain?: DidShareList;        // backward compat alias
+  distributions?: DidShareList; // backward compat alias
 }
 ```
 
-Multi-contributor manifests require each listed contributor's signature.
-With DFOS chain backing, creator proof is portable and verifiable independent of Imajin's server.
+### Fee Cascade
 
-### Media Service .fair Sidecars
+```typescript
+import { buildFairManifest } from '@imajin/fair';
 
-When a file is uploaded to media service, a `.fair` sidecar is generated and stored alongside:
-
-```json
-{
-  "fair": "1.0",
-  "id": "asset_xxx",
-  "type": "image/jpeg",
-  "owner": "did:imajin:uploader...",
-  "created": "2026-03-25T10:00:00.000Z",
-  "source": "upload",
-  "access": { "type": "private" },
-  "attribution": [
-    { "did": "did:imajin:uploader...", "role": "creator", "share": 1.0, "chainProof": { ... } }
-  ],
-  "transfer": { "allowed": false }
-}
+const manifest = buildFairManifest({
+  creatorDid: "did:imajin:alice...",
+  contentDid: "did:imajin:asset_xxx",
+  contentType: "track",
+  scopeDid: null,
+  nodeOperatorDid: "did:imajin:node...",
+  nodeFeeBps: 50,          // 0.5% — clamped to [25, 200]
+  buyerCreditBps: 25,      // 0.25% — clamped to [25, 200]
+});
 ```
 
-Access types: `"public"` (anyone can fetch), `"private"` (owner only),
-`"trust-graph"` (owner + allowedDids list).
+Fee cascade order:
+1. **Protocol fee**: fixed at 1.0% (`PROTOCOL_FEE_BPS = 100`)
+2. **Node fee**: operator-configurable, default 0.5%, bounds [0.25%, 2.0%]
+3. **Buyer credit**: operator-configurable, default 0.25%, bounds [0.25%, 2.0%]
+4. **Scope fee**: optional, only when `scopeDid` + `scopeFeeBps` provided
+5. **Seller share**: remainder
 
-### Market .fair Manifest (Auto-Generated)
+Chain placeholder DIDs:
+- `BUYER_PLACEHOLDER` → resolved to actual buyer DID at settlement
+- `NODE_PLACEHOLDER` → resolved to `NODE_DID` env var
 
-On purchase, a distribution manifest is built:
-```json
+### Settlement via Bus Reactor
+
+The `settleReactor` (`packages/bus/src/reactors/settle.ts`):
+1. Extracts amount, currency, fairManifest from event payload
+2. Resolves placeholder DIDs in the chain
+3. Deducts estimated Stripe processing fee from seller share
+4. Fixes rounding drift by adjusting the seller entry
+5. POSTs to pay service `/api/settle` with resolved chain
+
+```typescript
+// The settle reactor POSTs this body to pay service:
 {
-  "version": "1.0",
-  "type": "market:purchase",
-  "distributions": [
-    { "did": "did:imajin:seller...", "share": 0.99, "role": "seller" },
-    { "did": "did:imajin:platform", "share": 0.01, "role": "platform" }
-  ]
+  from_did: buyerDid,
+  total_amount: 14.63,        // dollars after fee deduction
+  service: "market",
+  type: "listing.purchased",
+  funded: true,
+  funded_provider: "stripe",
+  fair_manifest: {
+    chain: [
+      { did: "did:imajin:protocol...", amount: 0.15, role: "protocol" },
+      { did: "did:imajin:node...", amount: 0.07, role: "node" },
+      { did: "did:imajin:buyer...", amount: 0.04, role: "buyer_credit" },
+      { did: "did:imajin:seller...", amount: 14.37, role: "seller" },
+    ]
+  }
 }
 ```
-
-Custom `.fair` manifests on listings override this default.
-
-### Settlement
-
-Every transaction verifies .fair signatures before processing. Splits follow the manifest.
-On completion, a `transaction.settled` attestation is emitted.
-
-Platform fee: configurable `platformFeeBps` on each connected Stripe account.
-Default: `DEFAULT_PLATFORM_FEE_BPS` (defined in pay service lib).
 
 ---
 
-## 8. Services Reference
+## 10. Settlement
 
-### 8.1 Auth Service (auth.imajin.ai)
+### Stripe Integration
 
-Auth is the kernel. All sessions originate here. All other services validate against it.
-
-**Identity Resolution**
+The pay service creates Stripe Checkout sessions:
 
 ```
-GET https://auth.imajin.ai/api/identity/did:imajin:abc123
-```
-
-Response (200):
-```json
+POST /pay/api/checkout
 {
-  "did": "did:imajin:abc123...",
-  "publicKey": "64-char-hex-ed25519-pubkey",
-  "type": "human",
-  "tier": "preliminary",
-  "dfosDid": "did:dfos:abc..."   // if chain registered
+  "items": [{ "name": "Jacket", "amount": 15000, "quantity": 1 }],
+  "currency": "CAD",
+  "successUrl": "...",
+  "cancelUrl": "...",
+  "metadata": { "service": "market", "listingId": "lst_abc", "sellerDid": "...", "buyerDid": "..." },
+  "fairManifest": { ... },
+  "sellerDid": "did:imajin:seller..."
+}
+→ { "id": "cs_live_xxx", "url": "...", "transactionId": "tx_abc" }
+```
+
+Seller DID lookup: if seller has a connected Stripe account (`chargesEnabled: true`), the session routes through Connect with platform fee applied.
+
+### MJNx Ledger
+
+MJN is the internal credit token. 1 MJN = $0.01 (1¢). 100 MJN = 1 MJNx.
+
+Emissions are triggered by the MJN reactor (`packages/bus/src/reactors/mjn.ts`):
+
+```typescript
+// EMISSION_SCHEDULE excerpt:
+'listing.purchased': {
+  gas: 0.01,
+  emit: [
+    { to: 'subject', amount: '0.25%', reason: 'Purchase reward' },
+    { to: 'issuer', amount: '0.25%', reason: 'Sale reward' },
+  ],
 }
 ```
 
-Error (404): `{ "error": "Identity not found" }`
-
-**Lookup by DID (with profile data)**
-
-```
-GET https://auth.imajin.ai/api/lookup/did:imajin:abc123
-```
-
-Response (200):
-```json
+The reactor resolves percentage amounts against the settlement value and POSTs credits to pay service `/api/emission`:
+```typescript
 {
-  "did": "did:imajin:abc123...",
-  "handle": "alice",
-  "name": "Alice",
-  "type": "human",
-  "tier": "preliminary",
-  "avatarUrl": "https://media.imajin.ai/api/assets/asset_xxx",
-  "metadata": { ... },
-  "createdAt": "2026-01-01T00:00:00.000Z"
+  to_did: targetDid,
+  amount: 2.5,               // MJN
+  currency: 'MJN',
+  reason: 'Purchase reward',
+  metadata: { attestation_type: 'listing.purchased', ... }
 }
 ```
 
-**DFOS Chain**
+### Settlement Schemes
 
-```
-GET https://auth.imajin.ai/api/identity/did:imajin:abc123/chain
-```
+Supported schemes: `x402 | stripe-link | mjnx-direct | solana-pay | lightning`
 
-Response (200):
-```json
-{
-  "did": "did:imajin:abc123...",
-  "dfosDid": "did:dfos:abc...",
-  "log": ["eyJ...", "eyJ..."],
-  "headCid": "bafyrei...",
-  "keyCount": 3,
-  "isDeleted": false
-}
-```
-
-**Chain Verification**
-
-```
-GET https://auth.imajin.ai/api/identity/did:imajin:abc123/verify
-```
-
-Response (200):
-```json
-{
-  "did": "did:imajin:abc123...",
-  "dfosDid": "did:dfos:abc...",
-  "hasDfosChain": true,
-  "chainValid": true,
-  "chainError": null,
-  "chainLength": 3,
-  "currentKeys": {
-    "auth": 1,
-    "assert": 1,
-    "controller": 1
-  },
-  "dbConsistent": true,
-  "isDeleted": false
-}
-```
-
-If no chain: `{ "hasDfosChain": false, "message": "Identity exists but has no DFOS chain" }`
-
-**Access Check**
-
-Determines whether the authenticated requester has access to the given resource DID.
-Used by chat service before serving messages.
-
-```
-GET https://auth.imajin.ai/api/access/did:imajin:event:evt_123
-Cookie: imajin_session=<jwt>
-```
-
-Response (200):
-```json
-{ "allowed": true, "role": "attendee", "governance": "ticket" }
-```
-
-Or: `{ "allowed": false }`
-
-Governance values:
-- `"ticket"` — event access via ticket ownership
-- `"owner"` — event access as creator/organizer
-- `"dm"` — direct message participant
-- `"group"` — group conversation member
-- `"member"` — pod member
-
-Rules by DID namespace:
-- `did:imajin:event:*` or `did:imajin:evt_*`: checks `events.tickets` for ownerDid, falls back to creator check
-- `did:imajin:dm:*`: allows access if conversation doesn't exist yet (DID is proof of membership), else checks participation
-- `did:imajin:group:*`: checks conversation_members and pod_members
-
-Error (401): `{ "error": "Not authenticated" }`
+Configured per manifest in `settlement.schemes`.
 
 ---
 
-### 8.2 Chat Service (chat.imajin.ai)
+## 11. Chat
 
-DID-keyed conversations. Every conversation is addressed by a DID. Auth service is the single
-access control authority.
+DID-based messaging. Every conversation is a DID.
 
-**Send Message**
+### Conversation DIDs
+
+```typescript
+import { dmDid, groupDid, parseConversationDid } from '@/src/lib/chat/conversation-did';
+
+const did = dmDid(didA, didB);     // deterministic, sorted
+const gdid = groupDid([didA, didB, didC]); // deterministic, sorted
+
+parseConversationDid('did:imajin:dm:abc123');
+// → { type: 'dm', slug: 'abc123' }
+```
+
+### REST API
 
 ```
-POST https://chat.imajin.ai/api/d/did:imajin:dm:abc123/messages
-Cookie: imajin_session=<jwt>
-Content-Type: application/json
-
+POST /chat/api/d/{conversationDid}/messages
+Cookie: imajin_session=...
 {
   "content": { "text": "Hello!" },
   "contentType": "text",
-  "replyToMessageId": "msg_abc",    // optional
-  "mediaType": "image",             // optional
-  "mediaPath": null,                // optional, legacy
-  "mediaAssetId": "asset_xxx",      // optional, new-style
-  "mediaMeta": { "width": 1920 },   // optional
-  "conversationName": "Event Lobby" // optional, only on first message
+  "replyToMessageId": "msg_abc"
 }
+→ { message: { id, conversationDid, fromDid, content, contentType, signature, createdAt, reactions: [] } }
 ```
 
-`content` must be an object (shape is determined by contentType).
-`contentType`: `"text"` | `"system"` | `"media"` | `"voice"` | `"location"`
+```
+GET /chat/api/d/{conversationDid}/messages?limit=50&before=msg_abc
+→ { messages: [...], hasMore: true }
+```
 
-Requires tier != `soft`. Soft DIDs get 403: `{ "error": "Please verify your account to send messages" }`.
+Requires tier != `soft`. Access verified via auth service.
 
-Access is verified via `GET auth.imajin.ai/api/access/:did` — 403 if denied.
+### Message Types
 
-Conversations are auto-created on first message if they don't exist.
+```typescript
+export type MessageContent =
+  | { type?: "text"; text: string; encrypted?: string; nonce?: string; meta?: MessageMeta }
+  | { type: "voice"; assetId: string; transcript: string; durationMs: number; waveform?: number[] }
+  | { type: "media"; assetId: string; filename: string; mimeType: string; size: number; width?: number; height?: number; caption?: string }
+  | { type: "location"; lat: number; lng: number; label?: string; accuracy?: number }
+  | { type: "system"; event: "member_added" | "member_removed" | "member_left" | "created" | "renamed"; actorDid: string; targetDid?: string; occurredAt?: string; attestationId?: string };
+```
 
-Response (201):
+### WebSocket Protocol
+
+Connect to `wss://chat.imajin.ai/ws`.
+
+**Authentication:**
+- Cookie-based (automatic): session cookie on upgrade request
+- Token-based (deferred): connect without cookie, receive `{ type: "auth_required" }`, send `{ type: "auth", token: "..." }`
+
+WS tokens are short-lived (30 seconds, one-time use):
+```
+POST /chat/api/ws-token
+Cookie: imajin_session=...
+→ { token: "wst_xxx" }
+```
+
+**Client → Server:**
 ```json
-{
-  "message": {
-    "id": "msg_abc123",
-    "conversationDid": "did:imajin:dm:abc123...",
-    "fromDid": "did:imajin:sender...",
-    "content": { "text": "Hello!" },
-    "contentType": "text",
-    "replyToMessageId": null,
-    "mediaType": null,
-    "mediaPath": null,
-    "mediaAssetId": null,
-    "mediaMeta": null,
-    "signature": "deadbeef...",
-    "linkPreviews": [],
-    "createdAt": "2026-03-25T10:00:00.000Z",
-    "deletedAt": null,
-    "reactions": []
-  }
-}
-```
-
-Message signatures: best-effort Ed25519 signed by the node's chain key. Never blocks delivery.
-Link previews: extracted async after response, then broadcast via WebSocket as `message_updated`.
-
-**List Messages**
-
-```
-GET https://chat.imajin.ai/api/d/did:imajin:dm:abc123/messages?limit=50&before=msg_abc
-Cookie: imajin_session=<jwt>
-```
-
-`limit`: 1–100 (default 50).
-`before`: message ID for cursor-based pagination (returns messages older than that message).
-
-Response (200):
-```json
-{
-  "messages": [ { ...message + reactions array... } ],
-  "hasMore": true
-}
-```
-
-Messages returned in chronological order (oldest first). `hasMore: true` means more pages exist.
-
----
-
-### 8.3 WebSocket Protocol (chat.imajin.ai)
-
-Real-time messaging. Connect to `wss://chat.imajin.ai/ws`.
-
-**Connection**
-
-Authentication can happen two ways:
-
-1. Cookie-based (automatic): WebSocket upgrade request includes the session cookie.
-   If valid, server sends `{ "type": "connected" }` immediately.
-
-2. Token-based (deferred): Connect without cookie. Server sends `{ "type": "auth_required" }`.
-   Client sends auth message. Server validates and sends `{ "type": "connected" }` or closes.
-
-**Client → Server Messages**
-
-```json
-// Deferred auth (token-based)
-{ "type": "auth", "token": "<ws-token-from-api>" }
-
-// Subscribe to a conversation or DID
-{ "type": "subscribe", "conversationId": "did:imajin:dm:abc123..." }
-{ "type": "subscribe", "did": "did:imajin:dm:abc123..." }  // legacy alias
-
-// Typing indicator
-{ "type": "typing", "conversationId": "did:imajin:dm:abc123...", "name": "Alice" }
-
-// Stop typing
-{ "type": "stop_typing", "conversationId": "did:imajin:dm:abc123..." }
-
-// Keep-alive
+{ "type": "subscribe", "conversationId": "did:imajin:dm:abc123" }
+{ "type": "typing", "conversationId": "...", "name": "Alice" }
+{ "type": "stop_typing", "conversationId": "..." }
 { "type": "ping" }
 ```
 
-**Server → Client Messages**
-
+**Server → Client:**
 ```json
-// Connection established
 { "type": "connected" }
-
-// Auth required (no cookie on upgrade)
-{ "type": "auth_required" }
-
-// New message delivered
-{ "type": "new_message", "message": { ...full message object... } }
-
-// Message updated (e.g. link previews loaded)
-{ "type": "message_updated", "message": { ...updated message... } }
-
-// Typing indicator from peer
-{ "type": "user_typing", "conversationId": "did:imajin:dm:abc123...", "did": "did:imajin:peer...", "name": "Bob" }
-
-// Peer stopped typing
-{ "type": "user_stop_typing", "conversationId": "did:imajin:dm:abc123...", "did": "did:imajin:peer..." }
-
-// Presence change
-{ "type": "user_presence", "did": "did:imajin:peer...", "online": true, "lastSeen": null }
-{ "type": "user_presence", "did": "did:imajin:peer...", "online": false, "lastSeen": "2026-03-25T10:00:00.000Z" }
-
-// Pong
+{ "type": "new_message", "message": { ... } }
+{ "type": "message_updated", "message": { ... } }
+{ "type": "user_typing", "conversationId": "...", "did": "...", "name": "Bob" }
+{ "type": "user_presence", "did": "...", "online": true, "lastSeen": null }
 { "type": "pong" }
-
-// Error
-{ "type": "error", "message": "Not authenticated. Send auth message first." }
 ```
 
-**Notes:**
-- Typing indicators auto-expire after 5 seconds of silence.
-- Presence is tracked per-DID (multiple tabs share a DID; last tab closing triggers offline).
-- Subscription is per-conversation DID. Subscribe after connecting to receive messages.
-- Internal broadcast: HTTP API routes call `POST /__ws_broadcast` (internal, same port) to
-  push messages through the WebSocket server.
+Presence tracked per-DID (multiple tabs share a DID; last tab closing triggers offline).
 
----
+### E2EE (Simplified)
 
-### 8.4 Market Service (market.imajin.ai)
-
-Consent-based local commerce. Three seller tiers control how purchase is handled:
-
-| Tier                | Description                                        |
-|---------------------|----------------------------------------------------|
-| `public_offplatform`  | Contact info required; no on-platform checkout   |
-| `public_onplatform`   | Stripe checkout; any authenticated user          |
-| `trust_gated`         | Stripe checkout; requires hard DID (keypair)     |
-
-**Create Listing**
-
-```
-POST https://market.imajin.ai/api/listings
-Cookie: imajin_session=<jwt>
-Content-Type: application/json
-
-{
-  "title": "Vintage Leather Jacket",
-  "description": "Size L, barely worn",
-  "price": 15000,              // cents (CAD 150.00)
-  "currency": "CAD",           // default
-  "category": "clothing",
-  "images": ["asset_xxx"],     // up to 8, asset IDs or URLs
-  "imageAssetIds": ["asset_xxx"], // new-style asset IDs
-  "quantity": 1,
-  "sellerTier": "public_onplatform",
-  "contactInfo": {             // required for public_offplatform
-    "phone": "+1-555-555-5555",
-    "email": "seller@example.com",
-    "whatsapp": "+1-555-555-5555"
-  },
-  "trustThreshold": null,
-  "rangeKm": 50,
-  "metadata": {},
-  "type": "sale",              // sale | rent
-  "showContactInfo": false,
-  "expiresAt": null
-}
-```
-
-Response (201): full listing object.
-
-Validation errors (400):
-- `title` required
-- `price` must be > 0
-- `images` max 8 items
-- `public_offplatform` requires at least one of contactInfo.phone/email/whatsapp
-
-**Browse Listings**
-
-```
-GET https://market.imajin.ai/api/listings?category=clothing&status=active&currency=CAD&seller_tier=public_onplatform&seller_did=did:imajin:abc&sort=newest&page=1&limit=20
-```
-
-Params:
-- `status`: active (default) | paused | sold | rented | removed
-- `sort`: `newest` (default) | `price_asc` | `price_desc`
-- `seller_did`: filter by seller (authenticated seller sees all their own statuses)
-- `exclude`: listing ID to exclude (for "other items by seller" queries)
-- Unauthenticated requests: `trust_gated` listings automatically excluded
-
-Response (200):
-```json
-{
-  "listings": [ { ...listing, "images": ["https://media.imajin.ai/api/assets/asset_xxx?w=400"] } ],
-  "total": 42,
-  "page": 1,
-  "limit": 20,
-  "hasMore": true
-}
-```
-
-Images are resolved via `resolveMediaRef(ref, 'card')` — asset IDs become full URLs at 400px.
-
-**Get Listing**
-
-```
-GET https://market.imajin.ai/api/listings/lst_abc123
-```
-
-Trust-gated listings return 403 for unauthenticated requests:
-```json
-{ "error": "This listing is only available to verified members", "gated": true }
-```
-
-Images in detail view are resolved at 800px (`detail` preset).
-
-**Update Listing (seller only)**
-
-```
-PATCH https://market.imajin.ai/api/listings/lst_abc123
-Cookie: imajin_session=<jwt>
-Content-Type: application/json
-
-{
-  "status": "paused",
-  "price": 12000
-}
-```
-
-Status transition table:
-```
-active      → paused | sold | rented | unavailable
-paused      → active | removed
-unavailable → active | removed
-sold        → removed
-rented      → removed
-removed     → (terminal)
-```
-
-Response (200): updated listing object.
-Error (400): `{ "error": "Cannot transition listing from 'active' to 'removed'. Allowed: paused, sold, rented, unavailable" }`
-
-**Delete Listing (soft delete)**
-
-```
-DELETE https://market.imajin.ai/api/listings/lst_abc123
-Cookie: imajin_session=<jwt>
-```
-
-Sets status to `removed`. Response: `{ "success": true }`
-
-**Purchase Listing**
-
-```
-POST https://market.imajin.ai/api/listings/lst_abc123/purchase
-Cookie: imajin_session=<jwt>
-Content-Type: application/json
-
-{
-  "quantity": 1   // optional, defaults to 1
-}
-```
-
-- `public_offplatform`: returns 400 (contact seller directly)
-- `public_onplatform`: any authenticated user
-- `trust_gated`: requires hard DID (preliminary/established), else 403
-
-Response (200):
-```json
-{
-  "url": "https://checkout.stripe.com/pay/cs_live_xxx",
-  "sessionId": "cs_live_xxx"
-}
-```
-
-Redirect the user to `url`. Market delegates entirely to pay service (sovereign node model).
-A pending transaction record is created in pay service's DB.
-
----
-
-### 8.5 Pay Service (pay.imajin.ai)
-
-Stripe-backed settlement. All services delegate payment to pay service.
-
-**Create Checkout Session**
-
-```
-POST https://pay.imajin.ai/api/checkout
-Content-Type: application/json
-
-{
-  "items": [
-    {
-      "name": "Vintage Leather Jacket",
-      "description": "Size L",    // optional
-      "amount": 15000,             // cents, integer, 50–99,999,900
-      "quantity": 1,               // integer, 1–100
-      "image": "https://..."       // optional
-    }
-  ],
-  "currency": "CAD",               // USD | CAD | EUR | GBP
-  "mode": "payment",               // optional: payment | subscription
-  "customerEmail": "user@example.com",  // optional
-  "successUrl": "https://market.imajin.ai/checkout/success?session_id={CHECKOUT_SESSION_ID}",
-  "cancelUrl": "https://market.imajin.ai/listings/lst_abc",
-  "metadata": {
-    "service": "market",
-    "listingId": "lst_abc",
-    "sellerDid": "did:imajin:seller...",
-    "buyerDid": "did:imajin:buyer..."
-  },
-  "fairManifest": { ... },         // optional
-  "sellerDid": "did:imajin:seller..."  // optional: resolves to Stripe connected account
-}
-```
-
-`sellerDid` lookup: if the seller has a connected Stripe account (`chargesEnabled: true`),
-the session routes through that account with a platform fee applied.
-
-Response (200):
-```json
-{
-  "id": "cs_live_xxx",
-  "url": "https://checkout.stripe.com/pay/cs_live_xxx",
-  "expiresAt": "2026-03-25T11:00:00.000Z",
-  "transactionId": "tx_abc123"
-}
-```
-
-Error cases:
-- 400: `{ "error": "items array is required" }`
-- 400: `{ "error": "items[0].amount must be >= 50 (Stripe minimum is 50 cents)" }`
-- 400: `{ "error": "items[0].quantity must be <= 100" }`
-- 400: `{ "error": "Seller hasn't completed payment setup" }` (no chargesEnabled on connected account)
-- 429: rate-limited (10 requests per 60 seconds)
-
----
-
-### 8.6 Connections Service (connections.imajin.ai)
-
-Trust graph. Pods are the building block — a pod is a trusted group of DIDs.
-
-**Invite System**
-
-Two delivery modes:
-- `link`: a shareable invite URL anyone with the link can use. Role-based limits on pending count.
-- `email`: sends directly to a specific email. Requires hard DID + trust graph membership.
-
-Invite limits by role (link invites only):
-```
-admin: unlimited
-legendary: 10 pending
-trusted: 5 pending
-member: 3 pending (default)
-newbie: 1 pending
-```
-
-Create invite:
-```
-POST https://connections.imajin.ai/api/invites
-Cookie: imajin_session=<jwt>
-Content-Type: application/json
-
-// Link invite:
-{
-  "delivery": "link",
-  "note": "Welcome to the community",  // optional
-  "maxUses": 1                          // optional
-}
-
-// Email invite:
-{
-  "delivery": "email",
-  "toEmail": "friend@example.com",
-  "note": "Hey! Join us on Imajin."
-}
-```
-
-Response (201):
-```json
-{
-  "invite": {
-    "id": "inv_abc123",
-    "code": "abc123def456...",
-    "fromDid": "did:imajin:sender...",
-    "fromHandle": "alice",
-    "toEmail": null,
-    "delivery": "link",
-    "status": "pending",
-    "maxUses": 1,
-    "expiresAt": null
-  },
-  "url": "https://connections.imajin.ai/invite/did:imajin:alice.../abc123...",
-  "remaining": 2
-}
-```
-
-Email invite emits `connection.invited` attestation. Issues cooldown (7 days, one pending email
-invite at a time).
-
-List invites:
-```
-GET https://connections.imajin.ai/api/invites
-Cookie: imajin_session=<jwt>
-```
-
-Response:
-```json
-{
-  "invites": [
-    {
-      "id": "inv_abc",
-      "code": "...",
-      "delivery": "link",
-      "status": "accepted",
-      "acceptedBy": "Bob",
-      "acceptedHandle": "bob",
-      "daysAgo": 3,
-      "url": "https://..."
-    }
-  ],
-  "role": "member",
-  "limit": 3,
-  "pending": 1,
-  "remaining": 2
-}
-```
-
-**Pods (Trust Groups)**
-
-Pods are the unit of trust graph membership. Being in any 2-person pod means you're in the
-trust graph.
-
-Create pod (requires trust graph membership):
-```
-POST https://connections.imajin.ai/api/pods
-Cookie: imajin_session=<jwt>
-Content-Type: application/json
-
-{
-  "name": "Design Team",
-  "description": "Our creative core",  // optional
-  "avatar": "asset_xxx",               // optional
-  "type": "personal",                   // personal | team | community
-  "visibility": "private"               // private | public
-}
-```
-
-Response (201): `{ "pod": { "id": "pod_abc", "name": "...", "ownerDid": "...", ... } }`
-
-Creator is added as `role: "owner"` automatically.
-
-List pods (own membership):
-```
-GET https://connections.imajin.ai/api/pods
-Cookie: imajin_session=<jwt>
-```
-
-Response: `{ "pods": [ { ...pod... } ] }`
-
----
-
-### 8.7 Media Service (media.imajin.ai)
-
-Asset storage with .fair access control and on-the-fly resizing.
-
-**Upload Asset**
-
-```
-POST https://media.imajin.ai/api/assets
-Cookie: imajin_session=<jwt>
-Content-Type: multipart/form-data
-
-file=<binary>            // required, max 50MB
-filename=photo.jpg       // optional (uses file.name if omitted)
-context={"app":"market","feature":"events","entityId":"evt_123","access":"public"}  // optional JSON string
-```
-
-Allowed types: images, audio, video, text, PDF, markdown, CSV, JSON, YAML, SVG.
-
-Deduplication: same hash + same owner → returns existing asset with `"deduplicated": true`.
-
-Response (201):
-```json
-{
-  "id": "asset_abc123",
-  "url": "https://media.imajin.ai/api/assets/asset_abc123",
-  "filename": "photo.jpg",
-  "mimeType": "image/jpeg",
-  "size": 204800,
-  "hash": "sha256hex...",
-  "storagePath": "/mnt/media/did_imajin_abc/assets/asset_abc123.jpg",
-  "fairManifest": { "fair": "1.0", "access": { "type": "private" }, ... },
-  "createdAt": "2026-03-25T10:00:00.000Z"
-}
-```
-
-Context auto-creates system folders:
-```
-bugs   → "Bug Reports" folder
-chat   → "Chat" folder
-profile → "Profile" folder
-events → "Events" folder
-market → "Profile" folder
-voice  → "Audio Recordings" folder
-```
-
-**Retrieve Asset**
-
-```
-GET https://media.imajin.ai/api/assets/asset_abc123
-GET https://media.imajin.ai/api/assets/asset_abc123?w=400
-GET https://media.imajin.ai/api/assets/asset_abc123?download=true
-```
-
-`?w=<pixels>`: on-the-fly resize (images only, powered by Sharp). Cached separately from original.
-
-Access control from .fair manifest:
-- `public`: no auth required
-- `private`: session cookie required, owner only
-- `trust-graph`: session required, must be in `allowedDids`
-
-Response headers:
-- `Content-Type: image/jpeg`
-- `ETag: "sha256hex"` (resized: `"sha256hex-w400"`)
-- `Cache-Control: public, max-age=86400` (or `private, max-age=3600` for non-public)
-- `X-Fair-Access: public`
-
-Supports `If-None-Match` for conditional GET → 304 Not Modified.
-
-**Delete Asset**
-
-```
-DELETE https://media.imajin.ai/api/assets/asset_abc123
-Cookie: imajin_session=<jwt>
-```
-
-Owner only. Hard deletes both file and DB record. Response: `{ "ok": true }`
-
-**Rename Asset**
-
-```
-PATCH https://media.imajin.ai/api/assets/asset_abc123
-Cookie: imajin_session=<jwt>
-Content-Type: application/json
-
-{ "filename": "new-name.jpg" }
-```
-
-**List Assets**
-
-```
-GET https://media.imajin.ai/api/assets?type=image&search=photo&sort=created&order=desc&limit=50&offset=0
-Cookie: imajin_session=<jwt>
-```
-
-Returns assets owned by authenticated user.
-
-Internal API (machine-to-machine):
-```
-GET https://media.imajin.ai/api/assets
-Authorization: Bearer <MEDIA_INTERNAL_API_KEY>
-X-Owner-DID: did:imajin:target...
-```
-
-**Media URL Resolution (client-side, `@imajin/media`)**
+Chat uses X25519 key agreement + XChaCha20-Poly1305:
 
 ```typescript
-import { resolveMediaRef } from '@imajin/media';
+import {
+  generateKeyPair, deriveSharedSecret,
+  encryptMessage, decryptMessage
+} from '@/src/lib/chat/crypto';
 
-resolveMediaRef("asset_abc123")              // original URL
-resolveMediaRef("asset_abc123", "thumbnail") // ?w=200
-resolveMediaRef("asset_abc123", "card")      // ?w=400
-resolveMediaRef("asset_abc123", "detail")    // ?w=800
-resolveMediaRef("asset_abc123", "og")        // /og (1200×630)
-resolveMediaRef("asset_abc123", 600)         // ?w=600
-resolveMediaRef("https://...", "card")       // returned unchanged (not an asset ID)
+const kp = generateKeyPair();
+const shared = deriveSharedSecret(privateKey, peerPublicKey);
+const { ciphertext, nonce } = encryptMessage(plaintext, shared);
+const plaintext = decryptMessage(ciphertext, nonce, shared);
 ```
 
-Only `asset_xxx` prefixed strings are processed. Legacy URLs pass through unchanged.
+Group chats use a shared group key re-encrypted to each member's X25519 public key.
 
 ---
 
-### 8.8 Events Service (events.imajin.ai)
+## 12. Connections & Trust Graph
 
-Events, tickets, check-in, and .fair splits. Key routes:
+Pods are the unit of trust graph membership. Being in any 2-person pod means you're in the trust graph.
 
-```
-GET    /api/events                    list/search events
-POST   /api/events                    create event
-GET    /api/events/:id                event detail
-PATCH  /api/events/:id                update event (organizer)
-DELETE /api/events/:id                delete event
-GET    /api/events/mine               authenticated user's events
-GET    /api/events/by-did/:did        resolve event by its DID
-GET    /api/events/:id/my-ticket      current user's ticket for this event
-GET    /api/events/:id/tiers          ticket tiers
-POST   /api/events/:id/tiers          create ticket tier
-POST   /api/events/:id/tickets/:tid/check-in    check in a ticket
-POST   /api/events/:id/tickets/:tid/refund      refund a ticket
-POST   /api/events/:id/tickets/:tid/resend-email resend ticket email
-POST   /api/events/:id/invites        create event invite
-GET    /api/events/:id/invites        list invites for event
-POST   /api/events/:id/fair           update .fair manifest
-GET    /api/events/:id/queue          queue management
-POST   /api/events/:id/hold           place hold on tickets
-GET    /api/events/:id/guests         guest list
-GET    /api/events/:id/admins         admin list
-GET    /api/events/:id/cohosts        cohost list
-```
-
-Event DIDs are assigned on creation. The event chat conversation shares this DID:
-`did:imajin:event:<eventId>`. Access to the conversation is gated by ticket ownership.
-
----
-
-## 9. Integration Patterns
-
-### Adding a New Service
-
-Every new service follows the same pattern:
-
-1. Import `@imajin/auth` for authentication:
-```typescript
-import { requireAuth, requireHardDID } from '@imajin/auth';
-
-export async function POST(request: Request) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return Response.json({ error: authResult.error }, { status: authResult.status });
-  }
-  const { identity } = authResult; // identity.id, identity.tier, etc.
-  // ...
-}
-```
-
-2. Set `AUTH_SERVICE_URL` in environment:
-```
-AUTH_SERVICE_URL=https://auth.imajin.ai
-```
-
-3. Read session in server components via `getSession()`:
-```typescript
-import { getSession } from '@imajin/auth';
-
-// In Next.js Server Components only
-const identity = await getSession(); // reads from next/headers cookie store
-```
-
-4. Emit attestations via `emitAttestation()`:
-```typescript
-import { emitAttestation } from '@imajin/auth';
-
-await emitAttestation({
-  issuer_did: identity.id,
-  subject_did: targetDid,
-  type: 'connection.invited',
-  context_id: resourceId,
-  context_type: 'connection',
-  payload: { ... },
-}).catch(err => console.error('Attestation error:', err));
-```
-
-The `emitAttestation` helper handles signing via the node's keypair and posting to
-`AUTH_SERVICE_URL/api/attestations`.
-
-### Consuming Identity
-
-Resolve handle → DID → profile:
-```bash
-# Lookup by DID
-curl https://auth.imajin.ai/api/lookup/did:imajin:abc123
-
-# Identity (public key + tier)
-curl https://auth.imajin.ai/api/identity/did:imajin:abc123
-
-# Full chain (portable, self-verifying)
-curl https://auth.imajin.ai/api/identity/did:imajin:abc123/chain
-```
-
-### Cross-Service Cookie Propagation
-
-When service A needs to call service B on behalf of the user, forward the session cookie:
+### Schema
 
 ```typescript
-const response = await fetch(`${EVENTS_SERVICE_URL}/api/events`, {
-  headers: {
-    Cookie: request.headers.get('cookie') || '',
-    'Content-Type': 'application/json',
-  },
+// From packages/trust-graph/src/schema.ts
+export const pods = connectionsSchema.table('pods', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  avatar: text('avatar'),
+  ownerDid: text('owner_did').notNull(),
+  type: text('type', { enum: ['personal', 'shared', 'event'] }).notNull().default('personal'),
+  visibility: text('visibility', { enum: ['private', 'trust-bound'] }).notNull().default('private'),
+  conversationDid: text('conversation_did'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const podMembers = connectionsSchema.table('pod_members', {
+  podId: text('pod_id').notNull(),
+  did: text('did').notNull(),
+  role: text('role', { enum: ['owner', 'admin', 'member'] }).notNull().default('member'),
+  addedBy: text('added_by'),
+  joinedAt: timestamp('joined_at').defaultNow().notNull(),
+  removedAt: timestamp('removed_at'),
+});
+
+export const connections = connectionsSchema.table('connections', {
+  didA: text('did_a').notNull(),
+  didB: text('did_b').notNull(),
+  connectedAt: timestamp('connected_at').defaultNow().notNull(),
+  disconnectedAt: timestamp('disconnected_at'),
 });
 ```
 
-Or after minting a fresh session token (for server-to-server initiated calls):
+### Trust Distance
+
+BFS shortest path in hops between two DIDs through pod co-membership:
 
 ```typescript
-const cookieConfig = getSessionCookieOptions();
-const token = await createSessionToken({ sub: did, type: 'human', tier: 'preliminary' });
+import { trustDistance, trustRadius, resolvePodMembers } from '@imajin/trust-graph';
 
-await fetch(`${PROFILE_SERVICE_URL}/api/profile`, {
-  method: 'POST',
-  headers: {
-    Cookie: `${cookieConfig.name}=${token}`,
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({ ... }),
-});
+const hops = await trustDistance(db, didA, didB, maxHops = 6);
+// Returns -1 if no path found
+
+const radius = await trustRadius(db, didA, maxHops = 3);
+// Returns Set of all DIDs within N hops
+
+const members = await resolvePodMembers(db, podId, maxDepth = 3);
+// Recursively resolves members from linked child pods
 ```
 
-### Rate Limiting
+### Invites
 
-All public endpoints implement in-memory sliding-window rate limiting.
-Default limits per route:
-- Session/soft: 10 per minute
-- Onboard/magic: 5 per minute
-- Register: 5 per minute
-- Login/challenge: 10 per minute
-- Checkout: 10 per minute
-- Media upload: 20 per minute
-
-Exceeded:
-```json
-{ "error": "Too many requests", "retryAfter": 30 }
 ```
-Header: `Retry-After: 30`
+POST /connections/api/invites
+{ "delivery": "link", "note": "...", "maxUses": 1 }
+→ { invite: { id, code, url, ... } }
+```
 
-### CORS
-
-All kernel services (`auth`, `pay`) return CORS headers via `corsHeaders(request)`.
-CORS is configured per origin (not wildcard) and respects the `Origin` header.
-Preflight requests get `OPTIONS` handlers returning `204`.
+Link invite limits by role: admin (unlimited), legendary (10), trusted (5), member (3), newbie (1).
 
 ---
 
-## 10. Cryptographic Stack
+## 13. Agent Identity
 
-| Primitive       | Purpose                                                       |
-|-----------------|---------------------------------------------------------------|
-| Ed25519         | DID keypairs, attestation signing, .fair signing, session auth |
-| SHA-256         | Content hashing, hard DID derivation                          |
-| dag-cbor + CID  | DFOS content addressing (attestation CIDs)                    |
-| JWS             | DFOS signature format for chain operations                    |
-| DFOS chain      | Identity anchoring, key rotation, countersignatures           |
-| JWT             | Session cookies (HS256, signed by auth service)               |
-| nanoid          | Opaque IDs for soft DIDs, attestations, invites, assets       |
+Agents are first-class identities with scoped delegation.
 
-All persistence: Postgres. Per-service schemas in a shared database. Schema names match service
-name (e.g., `events.*`, `chat.*`, `connections.*`, `profile.*`).
+### Creating an Agent
+
+```
+POST /auth/api/agents
+Cookie: imajin_session=...
+{ "handle": "my-agent", "name": "My Agent", "displayName": "Helper" }
+→ { agent: { did, handle, name, publicKey, tier: 'preliminary' } }
+```
+
+This:
+1. Generates an Ed25519 keypair for the agent
+2. Creates an `identities` row with `subtype: 'agent'`, `scope: 'actor'`
+3. Creates an `identity_members` row linking the agent to the caller with role `agent`
+
+### Listing Agents
+
+```
+GET /auth/api/agents
+→ { agents: [{ did, handle, displayName, name, tier, status, role }] }
+```
+
+### OpenClaw Plugin Integration
+
+Agents authenticate via the same challenge-response flow as humans. The OpenClaw Imajin channel plugin (`extensions/imajin`) uses:
+
+1. **Agent DID** — stored in plugin config
+2. **Challenge-response** — agent signs challenges with its Ed25519 key
+3. **X-Acting-For header** — after auth, the agent includes this header to act on behalf of its principal
+
+### Agent Challenge-Response
+
+Same as human challenge-response, but the agent's DID is used:
+```
+POST /auth/api/challenge
+{ "did": "did:imajin:agent_xxx" }
+→ { challengeId, challenge, expiresAt }
+
+POST /auth/api/authenticate
+{ "challengeId": "...", "signature": "..." }
+```
+
+---
+
+## 14. DFOS Integration
+
+### Relay
+
+DFOS relay runs at `registry.imajin.ai/relay/`. Every node runs an embedded relay.
+
+### Bridge
+
+The `@imajin/dfos` package bridges Imajin Ed25519 keypairs to DFOS identity chains:
+
+```typescript
+import { createIdentityChain, updateIdentityChain, verifyChain } from '@imajin/dfos';
+
+// Create chain
+const { did, log, operationCID } = await createIdentityChain({ privateKeyHex, publicKeyHex });
+
+// Verify chain
+const verified = await verifyChain(log);
+// → { did, authKeys: [...], assertKeys: [...], controllerKeys: [...], createdAt, updatedAt }
+```
+
+### Content Publishing
+
+```typescript
+import { publishContentEvent, getContentEvent } from '@imajin/dfos';
+
+const event = await publishContentEvent({
+  privateKeyHex,
+  publicKeyHex,
+  manifest: fairManifest,
+  contentCid: 'bafyrei...',
+});
+```
+
+---
+
+## 15. Integration Patterns
+
+### Adding a New Userspace App
+
+Every new app follows the same pattern:
+
+```typescript
+import { requireAuth, requireHardDID, requireAppAuth } from '@imajin/auth';
+import { publish } from '@imajin/bus';
+
+// 1. Auth guard
+const authResult = await requireAuth(request, { service: 'myapp' });
+if ('error' in authResult) { return Response.json({ error: ... }, { status: ... }); }
+
+// 2. Emit business event
+await publish('myapp.action', {
+  issuer: identity.id,
+  subject: targetDid,
+  scope: 'myapp',
+  payload: { context_id: resourceId, context_type: 'myapp', ... }
+});
+```
+
+### Environment Variables
+
+```
+AUTH_SERVICE_URL=https://jin.imajin.ai/auth   (kernel path, not separate service)
+PAY_SERVICE_URL=https://jin.imajin.ai/pay
+CHAT_SERVICE_URL=https://jin.imajin.ai/chat
+ATTESTATION_INTERNAL_API_KEY=...
+AUTH_PRIVATE_KEY=64-char-hex...
+NODE_DID=did:imajin:node_xxx
+```
+
+### Cross-Service Calls
+
+Forward the session cookie:
+```typescript
+const response = await fetch(`${CHAT_SERVICE_URL}/api/d/${did}/messages`, {
+  headers: { Cookie: request.headers.get('cookie') || '' }
+});
+```
+
+### Database Pattern
+
+Each service defines its schema in `src/db/schema.ts` using Drizzle ORM. The kernel uses per-service schemas:
+
+```typescript
+import { pgSchema } from 'drizzle-orm/pg-core';
+export const eventsSchema = pgSchema('events');
+export const marketSchema = pgSchema('market');
+```
+
+Shared DB connection via `@imajin/db`:
+```typescript
+import { createDb } from '@imajin/db';
+const db = createDb(schema);
+```
+
+---
+
+## 16. Cryptographic Stack
+
+| Primitive | Purpose |
+|-----------|---------|
+| Ed25519 | DID keypairs, attestation signing, .fair signing, session auth |
+| SHA-256 | Content hashing, hard DID derivation |
+| X25519 | Chat E2EE key agreement (derived from Ed25519) |
+| XChaCha20-Poly1305 | Chat message encryption |
+| XSalsa20-Poly1305 | Vault encryption (NaCl box) |
+| dag-cbor + CID | DFOS content addressing, attestation CIDs |
+| JWS | DFOS signature format for chain operations |
+| JWT | Session cookies (HS256, signed by auth service) |
 
 Key encodings:
-- Ed25519 private key: 32-byte seed, hex-encoded (64 chars)
+- Ed25519 private key: 32-byte seed, hex-encoded (64 chars) or PKCS#8 DER (96 chars)
 - Ed25519 public key: 32-byte point, hex-encoded (64 chars)
 - Ed25519 signature: 64 bytes, hex-encoded (128 chars)
-- DFOS keys also supported in multibase (`z` prefix, base58btc)
+- DFOS keys also in multibase (`z` prefix, base58btc)
 
-The same Ed25519 keypair produces both `did:imajin:xxx` and `did:dfos:xxx`.
-Byte-compatible. No derivation. Your DID is also a valid Solana wallet address.
-
----
-
-## 11. The Five Primitives
-
-Everything in MJN reduces to five primitives. They compose.
-
-### 1. Attestation
-
-Every trust-relevant act emits a cryptographically signed record. Unsigned attestations are
-rejected at write — a 4xx, not a null signature.
-
-On onboarding, both node and Actor sign a root record (bilateral). Every subsequent attestation
-references this root. DFOS countersignatures anchor it to chain.
-
-Standing computation:
-```
-standing(did, scope?) = f(
-  positive_attestations,     // weighted by type, issuer_type, issuer standing
-  negative_attestations,     // flags weighted by severity, time-decayed
-  recency_weights,           // time-decay over issued_at
-  issuer_standing,           // recursive: issuer standing affects weight
-  node_context               // optional: scoped to specific community
-)
-```
-
-### 2. Communication
-
-DID-based messaging. Every conversation is itself a DID:
-- `did:imajin:dm:<hash>` — direct message (deterministic from sorted participant DIDs)
-- `did:imajin:group:<uuid>` — group channel (random, server-generated)
-- `did:imajin:event:<id>` — event conversation
-
-Messages signed by sender DID. Auth service is the single access control authority.
-Real-time via WebSocket.
-
-### 3. Attribution (.fair)
-
-Every asset carries a `.fair` manifest: who contributed, in what proportion, under what terms.
-Cryptographically signed with Ed25519.
-
-### 4. Settlement
-
-Every transaction verifies .fair signatures before processing. Splits follow the manifest.
-Completion emits a `transaction.settled` attestation.
-
-Current: Stripe Connect (multi-seller payouts), EMT (bank transfer).
-Planned: MJN token on Solana. Dual-currency (fiat or MJN). Atomic .fair splits.
-
-Gas model for declared-intent marketplace:
-- Tier 1 (trust graph connections): free / near-free
-- Tier 2 (declared interest pool, local match): medium gas
-- Tier 3 (extended reach, opted-in): high gas
-
-Frequency-scaled depth gating: 1st = 1×, 2nd = 1.5×, 3rd = 3×, 4th = 7×, 5th = 15×, 6th+ = 40×.
-
-### 5. Discovery
-
-Federated registry at `registry.imajin.ai`. Nodes announce presence, operators, and served
-scopes. Node DIDs are chain-verified on registration.
-
-Trust-gated queries: access to a node's resources is gated by trust graph position.
-k-anonymity enforced. Matching is local — declared interests never leave the node.
-
-Exit credentials: signed portable credential with public summary (aggregate stats) and
-encrypted context (full attestation history, encrypted under departing Actor's public key).
+The same Ed25519 keypair produces both `did:imajin:xxx` and `did:dfos:xxx`. Byte-compatible. Also a valid Solana wallet address.
 
 ---
 
-## 12. What Imajin Rejects
-
-- **Subscriptions.** You own it forever.
-- **Cloud dependency.** Self-hosted, privacy-first. The reference runs on a single HP ProLiant.
-- **Vendor lock-in.** Open firmware. Open source. Every service replaceable.
-- **Surveillance capitalism.** Your data stays on your node.
-- **Planned obsolescence.** Repairable. Expandable. No forced updates.
-- **Orchestration theater.** No Kubernetes. No service mesh. No API gateway. JBOS.
-
-### The Sovereignty Property
-
-A node doesn't need the registry to exist — only to be discoverable. If the registry dies,
-you keep your keypair, your chain proofs, your attestation history. The exit door is always open.
-
-Federation is the honest architecture: central registry for discovery (ships fast, proves concept),
-with a path to on-chain registry (Solana), then mesh trust (no central authority).
-
-Every interaction is typed (human/agent/device) so you always know what you're talking to.
-Agents use the same DID format, same keypairs, same trust graph. Structural honesty, not policy.
-
----
-
-## 13. Build Stats (March 2026)
-
-| Metric                        | Value                                 |
-|-------------------------------|---------------------------------------|
-| Services                      | 15                                    |
-| Lines of code                 | 122,721                               |
-| Registered identities         | ~120                                  |
-| Issues closed                 | 235                                   |
-| Days building                 | 50                                    |
-| Builders                      | 1 human + AI                          |
-| Traditional estimate (COCOMO) | $2.3M / 14.4 months / 9.2 people      |
-| Actual cost                   | $76,445 / 50 days / 1 person          |
-
----
-
-## 14. What's Live (March 2026)
-
-- ✅ 15-service JBOS running on single server
-- ✅ Three-tier DID identity (soft/preliminary/established)
-- ✅ DFOS chain-backed identity across all services
-- ✅ DFOS relay at registry.imajin.ai/relay/
-- ✅ Bilateral attestations via DFOS countersignatures
-- ✅ 6 live attestation types with Ed25519 signing
-- ✅ .fair cryptographic signing at settlement
-- ✅ Stripe Connect multi-seller payouts
-- ✅ Trust graph (pods, invites, groups, vouches)
-- ✅ DID-based real-time chat with WebSocket
-- ✅ Federation registry
-- ✅ MJN token reserved on Solana (12rXuUVzC71zoLrqVa3JYGRiXkKrezQLXB7gKkfq9AjK)
-- ✅ Auth integration test suite (43 tests)
-- ✅ Market service (listings, trust-gated checkout)
-- ✅ OnboardGate for unauthenticated buyer flows
-
-## 15. What's Next
-
-- ⏳ Standing computation from attestation history
-- ⏳ Portable exit credentials
-- ⏳ MJN token settlement on Solana (dual-currency)
-- ⏳ Declared-intent marketplace with gas model
-- ⏳ Family / Community / Business DID scopes
-- ⏳ Encrypted chat (key epoch model)
-- ⏳ Node registration via DFOS relay (first boot flow)
-- ⏳ Gossip protocol via heartbeat extension
-- ⏳ First federated node outside the reference server
-
----
-
-## 16. Quick Reference
+## 17. Quick Reference
 
 - Source: github.com/ima-jin/imajin-ai
-- Whitepaper: imajin.ai/mjn-whitepaper
-- Developer Guide: imajin.ai/developer-guide
-- .fair spec: github.com/ima-jin/.fair
-- DFOS protocol: protocol.dfos.com
+- Kernel: jin.imajin.ai (consolidated auth/pay/chat/media/profile/connections/registry)
 - DFOS relay: registry.imajin.ai/relay/
-- OpenAPI specs: https://<service>.imajin.ai/api/spec
-- First demonstration: April 1, 2026
+- OpenAPI specs: https://jin.imajin.ai/api/spec (kernel), https://{app}.imajin.ai/api/spec (userspace)
 
 ### Common curl Flows
 
 ```bash
-# 1. Create soft DID session
-curl -c cookies.txt -X POST https://auth.imajin.ai/api/session/soft \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","name":"Jane"}'
+# 1. Soft DID session
+curl -c cookies.txt -X POST https://jin.imajin.ai/auth/api/session/soft \
+  -H "Content-Type: application/json" -d '{"email":"user@example.com","name":"Jane"}'
 
-# 2. Get current session
-curl -b cookies.txt https://auth.imajin.ai/api/session
+# 2. Get session
+curl -b cookies.txt https://jin.imajin.ai/auth/api/session
 
-# 3. Request challenge for keypair auth
-curl -X POST https://auth.imajin.ai/api/login/challenge \
-  -H "Content-Type: application/json" \
-  -d '{"handle":"alice"}'
+# 3. Challenge for keypair auth
+curl -X POST https://jin.imajin.ai/auth/api/challenge \
+  -H "Content-Type: application/json" -d '{"handle":"alice"}'
 
-# 4. Verify challenge signature
-curl -c cookies.txt -X POST https://auth.imajin.ai/api/login/verify \
-  -H "Content-Type: application/json" \
-  -d '{"challengeId":"chl_xxx","signature":"deadbeef..."}'
+# 4. Authenticate with signature
+curl -c cookies.txt -X POST https://jin.imajin.ai/auth/api/authenticate \
+  -H "Content-Type: application/json" -d '{"challengeId":"chl_xxx","signature":"deadbeef..."}'
 
 # 5. Create attestation
-curl -b cookies.txt -X POST https://auth.imajin.ai/api/attestations \
+curl -b cookies.txt -X POST https://jin.imajin.ai/auth/api/attestations \
   -H "Content-Type: application/json" \
-  -d '{"issuer_did":"did:imajin:issuer...","subject_did":"did:imajin:subject...","type":"vouch","signature":"..."}'
+  -d '{"issuer_did":"did:imajin:...","subject_did":"did:imajin:...","type":"vouch","signature":"..."}'
 
-# 6. Send a message
-curl -b cookies.txt -X POST "https://chat.imajin.ai/api/d/did:imajin:dm:abc123.../messages" \
-  -H "Content-Type: application/json" \
-  -d '{"content":{"text":"Hello!"},"contentType":"text"}'
+# 6. Send message
+curl -b cookies.txt -X POST "https://jin.imajin.ai/chat/api/d/did:imajin:dm:abc123/messages" \
+  -H "Content-Type: application/json" -d '{"content":{"text":"Hello!"},"contentType":"text"}'
 
-# 7. Upload an image
-curl -b cookies.txt -X POST https://media.imajin.ai/api/assets \
-  -F "file=@photo.jpg" \
-  -F 'context={"app":"market","access":"public"}'
+# 7. Get WS token
+curl -b cookies.txt -X POST https://jin.imajin.ai/chat/api/ws-token
+→ { "token": "wst_xxx" }
 
-# 8. Create a listing
+# 8. Create listing (userspace: market app)
 curl -b cookies.txt -X POST https://market.imajin.ai/api/listings \
   -H "Content-Type: application/json" \
   -d '{"title":"Jacket","price":15000,"currency":"CAD","sellerTier":"public_onplatform"}'
 
-# 9. Purchase a listing
-curl -b cookies.txt -X POST https://market.imajin.ai/api/listings/lst_abc/purchase \
-  -H "Content-Type: application/json" \
-  -d '{"quantity":1}'
-
-# 10. Create invite link
-curl -b cookies.txt -X POST https://connections.imajin.ai/api/invites \
-  -H "Content-Type: application/json" \
-  -d '{"delivery":"link"}'
+# 9. Create invite
+curl -b cookies.txt -X POST https://jin.imajin.ai/connections/api/invites \
+  -H "Content-Type: application/json" -d '{"delivery":"link"}'
 ```
 
 ---
