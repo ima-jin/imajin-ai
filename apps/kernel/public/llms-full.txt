@@ -1,61 +1,72 @@
 # Imajin Network (MJN Protocol)
 # llms-full.txt — Complete technical reference for AI consumption
-# v0.6 · May 2026 · DRAFT
+# v0.6 · May 2026
 # Ryan Veteze · ryan@imajin.ai · github.com/ima-jin/imajin-ai
 #
-# This document is intended as a complete integration reference.
+# This document is the single source of truth for the Imajin architecture.
 # An LLM should be able to build a working client from this document alone.
+# A human should be able to understand why every design choice was made.
 
 ---
 
 ## 1. What This Is
 
-MJN is a cryptographic operating system that runs as a single consolidated kernel with a federated userspace.
+Imajin is a cryptographic operating system. One kernel, a federated userspace, and four
+infrastructure layers that make every action verifiable and every relationship bilateral.
 
-The **kernel** (`apps/kernel`) is one Next.js application handling identity, authentication, payments, messaging, media, trust graph, and registry. One domain, one cookie, one build. The userspace apps (events, market, learn, coffee, links, dykil) are independent Next.js apps that consume the kernel via HTTP, each with their own schema, each replaceable.
+Without the chains, each service is a dumb CRUD app. With the chains, they form a sovereign
+operating system where identity, attribution, trust, and settlement are structural properties —
+not features bolted on after the fact.
 
-No service mesh. No orchestration framework. No API gateway. Kernel routes behind Caddy. Userspace apps behind Caddy. The value is in the cryptographic substrate underneath — signed identity chains that make every action verifiable and every relationship bilateral.
+The kernel (`apps/kernel`) consolidates auth, payments, messaging, media, trust graph, and
+registry into one Next.js application. One domain, one cookie, one build. Userspace apps
+(events, market, learn, coffee, links, dykil) are independent, replaceable, and disposable.
+They inherit the full trust graph by importing `@imajin/auth`. The value is never in the app
+layer — it's in the substrate underneath.
+
+No service mesh. No orchestration framework. No API gateway. No Kubernetes. No Docker.
+Just Next.js apps behind Caddy on a single server with pm2.
 
 **Build stats (May 2026):**
-| Metric | Value |
-|--------|-------|
-| Monorepo version | 0.6.1 |
-| Lines of TypeScript/TSX | ~134,000 |
-| Commits | 2,467 |
-| Days building | ~110 (started Feb 1, 2026) |
-| Shared packages | 20 |
+~134,000 lines of TypeScript across 20 shared packages. 2,467 commits in 110 days.
+Monorepo v0.6.1. One developer with AI agents. The constraint is intentional —
+if the architecture can't be maintained by a small team, it's the wrong architecture.
 
 ---
 
 ## 2. Architecture: Kernel + Bus + Vault + Broker
 
+Four infrastructure layers. The kernel runs the substrate. The bus moves events. The vault
+encrypts data. The broker mediates access. Everything else is userspace.
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Userspace Apps (federated, replaceable)                    │
+│  Userspace (disposable, replaceable)                        │
 │  events · market · learn · coffee · links · dykil           │
 ├─────────────────────────────────────────────────────────────┤
-│  Kernel (single Next.js app, single domain)                 │
+│  Kernel                                                     │
 │  auth · pay · chat · media · profile · connections · registry│
-│  ├─ Event Bus (@imajin/bus) — reactor chains                │
-│  ├─ Vault (imajin-cli) — encrypted key-value store          │
-│  └─ Broker (specced) — consent-gated selective disclosure   │
 ├─────────────────────────────────────────────────────────────┤
-│  DFOS Proof Chains (L0–L5) · .fair Attribution              │
-│  Ed25519 · CID · dag-cbor · countersignatures               │
+│  Bus ─ reactor chains (side effects are composable)          │
+│  Vault ─ encrypted store (data encrypted at rest, always)   │
+│  Broker ─ consent gate (data released only with permission) │
+├─────────────────────────────────────────────────────────────┤
+│  Cryptographic Substrate                                    │
+│  Ed25519 · CID · dag-cbor · DFOS chains · .fair manifests   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Why this works:**
-- The kernel is sovereign infrastructure. One cookie, one session, no CORS between auth/pay/chat.
-- Userspace apps inherit the full trust graph and identity system by importing `@imajin/auth`.
-- The complexity lives in the chain layer, not the orchestration layer.
-- Runs on a single server with pm2. No Kubernetes. No Docker in production.
+**Why one kernel, not 15 services:**
+We started with 15. CORS, cookie forwarding, session validation round-trips, and deploy
+coordination made it worse than a monolith without any of the benefits. The kernel is one
+Next.js app with route prefixes. One cookie, one session, no inter-service trust assumptions.
+Userspace apps stay independent because they're genuinely different domains (events vs market
+vs learn). The kernel stays unified because auth, pay, chat, and media are all facets of the
+same identity substrate.
 
-### Kernel Consolidation
+### Kernel Route Map
 
-The kernel consolidated what were formerly 8 separate services into one application:
-
-| Route prefix | Responsibility |
+| Route prefix | What it does |
 |--------------|----------------|
 | `/auth/*` | DIDs, sessions, attestations, challenges, registration, agents, apps |
 | `/pay/*` | Stripe checkout, settlement, .fair splits, MJNx ledger |
@@ -72,10 +83,15 @@ Chat's WebSocket server (`ws-server.js`) runs as a separate process. Caddy route
 
 ## 3. Identity
 
+Every entity in the system — person, agent, device, business, community — is a DID with an
+Ed25519 keypair. The identity model is designed so that everyone starts with nothing (just an
+email) and accumulates trust through real actions. No admin grants. No KYC gates. You earn
+standing by doing things that get attested.
+
 ### DID Format
 
-- **Soft DID**: `did:imajin:<nanoid(44)>` — random stable identifier minted at email verification. No keypair. Cannot sign. Stored in DB with a placeholder key.
-- **Hard DID**: `did:imajin:<sha256(Ed25519_pubkey)>` — deterministically derived from the Ed25519 public key. Cryptographically self-certifying. Can sign attestations, messages, etc.
+- **Soft DID**: `did:imajin:<nanoid(44)>` — random stable identifier minted at email verification. No keypair. Cannot sign. A placeholder that can be upgraded.
+- **Hard DID**: `did:imajin:<sha256(Ed25519_pubkey)>` — deterministically derived from the Ed25519 public key. Cryptographically self-certifying. Verifiable without Imajin's server.
 
 Conversation DIDs (chat):
 - DM: `did:imajin:dm:<sha256(sorted_member_dids)>.slice(0,16)` — deterministic from participants
@@ -106,21 +122,12 @@ import { isVerifiedTier, isEstablishedTier, isStewardTier, isOperatorTier } from
 - **community**: Shared practice. Quorum-governed, contribution-weighted.
 - **business**: Structured entity. Roles, delegation chains. Cannot initiate connections — all outreach is consent-gated.
 
-### identity_members Table
+### Group Membership (identity_members)
 
-Group identities use a membership table (`identity_members`) linking a group DID to member DIDs with roles:
-
-```typescript
-// From apps/kernel/src/db/schemas/auth.ts (excerpt)
-export const identityMembers = authSchema.table('identity_members', {
-  identityDid: text('identity_did').notNull(),   // group DID
-  memberDid: text('member_did').notNull(),       // actor DID
-  role: text('role').notNull().default('member'), // owner | admin | maintainer | agent | member
-  addedBy: text('added_by'),
-  addedAt: timestamp('added_at').defaultNow(),
-  removedAt: timestamp('removed_at'),
-});
-```
+Group identities (communities, businesses, families) link to member DIDs with roles:
+`owner | admin | maintainer | agent | member`. Same table handles human membership in a
+business, agent delegation to a principal, and device registration to an owner. One primitive,
+many patterns.
 
 ### Act-As Delegation
 
@@ -140,18 +147,25 @@ const actingFor = request.headers.get("x-acting-for");
 // Validates that caller has role='agent' for the target identity
 ```
 
-### Soft DID Creation (Lazy Minting)
+### Lazy Minting
 
-DIDs are minted on first use. No batch import, no onboarding step.
+DIDs are minted on first use. No batch import. No onboarding step. No registration form.
 
-```typescript
-// Server-side: email verification creates a soft DID
+A traveler books a trip → Tripian calls `POST /auth/api/onboard` with their email → soft DID
+created. A restaurant is referenced for the first time → Tripian calls `POST /registry/identity`
+→ DID minted under `did:tripian:` namespace. A buyer checks out on market → soft DID created
+from their email at checkout time.
+
+The pattern is always the same: get-or-create on first reference. The DID is the anchor;
+properties accrue over time as interactions happen. The entity can later claim/upgrade their
+identity, or never — the audit trail is valid either way because the DID exists from the
+first moment it was needed.
+
+```
 POST /auth/api/onboard
 { "email": "user@example.com", "name": "Jane", "redirectUrl": "...", "context": "buy a ticket" }
-
-// Returns: { sent: true }
-// User clicks email link → GET /auth/api/onboard/verify?token=...
-// → soft DID created, session cookie set, redirect to redirectUrl
+→ { sent: true }
+// User clicks email link → soft DID created, session cookie set, redirect
 ```
 
 ### DFOS Anchoring
@@ -339,7 +353,13 @@ POST /auth/api/validate
 
 ## 5. Event Bus
 
-The event bus (`@imajin/bus`) is the nervous system. Services publish events; reactor chains handle side effects.
+The event bus (`@imajin/bus`) is the nervous system. Side effects are the hard part of any
+system — "after payment succeeds, create an attestation, credit MJN tokens, settle the .fair
+manifest, and notify the seller." Without the bus, that logic lives in webhook handlers as
+a fragile imperative sequence. With the bus, it's a composable reactor chain: each step is
+independent, configurable, and replaceable.
+
+Services publish events. Reactor chains handle everything that happens next.
 
 ### Core Pattern
 
@@ -383,7 +403,14 @@ interface BusEvent {
 
 ### Reactor Chain Configuration
 
-Phase 1 uses hardcoded defaults in `packages/bus/src/config.ts`. Phase 2 will be DB-backed.
+Phase 1: hardcoded defaults in `packages/bus/src/config.ts`. Same shape as the DB-backed
+Phase 2 — so migration is mechanical, not architectural. Phase 3 adds scope-level overrides
+(a community customizes its own reactor chains). Phase 4 is admin UI — "IFTTT for events."
+
+We're building the config system in layers because over-building ahead of demand is how
+projects die. One node, hardcoded config. When there are multiple nodes with different needs,
+DB-backed. When community operators want self-service, scope overrides. Each phase is earned
+by actual demand, not speculative architecture.
 
 ```typescript
 // Example: listing.purchased chain
@@ -465,7 +492,15 @@ await publish('identity.created', {
 
 ## 6. Vault
 
-The vault is an encrypted key-value store. It lives in the `imajin-cli` repo (separate from the monorepo) and is used by node operators for secrets management.
+The vault exists because SSH-ing into a server to edit `.env` files doesn't scale, has no
+audit trail, and requires direct access to the machine. The vault is an encrypted key-value
+store: encrypt a secret to the node's public key from anywhere (phone, laptop, agent), store
+it as a CID-addressed blob, decrypt only on the node. No plaintext at rest. No SSH required.
+
+Same cryptographic primitive as selective disclosure (§7) — both are "signed, scoped,
+encrypted data with controlled release." The vault is the simplest form: encrypt to one
+recipient (the node). The broker is the general form: encrypt to the subject, release to
+authorized requesters.
 
 ### Cryptography
 
@@ -499,21 +534,41 @@ imajin vault list                  # List all entries
 
 Storage: `~/.imajin/vault.json`. Each entry tracks field, CID, encrypted blob, nonce, sender DID, sender pubkey, timestamp, and `previousCid` for history chaining.
 
-### Bus Events for Hot-Reload
+### Why CIDs
 
-Vault changes can emit bus events (specced) so kernel services hot-reload secrets without restart.
+Every encrypted blob gets a content-addressed identifier. You can verify integrity without
+decrypting. Same addressing scheme as DFOS chains. CID chain per field = auditable rotation
+history. Config references a CID, not a raw path — portable, content-verified.
+
+### Bus Integration
+
+Vault changes emit `vault.secret.updated` bus events. Services subscribe to the secrets they
+consume and hot-reload on change — no restart, no deploy, no SSH. A GitHub token expires at
+3am? Rotate it from your phone. The service picks it up in seconds.
 
 ---
 
-## 7. Selective Disclosure & Broker
+## 7. Selective Disclosure & Data Broker
 
-The broker is a consent-gated data release layer. Specced in #786/#1003. Not yet implemented in the monorepo — described here for integration planning.
+This is the layer that makes the whole system worth building.
 
-### Core Pattern
+Every other identity system stores personal data in plaintext and hopes access control is
+configured correctly. The broker inverts this: data is encrypted at rest, and only released
+to specific requesters when the subject has granted consent for a specific purpose. Every
+release is audited. Every denial is logged. The default state is locked.
 
-A subject's personal data is encrypted at rest. Only released to specific requesters when the subject has granted consent for a specific purpose — with every release audited.
+Specced in #786/#1003. The bus infrastructure, vault crypto, and identity model are all
+production. The broker is a new entry point (`bus.broker()`) on existing plumbing —
+not a greenfield build.
 
-### Consent Grants
+### The Problem It Solves
+
+A traveler books a trip. They're vegetarian, have a shellfish allergy, prefer mid-range
+restaurants, and have a Mastercard. The restaurant needs to know they're vegetarian. It does
+NOT need to know their budget, their card number, or the specifics of their allergy. But in
+every existing system, either the restaurant gets everything or nothing.
+
+The broker gives you field-level consent with purpose-binding:
 
 ```json
 {
@@ -523,74 +578,98 @@ A subject's personal data is encrypted at rest. Only released to specific reques
   "allergies": [
     { "purpose": "restaurant_reservation", "release": "attestation" },
     { "purpose": "emergency_medical", "release": "raw", "duration": "permanent" }
+  ],
+  "budget_preference": [
+    { "purpose": "restaurant_reservation", "release": "none" }
   ]
 }
 ```
 
+The restaurant gets: dietary = "vegetarian, gluten-free" (raw). Allergies = "has allergies"
+(attestation — enough to flag the kitchen, not enough to identify the condition). Budget =
+not present in response. Every field, every purpose, every release mode is explicit.
+
 ### Release Modes
 
-| Mode | What requester sees |
-|------|---------------------|
-| **raw** | Actual value: "vegetarian, gluten-free" |
-| **attestation** | Confirmation without details: `{ has_allergies: true }` |
-| **none** | Field omitted from response |
+| Mode | What requester sees | When to use |
+|------|---------------------|-------------|
+| **raw** | Actual value: "vegetarian, gluten-free" | Explicit consent for this purpose |
+| **attestation** | Confirmation only: `{ has_allergies: true }` | Awareness without exposure |
+| **none** | Field omitted entirely | No consent, or explicitly denied |
 
-### Request Flow
+### The Request Flow
 
-```typescript
-// Specced API — not yet live
-bus.broker({
-  requester: "did:tripian:restaurant_abc",
-  subject: travelerDid,
-  fields: ["dietary", "allergies", "budget"],
-  purpose: "restaurant_reservation"
-});
-// Returns filtered envelope + writes audit log
 ```
+Tripian app              Imajin Broker             Traveler's Data
+    |                         |                         |
+    | broker.request({        |                         |
+    |   requester: restaurant,|                         |
+    |   subject: traveler,    |                         |
+    |   fields: [dietary,     |                         |
+    |     allergies, budget], |                         |
+    |   purpose: restaurant_  |                         |
+    |     reservation         |                         |
+    | })                      |                         |
+    |                         |                         |
+    |                         | check consent grants    |
+    |                         | dietary + restaurant    |
+    |                         |   = raw ✅               |
+    |                         | allergies + restaurant  |
+    |                         |   = attestation ✅       |
+    |                         | budget + restaurant     |
+    |                         |   = none ❌              |
+    |                         |                         |
+    | <─ release envelope ── |                         |
+    |   dietary: "vegetarian" |                         |
+    |   allergies: {has:true} |                         |
+    |   budget: [omitted]     |                         |
+    |                         |                         |
+    |   audit log written     |                         |
+```
+
+Every request and release is logged with requester DID, subject DID, fields requested, fields
+released, fields denied, purpose, and timestamp. The traveler can see their full audit trail.
 
 ### Shadow Mode (PoC)
 
-For the Hawaii PoC, the broker runs in shadow mode: consent checks and field filtering execute and log decisions, but nothing is gated — the app continues to work. After PoC, shadow mode flips to enforcement.
+For the Hawaii PoC, the broker runs in shadow mode: consent checks and field filtering
+execute and log decisions, but nothing is gated. The app continues to work. Logs show what
+WOULD have been denied. After PoC, shadow mode flips to enforcement — same logic, now binding.
 
-### Integration Pattern (Tripian)
+This is the right way to validate a consent model without blocking the user experience.
 
-1. **Get-or-create DID** — first time any entity is referenced, call `POST /registry/identity`
-2. **Set traveler preferences** — encrypt and store via vault API, keyed to traveler DID
-3. **Request data** — call `broker.request()` with provider DID, traveler DID, fields, purpose
-4. **Receive filtered response** — only consented fields, in appropriate release mode
+### Lazy DID Minting for Integration
 
-Zero migration required. Tripian's existing systems don't change. The DID layer wraps around them.
+Integrating partners (like Tripian) don't need to batch-import their inventory. Every entity
+gets a DID on first reference:
+
+1. First time Tripian references a restaurant → `POST /registry/identity` → get back `did:tripian:9aRk...`
+2. Store locally, use in all subsequent broker requests
+3. First time a traveler books → same pattern → `did:tripian:7xKm...` stored in their TCO
+4. Preferences encrypted via vault API, keyed to traveler DID
+5. Broker requests use both DIDs — the requester (restaurant) and the subject (traveler)
+
+Zero migration. Tripian's existing systems don't change. The DID layer wraps around them —
+one API call per entity, on first use, cached forever after.
 
 ---
 
 ## 8. Attestations
 
-Attestations are cryptographically signed claims about identities. Unsigned attestations are rejected at write.
+Attestations are how trust is built. Not granted by an admin, not assumed by default —
+earned through signed, verifiable claims. "Alice vouched for Bob." "Bob bought a ticket."
+"The platform settled a $150 transaction with a verified .fair chain." Each of these is an
+attestation: a signed JSON object with an issuer, a subject, a type, and a payload.
+
+Unsigned attestations are rejected at write — a 4xx, not a null signature. If you can't
+sign it, it didn't happen.
 
 ### Shape
 
-```typescript
-interface Attestation {
-  id: string;                    // att_xxx
-  issuerDid: string;
-  subjectDid: string;
-  type: string;                  // from ATTESTATION_TYPES
-  contextId: string | null;      // e.g. event DID
-  contextType: string | null;    // e.g. 'event'
-  payload: Record<string, unknown> | null;
-  signature: string;             // Ed25519 hex (128 chars) — legacy
-  cid: string | null;            // dag-cbor CID of payload
-  authorJws: string | null;      // JWS compact token (author sig)
-  witnessJws: string | null;     // JWS compact token (countersignature)
-  attestationStatus: string;     // 'pending' | 'bilateral' | 'declined' | 'collecting' | 'executed' | 'expired'
-  documentHash: string | null;
-  documentAssetId: string | null;
-  totalSigners: number | null;
-  issuedAt: Date;
-  expiresAt: Date | null;
-  revokedAt: Date | null;
-}
-```
+The essential fields: `issuerDid`, `subjectDid`, `type`, `payload`, `signature`, `cid`.
+Countersigning (`witnessJws`) transitions status from `pending` → `bilateral` — both
+parties have now signed. Multi-party documents use `collecting` → `executed` with
+`totalSigners` tracking.
 
 ### Attestation Types (Live)
 
@@ -669,6 +748,12 @@ Transitions status from `pending` → `bilateral`. Only the subject can counters
 ## 9. .fair Attribution
 
 Every asset carries a `.fair` manifest: who contributed, in what proportion, under what terms.
+This is the answer to "who gets paid?" — not as a policy document, but as a machine-readable
+fee schedule that the settle reactor executes automatically.
+
+The manifest travels WITH the content. Not stored separately. Not in a different system.
+When money moves, the manifest says where it goes. The bus reactor reads the manifest and
+splits the payment. No human intervention. No invoice. No accounts receivable.
 
 ### Manifest Format (v1.1)
 
@@ -720,12 +805,16 @@ const manifest = buildFairManifest({
 });
 ```
 
-Fee cascade order:
-1. **Protocol fee**: fixed at 1.0% (`PROTOCOL_FEE_BPS = 100`)
-2. **Node fee**: operator-configurable, default 0.5%, bounds [0.25%, 2.0%]
-3. **Buyer credit**: operator-configurable, default 0.25%, bounds [0.25%, 2.0%]
-4. **Scope fee**: optional, only when `scopeDid` + `scopeFeeBps` provided
-5. **Seller share**: remainder
+Fee cascade — deducted in order, seller gets the remainder:
+1. **Protocol fee**: 1.0% (fixed — this is how the network sustains itself)
+2. **Node fee**: 0.5% default, operator-configurable [0.25%, 2.0%]
+3. **Buyer credit**: 0.25% default — the buyer earns MJN for transacting
+4. **Scope fee**: optional — only when a community/business takes a cut
+5. **Seller share**: everything else
+
+Default total overhead: 2%. The seller gets 98%. Compare to Stripe's 2.9% + $0.30 where
+the platform keeps everything. Here, the 2% is split across four stakeholders who all
+contributed to the transaction happening.
 
 Chain placeholder DIDs:
 - `BUYER_PLACEHOLDER` → resolved to actual buyer DID at settlement
@@ -764,6 +853,11 @@ The `settleReactor` (`packages/bus/src/reactors/settle.ts`):
 
 ## 10. Settlement
 
+Money comes in through wire schemes (Stripe, Interac e-Transfer, eventually Solana Pay,
+Lightning). The .fair manifest says where it goes. The settle reactor does the math. The
+MJNx ledger tracks internal balances. This is plumbing — intentionally boring, because
+boring plumbing is reliable plumbing.
+
 ### Stripe Integration
 
 The pay service creates Stripe Checkout sessions:
@@ -787,6 +881,10 @@ Seller DID lookup: if seller has a connected Stripe account (`chargesEnabled: tr
 ### MJNx Ledger
 
 MJN is the internal credit token. 1 MJN = $0.01 (1¢). 100 MJN = 1 MJNx.
+
+The protocol doesn't require the token. The token requires the protocol. MJNx is to Imajin
+as USD is to SWIFT. SWIFT moves money, it doesn't BE money. The token is an accounting unit
+for the node's internal ledger, not a speculative asset.
 
 Emissions are triggered by the MJN reactor (`packages/bus/src/reactors/mjn.ts`):
 
@@ -924,41 +1022,13 @@ Group chats use a shared group key re-encrypted to each member's X25519 public k
 
 ## 12. Connections & Trust Graph
 
-Pods are the unit of trust graph membership. Being in any 2-person pod means you're in the trust graph.
+Pods are the unit of trust. Two people in a pod are connected. Connections form a graph.
+Trust is measured in hops. This is how the system knows "Alice is 2 hops from Bob" without
+either of them being in the same group — Alice shares a pod with Carol, Carol shares a pod
+with Bob.
 
-### Schema
-
-```typescript
-// From packages/trust-graph/src/schema.ts
-export const pods = connectionsSchema.table('pods', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  description: text('description'),
-  avatar: text('avatar'),
-  ownerDid: text('owner_did').notNull(),
-  type: text('type', { enum: ['personal', 'shared', 'event'] }).notNull().default('personal'),
-  visibility: text('visibility', { enum: ['private', 'trust-bound'] }).notNull().default('private'),
-  conversationDid: text('conversation_did'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
-export const podMembers = connectionsSchema.table('pod_members', {
-  podId: text('pod_id').notNull(),
-  did: text('did').notNull(),
-  role: text('role', { enum: ['owner', 'admin', 'member'] }).notNull().default('member'),
-  addedBy: text('added_by'),
-  joinedAt: timestamp('joined_at').defaultNow().notNull(),
-  removedAt: timestamp('removed_at'),
-});
-
-export const connections = connectionsSchema.table('connections', {
-  didA: text('did_a').notNull(),
-  didB: text('did_b').notNull(),
-  connectedAt: timestamp('connected_at').defaultNow().notNull(),
-  disconnectedAt: timestamp('disconnected_at'),
-});
-```
+Pod types: `personal` (default, private), `shared`, `event` (auto-created for event attendees).
+Pod members have roles: `owner | admin | member`.
 
 ### Trust Distance
 
@@ -991,7 +1061,10 @@ Link invite limits by role: admin (unlimited), legendary (10), trusted (5), memb
 
 ## 13. Agent Identity
 
-Agents are first-class identities with scoped delegation.
+Agents are first-class identities, not API keys. An agent has a DID, a keypair, a trust
+history, and scoped delegation to act on behalf of its principal. It authenticates the same
+way a human does (challenge-response). It builds reputation the same way (attestations).
+The system doesn't care if you're carbon or silicon — it cares if you can sign.
 
 ### Creating an Agent
 
