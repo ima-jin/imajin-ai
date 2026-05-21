@@ -227,6 +227,12 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'asset.fair.upgraded': [
     { type: 'attestation', config: { attestationType: 'asset.fair.upgraded' }, enabled: true },
   ],
+  'vault.secret.updated': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'vault.secret.rotated': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
 };
 
 export function getChainConfig(eventType: string, _scope: string): ChainConfig {
