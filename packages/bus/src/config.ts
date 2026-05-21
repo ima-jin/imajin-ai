@@ -228,9 +228,11 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'attestation', config: { attestationType: 'asset.fair.upgraded' }, enabled: true },
   ],
   'vault.secret.updated': [
+    { type: 'vault-hot-reload', config: {}, enabled: true, await: true },
     { type: 'emit', config: {}, enabled: true },
   ],
   'vault.secret.rotated': [
+    { type: 'vault-hot-reload', config: {}, enabled: true, await: true },
     { type: 'emit', config: {}, enabled: true },
   ],
 };

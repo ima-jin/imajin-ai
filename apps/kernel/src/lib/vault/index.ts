@@ -14,11 +14,11 @@ const vaultPath = process.env.VAULT_PATH ?? path.join(os.homedir(), '.imajin', '
 
 const repository = new FileVaultRepository({ vaultPath });
 const lock = new InMemoryFieldLock();
-const adapters = createDefaultAdapters();
+export const vaultAdapters = createDefaultAdapters();
 
 export const vaultService = new VaultEntryService(repository, {
   lock,
-  adapters,
+  adapters: vaultAdapters,
 });
 
 log.info({ vaultPath }, 'Vault service initialised');

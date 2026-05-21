@@ -62,7 +62,14 @@ export class VaultEntryService {
                 latestByField.set(entry.field, entry);
             }
         }
-        return Array.from(latestByField.values()).filter(entry => entry.deleted !== true);
+        const entries = Array.from(latestByField.values()).filter(entry => entry.deleted !== true);
+        if (this.adapters) {
+            const adapters = this.adapters;
+            await Promise.all(entries.map(async entry => {
+                await assertEntryIntegrity(entry, adapters);
+            }));
+        }
+        return entries;
     }
 
     public async getHistory(field: string): Promise<VaultEntry[]> {
@@ -70,6 +77,9 @@ export class VaultEntryService {
         const history: VaultEntry[] = [];
         let current = this.getLatestEntry(vault.entries, field);
         while (current) {
+            if (this.adapters) {
+                await assertEntryIntegrity(current, this.adapters);
+            }
             history.push(current);
             if (!current.previousCid) {
                 break;

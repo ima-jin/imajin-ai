@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { vaultService } from '@/src/lib/vault';
+import { toVaultErrorResponse } from '@/src/lib/vault/errors';
+
+const log = createLogger('kernel');
 
 export async function GET(
   _request: NextRequest,
@@ -19,6 +23,7 @@ export async function GET(
 
     return NextResponse.json({ field, chain });
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to retrieve history' }, { status: 500 });
+    log.error({ err: String(error), field }, 'Vault history error');
+    return toVaultErrorResponse(error, 'Failed to retrieve history', 500);
   }
 }

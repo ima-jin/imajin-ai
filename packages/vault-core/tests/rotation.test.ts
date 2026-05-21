@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { prepareRotationEntry } from '../src/rotation.js';
+import { prepareRotationEntry, prepareRotationEntryFromSignedInput } from '../src/rotation.js';
 import { deriveKeyId } from '../src/identity.js';
 import { verifyVaultSignature } from '../src/signature.js';
 import { computeVaultCid } from '../src/cid.js';
@@ -115,5 +115,29 @@ describe('prepareRotationEntry', () => {
         );
 
         expect(signatureValid).toBe(true);
+    });
+
+    it('builds rotation entry from pre-signed input while preserving chain semantics', async () => {
+        const signer = generateKeypair();
+        const existing = createEntry({
+            senderPubkey: signer.publicKey,
+            senderDid: `did:imajin:${signer.publicKey.slice(0, 16)}`,
+            cid: 'cid:previous'
+        });
+
+        const rotated = await prepareRotationEntryFromSignedInput(
+            existing,
+            { encrypted: 'new-enc', nonce: 'new-nonce' },
+            {
+                senderDid: existing.senderDid,
+                senderPubkey: existing.senderPubkey,
+                signature: 'a'.repeat(128),
+                timestamp: '2026-05-21T00:00:00.000Z'
+            }
+        );
+
+        expect(rotated.previousCid).toBe('cid:previous');
+        expect(rotated.keyId).toBe(deriveKeyId(existing.senderPubkey));
+        expect(rotated.signature).toBe('a'.repeat(128));
     });
 });

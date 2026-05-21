@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
+import { createLogger } from '@imajin/logger';
 import { vaultService } from '@/src/lib/vault';
+import { toVaultErrorResponse } from '@/src/lib/vault/errors';
+
+const log = createLogger('kernel');
 
 export async function GET() {
   try {
@@ -16,6 +20,7 @@ export async function GET() {
 
     return NextResponse.json(results);
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to list vault entries' }, { status: 500 });
+    log.error({ err: String(error) }, 'Vault list error');
+    return toVaultErrorResponse(error, 'Failed to list vault entries', 500);
   }
 }
