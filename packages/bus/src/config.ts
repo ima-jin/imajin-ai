@@ -235,6 +235,12 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'vault-hot-reload', config: {}, enabled: true, await: true },
     { type: 'emit', config: {}, enabled: true },
   ],
+  'broker.release': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'broker.rejection': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
 };
 
 export function getChainConfig(eventType: string, _scope: string): ChainConfig {

@@ -17,7 +17,26 @@ registerReactor('settle', settleReactor);
 registerReactor('webhook', webhookReactor);
 
 export { publish } from './publish';
+export { broker } from './broker';
 export { registerReactor } from './registry';
 export { getChainConfig } from './config';
 export { EMISSION_SCHEDULE } from './emissions';
-export type { BusEvent, BusEventMap, BusEventType, ReactorConfig, ChainConfig, ReactorHandler } from './types';
+export { resolveConsent } from './broker-config';
+export { isBrokerRelease, isBrokerRejection } from './types';
+export type {
+  BusEvent,
+  BusEventMap,
+  BusEventType,
+  ReactorConfig,
+  ChainConfig,
+  ReactorHandler,
+  BrokerRequest,
+  BrokerRelease,
+  BrokerRejection,
+  BrokerRejectionReason,
+  BrokerResult,
+  BrokerPipelineState,
+  BrokerReactor,
+  BrokerEventType,
+} from './types';
+export type { ConsentEntry } from './broker-config';

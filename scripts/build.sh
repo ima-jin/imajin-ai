@@ -79,6 +79,14 @@ if [ "$ENV_CHECK_FAILED" = true ]; then
 fi
 echo "" >> "$REPORT"
 
+echo "=== Building workspace packages ==="  | tee -a "$REPORT"
+if pnpm -r --filter './packages/**' build >> "$REPORT" 2>&1; then
+  echo "✅ Packages built" | tee -a "$REPORT"
+else
+  echo "⚠️  Package build had errors (non-fatal, some packages may lack build scripts)" | tee -a "$REPORT"
+fi
+echo "" >> "$REPORT"
+
 echo "=== Running migrations ===" | tee -a "$REPORT"
 if node scripts/migrate.mjs >> "$REPORT" 2>&1; then
   echo "✅ Migrations complete" | tee -a "$REPORT"
