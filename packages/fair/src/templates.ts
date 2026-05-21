@@ -192,9 +192,8 @@ export function getDefaultManifest(mimeType: string, ownerDid: string): FairMani
   const protocolShare = PROTOCOL_FEE_BPS / 10000;
   const nodeShare = NODE_FEE_DEFAULT_BPS / 10000;
   const buyerCreditShare = BUYER_CREDIT_DEFAULT_BPS / 10000;
-  const scopeShare = BUYER_CREDIT_DEFAULT_BPS / 10000; // same default as buyer_credit
   const platformShare = PLATFORM_FEE_BPS / 10000;
-  const sellerShare = 1 - protocolShare - nodeShare - buyerCreditShare - scopeShare - platformShare;
+  const sellerShare = 1 - protocolShare - nodeShare - buyerCreditShare - platformShare;
 
   const manifest: FairManifestV1_1 = {
     fair: '1.1',
@@ -212,7 +211,6 @@ export function getDefaultManifest(mimeType: string, ownerDid: string): FairMani
       { did: PROTOCOL_DID, role: 'protocol', share: protocolShare },
       { did: 'NODE_PLACEHOLDER', role: 'node', share: nodeShare },
       { did: 'BUYER_PLACEHOLDER', role: 'buyer_credit', share: buyerCreditShare },
-      { did: ownerDid, role: 'scope', share: scopeShare },
       { did: PLATFORM_DID, role: 'platform', share: platformShare },
       { did: ownerDid, role: 'seller', share: sellerShare },
     ],

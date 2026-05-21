@@ -100,7 +100,6 @@ function shareBar(share: number, role: string) {
     role === 'node' ? 'bg-gray-400' :
     role === 'platform' ? 'bg-orange-500' :
     role === 'seller' ? 'bg-orange-500' :
-    role === 'platform' ? 'bg-blue-500' :
     role === 'venue' ? 'bg-purple-500' :
     'bg-orange-500';
   return (

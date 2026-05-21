@@ -4,7 +4,7 @@ export const PROTOCOL_DID = "did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e462
 
 // Platform fee — money split, not creative credit
 export const PLATFORM_FEE_BPS = 100;  // 1.0%
-export const PLATFORM_DID = "did:imajin:platform";
+export const PLATFORM_DID = PROTOCOL_DID;  // same recipient as protocol for now
 
 // Payment processor fees (estimate — actual fees vary by card type)
 // Using international rate (3.7%) as safe estimate to avoid platform losses.

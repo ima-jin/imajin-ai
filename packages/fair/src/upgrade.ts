@@ -1,6 +1,6 @@
 import type { FairManifestV1_0, FairManifestV1_1, FairDistributionRight, Money } from './types';
 
-const PLATFORM_DID = 'did:imajin:platform';
+import { PLATFORM_DID } from './constants';
 
 function asDistributionRight(mode: string): FairDistributionRight {
   return { mode };
@@ -118,18 +118,16 @@ function convertAttribution(
   // Filter out platform entries — platform belongs in chain, not attribution
   const filtered = entries.filter(e => e.role !== 'platform');
 
-  // Case 1: single creator entry — always apply the 99/1 default.
+  // Case 1: single creator entry — creator gets 100% attribution (platform is in chain, not attribution)
   if (filtered.length === 1 && filtered[0].role === 'creator') {
     return [
-      { did: v1_0.owner, role: 'creator', share: 0.99 },
-      { role: 'platform', name: 'Imajin', share: 0.01 },
+      { did: v1_0.owner, role: 'creator', share: 1.0 },
     ];
   }
 
   if (filtered.length === 0) {
     return [
-      { did: v1_0.owner, role: 'creator', share: 0.99 },
-      { role: 'platform', name: 'Imajin', share: 0.01 },
+      { did: v1_0.owner, role: 'creator', share: 1.0 },
     ];
   }
 
