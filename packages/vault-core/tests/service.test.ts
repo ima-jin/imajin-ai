@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { FileVaultRepository } from '../src/repository.js';
 import { VAULT_ENTRY_VERSION_V1, type UpsertVaultEntryInput } from '../src/models.js';
 import { VaultEntryService } from '../src/service.js';
+import { InMemoryFieldLock } from '../src/lock.js';
+import { type VaultIntegrityAdapters } from '../src/verification.js';
 
 const createEntry = (field: string, cid: string, overrides: Partial<UpsertVaultEntryInput> = {}): UpsertVaultEntryInput => ({
     version: VAULT_ENTRY_VERSION_V1,
@@ -94,5 +96,63 @@ describe('VaultEntryService', () => {
         const loaded = await service2.get('PERSIST');
 
         expect(loaded?.cid).toBe('cid:persist-1');
+    });
+
+    it('uses per-field locking when a lock is provided', async () => {
+        const repository = new FileVaultRepository({ vaultPath });
+        const lock = new InMemoryFieldLock();
+        const service = new VaultEntryService(repository, { lock });
+
+        const order: string[] = [];
+
+        async function write(field: string, cid: string) {
+            await service.set(createEntry(field, cid));
+            order.push(cid);
+        }
+
+        // Concurrent writes to the same field should be serialized
+        const p1 = write('A', 'cid:a1');
+        const p2 = write('A', 'cid:a2');
+
+        await Promise.all([p1, p2]);
+
+        const aIndices = [order.indexOf('cid:a1'), order.indexOf('cid:a2')];
+        expect(aIndices[0]).toBeLessThan(aIndices[1]);
+    });
+
+    it('runs integrity verification on get when adapters are provided', async () => {
+        const repository = new FileVaultRepository({ vaultPath });
+        const adapters: VaultIntegrityAdapters = {
+            computeCid: vi.fn(async ({ encrypted, nonce }) => `cid:${encrypted}:${nonce}`),
+            deriveKeyId: vi.fn((senderPubkey: string) => `kid:${senderPubkey}`),
+            verifyDidKeyBinding: vi.fn((_did: string, _senderPubkey: string) => true),
+            verifySignature: vi.fn((_payload, _signature: string, _senderPubkey: string) => true)
+        };
+        const service = new VaultEntryService(repository, { adapters });
+
+        const encrypted = 'enc-verify';
+        const nonce = 'nonce-verify';
+        const entry = createEntry('VERIFY', `cid:${encrypted}:${nonce}`, { encrypted, nonce });
+        await service.set(entry);
+
+        const loaded = await service.get('VERIFY');
+        expect(loaded).toBeDefined();
+        expect(adapters.verifySignature).toHaveBeenCalled();
+    });
+
+    it('throws on get when integrity verification fails', async () => {
+        const repository = new FileVaultRepository({ vaultPath });
+        const adapters: VaultIntegrityAdapters = {
+            computeCid: vi.fn(async () => 'wrong-cid'),
+            deriveKeyId: vi.fn(() => 'kid'),
+            verifyDidKeyBinding: vi.fn(() => true),
+            verifySignature: vi.fn(() => true)
+        };
+        const service = new VaultEntryService(repository, { adapters });
+
+        const entry = createEntry('BAD', 'cid:bad');
+        await service.set(entry);
+
+        await expect(service.get('BAD')).rejects.toThrow();
     });
 });

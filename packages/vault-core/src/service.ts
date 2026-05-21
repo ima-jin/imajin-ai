@@ -4,24 +4,38 @@ import {
     type VaultFile
 } from './models.js';
 import { type VaultRepository } from './repository.js';
+import { type VaultLock } from './lock.js';
+import { type VaultIntegrityAdapters } from './verification.js';
+import { assertEntryIntegrity } from './verification.js';
+
+export interface VaultEntryServiceOptions {
+    lock?: VaultLock;
+    adapters?: VaultIntegrityAdapters;
+}
 
 export class VaultEntryService {
     private writeBarrier: Promise<void> = Promise.resolve();
+    private readonly lock?: VaultLock;
+    private readonly adapters?: VaultIntegrityAdapters;
 
-    constructor(private readonly repository: VaultRepository) {}
+    constructor(
+        private readonly repository: VaultRepository,
+        options: VaultEntryServiceOptions = {}
+    ) {
+        this.lock = options.lock;
+        this.adapters = options.adapters;
+    }
 
     public async set(entry: UpsertVaultEntryInput): Promise<VaultEntry> {
-        return this.runExclusiveWrite(async () => {
-            const vault = await this.repository.load();
-            const previousCid = this.getLatestEntry(vault.entries, entry.field)?.cid ?? entry.previousCid;
-            const persistedEntry: VaultEntry = {
-                ...entry,
-                ...(previousCid !== undefined ? { previousCid } : {})
-            };
-            vault.entries.push(persistedEntry);
-            await this.repository.save(vault);
-            return persistedEntry;
-        });
+        if (this.lock) {
+            const release = await this.lock.acquire(entry.field);
+            try {
+                return await this.setInternal(entry);
+            } finally {
+                await release();
+            }
+        }
+        return this.runExclusiveWrite(() => this.setInternal(entry));
     }
 
     public async get(field: string): Promise<VaultEntry | undefined> {
@@ -29,6 +43,9 @@ export class VaultEntryService {
         const latest = this.getLatestEntry(vault.entries, field);
         if (!latest || latest.deleted === true) {
             return undefined;
+        }
+        if (this.adapters) {
+            await assertEntryIntegrity(latest, this.adapters);
         }
         return latest;
     }
@@ -64,6 +81,18 @@ export class VaultEntryService {
 
     public async loadVault(): Promise<VaultFile> {
         return this.repository.load();
+    }
+
+    private async setInternal(entry: UpsertVaultEntryInput): Promise<VaultEntry> {
+        const vault = await this.repository.load();
+        const previousCid = this.getLatestEntry(vault.entries, entry.field)?.cid ?? entry.previousCid;
+        const persistedEntry: VaultEntry = {
+            ...entry,
+            ...(previousCid !== undefined ? { previousCid } : {})
+        };
+        vault.entries.push(persistedEntry);
+        await this.repository.save(vault);
+        return persistedEntry;
     }
 
     private getLatestEntry(entries: VaultEntry[], field: string): VaultEntry | undefined {

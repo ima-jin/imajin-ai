@@ -1171,6 +1171,13 @@ importers:
         version: 5.9.3
 
   packages/vault-core:
+    dependencies:
+      '@imajin/auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@imajin/cid':
+        specifier: workspace:*
+        version: link:../cid
     devDependencies:
       '@types/node':
         specifier: ^24.9.2
@@ -1178,6 +1185,9 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@24.12.4)
 
 packages:
 
