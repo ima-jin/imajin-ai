@@ -1,4 +1,4 @@
-import type { FairEntry, FairFee } from './types';
+import type { FairEntry, FairFee, DidShareEntry } from './types';
 import {
   PROTOCOL_FEE_BPS,
   PROTOCOL_DID,
@@ -8,6 +8,8 @@ import {
   BUYER_CREDIT_MIN_BPS,
   BUYER_CREDIT_MAX_BPS,
   BUYER_CREDIT_DEFAULT_BPS,
+  PLATFORM_FEE_BPS,
+  PLATFORM_DID,
   STRIPE_RATE_BPS,
   STRIPE_MIN_RATE_BPS,
   STRIPE_FIXED_CENTS,
@@ -18,6 +20,7 @@ export interface FairFeeManifest {
   fees: FairFee[];
   chain: FairEntry[];
   distributions: FairEntry[];
+  attribution: DidShareEntry[];
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -75,9 +78,12 @@ export function buildFairManifest(params: {
   const hasScopeFee = !!(scopeDid && params.scopeFeeBps != null);
   const scopeShare = hasScopeFee ? bpsToShare(params.scopeFeeBps!) : 0;
 
+  // Platform fee
+  const platformShare = bpsToShare(PLATFORM_FEE_BPS);
+
   // Seller gets the remainder
   const sellerShare =
-    1 - protocolShare - nodeShare - buyerCreditShare - scopeShare;
+    1 - protocolShare - nodeShare - buyerCreditShare - scopeShare - platformShare;
 
   const chain: FairEntry[] = [
     { did: PROTOCOL_DID, role: 'protocol', share: protocolShare },
@@ -89,12 +95,17 @@ export function buildFairManifest(params: {
     chain.push({ did: scopeDid!, role: 'scope', share: scopeShare });
   }
 
+  chain.push({ did: PLATFORM_DID, role: 'platform', share: platformShare });
   chain.push({ did: creatorDid, role: 'seller', share: sellerShare });
 
   const distributions: FairEntry[] =
     collaborators && collaborators.length > 0
       ? collaborators.map((c) => ({ did: c.did, role: c.role, share: c.share }))
       : [{ did: creatorDid, role: 'creator', share: 1.0 }];
+
+  const attribution: DidShareEntry[] = [
+    { did: creatorDid, role: 'creator', share: 1.0 },
+  ];
 
   const fees: FairFee[] = [
     { role: 'processor', name: 'Stripe', rateBps: STRIPE_RATE_BPS, minRateBps: STRIPE_MIN_RATE_BPS, fixedCents: STRIPE_FIXED_CENTS },
@@ -105,5 +116,6 @@ export function buildFairManifest(params: {
     fees,
     chain,
     distributions,
+    attribution,
   };
 }

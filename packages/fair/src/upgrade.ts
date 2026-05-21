@@ -22,6 +22,7 @@ function buildDefaults(mimeType: string): {
   commercial: NonNullable<FairManifestV1_1['commercial']>;
   fees: NonNullable<FairManifestV1_1['fees']>;
   tipping: NonNullable<FairManifestV1_1['tipping']>;
+  chain: NonNullable<FairManifestV1_1['chain']>;
 } {
   const bucket = mimeBucket(mimeType);
 
@@ -67,6 +68,14 @@ function buildDefaults(mimeType: string): {
     { role: 'scope', name: 'Scope', rateBps: 25, fixedCents: 0 },
   ];
 
+  const chain: NonNullable<FairManifestV1_1['chain']> = [
+    { did: PROTOCOL_DID, role: 'protocol', share: 0.01 },
+    { did: 'NODE_PLACEHOLDER', role: 'node', share: 0.005 },
+    { did: 'BUYER_PLACEHOLDER', role: 'buyer_credit', share: 0.0025 },
+    { did: PLATFORM_DID, role: 'platform', share: 0.01 },
+    { did: '', role: 'seller', share: 0.9725 },
+  ];
+
   return {
     distribution,
     transfer: { allowed: true, requiresAttribution: true, price: transferPrice, resaleRoyaltyBps: 500 },
@@ -74,6 +83,7 @@ function buildDefaults(mimeType: string): {
     commercial: { allowed: false, contactRequired: true },
     fees,
     tipping: { enabled: true },
+    chain,
   };
 }
 
@@ -105,15 +115,18 @@ function convertAttribution(
 ): FairManifestV1_1['attribution'] {
   const entries = v1_0.attribution?.length ? v1_0.attribution : (v1_0.chain ?? []);
 
+  // Filter out platform entries — platform belongs in chain, not attribution
+  const filtered = entries.filter(e => e.role !== 'platform');
+
   // Case 1: single creator entry — always apply the 99/1 default.
-  if (entries.length === 1 && entries[0].role === 'creator') {
+  if (filtered.length === 1 && filtered[0].role === 'creator') {
     return [
       { did: v1_0.owner, role: 'creator', share: 0.99 },
       { role: 'platform', name: 'Imajin', share: 0.01 },
     ];
   }
 
-  if (entries.length === 0) {
+  if (filtered.length === 0) {
     return [
       { did: v1_0.owner, role: 'creator', share: 0.99 },
       { role: 'platform', name: 'Imajin', share: 0.01 },
@@ -121,11 +134,11 @@ function convertAttribution(
   }
 
   // Case 3: percentages-as-fractions — divide by 100.
-  const rawSum = entries.reduce((s, e) => s + (e.share ?? 0), 0);
-  const looksLikePercentages = entries.some((e) => (e.share ?? 0) > 1) || rawSum > 1.5;
+  const rawSum = filtered.reduce((s, e) => s + (e.share ?? 0), 0);
+  const looksLikePercentages = filtered.some((e) => (e.share ?? 0) > 1) || rawSum > 1.5;
   const scale = looksLikePercentages ? 100 : 1;
 
-  const stage1 = entries.map((e) => ({
+  const stage1 = filtered.map((e) => ({
     did: e.did,
     role: e.role,
     share: (e.share ?? 0) / scale,
@@ -208,6 +221,7 @@ export function upgradeToV1_1(manifest: FairManifestV1_0 | FairManifestV1_1): Fa
         }
       : defaults.transfer,
     fees: v1_0.fees ?? defaults.fees,
+    chain: v1_0.chain ?? defaults.chain,
     training: defaults.training,
     commercial: defaults.commercial,
     integrity: v1_0.integrity,

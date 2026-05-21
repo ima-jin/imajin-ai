@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import type { FairManifest, FairEntry, FairAccess } from '../types';
+import type { FairManifest, FairEntry, FairAccess, FairFee } from '../types';
 import type { FairTemplate } from '../templates';
 import { templates } from '../templates';
 
@@ -9,18 +9,22 @@ export interface FairEditorProps {
   manifest: FairManifest;
   onChange?: (manifest: FairManifest) => void;
   readOnly?: boolean;
-  sections?: ('attribution' | 'access' | 'transfer' | 'integrity' | 'intent' | 'terms' | 'distributions')[];
+  sections?: ('attribution' | 'chain' | 'fees' | 'access' | 'transfer' | 'integrity' | 'intent' | 'terms' | 'distributions')[];
   template?: FairTemplate;
   resolveProfile?: (did: string) => Promise<{ name: string; avatar?: string }>;
 }
 
 const ROLE_OPTIONS = [
   'creator', 'collaborator', 'producer', 'performer',
-  'platform', 'venue', 'distributor', 'label', 'other',
+  'venue', 'distributor', 'label', 'other',
 ];
 
-const ALL_SECTIONS = ['attribution', 'access', 'transfer', 'integrity', 'intent', 'terms', 'distributions'] as const;
-const SECTION_DEFAULTS: NonNullable<FairEditorProps['sections']> = ['attribution', 'access', 'transfer', 'integrity'];
+const CHAIN_ROLE_OPTIONS = [
+  'protocol', 'node', 'buyer_credit', 'scope', 'platform', 'seller',
+];
+
+const ALL_SECTIONS = ['attribution', 'chain', 'fees', 'access', 'transfer', 'integrity', 'intent', 'terms', 'distributions'] as const;
+const SECTION_DEFAULTS: NonNullable<FairEditorProps['sections']> = ['attribution', 'chain', 'fees', 'access', 'transfer', 'integrity'];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -91,6 +95,11 @@ function formatDid(did: string, names: Record<string, string>): string {
 
 function shareBar(share: number, role: string) {
   const color =
+    role === 'protocol' ? 'bg-blue-500' :
+    role === 'buyer_credit' ? 'bg-green-500' :
+    role === 'node' ? 'bg-gray-400' :
+    role === 'platform' ? 'bg-orange-500' :
+    role === 'seller' ? 'bg-orange-500' :
     role === 'platform' ? 'bg-blue-500' :
     role === 'venue' ? 'bg-purple-500' :
     'bg-orange-500';
@@ -117,7 +126,7 @@ function AttributionView({ entries, didNames }: { entries: FairEntry[]; didNames
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-orange-400 capitalize">{entry.role}</span>
               <span className="text-xs text-gray-500 truncate max-w-[180px]" title={entry.did}>
-                {formatDid(entry.did, didNames)}
+                {formatDid(entry.did ?? '', didNames)}
               </span>
               {entry.chainProof?.verified && (
                 <span className="inline-flex items-center px-1.5 py-0.5 bg-emerald-900/30 border border-emerald-700/50 rounded-full text-[10px] text-emerald-400">
@@ -160,7 +169,7 @@ function AttributionEdit({
           <div className="flex items-center gap-2">
             <input
               type="text"
-              value={entry.did}
+              value={entry.did ?? ''}
               onChange={e => update(i, { did: e.target.value })}
               placeholder="did:key:..."
               className="flex-1 bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500"
@@ -218,6 +227,152 @@ function AttributionEdit({
       >
         + Add contributor
       </button>
+    </div>
+  );
+}
+
+function ChainView({ entries, didNames }: { entries: FairEntry[]; didNames: Record<string, string> }) {
+  return (
+    <div className="space-y-3">
+      {entries.map((entry, i) => (
+        <div key={i} className="space-y-1">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-semibold capitalize ${
+                entry.role === 'protocol' ? 'text-blue-400' :
+                entry.role === 'buyer_credit' ? 'text-green-400' :
+                entry.role === 'node' ? 'text-gray-400' :
+                'text-orange-400'
+              }`}>{entry.role.replace(/_/g, ' ')}</span>
+              <span className="text-xs text-gray-500 truncate max-w-[180px]" title={entry.did}>
+                {formatDid(entry.did ?? '', didNames)}
+              </span>
+              {entry.chainProof?.verified && (
+                <span className="inline-flex items-center px-1.5 py-0.5 bg-emerald-900/30 border border-emerald-700/50 rounded-full text-[10px] text-emerald-400">
+                  ⛓ verified
+                </span>
+              )}
+            </div>
+          </div>
+          {shareBar(entry.share, entry.role)}
+          {entry.note && (
+            <p className="text-xs text-gray-500 italic">{entry.note}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ChainEdit({
+  entries,
+  onChange,
+}: {
+  entries: FairEntry[];
+  onChange: (entries: FairEntry[]) => void;
+}) {
+  const update = (i: number, patch: Partial<FairEntry>) => {
+    const next = entries.map((e, idx) => idx === i ? { ...e, ...patch } : e);
+    onChange(next);
+  };
+
+  const remove = (i: number) => onChange(entries.filter((_, idx) => idx !== i));
+
+  const add = () =>
+    onChange([...entries, { did: '', role: 'seller', share: 0 }]);
+
+  return (
+    <div className="space-y-3">
+      {entries.map((entry, i) => {
+        const isProtocol = entry.role === 'protocol';
+        return (
+          <div key={i} className="bg-[#252525] rounded-lg p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={entry.did ?? ''}
+                readOnly={isProtocol}
+                onChange={e => update(i, { did: e.target.value })}
+                placeholder="did:key:..."
+                className={`flex-1 bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500 ${isProtocol ? 'opacity-50 cursor-not-allowed' : ''}`}
+              />
+              <select
+                value={entry.role}
+                disabled={isProtocol}
+                onChange={e => update(i, { role: e.target.value })}
+                className={`bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-orange-500 ${isProtocol ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {CHAIN_ROLE_OPTIONS.map(r => (
+                  <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>
+                ))}
+              </select>
+              {!isProtocol && (
+                <button
+                  onClick={() => remove(i)}
+                  className="text-gray-600 hover:text-red-400 transition text-sm px-1"
+                  title="Remove"
+                >
+                  ✕
+                </button>
+              )}
+              {isProtocol && <span className="text-xs text-gray-600 px-1">🔒</span>}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={0.5}
+                value={Math.round(entry.share * 1000) / 10}
+                disabled={isProtocol}
+                onChange={e => update(i, { share: parseFloat(e.target.value) / 100 })}
+                className={`flex-1 accent-orange-500 ${isProtocol ? 'opacity-50 cursor-not-allowed' : ''}`}
+              />
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                value={(entry.share * 100).toFixed(1)}
+                readOnly={isProtocol}
+                onChange={e => update(i, { share: parseFloat(e.target.value) / 100 })}
+                className={`w-16 bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-orange-500 text-right ${isProtocol ? 'opacity-50 cursor-not-allowed' : ''}`}
+              />
+              <span className="text-xs text-gray-500">%</span>
+            </div>
+          </div>
+        );
+      })}
+      <button
+        onClick={add}
+        className="w-full py-1.5 rounded border border-dashed border-gray-700 text-xs text-gray-500 hover:border-orange-500 hover:text-orange-400 transition"
+      >
+        + Add chain entry
+      </button>
+    </div>
+  );
+}
+
+function FeesView({ fees }: { fees: FairFee[] }) {
+  return (
+    <div className="space-y-3">
+      {fees.map((fee, i) => (
+        <div key={i} className="space-y-1">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-gray-400 capitalize">{fee.name}</span>
+              <span className="text-xs text-gray-600 capitalize">{fee.role}</span>
+            </div>
+            <span className="text-xs font-mono text-gray-300">
+              {fee.minRateBps && fee.minRateBps !== fee.rateBps
+                ? `${(fee.minRateBps / 100).toFixed(1)}–${(fee.rateBps / 100).toFixed(1)}%`
+                : `${(fee.rateBps / 100).toFixed(1)}%`
+              }
+              {fee.fixedCents > 0 ? ` + $${(fee.fixedCents / 100).toFixed(2)}` : ''}
+            </span>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -428,14 +583,15 @@ export function FairEditor({
   // Derive active sections: explicit prop > template config > defaults
   const sections: NonNullable<FairEditorProps['sections']> = sectionsProp
     ?? (template
-      ? ALL_SECTIONS.filter(s => templates[template].sections[s])
+      ? ALL_SECTIONS.filter(s => templates[template].sections[s as keyof typeof templates.media.sections])
       : SECTION_DEFAULTS);
+
   const [local, setLocal] = useState<FairManifest>(() => {
     // Normalize shares on init — handle DB storing 0-100 vs 0-1
-    const rawAttribution = manifest.attribution?.length ? manifest.attribution : (manifest.chain ?? []);
-    const normalized = normalizeShares(rawAttribution);
-    if (normalized !== rawAttribution) {
-      return { ...manifest, attribution: normalized, chain: normalized };
+    const normalizedAttribution = normalizeShares(manifest.attribution ?? []);
+    const normalizedChain = normalizeShares(manifest.chain ?? []);
+    if (normalizedAttribution !== manifest.attribution || normalizedChain !== manifest.chain) {
+      return { ...manifest, attribution: normalizedAttribution, chain: normalizedChain };
     }
     return manifest;
   });
@@ -450,14 +606,21 @@ export function FairEditor({
   );
 
   const access = resolveAccess(local);
-  const attribution = local.attribution?.length ? local.attribution : (local.chain ?? []);
+  const attribution = local.attribution ?? [];
+  const chain = local.chain ?? [];
 
   // Resolve DIDs to handles
-  const allDids = attribution.map(e => e.did).filter(Boolean);
+  const allDids = [
+    ...attribution.map(e => e.did),
+    ...chain.map(e => e.did),
+  ].filter((d): d is string => !!d);
   const didNames = useDidNames(allDids, resolveProfile);
 
-  const totalShare = attribution.reduce((sum, e) => sum + e.share, 0);
-  const shareWarning = totalShare > 1.0001;
+  const totalAttributionShare = attribution.reduce((sum, e) => sum + e.share, 0);
+  const attributionShareWarning = totalAttributionShare > 1.0001;
+
+  const totalChainShare = chain.reduce((sum, e) => sum + e.share, 0);
+  const chainShareWarning = totalChainShare > 1.0001;
 
   return (
     <div className="bg-[#1a1a1a] text-gray-200 rounded-2xl shadow-xl p-4 space-y-4 w-full max-w-lg">
@@ -465,7 +628,7 @@ export function FairEditor({
       <div className="flex items-center justify-between border-b border-gray-800 pb-3">
         <div className="flex items-center gap-2">
           <span className="text-orange-500 font-bold text-sm">.fair</span>
-          <span className="text-gray-600 text-xs">v{local.fair || local.version || '1.0'}</span>
+          <span className="text-gray-600 text-xs">v{local.fair || (local as Record<string, unknown>).version || '1.0'}</span>
         </div>
         <span className="text-xs text-gray-600 truncate max-w-[200px]">{local.id}</span>
       </div>
@@ -473,9 +636,9 @@ export function FairEditor({
       {/* Attribution */}
       {sections.includes('attribution') && (
         <Panel title="Attribution">
-          {shareWarning && (
+          {attributionShareWarning && (
             <p className="text-xs text-red-400">
-              Shares sum to {(totalShare * 100).toFixed(1)}% — must not exceed 100%
+              Shares sum to {(totalAttributionShare * 100).toFixed(1)}% — must not exceed 100%
             </p>
           )}
           {readOnly ? (
@@ -483,9 +646,35 @@ export function FairEditor({
           ) : (
             <AttributionEdit
               entries={attribution}
-              onChange={entries => update({ attribution: entries, chain: entries })}
+              onChange={entries => update({ attribution: entries })}
             />
           )}
+        </Panel>
+      )}
+
+      {/* Chain */}
+      {sections.includes('chain') && (
+        <Panel title="Revenue Chain">
+          {chainShareWarning && (
+            <p className="text-xs text-red-400">
+              Shares sum to {(totalChainShare * 100).toFixed(1)}% — must not exceed 100%
+            </p>
+          )}
+          {readOnly ? (
+            <ChainView entries={chain} didNames={didNames} />
+          ) : (
+            <ChainEdit
+              entries={chain}
+              onChange={entries => update({ chain: entries })}
+            />
+          )}
+        </Panel>
+      )}
+
+      {/* Processing Fees */}
+      {sections.includes('fees') && (local.fees?.length ?? 0) > 0 && (
+        <Panel title="Processing Fees">
+          <FeesView fees={local.fees ?? []} />
         </Panel>
       )}
 

@@ -1,4 +1,5 @@
 import { createLogger } from '@imajin/logger';
+import { publish } from '../publish';
 import type { BusEvent, ReactorHandler } from '../types';
 
 const log = createLogger('bus:settle');
@@ -56,11 +57,10 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
   // Resolve .fair chain if provided
   let resolvedChain: Array<{ did: string; amount: number; role: string }> | undefined;
   let expectedTotal: number | undefined;
+  const totalDollars = amountCents / 100;
 
   const chain = fairManifest?.chain;
   if (fairManifest && chain?.length) {
-    const totalDollars = amountCents / 100;
-
     const NODE_DID = process.env.NODE_DID || process.env.RELAY_IMAJIN_DID || null;
     if (!NODE_DID) {
       log.warn({ event: event.type }, '[settle] NODE_DID not set — node fee recipient unresolved');
@@ -113,6 +113,8 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
   if (resolvedChain) body.fair_manifest = { chain: resolvedChain };
   if (metadata) body.metadata = metadata;
 
+  let result: { settled: boolean; batchId: string; transactions: string[]; total_amount: number; recipients: number; source: string } | undefined;
+
   try {
     const response = await fetch(`${PAY_SERVICE_URL}/api/settle`, {
       method: 'POST',
@@ -129,8 +131,45 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
       return;
     }
 
-    log.info({ event: event.type, buyerDid, amount: amountCents }, 'Settlement complete');
+    result = await response.json() as typeof result;
+    log.info({ event: event.type, buyerDid, amount: amountCents, batchId: result?.batchId }, 'Settlement complete');
   } catch (err) {
     log.error({ err: String(err) }, 'Settlement request error');
+    return;
+  }
+
+  // Emit settlement.completed so downstream services can snapshot the receipt
+  if (result?.settled) {
+    const resolvedFees = (fairManifest?.fees || []).map((fee) => ({
+      role: fee.role,
+      name: fee.name,
+      rateBps: fee.rateBps,
+      fixedCents: fee.fixedCents,
+      amount: parseFloat(((amountCents * fee.rateBps / 10000 + fee.fixedCents) / 100).toFixed(2)),
+      estimated: true,
+    }));
+
+    try {
+      await publish('settlement.completed', {
+        issuer: buyerDid || event.issuer,
+        subject: event.subject,
+        scope: event.scope,
+        payload: {
+          orderId: metadata?.orderId as string || '',
+          eventId: payload.eventId as string || '',
+          buyerDid: buyerDid || event.issuer,
+          amount: amountCents,
+          currency: currency || 'CAD',
+          totalAmount: totalDollars,
+          netAmount: expectedTotal ?? totalDollars,
+          fees: resolvedFees,
+          chain: resolvedChain || [],
+          metadata,
+        },
+      });
+      log.info({ event: event.type, buyerDid, amount: amountCents }, 'Settlement completed event emitted');
+    } catch (publishErr) {
+      log.error({ err: String(publishErr) }, 'Failed to emit settlement.completed (non-fatal)');
+    }
   }
 };

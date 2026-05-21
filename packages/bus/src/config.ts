@@ -65,6 +65,17 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'order.completed': [
     { type: 'settle', config: {}, await: true, enabled: true },
   ],
+  'settlement.completed': [
+    { type: 'emit', config: {}, enabled: true },
+    {
+      type: 'webhook',
+      config: {
+        url: `${process.env.EVENTS_SERVICE_URL || 'http://localhost:3006'}/api/webhook/settlement`,
+        secret: process.env.WEBHOOK_SECRET,
+      },
+      enabled: !!process.env.EVENTS_SERVICE_URL,
+    },
+  ],
   'listing.purchased': [
     { type: 'attestation', config: { attestationType: 'listing.purchased' }, enabled: true },
     { type: 'mjn', config: { attestationType: 'listing.purchased' }, enabled: true },

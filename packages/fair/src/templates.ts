@@ -1,4 +1,15 @@
 import type { FairManifestV1_1, FairDistributionRight, Money } from './types';
+import {
+  PROTOCOL_FEE_BPS,
+  PROTOCOL_DID,
+  NODE_FEE_DEFAULT_BPS,
+  BUYER_CREDIT_DEFAULT_BPS,
+  PLATFORM_FEE_BPS,
+  PLATFORM_DID,
+  STRIPE_RATE_BPS,
+  STRIPE_MIN_RATE_BPS,
+  STRIPE_FIXED_CENTS,
+} from './constants';
 
 export type FairTemplate = "media" | "ticket" | "course" | "module" | "document" | "custom";
 
@@ -7,6 +18,8 @@ export interface TemplateConfig {
   description: string;
   sections: {
     attribution: boolean;
+    chain: boolean;
+    fees: boolean;
     access: boolean;
     transfer: boolean;
     integrity: boolean;
@@ -23,6 +36,8 @@ export const templates: Record<FairTemplate, TemplateConfig> = {
     description: "Audio, video, or image content with transfer and integrity tracking.",
     sections: {
       attribution: true,
+      chain: true,
+      fees: true,
       access: true,
       transfer: true,
       integrity: true,
@@ -39,6 +54,8 @@ export const templates: Record<FairTemplate, TemplateConfig> = {
     description: "Event or access ticket with transfer controls and stated purpose.",
     sections: {
       attribution: true,
+      chain: true,
+      fees: true,
       access: true,
       transfer: true,
       integrity: false,
@@ -55,6 +72,8 @@ export const templates: Record<FairTemplate, TemplateConfig> = {
     description: "Educational course with distribution splits and stated learning intent.",
     sections: {
       attribution: true,
+      chain: true,
+      fees: true,
       access: true,
       transfer: false,
       integrity: false,
@@ -71,6 +90,8 @@ export const templates: Record<FairTemplate, TemplateConfig> = {
     description: "Standalone content module or lesson, minimal configuration.",
     sections: {
       attribution: true,
+      chain: true,
+      fees: true,
       access: true,
       transfer: false,
       integrity: false,
@@ -84,6 +105,8 @@ export const templates: Record<FairTemplate, TemplateConfig> = {
     description: "Written document or file with integrity verification.",
     sections: {
       attribution: true,
+      chain: true,
+      fees: true,
       access: true,
       transfer: false,
       integrity: true,
@@ -97,6 +120,8 @@ export const templates: Record<FairTemplate, TemplateConfig> = {
     description: "Fully custom manifest — all sections visible.",
     sections: {
       attribution: true,
+      chain: true,
+      fees: true,
       access: true,
       transfer: true,
       integrity: true,
@@ -164,6 +189,13 @@ export function getDefaultManifest(mimeType: string, ownerDid: string): FairMani
     };
   }
 
+  const protocolShare = PROTOCOL_FEE_BPS / 10000;
+  const nodeShare = NODE_FEE_DEFAULT_BPS / 10000;
+  const buyerCreditShare = BUYER_CREDIT_DEFAULT_BPS / 10000;
+  const scopeShare = BUYER_CREDIT_DEFAULT_BPS / 10000; // same default as buyer_credit
+  const platformShare = PLATFORM_FEE_BPS / 10000;
+  const sellerShare = 1 - protocolShare - nodeShare - buyerCreditShare - scopeShare - platformShare;
+
   const manifest: FairManifestV1_1 = {
     fair: '1.1',
     version: '1.1',
@@ -174,16 +206,20 @@ export function getDefaultManifest(mimeType: string, ownerDid: string): FairMani
     source: 'upload',
     access: { type: 'private' },
     attribution: [
-      { did: ownerDid, role: 'creator', share: 0.99 },
-      { role: 'platform', name: 'Imajin', share: 0.01 },
+      { did: ownerDid, role: 'creator', share: 1.0 },
+    ],
+    chain: [
+      { did: PROTOCOL_DID, role: 'protocol', share: protocolShare },
+      { did: 'NODE_PLACEHOLDER', role: 'node', share: nodeShare },
+      { did: 'BUYER_PLACEHOLDER', role: 'buyer_credit', share: buyerCreditShare },
+      { did: ownerDid, role: 'scope', share: scopeShare },
+      { did: PLATFORM_DID, role: 'platform', share: platformShare },
+      { did: ownerDid, role: 'seller', share: sellerShare },
     ],
     distribution,
     transfer: { allowed: true, requiresAttribution: true, price: transferPrice, resaleRoyaltyBps: 500 },
     fees: [
-      { role: 'protocol', name: 'MJN', rateBps: 100, fixedCents: 0 },
-      { role: 'node', name: 'Node', rateBps: 50, fixedCents: 0 },
-      { role: 'buyer_credit', name: 'Buyer Credit', rateBps: 25, fixedCents: 0 },
-      { role: 'scope', name: 'Scope', rateBps: 25, fixedCents: 0 },
+      { role: 'processor', name: 'Stripe', rateBps: STRIPE_RATE_BPS, minRateBps: STRIPE_MIN_RATE_BPS, fixedCents: STRIPE_FIXED_CENTS },
     ],
     training: { allowed: false },
     commercial: { allowed: false, contactRequired: true },
