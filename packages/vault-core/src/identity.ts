@@ -1,5 +1,17 @@
 import { createHash } from 'node:crypto';
-import { hexToBytes, isValidPublicKey } from '@imajin/auth';
+import * as ed25519 from '@noble/ed25519';
+
+function isValidPublicKeyHex(hex: string): boolean {
+    if (!/^[0-9a-f]{64}$/i.test(hex)) {
+        return false;
+    }
+    try {
+        ed25519.Point.fromHex(hex);
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 /**
  * Derive a deterministic key ID from a public key hex string.
@@ -8,7 +20,10 @@ import { hexToBytes, isValidPublicKey } from '@imajin/auth';
  * of the raw public key bytes.
  */
 export function deriveKeyId(senderPubkeyHex: string): string {
-    const bytes = hexToBytes(senderPubkeyHex);
+    if (!isValidPublicKeyHex(senderPubkeyHex)) {
+        throw new Error('Invalid sender public key');
+    }
+    const bytes = Buffer.from(senderPubkeyHex, 'hex');
     const hash = createHash('sha256').update(bytes).digest('hex');
     return hash.slice(0, 16);
 }
@@ -22,7 +37,7 @@ export function verifyDidKeyBinding(did: string, senderPubkeyHex: string): boole
     if (!did.startsWith('did:imajin:')) {
         return false;
     }
-    if (!isValidPublicKey(senderPubkeyHex)) {
+    if (!isValidPublicKeyHex(senderPubkeyHex)) {
         return false;
     }
     const expectedSuffix = did.slice('did:imajin:'.length);

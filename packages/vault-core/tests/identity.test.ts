@@ -1,6 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { deriveKeyId, verifyDidKeyBinding } from '../src/identity.js';
-import { generateKeypair } from '@imajin/auth';
+import * as ed25519 from '@noble/ed25519';
+import { sha512 } from '@noble/hashes/sha512';
+ed25519.etc.sha512Sync = (...messages) => sha512(ed25519.etc.concatBytes(...messages));
+
+function generateKeypair(): { privateKey: string; publicKey: string } {
+    const privateKey = ed25519.utils.randomPrivateKey();
+    const publicKey = ed25519.getPublicKey(privateKey);
+    return {
+        privateKey: Buffer.from(privateKey).toString('hex'),
+        publicKey: Buffer.from(publicKey).toString('hex')
+    };
+}
 
 describe('deriveKeyId', () => {
     it('returns a 16-character hex string', () => {

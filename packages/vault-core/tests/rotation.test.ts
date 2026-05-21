@@ -3,8 +3,19 @@ import { prepareRotationEntry } from '../src/rotation.js';
 import { deriveKeyId } from '../src/identity.js';
 import { verifyVaultSignature } from '../src/signature.js';
 import { computeVaultCid } from '../src/cid.js';
-import { generateKeypair } from '@imajin/auth';
+import * as ed25519 from '@noble/ed25519';
+import { sha512 } from '@noble/hashes/sha512';
 import { VAULT_ENTRY_VERSION_V1, type VaultEntry } from '../src/models.js';
+ed25519.etc.sha512Sync = (...messages) => sha512(ed25519.etc.concatBytes(...messages));
+
+function generateKeypair(): { privateKey: string; publicKey: string } {
+    const privateKey = ed25519.utils.randomPrivateKey();
+    const publicKey = ed25519.getPublicKey(privateKey);
+    return {
+        privateKey: Buffer.from(privateKey).toString('hex'),
+        publicKey: Buffer.from(publicKey).toString('hex')
+    };
+}
 
 const createEntry = (overrides: Partial<VaultEntry> = {}): VaultEntry => ({
     version: VAULT_ENTRY_VERSION_V1,

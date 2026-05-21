@@ -3,6 +3,15 @@ import { createDefaultAdapters } from '../src/adapters.js';
 import { computeVaultCid, verifyVaultCid } from '../src/cid.js';
 import { deriveKeyId, verifyDidKeyBinding } from '../src/identity.js';
 import { verifyVaultSignature } from '../src/signature.js';
+import * as ed25519 from '@noble/ed25519';
+import { sha512 } from '@noble/hashes/sha512';
+ed25519.etc.sha512Sync = (...messages) => sha512(ed25519.etc.concatBytes(...messages));
+
+function generatePublicKey(): string {
+    const privateKey = ed25519.utils.randomPrivateKey();
+    const publicKey = ed25519.getPublicKey(privateKey);
+    return Buffer.from(publicKey).toString('hex');
+}
 
 describe('createDefaultAdapters', () => {
     it('returns an adapter object with all required functions', () => {
@@ -22,7 +31,8 @@ describe('createDefaultAdapters', () => {
 
     it('wires deriveKeyId correctly', () => {
         const adapters = createDefaultAdapters();
-        expect(adapters.deriveKeyId('abcd1234')).toBe(deriveKeyId('abcd1234'));
+        const publicKey = generatePublicKey();
+        expect(adapters.deriveKeyId(publicKey)).toBe(deriveKeyId(publicKey));
     });
 
     it('wires verifyDidKeyBinding correctly', () => {
