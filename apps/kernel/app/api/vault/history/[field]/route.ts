@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { vaultService } from '@/src/lib/vault';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
@@ -9,6 +10,9 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: { field: string } }
 ) {
+  if (!(await requireAdmin())) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   const { field } = params;
 
   try {

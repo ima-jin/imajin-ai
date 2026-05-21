@@ -14,7 +14,6 @@ export function SetSecretDialog({ open, submitting, onClose, onSubmit }: SetSecr
   const [field, setField] = useState('');
   const [value, setValue] = useState('');
   const [hint, setHint] = useState('');
-  const [setBy, setSetBy] = useState('@operator');
 
   if (!open) {
     return null;
@@ -26,7 +25,6 @@ export function SetSecretDialog({ open, submitting, onClose, onSubmit }: SetSecr
       field: field.trim().toUpperCase(),
       value,
       hint: hint.trim(),
-      setBy: setBy.trim() || '@operator',
     });
     setField('');
     setValue('');
@@ -38,7 +36,7 @@ export function SetSecretDialog({ open, submitting, onClose, onSubmit }: SetSecr
       <div className="w-full max-w-lg rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-100 dark:border-gray-700 p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Set Secret</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-          UI scaffold only: value stays local in browser state until backend wiring from #1006 is connected.
+          Value is encrypted in the browser and only encrypted payloads are sent to the vault API.
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -62,27 +60,16 @@ export function SetSecretDialog({ open, submitting, onClose, onSubmit }: SetSecr
               className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Hint <span className="text-gray-400">(optional)</span>
-              </label>
-              <input
-                value={hint}
-                onChange={(event) => setHint(event.target.value)}
-                placeholder="ghp_"
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Set by</label>
-              <input
-                value={setBy}
-                onChange={(event) => setSetBy(event.target.value)}
-                placeholder="@operator"
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Hint <span className="text-gray-400">(optional)</span>
+            </label>
+            <input
+              value={hint}
+              onChange={(event) => setHint(event.target.value)}
+              placeholder="ghp_"
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <button

@@ -7,6 +7,7 @@ import {
   type VaultEntry,
 } from '@imajin/vault-core';
 import { publish } from '@imajin/bus';
+import { requireAdmin } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { vaultAdapters, vaultService } from '@/src/lib/vault';
 import { ensureVaultHotReloadReactorRegistered } from '@/src/lib/vault/subscribe';
@@ -30,6 +31,9 @@ interface SetVaultBody {
 }
 
 export async function POST(request: NextRequest) {
+  if (!(await requireAdmin())) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   let body: SetVaultBody;
   try {
     body = await request.json();
@@ -84,6 +88,7 @@ export async function POST(request: NextRequest) {
 
     await vaultService.set(entry);
 
+    let published = true;
     try {
       await publish('vault.secret.updated', {
         issuer: entry.senderDid,
@@ -98,6 +103,7 @@ export async function POST(request: NextRequest) {
         },
       });
     } catch (err) {
+      published = false;
       log.error({ err: String(err) }, 'Bus publish error for vault.secret.updated');
     }
 
@@ -105,6 +111,8 @@ export async function POST(request: NextRequest) {
       field,
       cid,
       timestamp,
+      senderDid,
+      status: published ? 'confirmed' : 'pending',
     });
   } catch (error) {
     log.error({ err: String(error), field }, 'Vault set error');
