@@ -536,6 +536,106 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'vault';
   };
+  'broker.release': {
+    releaseId: string;
+    requester: string;
+    subject: string;
+    fields: string[];
+    purpose: string;
+    scope: string;
+    mode: 'attestation' | 'raw';
+    issuedAt: string;
+  };
+  'broker.rejection': {
+    requester: string;
+    subject: string;
+    fields: string[];
+    purpose: string;
+    scope: string;
+    reason: BrokerRejectionReason;
+    details?: string;
+  };
 }
 
 export type BusEventType = keyof BusEventMap;
+
+// ============================================================================
+// Broker types — consent-gated data release (#1014)
+// ============================================================================
+
+/** Broker request — asks for consented field release */
+export interface BrokerRequest<T extends BrokerEventType = BrokerEventType> {
+  type: T;
+  requester: string;        // DID of the requester
+  subject: string;          // DID of the data subject
+  fields: string[];         // requested field names
+  purpose: string;          // declared purpose
+  scope: string;            // service scope
+  data?: Record<string, unknown>; // subject data to filter (Phase 1: inline)
+  preview?: boolean;        // dry-run mode
+}
+
+/** Successful release */
+export interface BrokerRelease {
+  status: 'released';
+  data: Record<string, unknown>;
+  envelope: {
+    releaseId: string;
+    scopeId: string;
+    purpose: string;
+    issuedAt: string;
+    consentReference: string;
+    mode: 'attestation' | 'raw';
+  };
+  preview?: boolean;
+}
+
+/** Rejection */
+export interface BrokerRejection {
+  status: 'rejected';
+  reason: BrokerRejectionReason;
+  fields?: string[];
+  details?: string;
+}
+
+export type BrokerRejectionReason =
+  | 'no_consent'
+  | 'consent_expired'
+  | 'consent_revoked'
+  | 'field_not_found'
+  | 'purpose_mismatch'
+  | 'requester_unauthorized';
+
+/** Result of a broker call */
+export type BrokerResult = BrokerRelease | BrokerRejection;
+
+/** Type guard */
+export function isBrokerRelease(r: BrokerResult): r is BrokerRelease {
+  return r.status === 'released';
+}
+
+/** Type guard */
+export function isBrokerRejection(r: BrokerResult): r is BrokerRejection {
+  return r.status === 'rejected';
+}
+
+/** Pipeline state passed between broker reactors */
+export interface BrokerPipelineState {
+  request: BrokerRequest;
+  // resolved by consent reactor
+  allowedFields?: string[];
+  mode?: 'attestation' | 'raw';
+  consentReference?: string;
+  // resolved by scope reactor
+  filteredData?: Record<string, unknown>;
+  // resolved by release reactor
+  envelope?: BrokerRelease['envelope'];
+}
+
+/** Broker reactor signature — sync/awaited, returns updated state or rejection */
+export type BrokerReactor = (
+  state: BrokerPipelineState
+) => Promise<BrokerPipelineState | BrokerRejection>;
+
+/** Broker event types (Phase 1) */
+export type BrokerEventType = string;
