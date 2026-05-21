@@ -16,6 +16,7 @@ const nextConfig = {
     '@imajin/pay',
     '@imajin/trust-graph',
     '@imajin/ui',
+    '@imajin/vault-core',
   ],
   async rewrites() {
     return [
