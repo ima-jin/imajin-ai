@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireAdmin } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { vaultService } from '@/src/lib/vault';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
@@ -6,6 +7,9 @@ import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 const log = createLogger('kernel');
 
 export async function GET() {
+  if (!(await requireAdmin())) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   try {
     const entries = await vaultService.list();
 
