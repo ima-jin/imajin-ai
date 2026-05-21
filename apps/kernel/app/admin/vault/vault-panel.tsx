@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import * as ed25519 from '@noble/ed25519';
-import { sha512 } from '@noble/hashes/sha512';
+import { sha512 } from '@noble/hashes/sha2.js';
 import { computeCid } from '@imajin/cid';
 import { HistoryDialog } from './history-dialog';
 import { RotateSecretDialog } from './rotate-secret-dialog';
