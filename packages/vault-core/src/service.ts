@@ -30,7 +30,7 @@ export class VaultEntryService {
         if (this.lock) {
             const release = await this.lock.acquire(entry.field);
             try {
-                return await this.setInternal(entry);
+                return await this.runExclusiveWrite(() => this.setInternal(entry));
             } finally {
                 await release();
             }

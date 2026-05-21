@@ -7,18 +7,18 @@ import { computeVaultCid } from './cid.js';
  * Prepare a new vault entry for key rotation.
  *
  * Creates a new entry with the updated blob, a new keyId derived from
- * the recipient's public key, a previousCid chain link to the existing
+ * the sender signing key, a previousCid chain link to the existing
  * entry, a fresh timestamp, and a signature.
  */
 export async function prepareRotationEntry(
     existingEntry: VaultEntry,
     newBlob: VaultBlob,
-    newRecipientPubkey: string,
+    _newRecipientPubkey: string,
     signerPrivateKey: string
 ): Promise<VaultEntry> {
     const cid = await computeVaultCid(newBlob);
     const timestamp = new Date().toISOString();
-    const keyId = deriveKeyId(newRecipientPubkey);
+    const keyId = deriveKeyId(existingEntry.senderPubkey);
 
     const payload = {
         version: VAULT_ENTRY_VERSION_V1,

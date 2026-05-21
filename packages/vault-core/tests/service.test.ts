@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { FileVaultRepository } from '../src/repository.js';
+import { FileVaultRepository, type VaultRepository } from '../src/repository.js';
 import { VAULT_ENTRY_VERSION_V1, type UpsertVaultEntryInput } from '../src/models.js';
 import { VaultEntryService } from '../src/service.js';
 import { InMemoryFieldLock } from '../src/lock.js';
@@ -118,6 +118,42 @@ describe('VaultEntryService', () => {
 
         const aIndices = [order.indexOf('cid:a1'), order.indexOf('cid:a2')];
         expect(aIndices[0]).toBeLessThan(aIndices[1]);
+    });
+
+    it('does not lose writes across different fields when lock is provided', async () => {
+        const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+        let currentVault = {
+            version: VAULT_ENTRY_VERSION_V1,
+            entries: [] as ReturnType<typeof createEntry>[]
+        };
+        const repository: VaultRepository = {
+            load: async () => {
+                await pause(15);
+                return {
+                    version: currentVault.version,
+                    entries: [...currentVault.entries]
+                };
+            },
+            save: async (vault) => {
+                await pause(15);
+                currentVault = {
+                    version: vault.version,
+                    entries: [...vault.entries]
+                };
+            }
+        };
+        const lock = new InMemoryFieldLock();
+        const service = new VaultEntryService(repository, { lock });
+
+        await Promise.all([
+            service.set(createEntry('FIELD_A', 'cid:a')),
+            service.set(createEntry('FIELD_B', 'cid:b'))
+        ]);
+
+        const vault = await service.loadVault();
+        const fields = new Set(vault.entries.map(entry => entry.field));
+        expect(fields).toEqual(new Set(['FIELD_A', 'FIELD_B']));
+        expect(vault.entries).toHaveLength(2);
     });
 
     it('runs integrity verification on get when adapters are provided', async () => {

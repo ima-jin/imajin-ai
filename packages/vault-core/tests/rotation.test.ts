@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { prepareRotationEntry } from '../src/rotation.js';
-import { deriveKeyId, verifyDidKeyBinding } from '../src/identity.js';
+import { deriveKeyId } from '../src/identity.js';
 import { verifyVaultSignature } from '../src/signature.js';
 import { computeVaultCid } from '../src/cid.js';
 import { generateKeypair } from '@imajin/auth';
@@ -35,7 +35,8 @@ describe('prepareRotationEntry', () => {
         expect(rotated.field).toBe(existing.field);
         expect(rotated.encrypted).toBe(newBlob.encrypted);
         expect(rotated.nonce).toBe(newBlob.nonce);
-        expect(rotated.keyId).toBe(deriveKeyId(newRecipient.publicKey));
+        expect(rotated.keyId).toBe(deriveKeyId(signer.publicKey));
+        expect(rotated.keyId).toBe(deriveKeyId(rotated.senderPubkey));
         expect(rotated.previousCid).toBe(existing.cid);
         expect(rotated.timestamp).not.toBe(existing.timestamp);
     });
