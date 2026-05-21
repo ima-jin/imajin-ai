@@ -1,6 +1,6 @@
 # MJN Protocol
 ## A Cryptographic Operating System for Sovereign Commerce
-### v0.4 · March 2026 · DRAFT
+### v0.5 · May 2026
 
 *Ryan Veteze · ryan@imajin.ai · [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
 
@@ -11,47 +11,71 @@
 
 ## Overview
 
-MJN is a cryptographic operating system that runs as Just a Bunch Of Services — **JBOS**.
+MJN is a cryptographic operating system. One kernel, a federated userspace, and four
+infrastructure layers that make every action verifiable and every relationship bilateral.
 
-15 independent HTTP services, each doing one thing, each with its own database schema, each independently deployable. No service mesh. No orchestration framework. No API gateway. Just applications behind a reverse proxy.
+Without the chains, each service is a dumb CRUD app. With the chains, they form a sovereign
+operating system where identity, attribution, trust, and settlement are structural properties —
+not features bolted on after the fact.
 
-The services are commodity — swap them, rewrite them, add more. The value is in the cryptographic substrate underneath: signed identity chains that make every action verifiable and every relationship bilateral.
+The **kernel** consolidates auth, payments, messaging, media, trust graph, and registry into
+one application. One domain, one cookie, one build. Userspace apps are independent, replaceable,
+and disposable — they inherit the full trust graph by importing `@imajin/auth`. The value is
+never in the app layer. It's in the substrate underneath.
 
-Without the chains, each service is a dumb CRUD app. With the chains, they form a sovereign operating system where identity, attribution, trust, and settlement are structural properties — not features bolted on after the fact.
+No service mesh. No orchestration framework. No API gateway. No Kubernetes. No Docker.
+Just Next.js apps behind Caddy on a single server with pm2.
 
-**Identity substrate:** [DFOS](https://protocol.dfos.com) by Brandon/Metalabel. Every `did:imajin` is anchored to a DFOS proof chain. The chain is canonical; `did:imajin` is a stable alias. MJN is Layer 6 — settlement, trust graph, attribution — on a cryptographic substrate.
+**Identity substrate:** [DFOS](https://protocol.dfos.com) by Brandon/Metalabel. Every
+`did:imajin` is anchored to a DFOS proof chain. The chain is canonical; `did:imajin` is a
+stable alias. MJN is Layer 6 — settlement, trust graph, attribution — on a cryptographic
+substrate.
 
-**Reference implementation:** 1 kernel (9 domains) + 6 federated apps at `jin.imajin.ai`. ~135 registered identities. First demonstration: April 1, 2026.
+**Reference implementation:** 1 kernel + 6 federated apps at `jin.imajin.ai`. ~150
+registered identities. First demonstration: April 1, 2026.
 
 ---
 
 ## Architecture
 
 ```
-                    JBOS (Just a Bunch Of Services)
-┌──────────────────────────────────────────────────────────┐
-│  www · events · chat · learn · market · coffee · links   │  ← Userspace
-│  dykil · media · notify                                  │     (disposable)
-├──────────────────────────────────────────────────────────┤
-│  connections · profile · registry                        │  ← Trust + Discovery
-├──────────────────────────────────────────────────────────┤
-│  auth · pay                                              │  ← Kernel
-│  attestations · .fair manifests · settlement             │     (signed chains)
-├──────────────────────────────────────────────────────────┤
-│  DFOS Proof Chains (L0–L5)                               │  ← Substrate
-│  Ed25519 · CID · dag-cbor · countersignatures            │     (cryptographic)
-└──────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Userspace (disposable, replaceable)                        │
+│  events · market · learn · coffee · links · dykil           │
+├─────────────────────────────────────────────────────────────┤
+│  Kernel                                                     │
+│  auth · pay · chat · media · profile · connections · registry│
+├─────────────────────────────────────────────────────────────┤
+│  Bus — reactor chains (side effects are composable)         │
+│  Vault — encrypted store (data encrypted at rest, always)   │
+│  Broker — consent gate (data released only with permission) │
+├─────────────────────────────────────────────────────────────┤
+│  Cryptographic Substrate                                    │
+│  Ed25519 · CID · dag-cbor · DFOS chains · .fair manifests   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-The **kernel** is auth + pay + the attestation/settlement layer. Services above the kernel can't do anything meaningful without it. The kernel doesn't care which services exist above it.
+The **kernel** is auth + pay + chat + media + profile + connections + registry. One cookie,
+one session, no CORS between services. We started with 15 separate services. CORS, cookie
+forwarding, and deploy coordination made it worse than a monolith without any of the benefits.
+Consolidation was the honest move.
 
-**Userspace** services are disposable. Any service can be replaced without affecting others. New services inherit the full trust graph and identity system by importing `@imajin/auth`. The complexity lives in the chain layer, not the orchestration layer.
+The **bus** (`@imajin/bus`) moves events through reactor chains. Services publish events;
+reactors handle side effects (attestation, token emission, settlement, notification). The
+bus is why adding new behaviour is composable — you configure a reactor chain, not write
+imperative webhook handlers.
 
-**Why JBOS:**
-- No inter-service trust assumptions — services verify chains, not each other
-- Runs on a single server with pm2 — no Kubernetes, no Docker in production
-- New services get identity, trust, and settlement for free
-- The reference implementation cost $76K to build; industry estimate for equivalent: $2.3M
+The **vault** encrypts data at rest with recipient-bound encryption. Same crypto primitive
+as selective disclosure — encrypt to a recipient's public key, decrypt only with their
+private key. CID-addressed for integrity verification without decryption.
+
+The **broker** mediates access to encrypted data based on consent grants. Field-level
+selective disclosure with purpose-binding and audit trail. Specced (#786, #1003), building
+on production bus + vault infrastructure.
+
+**Userspace** services are disposable. Any service can be replaced without affecting others.
+New services inherit the full trust graph and identity system by importing `@imajin/auth`.
+The complexity lives in the chain layer, not the orchestration layer.
 
 ---
 
@@ -59,34 +83,48 @@ The **kernel** is auth + pay + the attestation/settlement layer. Services above 
 
 ### DIDs
 
-Format: `did:imajin:xxx` — generated from an Ed25519 public key. Stable from creation. Never changes.
+Format: `did:imajin:xxx` — generated from an Ed25519 public key. Stable from creation.
+Never changes. The same keypair produces both `did:imajin:xxx` and `did:dfos:xxx` —
+byte-compatible, same curve, no derivation. Your DID is also a valid Solana wallet address.
 
-The same keypair produces both `did:imajin:xxx` and `did:dfos:xxx` — byte-compatible, same curve, no derivation. Your DID is also a valid Solana wallet address.
+DIDs are minted lazily — on first use, not through batch registration. A traveler books
+a trip, a DID is created. A restaurant is referenced, a DID is minted. The entity can
+later claim/upgrade their identity, or never. The audit trail is valid either way.
 
 DFOS relay: `jin.imajin.ai/registry/relay/`
 
-### Three Standing Tiers
+### Five Standing Tiers
 
 Standing is computed from attestation history — not assigned by an administrator.
 
 | Tier | Entry | Capabilities |
 |------|-------|-------------|
-| **Soft** | Email verification | Tickets, courses, chat, read-only |
-| **Preliminary** | Ed25519 keypair + invite | Create events, full trust graph access |
-| **Established** | Earned through history | Vouch for others, issue attestations, invite |
+| **Soft** | Email verification | Tickets, courses, read-only |
+| **Preliminary** | Ed25519 keypair + invite | Create events, full trust graph |
+| **Established** | Earned through history | Vouch, invite, issue attestations |
+| **Steward** | Community trust | Elevated governance rights |
+| **Operator** | Platform operator | Full access |
 
-Tiers upgrade seamlessly. All history carries over.
+Tiers upgrade seamlessly. All history carries over. You start with nothing and earn
+standing through real actions — not KYC gates, not admin grants.
 
 ### Four Identity Scopes
 
-| Scope | Description | Entry |
-|-------|-------------|-------|
-| **Actor** | One DID, one keypair. Humans, agents, devices. | Keypair generation |
+| Scope | Description | Governance |
+|-------|-------------|------------|
+| **Actor** | One DID, one keypair. Humans, agents, devices. | Individual sovereignty |
 | **Family** | Shared trust, delegated authority. | Mutual attestation |
-| **Community** | Shared practice, quorum-governed. | Quorum + participation |
-| **Business** | Roles, delegation chains. | Declaration + covenant |
+| **Community** | Shared practice, contribution-weighted. | Quorum governance |
+| **Business** | Roles, delegation chains. | Role hierarchy |
 
-All subtypes — `HumanActor`, `AgentActor`, `DeviceActor` — share the same keypair structure and trust graph. Every interaction is typed so you always know what you're talking to.
+Governance is structural — it's the scope type, the role hierarchy, the reactor chains.
+You can't separate "the governance question" from "the identity question" because they're
+the same thing. The scope defines the governance. The membership enforces delegation. The
+bus executes policy. The attestations provide accountability.
+
+All subtypes — `human`, `agent`, `device`, `presence`, `org`, `service` — share the same
+keypair structure and trust graph. Agents are first-class identities, not API keys. The
+system doesn't care if you're carbon or silicon — it cares if you can sign.
 
 ### DFOS Chain Properties
 
@@ -99,13 +137,16 @@ All subtypes — `HumanActor`, `AgentActor`, `DeviceActor` — share the same ke
 
 ## The Five Primitives
 
-Everything in MJN reduces to five primitives. They compose. Each is independently useful. Together they form the operating system.
+Everything in MJN reduces to five primitives. They compose. Each is independently useful.
+Together they form the operating system.
 
 ### 1. Attestation
 
-Every trust-relevant act emits a cryptographically signed record. Unsigned attestations are rejected at write.
+Every trust-relevant act emits a cryptographically signed record. Unsigned attestations
+are rejected at write — a 4xx, not a null signature. If you can't sign it, it didn't happen.
 
-On onboarding, both node and Actor sign a bilateral root record. Every subsequent attestation references this root. DFOS countersignatures anchor it to chain.
+On onboarding, both node and Actor sign a bilateral root record. Every subsequent attestation
+references this root. DFOS countersignatures anchor it to chain.
 
 **Live attestation types:**
 
@@ -117,51 +158,68 @@ On onboarding, both node and Actor sign a bilateral root record. Every subsequen
 | `connection.accepted` | connections | Invite accepted |
 | `vouch` | connections | Inviter sponsors acceptee |
 | `session.created` | auth | Login with auth method metadata |
+| `identity.created` | auth | New DID registered |
+| `ticket.purchased` | events | Event ticket purchased |
+| `listing.purchased` | market | Market listing purchased |
+| `app.authorized` | auth | User authorized a federated app |
+| `document.signed` | auth | Multi-party document signature |
+| `document.executed` | auth | All parties signed |
 
-**Standing** is computed from attestation history: positive/negative attestations weighted by type, issuer standing, and time decay. Two modes: community standing (local) and cross-node standing (portable).
+**Standing** is computed from attestation history: positive/negative attestations weighted
+by type, issuer standing, and time decay. Two modes: community standing (local) and
+cross-node standing (portable).
 
 ### 2. Communication
 
 DID-based messaging. Every conversation is itself a DID:
 
-- `did:imajin:dm:<hash>` — direct message (deterministic)
-- `did:imajin:group:<uuid>` — group channel (random)
+- `did:imajin:dm:<hash>` — direct message (deterministic from participants)
+- `did:imajin:group:<hash>` — group channel (deterministic from members)
 - `did:imajin:event:<id>` — event conversation
 
-Messages signed by sender DID. Auth service is the single access control authority. Real-time via WebSocket.
+Messages signed by sender DID. Real-time via WebSocket. E2EE via X25519 key agreement +
+XChaCha20-Poly1305.
 
-Communication rules follow identity scope: Actors get private channels. Families get shared interior channels. Communities are tiered by membership. Businesses can't initiate outreach — all commercial messaging is consent-gated and gas-priced.
+Communication rules follow identity scope: Actors get private channels. Families get shared
+interior channels. Communities are tiered by membership. Businesses can't initiate outreach —
+all commercial messaging is consent-gated and gas-priced.
 
 ### 3. Attribution (.fair)
 
 Every asset carries a `.fair` manifest: who contributed, in what proportion, under what terms.
+The manifest travels WITH the content. Not stored separately. Not in a different system. When
+money moves, the manifest says where it goes.
 
-```json
-{
-  "id": "asset-123",
-  "version": "0.3.0",
-  "type": "track",
-  "contributors": [
-    { "id": "did:imajin:5Qn8...", "role": "artist", "weight": 0.6 },
-    { "id": "did:imajin:8Xk2...", "role": "producer", "weight": 0.4 }
-  ],
-  "terms": { "train": { "consent": "explicit", "price": 0.50 } },
-  "signature": "...",
-  "platformSignature": "..."
-}
-```
+Fee cascade — deducted in order, seller gets the remainder:
+1. **Protocol fee**: 1.0% (fixed — this is how the network sustains itself)
+2. **Node fee**: 0.5% default, operator-configurable [0.25%, 2.0%]
+3. **Buyer credit**: 0.25% default — the buyer earns MJN for transacting
+4. **Scope fee**: optional — only when a community/business takes a cut
+5. **Seller share**: everything else
 
-`.fair` is a kernel primitive in the JBOS model. Settlement won't process without a valid, signed manifest. With DFOS chain backing, creator proof is portable and verifiable independent of the originating server.
+Default total overhead: 2%. The seller gets 98%. Compare to Stripe's 2.9% + $0.30 where
+the platform keeps everything. Here, the 2% is split across four stakeholders who all
+contributed to the transaction happening.
 
-Manifests travel with the content. You can use `.fair` without MJN — it's a standalone JSON format. MJN uses `.fair` for all attribution.
+Settlement won't process without a valid, signed manifest. With DFOS chain backing, creator
+proof is portable and verifiable independent of the originating server.
+
+`.fair` is a standalone JSON format. You can use it without MJN. MJN uses it for all attribution.
 
 ### 4. Settlement
 
-Every transaction verifies `.fair` signatures before processing. Splits follow the manifest. Completion emits a `transaction.settled` attestation.
+Every transaction verifies `.fair` signatures before processing. The bus `settle` reactor
+reads the manifest, resolves placeholder DIDs, deducts processing fees, splits the payment,
+and emits a `transaction.settled` attestation. No human intervention. No invoice. No accounts
+receivable.
 
-**Current:** Stripe (Connect for multi-seller payouts, EMT for bank transfer).
+**Live:** Stripe (Connect for multi-seller payouts). Interac e-Transfer for CAD on-ramp.
 
-**Planned:** MJN token on Solana. Dual-currency — fiat or MJN. Atomic `.fair` splits in one transaction.
+**MJNx ledger:** Internal credit token. 1 MJN = $0.01 (1¢). 100 MJN = 1 MJNx. The protocol
+doesn't require the token. The token requires the protocol. MJNx is to Imajin as USD is to
+SWIFT — an accounting unit for the node's internal ledger, not a speculative asset.
+
+**Planned settlement schemes:** MJNx-direct, Solana Pay, Lightning, x402.
 
 **Gas model for declared-intent marketplace:**
 
@@ -171,41 +229,68 @@ Every transaction verifies `.fair` signatures before processing. Splits follow t
 | Tier 2 | Declared interest pool | Medium gas |
 | Tier 3 | Extended reach, opted-in | High gas |
 
-Frequency-scaled depth gating prevents spam: costs escalate with repetition (1× → 1.5× → 3× → 7× → 15× → 40×). Matching is local — user's interests never leave their node. k-anonymity enforced.
+Frequency-scaled depth gating prevents spam: costs escalate with repetition
+(1× → 1.5× → 3× → 7× → 15× → 40×). Matching is local — user's interests never leave
+their node. k-anonymity enforced.
 
 ### 5. Discovery
 
-Federated registry at `jin.imajin.ai/registry`. Nodes announce presence, operators, and served scopes. Node DIDs are chain-verified on registration.
+Federated registry at `jin.imajin.ai/registry`. Nodes announce presence, operators, and
+served scopes. Node DIDs are chain-verified on registration.
 
-**Exit credentials:** On departure, Actors receive a signed portable credential — public summary (aggregate stats) and encrypted context (full attestation history under departing Actor's key). Integrity is provable because signing started at onboarding, not at departure.
+**Selective disclosure:** The broker layer mediates access to personal data with consent
+grants. A traveler shares dietary preferences with a restaurant but not their budget.
+A sizing service gets measurements but not identity. Each field, each purpose, each release
+mode is explicit. Every release is audited. Shadow mode validates the model without gating
+the user experience; enforcement mode makes it binding.
+
+**Exit credentials:** On departure, Actors receive a signed portable credential — public
+summary (aggregate stats) and encrypted context (full attestation history under departing
+Actor's key). Integrity is provable because signing started at onboarding, not at departure.
 
 ---
 
-## Services
+## Infrastructure Layers
 
-1 kernel (9 domains) + 6 federated apps. All Next.js. All Postgres. All behind Caddy. All managed by pm2.
+### Event Bus (`@imajin/bus`)
 
-| Service | URL | Role |
-|---------|-----|------|
-| auth | jin.imajin.ai/auth | Kernel — DIDs, sessions, attestations, DFOS bridge |
-| pay | jin.imajin.ai/pay | Kernel — Stripe, settlement, .fair verification |
-| connections | jin.imajin.ai/connections | Trust — pods, invites, groups, vouches |
-| profile | jin.imajin.ai/profile | Discovery — public profiles, handles |
-| registry | jin.imajin.ai/registry | Federation — node discovery, DFOS relay |
-| events | jin.imajin.ai/events | Userspace — events, tickets, .fair splits |
-| chat | jin.imajin.ai/chat | Userspace — DID messaging, WebSocket |
-| notify | jin.imajin.ai/notify | Userspace — notifications, preferences, broadcasts |
-| media | jin.imajin.ai/media | Userspace — assets, .fair sidecars |
-| learn | jin.imajin.ai/learn | Userspace — courses, enrollment |
-| market | jin.imajin.ai/market | Userspace — local commerce |
-| coffee | jin.imajin.ai/coffee | Userspace — tipping pages |
-| links | jin.imajin.ai/links | Userspace — link-in-bio |
-| dykil | jin.imajin.ai/dykil | Userspace — spending surveys |
-| www | imajin.ai | Userspace — landing, app launcher |
+Side effects are the hard part. "After payment succeeds, create an attestation, credit MJN,
+settle the .fair manifest, and notify the seller." Without the bus, that's a fragile
+imperative sequence in a webhook handler. With the bus, it's a composable reactor chain.
 
-Every service exposes OpenAPI at `/api/spec`.
+```
+bus.publish('listing.purchased', { issuer, subject, scope, payload })
+→ attestation reactor (sign + store)
+→ mjn reactor (emit tokens)
+→ settle reactor (resolve .fair, split payment) [blocking]
+→ notify reactor (send notifications)
+```
 
-Shared packages: `@imajin/auth` · `@imajin/db` · `@imajin/fair` · `@imajin/chat` · `@imajin/ui` · `@imajin/config` · `@imajin/llm` · `@imajin/media` · `@imajin/notify`
+Built-in reactors: `attestation`, `mjn`, `settle`, `notify`, `emit`, `webhook`.
+Custom reactors via `registerReactor()`.
+
+Chain configuration: hardcoded defaults (Phase 1, live) → DB-backed (Phase 2, specced) →
+scope-level overrides (Phase 3) → admin UI (Phase 4, "IFTTT for events"). Each phase earned
+by actual demand, not speculative architecture.
+
+### Vault
+
+Encrypted key-value store. Encrypt a secret to the node's public key from anywhere (phone,
+laptop, agent), store as a CID-addressed blob, decrypt only on the node. No plaintext at
+rest. No SSH required.
+
+Crypto: Ed25519 → X25519 key derivation, XSalsa20-Poly1305 authenticated encryption, CID
+addressing. Same primitives as Signal and age. No novel cryptography.
+
+Same primitive as selective disclosure — both are "signed, scoped, encrypted data with
+controlled release."
+
+### Federated App Authentication
+
+Userspace apps authenticate via `requireAppAuth()` using attestation-based consent. A user
+authorizes an app (creates an `app.authorized` attestation with approved scopes). The app
+presents this attestation on each request. The kernel validates it. No OAuth. No token
+exchange. Just a signed attestation that says "this user authorized this app for these scopes."
 
 ---
 
@@ -215,11 +300,14 @@ Shared packages: `@imajin/auth` · `@imajin/db` · `@imajin/fair` · `@imajin/ch
 |-----------|---------|
 | Ed25519 | DID keypairs, attestation signing, .fair signing, sessions |
 | SHA-256 | Content hashing, DID derivation |
-| dag-cbor + CID | DFOS content addressing |
+| X25519 | Key agreement for E2EE chat and vault encryption |
+| XChaCha20-Poly1305 | Chat message encryption |
+| XSalsa20-Poly1305 | Vault encryption (NaCl box) |
+| dag-cbor + CID | DFOS content addressing, attestation CIDs |
 | JWS | DFOS signature format |
-| DFOS chain | Identity anchoring, key rotation, countersignatures |
+| JWT | Session cookies (HS256) |
 
-All persistence: Postgres. Per-service schemas in a shared database.
+All persistence: Postgres. Per-service schemas in a shared database. Drizzle ORM.
 
 ---
 
@@ -231,11 +319,14 @@ Imajin rejects:
 - **Cloud dependency** — self-hosted on owned hardware
 - **Vendor lock-in** — open source, every service replaceable
 - **Surveillance capitalism** — your data stays on your node
-- **Orchestration theater** — no Kubernetes, no service mesh, JBOS
+- **Orchestration theater** — no Kubernetes, no service mesh
 
-A node doesn't need the registry to exist — only to be discoverable. If the registry disappears, you keep your keypair, your chain proofs, your attestation history. The exit door is always open.
+A node doesn't need the registry to exist — only to be discoverable. If the registry
+disappears, you keep your keypair, your chain proofs, your attestation history. The exit
+door is always open.
 
-Federation is the honest architecture: central registry now (ships fast), on-chain registry next (Solana), mesh trust eventually (no central authority).
+Federation is the honest architecture: central registry now (ships fast), on-chain registry
+next (Solana), mesh trust eventually (no central authority).
 
 ---
 
@@ -243,25 +334,29 @@ Federation is the honest architecture: central registry now (ships fast), on-cha
 
 | Status | Item |
 |--------|------|
-| ✅ | 15-service JBOS on single server |
-| ✅ | Three-tier DID identity |
+| ✅ | Kernel + 6 federated userspace apps |
+| ✅ | Five-tier DID identity with lazy minting |
 | ✅ | DFOS chain-backed identity across all services |
-| ✅ | DFOS relay at jin.imajin.ai/registry/relay/ |
+| ✅ | DFOS relay (106/106 conformance, four-node mesh) |
 | ✅ | Bilateral attestations via countersignatures |
-| ✅ | 6 attestation types with Ed25519 signing |
-| ✅ | .fair signing at settlement |
+| ✅ | 25+ attestation types with Ed25519 signing |
+| ✅ | Event bus with reactor chains |
+| ✅ | .fair settlement via bus reactor |
 | ✅ | Stripe Connect multi-seller payouts |
+| ✅ | MJNx internal credit ledger |
 | ✅ | Trust graph (pods, invites, groups, vouches) |
-| ✅ | DID-based real-time chat |
+| ✅ | DID-based real-time chat with E2EE |
+| ✅ | Vault — encrypted config with CID addressing |
+| ✅ | Agent DIDs with scoped delegation |
+| ✅ | Federated app authentication (requireAppAuth) |
+| ✅ | Multi-party document signing |
 | ✅ | Federation registry |
 | ✅ | MJN token reserved on Solana |
-| ✅ | Auth test suite (43 tests) |
+| ⏳ | Selective disclosure / data broker |
 | ⏳ | Standing computation |
 | ⏳ | Portable exit credentials |
 | ⏳ | MJN token settlement (dual-currency) |
 | ⏳ | Declared-intent marketplace |
-| ⏳ | Family / Community / Business scopes |
-| ⏳ | Encrypted chat (key epoch model) |
 | ⏳ | Node registration via DFOS relay |
 
 ---
@@ -270,14 +365,15 @@ Federation is the honest architecture: central registry now (ships fast), on-cha
 
 | Metric | Value |
 |--------|-------|
-| Services | 15 |
-| Lines of code | 122,721 |
-| Identities | ~120 |
-| Issues closed | 235 |
-| Days | 50 |
-| Team | 1 human + AI |
+| Architecture | 1 kernel + 6 federated apps |
+| Shared packages | 20 |
+| Lines of code | ~134,000 |
+| Commits | 2,467 |
+| Identities | ~150 |
+| Days | 110 |
+| Team | 1 human + AI agents |
 | Traditional estimate | $2.3M / 14.4 months / 9.2 people |
-| Actual cost | $76,445 / 50 days / 1 person |
+| Actual cost | ~$108K / 110 days / 1 person |
 
 ---
 
