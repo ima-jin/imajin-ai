@@ -332,6 +332,11 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
   };
 
   // Filter logic
+  // Default view shows valid + used (real tickets with verified payment).
+  // Non-default statuses are revealed by clicking their pills.
+  const DEFAULT_STATUSES = ['valid', 'used'];
+  const NON_DEFAULT_STATUSES = ['held', 'available', 'cancelled', 'refunded', 'refund_pending'];
+
   const toggleFilter = (key: FilterKey, value: string) => {
     if (filterKey === key && filterValue === value) {
       setFilterKey(null);
@@ -343,24 +348,30 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
   };
 
   const filteredGuests = guests.filter(g => {
-    if (!filterKey) return true;
-    if (filterKey === 'type') return g.ticketType === filterValue;
+    // Status pill overrides the default status filter
     if (filterKey === 'status') return g.status === filterValue;
-    return true;
+    // Type pill still restricts to default statuses
+    if (filterKey === 'type') return g.ticketType === filterValue && DEFAULT_STATUSES.includes(g.status);
+    // Default: only valid + used
+    return DEFAULT_STATUSES.includes(g.status);
   });
 
-  // Summary counts
+  // Tier counts only include valid + used tickets
   const typeCounts = guests.reduce<Record<string, number>>((acc, g) => {
-    acc[g.ticketType] = (acc[g.ticketType] || 0) + 1;
+    if (DEFAULT_STATUSES.includes(g.status)) {
+      acc[g.ticketType] = (acc[g.ticketType] || 0) + 1;
+    }
     return acc;
   }, {});
+  // Status counts include ALL tickets so the pills show real numbers
   const statusCounts = guests.reduce<Record<string, number>>((acc, g) => {
     acc[g.status] = (acc[g.status] || 0) + 1;
     return acc;
   }, {});
 
   const uniqueTypes = Object.keys(typeCounts);
-  const uniqueStatuses = Object.keys(statusCounts);
+  // Only show pills for non-default statuses that actually have tickets
+  const uniqueStatuses = NON_DEFAULT_STATUSES.filter(s => statusCounts[s]);
 
   // Collapsed header with summary
   const summaryContent = (
@@ -446,7 +457,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
         {guests.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-4 mb-4">
             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
-              {guests.length} ticket{guests.length !== 1 ? 's' : ''}
+              {filteredGuests.length} of {guests.length} ticket{guests.length !== 1 ? 's' : ''}
             </span>
             {uniqueTypes.map(type => (
               <button
@@ -479,7 +490,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
                 onClick={() => { setFilterKey(null); setFilterValue(null); }}
                 className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/60 transition"
               >
-                Clear filter
+                ✕ Back to confirmed
               </button>
             )}
           </div>

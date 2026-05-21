@@ -75,7 +75,11 @@ export async function GET(
              cred.value as fallback_email
       FROM events.tickets t
       JOIN events.ticket_types tt ON t.ticket_type_id = tt.id
-      LEFT JOIN dykil.survey_responses sr ON sr.ticket_id = t.id
+      LEFT JOIN LATERAL (
+        SELECT answers FROM dykil.survey_responses
+        WHERE ticket_id = t.id
+        ORDER BY created_at DESC LIMIT 1
+      ) sr ON true
       LEFT JOIN events.orders o ON t.order_id = o.id
       LEFT JOIN auth.identities i ON i.id = t.owner_did
       LEFT JOIN LATERAL (
