@@ -53,7 +53,9 @@ export {
     type FileLock
 } from './lock.js';
 export {
-    prepareRotationEntry
+    prepareRotationEntry,
+    prepareRotationEntryFromSignedInput,
+    type SignedRotationInput
 } from './rotation.js';
 export {
     createDefaultAdapters

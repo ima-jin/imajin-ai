@@ -3,6 +3,14 @@ import { deriveKeyId } from './identity.js';
 import { signVaultPayload } from './signature.js';
 import { computeVaultCid } from './cid.js';
 
+export interface SignedRotationInput {
+    senderDid: string;
+    senderPubkey: string;
+    signature: string;
+    timestamp: string;
+    deleted?: boolean;
+}
+
 /**
  * Prepare a new vault entry for key rotation.
  *
@@ -38,5 +46,29 @@ export async function prepareRotationEntry(
     return {
         ...payload,
         signature
+    };
+}
+
+export async function prepareRotationEntryFromSignedInput(
+    existingEntry: VaultEntry,
+    newBlob: VaultBlob,
+    input: SignedRotationInput
+): Promise<VaultEntry> {
+    const cid = await computeVaultCid(newBlob);
+    const keyId = deriveKeyId(input.senderPubkey);
+
+    return {
+        version: VAULT_ENTRY_VERSION_V1,
+        field: existingEntry.field,
+        cid,
+        encrypted: newBlob.encrypted,
+        nonce: newBlob.nonce,
+        senderDid: input.senderDid,
+        senderPubkey: input.senderPubkey,
+        keyId,
+        signature: input.signature,
+        timestamp: input.timestamp,
+        previousCid: existingEntry.cid,
+        ...(input.deleted !== undefined ? { deleted: input.deleted } : {})
     };
 }

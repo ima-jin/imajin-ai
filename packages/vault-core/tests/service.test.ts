@@ -191,4 +191,39 @@ describe('VaultEntryService', () => {
 
         await expect(service.get('BAD')).rejects.toThrow();
     });
+
+    it('runs integrity verification on list when adapters are provided', async () => {
+        const repository = new FileVaultRepository({ vaultPath });
+        const adapters: VaultIntegrityAdapters = {
+            computeCid: vi.fn(async ({ encrypted, nonce }) => `cid:${encrypted}:${nonce}`),
+            deriveKeyId: vi.fn((senderPubkey: string) => `kid:${senderPubkey}`),
+            verifyDidKeyBinding: vi.fn(() => true),
+            verifySignature: vi.fn(() => true)
+        };
+        const service = new VaultEntryService(repository, { adapters });
+
+        await service.set(createEntry('LIST_VERIFY', 'cid:enc-list:nonce-list', {
+            encrypted: 'enc-list',
+            nonce: 'nonce-list'
+        }));
+
+        const entries = await service.list();
+        expect(entries).toHaveLength(1);
+        expect(adapters.verifySignature).toHaveBeenCalled();
+    });
+
+    it('throws on history read when integrity verification fails', async () => {
+        const repository = new FileVaultRepository({ vaultPath });
+        const adapters: VaultIntegrityAdapters = {
+            computeCid: vi.fn(async () => 'wrong-cid'),
+            deriveKeyId: vi.fn(() => 'kid'),
+            verifyDidKeyBinding: vi.fn(() => true),
+            verifySignature: vi.fn(() => true)
+        };
+        const service = new VaultEntryService(repository, { adapters });
+
+        await service.set(createEntry('HISTORY_BAD', 'cid:history-bad'));
+
+        await expect(service.getHistory('HISTORY_BAD')).rejects.toThrow();
+    });
 });

@@ -521,6 +521,21 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
+  'vault.secret.updated': {
+    field: string;
+    cid: string;
+    senderDid: string;
+    context_id: string;
+    context_type: 'vault';
+  };
+  'vault.secret.rotated': {
+    field: string;
+    cid: string;
+    previousCid: string;
+    senderDid: string;
+    context_id: string;
+    context_type: 'vault';
+  };
 }
 
 export type BusEventType = keyof BusEventMap;
