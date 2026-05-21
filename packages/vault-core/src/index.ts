@@ -28,5 +28,33 @@ export {
     type FileVaultRepositoryOptions
 } from './repository.js';
 export {
-    VaultEntryService
+    VaultEntryService,
+    type VaultEntryServiceOptions
 } from './service.js';
+export {
+    canonicalizePayload
+} from './canonical.js';
+export {
+    computeVaultCid,
+    verifyVaultCid
+} from './cid.js';
+export {
+    deriveKeyId,
+    verifyDidKeyBinding
+} from './identity.js';
+export {
+    signVaultPayload,
+    verifyVaultSignature
+} from './signature.js';
+export {
+    type VaultLock,
+    type VaultLockRelease,
+    InMemoryFieldLock,
+    type FileLock
+} from './lock.js';
+export {
+    prepareRotationEntry
+} from './rotation.js';
+export {
+    createDefaultAdapters
+} from './adapters.js';
