@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { eq, and, desc, lt, isNull, inArray, ilike } from 'drizzle-orm';
+import { eq, and, desc, lt, isNull, inArray } from 'drizzle-orm';
 
 const log = createLogger('kernel');
 import { db, conversationsV2, messagesV2, messageReactionsV2, profiles } from '@/src/db';
@@ -10,22 +10,7 @@ import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils'
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';
 import { hasCapability, requiredCapability, CAPABILITY_MESSAGES } from '@/src/lib/chat/capabilities';
 import { checkAccess } from '@/src/lib/kernel/access';
-
-const MENTION_REGEX = /@([a-zA-Z0-9_-]+)/g;
-
-async function resolveHandleToDid(handle: string): Promise<string | null> {
-  try {
-    const result = await db
-      .select({ did: profiles.did, handle: profiles.handle })
-      .from(profiles)
-      .where(ilike(profiles.handle, handle))
-      .limit(5);
-    const profile = result.find((p) => p.handle?.toLowerCase() === handle.toLowerCase());
-    return profile?.did ?? null;
-  } catch {
-    return null;
-  }
-}
+import { processMentions } from '@/src/lib/chat/mentions';
 
 /**
  * GET /api/conversations/:id/messages
@@ -234,33 +219,13 @@ export async function POST(
     }
 
     // Detect and notify @mentions — fire and forget
-    const messageText = typeof content === 'object' && (content as any).text ? (content as any).text : typeof content === 'string' ? content : '';
-    const mentionMatches = [...messageText.matchAll(new RegExp(MENTION_REGEX))].map((m: RegExpMatchArray) => m[1]);
-    if (mentionMatches.length > 0) {
-      const uniqueHandles = [...new Set<string>(mentionMatches)];
-      (async () => {
-        for (const handle of uniqueHandles) {
-          try {
-            const mentionedDid = await resolveHandleToDid(handle);
-            if (!mentionedDid || mentionedDid === effectiveDid) continue;
-            publish('chat.mention', {
-              issuer: effectiveDid,
-              subject: mentionedDid,
-              scope: 'chat',
-              payload: {
-                conversationId: conversationDid,
-                messageId,
-                senderName: identity.handle || identity.id.slice(0, 16),
-                messagePreview: messageText.slice(0, 100),
-                interestDids: [mentionedDid],
-              },
-            }).catch((err: unknown) => log.error({ err: String(err) }, 'Mention publish error'));
-          } catch (err) {
-            log.error({ err: String(err) }, 'Handle resolution error');
-          }
-        }
-      })().catch(() => {});
-    }
+    processMentions({
+      conversationDid,
+      messageId,
+      senderDid: effectiveDid,
+      senderName: identity.handle || identity.id.slice(0, 16),
+      content,
+    });
 
     return jsonResponse({ message }, 201);
   } catch (error) {

@@ -24,3 +24,6 @@ export type { NameDisplayPolicy, DisplayPref } from './NameDisplaySelector';
 export { useFileUpload } from './hooks/useFileUpload';
 export { useVoiceRecording } from './hooks/useVoiceRecording';
 export { useLocationShare } from './hooks/useLocationShare';
+export { useMentions, EVERYONE_DID } from './hooks/useMentions';
+export type { Mention, MentionResult, Member } from './hooks/useMentions';
+export { MentionPicker } from './MentionPicker';
