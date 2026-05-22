@@ -3,7 +3,7 @@ import { corsHeaders, corsOptions } from '@imajin/config';
 import { nanoid } from 'nanoid';
 import { withLogger } from '@imajin/logger';
 import { db } from '@/src/db';
-import { notifications, preferences, identities } from '@/src/db';
+import { notifications, preferences, identities, profiles } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { getTemplate } from '@/src/lib/notify/templates';
 import { sendEmail } from '@imajin/email';
@@ -81,12 +81,22 @@ export const POST = withLogger('kernel', async (request, { log }) => {
     // Resolve recipient email: payload > identity contact_email
     let recipientEmail = (data as any).email as string | undefined;
     if (!recipientEmail && to.startsWith('did:')) {
+      // Check auth.identities first (set from Stripe/ticket purchases)
       const [identity] = await db
         .select({ contactEmail: identities.contactEmail })
         .from(identities)
         .where(eq(identities.id, to))
         .limit(1);
-      recipientEmail = identity?.contactEmail ?? undefined;
+      recipientEmail = identity?.contactEmail || undefined;
+      // Fall back to profile.profiles (set from connection invite / register)
+      if (!recipientEmail) {
+        const [profile] = await db
+          .select({ contactEmail: profiles.contactEmail })
+          .from(profiles)
+          .where(eq(profiles.did, to))
+          .limit(1);
+        recipientEmail = profile?.contactEmail || undefined;
+      }
     }
     if (recipientEmail) {
       try {
