@@ -142,8 +142,8 @@ export async function POST(request: NextRequest) {
         if (geoRes.ok) {
           const geoData = await geoRes.json() as Array<{ lat: string; lon: string }>;
           if (geoData.length > 0) {
-            resolvedLat = parseFloat(geoData[0].lat);
-            resolvedLon = parseFloat(geoData[0].lon);
+            resolvedLat = Number.parseFloat(geoData[0].lat);
+            resolvedLon = Number.parseFloat(geoData[0].lon);
           }
         }
       } catch (err) {

@@ -398,8 +398,15 @@ export async function GET(
       const remarkGfm = (await import("remark-gfm")).default;
       const remarkHtml = (await import("remark-html")).default;
 
-      // Strip first H1 if it matches the frontmatter title (avoid duplicate)
-      const bodyClean = body.replace(/^#\s+.+\n+/, "");
+      // Strip first H1 if present (avoid duplicate title rendering)
+      const bodyLines = body.split('\n');
+      let start = 0;
+      while (start < bodyLines.length && bodyLines[start].trim() === '') start += 1;
+      if (start < bodyLines.length && bodyLines[start].startsWith('# ')) {
+        start += 1;
+        while (start < bodyLines.length && bodyLines[start].trim() === '') start += 1;
+      }
+      const bodyClean = bodyLines.slice(start).join('\n');
       const processed = await remark().use(remarkGfm).use(remarkHtml, { sanitize: false }).process(bodyClean);
       const articleHtml = processed.toString();
 

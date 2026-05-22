@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@/': resolve(__dirname, 'apps/kernel/'),
+      '@imajin/cid': resolve(__dirname, 'packages/cid/src/index.ts'),
     },
   },
 });

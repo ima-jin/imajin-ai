@@ -54,7 +54,7 @@ export default async function WithdrawalsPage() {
                       {wr.did}
                     </td>
                     <td className="py-2 pr-4 font-medium">
-                      ${parseFloat(wr.amount).toFixed(2)} {wr.currency}
+                      ${Number.parseFloat(wr.amount).toFixed(2)} {wr.currency}
                     </td>
                     <td className="py-2 pr-4">{wr.emtEmail}</td>
                     <td className="py-2 pr-4 text-xs text-gray-500">
@@ -101,7 +101,7 @@ export default async function WithdrawalsPage() {
                       {wr.did}
                     </td>
                     <td className="py-2 pr-4 font-medium">
-                      ${parseFloat(wr.amount).toFixed(2)} {wr.currency}
+                      ${Number.parseFloat(wr.amount).toFixed(2)} {wr.currency}
                     </td>
                     <td className="py-2 pr-4">{wr.emtEmail}</td>
                     <td className="py-2 pr-4 text-xs text-gray-500">

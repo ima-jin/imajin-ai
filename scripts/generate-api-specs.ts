@@ -182,11 +182,22 @@ async function findRoutesRecursive(dir: string): Promise<string[]> {
  */
 function filePathToUrlPath(absoluteFile: string, routeRootAbs: string): string {
   let rel = relative(routeRootAbs, absoluteFile); // e.g. "events/[id]/tiers/route.ts"
-  rel = rel.replace(/\/route\.ts$/, '');          // remove /route.ts suffix
-  // Convert [...param] → {param}, [param] → {param}
-  rel = rel.replace(/\[\.\.\.([^\]]+)\]/g, '{$1}');
-  rel = rel.replace(/\[([^\]]+)\]/g, '{$1}');
-  return '/' + rel.replace(/\\/g, '/');           // prepend /api/ prefix included in routeRoot
+  const slashSuffix = '/route.ts';
+  const backslashSuffix = '\\route.ts';
+  if (rel.endsWith(slashSuffix)) rel = rel.slice(0, -slashSuffix.length);
+  else if (rel.endsWith(backslashSuffix)) rel = rel.slice(0, -backslashSuffix.length);
+
+  const normalized = rel.split('\\').join('/');
+  const convertedSegments = normalized.split('/').map((segment) => {
+    if (segment.startsWith('[...') && segment.endsWith(']')) {
+      return `{${segment.slice(4, -1)}}`;
+    }
+    if (segment.startsWith('[') && segment.endsWith(']')) {
+      return `{${segment.slice(1, -1)}}`;
+    }
+    return segment;
+  });
+  return '/' + convertedSegments.join('/'); // prepend /api/ prefix included in routeRoot
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -109,7 +109,7 @@ interface PageProps {
   searchParams: Promise<{ filter?: string }>;
 }
 
-export default async function BugsPage({ searchParams }: PageProps) {
+export default async function BugsPage({ searchParams }: Readonly<PageProps>) {
   const cookieStore = await cookies();
   const session = await getSessionFromCookies(cookieStore.toString());
   if (!session) redirect('/');

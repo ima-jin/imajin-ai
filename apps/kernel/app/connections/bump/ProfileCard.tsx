@@ -23,7 +23,7 @@ export default function ProfileCard({
   note,
   label,
   labelColor = 'text-gray-400',
-}: ProfileCardProps) {
+}: Readonly<ProfileCardProps>) {
   const isImageUrl = avatar && (avatar.startsWith('http') || avatar.startsWith('/') || avatar.startsWith('blob:'));
 
   return (

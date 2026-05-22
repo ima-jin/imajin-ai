@@ -172,7 +172,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         const payUrl = process.env.PAY_SERVICE_URL;
         const payKey = process.env.PAY_SERVICE_API_KEY;
         const platformDid = process.env.PLATFORM_DID;
-        const platformFee = parseFloat(process.env.PLATFORM_FEE_PERCENT ?? '0.2');
+        const platformFee = Number.parseFloat(process.env.PLATFORM_FEE_PERCENT ?? '0.2');
 
         if (payUrl && payKey && platformDid) {
           const platformAmount = +(cost * platformFee).toFixed(6);

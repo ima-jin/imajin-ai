@@ -10,7 +10,7 @@ interface ReactionPickerProps {
 
 const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
-export function ReactionPicker({ onSelect, onClose, position }: ReactionPickerProps) {
+export function ReactionPicker({ onSelect, onClose, position }: Readonly<ReactionPickerProps>) {
   const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

@@ -8,12 +8,12 @@ interface EventChatButtonProps {
   chatUrl?: string;
 }
 
-export function EventChatButton({ eventId, chatUrl }: EventChatButtonProps) {
+export function EventChatButton({ eventId, chatUrl }: Readonly<EventChatButtonProps>) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const baseChatUrl = chatUrl || (typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname.replace('events', 'chat')}`
+    ? `${globalThis.location.protocol}//${globalThis.location.hostname.replace('events', 'chat')}`
     : 'https://chat.imajin.ai');
 
   useEffect(() => {

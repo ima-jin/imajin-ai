@@ -17,7 +17,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!loading && isLoggedIn && (handle || did)) {
-      window.location.href = profilePath(handle || did);
+      globalThis.location.href = profilePath(handle || did);
     }
   }, [loading, isLoggedIn, handle, did]);
 

@@ -10,7 +10,7 @@ interface SetSecretDialogProps {
   onSubmit: (input: SetSecretInput) => Promise<void>;
 }
 
-export function SetSecretDialog({ open, submitting, onClose, onSubmit }: SetSecretDialogProps) {
+export function SetSecretDialog({ open, submitting, onClose, onSubmit }: Readonly<SetSecretDialogProps>) {
   const [field, setField] = useState('');
   const [value, setValue] = useState('');
   const [hint, setHint] = useState('');

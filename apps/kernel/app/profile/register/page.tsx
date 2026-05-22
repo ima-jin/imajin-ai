@@ -158,7 +158,7 @@ function RegisterPage() {
     }
 
     // Fallback: open a small window with a real form that triggers password managers
-    const w = window.open('', '_blank', 'width=1,height=1');
+    const w = globalThis.open('', '_blank', 'width=1,height=1');
     if (w) {
       w.document.write(`
         <html><body>
@@ -169,7 +169,7 @@ function RegisterPage() {
           </form>
           <script>
             document.getElementById('f').submit();
-            setTimeout(() => window.close(), 3000);
+            setTimeout(() => globalThis.close(), 3000);
           </script>
         </body></html>
       `);

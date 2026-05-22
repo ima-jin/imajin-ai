@@ -12,7 +12,7 @@ interface PageProps {
 
 const DOCUMENT_TYPES = ['document.created', 'document.amended'] as const;
 
-export default async function DocumentDetailPage({ params }: PageProps) {
+export default async function DocumentDetailPage({ params }: Readonly<PageProps>) {
   const { id } = await params;
 
   const cookieConfig = getSessionCookieOptions();

@@ -70,7 +70,7 @@ export default function DashboardPage() {
         }
       } else if (pageRes.status === 401) {
         const AUTH_URL = buildPublicUrl('auth');
-        window.location.href = `${AUTH_URL}/login?next=${encodeURIComponent(window.location.href)}`;
+        globalThis.location.href = `${AUTH_URL}/login?next=${encodeURIComponent(globalThis.location.href)}`;
       }
     } catch (error) {
       console.error('Failed to fetch stats:', error);
@@ -129,7 +129,7 @@ export default function DashboardPage() {
           <div className="flex gap-3">
             <button
               onClick={() => {
-                navigator.clipboard.writeText(`${window.location.origin}/${handle}`);
+                navigator.clipboard.writeText(`${globalThis.location.origin}/${handle}`);
                 toast.success('Link copied!');
               }}
               className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"

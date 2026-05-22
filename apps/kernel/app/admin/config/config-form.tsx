@@ -8,7 +8,7 @@ interface ConfigFormProps {
   maxStoragePerDidMb: number;
 }
 
-export function ConfigForm({ registrationMode, maxIdentities, maxStoragePerDidMb }: ConfigFormProps) {
+export function ConfigForm({ registrationMode, maxIdentities, maxStoragePerDidMb }: Readonly<ConfigFormProps>) {
   const [regMode, setRegMode] = useState(registrationMode);
   const [maxIds, setMaxIds] = useState(String(maxIdentities));
   const [maxStorage, setMaxStorage] = useState(String(maxStoragePerDidMb));

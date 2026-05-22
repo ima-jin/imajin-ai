@@ -66,7 +66,7 @@ function FolderRow({
   onToggle,
   onContextMenu,
   assetCounts,
-}: FolderRowProps) {
+}: Readonly<FolderRowProps>) {
   const isSelected = selectedFolderId === node.id;
   const isExpanded = expandedIds.has(node.id);
   const hasChildren = node.children.length > 0;
@@ -165,7 +165,7 @@ export function FolderTree({
   onDeleteFolder,
   assetCounts = {},
   collapsed = false,
-}: FolderTreeProps) {
+}: Readonly<FolderTreeProps>) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);

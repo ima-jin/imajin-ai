@@ -35,7 +35,7 @@ export function CommunityPageClient({
   membersContent,
   marketContent,
   communityDid,
-}: CommunityPageClientProps) {
+}: Readonly<CommunityPageClientProps>) {
   const [activeTab, setActiveTab] = useState<CommunityTab>('overview');
 
   const tabs = enabledTabs.map(id => ({ id, ...TAB_CONFIG[id] }));

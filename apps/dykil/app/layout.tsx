@@ -1,27 +1,9 @@
 import type { Metadata, Viewport } from 'next';
+import { buildServiceMetadata, defaultViewport } from '@imajin/ui';
 import './globals.css';
 import { Providers } from './providers';
-
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-};
-
-export const metadata: Metadata = {
-  title: 'Dykil | Imajin',
-  description: 'Sovereign surveys and forms on the Imajin network',
-  openGraph: {
-    title: 'Dykil | Imajin',
-    description: 'Sovereign surveys and forms on the Imajin network',
-    siteName: 'Imajin',
-    type: 'website',
-  },
-  twitter: {
-    card: 'summary',
-    title: 'Dykil | Imajin',
-    description: 'Sovereign surveys and forms on the Imajin network',
-  },
-};
+export const viewport: Viewport = defaultViewport;
+export const metadata: Metadata = buildServiceMetadata('Dykil', 'Sovereign surveys and forms on the Imajin network');
 
 export default function RootLayout({
   children,

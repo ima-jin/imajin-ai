@@ -29,8 +29,8 @@ export function useWebSocket() {
     if (!mountedRef.current) return;
     cleanup();
 
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.host}/ws`);
+    const proto = globalThis.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${globalThis.location.host}/ws`);
     wsRef.current = ws;
 
     ws.onopen = () => {

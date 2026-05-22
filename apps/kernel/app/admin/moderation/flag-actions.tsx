@@ -8,7 +8,7 @@ interface FlagActionsProps {
   targetDid: string;
 }
 
-export function FlagActions({ flagId, targetDid }: FlagActionsProps) {
+export function FlagActions({ flagId, targetDid }: Readonly<FlagActionsProps>) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
   const [resolution, setResolution] = useState('');

@@ -31,7 +31,7 @@ function clientSort(assets: Asset[], sort: SortKey, order: "asc" | "desc"): Asse
   return order === "desc" ? sorted.reverse() : sorted;
 }
 
-export function MediaManager({ session, search = '' }: MediaManagerProps) {
+export function MediaManager({ session, search = '' }: Readonly<MediaManagerProps>) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [allAssets, setAllAssets] = useState<Asset[]>([]);
@@ -131,7 +131,7 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
   }, []);
 
   const handleCreateFolder = useCallback(async (parentId: string | null) => {
-    const name = window.prompt("Folder name:");
+    const name = globalThis.prompt("Folder name:");
     if (!name?.trim()) return;
     await fetch("/media/api/folders", {
       method: "POST",
@@ -153,7 +153,7 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
   }, [loadFolders]);
 
   const handleDeleteFolder = useCallback(async (id: string) => {
-    if (!window.confirm("Delete this folder? Assets will remain unlinked.")) return;
+    if (!globalThis.confirm("Delete this folder? Assets will remain unlinked.")) return;
     await fetch(`/media/api/folders/${id}`, { method: "DELETE", credentials: "include" });
     if (selectedFolderId === id) setSelectedFolderId(null);
     loadFolders();

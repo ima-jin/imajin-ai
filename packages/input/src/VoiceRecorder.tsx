@@ -17,7 +17,7 @@ export interface VoiceRecorderProps {
 const WAVEFORM_BARS = 20;
 const MIN_RECORDING_MS = 300; // Minimum recording duration to avoid empty blobs
 
-export function VoiceRecorder({ onRecordingComplete, onRecorded, onCancel, onRecordingStart, disabled }: VoiceRecorderProps) {
+export function VoiceRecorder({ onRecordingComplete, onRecorded, onCancel, onRecordingStart, disabled }: Readonly<VoiceRecorderProps>) {
   const handleComplete = onRecordingComplete || onRecorded || (() => {});
   const [state, setState] = useState<RecordingState>('idle');
   const [elapsedMs, setElapsedMs] = useState(0);

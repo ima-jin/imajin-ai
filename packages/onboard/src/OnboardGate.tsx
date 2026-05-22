@@ -26,7 +26,7 @@ export function OnboardGate({
   authUrl: authUrlProp,
   redirectUrl,
   requireVerification = true,
-}: OnboardGateProps) {
+}: Readonly<OnboardGateProps>) {
   const [state, setState] = useState<State>('idle');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -35,7 +35,7 @@ export function OnboardGate({
   // Resolve auth URL from props or env
   const authUrl = authUrlProp || (
     typeof window !== 'undefined'
-      ? `${window.location.origin}/auth`
+      ? `${globalThis.location.origin}/auth`
       : ''
   );
 
@@ -92,7 +92,7 @@ export function OnboardGate({
         body: JSON.stringify({
           email: email.trim(),
           name: name.trim() || undefined,
-          redirectUrl: redirectUrl || window.location.href,
+          redirectUrl: redirectUrl || globalThis.location.href,
           context: action,
         }),
       });

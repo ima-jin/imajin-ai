@@ -7,7 +7,7 @@ interface GatedProfileProps {
   viewerDid: string | null;
 }
 
-export function GatedProfile({ profile, viewerDid }: GatedProfileProps) {
+export function GatedProfile({ profile, viewerDid }: Readonly<GatedProfileProps>) {
   return (
     <div className="max-w-lg mx-auto text-center py-16">
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">

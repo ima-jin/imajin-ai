@@ -78,7 +78,7 @@ function ChevronIcon() {
 
 function StandaloneRow({ tx, sessionId }: { tx: SerializedTx; sessionId: string }) {
   const isIncoming = tx.toDid === sessionId;
-  const amount = parseFloat(tx.amount);
+  const amount = Number.parseFloat(tx.amount);
   const icon = SERVICE_ICONS[tx.service] || '💳';
   const manifest = tx.fairManifest as {
     chain?: Array<{ did: string; amount: number; role: string }>;
@@ -187,7 +187,7 @@ function BatchGroupRow({
   const userEntry = entries.find((e) => e.toDid === sessionId) ?? entries[0];
   const icon = SERVICE_ICONS[userEntry.service] || '💳';
 
-  const netAmount = parseFloat(userEntry.amount);
+  const netAmount = Number.parseFloat(userEntry.amount);
 
   // Prefer chain-based gross (includes parties not in user's query results)
   const manifest = userEntry.fairManifest as {
@@ -196,7 +196,7 @@ function BatchGroupRow({
   const grossAmount =
     manifest?.chain && manifest.chain.length > 0
       ? manifest.chain.reduce((sum, e) => sum + e.amount, 0)
-      : entries.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+      : entries.reduce((sum, e) => sum + Number.parseFloat(e.amount), 0);
 
   const displayAmount = showGross ? grossAmount : netAmount;
   const isIncoming = userEntry.toDid === sessionId;
@@ -278,7 +278,7 @@ function BatchGroupRow({
                   <span
                     className={`font-medium shrink-0 ${isUser ? 'text-orange-400' : 'text-zinc-300'}`}
                   >
-                    {fmt(parseFloat(e.amount), e.currency)}
+                    {fmt(Number.parseFloat(e.amount), e.currency)}
                   </span>
                 </div>
               );
@@ -303,7 +303,7 @@ function BatchGroupRow({
   );
 }
 
-export default function TransactionList({ displayEntries, sessionId }: TransactionListProps) {
+export default function TransactionList({ displayEntries, sessionId }: Readonly<TransactionListProps>) {
   const [showGross, setShowGross] = useState(false);
 
   const hasBatched = displayEntries.some((e) => e.kind === 'batch');

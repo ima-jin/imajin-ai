@@ -151,7 +151,7 @@ function ProfileCell({ ownerDid, profile, paymentMethod, paymentId }: {
 
 type FilterKey = 'type' | 'status' | null;
 
-export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListProps) {
+export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<GuestListProps>) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(autoExpand ?? false);
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -400,7 +400,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListPr
           {scannerOpen ? '✕ Close Scanner' : '📷 Scan Tickets'}
         </button>
         <button
-          onClick={() => { window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/api/events/${eventId}/guests/export.csv`; }}
+          onClick={() => { globalThis.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/api/events/${eventId}/guests/export.csv`; }}
           className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
         >
           ⬇ Download CSV
@@ -972,7 +972,7 @@ function ResendEmailButton({ loading, resendState, lastEmailSentAt, onResendEmai
   );
 }
 
-function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onCancelRequest, onMarkSent, markSentLoading }: ActionsCellProps) {
+function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onCancelRequest, onMarkSent, markSentLoading }: Readonly<ActionsCellProps>) {
   const isValid = guest.status === 'valid';
   const isHeld = guest.status === 'held';
   const isAvailable = guest.status === 'available';

@@ -26,7 +26,7 @@ interface TipFormProps {
   sellerConnected?: boolean;
 }
 
-export default function TipForm({ page, primaryColor, sellerConnected = true }: TipFormProps) {
+export default function TipForm({ page, primaryColor, sellerConnected = true }: Readonly<TipFormProps>) {
   const { toast } = useToast();
   const [selectedAmount, setSelectedAmount] = useState<number | null>(page.presets?.[1] || 500);
   const [customAmount, setCustomAmount] = useState('');
@@ -50,7 +50,7 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
 
   const getAmount = () => {
     if (customAmount) {
-      return Math.round(parseFloat(customAmount) * 100);
+      return Math.round(Number.parseFloat(customAmount) * 100);
     }
     return selectedAmount || 0;
   };
@@ -95,7 +95,7 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
 
       if (paymentMethod === "stripe" && data.url) {
         // Redirect to Stripe Checkout
-        window.location.href = data.url;
+        globalThis.location.href = data.url;
       } else if (paymentMethod === 'solana' && data.solanaAddress) {
         // Show Solana address for payment
         toast.info(`Send ${amount / 100} USD worth of SOL to: ${data.solanaAddress}`);

@@ -31,7 +31,7 @@ function playTone(frequency: number, duration: number) {
   }
 }
 
-export function TicketScanner({ eventId, onCheckIn, lookupGuest }: TicketScannerProps) {
+export function TicketScanner({ eventId, onCheckIn, lookupGuest }: Readonly<TicketScannerProps>) {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const scannerRef = useRef<import('html5-qrcode').Html5Qrcode | null>(null);

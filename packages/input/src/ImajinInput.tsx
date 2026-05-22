@@ -51,7 +51,7 @@ export function ImajinInput({
   disabled = false,
   className = '',
   maxRows = 4,
-}: ImajinInputProps) {
+}: Readonly<ImajinInputProps>) {
   const [value, setValue] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);

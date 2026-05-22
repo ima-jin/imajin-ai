@@ -114,7 +114,7 @@ export default function EditPage() {
           await autoCreatePage();
         }
       } else if (res.status === 401) {
-        window.location.href = 'https://auth.imajin.ai';
+        globalThis.location.href = 'https://auth.imajin.ai';
       }
     } catch (error) {
       console.error('Failed to fetch page:', error);

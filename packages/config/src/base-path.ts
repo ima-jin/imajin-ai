@@ -4,7 +4,7 @@
  * Next.js `basePath` auto-prefixes <Link> and router.push() but NOT:
  *   - fetch() calls
  *   - <a href=""> tags
- *   - window.location assignments
+ *   - globalThis.location assignments
  *
  * These utilities read NEXT_PUBLIC_BASE_PATH (set automatically by Next.js
  * when basePath is configured) and prepend it where needed.
@@ -15,9 +15,9 @@
  *   // Instead of: fetch('/api/listings')
  *   apiFetch('/api/listings')
  *
- *   // For <a> tags or window.location:
+ *   // For <a> tags or globalThis.location:
  *   <a href={apiUrl('/dashboard')}>Dashboard</a>
- *   window.location.href = apiUrl('/dashboard');
+ *   globalThis.location.href = apiUrl('/dashboard');
  */
 
 /**

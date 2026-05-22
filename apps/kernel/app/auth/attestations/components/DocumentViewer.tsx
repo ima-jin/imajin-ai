@@ -9,7 +9,7 @@ interface Props {
 
 export default function DocumentViewer({ assetId, mimeType, filename, hash }: Props) {
   const baseUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/media/api/assets/${assetId}`
+    ? `${globalThis.location.origin}/media/api/assets/${assetId}`
     : `/media/api/assets/${assetId}`;
 
   const isPdf = mimeType === 'application/pdf';

@@ -73,7 +73,7 @@ export const POST = withLogger(async (request: NextRequest) => {
     );
   }
 
-  const cashAvailable = parseFloat(balance.cashAmount);
+  const cashAvailable = Number.parseFloat(balance.cashAmount);
   if (cashAvailable < amount) {
     return NextResponse.json(
       { error: 'Insufficient cash balance', available: cashAvailable },

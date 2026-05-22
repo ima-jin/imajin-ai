@@ -203,8 +203,15 @@ export async function getArticleBySlug(ownerDid: string, slug: string): Promise<
   let title = data.title;
   let subtitle = data.subtitle;
   if (!title) {
-    const h1Match = content.match(/^#\s+(.+)$/m);
-    title = h1Match ? h1Match[1] : meta.slug;
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (trimmed.startsWith('# ')) {
+        title = trimmed.slice(2).trim();
+      }
+      break;
+    }
+    title = title || meta.slug;
   }
 
   // Extract description from content if not in frontmatter
@@ -221,7 +228,14 @@ export async function getArticleBySlug(ownerDid: string, slug: string): Promise<
   }
 
   // Remove the first H1 from content to avoid duplicate title
-  const contentWithoutTitle = content.replace(/^#\s+.+\n+/, '');
+  const contentLines = content.split('\n');
+  let contentStart = 0;
+  while (contentStart < contentLines.length && contentLines[contentStart].trim() === '') contentStart += 1;
+  if (contentStart < contentLines.length && contentLines[contentStart].startsWith('# ')) {
+    contentStart += 1;
+    while (contentStart < contentLines.length && contentLines[contentStart].trim() === '') contentStart += 1;
+  }
+  const contentWithoutTitle = contentLines.slice(contentStart).join('\n');
 
   // Process markdown to HTML
   const processedContent = await remark()

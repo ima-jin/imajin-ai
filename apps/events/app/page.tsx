@@ -12,9 +12,8 @@ import { eventPath } from '@imajin/config';
 
 /** Strip markdown syntax to get clean plaintext for excerpts */
 function stripMarkdown(text: string): string {
-  const withoutImages = text.replace(/!\[[^\]]*]\([^)]*\)/g, '');
-  const withoutLinks = withoutImages.replace(/\[([^\]]+)]\([^)]*\)/g, '$1');
-  let out = withoutLinks;
+  const withoutLinksAndImages = stripMarkdownLinksAndImages(text);
+  let out = withoutLinksAndImages;
   for (const marker of ['*', '_', '~', '`', '#', '>']) out = out.split(marker).join('');
   return out
     .replace(/\r\n/g, '\n')
@@ -23,6 +22,43 @@ function stripMarkdown(text: string): string {
     .replace(/\t/g, ' ')
     .replace(/ {2,}/g, ' ')
     .trim();
+}
+
+function stripMarkdownLinksAndImages(input: string): string {
+  let out = '';
+  let i = 0;
+
+  while (i < input.length) {
+    // Image syntax: ![alt](url) => drop entirely
+    if (input[i] === '!' && input[i + 1] === '[') {
+      const closeBracket = input.indexOf(']', i + 2);
+      if (closeBracket >= 0 && input[closeBracket + 1] === '(') {
+        const closeParen = input.indexOf(')', closeBracket + 2);
+        if (closeParen >= 0) {
+          i = closeParen + 1;
+          continue;
+        }
+      }
+    }
+
+    // Link syntax: [label](url) => keep label
+    if (input[i] === '[') {
+      const closeBracket = input.indexOf(']', i + 1);
+      if (closeBracket >= 0 && input[closeBracket + 1] === '(') {
+        const closeParen = input.indexOf(')', closeBracket + 2);
+        if (closeParen >= 0) {
+          out += input.slice(i + 1, closeBracket);
+          i = closeParen + 1;
+          continue;
+        }
+      }
+    }
+
+    out += input[i];
+    i += 1;
+  }
+
+  return out;
 }
 
 const sql = getClient();

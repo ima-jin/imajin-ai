@@ -62,7 +62,7 @@ export function useIdentities(authUrl: string | null, profileUrl?: string | null
   function setActiveIdentity(did: string | null) {
     setActingAs(did);
     setActiveIdentityState(did);
-    window.location.reload();
+    globalThis.location.reload();
   }
 
   return { identities, loading, activeIdentity, activeConfig, setActiveIdentity };

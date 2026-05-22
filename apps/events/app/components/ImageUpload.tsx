@@ -8,7 +8,7 @@ interface ImageUploadProps {
   onUploadComplete: (url: string) => void;
 }
 
-export function ImageUpload({ currentImage, onUploadComplete }: ImageUploadProps) {
+export function ImageUpload({ currentImage, onUploadComplete }: Readonly<ImageUploadProps>) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');

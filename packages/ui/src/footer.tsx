@@ -13,7 +13,7 @@ export function ImajinFooter({ className }: { className?: string }) {
   const [subscribeHref, setSubscribeHref] = useState('/subscribe');
 
   useEffect(() => {
-    const service = getServiceFromPathname(window.location.pathname);
+    const service = getServiceFromPathname(globalThis.location.pathname);
     setSubscribeHref(`/subscribe?from=${service}`);
   }, []);
 

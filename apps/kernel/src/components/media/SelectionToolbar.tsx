@@ -22,7 +22,7 @@ export const SelectionToolbar = React.memo(function SelectionToolbar({
   onMove,
   onSetAccess,
   onDownload,
-}: SelectionToolbarProps) {
+}: Readonly<SelectionToolbarProps>) {
   const allSelected = count > 0 && count === total;
 
   return (

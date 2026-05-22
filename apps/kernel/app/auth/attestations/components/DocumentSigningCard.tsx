@@ -162,7 +162,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
   }
 
   async function handleDecline() {
-    if (!window.confirm('Are you sure you want to decline signing this document?')) return;
+    if (!globalThis.confirm('Are you sure you want to decline signing this document?')) return;
     setLoading(true);
     setError(null);
     try {
@@ -200,6 +200,14 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
       <div
         className="px-5 py-4 flex items-center gap-3 cursor-pointer hover:bg-zinc-800/40 transition-colors"
         onClick={() => setExpanded(!expanded)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setExpanded((prev) => !prev);
+          }
+        }}
+        role="button"
+        tabIndex={0}
       >
         <span className={`text-xs px-2 py-0.5 rounded-full border shrink-0 ${badge.classes}`}>
           {badge.label}

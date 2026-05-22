@@ -76,7 +76,7 @@ function EditProfileContent() {
     if (identityLoading) return;
 
     if (!isLoggedIn || !sessionDid) {
-      window.location.href = `${buildPublicUrl('auth')}/login?next=${encodeURIComponent(window.location.href)}`;
+      globalThis.location.href = `${buildPublicUrl('auth')}/login?next=${encodeURIComponent(globalThis.location.href)}`;
       return;
     }
 

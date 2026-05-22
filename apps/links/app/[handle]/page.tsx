@@ -10,7 +10,7 @@ interface PageProps {
   params: { handle: string };
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: Readonly<PageProps>): Promise<Metadata> {
   const page = await db.query.linkPages.findFirst({
     where: eq(linkPages.handle, params.handle),
   });
@@ -58,7 +58,7 @@ interface Theme {
   buttonStyle?: 'rounded' | 'square' | 'pill';
 }
 
-export default async function LinksPage({ params }: PageProps) {
+export default async function LinksPage({ params }: Readonly<PageProps>) {
   const page = await db.query.linkPages.findFirst({
     where: eq(linkPages.handle, params.handle),
   });

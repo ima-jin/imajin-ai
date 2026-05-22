@@ -36,7 +36,7 @@ interface FileEditorProps {
   isOwner: boolean;
 }
 
-export function FileEditor({ asset, isOwner }: FileEditorProps) {
+export function FileEditor({ asset, isOwner }: Readonly<FileEditorProps>) {
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,8 +119,8 @@ export function FileEditor({ asset, isOwner }: FileEditorProps) {
         handleSave();
       }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    globalThis.addEventListener("keydown", onKeyDown);
+    return () => globalThis.removeEventListener("keydown", onKeyDown);
   }, [isOwner, handleSave]);
 
   const renderPreview = () => {

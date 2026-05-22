@@ -17,7 +17,7 @@ interface AccordionContentProps {
   onUnreadChange: React.Dispatch<React.SetStateAction<number>>;
 }
 
-function AccordionContent({ eventId, eventDid, isExpanded, onUnreadChange }: AccordionContentProps) {
+function AccordionContent({ eventId, eventDid, isExpanded, onUnreadChange }: Readonly<AccordionContentProps>) {
   const { lastMessage } = useChatWebSocket(eventDid);
 
   // Increment unread count when a new message arrives while collapsed
@@ -47,7 +47,7 @@ interface EventLobbyAccordionProps {
   eventDid: string;
 }
 
-export function EventLobbyAccordion({ eventId, eventDid }: EventLobbyAccordionProps) {
+export function EventLobbyAccordion({ eventId, eventDid }: Readonly<EventLobbyAccordionProps>) {
   const [hasAccess, setHasAccess] = useState<boolean | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);

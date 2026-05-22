@@ -163,7 +163,7 @@ function OnboardContent() {
       });
       if (res.ok) {
         const data = await res.json();
-        window.location.href = data.redirectUrl || effectiveRedirect || '/';
+        globalThis.location.href = data.redirectUrl || effectiveRedirect || '/';
       } else {
         const body = await res.json().catch(() => ({}));
         setKeypairError(body.error || 'Something went wrong. Please try again.');
@@ -196,7 +196,7 @@ function OnboardContent() {
       setFlow('join-done');
       // Auto-redirect after short delay so user sees confirmation
       setTimeout(() => {
-        window.location.href = effectiveRedirect || '/';
+        globalThis.location.href = effectiveRedirect || '/';
       }, 2000);
     } catch {
       setJoinError('Network error. Please try again.');

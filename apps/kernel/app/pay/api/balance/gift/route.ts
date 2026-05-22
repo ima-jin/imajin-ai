@@ -85,7 +85,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       .limit(1);
 
     const senderBalance = senderRows[0];
-    const currentCash = senderBalance ? parseFloat(senderBalance.cashAmount) : 0;
+    const currentCash = senderBalance ? Number.parseFloat(senderBalance.cashAmount) : 0;
     const giftCurrency = senderBalance?.currency || 'CAD';
 
     if (currentCash < totalCashDebit) {

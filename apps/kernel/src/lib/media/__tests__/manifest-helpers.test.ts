@@ -135,9 +135,9 @@ describe('signManifestWithPlatformKey', () => {
 describe('writeManifestToDisk', () => {
   it('writes JSON to the given path', async () => {
     const manifest = makeManifest();
-    await writeManifestToDisk(manifest, '/tmp/test.fair.json');
+    await writeManifestToDisk(manifest, '/opt/imajin/test.fair.json');
     expect(mockWriteFile).toHaveBeenCalledWith(
-      '/tmp/test.fair.json',
+      '/opt/imajin/test.fair.json',
       JSON.stringify(manifest, null, 2)
     );
   });
@@ -208,7 +208,7 @@ describe('updateManifestFlow', () => {
       {
         id: 'asset_test',
         ownerDid: 'did:owner',
-        fairPath: '/mnt/media/test.fair.json',
+        fairPath: '/srv/imajin/media/test.fair.json',
         fairDfosEventId: null,
       },
       manifest,
@@ -217,7 +217,7 @@ describe('updateManifestFlow', () => {
 
     expect(result.signedManifest).toBe(signed);
     expect(result.dfosEventId).toBe('evt_flow');
-    expect(mockWriteFile).toHaveBeenCalledWith('/mnt/media/test.fair.json', JSON.stringify(signed, null, 2));
+    expect(mockWriteFile).toHaveBeenCalledWith('/srv/imajin/media/test.fair.json', JSON.stringify(signed, null, 2));
   });
 
   it('skips disk write when fairPath is null', async () => {

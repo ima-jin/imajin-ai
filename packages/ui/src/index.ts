@@ -42,3 +42,4 @@ export { themeInitScript } from './theme-init';
 export { getActingAs, setActingAs, getActingAsHeaders } from './acting-as';
 export { useIdentities } from './use-identities';
 export type { GroupIdentity } from './use-identities';
+export { defaultViewport, buildServiceMetadata, getServiceRuntimeEnv } from './service-layout';

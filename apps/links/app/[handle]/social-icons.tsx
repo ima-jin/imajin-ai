@@ -17,7 +17,7 @@ export function getSocialPlatform(url: string): string | null {
   return null;
 }
 
-export function SocialIcon({ platform, className = 'w-6 h-6' }: SocialIconProps) {
+export function SocialIcon({ platform, className = 'w-6 h-6' }: Readonly<SocialIconProps>) {
   switch (platform) {
     case 'twitter':
       return (

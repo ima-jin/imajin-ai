@@ -68,7 +68,7 @@ export default function AgentsPage() {
         const data = await sessionRes.json();
         setSession(data);
       } else if (sessionRes.status === 401) {
-        window.location.href = '/auth/login?next=/auth/agents';
+        globalThis.location.href = '/auth/login?next=/auth/agents';
         return;
       }
     } catch (err) {

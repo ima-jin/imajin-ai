@@ -25,7 +25,7 @@ const GALLERY_CONTEXT = { app: 'profile', feature: 'gallery', access: 'public' }
  *
  * Upload flow: file → /media/api/assets (DID-scoped storage) → POST url to /stubs/:did/images
  */
-export function StubGallery({ identityDid, isMaintainer }: StubGalleryProps) {
+export function StubGallery({ identityDid, isMaintainer }: Readonly<StubGalleryProps>) {
   const [images, setImages] = useState<GalleryImage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);

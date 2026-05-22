@@ -4,7 +4,7 @@ interface TypingIndicatorProps {
   typingUsers: Array<{ did: string; name: string | null }>;
 }
 
-export function TypingIndicator({ typingUsers }: TypingIndicatorProps) {
+export function TypingIndicator({ typingUsers }: Readonly<TypingIndicatorProps>) {
   if (typingUsers.length === 0) return null;
 
   const displayText = () => {

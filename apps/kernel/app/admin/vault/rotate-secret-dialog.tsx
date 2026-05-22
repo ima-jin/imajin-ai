@@ -17,7 +17,7 @@ export function RotateSecretDialog({
   submitting,
   onClose,
   onSubmit,
-}: RotateSecretDialogProps) {
+}: Readonly<RotateSecretDialogProps>) {
   const [value, setValue] = useState('');
   const [hint, setHint] = useState('');
 

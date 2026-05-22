@@ -24,7 +24,7 @@ export function SurveyAccordion({
   onComplete,
   ticketId,
   initialCompleted = false,
-}: SurveyAccordionProps) {
+}: Readonly<SurveyAccordionProps>) {
   const storageKey = ticketId ? `survey_completed_${surveyId}_${ticketId}` : `survey_completed_${surveyId}`;
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [iframeHeight, setIframeHeight] = useState(600);
@@ -134,8 +134,8 @@ export function SurveyAccordion({
       }
     };
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    globalThis.addEventListener('message', handleMessage);
+    return () => globalThis.removeEventListener('message', handleMessage);
   }, [storageKey, ticketId, eventId, fetchStatus, onComplete]);
 
   const icon = '📋';

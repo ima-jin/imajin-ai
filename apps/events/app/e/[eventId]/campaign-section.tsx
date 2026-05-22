@@ -72,7 +72,7 @@ export function CampaignSection({ eventId, eventTitle, isAuthenticated }: Props)
   async function handlePledge() {
     const amountCents = selectedAmount
       ? selectedAmount * 100
-      : Math.round(parseFloat(customAmount) * 100);
+      : Math.round(Number.parseFloat(customAmount) * 100);
 
     if (!amountCents || amountCents < 100) {
       toast.error('Minimum pledge is $1.00');
@@ -120,7 +120,7 @@ export function CampaignSection({ eventId, eventTitle, isAuthenticated }: Props)
       const result = await stripe.confirmSetup({
         clientSecret,
         confirmParams: {
-          return_url: `${window.location.origin}/${eventId}?pledge=confirmed`,
+          return_url: `${globalThis.location.origin}/${eventId}?pledge=confirmed`,
         },
       });
 

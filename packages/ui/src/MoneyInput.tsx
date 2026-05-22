@@ -27,7 +27,7 @@ function formatCents(cents: number): string {
 
 function parseDecimalInput(raw: string): number | null {
   const cleaned = raw.replace(/,/g, '');
-  const parsed = parseFloat(cleaned);
+  const parsed = Number.parseFloat(cleaned);
   if (Number.isNaN(parsed) || parsed < 0) return null;
   return Math.round(parsed * 100);
 }
@@ -38,7 +38,7 @@ export function MoneyInput({
   readOnly = false,
   className = '',
   currencies = DEFAULT_CURRENCIES,
-}: MoneyInputProps) {
+}: Readonly<MoneyInputProps>) {
   const symbol = value ? (CURRENCY_SYMBOLS[value.currency] ?? value.currency) : '$';
 
   const formattedPreview = useMemo(() => {

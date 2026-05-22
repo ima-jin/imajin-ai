@@ -21,7 +21,7 @@ export const DAY = 24 * HOUR;
 /**
  * Challenge TTL: 5 minutes
  * Short-lived challenge for authentication flow.
- * User must sign and return within this window.
+ * User must sign and return within this globalThis.
  */
 export const CHALLENGE_TTL = 5 * MINUTE;
 

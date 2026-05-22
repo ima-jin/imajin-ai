@@ -54,7 +54,7 @@ export default function DashboardPage() {
         );
         setSurveys(surveysWithCounts);
       } else if (res.status === 401) {
-        window.location.href = apiUrl('/');
+        globalThis.location.href = apiUrl('/');
       }
     } catch (error) {
       console.error('Failed to fetch surveys:', error);
@@ -178,7 +178,7 @@ export default function DashboardPage() {
                         onClick={() => {
                           const handle = survey.handle || 'survey';
                           const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '/dykil';
-                          const url = `${window.location.origin}${basePath}/${handle}/${survey.id}`;
+                          const url = `${globalThis.location.origin}${basePath}/${handle}/${survey.id}`;
                           navigator.clipboard.writeText(url);
                           toast.success('Survey link copied!');
                         }}

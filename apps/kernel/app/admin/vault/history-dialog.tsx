@@ -14,7 +14,7 @@ function actionLabel(action: VaultHistoryEntry['action']): string {
   return action === 'rotate' ? 'Rotated' : 'Set';
 }
 
-export function HistoryDialog({ field, entries, open, onClose }: HistoryDialogProps) {
+export function HistoryDialog({ field, entries, open, onClose }: Readonly<HistoryDialogProps>) {
   if (!open || !field) {
     return null;
   }

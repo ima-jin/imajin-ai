@@ -138,7 +138,7 @@ export default function DevAppsShell({ apps: initialApps }: Props) {
     setNewApp(app);
     setShowForm(false);
     // Reload to pick up new app from server
-    window.location.reload();
+    globalThis.location.reload();
   }
 
   return (

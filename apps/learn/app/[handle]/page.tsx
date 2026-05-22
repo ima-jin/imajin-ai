@@ -36,7 +36,7 @@ async function getCreatorCourses(handle: string) {
   }
 }
 
-export default async function CreatorCoursesPage({ params }: PageProps) {
+export default async function CreatorCoursesPage({ params }: Readonly<PageProps>) {
   if (params.handle.includes('.') || params.handle === 'favicon') {
     notFound();
   }

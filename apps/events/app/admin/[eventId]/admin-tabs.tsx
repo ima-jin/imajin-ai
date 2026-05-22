@@ -53,7 +53,7 @@ export function AdminTabs({
   tiers,
   eventDate,
   basePath,
-}: AdminTabsProps) {
+}: Readonly<AdminTabsProps>) {
   const [activeTab, setActiveTab] = useState<Tab>('stats');
 
   const tabs: { key: Tab; label: string }[] = [

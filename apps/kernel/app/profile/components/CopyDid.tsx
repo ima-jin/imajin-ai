@@ -4,7 +4,7 @@ interface CopyDidProps {
   did: string;
 }
 
-export function CopyDid({ did }: CopyDidProps) {
+export function CopyDid({ did }: Readonly<CopyDidProps>) {
   return (
     <button
       onClick={() => navigator.clipboard.writeText(did)}

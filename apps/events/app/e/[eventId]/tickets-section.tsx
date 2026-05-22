@@ -91,7 +91,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
   // Issue #14: read hash on mount so external links / router.refresh can target a tab
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const hash = window.location.hash.replace('#', '');
+      const hash = globalThis.location.hash.replace('#', '');
       if (hash === 'my-tickets' || hash === 'buy-tickets') {
         setActiveTab(hash);
       }
@@ -101,7 +101,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
   const handleTabChange = (tab: 'my-tickets' | 'buy-tickets') => {
     setActiveTab(tab);
     if (typeof window !== 'undefined') {
-      window.location.hash = tab;
+      globalThis.location.hash = tab;
     }
   };
 
@@ -559,7 +559,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
     setUnlockError(null);
     try {
       // Must use apiFetch so the request routes to the events service in
-      // production. Raw fetch resolves the relative URL against window.origin,
+      // production. Raw fetch resolves the relative URL against globalThis.origin,
       // which is the marketing site / kernel in prod (events lives on a
       // separate origin). That returned HTML, res.json() threw, and the user
       // saw 'Failed to unlock. Please try again.' for every valid code.
@@ -779,7 +779,7 @@ interface UnifiedBarProps {
   buyerBalance?: number | null;
 }
 
-function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [], userOrders = [], onJumpToMyTickets, clearCart, buyerBalance = null }: UnifiedBarProps & { userOrders?: UserOrder[]; clearCart?: () => void }) {
+function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [], userOrders = [], onJumpToMyTickets, clearCart, buyerBalance = null }: Readonly<UnifiedBarProps> & { userOrders?: UserOrder[]; clearCart?: () => void }) {
   // Issue #11: count tickets needing registration across all user orders
   const pendingRegistrations = userOrders.flatMap(o =>
     o.tickets.filter(t => t.registrationStatus === 'pending' && t.ticketType?.registrationFormId)
@@ -860,8 +860,8 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
       setStepState('idle');
       setEmtResultState(null);
     };
-    window.addEventListener('imajin:session-changed', handler);
-    return () => window.removeEventListener('imajin:session-changed', handler);
+    globalThis.addEventListener('imajin:session-changed', handler);
+    return () => globalThis.removeEventListener('imajin:session-changed', handler);
   }, []);
   const [verifySentTo, setVerifySentTo] = useState<string | null>(null);
   // Issue #1: polling state for tab-A-canonical verification
@@ -903,7 +903,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         return;
       }
       const { url } = await res.json();
-      window.location.href = url;
+      globalThis.location.href = url;
     } catch {
       onError('Checkout failed');
       setStep('idle');
@@ -1044,7 +1044,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           }
           // Notify any listening components (e.g. NavBar) that auth changed.
           if (typeof window !== 'undefined') {
-            window.dispatchEvent(new Event('imajin:session-changed'));
+            globalThis.dispatchEvent(new Event('imajin:session-changed'));
           }
           // Re-fire the EMT reserve directly without router.refresh().
           // Calling startEtransfer() triggers router.refresh() which re-runs
@@ -1206,8 +1206,8 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
                     onJumpToMyTickets();
                   } else {
                     // Fallback for non-tabbed contexts: set hash and reload
-                    window.location.hash = 'my-tickets';
-                    window.location.reload();
+                    globalThis.location.hash = 'my-tickets';
+                    globalThis.location.reload();
                   }
                 }}
                 className="inline-block mt-1 text-xs font-semibold text-orange-500 hover:text-orange-600 hover:underline"
@@ -1239,8 +1239,8 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
             if (onJumpToMyTickets) {
               onJumpToMyTickets();
             } else {
-              window.location.hash = 'my-tickets';
-              window.location.reload();
+              globalThis.location.hash = 'my-tickets';
+              globalThis.location.reload();
             }
           }}
           className="w-full px-4 py-2.5 rounded-lg font-semibold text-sm bg-orange-500 text-white hover:bg-orange-600 transition"

@@ -41,7 +41,7 @@ export function ImageUpload({
   extraFields,
   label = 'Avatar',
   previewMode = 'avatar',
-}: ImageUploadProps) {
+}: Readonly<ImageUploadProps>) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');

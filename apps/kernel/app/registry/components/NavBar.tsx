@@ -9,7 +9,7 @@ interface NavBarProps {
   currentService?: string;
 }
 
-export function NavBar({ currentService = 'Registry' }: NavBarProps) {
+export function NavBar({ currentService = 'Registry' }: Readonly<NavBarProps>) {
   return (
     <BaseNavBar
       currentService={currentService}

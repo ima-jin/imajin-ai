@@ -57,7 +57,7 @@ function toDisplayPrice(price: number | undefined, currency: string): string {
   return String(display);
 }
 
-export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, error }: ListingFormProps) {
+export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, error }: Readonly<ListingFormProps>) {
   const [type, setType] = useState<'sale' | 'rental'>(initialData?.type ?? 'sale');
   const [title, setTitle] = useState(initialData?.title ?? '');
   const [description, setDescription] = useState(initialData?.description ?? '');
@@ -93,7 +93,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
       return;
     }
 
-    const priceNum = parseFloat(priceDisplay);
+    const priceNum = Number.parseFloat(priceDisplay);
     if (!priceDisplay || isNaN(priceNum) || priceNum <= 0) {
       setValidationError('Price must be greater than 0.');
       return;

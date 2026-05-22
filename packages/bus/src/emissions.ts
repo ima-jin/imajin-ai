@@ -170,7 +170,7 @@ export function resolveAmount(rule: EmissionRule, settlementCents?: number): num
     return 0;
   }
 
-  const pct = parseFloat(match[1]) / 100;
+  const pct = Number.parseFloat(match[1]) / 100;
   const baseDollars = (settlementCents ?? 0) / 100; // cents → dollars
   const dollarAmount = baseDollars * pct;            // percentage of dollars
   const mjn = dollarAmount * 100;                    // dollars → MJN ($0.01 per MJN)

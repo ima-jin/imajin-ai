@@ -19,7 +19,7 @@ interface EventChatWrapperProps {
   compact?: boolean;
 }
 
-export function EventChatWrapper({ did, eventId, compact }: EventChatWrapperProps) {
+export function EventChatWrapper({ did, eventId, compact }: Readonly<EventChatWrapperProps>) {
   const [nameDisplayPolicy, setNameDisplayPolicy] = useState<NameDisplayPolicy>('attendee_choice');
   const [myDisplayPref, setMyDisplayPref] = useState<'real_name' | 'handle' | 'anonymous'>('handle');
   const [currentUserDid, setCurrentUserDid] = useState<string | null>(null);

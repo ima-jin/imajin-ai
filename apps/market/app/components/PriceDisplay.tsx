@@ -11,7 +11,7 @@ interface PriceDisplayProps {
   className?: string;
 }
 
-export default function PriceDisplay({ price, currency, className }: PriceDisplayProps) {
+export default function PriceDisplay({ price, currency, className }: Readonly<PriceDisplayProps>) {
   const code = currency.toUpperCase();
   const value = ZERO_DECIMAL_CURRENCIES.has(code) ? price : price / 100;
   const formatted = new Intl.NumberFormat('en-US', {

@@ -9,7 +9,7 @@ interface UserActionsProps {
   isSuspended: boolean;
 }
 
-export default function UserActions({ did, currentTier, isSuspended }: UserActionsProps) {
+export default function UserActions({ did, currentTier, isSuspended }: Readonly<UserActionsProps>) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +18,7 @@ export default function UserActions({ did, currentTier, isSuspended }: UserActio
 
   async function handleSuspend() {
     const action = isSuspended ? 'unsuspend' : 'suspend';
-    const confirmed = window.confirm(
+    const confirmed = globalThis.confirm(
       isSuspended
         ? 'Unsuspend this user? They will regain access.'
         : 'Suspend this user? They will lose access immediately.'
@@ -42,7 +42,7 @@ export default function UserActions({ did, currentTier, isSuspended }: UserActio
   }
 
   async function handleUpgradeTier(tier: 'preliminary' | 'established' | 'steward' | 'operator') {
-    const confirmed = window.confirm(`Upgrade tier to "${tier}"? This will emit a verification attestation.`);
+    const confirmed = globalThis.confirm(`Upgrade tier to "${tier}"? This will emit a verification attestation.`);
     if (!confirmed) return;
 
     setLoading('tier');

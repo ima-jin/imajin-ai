@@ -52,7 +52,9 @@ function ResolvedDidChip({
   const avatar = profile?.avatar;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(did).catch(() => {});
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(did).catch(() => {});
+    }
   };
 
   return (
@@ -60,6 +62,14 @@ function ResolvedDidChip({
       className="flex-1 flex items-center gap-2 bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 min-w-0 cursor-pointer hover:border-gray-600 transition"
       title={did}
       onClick={handleCopy}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleCopy();
+        }
+      }}
+      role="button"
+      tabIndex={0}
     >
       {avatar ? (
         <img
@@ -262,7 +272,7 @@ export function DidShareListEditor({
   showFixed = false,
   connectionsUrl,
   resolveProfile,
-}: DidShareListEditorProps) {
+}: Readonly<DidShareListEditorProps>) {
   const [resolvedCache, setResolvedCache] = useState<Record<string, ResolvedProfile | null>>({});
 
   const totalShare = useMemo(
@@ -370,7 +380,7 @@ export function DidShareListEditor({
               max={100}
               step={0.5}
               value={Math.round(entry.share * 1000) / 10}
-              onChange={(e) => update(i, { share: parseFloat(e.target.value) / 100 })}
+              onChange={(e) => update(i, { share: Number.parseFloat(e.target.value) / 100 })}
               disabled={readOnly}
               className="flex-1 accent-orange-500 disabled:opacity-60"
             />
@@ -380,7 +390,7 @@ export function DidShareListEditor({
               max={100}
               step={0.5}
               value={(entry.share * 100).toFixed(1)}
-              onChange={(e) => update(i, { share: parseFloat(e.target.value) / 100 })}
+              onChange={(e) => update(i, { share: Number.parseFloat(e.target.value) / 100 })}
               readOnly={readOnly}
               className="w-16 bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-orange-500 text-right read-only:opacity-60"
             />

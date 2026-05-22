@@ -16,7 +16,7 @@ interface AdminNavProps {
   nodeName?: string;
 }
 
-export default function AdminNav({ navItems, mobile = false, nodeName }: AdminNavProps) {
+export default function AdminNav({ navItems, mobile = false, nodeName }: Readonly<AdminNavProps>) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 

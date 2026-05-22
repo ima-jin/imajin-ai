@@ -25,7 +25,7 @@ interface ActionProps {
   variant?: 'default' | 'danger';
 }
 
-function Reactions({ emojis, onSelect }: ReactionsProps) {
+function Reactions({ emojis, onSelect }: Readonly<ReactionsProps>) {
   return (
     <div className="flex justify-around px-4 py-3 border-b border-gray-700">
       {emojis.map((emoji) => (
@@ -42,7 +42,7 @@ function Reactions({ emojis, onSelect }: ReactionsProps) {
   );
 }
 
-function Actions({ children }: ActionsProps) {
+function Actions({ children }: Readonly<ActionsProps>) {
   return (
     <div className="border-b border-gray-700 last:border-b-0">
       {children}
@@ -50,7 +50,7 @@ function Actions({ children }: ActionsProps) {
   );
 }
 
-function Action({ icon, label, onPress, variant = 'default' }: ActionProps) {
+function Action({ icon, label, onPress, variant = 'default' }: Readonly<ActionProps>) {
   return (
     <button
       onClick={onPress}
@@ -64,7 +64,7 @@ function Action({ icon, label, onPress, variant = 'default' }: ActionProps) {
   );
 }
 
-export function ActionSheet({ open, onClose, title, children }: ActionSheetProps) {
+export function ActionSheet({ open, onClose, title, children }: Readonly<ActionSheetProps>) {
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {

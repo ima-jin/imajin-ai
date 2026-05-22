@@ -40,8 +40,8 @@ function AuthorizeForm() {
       .then(session => {
         if (!session?.did) {
           // Not logged in — redirect to login, then back here
-          const returnUrl = encodeURIComponent(window.location.href);
-          window.location.href = `/auth/login?redirect=${returnUrl}`;
+          const returnUrl = encodeURIComponent(globalThis.location.href);
+          globalThis.location.href = `/auth/login?redirect=${returnUrl}`;
           return;
         }
         return fetch(`/api/registry/apps/${appId}`);
@@ -73,7 +73,7 @@ function AuthorizeForm() {
     if (!app) return;
     const url = new URL(app.callbackUrl);
     url.searchParams.set('error', 'denied');
-    window.location.href = url.toString();
+    globalThis.location.href = url.toString();
   }
 
   async function handleAuthorize() {
@@ -103,7 +103,7 @@ function AuthorizeForm() {
       const url = new URL(app.callbackUrl);
       url.searchParams.set('attestation_id', attestationId);
       url.searchParams.set('user_did', userDid);
-      window.location.href = url.toString();
+      globalThis.location.href = url.toString();
     } catch {
       setError('Network error. Please try again.');
       setSubmitting(false);

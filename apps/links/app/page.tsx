@@ -45,7 +45,7 @@ export default function Home() {
                   Go to Dashboard →
                 </Link>
               ) : (
-                <a href={`${AUTH_URL}/login?next=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin + '/edit' : '/edit')}`} className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
+                <a href={`${AUTH_URL}/login?next=${encodeURIComponent(typeof window !== 'undefined' ? globalThis.location.origin + '/edit' : '/edit')}`} className="inline-block px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition hover:shadow-lg">
                   Sign In to Get Started
                 </a>
               )

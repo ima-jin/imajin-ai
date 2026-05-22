@@ -128,7 +128,7 @@ function formatDate(d: Date | string | null): string {
   });
 }
 
-export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, onMoved }: AssetDetailProps) {
+export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, onMoved }: Readonly<AssetDetailProps>) {
   const isOwner = !!currentDid && currentDid === asset.ownerDid;
   const showFileEditor = isTextAsset(asset);
   const [editingFair, setEditingFair] = useState(false);
@@ -167,7 +167,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   };
 
   const handleShare = () => {
-    const url = `${window.location.origin}/media/api/assets/${asset.id}`;
+    const url = `${globalThis.location.origin}/media/api/assets/${asset.id}`;
     navigator.clipboard.writeText(url).catch(() => {});
     setShareLabel("Copied!");
     setTimeout(() => setShareLabel("Copy URL"), 2000);

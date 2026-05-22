@@ -80,8 +80,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       .limit(1);
 
     const senderBalance = senderBalanceRows[0];
-    const currentCash = senderBalance ? parseFloat(senderBalance.cashAmount) : 0;
-    const currentCredit = senderBalance ? parseFloat(senderBalance.creditAmount) : 0;
+    const currentCash = senderBalance ? Number.parseFloat(senderBalance.cashAmount) : 0;
+    const currentCredit = senderBalance ? Number.parseFloat(senderBalance.creditAmount) : 0;
     const totalBalance = currentCash + currentCredit;
 
     if (totalBalance < amount) {

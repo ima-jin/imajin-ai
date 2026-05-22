@@ -438,7 +438,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     const buyerDid = session.metadata?.buyerDid;
 
     if (topupAmountStr && buyerDid) {
-      const topupAmount = parseFloat(topupAmountStr);
+      const topupAmount = Number.parseFloat(topupAmountStr);
 
       // Atomic operation: insert transaction + update cash balance
       const txId = generateId('tx');

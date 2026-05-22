@@ -59,7 +59,7 @@ export default function DepositForm() {
         return;
       }
 
-      const numAmount = parseFloat(amount);
+      const numAmount = Number.parseFloat(amount);
       if (!numAmount || numAmount <= 0) {
         setError('Amount must be a positive number');
         return;

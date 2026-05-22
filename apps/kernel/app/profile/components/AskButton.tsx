@@ -17,7 +17,7 @@ export function AskButton({
   targetHandle,
   inferenceEnabled,
   canAsk,
-}: AskButtonProps) {
+}: Readonly<AskButtonProps>) {
   const [showChat, setShowChat] = useState(false);
 
   if (!inferenceEnabled || !canAsk) {

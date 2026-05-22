@@ -8,7 +8,7 @@ interface SuccessPageProps {
   searchParams: { session_id?: string };
 }
 
-export default async function TopupSuccessPage({ searchParams }: SuccessPageProps) {
+export default async function TopupSuccessPage({ searchParams }: Readonly<SuccessPageProps>) {
   const session = await getSession();
 
   if (!session) {
@@ -28,7 +28,7 @@ export default async function TopupSuccessPage({ searchParams }: SuccessPageProp
       .limit(1);
 
     if (tx) {
-      amount = parseFloat(tx.amount);
+      amount = Number.parseFloat(tx.amount);
     }
   }
 

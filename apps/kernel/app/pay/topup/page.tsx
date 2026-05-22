@@ -56,7 +56,7 @@ export default function TopupPage() {
         if (!res.ok) {
           const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
           const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
-          window.location.href = `${authUrl}/login?next=${encodeURIComponent(`${payUrl}/topup`)}`;
+          globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(`${payUrl}/topup`)}`;
           return;
         }
         setSessionChecked(true);
@@ -74,7 +74,7 @@ export default function TopupPage() {
 
   const handleCustomChange = useCallback((val: string) => {
     setCustomAmount(val);
-    const num = parseFloat(val);
+    const num = Number.parseFloat(val);
     if (!isNaN(num) && num > 0) {
       setAmount(num);
     }
@@ -115,7 +115,7 @@ export default function TopupPage() {
         }
 
         // Redirect to Stripe Checkout
-        window.location.href = data.url;
+        globalThis.location.href = data.url;
         return;
       }
 

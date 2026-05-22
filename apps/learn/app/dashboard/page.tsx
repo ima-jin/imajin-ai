@@ -72,7 +72,7 @@ export default function DashboardPage() {
       if (res.ok) {
         const course = await res.json();
         setNewTitle('');
-        window.location.href = apiUrl(`/dashboard/${course.slug}`);
+        globalThis.location.href = apiUrl(`/dashboard/${course.slug}`);
       } else {
         const err = await res.json();
         toast.error(err.error || 'Failed to create course');

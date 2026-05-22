@@ -58,6 +58,21 @@ function parseTable(lines: string[]): string {
   return html;
 }
 
+function isTableSeparatorLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  let hasDash = false;
+  for (const ch of trimmed) {
+    if (ch === '-') {
+      hasDash = true;
+      continue;
+    }
+    if (ch === '|' || ch === ':' || ch === ' ') continue;
+    return false;
+  }
+  return hasDash;
+}
+
 export function simpleMarkdown(text: string): string {
   // Escape HTML first
   const escaped = escapeHtml(text);
@@ -87,7 +102,7 @@ export function simpleMarkdown(text: string): string {
     }
 
     // Tables — detect by | pipe characters and separator row
-    if (line.includes('|') && i + 1 < lines.length && /^\|?\s*[-:]+[-:|  ]+\s*\|?$/.test(lines[i + 1])) {
+    if (line.includes('|') && i + 1 < lines.length && isTableSeparatorLine(lines[i + 1])) {
       const tableLines: string[] = [line];
       i++;
       while (i < lines.length && lines[i].includes('|')) {
@@ -135,7 +150,7 @@ export function simpleMarkdown(text: string): string {
 
     // Paragraph — collect consecutive non-special lines
     const paraLines: string[] = [];
-    while (i < lines.length && lines[i].trim() !== '' && !lines[i].startsWith('#') && !lines[i].startsWith('- ') && !lines[i].startsWith('```') && !(lines[i].includes('|') && i + 1 < lines.length && /^\|?\s*[-:]+/.test(lines[i + 1] || ''))) {
+    while (i < lines.length && lines[i].trim() !== '' && !lines[i].startsWith('#') && !lines[i].startsWith('- ') && !lines[i].startsWith('```') && !(lines[i].includes('|') && i + 1 < lines.length && isTableSeparatorLine(lines[i + 1] || ''))) {
       paraLines.push(lines[i]);
       i++;
     }

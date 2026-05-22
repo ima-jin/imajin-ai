@@ -10,7 +10,7 @@ interface CommunityChatProps {
   communityDid: string;
 }
 
-export function CommunityChat({ communityDid }: CommunityChatProps) {
+export function CommunityChat({ communityDid }: Readonly<CommunityChatProps>) {
   return (
     <ChatProvider chatUrl={CHAT_URL} authUrl={AUTH_URL} mediaUrl={MEDIA_URL}>
       <div className="h-[500px]">

@@ -23,7 +23,7 @@ export function ConnectionPicker({
   onSelect,
   placeholder = 'Search connections...',
   disabled = false,
-}: ConnectionPickerProps) {
+}: Readonly<ConnectionPickerProps>) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

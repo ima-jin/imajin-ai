@@ -11,7 +11,7 @@ const log = createLogger('coffee');
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY!;
 const PLATFORM_DID = process.env.PLATFORM_DID || 'did:imajin:platform';
-const PLATFORM_FEE_PERCENT = parseFloat(process.env.PLATFORM_FEE_PERCENT || '1.5');
+const PLATFORM_FEE_PERCENT = Number.parseFloat(process.env.PLATFORM_FEE_PERCENT || '1.5');
 
 interface SettleTipParams {
   tipId: string;
@@ -26,8 +26,8 @@ export async function settleTip(params: SettleTipParams): Promise<void> {
   const { tipId, recipientDid, fromDid, amount, currency, stripeSessionId } = params;
 
   const totalDollars = amount / 100;
-  const platformAmount = parseFloat((totalDollars * (PLATFORM_FEE_PERCENT / 100)).toFixed(2));
-  const creatorAmount = parseFloat((totalDollars - platformAmount).toFixed(2));
+  const platformAmount = Number.parseFloat((totalDollars * (PLATFORM_FEE_PERCENT / 100)).toFixed(2));
+  const creatorAmount = Number.parseFloat((totalDollars - platformAmount).toFixed(2));
 
   const chain = [
     { did: recipientDid, amount: creatorAmount, role: 'creator' },

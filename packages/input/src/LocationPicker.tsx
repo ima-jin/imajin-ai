@@ -16,7 +16,7 @@ export interface LocationPickerProps {
 
 type LocationState = 'idle' | 'loading' | 'done' | 'error';
 
-export function LocationPicker({ onLocation, disabled = false, renderTrigger }: LocationPickerProps) {
+export function LocationPicker({ onLocation, disabled = false, renderTrigger }: Readonly<LocationPickerProps>) {
   const [state, setState] = useState<LocationState>('idle');
   const [location, setLocation] = useState<LocationData | null>(null);
   const [error, setError] = useState<string | null>(null);

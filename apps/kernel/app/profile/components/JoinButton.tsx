@@ -18,7 +18,7 @@ export function JoinButton({
   isStub = false,
   canJoin = true,
   joinVisibility = 'open',
-}: JoinButtonProps) {
+}: Readonly<JoinButtonProps>) {
   const [memberRole, setMemberRole] = useState(initialMemberRole);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

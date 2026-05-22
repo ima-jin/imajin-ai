@@ -9,7 +9,7 @@ import { MarketItems } from '../MarketItems';
 import { formatMemberSince } from '../../lib/profile-utils';
 import type { ProfileViewProps } from '../../lib/types';
 
-export function ActorProfile({ profile, identity, viewer, counts, links }: ProfileViewProps) {
+export function ActorProfile({ profile, identity, viewer, counts, links }: Readonly<ProfileViewProps>) {
   const isSoftDID = !isVerifiedTier(identity.tier);
 
   return (

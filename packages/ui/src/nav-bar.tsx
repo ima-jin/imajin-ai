@@ -125,24 +125,24 @@ function useAutoIdentity(servicePrefix: string, domain: string, overrides?: Serv
               } catch {}
               setIdentity({
                 isLoggedIn: false,
-                onLogin: () => { window.location.href = `${authUrl}/login?next=${encodeURIComponent(window.location.href)}`; },
-                onRegister: () => { window.location.href = `${authUrl}/register`; },
+                onLogin: () => { globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(globalThis.location.href)}`; },
+                onRegister: () => { globalThis.location.href = `${authUrl}/register`; },
               });
             },
             onViewProfile: data.handle
-              ? () => { window.location.href = `${profileUrl}/${data.handle}`; }
+              ? () => { globalThis.location.href = `${profileUrl}/${data.handle}`; }
               : data.did
-              ? () => { window.location.href = `${profileUrl}/${data.did}`; }
+              ? () => { globalThis.location.href = `${profileUrl}/${data.did}`; }
               : undefined,
-            onEditProfile: () => { window.location.href = `${profileUrl}/edit`; },
-            onLogin: () => { window.location.href = `${authUrl}/login?next=${encodeURIComponent(window.location.href)}`; },
-            onRegister: () => { window.location.href = `${authUrl}/register`; },
+            onEditProfile: () => { globalThis.location.href = `${profileUrl}/edit`; },
+            onLogin: () => { globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(globalThis.location.href)}`; },
+            onRegister: () => { globalThis.location.href = `${authUrl}/register`; },
           });
         } else {
           setIdentity({
             isLoggedIn: false,
-            onLogin: () => { window.location.href = `${authUrl}/login?next=${encodeURIComponent(window.location.href)}`; },
-            onRegister: () => { window.location.href = `${authUrl}/register`; },
+            onLogin: () => { globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(globalThis.location.href)}`; },
+            onRegister: () => { globalThis.location.href = `${authUrl}/register`; },
           });
         }
       } catch {
@@ -155,8 +155,8 @@ function useAutoIdentity(servicePrefix: string, domain: string, overrides?: Serv
     // Re-fetch when another tab or component signals a session change
     // (e.g. after onboarding claim in a polling flow)
     const handler = () => checkSession();
-    window.addEventListener('imajin:session-changed', handler);
-    return () => window.removeEventListener('imajin:session-changed', handler);
+    globalThis.addEventListener('imajin:session-changed', handler);
+    return () => globalThis.removeEventListener('imajin:session-changed', handler);
   }, [servicePrefix, domain, overrides]);
 
   return identity;
@@ -170,12 +170,12 @@ export function NavBar({
   unreadMessages = 0,
   serviceUrls,
   children,
-}: NavBarProps) {
+}: Readonly<NavBarProps>) {
   // Embed mode: skip NavBar when ?embed=hub is present
   const [isEmbed, setIsEmbed] = useState(false);
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      setIsEmbed(new URLSearchParams(window.location.search).get('embed') === 'hub');
+      setIsEmbed(new URLSearchParams(globalThis.location.search).get('embed') === 'hub');
     }
   }, []);
 
@@ -215,8 +215,8 @@ export function NavBar({
   const [scopeVersion, setScopeVersion] = useState(0);
   useEffect(() => {
     const handler = () => setScopeVersion(v => v + 1);
-    window.addEventListener('imajin:acting-as-changed', handler);
-    return () => window.removeEventListener('imajin:acting-as-changed', handler);
+    globalThis.addEventListener('imajin:acting-as-changed', handler);
+    return () => globalThis.removeEventListener('imajin:acting-as-changed', handler);
   }, []);
   useEffect(() => {
     if (!identity?.isLoggedIn || !identity?.did) { setCashBalance(null); setMjnBalance(null); return; }
@@ -227,8 +227,8 @@ export function NavBar({
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data) {
-          setCashBalance(data.cashAmount != null ? parseFloat(data.cashAmount) : null);
-          setMjnBalance(data.creditAmount != null ? parseFloat(data.creditAmount) : null);
+          setCashBalance(data.cashAmount != null ? Number.parseFloat(data.cashAmount) : null);
+          setMjnBalance(data.creditAmount != null ? Number.parseFloat(data.creditAmount) : null);
         } else {
           setCashBalance(null);
           setMjnBalance(null);

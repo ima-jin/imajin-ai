@@ -9,7 +9,7 @@ interface ProfileStatsProps {
   isFollowing: boolean;
 }
 
-export function ProfileStats({ counts, viewerDid, isSelf, targetDid, isFollowing }: ProfileStatsProps) {
+export function ProfileStats({ counts, viewerDid, isSelf, targetDid, isFollowing }: Readonly<ProfileStatsProps>) {
   return (
     <div className="mb-6 flex flex-col items-center gap-3">
       <p className="text-sm text-gray-400">

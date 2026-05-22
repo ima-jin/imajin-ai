@@ -31,7 +31,7 @@ export function MagicLinkButton({ eventId }: { eventId: string }) {
     setErrorMessage('');
     try {
       const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
-      const eventsUrl = window.location.origin;
+      const eventsUrl = globalThis.location.origin;
       const response = await fetch(`${AUTH_URL}/api/onboard`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -118,11 +118,11 @@ export function MagicLinkButton({ eventId }: { eventId: string }) {
             }
             return;
           }
-          window.dispatchEvent(new Event('imajin:session-changed'));
+          globalThis.dispatchEvent(new Event('imajin:session-changed'));
           setStatus('completed');
           // Reload the event page so server components pick up the new session.
           // Give the cookie a beat to settle before navigating.
-          setTimeout(() => window.location.reload(), 800);
+          setTimeout(() => globalThis.location.reload(), 800);
         } else if (data.status === 'expired') {
           clearInterval(interval);
           setStatus('expired');

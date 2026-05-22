@@ -220,7 +220,7 @@ function ProfileCell({ buyerDid, buyerName, buyerHandle, buyerAvatar, buyerEmail
   );
 }
 
-export function SalesTab({ eventId }: SalesTabProps) {
+export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
   const { toast } = useToast();
   const [data, setData] = useState<SalesData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -275,7 +275,7 @@ export function SalesTab({ eventId }: SalesTabProps) {
       const res = await apiFetch(`/api/events/${eventId}/sales/export?format=${format}`);
       if (!res.ok) throw new Error('Export failed');
       const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
+      const url = globalThis.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       const disposition = res.headers.get('content-disposition');
@@ -284,7 +284,7 @@ export function SalesTab({ eventId }: SalesTabProps) {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(url);
+      globalThis.URL.revokeObjectURL(url);
       toast.success('Export downloaded');
     } catch {
       toast.error('Export failed');

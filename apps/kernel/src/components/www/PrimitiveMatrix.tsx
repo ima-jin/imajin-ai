@@ -23,7 +23,7 @@ interface PrimitiveMatrixProps {
   overall: number;
 }
 
-export function PrimitiveMatrix({ cells, overall }: PrimitiveMatrixProps) {
+export function PrimitiveMatrix({ cells, overall }: Readonly<PrimitiveMatrixProps>) {
   return (
     <div className="w-full max-w-2xl mx-auto">
       {/* Column headers — vertical text */}

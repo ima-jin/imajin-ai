@@ -40,7 +40,7 @@ export function MentionPicker({
   onSelect,
   onClose,
   mediaUrl,
-}: MentionPickerProps) {
+}: Readonly<MentionPickerProps>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const highlightedRef = useRef<HTMLLIElement>(null);
 

@@ -127,11 +127,11 @@ export default function SurveyEmbedPage() {
   // Send height updates to parent iframe
   useEffect(() => {
     const sendHeight = () => {
-      if (containerRef.current && window.parent) {
+      if (containerRef.current && globalThis.parent) {
         const height = containerRef.current.scrollHeight;
         const targetOrigin = getParentOrigin();
         if (targetOrigin) {
-          window.parent.postMessage(
+          globalThis.parent.postMessage(
             { type: 'survey-height', height },
             targetOrigin
           );
@@ -213,7 +213,7 @@ export default function SurveyEmbedPage() {
             // Skip check — show fresh form for this ticket
           } else {
 
-          const checkUrl = new URL(apiUrl(`/api/surveys/${surveyId}/responses/check`), window.location.origin);
+          const checkUrl = new URL(apiUrl(`/api/surveys/${surveyId}/responses/check`), globalThis.location.origin);
           checkUrl.searchParams.set('include', 'answers');
           if (storedResponseId) checkUrl.searchParams.set('responseId', storedResponseId);
           if (ticketId) checkUrl.searchParams.set('skipDid', 'true');
@@ -235,7 +235,7 @@ export default function SurveyEmbedPage() {
               // Notify parent that survey is already done
               const targetOrigin = getParentOrigin();
               if (targetOrigin) {
-                window.parent.postMessage({ type: 'survey-completed', surveyId }, targetOrigin);
+                globalThis.parent.postMessage({ type: 'survey-completed', surveyId }, targetOrigin);
               }
               return;
             }
@@ -309,7 +309,7 @@ export default function SurveyEmbedPage() {
     // find the row and flip the ticket to 'complete' without racing.
     const targetOrigin = getParentOrigin();
     if (targetOrigin) {
-      window.parent.postMessage(
+      globalThis.parent.postMessage(
         { type: 'survey-completed', surveyId, answers: data },
         targetOrigin
       );

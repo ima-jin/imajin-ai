@@ -29,7 +29,7 @@ function calculateTimeLeft(targetDate: string): TimeLeft | null {
   };
 }
 
-export function Countdown({ targetDate, label = 'Event starts in' }: CountdownProps) {
+export function Countdown({ targetDate, label = 'Event starts in' }: Readonly<CountdownProps>) {
   const [timeLeft, setTimeLeft] = useState<TimeLeft | null>(null);
   const [mounted, setMounted] = useState(false);
 

@@ -110,7 +110,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
     const refundResult = await pay.refund({ paymentId, amount, reason });
 
     // Convert tx amount (dollars) back to cents for response consistency
-    const txAmountDollars = parseFloat(originalTx.amount);
+    const txAmountDollars = Number.parseFloat(originalTx.amount);
     const refundedDollars = amount ? amount / 100 : txAmountDollars;
 
     // Mark original transaction as refunded
@@ -181,7 +181,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
       for (const stx of settlementTxs) {
         if (stx.status === 'refunded') continue;
 
-        const stxAmount = parseFloat(stx.amount);
+        const stxAmount = Number.parseFloat(stx.amount);
 
         // Mark settlement entry as refunded
         await db

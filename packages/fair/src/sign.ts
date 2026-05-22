@@ -40,11 +40,15 @@ function bytesToBase64url(bytes: Uint8Array): string {
     .map((b) => String.fromCharCode(b))
     .join('');
   const base64 = btoa(bin);
-  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  let out = base64.split('+').join('-').split('/').join('_');
+  while (out.endsWith('=')) {
+    out = out.slice(0, -1);
+  }
+  return out;
 }
 
 function base64urlToBytes(b64: string): Uint8Array {
-  const base64 = b64.replace(/-/g, '+').replace(/_/g, '/');
+  const base64 = b64.split('-').join('+').split('_').join('/');
   const pad = base64.length % 4;
   const padded = pad ? base64 + '='.repeat(4 - pad) : base64;
   const bin = atob(padded);

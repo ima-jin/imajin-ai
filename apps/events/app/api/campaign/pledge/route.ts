@@ -121,7 +121,7 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
       },
       body: JSON.stringify({
         amount,
-        currency: event.targetAmount ? 'CAD' : 'CAD',
+        currency: 'CAD',
         metadata: { eventId, backerDid: did },
       }),
     });

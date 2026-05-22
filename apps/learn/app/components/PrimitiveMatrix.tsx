@@ -14,7 +14,7 @@ interface PrimitiveMatrixProps {
   compact?: boolean;
 }
 
-export function PrimitiveMatrix({ active, compact }: PrimitiveMatrixProps) {
+export function PrimitiveMatrix({ active, compact }: Readonly<PrimitiveMatrixProps>) {
   // Animate cells on change
   const [rendered, setRendered] = useState(false);
   useEffect(() => {
