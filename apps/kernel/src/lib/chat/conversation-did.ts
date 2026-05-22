@@ -9,7 +9,7 @@ function sha256hex(input: string): string {
  * Sorting ensures the same DID regardless of argument order.
  */
 export function dmDid(did1: string, did2: string): string {
-  const sorted = [did1, did2].sort();
+  const sorted = [did1, did2].sort((a, b) => a.localeCompare(b));
   const hash = sha256hex(sorted.join(':')).slice(0, 16);
   return `did:imajin:dm:${hash}`;
 }
@@ -19,7 +19,7 @@ export function dmDid(did1: string, did2: string): string {
  * Sorting ensures the same DID regardless of member order.
  */
 export function groupDid(members: string[]): string {
-  const sorted = [...members].sort();
+  const sorted = [...members].sort((a, b) => a.localeCompare(b));
   const hash = sha256hex(sorted.join(':')).slice(0, 16);
   return `did:imajin:group:${hash}`;
 }

@@ -12,7 +12,7 @@ export function canonicalize(value: unknown): string {
     return '[' + value.map(canonicalize).join(',') + ']';
   }
   const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
+  const keys = Object.keys(obj).sort((a, b) => a.localeCompare(b));
   const parts = keys.map((key) => JSON.stringify(key) + ':' + canonicalize(obj[key]));
   return '{' + parts.join(',') + '}';
 }

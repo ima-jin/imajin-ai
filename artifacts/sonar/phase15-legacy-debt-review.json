@@ -1,0 +1,1010 @@
+﻿{
+    "capturedAt":  "2026-05-22T05:57:21.1093639Z",
+    "projectKey":  "ima-jin_imajin-ai",
+    "counts":  {
+                   "openIssuesAll":  2577,
+                   "openIssuesNew":  582,
+                   "openIssuesLegacy":  1995,
+                   "laneA_legacyBugsAndVulns":  57,
+                   "laneB_legacyHotspotsToReview":  51,
+                   "laneC_legacyCodeSmells":  1938
+               },
+    "laneA":  {
+                  "topFiles":  [
+                                   {
+                                       "path":  "scripts/test-flow.ts",
+                                       "count":  10
+                                   },
+                                   {
+                                       "path":  "apps/kernel/src/components/media/FolderTree.tsx",
+                                       "count":  5
+                                   },
+                                   {
+                                       "path":  "scripts/create-event.ts",
+                                       "count":  5
+                                   },
+                                   {
+                                       "path":  "scripts/create-profiles.ts",
+                                       "count":  5
+                                   },
+                                   {
+                                       "path":  "apps/dykil/app/(bare)/embed/[surveyId]/page.tsx",
+                                       "count":  3
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/chat/components/NewChatModal.tsx",
+                                       "count":  2
+                                   },
+                                   {
+                                       "path":  "apps/kernel/src/lib/chat/conversation-did.ts",
+                                       "count":  2
+                                   },
+                                   {
+                                       "path":  "apps/kernel/src/components/www/bug-report-modal.tsx",
+                                       "count":  2
+                                   },
+                                   {
+                                       "path":  "apps/kernel/src/components/media/AssetCard.tsx",
+                                       "count":  2
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/connections/page.tsx",
+                                       "count":  2
+                                   },
+                                   {
+                                       "path":  "packages/chat/src/MediaMessage.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "scripts/recompute-balances.mjs",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/src/components/media/MediaManager.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/chat/components/MessageMedia.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/auth/stubs/[did]/page.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/auth/apps/page.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "packages/chat/src/hooks/useDidNames.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/profile/components/ImageUpload.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/profile/register/page.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/connections/pods/[id]/page.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "packages/fair/src/components/FairAccordion.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/src/components/media/AssetDetail.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/profile/components/PresenceChat.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "packages/fair/src/canonical.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/chat/conversations/[type]/[slug]/page.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/connections/invitations-tab.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/admin/events/trace/[correlationId]/trace-view.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/src/components/media/AssetGrid.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/learn/app/components/PrimitiveMatrix.tsx",
+                                       "count":  1
+                                   }
+                               ],
+                  "firstBatch":  [
+                                     {
+                                         "path":  "scripts/test-flow.ts",
+                                         "count":  10
+                                     },
+                                     {
+                                         "path":  "apps/kernel/src/components/media/FolderTree.tsx",
+                                         "count":  5
+                                     },
+                                     {
+                                         "path":  "scripts/create-event.ts",
+                                         "count":  5
+                                     },
+                                     {
+                                         "path":  "scripts/create-profiles.ts",
+                                         "count":  5
+                                     },
+                                     {
+                                         "path":  "apps/dykil/app/(bare)/embed/[surveyId]/page.tsx",
+                                         "count":  3
+                                     },
+                                     {
+                                         "path":  "apps/kernel/app/chat/components/NewChatModal.tsx",
+                                         "count":  2
+                                     },
+                                     {
+                                         "path":  "apps/kernel/src/lib/chat/conversation-did.ts",
+                                         "count":  2
+                                     },
+                                     {
+                                         "path":  "apps/kernel/src/components/www/bug-report-modal.tsx",
+                                         "count":  2
+                                     },
+                                     {
+                                         "path":  "apps/kernel/src/components/media/AssetCard.tsx",
+                                         "count":  2
+                                     },
+                                     {
+                                         "path":  "apps/kernel/app/connections/page.tsx",
+                                         "count":  2
+                                     }
+                                 ]
+              },
+    "laneB":  {
+                  "byRule":  [
+                                 {
+                                     "rule":  "typescript:S2245",
+                                     "count":  21
+                                 },
+                                 {
+                                     "rule":  "typescript:S5852",
+                                     "count":  19
+                                 },
+                                 {
+                                     "rule":  "javascript:S5852",
+                                     "count":  5
+                                 },
+                                 {
+                                     "rule":  "typescript:S5332",
+                                     "count":  4
+                                 },
+                                 {
+                                     "rule":  "typescript:S4036",
+                                     "count":  2
+                                 }
+                             ],
+                  "topFiles":  [
+                                   {
+                                       "path":  "apps/kernel/src/lib/pay/providers/solana.ts",
+                                       "count":  2
+                                   },
+                                   {
+                                       "path":  "packages/pay/src/providers/solana.ts",
+                                       "count":  2
+                                   },
+                                   {
+                                       "path":  "apps/kernel/src/lib/www/articles.ts",
+                                       "count":  2
+                                   },
+                                   {
+                                       "path":  "apps/kernel/src/lib/auth/emit-session-attestation.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/src/lib/auth/email-mfa-codes.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/api/admin/newsletter/send/route.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/market/app/components/ImageUpload.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/auth/api/groups/route.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/auth/api/attestations/route.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/auth/api/attestations/internal/route.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/profile/api/stubs/route.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/profile/api/stubs/[did]/images/route.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/media/api/assets/[id]/references/route.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/src/lib/media/classify.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/media/api/transcribe/route.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "packages/llm/src/providers.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "scripts/reset-db.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/src/lib/media/transcode.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/media/api/assets/[id]/transcribe/route.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "packages/logger/src/adapters/pino.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "packages/auth/src/sign.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "packages/ui/src/toast.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "scripts/bootstrap-node-identity.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "scripts/backfill-emissions.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/api/admin/moderation/flags/route.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/events/app/page.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/dykil/drizzle.config.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/events/drizzle.config.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/api/subscribe/route.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/app/api/admin/federation/peers/route.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/coffee/drizzle.config.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "scripts/backfill-fair-manifests.mjs",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/server.js",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "scripts/migrate.mjs",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "scripts/seed-migrations.mjs",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "scripts/recompute-balances.mjs",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "apps/kernel/drizzle.config.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "packages/input/src/ImajinInput.tsx",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "packages/email/src/send.ts",
+                                       "count":  1
+                                   },
+                                   {
+                                       "path":  "scripts/backfill-mailing-list.ts",
+                                       "count":  1
+                                   }
+                               ],
+                  "firstBatch":  [
+                                     {
+                                         "path":  "apps/kernel/src/lib/pay/providers/solana.ts",
+                                         "count":  2
+                                     },
+                                     {
+                                         "path":  "packages/pay/src/providers/solana.ts",
+                                         "count":  2
+                                     },
+                                     {
+                                         "path":  "apps/kernel/src/lib/www/articles.ts",
+                                         "count":  2
+                                     },
+                                     {
+                                         "path":  "apps/kernel/src/lib/auth/emit-session-attestation.ts",
+                                         "count":  1
+                                     },
+                                     {
+                                         "path":  "apps/kernel/src/lib/auth/email-mfa-codes.ts",
+                                         "count":  1
+                                     },
+                                     {
+                                         "path":  "apps/kernel/app/api/admin/newsletter/send/route.ts",
+                                         "count":  1
+                                     },
+                                     {
+                                         "path":  "apps/market/app/components/ImageUpload.tsx",
+                                         "count":  1
+                                     },
+                                     {
+                                         "path":  "apps/kernel/app/auth/api/groups/route.ts",
+                                         "count":  1
+                                     },
+                                     {
+                                         "path":  "apps/kernel/app/auth/api/attestations/route.ts",
+                                         "count":  1
+                                     },
+                                     {
+                                         "path":  "apps/kernel/app/auth/api/attestations/internal/route.ts",
+                                         "count":  1
+                                     }
+                                 ]
+              },
+    "laneC":  {
+                  "topLegacyDuplicationFiles":  [
+                                                    {
+                                                        "path":  "apps/kernel/app/components/NavBar.tsx",
+                                                        "duplicated_lines_density":  97.2,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  1,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/events/app/components/NavBar.tsx",
+                                                        "duplicated_lines_density":  97.2,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  1,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/src/lib/notify-templates.ts",
+                                                        "duplicated_lines_density":  95,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "packages/pay/src/types.ts",
+                                                        "duplicated_lines_density":  94.5,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/src/lib/pay/types.ts",
+                                                        "duplicated_lines_density":  92.4,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "packages/pay/src/service.ts",
+                                                        "duplicated_lines_density":  91.4,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  2,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/learn/drizzle.config.ts",
+                                                        "duplicated_lines_density":  90.9,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  1,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/dykil/drizzle.config.ts",
+                                                        "duplicated_lines_density":  90.9,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  1,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/coffee/drizzle.config.ts",
+                                                        "duplicated_lines_density":  90.9,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  1,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/events/drizzle.config.ts",
+                                                        "duplicated_lines_density":  90.9,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  1,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/market/drizzle.config.ts",
+                                                        "duplicated_lines_density":  90.9,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  1,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/links/drizzle.config.ts",
+                                                        "duplicated_lines_density":  90.9,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  1,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/src/lib/pay/service.ts",
+                                                        "duplicated_lines_density":  90.8,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  4,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/drizzle.config.ts",
+                                                        "duplicated_lines_density":  90.5,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  1,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/events/app/api/media/[...path]/route.ts",
+                                                        "duplicated_lines_density":  90.4,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  3,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/src/lib/kernel/emissions.ts",
+                                                        "duplicated_lines_density":  89.1,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  2,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/app/profile/api/media/[...path]/route.ts",
+                                                        "duplicated_lines_density":  89.1,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  3,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/src/lib/kernel/rate-limit.ts",
+                                                        "duplicated_lines_density":  89.1,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/events/src/lib/rate-limit.ts",
+                                                        "duplicated_lines_density":  89.1,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/coffee/src/lib/rate-limit.ts",
+                                                        "duplicated_lines_density":  89.1,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/src/lib/pay/providers/solana.ts",
+                                                        "duplicated_lines_density":  87.4,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  5,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "packages/pay/src/providers/solana.ts",
+                                                        "duplicated_lines_density":  87.4,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  5,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "packages/bus/src/emissions.ts",
+                                                        "duplicated_lines_density":  79.5,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  2,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/market/middleware.ts",
+                                                        "duplicated_lines_density":  78.9,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/events/middleware.ts",
+                                                        "duplicated_lines_density":  78.9,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/learn/middleware.ts",
+                                                        "duplicated_lines_density":  78.9,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/coffee/middleware.ts",
+                                                        "duplicated_lines_density":  78.9,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/links/middleware.ts",
+                                                        "duplicated_lines_density":  78.9,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/src/lib/pay/providers/types.ts",
+                                                        "duplicated_lines_density":  74.7,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "packages/pay/src/providers/types.ts",
+                                                        "duplicated_lines_density":  74.7,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/app/auth/api/attestations/decline/route.ts",
+                                                        "duplicated_lines_density":  72.7,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/app/auth/notifications/page.tsx",
+                                                        "duplicated_lines_density":  71.3,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  2,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "packages/pay/src/providers/stripe.ts",
+                                                        "duplicated_lines_density":  69.2,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  3,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/app/auth/api/attestations/countersign/route.ts",
+                                                        "duplicated_lines_density":  68.4,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  3,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/app/auth/stubs/new/page.tsx",
+                                                        "duplicated_lines_density":  67.4,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  10,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/src/lib/pay/providers/stripe.ts",
+                                                        "duplicated_lines_density":  65.2,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  5,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/app/notify/settings/page.tsx",
+                                                        "duplicated_lines_density":  63.6,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  7,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/app/pay/api/connect/status/route.ts",
+                                                        "duplicated_lines_density":  62,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/app/chat/api/messages/[msgId]/reactions/route.ts",
+                                                        "duplicated_lines_density":  61.2,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  0,
+                                                        "new_code_smells":  0
+                                                    },
+                                                    {
+                                                        "path":  "apps/kernel/app/chat/api/invites/[id]/route.ts",
+                                                        "duplicated_lines_density":  59.4,
+                                                        "new_duplicated_lines_density":  0,
+                                                        "code_smells":  7,
+                                                        "new_code_smells":  0
+                                                    }
+                                                ],
+                  "topLegacyCodeSmellFiles":  [
+                                                  {
+                                                      "path":  "apps/kernel/app/pay/history/TransactionList.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  21,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/learn/app/course/[slug]/page.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  19,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/connections/page.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  17,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/auth/register/page.tsx",
+                                                      "duplicated_lines_density":  2.8,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  16,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/profile/register/page.tsx",
+                                                      "duplicated_lines_density":  10.4,
+                                                      "new_duplicated_lines_density":  25,
+                                                      "code_smells":  16,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/auth/stubs/[did]/page.tsx",
+                                                      "duplicated_lines_density":  32.6,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  15,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/market/app/listings/[id]/ListingDetail.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  15,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/admin/telemetry/page.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  15,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "scripts/check-env.ts",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  15,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/admin/newsletter/composer.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  14,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/learn/app/dashboard/[slug]/page.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  14,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/auth/groups/new/page.tsx",
+                                                      "duplicated_lines_density":  26,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  13,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "packages/ui/src/MarkdownContent.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  13,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/connections/invitations-tab.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  13,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/market/app/dashboard/page.tsx",
+                                                      "duplicated_lines_density":  3.9,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  13,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/learn/app/components/SlideRenderer.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  12,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/bugs/page.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  11,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/chat/conversations/[type]/[slug]/page.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  11,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/coffee/app/edit/page.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  11,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/auth/developer/apps/[appId]/components/AppDetailClient.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  11,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/src/components/media/FolderTree.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  10,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/registry/api/node/register/route.ts",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  10,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/auth/stubs/new/page.tsx",
+                                                      "duplicated_lines_density":  67.4,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  10,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/dykil/app/(bare)/embed/[surveyId]/page.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  10,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "packages/chat/src/VoiceMessage.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  10,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/profile/edit/page.tsx",
+                                                      "duplicated_lines_density":  5.1,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  9,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/connections/bump/BumpConnect.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  9,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/admin/events/events-client.tsx",
+                                                      "duplicated_lines_density":  8.4,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  9,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "packages/input/src/VoiceRecorder.tsx",
+                                                      "duplicated_lines_density":  46.4,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  9,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/pay/history/page.tsx",
+                                                      "duplicated_lines_density":  11.8,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  8,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/profile/api/stubs/route.ts",
+                                                      "duplicated_lines_density":  17,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  8,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/registry/docs/page.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  8,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "scripts/backfill-ticket-emails.ts",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  8,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "scripts/generate-api-specs.ts",
+                                                      "duplicated_lines_density":  10.3,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  8,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/chat/conversations/page.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  8,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/market/src/lib/settle.ts",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  8,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/market/app/components/ListingForm.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  8,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/auth/developer/apps/components/DevAppsShell.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  7,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "scripts/migrate-legacy-chat-media.mjs",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  7,
+                                                      "new_code_smells":  0
+                                                  },
+                                                  {
+                                                      "path":  "apps/kernel/app/pay/page.tsx",
+                                                      "duplicated_lines_density":  0,
+                                                      "new_duplicated_lines_density":  0,
+                                                      "code_smells":  7,
+                                                      "new_code_smells":  0
+                                                  }
+                                              ],
+                  "firstBatch":  [
+                                     {
+                                         "path":  "apps/kernel/app/components/NavBar.tsx",
+                                         "duplicated_lines_density":  97.2
+                                     },
+                                     {
+                                         "path":  "apps/events/app/components/NavBar.tsx",
+                                         "duplicated_lines_density":  97.2
+                                     },
+                                     {
+                                         "path":  "apps/kernel/src/lib/notify-templates.ts",
+                                         "duplicated_lines_density":  95
+                                     },
+                                     {
+                                         "path":  "packages/pay/src/types.ts",
+                                         "duplicated_lines_density":  94.5
+                                     },
+                                     {
+                                         "path":  "apps/kernel/src/lib/pay/types.ts",
+                                         "duplicated_lines_density":  92.4
+                                     },
+                                     {
+                                         "path":  "packages/pay/src/service.ts",
+                                         "duplicated_lines_density":  91.4
+                                     },
+                                     {
+                                         "path":  "apps/learn/drizzle.config.ts",
+                                         "duplicated_lines_density":  90.9
+                                     },
+                                     {
+                                         "path":  "apps/dykil/drizzle.config.ts",
+                                         "duplicated_lines_density":  90.9
+                                     },
+                                     {
+                                         "path":  "apps/coffee/drizzle.config.ts",
+                                         "duplicated_lines_density":  90.9
+                                     },
+                                     {
+                                         "path":  "apps/events/drizzle.config.ts",
+                                         "duplicated_lines_density":  90.9
+                                     }
+                                 ]
+              }
+}
