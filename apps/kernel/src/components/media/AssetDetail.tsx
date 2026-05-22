@@ -43,7 +43,13 @@ function FairEditModal({
       role="button"
       tabIndex={0}
       onClick={onCancel}
-      onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+      aria-label="Close fair manifest editor"
     >
       <div
         className="bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl p-4 w-[520px] max-h-[85vh] overflow-y-auto"
@@ -300,13 +306,14 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
               autoFocus
             />
           ) : (
-            <span
+            <button
+              type="button"
               className="text-sm text-gray-200 truncate flex-1 min-w-0 cursor-pointer hover:text-white"
               onClick={() => { setFilenameInput(savedFilename); setEditingFilename(true); }}
               title="Click to rename"
             >
               {savedFilename}
-            </span>
+            </button>
           )}
         </div>
 

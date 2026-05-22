@@ -135,6 +135,16 @@ export default function TraceView({ events, correlationId }: { events: SystemEve
                     <div
                       className={`px-4 py-3 flex flex-wrap items-center gap-3 ${hasPayload ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40 rounded-xl' : ''} transition-colors`}
                       onClick={() => hasPayload && toggle(evt.id)}
+                      onKeyDown={(e) => {
+                        if (!hasPayload) return;
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggle(evt.id);
+                        }
+                      }}
+                      role={hasPayload ? 'button' : undefined}
+                      tabIndex={hasPayload ? 0 : undefined}
+                      aria-expanded={hasPayload ? isExpanded : undefined}
                     >
                       {/* Step number */}
                       <span className="text-xs font-mono text-gray-400 dark:text-gray-600 w-5 text-right shrink-0">

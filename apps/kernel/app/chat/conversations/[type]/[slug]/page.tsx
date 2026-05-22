@@ -365,20 +365,25 @@ function DIDConversationView({ did }: { did: string }) {
               placeholder="Untitled Group"
             />
           ) : (
-            <h1
-              className={`font-semibold truncate ${parsed.type === 'group' ? 'cursor-pointer hover:text-orange-500 transition-colors' : ''}`}
-              onClick={() => {
-                if (parsed.type === 'group') {
+            parsed.type === 'group' ? (
+              <button
+                type="button"
+                className="font-semibold truncate cursor-pointer hover:text-orange-500 transition-colors text-left"
+                onClick={() => {
                   setNameInput(convName || nameParam || '');
                   setEditingName(true);
-                }
-              }}
-              title={parsed.type === 'group' ? 'Click to rename' : undefined}
-            >
-              {parsed.type === 'group' && !(convName || nameParam)
-                ? <span className="text-gray-400 italic font-normal">Untitled Group</span>
-                : displayName}
-            </h1>
+                }}
+                title="Click to rename"
+              >
+                {!(convName || nameParam)
+                  ? <span className="text-gray-400 italic font-normal">Untitled Group</span>
+                  : displayName}
+              </button>
+            ) : (
+              <h1 className="font-semibold truncate">
+                {displayName}
+              </h1>
+            )
           )}
           {parsed.type === 'group' && (
             <button

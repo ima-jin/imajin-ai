@@ -591,9 +591,11 @@ export function AssetGrid({
                   }}
                 >
                   {/* Checkbox */}
-                  <div
+                  <button
+                    type="button"
                     className={`shrink-0 transition-opacity ${isChecked || selectionActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
                     onClick={(e) => handleCheckClick(e, asset.id, idx)}
+                    aria-label={isChecked ? `Deselect asset ${asset.filename}` : `Select asset ${asset.filename}`}
                   >
                     <div className="flex items-center justify-center min-w-[44px] min-h-[44px]">
                       <div
@@ -606,7 +608,7 @@ export function AssetGrid({
                         ✓
                       </div>
                     </div>
-                  </div>
+                  </button>
                   <span className="text-lg shrink-0">{getMimeIcon(asset.mimeType)}</span>
                   <span className="text-sm text-gray-200 flex-1 truncate min-w-0">{asset.filename}</span>
                   <span className="text-xs text-gray-500 shrink-0 w-16 text-right hidden sm:block">{formatSize(asset.size)}</span>

@@ -12,6 +12,10 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:reset": "tsx scripts/reset-db.ts",
     "db:migrate": "node scripts/migrate.mjs",
+    "sonar:baseline": "powershell -ExecutionPolicy Bypass -File scripts/sonar/phase1-capture-baseline.ps1",
+    "sonar:legacy-review": "powershell -ExecutionPolicy Bypass -File scripts/sonar/phase15-legacy-debt-review.ps1",
+    "sonar:batch": "node scripts/sonar/phase16-next-batch.mjs",
+    "sonar:rip": "pnpm sonar:legacy-review && pnpm sonar:batch -- --lane A --size 10",
     "generate:api-specs": "tsx scripts/generate-api-specs.ts",
     "prepare": "husky"
   },

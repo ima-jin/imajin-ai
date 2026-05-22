@@ -744,13 +744,15 @@ export default function EditStubPage() {
         )}
 
         {images.length === 0 ? (
-          <div
+          <button
+            type="button"
             className="border-2 border-dashed border-gray-800 rounded-xl py-12 text-center cursor-pointer hover:border-gray-600 transition-colors"
             onClick={() => fileInputRef.current?.click()}
+            aria-label="Upload first gallery image"
           >
             <p className="text-zinc-600 text-sm">No images yet</p>
             <p className="text-zinc-700 text-xs mt-1">Click to upload the first one</p>
-          </div>
+          </button>
         ) : (
           <div className="grid grid-cols-3 gap-3">
             {images.map((img) => (

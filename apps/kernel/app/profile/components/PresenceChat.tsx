@@ -133,7 +133,19 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: P
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/60"
+        onClick={onClose}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onClose();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Close presence chat"
+      />
 
       <div className="relative w-full max-w-lg h-[600px] max-h-[85vh] bg-gray-950 border border-gray-800 rounded-t-2xl sm:rounded-2xl flex flex-col overflow-hidden">
         {/* Header */}
