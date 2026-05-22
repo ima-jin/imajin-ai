@@ -46,5 +46,33 @@ function appendUnsubscribeFooter(html: string, unsubscribeUrl: string): string {
 export { parseSender } from './types';
 
 export function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  let text = '';
+  let inTag = false;
+
+  for (const ch of html) {
+    if (ch === '<') {
+      inTag = true;
+      continue;
+    }
+    if (ch === '>') {
+      inTag = false;
+      continue;
+    }
+    if (!inTag) text += ch;
+  }
+
+  let collapsed = '';
+  let previousWasSpace = false;
+  for (const ch of text) {
+    const isSpace = ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t';
+    if (isSpace) {
+      if (!previousWasSpace) collapsed += ' ';
+      previousWasSpace = true;
+      continue;
+    }
+    collapsed += ch;
+    previousWasSpace = false;
+  }
+
+  return collapsed.trim();
 }

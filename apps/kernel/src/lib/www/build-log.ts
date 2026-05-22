@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import { remark } from 'remark';
 import remarkGfm from 'remark-gfm';
 import html from 'remark-html';
@@ -12,40 +12,56 @@ export interface BuildEntry {
   contentHtml: string;
 }
 
+function splitSectionsByHeading(normalized: string): string[] {
+  const sections: string[] = [];
+  let current = '';
+  for (const line of normalized.split('\n')) {
+    if (line.startsWith('## ')) {
+      if (current.trim()) sections.push(current);
+      current = `${line}\n`;
+      continue;
+    }
+    if (current) current += `${line}\n`;
+  }
+  if (current.trim()) sections.push(current);
+  return sections;
+}
+
+function parseSectionHeader(section: string): { date: string; title: string; content: string } | null {
+  const firstNewline = section.indexOf('\n');
+  const headingLine = (firstNewline >= 0 ? section.slice(0, firstNewline) : section).trim();
+  if (!headingLine.startsWith('## ')) return null;
+  const headingBody = headingLine.slice(3).trim();
+  const separatorIdx = headingBody.indexOf('—');
+  const date = (separatorIdx >= 0 ? headingBody.slice(0, separatorIdx) : headingBody).trim();
+  const title = (separatorIdx >= 0 ? headingBody.slice(separatorIdx + 1) : '').trim();
+  const content = firstNewline >= 0 ? section.slice(firstNewline + 1).trimStart() : '';
+  return { date, title, content };
+}
+
 /**
  * Parse build-log.md into individual entries.
  * Each H2 (## Date — Title) starts a new entry.
  */
 export async function getBuildEntries(): Promise<BuildEntry[]> {
   const raw = fs.readFileSync(buildLogPath, 'utf8');
-
-  // Split on H2 headings, keeping the heading with its content
-  const sections = raw.split(/(?=^## )/m).filter((s) => s.trim().startsWith('## '));
+  const normalized = raw.split('\r\n').join('\n');
+  const sections = splitSectionsByHeading(normalized);
 
   const entries: BuildEntry[] = [];
 
   for (const section of sections) {
-    // Extract heading: ## March 12–14, 2026 — Title
-    // Use em-dash (—) as the separator between date and title.
-    // En-dashes (–) and hyphens (-) in date ranges must NOT be treated as separators.
-    const headingMatch = section.match(/^## (.+?)\s*—\s*(.+)$/m)
-      || section.match(/^## (.+)$/m);
-    if (!headingMatch) continue;
-
-    const date = headingMatch[1].trim();
-    const title = headingMatch[2]?.trim() || '';
-
-    // Everything after the heading is the content
-    const content = section.replace(/^## .+\n+/, '');
+    const parsed = parseSectionHeader(section);
+    if (!parsed) continue;
 
     const processed = await remark()
       .use(remarkGfm)
       .use(html, { sanitize: false })
-      .process(content);
+      .process(parsed.content);
 
     entries.push({
-      date,
-      title,
+      date: parsed.date,
+      title: parsed.title,
       contentHtml: processed.toString(),
     });
   }

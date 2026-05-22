@@ -152,7 +152,7 @@ export function ImageUpload({
   );
 
   const onDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
+    (e: React.DragEvent<HTMLButtonElement>) => {
       e.preventDefault();
       setIsDragging(false);
 
@@ -164,12 +164,12 @@ export function ImageUpload({
     [handleFile]
   );
 
-  const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+  const onDragOver = useCallback((e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setIsDragging(true);
   }, []);
 
-  const onDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+  const onDragLeave = useCallback((e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setIsDragging(false);
   }, []);
@@ -214,13 +214,22 @@ export function ImageUpload({
       )}
 
       {/* Upload Zone */}
-      <div
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        onChange={onFileInputChange}
+        className="hidden"
+      />
+      <button
+        type="button"
         onDrop={onDrop}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onClick={openFilePicker}
+        aria-label="Upload image"
         className={`
-          border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition
+          w-full border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition
           ${
             isDragging
               ? 'border-[#F59E0B] bg-[#F59E0B]/10'
@@ -229,13 +238,6 @@ export function ImageUpload({
           ${isUploading ? 'opacity-50 pointer-events-none' : ''}
         `}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/gif,image/webp"
-          onChange={onFileInputChange}
-          className="hidden"
-        />
 
         {isUploading ? (
           <div className="flex flex-col items-center gap-2">
@@ -253,7 +255,7 @@ export function ImageUpload({
             </p>
           </>
         )}
-      </div>
+      </button>
 
       {/* Error Message */}
       {error && (

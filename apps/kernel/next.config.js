@@ -1,3 +1,4 @@
+const webpack = require('webpack');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: [
@@ -39,6 +40,11 @@ const nextConfig = {
     serverActions: { bodySizeLimit: '2gb' },
   },
   webpack: (config, { isServer }) => {
+    config.plugins.push(
+      new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+        resource.request = resource.request.replace(/^node:/, '');
+      })
+    );
     if (!isServer) {
       // @metalabel/dfos-protocol uses Node built-ins (net, tls, fs, perf_hooks)
       // via postgres driver. Stub them out for client bundles.

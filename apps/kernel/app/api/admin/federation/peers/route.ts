@@ -5,6 +5,12 @@ import { requireAdmin } from '@imajin/auth';
 
 const sql = getClient();
 
+function stripTrailingSlashes(input: string): string {
+  let value = input;
+  while (value.endsWith('/')) value = value.slice(0, -1);
+  return value;
+}
+
 export const GET = withLogger('kernel', async () => {
   const session = await requireAdmin();
   if (!session) {
@@ -33,7 +39,7 @@ export const POST = withLogger('kernel', async (req: NextRequest) => {
     return NextResponse.json({ error: 'peerUrl is required' }, { status: 400 });
   }
 
-  const peerUrl = body.peerUrl.trim().replace(/\/+$/, '');
+  const peerUrl = stripTrailingSlashes(body.peerUrl.trim());
   if (!peerUrl.startsWith('http://') && !peerUrl.startsWith('https://')) {
     return NextResponse.json({ error: 'peerUrl must be an HTTP(S) URL' }, { status: 400 });
   }

@@ -6,7 +6,10 @@
  */
 
 import postgres from 'postgres';
-import { execSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { delimiter, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -24,6 +27,13 @@ if (DATABASE_URL.includes('prod') || DATABASE_URL.includes('railway') || DATABAS
 const sql = postgres(DATABASE_URL);
 
 const schemas = ['auth', 'chat', 'coffee', 'connections', 'dykil', 'events', 'links', 'pay', 'profile', 'registry', 'www'];
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const PNPM_CLI = require.resolve('pnpm/bin/pnpm.cjs');
+const TSX_CLI = require.resolve('tsx/dist/cli.mjs');
+const SAFE_EXEC_PATH = process.platform === 'win32'
+  ? ['C:/Windows/System32', 'C:/Windows'].join(delimiter)
+  : ['/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(delimiter);
 
 async function main() {
   console.log('🔥 RESETTING DATABASE...\n');
@@ -72,9 +82,12 @@ async function main() {
   for (const app of apps) {
     try {
       console.log(`  📝 ${app.dir}...`);
-      execSync(`pnpm --filter ${app.pkg} db:push`, {
+      if (!/^@imajin\/[a-z0-9-]+$/.test(app.pkg)) {
+        throw new Error(`Unsafe package identifier: ${app.pkg}`);
+      }
+      execFileSync(process.execPath, [PNPM_CLI, '--filter', app.pkg, 'db:push'], {
         stdio: 'inherit',
-        env: { ...process.env, DATABASE_URL },
+        env: { ...process.env, DATABASE_URL, PATH: SAFE_EXEC_PATH },
       });
       console.log(`  ✅ ${app.dir} schema pushed`);
     } catch (error) {
@@ -84,9 +97,9 @@ async function main() {
 
   // Run seed
   console.log('\n🌱 Running seed...');
-  execSync('tsx scripts/seed.ts', {
+  execFileSync(process.execPath, [TSX_CLI, resolve(__dirname, 'seed.ts')], {
     stdio: 'inherit',
-    env: { ...process.env, DATABASE_URL },
+    env: { ...process.env, DATABASE_URL, PATH: SAFE_EXEC_PATH },
   });
 
   console.log('\n✨ Database reset complete!');

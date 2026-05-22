@@ -12,13 +12,16 @@ import { eventPath } from '@imajin/config';
 
 /** Strip markdown syntax to get clean plaintext for excerpts */
 function stripMarkdown(text: string): string {
-  return text
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // [text](url) → text
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')     // ![alt](url) → remove
-    .replace(/[*_~`#>]+/g, '')                   // remove emphasis/heading markers
-    .replace(/\n{2,}/g, ' · ')                   // paragraph breaks → separator
-    .replace(/\n/g, ' ')                          // line breaks → space
-    .replace(/\s+/g, ' ')                         // collapse whitespace
+  const withoutImages = text.replace(/!\[[^\]]*]\([^)]*\)/g, '');
+  const withoutLinks = withoutImages.replace(/\[([^\]]+)]\([^)]*\)/g, '$1');
+  let out = withoutLinks;
+  for (const marker of ['*', '_', '~', '`', '#', '>']) out = out.split(marker).join('');
+  return out
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{2,}/g, ' · ')
+    .replace(/\n/g, ' ')
+    .replace(/\t/g, ' ')
+    .replace(/ {2,}/g, ' ')
     .trim();
 }
 

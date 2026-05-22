@@ -76,8 +76,6 @@ export function PrimitiveMatrix({ active, compact }: PrimitiveMatrixProps) {
                   className={`aspect-square rounded-sm flex items-center justify-center transition-all duration-700 ${
                     isActive && rendered
                       ? 'bg-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.4)]'
-                      : isActive && !rendered
-                      ? 'bg-white/5 border border-white/10'
                       : 'bg-white/5 border border-white/10'
                   }`}
                 >

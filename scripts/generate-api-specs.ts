@@ -209,13 +209,21 @@ function detectSecurity(source: string, method: HttpMethod): string[] {
   if (/PAY_SERVICE_API_KEY|apiKeyAuth/.test(source)) {
     schemes.push('apiKeyAuth');
   }
-  if (/WEBHOOK_SECRET|Bearer.*webhook/i.test(source)) {
+  const sourceLower = source.toLowerCase();
+  if (
+    source.includes('WEBHOOK_SECRET') ||
+    (sourceLower.includes('bearer') && sourceLower.includes('webhook'))
+  ) {
     schemes.push('webhookSecret');
   }
   if (/attestation|NodeAttestation|NodeHeartbeat/.test(source)) {
     schemes.push('attestation');
   }
-  if (/bearerAuth|Bearer\s+token|Authorization.*Bearer/.test(source)) {
+  if (
+    source.includes('bearerAuth') ||
+    source.includes('Bearer token') ||
+    (source.includes('Authorization') && source.includes('Bearer'))
+  ) {
     if (!schemes.includes('apiKeyAuth') && !schemes.includes('webhookSecret')) {
       schemes.push('bearerAuth');
     }

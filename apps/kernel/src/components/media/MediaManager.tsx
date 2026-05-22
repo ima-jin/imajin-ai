@@ -248,9 +248,11 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
       {/* Sidebar — mobile overlay */}
       {mobileSidebarOpen && (
         <div className="fixed inset-0 z-40 flex md:hidden">
-          <div
+          <button
+            type="button"
             className="fixed inset-0 bg-black/60"
             onClick={() => setMobileSidebarOpen(false)}
+            aria-label="Close folders sidebar"
           />
           <div className="relative z-50 w-64 h-full bg-[#1a1a1a] border-r border-gray-800">
             {sidebarContent}

@@ -471,7 +471,7 @@ export function Chat({
       </div>
 
       {/* Composer */}
-      <div className={`flex flex-wrap items-end gap-1 border-t border-slate-200 dark:border-zinc-700 overflow-hidden ${compact ? 'py-1' : 'py-2'}`}>
+      <div className={`relative z-20 flex flex-wrap items-end gap-1 border-t border-slate-200 dark:border-zinc-700 overflow-visible ${compact ? 'py-1' : 'py-2'}`}>
         {(replyTo || editingMsg) && (
           <div className="flex items-start justify-between mb-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 text-xs w-full">
             <div className="min-w-0">
@@ -521,7 +521,7 @@ export function Chat({
           </div>
         )}
         {!voiceActive && (
-          <div className="relative flex-1 min-w-0">
+          <div className="relative z-30 flex-1 min-w-0">
             <textarea
               ref={textareaRef}
               value={composerText}

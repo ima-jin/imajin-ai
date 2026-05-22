@@ -91,6 +91,18 @@ function ToastItem({
   );
 }
 
+function createToastId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const bytes = new Uint8Array(8);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  return `${Date.now().toString(36)}-toast`;
+}
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, dispatch] = useReducer(reducer, []);
 
@@ -99,10 +111,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const add = useCallback((type: ToastType, message: string) => {
-    const id =
-      typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID()
-        : String(Date.now() + Math.random());
+    const id = createToastId();
     const sticky = type === 'error';
     dispatch({ type: 'ADD', toast: { id, type, message, sticky } });
   }, []);

@@ -39,3 +39,6 @@ apps/auth/tsconfig.tsbuildinfo
 memory/
 .claire/
 *.tsbuildinfo
+
+# Sonar generated artifacts
+artifacts/sonar/

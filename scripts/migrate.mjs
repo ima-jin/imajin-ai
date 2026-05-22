@@ -12,6 +12,7 @@ import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 import { createRequire } from 'module';
+import envUtils from './env-utils.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const baseDir = resolve(__dirname, '..');
@@ -24,15 +25,7 @@ const postgres = kernelRequire('postgres');
 
 // Read DATABASE_URL from apps/kernel/.env.local, fallback to env var
 const envPath = resolve(kernelDir, '.env.local');
-let databaseUrl;
-try {
-  const envContent = readFileSync(envPath, 'utf-8');
-  const match = envContent.match(/^DATABASE_URL=["']?(.+?)["']?\s*$/m);
-  databaseUrl = match?.[1];
-} catch {
-  // fall through
-}
-databaseUrl = databaseUrl || process.env.DATABASE_URL;
+const databaseUrl = envUtils.readEnvValueFromFile(envPath, 'DATABASE_URL') || process.env.DATABASE_URL;
 
 if (!databaseUrl) {
   console.error(`❌ No DATABASE_URL found in ${envPath} or environment`);

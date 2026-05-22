@@ -1,6 +1,7 @@
-import { spawn } from 'child_process';
-import { access } from 'fs/promises';
-import { constants } from 'fs';
+import { spawn } from 'node:child_process';
+import { access } from 'node:fs/promises';
+import { constants, existsSync } from 'node:fs';
+import { delimiter } from 'node:path';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -18,6 +19,25 @@ const QUALITY_CONFIG: Record<VideoQuality, { width: number; height: number; crf:
 const activeTranscodes = new Set<string>();
 const MAX_CONCURRENT = 2;
 const transcodeQueue: Array<() => void> = [];
+const SAFE_EXEC_PATH = process.platform === 'win32'
+  ? ['C:/Windows/System32', 'C:/Windows'].join(delimiter)
+  : ['/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(delimiter);
+const FIXED_FFMPEG_BINARIES = process.platform === 'win32'
+  ? ['C:/Program Files/ffmpeg/bin/ffmpeg.exe', 'C:/ffmpeg/bin/ffmpeg.exe']
+  : ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg'];
+
+function assertSafeFfmpegPath(pathValue: string, label: string): void {
+  if (!pathValue || /[\r\n\0]/.test(pathValue) || pathValue.startsWith('-')) {
+    throw new Error(`Unsafe ${label} path`);
+  }
+}
+
+function getFfmpegBinary(): string {
+  const preferred = FIXED_FFMPEG_BINARIES.find(candidate => existsSync(candidate));
+  const ffmpegBinary = preferred ?? FIXED_FFMPEG_BINARIES[0];
+  assertSafeFfmpegPath(ffmpegBinary, 'ffmpeg executable');
+  return ffmpegBinary;
+}
 
 export function getVariantPath(originalPath: string, quality: VideoQuality): string {
   return `${originalPath}.${quality}.mp4`;
@@ -62,6 +82,8 @@ function runNext() {
 export function transcodeVideo(originalPath: string, quality: VideoQuality): Promise<string> {
   const key = `${originalPath}:${quality}`;
   const outPath = getVariantPath(originalPath, quality);
+  assertSafeFfmpegPath(originalPath, 'input');
+  assertSafeFfmpegPath(outPath, 'output');
 
   if (activeTranscodes.has(key)) {
     return Promise.reject(new Error('Already transcoding'));
@@ -83,9 +105,14 @@ export function transcodeVideo(originalPath: string, quality: VideoQuality): Pro
         '-y',
         outPath,
       ];
+      const ffmpegBinary = getFfmpegBinary();
 
       log.info({ quality, originalPath }, 'starting transcode');
-      const proc = spawn('ffmpeg', args);
+      const proc = spawn(ffmpegBinary, args, {
+        shell: false,
+        windowsHide: true,
+        env: { ...process.env, PATH: SAFE_EXEC_PATH },
+      });
 
       proc.stderr.on('data', (_data) => {
         // ffmpeg outputs progress to stderr — just log last line occasionally

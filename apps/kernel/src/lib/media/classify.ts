@@ -14,7 +14,7 @@ export interface ClassifyResult {
 
 // ── CLIP integration ─────────────────────────────────────────────────────────
 
-const CLIP_URL = process.env.CLIP_URL || 'http://192.168.1.234:8765/api/clip';
+const CLIP_URL = process.env.CLIP_URL;
 const CLIP_TIMEOUT_MS = 5000;
 
 interface ClipResult {
@@ -42,6 +42,7 @@ const CLIP_LABEL_MAP: Record<string, { category: string; folder: string }> = {
 };
 
 async function classifyWithClip(buffer: Buffer, callerDid?: string): Promise<ClipResult | null> {
+  if (!CLIP_URL) return null;
   try {
     const formData = new FormData();
     formData.append('file', new Blob([buffer]), 'image.bin');

@@ -8,7 +8,16 @@ import { withLogger } from '@imajin/logger';
 
 // Simple email validation
 function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (!email || email.includes(' ')) return false;
+  const at = email.indexOf('@');
+  if (at <= 0 || at !== email.lastIndexOf('@')) return false;
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  if (!local || !domain) return false;
+  const dot = domain.lastIndexOf('.');
+  if (dot <= 0 || dot === domain.length - 1) return false;
+  if (domain.includes('..')) return false;
+  return true;
 }
 
 // Normalize email (lowercase, trim)

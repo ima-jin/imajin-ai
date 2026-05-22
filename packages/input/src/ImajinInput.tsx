@@ -33,6 +33,12 @@ export interface ImajinInputProps {
   maxRows?: number;
 }
 
+function stripTrailingSlashes(input: string): string {
+  let value = input;
+  while (value.endsWith('/')) value = value.slice(0, -1);
+  return value;
+}
+
 export function ImajinInput({
   onSubmit,
   onMediaReady,
@@ -183,7 +189,7 @@ export function ImajinInput({
     const formData = new FormData();
     formData.append('file', file, file.name);
     const transcribeUrl = inputServiceUrl
-      ? `${inputServiceUrl.replace(/\/+$/, '')}/api/transcribe`
+      ? `${stripTrailingSlashes(inputServiceUrl)}/api/transcribe`
       : '/api/transcribe';
 
     const startTime = Date.now();
