@@ -122,6 +122,19 @@ function shareBar(share: number, role: string) {
     </div>
   );
 }
+function createEntryListEditor(
+  entries: FairEntry[],
+  onChange: (entries: FairEntry[]) => void,
+) {
+  const update = (i: number, patch: Partial<FairEntry>) => {
+    const next = entries.map((e, idx) => (idx === i ? { ...e, ...patch } : e));
+    onChange(next);
+  };
+
+  const remove = (i: number) => onChange(entries.filter((_, idx) => idx !== i));
+
+  return { update, remove };
+}
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -183,12 +196,7 @@ function AttributionEdit({
   entries: FairEntry[];
   onChange: (entries: FairEntry[]) => void;
 }) {
-  const update = (i: number, patch: Partial<FairEntry>) => {
-    const next = entries.map((e, idx) => idx === i ? { ...e, ...patch } : e);
-    onChange(next);
-  };
-
-  const remove = (i: number) => onChange(entries.filter((_, idx) => idx !== i));
+  const { update, remove } = createEntryListEditor(entries, onChange);
 
   const add = () =>
     onChange([...entries, { did: '', role: 'collaborator', share: 0 }]);
@@ -229,7 +237,7 @@ function AttributionEdit({
               max={100}
               step={0.5}
               value={Math.round(entry.share * 1000) / 10}
-              onChange={e => update(i, { share: parseFloat(e.target.value) / 100 })}
+              onChange={e => update(i, { share: Number.parseFloat(e.target.value) / 100 })}
               className="flex-1 accent-orange-500"
             />
             <input
@@ -238,7 +246,7 @@ function AttributionEdit({
               max={100}
               step={0.5}
               value={(entry.share * 100).toFixed(1)}
-              onChange={e => update(i, { share: parseFloat(e.target.value) / 100 })}
+              onChange={e => update(i, { share: Number.parseFloat(e.target.value) / 100 })}
               className="w-16 bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-orange-500 text-right"
             />
             <span className="text-xs text-gray-500">%</span>
@@ -280,12 +288,7 @@ function ChainEdit({
   entries: FairEntry[];
   onChange: (entries: FairEntry[]) => void;
 }) {
-  const update = (i: number, patch: Partial<FairEntry>) => {
-    const next = entries.map((e, idx) => idx === i ? { ...e, ...patch } : e);
-    onChange(next);
-  };
-
-  const remove = (i: number) => onChange(entries.filter((_, idx) => idx !== i));
+  const { update, remove } = createEntryListEditor(entries, onChange);
 
   const add = () =>
     onChange([...entries, { did: '', role: 'seller', share: 0 }]);
@@ -334,7 +337,7 @@ function ChainEdit({
                 step={0.5}
                 value={Math.round(entry.share * 1000) / 10}
                 disabled={isProtocol}
-                onChange={e => update(i, { share: parseFloat(e.target.value) / 100 })}
+                onChange={e => update(i, { share: Number.parseFloat(e.target.value) / 100 })}
                 className={`flex-1 accent-orange-500 ${isProtocol ? 'opacity-50 cursor-not-allowed' : ''}`}
               />
               <input
@@ -344,7 +347,7 @@ function ChainEdit({
                 step={0.5}
                 value={(entry.share * 100).toFixed(1)}
                 readOnly={isProtocol}
-                onChange={e => update(i, { share: parseFloat(e.target.value) / 100 })}
+                onChange={e => update(i, { share: Number.parseFloat(e.target.value) / 100 })}
                 className={`w-16 bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-orange-500 text-right ${isProtocol ? 'opacity-50 cursor-not-allowed' : ''}`}
               />
               <span className="text-xs text-gray-500">%</span>
@@ -536,7 +539,7 @@ function TransferSection({
                 step={0.5}
                 value={((t.resaleRoyalty ?? 0) * 100)}
                 disabled={readOnly}
-                onChange={e => toggle('resaleRoyalty', parseFloat(e.target.value) / 100)}
+                onChange={e => toggle('resaleRoyalty', Number.parseFloat(e.target.value) / 100)}
                 className="flex-1 accent-orange-500"
               />
               <span className="text-xs text-gray-300 w-10 text-right">
