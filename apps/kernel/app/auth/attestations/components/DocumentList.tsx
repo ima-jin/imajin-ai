@@ -1,7 +1,7 @@
 import { db, attestations, attestationSignatures, identities } from '@/src/db';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import Link from 'next/link';
-import DocumentSigningCard from './DocumentSigningCard';
+import DocumentSigningCard, { type DocumentAttestation, type Signature } from './DocumentSigningCard';
 
 type DocumentRoleFilter = 'created' | 'needs-signature';
 
@@ -93,15 +93,16 @@ export default async function DocumentList({ sessionDid, role }: Props) {
   return (
     <div className="space-y-3">
       {rows.map((attestation) => {
-        const signaturesForAttestation = (signaturesByAttestation.get(attestation.id) ?? []).map((signature) => ({
+        const signaturesForAttestation: Signature[] = (signaturesByAttestation.get(attestation.id) ?? []).map((signature) => ({
           ...signature,
           identity: signerIdentityMap.get(signature.signerDid) ?? null,
         }));
+        const cardAttestation: DocumentAttestation = attestation;
 
         return (
           <div key={attestation.id} className="space-y-2">
             <DocumentSigningCard
-              attestation={attestation as any}
+              attestation={cardAttestation}
               signatures={signaturesForAttestation}
               sessionDid={sessionDid}
             />

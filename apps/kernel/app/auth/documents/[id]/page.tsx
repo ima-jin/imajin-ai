@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { and, eq, inArray } from 'drizzle-orm';
 import { attestations, attestationSignatures, db, identities } from '@/src/db';
-import DocumentSigningCard from '../../attestations/components/DocumentSigningCard';
+import DocumentSigningCard, { type DocumentAttestation, type Signature } from '../../attestations/components/DocumentSigningCard';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -90,10 +90,11 @@ export default async function DocumentDetailPage({ params }: PageProps) {
     : [];
   const signerIdentityMap = new Map(signerIdentities.map((identity) => [identity.id, identity]));
 
-  const signaturesWithIdentity = signatures.map((signature) => ({
+  const signaturesWithIdentity: Signature[] = signatures.map((signature) => ({
     ...signature,
     identity: signerIdentityMap.get(signature.signerDid) ?? null,
   }));
+  const cardAttestation: DocumentAttestation = attestation;
 
   return (
     <div className="space-y-4">
@@ -104,7 +105,7 @@ export default async function DocumentDetailPage({ params }: PageProps) {
         </Link>
       </div>
       <DocumentSigningCard
-        attestation={attestation as any}
+        attestation={cardAttestation}
         signatures={signaturesWithIdentity}
         sessionDid={effectiveDid}
         defaultExpanded

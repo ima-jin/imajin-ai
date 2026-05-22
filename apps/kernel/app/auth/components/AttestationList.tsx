@@ -1,7 +1,7 @@
 import { db, identities, attestations, attestationSignatures } from '@/src/db';
 import { eq, or, and, isNull, desc, inArray, notInArray, sql } from 'drizzle-orm';
 import Link from 'next/link';
-import DocumentSigningCard from '../attestations/components/DocumentSigningCard';
+import DocumentSigningCard, { type DocumentAttestation, type Signature } from '../attestations/components/DocumentSigningCard';
 
 const TYPE_BADGE: Record<string, { label: string; classes: string }> = {
   'session.created': {
@@ -220,14 +220,15 @@ export default async function AttestationList({ sessionDid, searchParams, exclud
             // Document attestations get the rich card
             if (DOCUMENT_TYPES.includes(att.type)) {
               const sigs = sigsByAttestation.get(att.id) ?? [];
-              const sigsWithIdentity = sigs.map((sig) => ({
+              const sigsWithIdentity: Signature[] = sigs.map((sig) => ({
                 ...sig,
                 identity: signerIdentityMap.get(sig.signerDid) ?? null,
               }));
+              const cardAttestation: DocumentAttestation = att;
               return (
                 <DocumentSigningCard
                   key={att.id}
-                  attestation={att as any}
+                  attestation={cardAttestation}
                   signatures={sigsWithIdentity}
                   sessionDid={sessionDid}
                 />

@@ -14,7 +14,8 @@ interface SearchParams {
   doc_role?: string;
 }
 
-export default async function AttestationsPage({ searchParams }: { searchParams: SearchParams }) {
+export default async function AttestationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const resolvedSearchParams = await searchParams;
   const cookieConfig = getSessionCookieOptions();
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(cookieConfig.name)?.value;
@@ -32,8 +33,8 @@ export default async function AttestationsPage({ searchParams }: { searchParams:
   // Effective DID: actingAs cookie OR personal DID
   const actingAs = cookieStore.get('x-acting-as')?.value || null;
   const effectiveDid = actingAs || sessionDid;
-  const view = searchParams.view === 'documents' ? 'documents' : 'attestations';
-  const documentRole = searchParams.doc_role === 'created' ? 'created' : 'needs-signature';
+  const view = resolvedSearchParams.view === 'documents' ? 'documents' : 'attestations';
+  const documentRole = resolvedSearchParams.doc_role === 'created' ? 'created' : 'needs-signature';
 
   return (
     <div className="space-y-4">
@@ -92,7 +93,7 @@ export default async function AttestationsPage({ searchParams }: { searchParams:
           <DocumentList sessionDid={effectiveDid} role={documentRole} />
         </div>
       ) : (
-        <AttestationList sessionDid={effectiveDid} searchParams={searchParams} excludeDocumentTypes />
+        <AttestationList sessionDid={effectiveDid} searchParams={resolvedSearchParams} excludeDocumentTypes />
       )}
     </div>
   );

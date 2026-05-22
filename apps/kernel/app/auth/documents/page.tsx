@@ -8,7 +8,8 @@ interface SearchParams {
   role?: string;
 }
 
-export default async function DocumentsPage({ searchParams }: { searchParams: SearchParams }) {
+export default async function DocumentsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const resolvedSearchParams = await searchParams;
   const cookieConfig = getSessionCookieOptions();
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(cookieConfig.name)?.value;
@@ -25,7 +26,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
 
   const actingAs = cookieStore.get('x-acting-as')?.value || null;
   const effectiveDid = actingAs || sessionDid;
-  const role = searchParams.role === 'created' ? 'created' : 'needs-signature';
+  const role = resolvedSearchParams.role === 'created' ? 'created' : 'needs-signature';
 
   return (
     <div className="space-y-4">

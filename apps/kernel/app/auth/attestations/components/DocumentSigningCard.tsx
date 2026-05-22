@@ -5,7 +5,7 @@ import SignerList from './SignerList';
 import DocumentViewer from './DocumentViewer';
 import { buildDocumentSigningPayload } from '@/src/lib/auth/document-signing-payload';
 
-interface Signature {
+export interface Signature {
   id: string;
   signerDid: string;
   status: string;
@@ -18,12 +18,12 @@ interface Signature {
   } | null;
 }
 
-interface DocumentAttestation {
+export interface DocumentAttestation {
   id: string;
   issuerDid: string;
   subjectDid: string;
   type: string;
-  payload: Record<string, unknown> | null;
+  payload: unknown;
   attestationStatus: string | null;
   documentHash: string | null;
   documentAssetId: string | null;
@@ -77,6 +77,15 @@ function expiryLabel(expiresAt: Date | null): string | null {
   const days = Math.floor(hrs / 24);
   return `${days}d left`;
 }
+function getDocumentTitle(payload: unknown): string {
+  if (payload && typeof payload === 'object') {
+    const maybeTitle = (payload as { title?: unknown }).title;
+    if (typeof maybeTitle === 'string' && maybeTitle.trim().length > 0) {
+      return maybeTitle;
+    }
+  }
+  return 'Untitled Document';
+}
 
 export default function DocumentSigningCard({ attestation, signatures, sessionDid, defaultExpanded = false }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -92,7 +101,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
   const signedCount = localSigs.filter((s) => s.status === 'signed').length;
   const totalCount = attestation.totalSigners ?? localSigs.length;
 
-  const title = (attestation.payload?.title as string) ?? 'Untitled Document';
+  const title = getDocumentTitle(attestation.payload);
 
   async function handleSign() {
     setLoading(true);
