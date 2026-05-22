@@ -1,5 +1,5 @@
 import { publish } from '@imajin/bus';
-import { db, assets, identities, type NewAttestationSignature } from '@/src/db';
+import { db, assets, identities, attestationSignatures, type NewAttestationSignature } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { verifyDocumentSignatureToken } from '@/src/lib/auth/document-signatures';
 
@@ -207,4 +207,54 @@ export function publishDocumentCreatedNotifications(params: {
       },
     }).catch((err) => log.error({ err: String(err), signerDid, attestationId }, 'document.created publish failed'));
   }
+}
+
+export async function finalizeDocumentAttestation(params: {
+  attestationId: string;
+  documentAssetId: string;
+  creatorDid: string;
+  creatorJws: string;
+  signerDids: string[];
+  title: string;
+  callerIdentity: CallerIdentity;
+  genId: (prefix: string) => string;
+  log: LoggerLike;
+}) {
+  const {
+    attestationId,
+    documentAssetId,
+    creatorDid,
+    creatorJws,
+    signerDids,
+    title,
+    callerIdentity,
+    genId,
+    log,
+  } = params;
+
+  const sigRows = buildDocumentSignatureRows({
+    attestationId,
+    creatorDid,
+    creatorJws,
+    signerDids,
+    genId,
+  });
+  await db.insert(attestationSignatures).values(sigRows);
+  await db.update(assets).set({ immutable: true }).where(eq(assets.id, documentAssetId));
+
+  const creatorName = getCreatorDisplayName(callerIdentity, creatorDid);
+  publishDocumentCreatedNotifications({
+    attestationId,
+    documentAssetId,
+    creatorDid,
+    creatorName,
+    signerDids,
+    title,
+    log,
+  });
+
+  return db
+    .select()
+    .from(attestationSignatures)
+    .where(eq(attestationSignatures.attestationId, attestationId));
 }

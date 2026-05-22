@@ -1,8 +1,7 @@
-import { cookies } from 'next/headers';
-import { getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import DocumentList from '../attestations/components/DocumentList';
+import { getEffectiveDid } from '../lib/get-effective-did';
 
 interface SearchParams {
   role?: string;
@@ -10,22 +9,11 @@ interface SearchParams {
 
 export default async function DocumentsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const resolvedSearchParams = await searchParams;
-  const cookieConfig = getSessionCookieOptions();
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(cookieConfig.name)?.value;
-
-  let sessionDid: string | null = null;
-  if (sessionToken) {
-    const session = await verifySessionToken(sessionToken);
-    sessionDid = session?.sub ?? null;
-  }
+  const { sessionDid, effectiveDid } = await getEffectiveDid();
 
   if (!sessionDid) {
     redirect('/auth');
   }
-
-  const actingAs = cookieStore.get('x-acting-as')?.value || null;
-  const effectiveDid = actingAs || sessionDid;
   const role = resolvedSearchParams.role === 'created' ? 'created' : 'needs-signature';
 
   return (

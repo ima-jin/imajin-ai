@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, attestations, attestationSignatures, assets } from '@/src/db';
+import { db, attestations, attestationSignatures } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { requireAuth } from '@/src/lib/auth/middleware';
 import { createLogger } from '@imajin/logger';
 import {
-  buildDocumentSignatureRows,
-  getCreatorDisplayName,
+  finalizeDocumentAttestation,
   parseDocumentRequestBody,
-  publishDocumentCreatedNotifications,
   validateDocumentRequestInput,
 } from '../../../../../../src/lib/auth/document-attestation';
 
@@ -110,36 +108,17 @@ export async function POST(
       })
       .returning();
 
-    // Create signature rows
-    const sigRows = buildDocumentSignatureRows({
-      attestationId,
-      creatorDid: callerDid,
-      creatorJws: authorJws,
-      signerDids,
-      genId,
-    });
-
-    await db.insert(attestationSignatures).values(sigRows);
-
-    // Set asset immutable
-    await db.update(assets).set({ immutable: true }).where(eq(assets.id, documentAssetId));
-
-    // Publish one event per pending signer so notify reactors can target recipients directly.
-    const creatorName = getCreatorDisplayName(callerIdentity, callerDid);
-    publishDocumentCreatedNotifications({
+    const allSigs = await finalizeDocumentAttestation({
       attestationId,
       documentAssetId,
       creatorDid: callerDid,
-      creatorName,
+      creatorJws: authorJws,
       signerDids,
       title,
+      callerIdentity,
+      genId,
       log,
     });
-
-    const allSigs = await db
-      .select()
-      .from(attestationSignatures)
-      .where(eq(attestationSignatures.attestationId, attestationId));
 
     return NextResponse.json(
       { attestation, signatures: allSigs },

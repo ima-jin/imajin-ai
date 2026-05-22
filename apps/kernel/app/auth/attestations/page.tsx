@@ -1,10 +1,9 @@
-import { cookies } from 'next/headers';
-import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import AttestationList from '../components/AttestationList';
 import CreateDocumentForm from './components/CreateDocumentForm';
 import DocumentList from './components/DocumentList';
+import { getEffectiveDid } from '../lib/get-effective-did';
 
 interface SearchParams {
   type?: string;
@@ -16,23 +15,11 @@ interface SearchParams {
 
 export default async function AttestationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const resolvedSearchParams = await searchParams;
-  const cookieConfig = getSessionCookieOptions();
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(cookieConfig.name)?.value;
-
-  let sessionDid: string | null = null;
-  if (sessionToken) {
-    const session = await verifySessionToken(sessionToken);
-    sessionDid = session?.sub ?? null;
-  }
+  const { sessionDid, effectiveDid } = await getEffectiveDid();
 
   if (!sessionDid) {
     redirect('/auth');
   }
-
-  // Effective DID: actingAs cookie OR personal DID
-  const actingAs = cookieStore.get('x-acting-as')?.value || null;
-  const effectiveDid = actingAs || sessionDid;
   const view = resolvedSearchParams.view === 'documents' ? 'documents' : 'attestations';
   const documentRole = resolvedSearchParams.doc_role === 'created' ? 'created' : 'needs-signature';
 
