@@ -116,6 +116,16 @@ export function BugReportModal({ onClose }: Props) {
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClose();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label="Close feedback modal"
     >
       <div className="w-full max-w-lg rounded-xl bg-[#111] border border-gray-800 shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
@@ -187,6 +197,16 @@ export function BugReportModal({ onClose }: Props) {
                 onDragOver={onDragOver}
                 onDragLeave={onDragLeave}
                 onClick={() => !busy && fileInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if (busy) return;
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label="Upload screenshot"
                 className={`relative flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors ${
                   dragging
                     ? 'border-orange-500 bg-orange-500/10'

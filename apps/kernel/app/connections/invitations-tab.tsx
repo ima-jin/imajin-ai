@@ -206,6 +206,15 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
         <div
           className="fixed inset-0 z-[9999] bg-white flex items-center justify-center cursor-pointer"
           onClick={() => setQrUrl(null)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setQrUrl(null);
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="Close QR code overlay"
         >
           <div className="flex flex-col items-center gap-6 p-8 max-w-[90vmin]">
             <QRCodeSVG

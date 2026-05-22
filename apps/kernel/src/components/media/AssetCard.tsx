@@ -10,8 +10,8 @@ interface AssetCardProps {
   checked: boolean;
   compact?: boolean;
   selectionActive?: boolean;
-  onSelect: (e: React.MouseEvent) => void;
-  onCheck: (e: React.MouseEvent) => void;
+  onSelect: (e: React.MouseEvent | React.KeyboardEvent) => void;
+  onCheck: (e: React.MouseEvent | React.KeyboardEvent) => void;
   onLongPress?: () => void;
 }
 
@@ -83,14 +83,25 @@ function AssetCard({ asset, selected, checked, compact, selectionActive, onSelec
           : "border-transparent hover:border-gray-600"
       }`}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect(e);
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Select asset ${asset.filename}`}
       {...longPress}
     >
       {/* Checkbox overlay */}
-      <div
+      <button
+        type="button"
         className={`absolute top-0.5 left-0.5 z-10 transition-opacity ${
           checked || selectionActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
         }`}
         onClick={onCheck}
+        aria-label={checked ? `Deselect asset ${asset.filename}` : `Select asset ${asset.filename}`}
       >
         <div className="flex items-center justify-center min-w-[44px] min-h-[44px]">
           <div
@@ -103,7 +114,7 @@ function AssetCard({ asset, selected, checked, compact, selectionActive, onSelec
             ✓
           </div>
         </div>
-      </div>
+      </button>
 
       {/* Thumbnail */}
       <div className="aspect-square bg-[#1a1a1a] flex items-center justify-center overflow-hidden">

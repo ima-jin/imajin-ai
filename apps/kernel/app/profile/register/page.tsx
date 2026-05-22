@@ -326,7 +326,8 @@ function RegisterPage() {
             Your sovereign identity has been created.
           </p>
 
-          <div
+          <button
+            type="button"
             onClick={() => copyDid(profile.did)}
             className="bg-black/50 rounded-lg p-4 mb-6 text-left border border-gray-800 cursor-pointer hover:border-[#F59E0B]/50 transition"
           >
@@ -335,7 +336,7 @@ function RegisterPage() {
               <span className="text-xs">{copied ? '✅ Copied!' : '📋 Click to copy'}</span>
             </p>
             <p className="font-mono text-xs break-all text-gray-300">{profile.did}</p>
-          </div>
+          </button>
 
           <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg p-4 mb-6 text-left">
             <p className="text-sm font-semibold text-[#F59E0B] mb-2">

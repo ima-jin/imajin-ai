@@ -312,14 +312,16 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
               key={member.did}
               className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-lg"
             >
-              <div
+              <button
+                type="button"
                 className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-lg shrink-0 cursor-pointer"
                 onClick={() => {
                   if (member.handle) window.open(`${PROFILE_URL}/${member.handle}`, '_blank');
                 }}
+                aria-label={`Open profile for ${member.handle ? `@${member.handle}` : member.name || 'member'}`}
               >
                 👤
-              </div>
+              </button>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-white text-sm truncate">
