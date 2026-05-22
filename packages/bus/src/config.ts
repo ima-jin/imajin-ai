@@ -238,6 +238,9 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'asset.fair.upgraded': [
     { type: 'attestation', config: { attestationType: 'asset.fair.upgraded' }, enabled: true },
   ],
+  'document.created': [
+    { type: 'notify', config: { scope: 'auth:document-signature-request' }, enabled: true },
+  ],
   'vault.secret.updated': [
     { type: 'vault-hot-reload', config: {}, enabled: true, await: true },
     { type: 'emit', config: {}, enabled: true },

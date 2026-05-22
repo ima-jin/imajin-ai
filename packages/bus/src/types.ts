@@ -507,7 +507,10 @@ export interface BusEventMap {
     attestationId: string;
     documentAssetId: string;
     creatorDid: string;
+    creatorName?: string;
     signerDids: string[];
+    title?: string;
+    signUrl?: string;
     context_id: string;
     context_type: string;
   };

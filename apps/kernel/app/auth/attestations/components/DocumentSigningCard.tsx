@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import SignerList from './SignerList';
 import DocumentViewer from './DocumentViewer';
+import { buildDocumentSigningPayload } from '@/src/lib/auth/document-signing-payload';
 
-interface Signature {
+export interface Signature {
   id: string;
   signerDid: string;
   status: string;
@@ -17,12 +18,12 @@ interface Signature {
   } | null;
 }
 
-interface DocumentAttestation {
+export interface DocumentAttestation {
   id: string;
   issuerDid: string;
   subjectDid: string;
   type: string;
-  payload: Record<string, unknown> | null;
+  payload: unknown;
   attestationStatus: string | null;
   documentHash: string | null;
   documentAssetId: string | null;
@@ -35,6 +36,7 @@ interface Props {
   attestation: DocumentAttestation;
   signatures: Signature[];
   sessionDid: string;
+  defaultExpanded?: boolean;
 }
 
 function statusBadge(status: string | null): { label: string; classes: string } {
@@ -52,14 +54,6 @@ function statusBadge(status: string | null): { label: string; classes: string } 
   }
 }
 
-function resolvedName(
-  did: string,
-  identity: { handle?: string | null; name?: string | null } | undefined
-): string {
-  if (identity?.handle) return `@${identity.handle}`;
-  if (identity?.name) return identity.name;
-  return did.slice(0, 22) + '…';
-}
 
 function relativeTime(date: Date): string {
   const diff = Date.now() - date.getTime();
@@ -83,32 +77,56 @@ function expiryLabel(expiresAt: Date | null): string | null {
   const days = Math.floor(hrs / 24);
   return `${days}d left`;
 }
+function getDocumentTitle(payload: unknown): string {
+  if (payload && typeof payload === 'object') {
+    const maybeTitle = (payload as { title?: unknown }).title;
+    if (typeof maybeTitle === 'string' && maybeTitle.trim().length > 0) {
+      return maybeTitle;
+    }
+  }
+  return 'Untitled Document';
+}
 
-export default function DocumentSigningCard({ attestation, signatures, sessionDid }: Props) {
-  const [expanded, setExpanded] = useState(false);
+export default function DocumentSigningCard({ attestation, signatures, sessionDid, defaultExpanded = false }: Props) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localStatus, setLocalStatus] = useState(attestation.attestationStatus);
   const [localSigs, setLocalSigs] = useState(signatures);
 
   const badge = statusBadge(localStatus);
-  const isCreator = attestation.issuerDid === sessionDid;
   const mySig = localSigs.find((s) => s.signerDid === sessionDid);
   const canSign = mySig?.status === 'pending' && localStatus === 'collecting';
   const canDecline = mySig?.status === 'pending' && localStatus === 'collecting';
   const signedCount = localSigs.filter((s) => s.status === 'signed').length;
   const totalCount = attestation.totalSigners ?? localSigs.length;
 
-  const title = (attestation.payload?.title as string) ?? 'Untitled Document';
+  const title = getDocumentTitle(attestation.payload);
 
   async function handleSign() {
     setLoading(true);
     setError(null);
     try {
-      // Client must provide their JWS and document_hash
-      // For now, we prompt for JWS (in a real app this would be auto-generated from stored keys)
-      const jws = window.prompt('Paste your JWS signature for this document:');
-      if (!jws) {
+      if (!attestation.documentHash) {
+        setError('Document hash missing');
+        setLoading(false);
+        return;
+      }
+      const signRes = await fetch(`/auth/api/identity/${encodeURIComponent(sessionDid)}/sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payload: buildDocumentSigningPayload(sessionDid, attestation.documentHash),
+        }),
+      });
+      const signData = await signRes.json();
+      if (!signRes.ok) {
+        setError(signData.error ?? 'Unable to sign document hash');
+        setLoading(false);
+        return;
+      }
+      if (!signData.signature || typeof signData.signature !== 'string') {
+        setError(signData.reason ? `Unable to sign: ${signData.reason}` : 'Unable to sign document hash');
         setLoading(false);
         return;
       }
@@ -117,7 +135,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          jws,
+          jws: signData.signature,
           document_hash: attestation.documentHash,
         }),
       });
@@ -193,6 +211,9 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
           </div>
           <div className="text-xs text-zinc-500 mt-0.5">
             {signedCount}/{totalCount} signed
+            {canSign && (
+              <span className="ml-2 text-amber-400">· Needs your signature</span>
+            )}
             {expiry && (
               <span className="ml-2 text-zinc-600">· {expiry}</span>
             )}

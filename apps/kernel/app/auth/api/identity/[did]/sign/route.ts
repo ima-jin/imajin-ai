@@ -1,13 +1,15 @@
 /**
  * POST /api/identity/:did/sign
  *
- * Internal service-to-service endpoint. Signs a canonical payload on behalf
- * of a chain-verified identity using AUTH_PRIVATE_KEY (the node's platform key).
+ * Signs a canonical payload on behalf of a chain-verified identity using
+ * AUTH_PRIVATE_KEY (the node's platform key).
  *
  * This is the "node attestation" model: the node signs as a witness that the
  * authenticated, chain-verified sender produced this content.
  *
- * Authenticated via Bearer token (INTERNAL_API_KEY).
+ * Supports either:
+ * - Internal Bearer auth via INTERNAL_API_KEY, or
+ * - An authenticated browser session where session DID matches :did.
  * Only signs if the identity has a valid DFOS chain.
  *
  * Body: { payload: string }
@@ -19,6 +21,8 @@ import { crypto as authCrypto } from '@imajin/auth';
 import { getChainByImajinDid } from '@/src/lib/auth/dfos';
 import { verifyChain } from '@imajin/dfos';
 import { createLogger } from '@imajin/logger';
+import { requireAuth } from '@/src/lib/auth/middleware';
+import { parseDocumentSigningPayload } from '@/src/lib/auth/document-signing-payload';
 
 const log = createLogger('kernel');
 
@@ -26,12 +30,23 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ did: string }> }
 ) {
-  // Service-to-service auth
+  const { did } = await params;
+  const decodedDid = decodeURIComponent(did);
+
+  // Service-to-service auth (legacy/internal)
   const apiKey = request.headers.get('authorization')?.replace('Bearer ', '');
   const expectedKey = process.env.INTERNAL_API_KEY;
+  const isInternalRequest = !!expectedKey && apiKey === expectedKey;
 
-  if (!expectedKey || apiKey !== expectedKey) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Session auth (browser/client flow)
+  if (!isInternalRequest) {
+    const session = await requireAuth(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (session.sub !== decodedDid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
   }
 
   const privateKey = process.env.AUTH_PRIVATE_KEY;
@@ -50,8 +65,12 @@ export async function POST(
     return NextResponse.json({ error: 'payload required (string)' }, { status: 400 });
   }
 
-  const { did } = await params;
-  const decodedDid = decodeURIComponent(did);
+  if (!isInternalRequest) {
+    const parsedPayload = parseDocumentSigningPayload(body.payload);
+    if (!parsedPayload || parsedPayload.did !== decodedDid) {
+      return NextResponse.json({ error: 'payload must include matching did and document_hash' }, { status: 400 });
+    }
+  }
 
   // Only sign for chain-verified identities
   const chain = await getChainByImajinDid(decodedDid);

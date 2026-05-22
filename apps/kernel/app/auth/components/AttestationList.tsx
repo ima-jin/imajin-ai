@@ -1,7 +1,7 @@
 import { db, identities, attestations, attestationSignatures } from '@/src/db';
-import { eq, or, and, isNull, desc, inArray, sql } from 'drizzle-orm';
+import { eq, or, and, isNull, desc, inArray, notInArray, sql } from 'drizzle-orm';
 import Link from 'next/link';
-import DocumentSigningCard from '../attestations/components/DocumentSigningCard';
+import DocumentSigningCard, { type DocumentAttestation, type Signature } from '../attestations/components/DocumentSigningCard';
 
 const TYPE_BADGE: Record<string, { label: string; classes: string }> = {
   'session.created': {
@@ -75,9 +75,10 @@ const PAGE_SIZE = 20;
 interface Props {
   sessionDid: string;
   searchParams: { type?: string; role?: string; page?: string };
+  excludeDocumentTypes?: boolean;
 }
 
-export default async function AttestationList({ sessionDid, searchParams }: Props) {
+export default async function AttestationList({ sessionDid, searchParams, excludeDocumentTypes = false }: Props) {
   const { type: typeFilter, role = 'all' } = searchParams;
   const page = Math.max(1, parseInt(searchParams.page || '1'));
   const offset = (page - 1) * PAGE_SIZE;
@@ -90,6 +91,7 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
 
   const conditions = [roleCondition, isNull(attestations.revokedAt)];
   if (typeFilter) conditions.push(eq(attestations.type, typeFilter));
+  if (excludeDocumentTypes && !typeFilter) conditions.push(notInArray(attestations.type, DOCUMENT_TYPES));
 
   const rows = await db
     .select()
@@ -218,14 +220,15 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
             // Document attestations get the rich card
             if (DOCUMENT_TYPES.includes(att.type)) {
               const sigs = sigsByAttestation.get(att.id) ?? [];
-              const sigsWithIdentity = sigs.map((sig) => ({
+              const sigsWithIdentity: Signature[] = sigs.map((sig) => ({
                 ...sig,
                 identity: signerIdentityMap.get(sig.signerDid) ?? null,
               }));
+              const cardAttestation: DocumentAttestation = att;
               return (
                 <DocumentSigningCard
                   key={att.id}
-                  attestation={att as any}
+                  attestation={cardAttestation}
                   signatures={sigsWithIdentity}
                   sessionDid={sessionDid}
                 />

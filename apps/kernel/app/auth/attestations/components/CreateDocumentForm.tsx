@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import IdentityPicker from '../../components/IdentityPicker';
+import { buildDocumentSigningPayload } from '@/src/lib/auth/document-signing-payload';
 
 interface Props {
   sessionDid: string;
@@ -21,7 +23,6 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Props) {
   const [assetId, setAssetId] = useState<string | null>(null);
   const [assetHash, setAssetHash] = useState<string | null>(null);
   const [title, setTitle] = useState('');
-  const [signerInput, setSignerInput] = useState('');
   const [signers, setSigners] = useState<LookupResult[]>([]);
   const [expiry, setExpiry] = useState<'24h' | '7d' | '1m' | '1y' | 'never'>('7d');
   const [loading, setLoading] = useState(false);
@@ -67,19 +68,9 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Props) {
     }
   }
 
-  async function lookupSigner(input: string) {
-    if (!input.trim()) return;
-    try {
-      const res = await fetch(`/auth/api/lookup/${encodeURIComponent(input.trim())}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.did && !signers.find((s) => s.did === data.did)) {
-        setSigners((prev) => [...prev, { did: data.did, handle: data.handle, name: data.name }]);
-        setSignerInput('');
-      }
-    } catch {
-      // ignore lookup errors
-    }
+  function addSigner(identity: { did: string; handle: string | null; name: string | null }) {
+    if (!identity.did || signers.some((s) => s.did === identity.did)) return;
+    setSigners((prev) => [...prev, { did: identity.did, handle: identity.handle, name: identity.name }]);
   }
 
   function removeSigner(did: string) {
@@ -89,19 +80,28 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Props) {
   async function handleSubmit() {
     if (!assetId || !assetHash || !title.trim() || signers.length === 0) return;
 
-    // Generate author JWS — in a real app this uses the client's stored key
-    // For this implementation, we prompt the user to generate it externally
-    const jws = window.prompt(
-      'Sign the document hash with your key to create the signing request.\n\n' +
-      'Paste your JWS compact token (sign this hash with your Ed25519 key):\n' +
-      assetHash
-    );
-    if (!jws) return;
-
     setLoading(true);
     setError(null);
 
     try {
+      const signRes = await fetch(`/auth/api/identity/${encodeURIComponent(sessionDid)}/sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payload: buildDocumentSigningPayload(sessionDid, assetHash),
+        }),
+      });
+      const signData = await signRes.json();
+      if (!signRes.ok) {
+        setError(signData.error ?? 'Failed to sign document hash');
+        setLoading(false);
+        return;
+      }
+      if (!signData.signature || typeof signData.signature !== 'string') {
+        setError(signData.reason ? `Unable to sign: ${signData.reason}` : 'Unable to sign document hash');
+        setLoading(false);
+        return;
+      }
       const res = await fetch('/auth/api/documents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -111,7 +111,7 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Props) {
           document_hash: assetHash,
           signers: signers.map((s) => s.did),
           expiry,
-          author_jws: jws,
+          author_jws: signData.signature,
         }),
       });
 
@@ -214,22 +214,11 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Props) {
 
           <div>
             <label className="block text-xs text-zinc-500 mb-1.5">Signers</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={signerInput}
-                onChange={(e) => setSignerInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); lookupSigner(signerInput); } }}
-                className="flex-1 bg-black border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
-                placeholder="@handle or did:imajin:..."
-              />
-              <button
-                onClick={() => lookupSigner(signerInput)}
-                className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors"
-              >
-                Add
-              </button>
-            </div>
+            <IdentityPicker
+              onSelect={addSigner}
+              placeholder="Search by handle, name, or DID…"
+              excludeDids={[sessionDid, ...signers.map((s) => s.did)]}
+            />
             {signers.length > 0 && (
               <div className="mt-2 space-y-1">
                 {signers.map((s) => (
