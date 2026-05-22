@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, attestations, attestationSignatures, identities, assets } from '@/src/db';
-import { eq, and, or, isNull, desc, sql, inArray } from 'drizzle-orm';
+import { db, attestations, attestationSignatures, assets } from '@/src/db';
+import { eq, and, or, desc, sql, inArray } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { requireAuth } from '@/src/lib/auth/middleware';
-import { ATTESTATION_TYPES } from '@imajin/auth';
-import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { verifyDocumentSignatureToken } from '@/src/lib/auth/document-signatures';
+import {
+  buildDocumentSignatureRows,
+  getCreatorDisplayName,
+  parseDocumentRequestBody,
+  publishDocumentCreatedNotifications,
+  validateDocumentRequestInput,
+} from '../../../../src/lib/auth/document-attestation';
 
 const log = createLogger('kernel:documents');
 
@@ -40,94 +44,24 @@ export async function POST(request: NextRequest) {
   }
 
   const callerDid = session.sub;
-
-  let body: Record<string, unknown>;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
+  const parseResult = await parseDocumentRequestBody(request);
+  if (!parseResult.ok) {
+    return NextResponse.json({ error: parseResult.failure.error }, { status: parseResult.failure.status, headers: cors });
   }
-
+  const validationResult = await validateDocumentRequestInput({ body: parseResult.body, callerDid });
+  if (!validationResult.ok) {
+    return NextResponse.json({ error: validationResult.failure.error }, { status: validationResult.failure.status, headers: cors });
+  }
   const {
     title,
-    document_asset_id,
-    document_hash,
-    signers,
+    documentAssetId,
+    documentHash,
+    signerDids,
     payload,
+    authorJws,
     expiry,
-    author_jws,
-  } = body as {
-    title?: string;
-    document_asset_id?: string;
-    document_hash?: string;
-    signers?: string[];
-    payload?: Record<string, unknown>;
-    expiry?: '24h' | '7d' | '1m' | '1y' | 'never';
-    author_jws?: string;
-  };
-
-  if (!title || typeof title !== 'string') {
-    return NextResponse.json({ error: 'title required' }, { status: 400, headers: cors });
-  }
-  if (!document_asset_id || typeof document_asset_id !== 'string') {
-    return NextResponse.json({ error: 'document_asset_id required' }, { status: 400, headers: cors });
-  }
-  if (!document_hash || typeof document_hash !== 'string') {
-    return NextResponse.json({ error: 'document_hash required' }, { status: 400, headers: cors });
-  }
-  if (!Array.isArray(signers) || signers.length === 0) {
-    return NextResponse.json({ error: 'signers array required (at least 1)' }, { status: 400, headers: cors });
-  }
-  if (!author_jws || typeof author_jws !== 'string') {
-    return NextResponse.json({ error: 'author_jws required' }, { status: 400, headers: cors });
-  }
-
-  // Verify all signer DIDs exist
-  const signerDids = signers.filter((s): s is string => typeof s === 'string' && s.startsWith('did:'));
-  if (signerDids.length !== signers.length) {
-    return NextResponse.json({ error: 'All signers must be valid DIDs' }, { status: 400, headers: cors });
-  }
-
-  // Verify caller owns the document asset
-  const [asset] = await db
-    .select()
-    .from(assets)
-    .where(eq(assets.id, document_asset_id))
-    .limit(1);
-
-  if (!asset) {
-    return NextResponse.json({ error: 'Document asset not found' }, { status: 404, headers: cors });
-  }
-
-  if (asset.ownerDid !== callerDid) {
-    return NextResponse.json({ error: 'You do not own this document' }, { status: 403, headers: cors });
-  }
-
-  // Verify document hash matches stored asset
-  if (asset.hash !== document_hash) {
-    return NextResponse.json({ error: 'Document hash mismatch' }, { status: 400, headers: cors });
-  }
-
-  // Verify author JWS
-  const [callerIdentity] = await db
-    .select({ publicKey: identities.publicKey, name: identities.name, handle: identities.handle })
-    .from(identities)
-    .where(eq(identities.id, callerDid))
-    .limit(1);
-
-  if (!callerIdentity) {
-    return NextResponse.json({ error: 'Caller identity not found' }, { status: 400, headers: cors });
-  }
-
-  const signatureValid = await verifyDocumentSignatureToken({
-    token: author_jws,
-    signerPublicKeyHex: callerIdentity.publicKey,
-    signerDid: callerDid,
-    documentHash: document_hash,
-  });
-  if (!signatureValid) {
-    return NextResponse.json({ error: 'Invalid author JWS signature' }, { status: 400, headers: cors });
-  }
+    callerIdentity,
+  } = validationResult.input;
 
   // Compute expiry
   const expiresAt = expiry === 'never' || !expiry
@@ -149,10 +83,10 @@ export async function POST(request: NextRequest) {
         ...(payload ?? {}),
       },
       signature: '', // legacy — not used for document attestations
-      authorJws: author_jws,
+      authorJws,
       attestationStatus: 'collecting',
-      documentHash: document_hash,
-      documentAssetId: document_asset_id,
+      documentHash,
+      documentAssetId: documentAssetId,
       totalSigners: 1 + signerDids.length,
       issuedAt: new Date(),
       expiresAt,
@@ -160,57 +94,30 @@ export async function POST(request: NextRequest) {
     .returning();
 
   // Create signature rows
-  const now = new Date();
-  const sigRows: { id: string; attestationId: string; signerDid: string; jws: string | null; signedAt: Date | null; status: string; role: string }[] = [
-    {
-      id: genId('sig'),
-      attestationId,
-      signerDid: callerDid,
-      jws: author_jws,
-      signedAt: now,
-      status: 'signed',
-      role: 'creator',
-    },
-    ...signerDids.map((did) => ({
-      id: genId('sig'),
-      attestationId,
-      signerDid: did,
-      jws: null,
-      signedAt: null,
-      status: 'pending' as string,
-      role: 'signer' as string,
-    })),
-  ];
+  const sigRows = buildDocumentSignatureRows({
+    attestationId,
+    creatorDid: callerDid,
+    creatorJws: authorJws,
+    signerDids,
+    genId,
+  });
 
   await db.insert(attestationSignatures).values(sigRows);
 
   // Set asset immutable
-  await db.update(assets).set({ immutable: true }).where(eq(assets.id, document_asset_id));
+  await db.update(assets).set({ immutable: true }).where(eq(assets.id, documentAssetId));
 
   // Publish one event per pending signer so notify reactors can target recipients directly.
-  const creatorName = callerIdentity.handle
-    ? `@${callerIdentity.handle}`
-    : callerIdentity.name || callerDid;
-  const signUrl = `/auth/documents/${attestationId}`;
-
-  for (const signerDid of signerDids) {
-    publish('document.created', {
-      issuer: callerDid,
-      subject: signerDid,
-      scope: 'auth',
-      payload: {
-        attestationId,
-        documentAssetId: document_asset_id,
-        creatorDid: callerDid,
-        creatorName,
-        signerDids,
-        title: title.trim(),
-        signUrl,
-        context_id: attestationId,
-        context_type: 'document',
-      },
-    }).catch((err) => log.error({ err: String(err), signerDid, attestationId }, 'document.created publish failed'));
-  }
+  const creatorName = getCreatorDisplayName(callerIdentity, callerDid);
+  publishDocumentCreatedNotifications({
+    attestationId,
+    documentAssetId,
+    creatorDid: callerDid,
+    creatorName,
+    signerDids,
+    title,
+    log,
+  });
 
   // Fetch signatures to return
   const allSigs = await db
