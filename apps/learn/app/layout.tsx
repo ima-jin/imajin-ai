@@ -1,36 +1,16 @@
 import type { Metadata, Viewport } from 'next';
-import { NavBar } from '@imajin/ui';
+import { NavBar, buildServiceMetadata, defaultViewport, getServiceRuntimeEnv } from '@imajin/ui';
 import './globals.css';
 import { Providers } from './providers';
-
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-};
-
-export const metadata: Metadata = {
-  title: 'Learn | Imajin',
-  description: 'Courses and lessons on the Imajin network — teach and learn, sovereign and DID-linked',
-  openGraph: {
-    title: 'Learn | Imajin',
-    description: 'Courses and lessons on the Imajin network — teach and learn, sovereign and DID-linked',
-    siteName: 'Imajin',
-    type: 'website',
-  },
-  twitter: {
-    card: 'summary',
-    title: 'Learn | Imajin',
-    description: 'Courses and lessons on the Imajin network — teach and learn, sovereign and DID-linked',
-  },
-};
+export const viewport: Viewport = defaultViewport;
+export const metadata: Metadata = buildServiceMetadata('Learn', 'Courses and lessons on the Imajin network — teach and learn, sovereign and DID-linked');
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const servicePrefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-  const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
+  const { servicePrefix, domain } = getServiceRuntimeEnv();
 
   return (
     <html lang="en" className="dark">
