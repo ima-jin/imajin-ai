@@ -343,3 +343,25 @@ Some services need DATABASE_URL at build time (for drizzle schema imports). Set 
 ```bash
 DATABASE_URL="postgresql://x:x@localhost:5432/x" pnpm --filter @imajin/SERVICE build
 ```
+
+## Email Storage Locations
+
+Three places where user email addresses live. The notify service checks them in priority order.
+
+| Table | Column | Set By | Purpose |
+|-------|--------|--------|---------|
+| `auth.identities` | `contact_email` | Stripe checkout (ticket purchase, onboard with payment) | Billing/notification email from payment flow |
+| `profile.profiles` | `contact_email` | Connection invite register form | Profile-level email from registration |
+| `www.contacts` + `www.subscriptions` | `email` | Register form (`optInUpdates` checked) OR website subscribe form | Mailing list / newsletter sends only |
+
+**Notify email resolution** (`apps/kernel/app/notify/api/send/route.ts`):
+1. `data.email` in the event payload (explicit, e.g. from Stripe webhook)
+2. `auth.identities.contact_email` (ticket buyers)
+3. `profile.profiles.contact_email` (connection invite signups)
+
+`www.contacts` is **not** checked by the notify service — it's a separate broadcast/newsletter system.
+
+**When each gets populated:**
+- **Ticket purchase** → `auth.identities.contact_email` (from Stripe checkout email)
+- **Connection invite register** → `profile.profiles.contact_email` + optionally `www.contacts`
+- **Website subscribe form** → `www.contacts` only (no DID, no identity)
