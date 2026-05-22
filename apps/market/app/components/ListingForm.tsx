@@ -94,7 +94,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
     }
 
     const priceNum = Number.parseFloat(priceDisplay);
-    if (!priceDisplay || isNaN(priceNum) || priceNum <= 0) {
+    if (!priceDisplay || Number.isNaN(priceNum) || priceNum <= 0) {
       setValidationError('Price must be greater than 0.');
       return;
     }
@@ -110,7 +110,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
       ? Math.round(priceNum)
       : Math.round(priceNum * 100);
 
-    const quantity = quantityStr.trim() ? parseInt(quantityStr, 10) : null;
+    const quantity = quantityStr.trim() ? Number.parseInt(quantityStr, 10) : null;
 
     onSubmit({
       type,

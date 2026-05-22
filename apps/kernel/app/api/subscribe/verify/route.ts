@@ -40,8 +40,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const expiresAt = parseInt(expiresStr, 10);
-  if (isNaN(expiresAt)) {
+  const expiresAt = Number.parseInt(expiresStr, 10);
+  if (Number.isNaN(expiresAt)) {
     return new NextResponse(
       htmlPage('Invalid link', 'Invalid link', 'This verification link is malformed.', false),
       { status: 400, headers: { 'Content-Type': 'text/html' } }

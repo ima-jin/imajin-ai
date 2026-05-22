@@ -566,7 +566,7 @@ export default function LogsClient() {
                 type="number"
                 min={1}
                 value={cleanupDays}
-                onChange={(e) => setCleanupDays(Math.max(1, parseInt(e.target.value, 10) || 30))}
+                onChange={(e) => setCleanupDays(Math.max(1, Number.parseInt(e.target.value, 10) || 30))}
                 className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-20"
               />
               <span className="text-sm text-gray-500 dark:text-gray-400">days</span>
@@ -605,7 +605,7 @@ export default function LogsClient() {
                 min={1}
                 max={500}
                 value={rawLines}
-                onChange={(e) => setRawLines(Math.min(500, Math.max(1, parseInt(e.target.value, 10) || 100)))}
+                onChange={(e) => setRawLines(Math.min(500, Math.max(1, Number.parseInt(e.target.value, 10) || 100)))}
                 className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-24"
               />
             </div>

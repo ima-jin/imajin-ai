@@ -232,7 +232,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
       throw new Error(`Invalid cart metadata: ${metadata.cart}`);
     }
   } else if (metadata.ticketTypeId) {
-    cart = [{ ticketTypeId: metadata.ticketTypeId, quantity: parseInt(metadata.quantity || '1') }];
+    cart = [{ ticketTypeId: metadata.ticketTypeId, quantity: Number.parseInt(metadata.quantity || '1') }];
   } else {
     throw new Error('No cart or ticketTypeId in metadata');
   }

@@ -126,8 +126,8 @@ export async function GET(request: NextRequest) {
 
   const roleFilter = searchParams.get('role'); // 'creator' | 'signer' | 'all'
   const statusFilter = searchParams.get('status'); // 'collecting' | 'executed' | 'declined' | 'expired'
-  const limitParam = parseInt(searchParams.get('limit') ?? '20', 10);
-  const limit = Math.min(Math.max(1, isNaN(limitParam) ? 20 : limitParam), DOCUMENT_LIMIT_MAX);
+  const limitParam = Number.parseInt(searchParams.get('limit') ?? '20', 10);
+  const limit = Math.min(Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam), DOCUMENT_LIMIT_MAX);
 
   const documentTypes = ['document.created', 'document.amended'] as const;
 

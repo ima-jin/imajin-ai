@@ -193,8 +193,8 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
   const typeFilter = searchParams.get('type');
   const issuerFilter = searchParams.get('issuer_did');
   const statusFilter = searchParams.get('status'); // 'pending' | 'bilateral' | 'declined'
-  const limitParam = parseInt(searchParams.get('limit') ?? '20', 10);
-  const limit = Math.min(Math.max(1, isNaN(limitParam) ? 20 : limitParam), ATTESTATION_LIMIT_MAX);
+  const limitParam = Number.parseInt(searchParams.get('limit') ?? '20', 10);
+  const limit = Math.min(Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam), ATTESTATION_LIMIT_MAX);
 
   const conditions = [
     eq(attestations.subjectDid, subjectDid),

@@ -52,8 +52,8 @@ export async function GET(
     const url = new URL(request.url);
     const service = url.searchParams.get('service');
     const type = url.searchParams.get('type');
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100);
-    const offset = parseInt(url.searchParams.get('offset') || '0');
+    const limit = Math.min(Number.parseInt(url.searchParams.get('limit') || '50'), 100);
+    const offset = Number.parseInt(url.searchParams.get('offset') || '0');
 
     // Build query
     const conditions = [

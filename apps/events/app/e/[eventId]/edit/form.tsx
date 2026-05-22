@@ -708,7 +708,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                   type="number"
                   min={tier.sold || 0}
                   value={tier.quantity === null ? '' : tier.quantity}
-                  onChange={(e) => updateTier(index, 'quantity', e.target.value === '' ? null : parseInt(e.target.value))}
+                  onChange={(e) => updateTier(index, 'quantity', e.target.value === '' ? null : Number.parseInt(e.target.value))}
                   placeholder="Unlimited"
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
                 />

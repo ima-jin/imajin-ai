@@ -65,7 +65,7 @@ function parseEnvFile(filePath: string): Map<string, string> {
 /** Extract port from a localhost URL like http://localhost:3001 */
 function extractPort(url: string): number | null {
   const m = url.match(/localhost:(\d+)/);
-  return m ? parseInt(m[1], 10) : null;
+  return m ? Number.parseInt(m[1], 10) : null;
 }
 
 /** Return the expected port for a service name from the manifest */
@@ -138,8 +138,8 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
     // Check PORT=XXXX
     if (key === "PORT") {
       const expected = env === "prod" ? svc.prodPort : svc.devPort;
-      const actual = parseInt(val, 10);
-      if (!isNaN(actual) && actual !== expected) {
+      const actual = Number.parseInt(val, 10);
+      if (!Number.isNaN(actual) && actual !== expected) {
         wrongPorts.push({ key, expected, actual });
       }
       continue;

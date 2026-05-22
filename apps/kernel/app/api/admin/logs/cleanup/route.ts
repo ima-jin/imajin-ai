@@ -11,7 +11,7 @@ export const POST = withLogger('kernel', async (req: NextRequest, { log }) => {
   }
 
   const url = new URL(req.url);
-  const days = Math.max(1, parseInt(url.searchParams.get('days') || '14', 10));
+  const days = Math.max(1, Number.parseInt(url.searchParams.get('days') || '14', 10));
 
   const [result] = await sql`
     SELECT registry.cleanup_old_logs(${days}) AS deleted

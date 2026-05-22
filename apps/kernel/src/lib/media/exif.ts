@@ -25,7 +25,7 @@ export async function extractExif(buffer: Buffer): Promise<ExifData | null> {
       // EXIF date format: "YYYY:MM:DD HH:MM:SS"
       const normalized = String(dateStr).replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3");
       const d = new Date(normalized);
-      if (!isNaN(d.getTime())) out.dateTaken = d;
+      if (!Number.isNaN(d.getTime())) out.dateTaken = d;
     }
 
     // Camera model

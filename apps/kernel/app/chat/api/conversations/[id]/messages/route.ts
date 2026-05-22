@@ -35,7 +35,7 @@ export async function GET(
   }
 
   const url = new URL(request.url);
-  const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100);
+  const limit = Math.min(Number.parseInt(url.searchParams.get('limit') || '50'), 100);
   const before = url.searchParams.get('before');
 
   try {

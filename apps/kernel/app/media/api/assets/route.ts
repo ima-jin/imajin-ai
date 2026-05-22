@@ -426,8 +426,8 @@ export async function GET(request: NextRequest) {
   const type = searchParams.get("type");          // e.g. "image"
   const sort = searchParams.get("sort") || "created";
   const order = searchParams.get("order") || "desc";
-  const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200);
-  const offset = parseInt(searchParams.get("offset") || "0", 10);
+  const limit = Math.min(Number.parseInt(searchParams.get("limit") || "50", 10), 200);
+  const offset = Number.parseInt(searchParams.get("offset") || "0", 10);
 
   try {
     const { desc: drizzleDesc, asc: drizzleAsc } = await import("drizzle-orm");

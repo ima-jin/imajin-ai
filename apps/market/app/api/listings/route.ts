@@ -166,8 +166,8 @@ export async function GET(request: NextRequest) {
     const sellerDid = searchParams.get('seller_did');
     const exclude = searchParams.get('exclude');
     const sort = searchParams.get('sort') || 'newest';
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10)));
+    const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10));
+    const limit = Math.min(100, Math.max(1, Number.parseInt(searchParams.get('limit') || '20', 10)));
     const offset = (page - 1) * limit;
 
     // Check if requester is the seller (can see all their own statuses)

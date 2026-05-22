@@ -21,7 +21,7 @@ export default async function AdminUsersPage({
   const q = params.q?.trim() ?? '';
   const tier = params.tier ?? '';
   const type = params.type ?? '';
-  const page = Math.max(1, parseInt(params.page ?? '1', 10));
+  const page = Math.max(1, Number.parseInt(params.page ?? '1', 10));
   const offset = (page - 1) * PAGE_SIZE;
 
   // Build filter conditions

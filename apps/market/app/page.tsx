@@ -47,7 +47,7 @@ function MarketPageContent() {
   const category = searchParams.get('category') || '';
   const currency = searchParams.get('currency') || '';
   const sort = searchParams.get('sort') || 'newest';
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+  const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10));
 
   const totalPages = Math.ceil(total / LIMIT);
 

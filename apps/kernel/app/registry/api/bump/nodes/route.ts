@@ -58,7 +58,7 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     });
 
     // Sort by proximity if lat/lng provided
-    if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+    if (lat !== null && lng !== null && !Number.isNaN(lat) && !Number.isNaN(lng)) {
       result = result
         .map((node) => {
           const loc = node.location as { lat: number; lng: number } | null;

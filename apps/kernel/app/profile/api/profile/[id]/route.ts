@@ -25,7 +25,7 @@ function base58Decode(str: string): Uint8Array {
     num = num * 58n + BigInt(idx);
   }
   const hex = num.toString(16).padStart(64, '0');
-  return new Uint8Array(hex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+  return new Uint8Array(hex.match(/.{2}/g)!.map(b => Number.parseInt(b, 16)));
 }
 
 /** Extract public key bytes from a did:imajin:xxx DID */
@@ -49,8 +49,8 @@ async function verifySignedRequest(request: NextRequest, body: string): Promise<
   }
 
   // Reject requests older than 5 minutes
-  const age = Date.now() - parseInt(timestamp, 10);
-  if (isNaN(age) || age > 5 * 60 * 1000 || age < -30_000) {
+  const age = Date.now() - Number.parseInt(timestamp, 10);
+  if (Number.isNaN(age) || age > 5 * 60 * 1000 || age < -30_000) {
     return { valid: false, error: 'Request timestamp out of range' };
   }
 
@@ -61,7 +61,7 @@ async function verifySignedRequest(request: NextRequest, body: string): Promise<
 
   const signable = `${timestamp}:${body}`;
   const msgBytes = new TextEncoder().encode(signable);
-  const sigBytes = new Uint8Array(signature.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+  const sigBytes = new Uint8Array(signature.match(/.{2}/g)!.map(b => Number.parseInt(b, 16)));
 
   try {
     const valid = ed.verify(sigBytes, msgBytes, publicKey);

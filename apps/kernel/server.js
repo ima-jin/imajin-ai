@@ -9,7 +9,7 @@ const next = require('next');
 const { setupWebSocket, setupBroadcastRoute } = require('./ws-server');
 
 const dev = process.env.NODE_ENV !== 'production';
-const port = parseInt(process.env.PORT || '3000');
+const port = Number.parseInt(process.env.PORT || '3000');
 const app = next({ dev });
 const handle = app.getRequestHandler();
 

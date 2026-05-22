@@ -151,7 +151,7 @@ export default function CourseEditorPage() {
         title: lessonForm.title,
         contentType: lessonForm.contentType,
         content: lessonForm.content,
-        durationMinutes: lessonForm.durationMinutes ? parseInt(lessonForm.durationMinutes) : null,
+        durationMinutes: lessonForm.durationMinutes ? Number.parseInt(lessonForm.durationMinutes) : null,
       }),
     });
     setEditingLesson(null);
@@ -227,7 +227,7 @@ export default function CourseEditorPage() {
                 <input
                   type="number"
                   value={editPrice}
-                  onChange={(e) => setEditPrice(parseInt(e.target.value) || 0)}
+                  onChange={(e) => setEditPrice(Number.parseInt(e.target.value) || 0)}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
                 />
               </div>

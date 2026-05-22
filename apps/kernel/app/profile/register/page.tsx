@@ -196,7 +196,7 @@ function RegisterPage() {
         subtype: 'human',
       });
       const msgBytes = new TextEncoder().encode(payload);
-      const privateKeyBytes = new Uint8Array(keypair.privateKey.match(/.{2}/g)!.map(byte => parseInt(byte, 16)));
+      const privateKeyBytes = new Uint8Array(keypair.privateKey.match(/.{2}/g)!.map(byte => Number.parseInt(byte, 16)));
       const signatureBytes = await ed.signAsync(msgBytes, privateKeyBytes);
       const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 

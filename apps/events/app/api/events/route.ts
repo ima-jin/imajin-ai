@@ -289,7 +289,7 @@ export const GET = withLogger('events', async (request, { log }) => {
   const cors = corsHeaders(request);
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status') || 'published';
-  const limit = parseInt(searchParams.get('limit') || '20');
+  const limit = Number.parseInt(searchParams.get('limit') || '20');
   const courseSlug = searchParams.get('courseSlug');
   const upcoming = searchParams.get('upcoming') === 'true';
 
@@ -357,7 +357,7 @@ function bytesToHex(bytes: Uint8Array): string {
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    bytes[i] = Number.parseInt(hex.substr(i * 2, 2), 16);
   }
   return bytes;
 }

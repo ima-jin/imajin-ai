@@ -20,8 +20,8 @@ export default function PresentPage() {
   useEffect(() => {
     const hash = globalThis.location.hash.replace('#', '');
     if (hash) {
-      const index = parseInt(hash, 10);
-      if (!isNaN(index) && index >= 0) setInitialIndex(index);
+      const index = Number.parseInt(hash, 10);
+      if (!Number.isNaN(index) && index >= 0) setInitialIndex(index);
     }
   }, []);
 

@@ -27,8 +27,8 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     
     const status = searchParams.get('status') || 'active';
     const service = searchParams.get('service');
-    const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 500);
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const limit = Math.min(Number.parseInt(searchParams.get('limit') || '100'), 500);
+    const offset = Number.parseInt(searchParams.get('offset') || '0');
 
     // Build conditions
     const conditions = [];
