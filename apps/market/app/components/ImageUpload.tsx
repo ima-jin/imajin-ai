@@ -35,7 +35,7 @@ export function ImageUpload({ images, onChange }: ImageUploadProps) {
 
   const uploadFile = useCallback(
     async (file: File) => {
-      const tempId = `${Date.now()}-${Math.random()}`;
+      const tempId = `${Date.now()}-${crypto.randomUUID()}`;
       const previewUrl = URL.createObjectURL(file);
 
       setPending((prev) => [...prev, { id: tempId, previewUrl }]);

@@ -114,15 +114,17 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
        : e.did,
   }));
   const chain = normalizeShares(resolvedChain);
+  const hasContent = attribution.length > 0 || chain.length > 0;
 
-  // Show nothing if both are empty
-  if (!attribution.length && !chain.length) return null;
 
   const allDids = [
     ...attribution.map(e => e.did),
     ...chain.map(e => e.did),
   ].filter((d): d is string => !!d && d !== 'NODE_PLACEHOLDER' && d !== 'BUYER_PLACEHOLDER');
   const didNames = useDidNames(allDids, resolveProfile);
+
+  // Show nothing if both are empty
+  if (!hasContent) return null;
 
   const chainDotColor = (role: string): string => {
     switch (role) {

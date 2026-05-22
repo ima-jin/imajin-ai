@@ -14,11 +14,12 @@ import { db, attestations } from '@/src/db';
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
+import { randomUUID } from 'crypto';
 
 const log = createLogger('kernel');
 
 function genId(prefix: string): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 14)}${Date.now().toString(36)}`;
+  return `${prefix}_${Date.now().toString(36)}${randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 
 export async function POST(request: NextRequest) {

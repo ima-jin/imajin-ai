@@ -54,8 +54,14 @@ export function MediaMessage({ assetId, filename, mimeType, size, width, height,
             tabIndex={0}
             className="cursor-pointer rounded-lg overflow-hidden hover:opacity-90 transition"
             onClick={() => setLightboxOpen(true)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setLightboxOpen(true); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setLightboxOpen(true);
+              }
+            }}
             style={aspectStyle}
+            aria-label={`Open image ${filename}`}
           >
             <img
               src={thumbUrl}
@@ -73,13 +79,19 @@ export function MediaMessage({ assetId, filename, mimeType, size, width, height,
             tabIndex={0}
             className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
             onClick={() => setLightboxOpen(false)}
-            onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') setLightboxOpen(false); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setLightboxOpen(false);
+              }
+            }}
+            aria-label="Close image preview"
           >
             <img
               src={fullUrl}
               alt={filename}
               className="max-w-full max-h-full object-contain rounded-lg"
-              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
             />
             <button
               className="absolute top-4 right-4 text-white text-3xl hover:text-gray-300 leading-none"

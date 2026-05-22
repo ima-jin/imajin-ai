@@ -251,6 +251,15 @@ export function MediaManager({ session, search = '' }: MediaManagerProps) {
           <div
             className="fixed inset-0 bg-black/60"
             onClick={() => setMobileSidebarOpen(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setMobileSidebarOpen(false);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Close folders sidebar"
           />
           <div className="relative z-50 w-64 h-full bg-[#1a1a1a] border-r border-gray-800">
             {sidebarContent}

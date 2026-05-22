@@ -219,6 +219,15 @@ export function ImageUpload({
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onClick={openFilePicker}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openFilePicker();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Upload image"
         className={`
           border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition
           ${
