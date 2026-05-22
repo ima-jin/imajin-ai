@@ -17,7 +17,33 @@ function csvEscape(v: unknown): string {
 
 /** Strip HTML tags and collapse whitespace for clean CSV headers */
 function stripHtml(s: string): string {
-  return s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  let out = '';
+  let inTag = false;
+  for (const ch of s) {
+    if (ch === '<') {
+      inTag = true;
+      continue;
+    }
+    if (ch === '>') {
+      inTag = false;
+      continue;
+    }
+    if (!inTag) out += ch;
+  }
+
+  let collapsed = '';
+  let prevWasSpace = false;
+  for (const ch of out) {
+    const isSpace = ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
+    if (isSpace) {
+      if (!prevWasSpace) collapsed += ' ';
+      prevWasSpace = true;
+    } else {
+      collapsed += ch;
+      prevWasSpace = false;
+    }
+  }
+  return collapsed.trim();
 }
 
 function csvRow(values: unknown[]): string {

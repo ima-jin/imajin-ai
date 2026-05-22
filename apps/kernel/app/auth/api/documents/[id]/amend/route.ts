@@ -9,11 +9,12 @@ import {
   parseDocumentRequestBody,
   validateDocumentRequestInput,
 } from '../../../../../../src/lib/auth/document-attestation';
+import { randomUUID } from 'node:crypto';
 
 const log = createLogger('kernel:documents');
 
 function genId(prefix: string): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 14)}${Date.now().toString(36)}`;
+  return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 }
 
 

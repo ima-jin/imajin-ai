@@ -11,11 +11,25 @@ import ReactMarkdown from 'react-markdown';
  * spacing appropriate for chat.
  */
 
-const MARKDOWN_HINT = /[*_`#\-\d+\.]\s|^\s*[-*]\s|^\s*\d+\.\s|\[.+\]\(.+\)|^>\s/m;
 
 /** Returns true if the text contains markdown-like syntax worth rendering. */
 export function hasMarkdown(text: string): boolean {
-  return MARKDOWN_HINT.test(text);
+  const hintTokens = ['**', '__', '`', '# ', '\n# ', '\n## ', '\n### ', '\n> ', '[', '](', '\n- ', '\n* '];
+  if (hintTokens.some((token) => text.includes(token))) return true;
+
+  const lines = text.split('\n');
+  return lines.some((line) => {
+    const trimmed = line.trimStart();
+    if (!trimmed) return false;
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('> ')) return true;
+    const dot = trimmed.indexOf('.');
+    if (dot <= 0) return false;
+    for (let i = 0; i < dot; i += 1) {
+      const code = trimmed.charCodeAt(i);
+      if (code < 48 || code > 57) return false;
+    }
+    return trimmed[dot + 1] === ' ';
+  });
 }
 
 export interface ChatMarkdownProps {

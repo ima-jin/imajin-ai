@@ -170,7 +170,8 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Props) {
 
       {step === 'upload' && (
         <div className="space-y-3">
-          <div
+          <button
+            type="button"
             className="border-2 border-dashed border-zinc-700 rounded-lg p-8 text-center cursor-pointer hover:border-amber-500 transition-colors"
             onClick={() => fileInputRef.current?.click()}
           >
@@ -181,7 +182,7 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Props) {
             <div className="text-xs text-zinc-600 mt-1">
               PDF, images, text files accepted
             </div>
-          </div>
+          </button>
           <input
             ref={fileInputRef}
             type="file"

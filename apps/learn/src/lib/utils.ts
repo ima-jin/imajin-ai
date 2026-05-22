@@ -11,12 +11,29 @@ export function generateId(prefix: string): string {
  * Generate URL-friendly slug from title
  */
 export function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .substring(0, 80);
+  let out = '';
+  let previousDash = false;
+  for (const ch of text.toLowerCase()) {
+    const code = ch.charCodeAt(0);
+    const isAlphaNum = (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
+    if (isAlphaNum) {
+      out += ch;
+      previousDash = false;
+      continue;
+    }
+    const isSeparator = ch === ' ' || ch === '\t' || ch === '\n' || ch === '_' || ch === '-';
+    if (isSeparator && !previousDash) {
+      out += '-';
+      previousDash = true;
+    }
+  }
+
+  let start = 0;
+  let end = out.length;
+  while (start < end && out[start] === '-') start += 1;
+  while (end > start && out[end - 1] === '-') end -= 1;
+
+  return out.slice(start, Math.min(end, start + 80));
 }
 
 /**

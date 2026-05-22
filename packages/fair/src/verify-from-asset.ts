@@ -69,12 +69,21 @@ export async function verifyManifestFromAsset(
   }
 
   const linkHeader = assetResponse.headers.get('link') || '';
-  const fairMatch = linkHeader.match(/<([^>]+)>\s*;\s*rel="fair"/);
-  if (!fairMatch) {
+  let fairHref: string | null = null;
+  for (const segment of linkHeader.split(',')) {
+    const trimmed = segment.trim();
+    if (!trimmed.includes('rel="fair"')) continue;
+    const lt = trimmed.indexOf('<');
+    const gt = trimmed.indexOf('>', lt + 1);
+    if (lt >= 0 && gt > lt) {
+      fairHref = trimmed.slice(lt + 1, gt).trim();
+      break;
+    }
+  }
+  if (!fairHref) {
     return { valid: false, reason: 'Missing Link: rel="fair" header on asset response' };
   }
-
-  const manifestUrl = new URL(fairMatch[1], assetUrl).toString();
+  const manifestUrl = new URL(fairHref, assetUrl).toString();
 
   // 2. Fetch manifest
   let manifestResponse: FetchResponse;
@@ -125,12 +134,11 @@ export async function verifyManifestFromAsset(
   const dfosHeader = assetResponse.headers.get('x-fair-dfos') || '';
   let anchorTimestamp: string | undefined;
   if (dfosHeader) {
-    const eventMatch = dfosHeader.match(/^dfos:event:(.+)$/);
-    if (!eventMatch) {
+    const prefix = 'dfos:event:';
+    if (!dfosHeader.startsWith(prefix)) {
       return { valid: false, signedAt, reason: `Invalid X-Fair-Dfos header format: ${dfosHeader}` };
     }
-
-    const eventId = eventMatch[1];
+    const eventId = dfosHeader.slice(prefix.length);
     const event = await opts.fetchDfosEvent(eventId);
     if (!event) {
       return { valid: false, signedAt, reason: `DFOS event not found: ${eventId}` };

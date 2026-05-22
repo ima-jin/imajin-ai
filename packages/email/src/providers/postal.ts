@@ -19,9 +19,11 @@ export class PostalProvider implements EmailProvider {
       return { success: false, error: 'POSTAL_API_KEY not configured' };
     }
 
-    const fromMatch = POSTAL_FROM.match(/^(.+)\s*<(.+)>$/);
-    const fromName = fromMatch ? fromMatch[1].trim() : undefined;
-    const fromEmail = fromMatch ? fromMatch[2].trim() : POSTAL_FROM;
+    const lt = POSTAL_FROM.indexOf('<');
+    const gt = POSTAL_FROM.lastIndexOf('>');
+    const hasBracketAddress = lt > 0 && gt > lt;
+    const fromName = hasBracketAddress ? POSTAL_FROM.slice(0, lt).trim() : undefined;
+    const fromEmail = hasBracketAddress ? POSTAL_FROM.slice(lt + 1, gt).trim() : POSTAL_FROM;
 
     const body: Record<string, any> = {
       to: [options.to],

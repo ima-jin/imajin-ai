@@ -9,6 +9,7 @@ import { mkdir, copyFile } from 'fs/promises';
 import { nanoid } from 'nanoid';
 import path from 'path';
 import { verifyDocumentSignatureToken } from '@/src/lib/auth/document-signatures';
+import { randomUUID } from 'node:crypto';
 
 const log = createLogger('kernel:documents');
 
@@ -19,7 +20,7 @@ function didToPath(did: string): string {
 }
 
 function genId(prefix: string): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 14)}${Date.now().toString(36)}`;
+  return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 }
 
 

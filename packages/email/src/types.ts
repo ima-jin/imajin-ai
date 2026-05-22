@@ -10,7 +10,8 @@ export interface SendEmailOptions {
 }
 
 export function parseSender(from: string): { email: string; name?: string } {
-  const match = from.match(/^(.+)\s*<(.+)>$/);
-  if (match) return { name: match[1].trim(), email: match[2].trim() };
+  const lt = from.indexOf('<');
+  const gt = from.lastIndexOf('>');
+  if (lt > 0 && gt > lt) return { name: from.slice(0, lt).trim(), email: from.slice(lt + 1, gt).trim() };
   return { email: from };
 }

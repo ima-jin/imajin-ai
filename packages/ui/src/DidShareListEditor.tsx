@@ -52,7 +52,9 @@ function ResolvedDidChip({
   const avatar = profile?.avatar;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(did).catch(() => {});
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(did).catch(() => {});
+    }
   };
 
   return (
@@ -60,6 +62,14 @@ function ResolvedDidChip({
       className="flex-1 flex items-center gap-2 bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 min-w-0 cursor-pointer hover:border-gray-600 transition"
       title={did}
       onClick={handleCopy}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleCopy();
+        }
+      }}
+      role="button"
+      tabIndex={0}
     >
       {avatar ? (
         <img
