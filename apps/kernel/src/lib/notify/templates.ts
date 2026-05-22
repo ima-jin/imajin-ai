@@ -532,10 +532,31 @@ export const templates: NotifyTemplate[] = [
     body: (data) => data.messagePreview || "You were mentioned in a conversation.",
     email: {
       subject: (data) => `${data.senderName || "Someone"} mentioned you — Imajin Chat`,
-      html: (data) => simpleEmailHtml(
-        `${data.senderName || "Someone"} mentioned you`,
-        data.messagePreview || "You were mentioned in a conversation."
-      ),
+      html: (data) => {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_WWW_URL || 'https://jin.imajin.ai';
+        let chatUrl: string | null = null;
+        if (data.conversationId) {
+          // Parse DID: did:imajin:dm:abc123 → /chat/conversations/dm/abc123
+          const prefix = 'did:imajin:';
+          if (data.conversationId.startsWith(prefix)) {
+            const rest = data.conversationId.slice(prefix.length);
+            const colonIdx = rest.indexOf(':');
+            if (colonIdx !== -1) {
+              const type = rest.slice(0, colonIdx);
+              const slug = rest.slice(colonIdx + 1);
+              chatUrl = `${baseUrl}/chat/conversations/${type}/${slug}`;
+            }
+          }
+        }
+        const preview = data.messagePreview || "You were mentioned in a conversation.";
+        const body = chatUrl
+          ? `${preview}<br><br><a href="${chatUrl}" style="color:#f97316;text-decoration:none;font-weight:600;">Open conversation &rarr;</a>`
+          : preview;
+        return simpleEmailHtml(
+          `${data.senderName || "Someone"} mentioned you`,
+          body
+        );
+      },
     },
   },
   {
