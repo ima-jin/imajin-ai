@@ -6,7 +6,7 @@ import { eq, and } from "drizzle-orm";
 export const dynamic = "force-dynamic";
 
 function requireInternalAuth(request: NextRequest): boolean {
-  const apiKey = request.headers.get("authorization")?.replace("Bearer ", "");
+  const apiKey = request.headers.get("authorization")?.replaceAll("Bearer ", "");
   const expectedKey = process.env.MEDIA_INTERNAL_API_KEY;
   return !!(expectedKey && apiKey === expectedKey);
 }

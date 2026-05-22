@@ -46,7 +46,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     // Generate unique filename: {did}-{timestamp}.{ext}
     const ext = file.name.split('.').pop() || 'jpg';
     const timestamp = Date.now();
-    const didShort = did.replace('did:imajin:', '').slice(0, 16);
+    const didShort = did.replaceAll('did:imajin:', '').slice(0, 16);
     const filename = `${didShort}-${timestamp}.${ext}`;
     const filepath = path.join(UPLOAD_DIR, filename);
 

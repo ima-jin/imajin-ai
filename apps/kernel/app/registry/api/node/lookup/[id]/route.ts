@@ -45,7 +45,7 @@ export async function GET(
     
     // If it's a full subdomain, extract hostname
     if (lookupId.endsWith('.imajin.ai')) {
-      lookupId = lookupId.replace('.imajin.ai', '');
+      lookupId = lookupId.replaceAll('.imajin.ai', '');
     }
 
     // Find by DID or hostname

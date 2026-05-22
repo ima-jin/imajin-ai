@@ -37,7 +37,7 @@ function appendUnsubscribeFooter(html: string, unsubscribeUrl: string): string {
 
   // Insert before closing </body> if present, otherwise append
   if (html.includes('</body>')) {
-    return html.replace('</body>', `${footer}</body>`);
+    return html.replaceAll('</body>', `${footer}</body>`);
   }
   return html + footer;
 }

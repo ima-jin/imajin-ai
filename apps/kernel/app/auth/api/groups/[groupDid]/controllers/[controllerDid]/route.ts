@@ -101,7 +101,7 @@ export async function GET(
   const { groupDid, controllerDid } = await params;
 
   // This endpoint is internal — validate via ATTESTATION_INTERNAL_API_KEY
-  const apiKey = request.headers.get('authorization')?.replace('Bearer ', '');
+  const apiKey = request.headers.get('authorization')?.replaceAll('Bearer ', '');
   const expectedKey = process.env.ATTESTATION_INTERNAL_API_KEY;
 
   if (!expectedKey || apiKey !== expectedKey) {

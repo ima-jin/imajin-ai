@@ -91,7 +91,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
   // Issue #14: read hash on mount so external links / router.refresh can target a tab
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const hash = globalThis.location.hash.replace('#', '');
+      const hash = globalThis.location.hash.replaceAll('#', '');
       if (hash === 'my-tickets' || hash === 'buy-tickets') {
         setActiveTab(hash);
       }

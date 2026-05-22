@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
   // Internal API key auth
   const apiKey = request.headers
     .get("authorization")
-    ?.replace("Bearer ", "");
+    ?.replaceAll("Bearer ", "");
   const expectedKey = process.env.MEDIA_INTERNAL_API_KEY;
 
   if (!expectedKey || apiKey !== expectedKey) {

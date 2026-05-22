@@ -11,7 +11,7 @@ import { trustDistance } from "@imajin/trust-graph";;
 
 export async function GET(request: NextRequest) {
   // Internal API key auth
-  const apiKey = request.headers.get('authorization')?.replace('Bearer ', '');
+  const apiKey = request.headers.get('authorization')?.replaceAll('Bearer ', '');
   const expectedKey = process.env.TRUST_INTERNAL_API_KEY;
 
   if (!expectedKey || apiKey !== expectedKey) {

@@ -176,7 +176,7 @@ async function main() {
   let errors = 0;
 
   for (const filename of filenames) {
-    const baseName = filename.replace('.md', '');
+    const baseName = filename.replaceAll('.md', '');
     const slug = slugMap[baseName] || baseName;
     const order = getOrderFromSlugMap(baseName);
 

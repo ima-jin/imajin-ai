@@ -39,8 +39,8 @@ function computeOrderStatus(tickets: { status: string }[]): string {
   if (statuses.every((s) => s === 'valid' || s === 'used')) return 'completed';
   if (statuses.every((s) => s === 'refunded')) return 'refunded';
   if (statuses.every((s) => s === 'cancelled')) return 'cancelled';
-  if (statuses.some((s) => s === 'held')) return 'pending';
-  if (statuses.some((s) => s === 'valid' || s === 'used')) return 'partial';
+  if (statuses.includes('held')) return 'pending';
+  if (statuses.includes('valid' || s === 'used')) return 'partial';
   return 'unknown';
 }
 

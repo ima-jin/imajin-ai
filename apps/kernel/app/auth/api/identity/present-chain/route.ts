@@ -87,7 +87,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       await storeDfosChain(existingByKey.id, {
         did: chainDid,
         log: chainLog,
-        headCid: chainLog[chainLog.length - 1],
+        headCid: chainLog.at(-1),
       });
 
       const token = await createSessionToken({
@@ -138,7 +138,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     await storeDfosChain(identity.id, {
       did: chainDid,
       log: chainLog,
-      headCid: chainLog[chainLog.length - 1],
+      headCid: chainLog.at(-1),
     });
 
     // 5. Create session

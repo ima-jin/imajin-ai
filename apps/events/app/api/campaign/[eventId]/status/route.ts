@@ -30,7 +30,7 @@ export const GET = withLogger('events', async (request: NextRequest, { log }) =>
   try {
     const url = new URL(request.url);
     const pathParts = url.pathname.split('/');
-    const eventId = pathParts[pathParts.length - 2]; // /api/campaign/{eventId}/status
+    const eventId = pathParts.at(-2); // /api/campaign/{eventId}/status
 
     if (!eventId) {
       return NextResponse.json({ error: 'eventId is required' }, { status: 400, headers: cors });

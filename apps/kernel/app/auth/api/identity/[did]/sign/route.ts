@@ -34,7 +34,7 @@ export async function POST(
   const decodedDid = decodeURIComponent(did);
 
   // Service-to-service auth (legacy/internal)
-  const apiKey = request.headers.get('authorization')?.replace('Bearer ', '');
+  const apiKey = request.headers.get('authorization')?.replaceAll('Bearer ', '');
   const expectedKey = process.env.INTERNAL_API_KEY;
   const isInternalRequest = !!expectedKey && apiKey === expectedKey;
 

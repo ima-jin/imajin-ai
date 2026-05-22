@@ -107,10 +107,10 @@ sd.registerFormat({
         } else if (path[1] === 'sunset') {
           sunset[path[2]] = value;
         } else if (path[1] === 'functional') {
-          const key = path[2].replace('text-', '');
+          const key = path[2].replaceAll('text-', '');
           functional[key] = value;
         } else if (path[1] === 'interactive') {
-          const key = path[2].replace('border-', '');
+          const key = path[2].replaceAll('border-', '');
           interactive[key] = value;
         } else if (path[1] === 'gradient' && path[2] === 'sunset') {
           colors['sunset-gradient'] = value;

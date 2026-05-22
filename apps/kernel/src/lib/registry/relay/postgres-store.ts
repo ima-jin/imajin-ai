@@ -265,7 +265,7 @@ export class PostgresRelayStore implements RelayStore {
       chainId: row.chainId,
     }));
 
-    const cursor = entries.length === params.limit ? entries[entries.length - 1].cid : null;
+    const cursor = entries.length === params.limit ? entries.at(-1).cid : null;
 
     return { entries, cursor };
   }
@@ -540,7 +540,7 @@ export class PostgresRelayStore implements RelayStore {
       });
     }
 
-    const cursor = page.length === params.limit ? page[page.length - 1].cid : null;
+    const cursor = page.length === params.limit ? page.at(-1).cid : null;
     return { documents, cursor };
   }
 

@@ -21,7 +21,7 @@ function redactEmail(email: string): string {
   const local = email.slice(0, atIdx);
   const domain = email.slice(atIdx + 1);
   const redacted = local.length > 2
-    ? `${local[0]}***${local[local.length - 1]}`
+    ? `${local[0]}***${local.at(-1)}`
     : '***';
   return `${redacted}@${domain}`;
 }

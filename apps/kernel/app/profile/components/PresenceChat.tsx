@@ -208,7 +208,7 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: R
             </div>
           ))}
 
-          {isLoading && messages[messages.length - 1]?.role === 'user' && (
+          {isLoading && messages.at(-1)?.role === 'user' && (
             <div className="flex justify-start">
               <div className="bg-gray-800 text-gray-400 px-3 py-2 rounded-xl rounded-bl-sm text-sm">
                 <span className="animate-pulse">Thinking...</span>

@@ -123,7 +123,7 @@ export default async function TracePage({
                       {/* Meta row */}
                       <div className="mt-1 flex items-center gap-3 flex-wrap">
                         <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
-                          {new Date(step.created_at).toISOString().replace('T', ' ').slice(0, 23)}
+                          {new Date(step.created_at).toISOString().replaceAll('T', ' ').slice(0, 23)}
                         </span>
                         {step.did && (
                           <span className="font-mono text-xs text-gray-400 dark:text-gray-500 truncate max-w-[160px]">

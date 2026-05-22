@@ -211,7 +211,7 @@ export async function GET(
         const fields = formFieldMap.get(t.form_id)!;
         const answers = responseMap.get(t.response_id) || {};
         for (const colName of surveyColumns) {
-          const question = colName.replace('Survey: ', '');
+          const question = colName.replaceAll('Survey: ', '');
           const field = fields.find((f) => (f.exportLabel || stripHtml(f.title)) === question);
           if (field && field.name in answers) {
             const ans = answers[field.name];

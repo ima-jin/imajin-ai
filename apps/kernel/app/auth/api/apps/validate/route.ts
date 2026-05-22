@@ -14,7 +14,7 @@ import { db, attestations } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 
 export async function POST(request: NextRequest) {
-  const apiKey = request.headers.get('authorization')?.replace('Bearer ', '');
+  const apiKey = request.headers.get('authorization')?.replaceAll('Bearer ', '');
   const expectedKey = process.env.ATTESTATION_INTERNAL_API_KEY;
 
   if (!expectedKey || apiKey !== expectedKey) {

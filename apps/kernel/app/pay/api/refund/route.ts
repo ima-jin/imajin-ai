@@ -37,7 +37,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
   const cors = corsHeaders(request);
 
   // Service-to-service auth via API key
-  const apiKey = request.headers.get('authorization')?.replace('Bearer ', '');
+  const apiKey = request.headers.get('authorization')?.replaceAll('Bearer ', '');
   const expectedKey = process.env.PAY_SERVICE_API_KEY;
 
   if (!expectedKey || apiKey !== expectedKey) {
