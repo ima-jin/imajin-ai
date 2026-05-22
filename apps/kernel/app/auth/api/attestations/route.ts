@@ -8,12 +8,12 @@ import type { AttestationType } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 const ATTESTATION_LIMIT_MAX = 100;
 
 function genId(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 }
 
 /** Resolve calling identity from session cookie or Bearer token */

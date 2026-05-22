@@ -6,14 +6,14 @@ import { generateKeypair } from '@imajin/auth';
 import { didFromPublicKey, encryptPrivateKey } from '@/src/lib/auth/crypto';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 const log = createLogger('kernel');
 
 const MAX_STUBS_PER_ACTOR = 10;
 
 function genId(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 }
 
 /**

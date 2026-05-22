@@ -6,10 +6,10 @@
  */
 
 import postgres from 'postgres';
-import { execFileSync } from 'child_process';
-import { createRequire } from 'module';
-import { delimiter, dirname, resolve } from 'path';
-import { fileURLToPath } from 'url';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { delimiter, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -32,7 +32,7 @@ const require = createRequire(import.meta.url);
 const PNPM_CLI = require.resolve('pnpm/bin/pnpm.cjs');
 const TSX_CLI = require.resolve('tsx/dist/cli.mjs');
 const SAFE_EXEC_PATH = process.platform === 'win32'
-  ? ['C:\\Windows\\System32', 'C:\\Windows'].join(delimiter)
+  ? ['C:/Windows/System32', 'C:/Windows'].join(delimiter)
   : ['/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(delimiter);
 
 async function main() {

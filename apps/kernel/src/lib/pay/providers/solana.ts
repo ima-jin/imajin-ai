@@ -13,7 +13,7 @@
  */
 
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import type { PaymentProvider, HealthCheckResult, ProviderCapabilities } from './types';
 import type {
   SolanaProviderConfig,
@@ -109,7 +109,7 @@ export class SolanaProvider implements PaymentProvider {
     const lamports = request.amount; // Caller should provide lamports directly
     
     return {
-      id: `sol-pending-${Date.now()}-${randomUUID().replace(/-/g, '').slice(0, 12)}`,
+      id: `sol-pending-${Date.now()}-${randomUUID().replaceAll('-', '').slice(0, 12)}`,
       provider: 'solana',
       status: 'requires_action',
       amount: request.amount,
@@ -129,7 +129,7 @@ export class SolanaProvider implements PaymentProvider {
     // Similar to SOL - return instructions for caller to execute
     
     return {
-      id: `spl-pending-${Date.now()}-${randomUUID().replace(/-/g, '').slice(0, 12)}`,
+      id: `spl-pending-${Date.now()}-${randomUUID().replaceAll('-', '').slice(0, 12)}`,
       provider: 'solana',
       status: 'requires_action',
       amount: request.amount,

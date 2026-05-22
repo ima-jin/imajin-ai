@@ -14,17 +14,18 @@ import { db, attestations } from '@/src/db';
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 const log = createLogger('kernel');
 
 function genId(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 }
 
 export async function POST(request: NextRequest) {
   // API key auth
-  const apiKey = request.headers.get('authorization')?.replace('Bearer ', '');
+  const authHeader = request.headers.get('authorization');
+  const apiKey = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
   const expectedKey = process.env.ATTESTATION_INTERNAL_API_KEY;
 
   if (!expectedKey || apiKey !== expectedKey) {

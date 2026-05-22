@@ -33,6 +33,12 @@ export interface ImajinInputProps {
   maxRows?: number;
 }
 
+function stripTrailingSlashes(input: string): string {
+  let value = input;
+  while (value.endsWith('/')) value = value.slice(0, -1);
+  return value;
+}
+
 export function ImajinInput({
   onSubmit,
   onMediaReady,
@@ -60,12 +66,6 @@ export function ImajinInput({
   const hasFiles = features.includes('files');
   const hasLocation = features.includes('location');
   const hasValue = value.trim().length > 0 || !!attachment;
-
-  function stripTrailingSlashes(input: string): string {
-    let value = input;
-    while (value.endsWith('/')) value = value.slice(0, -1);
-    return value;
-  }
 
   // Auto-resize textarea
   useEffect(() => {

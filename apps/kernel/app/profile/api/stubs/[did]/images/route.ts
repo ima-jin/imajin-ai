@@ -3,7 +3,7 @@ import { db, identityMembers, profileImages } from '@/src/db';
 import { eq, and, isNull, count } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 const log = createLogger('kernel');
 const ALLOWED_ROLES = ['maintainer', 'admin', 'owner'];
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'url is required' }, { status: 400 });
   }
 
-  const id = `img_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  const id = `img_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
 
   const [image] = await db
     .insert(profileImages)

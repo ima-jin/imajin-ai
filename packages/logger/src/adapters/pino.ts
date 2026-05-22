@@ -1,6 +1,6 @@
 import pino from 'pino';
 import type { Logger, LogContext } from '../types';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 const REDACT_PATHS = [
   'password',
@@ -57,7 +57,7 @@ function writeAppLog(entry: {
   import('@imajin/db')
     .then(({ getClient }) => {
       const sql = getClient();
-      const id = `log_${Date.now().toString(36)}_${randomUUID().replace(/-/g, '').slice(0, 8)}`;
+      const id = `log_${Date.now().toString(36)}_${randomUUID().replaceAll('-', '').slice(0, 8)}`;
       return sql`
         INSERT INTO registry.logs
           (id, source, service, level, message, correlation_id, did, method, path, error_message, metadata, created_at)

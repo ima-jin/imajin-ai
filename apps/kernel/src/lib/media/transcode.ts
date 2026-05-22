@@ -1,7 +1,7 @@
-import { spawn } from 'child_process';
-import { access } from 'fs/promises';
-import { constants, existsSync } from 'fs';
-import { delimiter } from 'path';
+import { spawn } from 'node:child_process';
+import { access } from 'node:fs/promises';
+import { constants, existsSync } from 'node:fs';
+import { delimiter } from 'node:path';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -20,10 +20,10 @@ const activeTranscodes = new Set<string>();
 const MAX_CONCURRENT = 2;
 const transcodeQueue: Array<() => void> = [];
 const SAFE_EXEC_PATH = process.platform === 'win32'
-  ? ['C:\\Windows\\System32', 'C:\\Windows'].join(delimiter)
+  ? ['C:/Windows/System32', 'C:/Windows'].join(delimiter)
   : ['/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(delimiter);
 const FIXED_FFMPEG_BINARIES = process.platform === 'win32'
-  ? ['C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe', 'C:\\ffmpeg\\bin\\ffmpeg.exe']
+  ? ['C:/Program Files/ffmpeg/bin/ffmpeg.exe', 'C:/ffmpeg/bin/ffmpeg.exe']
   : ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg'];
 
 function assertSafeFfmpegPath(pathValue: string, label: string): void {

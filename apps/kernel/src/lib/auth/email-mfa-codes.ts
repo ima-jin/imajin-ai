@@ -1,4 +1,4 @@
-import { randomInt } from 'crypto';
+import { randomInt } from 'node:crypto';
 const emailMfaCodes = new Map<string, { code: string; expiresAt: number }>();
 
 export function generateEmailMfaCode(): string {

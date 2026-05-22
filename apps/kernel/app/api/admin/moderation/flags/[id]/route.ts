@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClient } from '@imajin/db';
 import { requireAdmin } from '@imajin/auth';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 const sql = getClient();
 
 function genId(prefix: string) {
-  return `${prefix}_${Date.now().toString(36)}${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 }
 
 export async function PUT(

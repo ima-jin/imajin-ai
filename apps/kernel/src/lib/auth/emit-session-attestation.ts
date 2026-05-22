@@ -4,12 +4,12 @@ import type { AttestationType } from "@imajin/auth";
 import { computeCid } from "@imajin/cid";
 import { getNodeDid } from "@/src/lib/kernel/node-identity";
 import { createLogger } from '@imajin/logger';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 const log = createLogger('kernel');
 
 function genId(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 }
 
 export async function emitSessionAttestation(params: {

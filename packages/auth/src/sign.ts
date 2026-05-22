@@ -140,7 +140,7 @@ export function createChallenge(): string {
   if (typeof globalThis.crypto !== 'undefined') {
     globalThis.crypto.getRandomValues(bytes);
   } else {
-    throw new Error('Secure random source unavailable');
+    throw new TypeError('Secure random source unavailable');
   }
   return crypto.bytesToHex(bytes);
 }

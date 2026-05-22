@@ -18,13 +18,13 @@
  *   MFA_ENCRYPTION_KEY — optional; falls back to dev key for private key encryption
  */
 
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import postgres from 'postgres';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import bs58 from 'bs58';
-import { createHash, randomBytes, createCipheriv, randomUUID } from 'crypto';
+import { createHash, randomBytes, createCipheriv, randomUUID } from 'node:crypto';
 
 // Configure ed25519 to use sha512 (required by @noble/ed25519 v2+)
 ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
@@ -87,7 +87,7 @@ function encryptSecret(plaintext: string): string {
 }
 
 function genId(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 }
 
 // ---------------------------------------------------------------------------

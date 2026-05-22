@@ -4,7 +4,7 @@ import { sendEmail, renderBroadcastEmail } from '@imajin/email';
 import { withLogger } from '@imajin/logger';
 import { requireAdmin } from '@imajin/auth';
 import { generateUnsubscribeToken } from '@/src/lib/www/subscribe-tokens';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 const sql = getClient();
 
@@ -133,7 +133,7 @@ export const POST = withLogger('kernel', async (req, { log }) => {
     return NextResponse.json({ sent: false, recipientCount: 0, sendId: null, error: 'No recipients found' });
   }
 
-  const sendId = `nws_${Date.now()}_${randomUUID().replace(/-/g, '').slice(0, 8)}`;
+  const sendId = `nws_${Date.now()}_${randomUUID().replaceAll('-', '').slice(0, 8)}`;
 
   // Record the send before dispatching (non-blocking send)
   await sql`
