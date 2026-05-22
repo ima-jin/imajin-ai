@@ -1,5 +1,5 @@
 // Load .env.local (Node doesn't do this automatically like Next.js does)
-const envPath = require('path').join(__dirname, '.env.local');
+const envPath = require('node:path').join(__dirname, '.env.local');
 const envUtils = require('../../scripts/env-utils.js');
 envUtils.loadEnvFileIntoProcessEnv(envPath);
 

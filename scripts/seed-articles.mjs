@@ -10,10 +10,10 @@
  * DATABASE_URL is read from apps/kernel/.env.local or env var.
  */
 
-import { readFileSync, readdirSync, mkdirSync, writeFileSync, existsSync } from 'fs';
-import { resolve, dirname, join } from 'path';
+import { readFileSync, readdirSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'url';
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'module';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

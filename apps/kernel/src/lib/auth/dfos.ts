@@ -1,7 +1,7 @@
 import { hexToMultibase } from '@imajin/auth';
 import { db, identities, identityChains, credentials } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { verifyChainLog } from './chain-providers';
 import { createLogger } from '@imajin/logger';
 

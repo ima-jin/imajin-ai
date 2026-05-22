@@ -16,7 +16,7 @@ import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 import { generateQRCode } from '@/src/lib/email';
 import { publish } from '@imajin/bus';
 import { getClient } from '@imajin/db';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL!;

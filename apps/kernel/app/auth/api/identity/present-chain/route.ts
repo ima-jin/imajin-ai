@@ -5,7 +5,7 @@ import { getIdentityByDfosDid, storeDfosChain } from '@/src/lib/auth/dfos';
 import { db, identities, credentials } from '@/src/db';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { withLogger } from '@imajin/logger';
 

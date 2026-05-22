@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import { withLogger } from '@imajin/logger';
-import { writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import path from 'path';
+import { writeFile, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 
 const UPLOAD_DIR = '/mnt/media/events';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB

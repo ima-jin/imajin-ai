@@ -7,7 +7,7 @@ import { corsHeaders } from '@imajin/config';
 import { getClient } from '@imajin/db';
 import { buildFairManifest } from '@imajin/fair';
 import { and, asc, desc, eq, gt } from 'drizzle-orm';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL!;
 

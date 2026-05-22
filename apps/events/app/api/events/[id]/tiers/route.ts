@@ -8,7 +8,7 @@ import { requireAuth, requireAppAuth } from '@imajin/auth';
 import { corsHeaders } from '@imajin/config';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq, and, asc, isNull } from 'drizzle-orm';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 
 /**
  * GET /api/events/[id]/tiers - List public ticket tiers (excludes access-code-protected)

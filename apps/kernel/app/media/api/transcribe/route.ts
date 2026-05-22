@@ -2,10 +2,10 @@ import { optionalAuth } from '@imajin/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
-import { writeFile, unlink } from 'fs/promises';
-import { join } from 'path';
+import { writeFile, unlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import { tmpdir } from 'os';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 import { withLogger } from '@imajin/logger';
 
 const GPU_NODE_URL = process.env.GPU_NODE_URL;

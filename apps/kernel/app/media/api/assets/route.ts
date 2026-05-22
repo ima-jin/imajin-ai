@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import { extname } from "path";
+import { createHash } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { extname } from "node:path";
 import { nanoid } from "nanoid";
 import { db, assets, folders, assetFolders, identities } from "@/src/db";
 import { requireAuth } from "@imajin/auth";

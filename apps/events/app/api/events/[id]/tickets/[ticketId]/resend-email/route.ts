@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 
 const log = createLogger('events');
 import { eq, and } from 'drizzle-orm';

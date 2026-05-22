@@ -17,7 +17,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { generateQRCode } from '@/src/lib/email';
 import { backfillContactEmail } from '@/src/lib/contact-email';
 import { createOrderWithTickets } from '@/src/lib/checkout-common';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 import { eventUrl, eventRegisterUrl, eventMyTicketsUrl } from '@imajin/config';
 import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';

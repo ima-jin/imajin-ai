@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile, unlink, rename, stat, open } from "fs/promises";
-import path from "path";
-import { createHash } from "crypto";
+import { readFile, unlink, rename, stat, open } from "node:fs/promises";
+import path from "node:path";
+import { createHash } from "node:crypto";
 import { db, assets, settlements, accessLog } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq, and, sql } from "drizzle-orm";
-import { createReadStream } from "fs";
+import { createReadStream } from "node:fs";
 import type { FairManifest } from "@imajin/fair";
 import { isFairManifestV1_1, build402Response, verifyReceipt, loadVerifyKey, canonicalize } from "@imajin/fair";
 import type { FairAction } from "@imajin/fair";

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile, writeFile } from "fs/promises";
-import { createHash } from "crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { db, assets } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq } from "drizzle-orm";

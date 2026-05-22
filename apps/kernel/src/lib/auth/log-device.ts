@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 import { db } from '@/src/db';
 import { devices } from '@/src/db';
 import { and, eq } from 'drizzle-orm';

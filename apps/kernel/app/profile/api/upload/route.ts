@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import path from 'path';
+import { writeFile, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { errorResponse } from '@/src/lib/kernel/utils';
 import { withLogger } from '@imajin/logger';
 
@@ -57,7 +57,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     // Clean up old avatars for this DID
     try {
-      const { readdir, unlink } = await import('fs/promises');
+      const { readdir, unlink } = await import('node:fs/promises');
       const files = await readdir(UPLOAD_DIR);
       const oldFiles = files.filter(f => f.startsWith(didShort) && f !== filename);
       await Promise.all(oldFiles.map(f => unlink(path.join(UPLOAD_DIR, f)).catch(() => {})));

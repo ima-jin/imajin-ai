@@ -6,10 +6,10 @@
  * Usage: node scripts/seed-migrations.mjs [--dry-run]
  */
 
-import { readFileSync, readdirSync } from 'fs';
-import { resolve, dirname, join } from 'path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'url';
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'module';
 import envUtils from './env-utils.js';
 

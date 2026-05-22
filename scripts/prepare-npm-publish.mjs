@@ -9,8 +9,8 @@
  * - Removes "private" flag and devDependencies
  * - Sets publishConfig for public access
  */
-import { readFileSync, writeFileSync, cpSync, existsSync, mkdirSync } from "fs";
-import { join, resolve } from "path";
+import { readFileSync, writeFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 const [, , pkgDir, outDir] = process.argv;
 if (!pkgDir || !outDir) {

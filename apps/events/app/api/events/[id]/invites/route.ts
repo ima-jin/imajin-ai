@@ -8,7 +8,7 @@ import { db, eventInvites } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 import { eventUrl } from '@imajin/config';
 
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';

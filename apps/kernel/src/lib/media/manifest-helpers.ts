@@ -5,8 +5,8 @@
  * handlers stay thin.
  */
 
-import { writeFile } from "fs/promises";
-import { createHash } from "crypto";
+import { writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { signManifest, canonicalize } from "@imajin/fair";
 import { publishContentEvent } from "@imajin/dfos";
 import { hexToBytes } from "@imajin/auth";

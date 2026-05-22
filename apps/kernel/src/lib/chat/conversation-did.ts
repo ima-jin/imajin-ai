@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 
 function sha256hex(input: string): string {
   return createHash('sha256').update(input).digest('hex');

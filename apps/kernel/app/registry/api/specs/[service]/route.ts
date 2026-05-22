@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { corsHeaders, corsOptions, getService, SERVICES } from "@imajin/config";
-import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 
 /** Kernel services serve specs from local YAML files */

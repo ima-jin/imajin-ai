@@ -9,8 +9,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { nanoid } from "nanoid";
-import { createHash } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
 import { db, assets, folders, assetFolders } from "@/src/db";
 import { eq, and } from "drizzle-orm";
 import { createLogger } from "@imajin/logger";

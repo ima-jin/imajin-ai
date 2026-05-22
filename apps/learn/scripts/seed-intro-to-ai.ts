@@ -12,8 +12,8 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { courses, modules, lessons } from '../src/db/schema';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const CREATOR_DID = process.env.CREATOR_DID || 'did:imajin:ryan';
 

@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
-import { createHmac } from 'crypto';
+import { createHmac } from 'node:crypto';
 import { db, notifications, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { sendEmail, renderBroadcastEmail } from '@imajin/email';

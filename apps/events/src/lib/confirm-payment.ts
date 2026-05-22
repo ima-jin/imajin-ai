@@ -7,7 +7,7 @@ import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { db, tickets, ticketTypes, events, orders } from '@/src/db';
 import { getClient } from '@imajin/db';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 import { generateQRCode } from '@/src/lib/email';
 import { eq, sql, and, inArray } from 'drizzle-orm';
 

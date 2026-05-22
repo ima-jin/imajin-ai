@@ -24,7 +24,7 @@ import { eq, and } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 import { withLogger } from '@imajin/logger';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 

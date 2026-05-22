@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 import { eq, desc, and, sql, isNull, count } from 'drizzle-orm';
 import { db, invites, profiles, podMembers } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';

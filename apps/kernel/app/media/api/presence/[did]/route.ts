@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile } from "fs/promises";
+import { readFile } from "node:fs/promises";
 import { db, assets, folders, assetFolders } from "@/src/db";
 import { eq, and } from "drizzle-orm";
 

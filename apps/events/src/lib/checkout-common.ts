@@ -12,7 +12,7 @@ import { db, ticketTypes, tickets, orders, eventInvites } from '@/src/db';
 import { eq, and, sql, lt } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
 import { getContactEmail, backfillContactEmail } from '@/src/lib/contact-email';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js';

@@ -5,9 +5,9 @@ import { corsHeaders } from '@imajin/config';
 import { requireAuth } from '@/src/lib/auth/middleware';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { mkdir, copyFile } from 'fs/promises';
+import { mkdir, copyFile } from 'node:fs/promises';
 import { nanoid } from 'nanoid';
-import path from 'path';
+import path from 'node:path';
 import { verifyDocumentSignatureToken } from '@/src/lib/auth/document-signatures';
 import { randomUUID } from 'node:crypto';
 
