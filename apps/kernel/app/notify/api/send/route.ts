@@ -81,21 +81,21 @@ export const POST = withLogger('kernel', async (request, { log }) => {
     // Resolve recipient email: payload > identity contact_email
     let recipientEmail = (data as any).email as string | undefined;
     if (!recipientEmail && to.startsWith('did:')) {
-      // Check auth.identities first (set from Stripe/ticket purchases)
-      const [identity] = await db
-        .select({ contactEmail: identities.contactEmail })
-        .from(identities)
-        .where(eq(identities.id, to))
+      // Check profile first (set from connection invite / register — primary identity)
+      const [profile] = await db
+        .select({ contactEmail: profiles.contactEmail })
+        .from(profiles)
+        .where(eq(profiles.did, to))
         .limit(1);
-      recipientEmail = identity?.contactEmail || undefined;
-      // Fall back to profile.profiles (set from connection invite / register)
+      recipientEmail = profile?.contactEmail || undefined;
+      // Fall back to auth.identities (set from Stripe/ticket purchases)
       if (!recipientEmail) {
-        const [profile] = await db
-          .select({ contactEmail: profiles.contactEmail })
-          .from(profiles)
-          .where(eq(profiles.did, to))
+        const [identity] = await db
+          .select({ contactEmail: identities.contactEmail })
+          .from(identities)
+          .where(eq(identities.id, to))
           .limit(1);
-        recipientEmail = profile?.contactEmail || undefined;
+        recipientEmail = identity?.contactEmail || undefined;
       }
     }
     if (recipientEmail) {
