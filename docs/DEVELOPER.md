@@ -356,8 +356,8 @@ Three places where user email addresses live. The notify service checks them in 
 
 **Notify email resolution** (`apps/kernel/app/notify/api/send/route.ts`):
 1. `data.email` in the event payload (explicit, e.g. from Stripe webhook)
-2. `auth.identities.contact_email` (ticket buyers)
-3. `profile.profiles.contact_email` (connection invite signups)
+2. `profile.profiles.contact_email` (primary — connection invite / register flow)
+3. `auth.identities.contact_email` (fallback — Stripe / ticket purchases)
 
 `www.contacts` is **not** checked by the notify service — it's a separate broadcast/newsletter system.
 
