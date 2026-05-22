@@ -314,6 +314,14 @@ function EditProfileContent() {
                 />
               </div>
             </div>
+            <div className="pt-3">
+              <a
+                href="/notify/settings"
+                className="text-sm text-[#F59E0B] hover:text-[#FBBF24] transition-colors"
+              >
+                Notification preferences →
+              </a>
+            </div>
           </div>
 
           {/* Visibility — preliminary+ only */}
