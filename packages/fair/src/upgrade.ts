@@ -1,6 +1,6 @@
 import type { FairManifestV1_0, FairManifestV1_1, FairDistributionRight, Money } from './types';
 
-import { PLATFORM_DID } from './constants';
+import { PLATFORM_DID, PROTOCOL_DID } from './constants';
 
 function asDistributionRight(mode: string): FairDistributionRight {
   return { mode };
@@ -15,7 +15,7 @@ function mimeBucket(mimeType: string | undefined | null): 'text' | 'image' | 'au
   return 'other';
 }
 
-function buildDefaults(mimeType: string): {
+function buildDefaults(mimeType: string, ownerDid: string): {
   distribution: NonNullable<FairManifestV1_1['distribution']>;
   transfer: NonNullable<FairManifestV1_1['transfer']>;
   training: NonNullable<FairManifestV1_1['training']>;
@@ -73,7 +73,7 @@ function buildDefaults(mimeType: string): {
     { did: 'NODE_PLACEHOLDER', role: 'node', share: 0.005 },
     { did: 'BUYER_PLACEHOLDER', role: 'buyer_credit', share: 0.0025 },
     { did: PLATFORM_DID, role: 'platform', share: 0.01 },
-    { did: '', role: 'seller', share: 0.9725 },
+    { did: ownerDid, role: 'seller', share: 0.9725 },
   ];
 
   return {
@@ -162,7 +162,7 @@ function convertDistribution(
   v1_0: FairManifestV1_0,
 ): NonNullable<FairManifestV1_1['distribution']> {
   const oldDist = v1_0.distribution as Record<string, string> | undefined;
-  const defaults = buildDefaults(v1_0.type);
+  const defaults = buildDefaults(v1_0.type, v1_0.owner);
 
   const toRight = (key: string): FairDistributionRight => {
     const mode = oldDist?.[key];
@@ -191,7 +191,7 @@ export function upgradeToV1_1(manifest: FairManifestV1_0 | FairManifestV1_1): Fa
   }
 
   const v1_0 = manifest as FairManifestV1_0;
-  const defaults = buildDefaults(v1_0.type);
+  const defaults = buildDefaults(v1_0.type, v1_0.owner);
 
   const upgraded: FairManifestV1_1 = {
     fair: '1.1',

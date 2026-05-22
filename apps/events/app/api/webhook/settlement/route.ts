@@ -25,6 +25,9 @@ interface SettlementPayload {
   chain: Array<{ did: string; amount: number; role: string }>;
   metadata?: Record<string, unknown>;
 }
+interface BusWebhookEnvelope<TPayload> {
+  payload?: TPayload;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,9 +36,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const payload: SettlementPayload = await request.json();
+    const body = (await request.json()) as SettlementPayload | BusWebhookEnvelope<SettlementPayload>;
+    const payload = ((body as BusWebhookEnvelope<SettlementPayload>).payload ?? body) as SettlementPayload;
 
-    if (!payload.orderId) {
+    if (!payload.orderId || typeof payload.orderId !== 'string') {
       return NextResponse.json({ error: 'Missing orderId' }, { status: 400 });
     }
 

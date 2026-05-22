@@ -46,6 +46,8 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
   const funded = payload.funded as boolean | undefined;
   const funded_provider = payload.funded_provider as string | undefined;
   const metadata = payload.metadata as Record<string, unknown> | undefined;
+  const orderId = payload.orderId as string | undefined || metadata?.orderId as string | undefined;
+  const eventId = payload.eventId as string | undefined || metadata?.eventId as string | undefined;
   const service = payload.settle_service as string | undefined || event.scope;
   const type = payload.settle_type as string | undefined || event.type;
 
@@ -140,6 +142,10 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
 
   // Emit settlement.completed so downstream services can snapshot the receipt
   if (result?.settled) {
+    if (!orderId) {
+      log.warn({ event: event.type }, 'Settlement completed but orderId is missing; skipping settlement.completed publish');
+      return;
+    }
     const resolvedFees = (fairManifest?.fees || []).map((fee) => ({
       role: fee.role,
       name: fee.name,
@@ -155,8 +161,8 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
         subject: event.subject,
         scope: event.scope,
         payload: {
-          orderId: metadata?.orderId as string || '',
-          eventId: payload.eventId as string || '',
+          orderId,
+          eventId: eventId || '',
           buyerDid: buyerDid || event.issuer,
           amount: amountCents,
           currency: currency || 'CAD',
