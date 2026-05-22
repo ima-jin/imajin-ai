@@ -276,9 +276,8 @@ describe('upgradeToV1_1', () => {
     };
     const result = upgradeToV1_1(v1_0 as any);
     expect(result.version).toBe('1.1');
-    expect(result.attribution).toHaveLength(2);
-    expect(result.attribution[0].share).toBe(0.99);
-    expect(result.attribution[1].share).toBe(0.01);
+    expect(result.attribution).toHaveLength(1);
+    expect(result.attribution[0].share).toBe(1);
     expect(result.training?.allowed).toBe(false);
     expect(result.commercial?.allowed).toBe(false);
     expect(result.distribution?.reproduction?.mode).toBe('allowed');
@@ -352,7 +351,7 @@ describe('upgradeToV1_1', () => {
   // (e.g. 0.52 from misuse of the share field) used to be migrated
   // verbatim, producing a v1.1 manifest that failed the totals=100%
   // validator and became uneditable in the UI.
-  it('normalizes a single-creator entry with a bogus share to the 99/1 default', () => {
+  it('normalizes a single-creator entry with a bogus share to a 100% creator default', () => {
     const v1_0 = {
       fair: '1.0',
       id: 'asset_old',
@@ -363,11 +362,11 @@ describe('upgradeToV1_1', () => {
       attribution: [{ did: 'did:imajin:owner', role: 'creator', share: 0.52 }],
     };
     const result = upgradeToV1_1(v1_0 as any);
-    expect(result.attribution).toHaveLength(2);
+    expect(result.attribution).toHaveLength(1);
     const total = result.attribution.reduce((s: number, e) => s + e.share, 0);
     expect(Math.abs(total - 1.0)).toBeLessThan(0.001);
     expect(result.attribution[0].did).toBe('did:imajin:owner');
-    expect(result.attribution[0].share).toBe(0.99);
+    expect(result.attribution[0].share).toBe(1);
   });
 
   it('treats percentage-style multi-entry attribution (sum 100) as fractions', () => {
@@ -411,7 +410,7 @@ describe('upgradeToV1_1', () => {
     expect(result.attribution[1].share).toBeCloseTo(0.4, 6);
   });
 
-  it('falls back to 99/1 default when v1.0 attribution is empty', () => {
+  it('falls back to a 100% creator default when v1.0 attribution is empty', () => {
     const v1_0 = {
       fair: '1.0',
       id: 'asset_old',
@@ -422,9 +421,8 @@ describe('upgradeToV1_1', () => {
       attribution: [],
     };
     const result = upgradeToV1_1(v1_0 as any);
-    expect(result.attribution).toHaveLength(2);
-    expect(result.attribution[0].share).toBe(0.99);
-    expect(result.attribution[1].share).toBe(0.01);
+    expect(result.attribution).toHaveLength(1);
+    expect(result.attribution[0].share).toBe(1);
   });
 });
 

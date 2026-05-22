@@ -124,6 +124,18 @@ export interface BusEventMap {
     ticketType?: string;
     metadata?: Record<string, unknown>;
   };
+  'settlement.completed': {
+    orderId: string;
+    eventId: string;
+    buyerDid: string;
+    amount: number;
+    currency: string;
+    totalAmount: number;
+    netAmount: number;
+    fees: Array<{ role: string; name: string; rateBps: number; fixedCents: number; amount: number; estimated: boolean }>;
+    chain: Array<{ did: string; amount: number; role: string }>;
+    metadata?: Record<string, unknown>;
+  };
   'listing.purchased': {
     context_id: string;
     context_type: string;

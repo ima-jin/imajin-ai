@@ -3,6 +3,8 @@ import { buildFairManifest } from '../src/buildManifest';
 import {
   PROTOCOL_FEE_BPS,
   PROTOCOL_DID,
+  PLATFORM_FEE_BPS,
+  PLATFORM_DID,
   NODE_FEE_DEFAULT_BPS,
   NODE_FEE_MIN_BPS,
   NODE_FEE_MAX_BPS,
@@ -29,19 +31,23 @@ describe('buildFairManifest', () => {
     const protocol = manifest.chain.find((e) => e.role === 'protocol');
     const node = manifest.chain.find((e) => e.role === 'node');
     const buyerCredit = manifest.chain.find((e) => e.role === 'buyer_credit');
+    const platform = manifest.chain.find((e) => e.role === 'platform');
     const scope = manifest.chain.find((e) => e.role === 'scope');
     const seller = manifest.chain.find((e) => e.role === 'seller');
 
     expect(protocol?.share).toBe(PROTOCOL_FEE_BPS / 10000);
     expect(node?.share).toBe(NODE_FEE_DEFAULT_BPS / 10000);
     expect(buyerCredit?.share).toBe(BUYER_CREDIT_DEFAULT_BPS / 10000);
+    expect(platform?.share).toBe(PLATFORM_FEE_BPS / 10000);
+    expect(platform?.did).toBe(PLATFORM_DID);
     expect(scope).toBeUndefined();
 
     const expectedSellerShare =
       1 -
       PROTOCOL_FEE_BPS / 10000 -
       NODE_FEE_DEFAULT_BPS / 10000 -
-      BUYER_CREDIT_DEFAULT_BPS / 10000;
+      BUYER_CREDIT_DEFAULT_BPS / 10000 -
+      PLATFORM_FEE_BPS / 10000;
     expect(seller?.share).toBeCloseTo(expectedSellerShare, 10);
     expect(seller?.did).toBe(CREATOR);
 
@@ -70,6 +76,7 @@ describe('buildFairManifest', () => {
       PROTOCOL_FEE_BPS / 10000 -
       NODE_FEE_DEFAULT_BPS / 10000 -
       BUYER_CREDIT_DEFAULT_BPS / 10000 -
+      PLATFORM_FEE_BPS / 10000 -
       SCOPE_FEE_BPS / 10000;
     expect(seller?.share).toBeCloseTo(expectedSellerShare, 10);
 

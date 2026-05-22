@@ -1,4 +1,5 @@
 import { createLogger } from '@imajin/logger';
+import { publish } from '../publish';
 import type { BusEvent, ReactorHandler } from '../types';
 
 const log = createLogger('bus:settle');
@@ -45,6 +46,8 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
   const funded = payload.funded as boolean | undefined;
   const funded_provider = payload.funded_provider as string | undefined;
   const metadata = payload.metadata as Record<string, unknown> | undefined;
+  const orderId = payload.orderId as string | undefined || metadata?.orderId as string | undefined;
+  const eventId = payload.eventId as string | undefined || metadata?.eventId as string | undefined;
   const service = payload.settle_service as string | undefined || event.scope;
   const type = payload.settle_type as string | undefined || event.type;
 
@@ -56,11 +59,10 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
   // Resolve .fair chain if provided
   let resolvedChain: Array<{ did: string; amount: number; role: string }> | undefined;
   let expectedTotal: number | undefined;
+  const totalDollars = amountCents / 100;
 
   const chain = fairManifest?.chain;
   if (fairManifest && chain?.length) {
-    const totalDollars = amountCents / 100;
-
     const NODE_DID = process.env.NODE_DID || process.env.RELAY_IMAJIN_DID || null;
     if (!NODE_DID) {
       log.warn({ event: event.type }, '[settle] NODE_DID not set — node fee recipient unresolved');
@@ -70,8 +72,8 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
     const fees = fairManifest.fees || [];
     const processorFee = fees.find(f => f.role === 'processor');
     const estimatedFeeDollars = processorFee
-      ? parseFloat(((amountCents * processorFee.rateBps / 10000 + processorFee.fixedCents) / 100).toFixed(2))
-      : parseFloat(((amountCents * 370 / 10000 + 30) / 100).toFixed(2)); // fallback: 3.7% + 30¢
+      ? Number.parseFloat(((amountCents * processorFee.rateBps / 10000 + processorFee.fixedCents) / 100).toFixed(2))
+      : Number.parseFloat(((amountCents * 370 / 10000 + 30) / 100).toFixed(2)); // fallback: 3.7% + 30¢
 
     // Replace placeholder DIDs and deduct processing fee from seller
     resolvedChain = chain.map((entry) => {
@@ -79,24 +81,24 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
       if (did === 'BUYER_PLACEHOLDER') did = buyerDid;
       if (did === 'NODE_PLACEHOLDER') did = NODE_DID || 'did:imajin:node-unresolved';
 
-      let entryAmount = parseFloat((totalDollars * entry.share).toFixed(2));
+      let entryAmount = Number.parseFloat((totalDollars * entry.share).toFixed(2));
 
       if (SELLER_ROLES.has(entry.role)) {
-        entryAmount = parseFloat((entryAmount - estimatedFeeDollars).toFixed(2));
+        entryAmount = Number.parseFloat((entryAmount - estimatedFeeDollars).toFixed(2));
       }
 
       return { did, amount: entryAmount, role: entry.role };
     });
 
-    expectedTotal = parseFloat((totalDollars - estimatedFeeDollars).toFixed(2));
+    expectedTotal = Number.parseFloat((totalDollars - estimatedFeeDollars).toFixed(2));
 
     // Fix rounding drift
     const chainSum = resolvedChain.reduce((sum, e) => sum + e.amount, 0);
-    const drift = parseFloat((expectedTotal - chainSum).toFixed(2));
+    const drift = Number.parseFloat((expectedTotal - chainSum).toFixed(2));
     if (drift !== 0 && resolvedChain.length > 0) {
       const seller = resolvedChain.find(e => SELLER_ROLES.has(e.role));
       const target = seller || resolvedChain.reduce((max, e) => e.amount > max.amount ? e : max, resolvedChain[0]);
-      target.amount = parseFloat((target.amount + drift).toFixed(2));
+      target.amount = Number.parseFloat((target.amount + drift).toFixed(2));
     }
   }
 
@@ -112,6 +114,8 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
   if (currency) body.currency = currency;
   if (resolvedChain) body.fair_manifest = { chain: resolvedChain };
   if (metadata) body.metadata = metadata;
+
+  let result: { settled: boolean; batchId: string; transactions: string[]; total_amount: number; recipients: number; source: string } | undefined;
 
   try {
     const response = await fetch(`${PAY_SERVICE_URL}/api/settle`, {
@@ -129,8 +133,49 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
       return;
     }
 
-    log.info({ event: event.type, buyerDid, amount: amountCents }, 'Settlement complete');
+    result = await response.json() as typeof result;
+    log.info({ event: event.type, buyerDid, amount: amountCents, batchId: result?.batchId }, 'Settlement complete');
   } catch (err) {
     log.error({ err: String(err) }, 'Settlement request error');
+    return;
+  }
+
+  // Emit settlement.completed so downstream services can snapshot the receipt
+  if (result?.settled) {
+    if (!orderId) {
+      log.warn({ event: event.type }, 'Settlement completed but orderId is missing; skipping settlement.completed publish');
+      return;
+    }
+    const resolvedFees = (fairManifest?.fees || []).map((fee) => ({
+      role: fee.role,
+      name: fee.name,
+      rateBps: fee.rateBps,
+      fixedCents: fee.fixedCents,
+      amount: Number.parseFloat(((amountCents * fee.rateBps / 10000 + fee.fixedCents) / 100).toFixed(2)),
+      estimated: true,
+    }));
+
+    try {
+      await publish('settlement.completed', {
+        issuer: buyerDid || event.issuer,
+        subject: event.subject,
+        scope: event.scope,
+        payload: {
+          orderId,
+          eventId: eventId || '',
+          buyerDid: buyerDid || event.issuer,
+          amount: amountCents,
+          currency: currency || 'CAD',
+          totalAmount: totalDollars,
+          netAmount: expectedTotal ?? totalDollars,
+          fees: resolvedFees,
+          chain: resolvedChain || [],
+          metadata,
+        },
+      });
+      log.info({ event: event.type, buyerDid, amount: amountCents }, 'Settlement completed event emitted');
+    } catch (publishErr) {
+      log.error({ err: String(publishErr) }, 'Failed to emit settlement.completed (non-fatal)');
+    }
   }
 };
