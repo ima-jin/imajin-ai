@@ -5,7 +5,7 @@ import { corsHeaders } from '@imajin/config';
 import { requireAuth } from '@/src/lib/auth/middleware';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import * as jose from 'jose';
+import { verifyDocumentSignatureToken } from '@/src/lib/auth/document-signatures';
 
 const log = createLogger('kernel:documents');
 
@@ -13,28 +13,6 @@ function genId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 14)}${Date.now().toString(36)}`;
 }
 
-const EXPIRY_MAP: Record<string, number> = {
-  '24h': 24 * 60 * 60 * 1000,
-  '7d': 7 * 24 * 60 * 60 * 1000,
-  '1m': 30 * 24 * 60 * 60 * 1000,
-  '1y': 365 * 24 * 60 * 60 * 1000,
-};
-
-async function verifyJws(jws: string, publicKeyHex: string): Promise<boolean> {
-  try {
-    const publicKeyBytes = Buffer.from(publicKeyHex, 'hex');
-    const jwk = {
-      kty: 'OKP',
-      crv: 'Ed25519',
-      x: jose.base64url.encode(publicKeyBytes),
-    };
-    const publicKey = await jose.importJWK(jwk, 'EdDSA');
-    await jose.compactVerify(jws, publicKey);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -150,7 +128,7 @@ export async function POST(
 
     // Verify author JWS
     const [callerIdentity] = await db
-      .select({ publicKey: identities.publicKey })
+      .select({ publicKey: identities.publicKey, name: identities.name, handle: identities.handle })
       .from(identities)
       .where(eq(identities.id, callerDid))
       .limit(1);
@@ -159,8 +137,13 @@ export async function POST(
       return NextResponse.json({ error: 'Caller identity not found' }, { status: 400, headers: cors });
     }
 
-    const jwsValid = await verifyJws(author_jws, callerIdentity.publicKey);
-    if (!jwsValid) {
+    const signatureValid = await verifyDocumentSignatureToken({
+      token: author_jws,
+      signerPublicKeyHex: callerIdentity.publicKey,
+      signerDid: callerDid,
+      documentHash: document_hash,
+    });
+    if (!signatureValid) {
       return NextResponse.json({ error: 'Invalid author JWS signature' }, { status: 400, headers: cors });
     }
 
@@ -216,20 +199,30 @@ export async function POST(
     // Set asset immutable
     await db.update(assets).set({ immutable: true }).where(eq(assets.id, document_asset_id));
 
-    // Publish event
-    publish('document.created', {
-      issuer: callerDid,
-      subject: callerDid,
-      scope: 'auth',
-      payload: {
-        attestationId,
-        documentAssetId: document_asset_id,
-        creatorDid: callerDid,
-        signerDids,
-        context_id: attestationId,
-        context_type: 'document',
-      },
-    });
+    // Publish one event per pending signer so notify reactors can target recipients directly.
+    const creatorName = callerIdentity.handle
+      ? `@${callerIdentity.handle}`
+      : callerIdentity.name || callerDid;
+    const signUrl = `/auth/documents/${attestationId}`;
+
+    for (const signerDid of signerDids) {
+      publish('document.created', {
+        issuer: callerDid,
+        subject: signerDid,
+        scope: 'auth',
+        payload: {
+          attestationId,
+          documentAssetId: document_asset_id,
+          creatorDid: callerDid,
+          creatorName,
+          signerDids,
+          title: title.trim(),
+          signUrl,
+          context_id: attestationId,
+          context_type: 'document',
+        },
+      }).catch((err) => log.error({ err: String(err), signerDid, attestationId }, 'document.created publish failed'));
+    }
 
     const allSigs = await db
       .select()

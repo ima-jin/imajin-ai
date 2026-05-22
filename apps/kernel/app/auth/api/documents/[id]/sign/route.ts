@@ -5,10 +5,10 @@ import { corsHeaders } from '@imajin/config';
 import { requireAuth } from '@/src/lib/auth/middleware';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import * as jose from 'jose';
 import { mkdir, copyFile } from 'fs/promises';
 import { nanoid } from 'nanoid';
 import path from 'path';
+import { verifyDocumentSignatureToken } from '@/src/lib/auth/document-signatures';
 
 const log = createLogger('kernel:documents');
 
@@ -22,24 +22,6 @@ function genId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 14)}${Date.now().toString(36)}`;
 }
 
-/**
- * Verify a JWS compact token against a signer's Ed25519 public key.
- */
-async function verifyJws(jws: string, publicKeyHex: string): Promise<boolean> {
-  try {
-    const publicKeyBytes = Buffer.from(publicKeyHex, 'hex');
-    const jwk = {
-      kty: 'OKP',
-      crv: 'Ed25519',
-      x: jose.base64url.encode(publicKeyBytes),
-    };
-    const publicKey = await jose.importJWK(jwk, 'EdDSA');
-    await jose.compactVerify(jws, publicKey);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Copy a signed document to the signer's media storage.
@@ -239,8 +221,13 @@ export async function POST(
       return NextResponse.json({ error: 'Signer identity not found' }, { status: 400, headers: cors });
     }
 
-    const jwsValid = await verifyJws(jws, callerIdentity.publicKey);
-    if (!jwsValid) {
+    const signatureValid = await verifyDocumentSignatureToken({
+      token: jws,
+      signerPublicKeyHex: callerIdentity.publicKey,
+      signerDid: callerDid,
+      documentHash: document_hash,
+    });
+    if (!signatureValid) {
       return NextResponse.json({ error: 'Invalid JWS signature' }, { status: 400, headers: cors });
     }
 

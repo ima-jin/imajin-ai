@@ -1,5 +1,5 @@
 import { db, identities, attestations, attestationSignatures } from '@/src/db';
-import { eq, or, and, isNull, desc, inArray, sql } from 'drizzle-orm';
+import { eq, or, and, isNull, desc, inArray, notInArray, sql } from 'drizzle-orm';
 import Link from 'next/link';
 import DocumentSigningCard from '../attestations/components/DocumentSigningCard';
 
@@ -75,9 +75,10 @@ const PAGE_SIZE = 20;
 interface Props {
   sessionDid: string;
   searchParams: { type?: string; role?: string; page?: string };
+  excludeDocumentTypes?: boolean;
 }
 
-export default async function AttestationList({ sessionDid, searchParams }: Props) {
+export default async function AttestationList({ sessionDid, searchParams, excludeDocumentTypes = false }: Props) {
   const { type: typeFilter, role = 'all' } = searchParams;
   const page = Math.max(1, parseInt(searchParams.page || '1'));
   const offset = (page - 1) * PAGE_SIZE;
@@ -90,6 +91,7 @@ export default async function AttestationList({ sessionDid, searchParams }: Prop
 
   const conditions = [roleCondition, isNull(attestations.revokedAt)];
   if (typeFilter) conditions.push(eq(attestations.type, typeFilter));
+  if (excludeDocumentTypes && !typeFilter) conditions.push(notInArray(attestations.type, DOCUMENT_TYPES));
 
   const rows = await db
     .select()
