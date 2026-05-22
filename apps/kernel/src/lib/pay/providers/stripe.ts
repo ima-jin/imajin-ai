@@ -236,6 +236,8 @@ export class StripeProvider implements PaymentProvider {
       payment_intent: request.paymentId,
       amount: request.amount,
       reason: request.reason as Stripe.RefundCreateParams.Reason,
+      reverse_transfer: true,
+      refund_application_fee: true,
     });
     
     return {
