@@ -94,14 +94,23 @@ function formatDid(did: string, names: Record<string, string>): string {
 }
 
 function shareBar(share: number, role: string) {
-  const color =
-    role === 'protocol' ? 'bg-blue-500' :
-    role === 'buyer_credit' ? 'bg-green-500' :
-    role === 'node' ? 'bg-gray-400' :
-    role === 'platform' ? 'bg-orange-500' :
-    role === 'seller' ? 'bg-orange-500' :
-    role === 'venue' ? 'bg-purple-500' :
-    'bg-orange-500';
+  let color = 'bg-orange-500';
+  switch (role) {
+    case 'protocol':
+      color = 'bg-blue-500';
+      break;
+    case 'buyer_credit':
+      color = 'bg-green-500';
+      break;
+    case 'node':
+      color = 'bg-gray-400';
+      break;
+    case 'venue':
+      color = 'bg-purple-500';
+      break;
+    default:
+      break;
+  }
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
@@ -116,14 +125,37 @@ function shareBar(share: number, role: string) {
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function AttributionView({ entries, didNames }: { entries: FairEntry[]; didNames: Record<string, string> }) {
+function chainRoleClass(role: string): string {
+  switch (role) {
+    case 'protocol':
+      return 'text-blue-400';
+    case 'buyer_credit':
+      return 'text-green-400';
+    case 'node':
+      return 'text-gray-400';
+    default:
+      return 'text-orange-400';
+  }
+}
+
+function AttributionView({
+  entries,
+  didNames,
+  roleClassName = () => 'text-orange-400',
+  roleLabel = (role: string) => role,
+}: {
+  entries: FairEntry[];
+  didNames: Record<string, string>;
+  roleClassName?: (role: string) => string;
+  roleLabel?: (role: string) => string;
+}) {
   return (
     <div className="space-y-3">
       {entries.map((entry, i) => (
-        <div key={i} className="space-y-1">
+        <div key={`${entry.did ?? 'unknown'}:${entry.role}:${entry.share}:${entry.note ?? ''}:${i}`} className="space-y-1">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-orange-400 capitalize">{entry.role}</span>
+              <span className={`text-xs font-semibold capitalize ${roleClassName(entry.role)}`}>{roleLabel(entry.role)}</span>
               <span className="text-xs text-gray-500 truncate max-w-[180px]" title={entry.did}>
                 {formatDid(entry.did ?? '', didNames)}
               </span>
@@ -164,7 +196,7 @@ function AttributionEdit({
   return (
     <div className="space-y-3">
       {entries.map((entry, i) => (
-        <div key={i} className="bg-[#252525] rounded-lg p-3 space-y-2">
+        <div key={`${entry.did ?? 'unknown'}:${entry.role}:${entry.share}:${entry.note ?? ''}:${i}`} className="bg-[#252525] rounded-lg p-3 space-y-2">
           <div className="flex items-center gap-2">
             <input
               type="text"
@@ -232,34 +264,12 @@ function AttributionEdit({
 
 function ChainView({ entries, didNames }: { entries: FairEntry[]; didNames: Record<string, string> }) {
   return (
-    <div className="space-y-3">
-      {entries.map((entry, i) => (
-        <div key={i} className="space-y-1">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className={`text-xs font-semibold capitalize ${
-                entry.role === 'protocol' ? 'text-blue-400' :
-                entry.role === 'buyer_credit' ? 'text-green-400' :
-                entry.role === 'node' ? 'text-gray-400' :
-                'text-orange-400'
-              }`}>{entry.role.replace(/_/g, ' ')}</span>
-              <span className="text-xs text-gray-500 truncate max-w-[180px]" title={entry.did}>
-                {formatDid(entry.did ?? '', didNames)}
-              </span>
-              {entry.chainProof?.verified && (
-                <span className="inline-flex items-center px-1.5 py-0.5 bg-emerald-900/30 border border-emerald-700/50 rounded-full text-[10px] text-emerald-400">
-                  ⛓ verified
-                </span>
-              )}
-            </div>
-          </div>
-          {shareBar(entry.share, entry.role)}
-          {entry.note && (
-            <p className="text-xs text-gray-500 italic">{entry.note}</p>
-          )}
-        </div>
-      ))}
-    </div>
+    <AttributionView
+      entries={entries}
+      didNames={didNames}
+      roleClassName={chainRoleClass}
+      roleLabel={(role) => role.replaceAll('_', ' ')}
+    />
   );
 }
 
@@ -285,7 +295,7 @@ function ChainEdit({
       {entries.map((entry, i) => {
         const isProtocol = entry.role === 'protocol';
         return (
-          <div key={i} className="bg-[#252525] rounded-lg p-3 space-y-2">
+          <div key={`${entry.did ?? 'unknown'}:${entry.role}:${entry.share}:${i}`} className="bg-[#252525] rounded-lg p-3 space-y-2">
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -302,7 +312,7 @@ function ChainEdit({
                 className={`bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-orange-500 ${isProtocol ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {CHAIN_ROLE_OPTIONS.map(r => (
-                  <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>
+                  <option key={r} value={r}>{r.replaceAll('_', ' ')}</option>
                 ))}
               </select>
               {!isProtocol && (
@@ -356,7 +366,7 @@ function FeesView({ fees }: { fees: FairFee[] }) {
   return (
     <div className="space-y-3">
       {fees.map((fee, i) => (
-        <div key={i} className="space-y-1">
+        <div key={`${fee.role}:${fee.name}:${fee.rateBps}:${fee.fixedCents}:${i}`} className="space-y-1">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-gray-400 capitalize">{fee.name}</span>

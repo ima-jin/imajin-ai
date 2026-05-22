@@ -104,7 +104,7 @@ export function buildFairManifest(params: {
       : [{ did: creatorDid, role: 'creator', share: 1.0 }];
 
   const attribution: DidShareEntry[] = [
-    { did: creatorDid, role: 'creator', share: 1.0 },
+    { did: creatorDid, role: 'creator', share: 1 },
   ];
 
   const fees: FairFee[] = [

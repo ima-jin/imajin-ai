@@ -121,13 +121,13 @@ function convertAttribution(
   // Case 1: single creator entry — creator gets 100% attribution (platform is in chain, not attribution)
   if (filtered.length === 1 && filtered[0].role === 'creator') {
     return [
-      { did: v1_0.owner, role: 'creator', share: 1.0 },
+      { did: v1_0.owner, role: 'creator', share: 1 },
     ];
   }
 
   if (filtered.length === 0) {
     return [
-      { did: v1_0.owner, role: 'creator', share: 1.0 },
+      { did: v1_0.owner, role: 'creator', share: 1 },
     ];
   }
 
