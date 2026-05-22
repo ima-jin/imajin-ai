@@ -83,18 +83,37 @@ function FolderRow({
         }`}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
         onClick={() => onSelect(node.id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onSelect(node.id);
+          }
+        }}
+        role="button"
+        tabIndex={0}
         onContextMenu={(e) => onContextMenu(e, node)}
       >
-        <span
+        <button
+          type="button"
           className="w-4 h-4 flex items-center justify-center text-xs shrink-0"
           onClick={(e) => {
             if (!hasChildren) return;
             e.stopPropagation();
             onToggle(node.id);
           }}
+          onKeyDown={(e) => {
+            if (!hasChildren) return;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggle(node.id);
+            }
+          }}
+          aria-label={hasChildren ? (isExpanded ? "Collapse folder" : "Expand folder") : "No child folders"}
+          disabled={!hasChildren}
         >
           {hasChildren ? (isExpanded ? "▼" : "▶") : null}
-        </span>
+        </button>
         <span className="text-sm shrink-0">{icon}</span>
         <span className="text-sm truncate flex-1">{node.name}</span>
         {count !== undefined && count > 0 && (
@@ -226,6 +245,14 @@ export function FolderTree({
               : "text-gray-300 hover:bg-white/10"
           }`}
           onClick={() => onSelect(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onSelect(null);
+            }
+          }}
+          role="button"
+          tabIndex={0}
         >
           <span className="w-4 h-4 shrink-0" />
           <span className="text-sm">🗂️</span>
@@ -311,10 +338,19 @@ export function FolderTree({
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
           onClick={() => setRenamingId(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setRenamingId(null);
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="Close rename dialog"
         >
           <div
             className="bg-[#2a2a2a] border border-white/10 rounded-lg shadow-xl p-4 w-72"
-            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             <p className="text-sm text-gray-300 mb-2">Rename folder</p>
             <input

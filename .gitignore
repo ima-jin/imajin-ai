@@ -7,6 +7,7 @@ node_modules/
 dist/
 .turbo/
 next-env.d.ts
+.build-report
 
 # Env
 .env

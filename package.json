@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "db:seed": "tsx scripts/seed.ts",
     "db:reset": "tsx scripts/reset-db.ts",
-    "db:migrate": "tsx scripts/migrate-to-schemas.ts",
+    "db:migrate": "node scripts/migrate.mjs",
     "generate:api-specs": "tsx scripts/generate-api-specs.ts",
     "prepare": "husky"
   },
