@@ -24,7 +24,7 @@ import postgres from 'postgres';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import bs58 from 'bs58';
-import { createHash, randomBytes, createCipheriv } from 'crypto';
+import { createHash, randomBytes, createCipheriv, randomUUID } from 'crypto';
 
 // Configure ed25519 to use sha512 (required by @noble/ed25519 v2+)
 ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
@@ -87,7 +87,7 @@ function encryptSecret(plaintext: string): string {
 }
 
 function genId(prefix: string): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 14)}${Date.now().toString(36)}`;
+  return `${prefix}_${Date.now().toString(36)}${randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 
 // ---------------------------------------------------------------------------

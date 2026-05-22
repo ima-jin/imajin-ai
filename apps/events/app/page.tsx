@@ -12,14 +12,46 @@ import { eventPath } from '@imajin/config';
 
 /** Strip markdown syntax to get clean plaintext for excerpts */
 function stripMarkdown(text: string): string {
-  return text
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // [text](url) → text
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')     // ![alt](url) → remove
-    .replace(/[*_~`#>]+/g, '')                   // remove emphasis/heading markers
-    .replace(/\n{2,}/g, ' · ')                   // paragraph breaks → separator
-    .replace(/\n/g, ' ')                          // line breaks → space
-    .replace(/\s+/g, ' ')                         // collapse whitespace
-    .trim();
+  let out = '';
+  let i = 0;
+
+  while (i < text.length) {
+    if (text[i] === '!' && text[i + 1] === '[') {
+      const closeBracket = text.indexOf(']', i + 2);
+      const openParen = closeBracket === -1 ? -1 : text.indexOf('(', closeBracket + 1);
+      const closeParen = openParen === -1 ? -1 : text.indexOf(')', openParen + 1);
+      if (closeBracket !== -1 && openParen === closeBracket + 1 && closeParen !== -1) {
+        i = closeParen + 1;
+        continue;
+      }
+    }
+
+    if (text[i] === '[') {
+      const closeBracket = text.indexOf(']', i + 1);
+      const openParen = closeBracket === -1 ? -1 : text.indexOf('(', closeBracket + 1);
+      const closeParen = openParen === -1 ? -1 : text.indexOf(')', openParen + 1);
+      if (closeBracket !== -1 && openParen === closeBracket + 1 && closeParen !== -1) {
+        out += text.slice(i + 1, closeBracket);
+        i = closeParen + 1;
+        continue;
+      }
+    }
+
+    out += text[i];
+    i++;
+  }
+
+  for (const marker of ['*', '_', '~', '`', '#', '>']) {
+    out = out.split(marker).join('');
+  }
+
+  out = out.split('\r\n').join('\n');
+  while (out.includes('\n\n')) out = out.split('\n\n').join(' · ');
+  out = out.split('\n').join(' ');
+  out = out.split('\t').join(' ');
+  while (out.includes('  ')) out = out.split('  ').join(' ');
+
+  return out.trim();
 }
 
 const sql = getClient();
