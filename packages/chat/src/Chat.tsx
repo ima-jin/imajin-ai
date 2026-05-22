@@ -537,7 +537,6 @@ export function Chat({
                 highlightedIndex={mentions.highlightedIndex}
                 onSelect={mentions.selectMention}
                 onClose={mentions.closePicker}
-                isEveryone={isGroup}
                 mediaUrl={mediaUrl}
               />
             )}

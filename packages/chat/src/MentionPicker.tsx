@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import type { MentionResult } from './hooks/useMentions';
+import { EVERYONE_DID, type MentionResult } from './hooks/useMentions';
 
 interface MentionPickerProps {
   results: MentionResult[];
   highlightedIndex: number;
   onSelect: (result: MentionResult) => void;
   onClose: () => void;
-  isEveryone: boolean;
   mediaUrl?: string;
 }
 
@@ -40,10 +39,10 @@ export function MentionPicker({
   highlightedIndex,
   onSelect,
   onClose,
-  isEveryone: _isEveryone,
   mediaUrl,
 }: MentionPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const highlightedRef = useRef<HTMLLIElement>(null);
 
   // Close on outside click
   useEffect(() => {
@@ -55,6 +54,11 @@ export function MentionPicker({
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [onClose]);
+
+  // Scroll highlighted item into view when navigating with keyboard
+  useEffect(() => {
+    highlightedRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [highlightedIndex]);
 
   if (results.length === 0) {
     return (
@@ -75,11 +79,11 @@ export function MentionPicker({
       <ul className="max-h-60 overflow-y-auto">
         {results.map((result, index) => {
           const isHighlighted = index === highlightedIndex;
-          const isEveryoneRow = result.did === '__everyone__';
+          const isEveryoneRow = result.did === EVERYONE_DID;
           const avatarSrc = resolveAvatarSrc(result, mediaUrl);
 
           return (
-            <li key={result.did}>
+            <li key={result.did} ref={isHighlighted ? highlightedRef : undefined}>
               <button
                 type="button"
                 onClick={() => onSelect(result)}

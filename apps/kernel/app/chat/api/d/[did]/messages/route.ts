@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { eq, and, desc, lt, ne, isNull, inArray, ilike, or } from 'drizzle-orm';
+import { eq, and, desc, lt, ne, isNull, inArray, or } from 'drizzle-orm';
 
 const log = createLogger('kernel');
 import { db, conversationsV2, conversationMembers, messagesV2, messageReactionsV2, profiles, identities } from '@/src/db';
@@ -16,22 +16,7 @@ import { checkAccess } from '@/src/lib/kernel/access';
 import { crypto as authCrypto } from '@imajin/auth';
 import { getChainByImajinDid } from '@/src/lib/auth/dfos';
 import { verifyChain } from '@imajin/dfos';
-
-const MENTION_REGEX = /@([a-zA-Z0-9_-]+)/g;
-
-async function resolveHandleToDid(handle: string): Promise<string | null> {
-  try {
-    const result = await db
-      .select({ did: profiles.did, handle: profiles.handle })
-      .from(profiles)
-      .where(ilike(profiles.handle, handle))
-      .limit(1);
-    const profile = result.find((p) => p.handle?.toLowerCase() === handle.toLowerCase());
-    return profile?.did ?? null;
-  } catch {
-    return null;
-  }
-}
+import { processMentions } from '@/src/lib/chat/mentions';
 
 /**
  * Sign a message payload with the node's platform key.
@@ -364,95 +349,13 @@ export async function POST(
     }
 
     // Detect and notify @mentions — fire and forget
-    const messageText = typeof content === 'object' && (content as any).text ? (content as any).text : typeof content === 'string' ? content : '';
-    const structuredMentions = Array.isArray((content as any).mentions) ? (content as any).mentions as Array<{ did: string; handle: string; index: number; length: number }> : [];
-
-    if (structuredMentions.length > 0) {
-      (async () => {
-        for (const mention of structuredMentions) {
-          try {
-            if (mention.did === '__everyone__') {
-              // Check sender has owner or admin role
-              const [callerMembership] = await db
-                .select({ role: conversationMembers.role })
-                .from(conversationMembers)
-                .where(and(
-                  eq(conversationMembers.conversationDid, did),
-                  eq(conversationMembers.memberDid, effectiveDid),
-                  isNull(conversationMembers.leftAt)
-                ));
-              if (!callerMembership || (callerMembership.role !== 'owner' && callerMembership.role !== 'admin')) {
-                continue;
-              }
-              const allMembers = await db
-                .select({ memberDid: conversationMembers.memberDid })
-                .from(conversationMembers)
-                .where(and(
-                  eq(conversationMembers.conversationDid, did),
-                  isNull(conversationMembers.leftAt)
-                ));
-              for (const member of allMembers) {
-                if (member.memberDid === effectiveDid) continue;
-                publish('chat.mention', {
-                  issuer: effectiveDid,
-                  subject: member.memberDid,
-                  scope: 'chat',
-                  payload: {
-                    conversationId: did,
-                    messageId,
-                    senderName: identity.handle || identity.id.slice(0, 16),
-                    messagePreview: messageText.slice(0, 100),
-                    interestDids: [member.memberDid],
-                  },
-                }).catch((err: unknown) => log.error({ err: String(err) }, 'Mention publish error'));
-              }
-            } else if (mention.did && mention.did !== effectiveDid) {
-              publish('chat.mention', {
-                issuer: effectiveDid,
-                subject: mention.did,
-                scope: 'chat',
-                payload: {
-                  conversationId: did,
-                  messageId,
-                  senderName: identity.handle || identity.id.slice(0, 16),
-                  messagePreview: messageText.slice(0, 100),
-                  interestDids: [mention.did],
-                },
-              }).catch((err: unknown) => log.error({ err: String(err) }, 'Mention publish error'));
-            }
-          } catch (err) {
-            log.error({ err: String(err) }, 'Mention processing error');
-          }
-        }
-      })().catch(() => {});
-    } else {
-      const mentionMatches = [...messageText.matchAll(new RegExp(MENTION_REGEX))].map((m: RegExpMatchArray) => m[1]);
-      if (mentionMatches.length > 0) {
-        const uniqueHandles = [...new Set<string>(mentionMatches)];
-        (async () => {
-          for (const handle of uniqueHandles) {
-            try {
-              const mentionedDid = await resolveHandleToDid(handle);
-              if (!mentionedDid || mentionedDid === effectiveDid) continue;
-              publish('chat.mention', {
-                issuer: effectiveDid,
-                subject: mentionedDid,
-                scope: 'chat',
-                payload: {
-                  conversationId: did,
-                  messageId,
-                  senderName: identity.handle || identity.id.slice(0, 16),
-                  messagePreview: messageText.slice(0, 100),
-                  interestDids: [mentionedDid],
-                },
-              }).catch((err: unknown) => log.error({ err: String(err) }, 'Mention publish error'));
-            } catch (err) {
-              log.error({ err: String(err) }, 'Handle resolution error');
-            }
-          }
-        })().catch(() => {});
-      }
-    }
+    processMentions({
+      conversationDid: did,
+      messageId,
+      senderDid: effectiveDid,
+      senderName: identity.handle || identity.id.slice(0, 16),
+      content,
+    });
 
     // Unfurl link previews async — don't block the response
     if (message && contentType === 'text' && typeof content === 'string') {

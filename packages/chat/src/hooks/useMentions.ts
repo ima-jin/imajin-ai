@@ -2,6 +2,15 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
+/** Sentinel DID for @everyone mentions. Must stay in sync with backend EVERYONE_DID. */
+export const EVERYONE_DID = '__everyone__';
+
+/**
+ * Matches @handle in message text.
+ * Must stay in sync with backend MENTION_REGEX in src/lib/chat/mentions.ts.
+ */
+const MENTION_REGEX = /@([a-zA-Z0-9_-]+)/g;
+
 export interface Member {
   did: string;
   role: string;
@@ -86,7 +95,6 @@ export function useMentions({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [mentionStartIndex, setMentionStartIndex] = useState<number | null>(null);
   const [globalResults, setGlobalResults] = useState<SearchIdentity[]>([]);
-  const [loading, setLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isOpenRef = useRef(isOpen);
 
@@ -138,7 +146,6 @@ export function useMentions({
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
-      setLoading(true);
       try {
         const res = await fetch(
           `${authUrl}/api/search?q=${encodeURIComponent(query)}&limit=5`,
@@ -154,8 +161,6 @@ export function useMentions({
         }
       } catch {
         setGlobalResults([]);
-      } finally {
-        setLoading(false);
       }
     }, 300);
 
@@ -171,7 +176,7 @@ export function useMentions({
     // @everyone as first option for group conversations
     if (isGroup && (q.length === 0 || 'everyone'.includes(q))) {
       out.push({
-        did: '__everyone__',
+        did: EVERYONE_DID,
         handle: 'everyone',
         name: 'Everyone',
         role: 'broadcast',
@@ -269,10 +274,11 @@ export function useMentions({
     [results, highlightedIndex, selectMention]
   );
 
-  // Scan text for @mentions to build the mentions array
+  // Scan text for @mentions to build the mentions array (deduplicated by DID)
   const mentions = useMemo(() => {
     const out: Mention[] = [];
-    const regex = /@(\w+)/g;
+    const seen = new Set<string>();
+    const regex = new RegExp(MENTION_REGEX, 'g');
     let match: RegExpExecArray | null;
     const handleToDid = new Map<string, string>();
     for (const m of members) {
@@ -280,17 +286,20 @@ export function useMentions({
     }
     while ((match = regex.exec(text)) !== null) {
       const handle = match[1];
-      const did = handleToDid.get(handle);
-      if (did) {
+      const resolvedDid = handleToDid.get(handle);
+      if (resolvedDid) {
+        if (seen.has(resolvedDid)) continue;
+        seen.add(resolvedDid);
         out.push({
-          did,
+          did: resolvedDid,
           handle,
           index: match.index,
           length: match[0].length,
         });
-      } else if (handle === 'everyone' && isGroup) {
+      } else if (handle === 'everyone' && isGroup && !seen.has(EVERYONE_DID)) {
+        seen.add(EVERYONE_DID);
         out.push({
-          did: '__everyone__',
+          did: EVERYONE_DID,
           handle: 'everyone',
           index: match.index,
           length: match[0].length,
