@@ -140,10 +140,7 @@ export function createChallenge(): string {
   if (typeof globalThis.crypto !== 'undefined') {
     globalThis.crypto.getRandomValues(bytes);
   } else {
-    // Fallback for Node.js without webcrypto
-    for (let i = 0; i < bytes.length; i++) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
+    throw new Error('Secure random source unavailable');
   }
   return crypto.bytesToHex(bytes);
 }

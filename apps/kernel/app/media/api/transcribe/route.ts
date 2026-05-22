@@ -8,7 +8,7 @@ import { tmpdir } from 'os';
 import { randomBytes } from 'crypto';
 import { withLogger } from '@imajin/logger';
 
-const GPU_NODE_URL = process.env.GPU_NODE_URL || 'http://192.168.1.124:8765';
+const GPU_NODE_URL = process.env.GPU_NODE_URL;
 const GPU_AUTH_TOKEN = process.env.GPU_AUTH_TOKEN || '';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +28,13 @@ export async function OPTIONS(request: NextRequest) {
  */
 export const POST = withLogger('kernel', async (request, { log }) => {
   const cors = corsHeaders(request);
+  if (!GPU_NODE_URL) {
+    log.error({}, 'GPU_NODE_URL is not configured');
+    return NextResponse.json(
+      { error: 'Transcription service unavailable' },
+      { status: 503, headers: cors }
+    );
+  }
 
   const ip = getClientIP(request);
   const rl = rateLimit(ip, 30, 60 * 60 * 1000); // 30 per hour per IP

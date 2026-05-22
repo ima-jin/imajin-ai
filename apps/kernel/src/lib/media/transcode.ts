@@ -19,6 +19,12 @@ const activeTranscodes = new Set<string>();
 const MAX_CONCURRENT = 2;
 const transcodeQueue: Array<() => void> = [];
 
+function assertSafeFfmpegPath(pathValue: string, label: string): void {
+  if (!pathValue || /[\r\n\0]/.test(pathValue) || pathValue.startsWith('-')) {
+    throw new Error(`Unsafe ${label} path`);
+  }
+}
+
 export function getVariantPath(originalPath: string, quality: VideoQuality): string {
   return `${originalPath}.${quality}.mp4`;
 }
@@ -62,6 +68,8 @@ function runNext() {
 export function transcodeVideo(originalPath: string, quality: VideoQuality): Promise<string> {
   const key = `${originalPath}:${quality}`;
   const outPath = getVariantPath(originalPath, quality);
+  assertSafeFfmpegPath(originalPath, 'input');
+  assertSafeFfmpegPath(outPath, 'output');
 
   if (activeTranscodes.has(key)) {
     return Promise.reject(new Error('Already transcoding'));
@@ -85,7 +93,7 @@ export function transcodeVideo(originalPath: string, quality: VideoQuality): Pro
       ];
 
       log.info({ quality, originalPath }, 'starting transcode');
-      const proc = spawn('ffmpeg', args);
+      const proc = spawn('ffmpeg', args, { shell: false, windowsHide: true });
 
       proc.stderr.on('data', (_data) => {
         // ffmpeg outputs progress to stderr — just log last line occasionally

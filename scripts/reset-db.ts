@@ -6,7 +6,7 @@
  */
 
 import postgres from 'postgres';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -72,7 +72,10 @@ async function main() {
   for (const app of apps) {
     try {
       console.log(`  📝 ${app.dir}...`);
-      execSync(`pnpm --filter ${app.pkg} db:push`, {
+      if (!/^@imajin\/[a-z0-9-]+$/.test(app.pkg)) {
+        throw new Error(`Unsafe package identifier: ${app.pkg}`);
+      }
+      execFileSync('pnpm', ['--filter', app.pkg, 'db:push'], {
         stdio: 'inherit',
         env: { ...process.env, DATABASE_URL },
       });
@@ -84,7 +87,7 @@ async function main() {
 
   // Run seed
   console.log('\n🌱 Running seed...');
-  execSync('tsx scripts/seed.ts', {
+  execFileSync('tsx', ['scripts/seed.ts'], {
     stdio: 'inherit',
     env: { ...process.env, DATABASE_URL },
   });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, assets, assetReferences } from '@/src/db';
 import { eq } from 'drizzle-orm';
+import { randomUUID } from 'crypto';
 
 /**
  * POST /api/assets/{id}/references
@@ -29,7 +30,7 @@ export async function POST(
     return NextResponse.json({ error: 'service, entityType, and entityId are required' }, { status: 400 });
   }
 
-  const refId = `ref_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const refId = `ref_${Date.now()}_${randomUUID().replace(/-/g, '').slice(0, 8)}`;
   const [ref] = await db
     .insert(assetReferences)
     .values({ id: refId, assetId: id, service, entityType, entityId })

@@ -46,10 +46,14 @@ export function getModel(
       return openai(model);
     }
     case 'ollama': {
+      const baseURL = config?.baseURL ?? process.env.OLLAMA_BASE_URL;
+      if (!baseURL) {
+        throw new Error('OLLAMA_BASE_URL is required for the ollama provider');
+      }
       // Ollama uses OpenAI-compatible API
       const ollama = createOpenAI({
         apiKey: 'ollama', // Ollama doesn't need a real key
-        baseURL: config?.baseURL ?? process.env.OLLAMA_BASE_URL ?? 'http://192.168.1.124:11434/v1',
+        baseURL,
       });
       return ollama(model);
     }

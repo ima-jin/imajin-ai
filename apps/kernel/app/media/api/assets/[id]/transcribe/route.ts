@@ -11,7 +11,7 @@ import { createLogger } from "@imajin/logger";
 
 const log = createLogger("kernel");
 
-const WHISPER_URL = process.env.WHISPER_URL || "http://192.168.1.234:8765";
+const WHISPER_URL = process.env.WHISPER_URL;
 const WHISPER_AUTH = process.env.WHISPER_AUTH_TOKEN || "";
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
 const MEDIA_DIR = process.env.MEDIA_DIR || "/mnt/media";
@@ -36,6 +36,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const cors = corsHeaders(request);
+  if (!WHISPER_URL) {
+    log.error({}, "WHISPER_URL is not configured");
+    return NextResponse.json(
+      { error: "Transcription service unavailable" },
+      { status: 503, headers: cors }
+    );
+  }
   const authResult = await requireAuth(request);
   if ("error" in authResult) {
     return NextResponse.json(
