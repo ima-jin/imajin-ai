@@ -10,9 +10,12 @@ import { useChatWebSocket } from './hooks/useChatWebSocket';
 import { useFileUpload } from './hooks/useFileUpload';
 import { useVoiceRecording } from './hooks/useVoiceRecording';
 import { useLocationShare } from './hooks/useLocationShare';
+import { useMentions } from './hooks/useMentions';
 import { MessageBubble } from './MessageBubble';
+import { MentionPicker } from './MentionPicker';
 import { VoiceRecorder } from '@imajin/input';
 import { NameDisplaySelector, type NameDisplayPolicy } from './NameDisplaySelector';
+import { useChatConfig } from './ChatProvider';
 
 interface ChatProps {
   did: string;
@@ -88,6 +91,7 @@ export function Chat({
   const { sendMessage, addReaction, removeReaction, editMessage, deleteMessage, markRead, isSending } =
     useChatActions(did);
   const { typingUsers, sendTyping, stopTyping, lastMessage } = useChatWebSocket(did);
+  const { chatUrl, authUrl } = useChatConfig();
   const { uploadFile } = useFileUpload();
   const { sendVoice } = useVoiceRecording();
   const { shareLocation } = useLocationShare();
@@ -101,6 +105,26 @@ export function Chat({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Fetch conversation members for @mentions
+  const [members, setMembers] = useState<{ did: string; role: string; name: string; handle: string }[]>([]);
+  useEffect(() => {
+    fetch(`${chatUrl}/api/d/${did}/members`, { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => setMembers(data.members ?? []))
+      .catch(() => setMembers([]));
+  }, [chatUrl, did]);
+
+  const isGroup = !did.includes(':dm:');
+
+  const mentions = useMentions({
+    text: composerText,
+    setText: setComposerText,
+    textareaRef,
+    members,
+    isGroup,
+    authUrl: authUrl ?? '',
+  });
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevCountRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -210,15 +234,19 @@ export function Chat({
       updateMessage(editingMsg.id, { content: { type: 'text', text }, editedAt: new Date().toISOString() });
       setEditingMsg(null);
     } else {
-      await sendMessage({ type: 'text', text }, replyTo ? { replyTo: replyTo.id } : undefined);
+      await sendMessage(
+        { type: 'text', text, mentions: mentions.mentions },
+        replyTo ? { replyTo: replyTo.id } : undefined
+      );
       setReplyTo(null);
     }
     setComposerText('');
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     stopTyping();
-  }, [composerText, isSending, editingMsg, replyTo, editMessage, sendMessage, stopTyping]);
+  }, [composerText, isSending, editingMsg, replyTo, editMessage, sendMessage, stopTyping, mentions.mentions]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentions.handleKeyDown(e)) return;
     if (enterToSend && e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -227,6 +255,7 @@ export function Chat({
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setComposerText(e.target.value);
+    mentions.handleChange(e);
     sendTyping();
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     typingTimerRef.current = setTimeout(stopTyping, 3000);
@@ -492,15 +521,27 @@ export function Chat({
           </div>
         )}
         {!voiceActive && (
-          <textarea
-            ref={textareaRef}
-            value={composerText}
-            onChange={handleTextChange}
-            onKeyDown={handleKeyDown}
-            placeholder="Message…"
-            rows={1}
-            className={`flex-1 min-w-0 resize-none overflow-hidden bg-slate-100 dark:bg-zinc-800 rounded-2xl text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none ${compact ? 'px-2 py-1 min-h-8' : 'px-4 py-2 min-h-9'}`}
-          />
+          <div className="relative flex-1 min-w-0">
+            <textarea
+              ref={textareaRef}
+              value={composerText}
+              onChange={handleTextChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Message…"
+              rows={1}
+              className={`w-full resize-none overflow-hidden bg-slate-100 dark:bg-zinc-800 rounded-2xl text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none ${compact ? 'px-2 py-1 min-h-8' : 'px-4 py-2 min-h-9'}`}
+            />
+            {mentions.isOpen && (
+              <MentionPicker
+                results={mentions.results}
+                highlightedIndex={mentions.highlightedIndex}
+                onSelect={mentions.selectMention}
+                onClose={mentions.closePicker}
+                isEveryone={isGroup}
+                mediaUrl={mediaUrl}
+              />
+            )}
+          </div>
         )}
         {!voiceActive && enableLocation && (
           <button
