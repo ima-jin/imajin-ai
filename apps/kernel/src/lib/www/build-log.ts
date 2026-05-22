@@ -18,9 +18,20 @@ export interface BuildEntry {
  */
 export async function getBuildEntries(): Promise<BuildEntry[]> {
   const raw = fs.readFileSync(buildLogPath, 'utf8');
+  const normalized = raw.split('\r\n').join('\n');
 
   // Split on H2 headings, keeping the heading with its content
-  const sections = raw.split(/(?=^## )/m).filter((s) => s.trim().startsWith('## '));
+  const sections: string[] = [];
+  let current = '';
+  for (const line of normalized.split('\n')) {
+    if (line.startsWith('## ')) {
+      if (current.trim()) sections.push(current);
+      current = `${line}\n`;
+      continue;
+    }
+    if (current) current += `${line}\n`;
+  }
+  if (current.trim()) sections.push(current);
 
   const entries: BuildEntry[] = [];
 
@@ -28,15 +39,16 @@ export async function getBuildEntries(): Promise<BuildEntry[]> {
     // Extract heading: ## March 12–14, 2026 — Title
     // Use em-dash (—) as the separator between date and title.
     // En-dashes (–) and hyphens (-) in date ranges must NOT be treated as separators.
-    const headingMatch = section.match(/^## (.+?)\s*—\s*(.+)$/m)
-      || section.match(/^## (.+)$/m);
-    if (!headingMatch) continue;
-
-    const date = headingMatch[1].trim();
-    const title = headingMatch[2]?.trim() || '';
+    const firstNewline = section.indexOf('\n');
+    const headingLine = (firstNewline >= 0 ? section.slice(0, firstNewline) : section).trim();
+    if (!headingLine.startsWith('## ')) continue;
+    const headingBody = headingLine.slice(3).trim();
+    const separatorIdx = headingBody.indexOf('—');
+    const date = (separatorIdx >= 0 ? headingBody.slice(0, separatorIdx) : headingBody).trim();
+    const title = (separatorIdx >= 0 ? headingBody.slice(separatorIdx + 1) : '').trim();
 
     // Everything after the heading is the content
-    const content = section.replace(/^## .+\n+/, '');
+    const content = firstNewline >= 0 ? section.slice(firstNewline + 1).trimStart() : '';
 
     const processed = await remark()
       .use(remarkGfm)

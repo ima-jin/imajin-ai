@@ -61,6 +61,12 @@ export function ImajinInput({
   const hasLocation = features.includes('location');
   const hasValue = value.trim().length > 0 || !!attachment;
 
+  function stripTrailingSlashes(input: string): string {
+    let value = input;
+    while (value.endsWith('/')) value = value.slice(0, -1);
+    return value;
+  }
+
   // Auto-resize textarea
   useEffect(() => {
     const el = textareaRef.current;
@@ -183,7 +189,7 @@ export function ImajinInput({
     const formData = new FormData();
     formData.append('file', file, file.name);
     const transcribeUrl = inputServiceUrl
-      ? `${inputServiceUrl.replace(/\/+$/, '')}/api/transcribe`
+      ? `${stripTrailingSlashes(inputServiceUrl)}/api/transcribe`
       : '/api/transcribe';
 
     const startTime = Date.now();
