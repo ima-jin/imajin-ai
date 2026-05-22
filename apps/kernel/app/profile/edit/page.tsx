@@ -66,6 +66,8 @@ function EditProfileContent() {
   const [showMarketItems, setShowMarketItems] = useState(false);
   const [showEvents, setShowEvents] = useState(false);
   const [tier, setTier] = useState<string>('soft');
+  const [emailUpdates, setEmailUpdates] = useState(false);
+  const [emailUpdatesLoading, setEmailUpdatesLoading] = useState(false);
 
   const isSoftTier = tier === 'soft';
 
@@ -118,6 +120,14 @@ function EditProfileContent() {
       setHandle(profile.handle || '');
       setEmail(profile.contactEmail || '');
       setPhone(profile.phone || '');
+
+      // Load email subscription status
+      if (profile.contactEmail) {
+        fetch(`/api/subscribe/status?email=${encodeURIComponent(profile.contactEmail)}`)
+          .then(r => r.json())
+          .then(d => setEmailUpdates(!!d.subscribed))
+          .catch(() => {});
+      }
       setVisibility((profile.visibility as 'public' | 'incognito') || 'public');
 
       // Set service toggles from feature_toggles
@@ -314,10 +324,46 @@ function EditProfileContent() {
                 />
               </div>
             </div>
-            <div className="pt-3">
+            <div className="pt-4 space-y-3 border-t border-gray-800">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-300">Email Updates</p>
+                  <p className="text-xs text-gray-500">Receive progress updates from Imajin</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={emailUpdatesLoading || !email}
+                  onClick={async () => {
+                    if (!email) return;
+                    setEmailUpdatesLoading(true);
+                    try {
+                      const res = await fetch('/api/subscribe/status', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, subscribed: !emailUpdates }),
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        setEmailUpdates(data.subscribed);
+                      }
+                    } catch { /* non-fatal */ }
+                    setEmailUpdatesLoading(false);
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    emailUpdates ? 'bg-[#F59E0B]' : 'bg-gray-700'
+                  } ${(!email || emailUpdatesLoading) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+                    emailUpdates ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+              {!email && (
+                <p className="text-xs text-gray-600">Add an email address above to enable updates</p>
+              )}
               <a
                 href="/notify/settings"
-                className="text-sm text-[#F59E0B] hover:text-[#FBBF24] transition-colors"
+                className="block text-sm text-[#F59E0B] hover:text-[#FBBF24] transition-colors"
               >
                 Notification preferences →
               </a>
